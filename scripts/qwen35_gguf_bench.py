@@ -737,6 +737,7 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
+    decode_graph_transport_provenance = None
     decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
@@ -798,6 +799,7 @@ def _run_existing_session_once(
                 final = graph.read_sample()
                 if not decode_graph_recorded_tokens and final is not None:
                     generated_token_ids.append(final.token_id)
+                decode_graph_transport_provenance = graph.transport_provenance()
             finally:
                 if not retained_graph:
                     graph.close()
@@ -845,9 +847,11 @@ def _run_existing_session_once(
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "decode_graph_transport_provenance": decode_graph_transport_provenance,
         "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "host_token_embedding_mapped": _mapped_host_embedding_audit(session),
         "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
@@ -937,6 +941,8 @@ def _run_once(
     generated_token_ids: list[int] = []
     final = None
     graph_capture_seconds = 0.0
+    decode_graph_transport_provenance = None
+    mapped_host_embedding = _mapped_host_embedding_audit(session)
     decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
     try:
@@ -977,6 +983,7 @@ def _run_once(
                 decode_seconds = time.perf_counter() - decode_start
                 generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
                 final = graph.read_sample()
+                decode_graph_transport_provenance = graph.transport_provenance()
             finally:
                 graph.close()
         else:
@@ -1020,8 +1027,10 @@ def _run_once(
         "fastpath_safety": fastpath_safety,
         "requested_graph_replay_decode": bool(graph_replay_decode),
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
+        "decode_graph_transport_provenance": decode_graph_transport_provenance,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "host_token_embedding_mapped": mapped_host_embedding,
         "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
@@ -1047,6 +1056,21 @@ def _run_once(
         },
         "memory": _memory_summary(memory_snapshots),
         "memory_snapshots": memory_snapshots,
+    }
+
+
+def _mapped_host_embedding_audit(session: Any) -> dict[str, Any]:
+    runner = getattr(session, "runner", None)
+    mapped = getattr(runner, "host_token_embedding_mapped_weight", None)
+    if mapped is None:
+        return {"enabled": False, "nbytes": 0, "device_ptr": None}
+    allocation = mapped.allocation("raw")
+    return {
+        "enabled": True,
+        "nbytes": int(allocation.buffer.nbytes),
+        "device_ptr": int(allocation.tensor.ptr),
+        "owns_buffer": bool(allocation.owns_buffer),
+        "storage": "hip_registered_gguf_mmap",
     }
 
 

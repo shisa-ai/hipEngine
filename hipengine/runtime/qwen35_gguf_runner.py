@@ -15,7 +15,13 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipError, HipMemcpyKind, HipRuntime, get_hip_runtime
+from hipengine.core.hip import (
+    HIP_HOST_REGISTER_MAPPED,
+    HipError,
+    HipMemcpyKind,
+    HipRuntime,
+    get_hip_runtime,
+)
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -259,7 +265,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.loading.gguf import GGUFReader
-from hipengine.loading.materialize import float_array_to_bf16_bits
+from hipengine.loading.materialize import DeviceTensorAllocation, float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION, build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_expert_sidecar import (
     GGUFExpertPackedTensor,
@@ -1925,6 +1931,10 @@ class Qwen35GGUFFullStackRunner:
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
     host_token_embedding_raw: np.ndarray | None = field(default=None, init=False, repr=False)
+    host_token_embedding_mapped_weight: Qwen35GGUFDeviceWeight | None = field(
+        default=None, init=False, repr=False
+    )
+    host_token_embedding_registered_ptr: int = field(default=0, init=False, repr=False)
     _token_embedding_lock: object = field(default_factory=threading.Lock, init=False, repr=False)
     _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
 
@@ -1977,15 +1987,34 @@ class Qwen35GGUFFullStackRunner:
                         self.token_embedding_placement = "device"
                         return
                     raise ValueError("host token embedding was materialized on device")
-                if token_weight.spec.layout != "raw_gguf" or token_weight.spec.quant_key != "gguf_q8_0":
+                mapped_host = bool(
+                    backend_package_capability(
+                        self.backend,
+                        "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+                        False,
+                    )
+                )
+                supported_quants = {"gguf_q8_0"}
+                if mapped_host:
+                    supported_quants.add("gguf_q4_k")
+                if (
+                    token_weight.spec.layout != "raw_gguf"
+                    or token_weight.spec.quant_key not in supported_quants
+                ):
                     raise ValueError(
-                        "host token embedding requires a raw Q8_0 token_embedding; "
-                        f"got layout={token_weight.spec.layout!r}, quant={token_weight.spec.quant_key!r}"
+                        "host token embedding requires raw Q8_0 or a backend-qualified "
+                        "mapped raw Q4_K token_embedding; "
+                        f"got layout={token_weight.spec.layout!r}, "
+                        f"quant={token_weight.spec.quant_key!r}"
                     )
                 reader = GGUFReader(self.model_path)
+                raw = reader.tensor_data(token_weight.spec.source.name)
                 self.host_token_embedding_reader = reader
-                self.host_token_embedding_raw = reader.tensor_data(token_weight.spec.source.name)
+                self.host_token_embedding_raw = raw
+                if mapped_host:
+                    self._map_host_token_embedding(token_weight, raw)
             except Exception:
+                self._unmap_host_token_embedding()
                 if self.weights is not None and self.owns_resident_weights:
                     self.weights.free(runtime=self.runtime)
                     self.weights = None
@@ -1993,11 +2022,65 @@ class Qwen35GGUFFullStackRunner:
                 self.host_token_embedding_raw = None
                 raise
 
+    def _map_host_token_embedding(
+        self,
+        token_weight: Qwen35GGUFDeviceWeight,
+        raw: np.ndarray,
+    ) -> None:
+        """Pin one GGUF mmap range and expose it to embedding kernels without VRAM."""
+
+        if self.runtime is None:
+            raise RuntimeError("GGUF mapped host embedding requires a HIP runtime")
+        raw = np.asarray(raw)
+        if not raw.flags.c_contiguous:
+            raise ValueError("GGUF mapped host embedding storage must be contiguous")
+        host_ptr = int(raw.ctypes.data)
+        nbytes = int(raw.nbytes)
+        self.runtime.host_register(
+            host_ptr,
+            nbytes,
+            flags=HIP_HOST_REGISTER_MAPPED,
+        )
+        self.host_token_embedding_registered_ptr = host_ptr
+        try:
+            device_ptr = int(self.runtime.host_get_device_pointer(host_ptr))
+            if device_ptr <= 0:
+                raise RuntimeError("HIP returned a null mapped token-embedding pointer")
+            allocation = DeviceTensorAllocation(
+                name=f"{token_weight.spec.source.name}.mapped_host.raw",
+                source=token_weight.spec.source,
+                buffer=DeviceBuffer(device_ptr, nbytes),
+                tensor=Tensor.from_handle(
+                    device_ptr,
+                    (nbytes,),
+                    DType.INT8,
+                    Device("hip", 0),
+                ),
+                owns_buffer=False,
+            )
+            self.host_token_embedding_mapped_weight = Qwen35GGUFDeviceWeight(
+                spec=token_weight.spec,
+                allocations=MappingProxyType({"raw": allocation}),
+                backend=token_weight.backend,
+            )
+        except BaseException:
+            self._unmap_host_token_embedding()
+            raise
+
+    def _unmap_host_token_embedding(self) -> None:
+        host_ptr = int(self.host_token_embedding_registered_ptr)
+        self.host_token_embedding_mapped_weight = None
+        self.host_token_embedding_registered_ptr = 0
+        if host_ptr and self.runtime is not None:
+            self.runtime.host_unregister(host_ptr)
+
     def ensure_device_token_embedding(self, *, runtime: HipRuntime | None = None) -> Qwen35GGUFDeviceWeight:
-        """Materialize the deferred token table exactly once for pointer-fed paths."""
+        """Return a device-visible table, materializing only without a mapped owner."""
 
         if self.weights is None:
             raise RuntimeError("GGUF full-stack runner is closed")
+        if self.host_token_embedding_mapped_weight is not None:
+            return self.host_token_embedding_mapped_weight
         token_weight = self.weights.root("token_embedding")
         if token_weight.allocations:
             self.token_embedding_placement = "device"
@@ -9013,12 +9096,15 @@ class Qwen35GGUFFullStackRunner:
         )
 
     def close(self) -> None:
-        if self.weights is not None:
-            if self.owns_resident_weights:
-                self.weights.free(runtime=self.runtime)
-            self.weights = None
-        self.host_token_embedding_raw = None
-        self.host_token_embedding_reader = None
+        try:
+            self._unmap_host_token_embedding()
+        finally:
+            if self.weights is not None:
+                if self.owns_resident_weights:
+                    self.weights.free(runtime=self.runtime)
+                self.weights = None
+            self.host_token_embedding_raw = None
+            self.host_token_embedding_reader = None
 
     def __enter__(self) -> "Qwen35GGUFFullStackRunner":
         return self
@@ -9435,6 +9521,14 @@ def _resolve_gguf_token_embedding_placement(
         )
     ):
         return "host", "gfx1151_private_c1_auto"
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+            False,
+        )
+    ):
+        return "host", "mapped_host_private_c1_auto"
     return "device", "backend_device_fallback"
 
 
@@ -13125,10 +13219,23 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         token_weight = self.runner.weights.root("token_embedding")
-        if token_weight.spec.layout != "raw_gguf" or token_weight.spec.quant_key != "gguf_q8_0":
+        mapped_weight = getattr(
+            self.runner, "host_token_embedding_mapped_weight", None
+        )
+        mapped_q4 = (
+            mapped_weight is not None
+            and token_weight.spec.layout == "raw_gguf"
+            and token_weight.spec.quant_key == "gguf_q4_k"
+        )
+        if not mapped_q4 and (
+            token_weight.spec.layout != "raw_gguf"
+            or token_weight.spec.quant_key != "gguf_q8_0"
+        ):
             raise ValueError(
-                "host token embedding requires a raw Q8_0 token_embedding; "
-                f"got layout={token_weight.spec.layout!r}, quant={token_weight.spec.quant_key!r}"
+                "host token embedding requires raw Q8_0 or a mapped raw Q4_K "
+                "token_embedding; "
+                f"got layout={token_weight.spec.layout!r}, "
+                f"quant={token_weight.spec.quant_key!r}"
             )
         if token_weight.allocations:
             raise ValueError("host token embedding runner unexpectedly owns a device allocation")
@@ -13146,6 +13253,11 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
+        mapped_weight = getattr(
+            self.runner, "host_token_embedding_mapped_weight", None
+        )
+        if mapped_weight is not None:
+            return mapped_weight
         token_weight = self.runner.weights.root("token_embedding")
         if token_weight.allocations:
             if self.host_token_embedding_enabled:
@@ -13179,7 +13291,10 @@ class Qwen35GGUFResidentSession:
         token_arr = np.asarray(token_ids, dtype=np.int64).reshape(-1)
         if int(token_arr.size) != int(rows):
             raise ValueError(f"token row count mismatch: got {token_arr.size}, expected {rows}")
-        if self.host_token_embedding_enabled and stream == 0:
+        mapped_weight = getattr(
+            self.runner, "host_token_embedding_mapped_weight", None
+        )
+        if self.host_token_embedding_enabled and mapped_weight is None and stream == 0:
             if self._host_token_embedding_raw is None:
                 raise RuntimeError("host token embedding was enabled without host raw bytes")
             hidden = _q8_0_embedding_rows_to_bf16(
@@ -13191,7 +13306,7 @@ class Qwen35GGUFResidentSession:
             nbytes = int(hidden.nbytes)
             copy_host_to_device(DeviceBuffer(int(out_ptr), nbytes), host_array_ptr(hidden), nbytes, runtime=runtime)
             return
-        if self.host_token_embedding_enabled:
+        if self.host_token_embedding_enabled and mapped_weight is None:
             self._device_token_embedding_weight(reason="non_default_stream")
 
         if token_ids_device_ptr is None:

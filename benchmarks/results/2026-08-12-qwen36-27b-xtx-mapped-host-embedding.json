@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_partial_gate_pass",
+  "title": "Qwen3.6-27B XTX mapped-host token table and c1 PM4 promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "token_embedding_quant": "gguf_q4_k",
+    "token_embedding_nbytes": 715161600,
+    "old_owner": "dedicated VRAM raw allocation",
+    "new_owner": "sole contiguous GGUF mmap registered with hipHostRegisterMapped",
+    "device_visible": true,
+    "device_shadow_allocations": 0,
+    "allocation_owns_buffer": false,
+    "scope": "private c1 only",
+    "graph_identity_includes_mapped_pointer": true,
+    "teardown": "graph closes before hipHostUnregister; unregister precedes GGUF mmap release"
+  },
+  "micro_correctness": {
+    "synthetic_q4_mapped_vs_device_bf16_mismatches": 0,
+    "actual_q4_token_table_mapped_vs_device_bf16_mismatches": 0,
+    "actual_table_rows_tested": [1, 512],
+    "actual_mapped_lookup_ms_per_launch": {
+      "rows_1": 0.030483710579574108,
+      "rows_512": 0.19600267056375742
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python /tmp/mapped_q4_embedding_test.py"
+  },
+  "full_model_smoke": {
+    "workload": "512/1",
+    "prefill_tok_s": 693.5043129431766,
+    "decode_tok_s_eager": 18.22215301192633,
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "host_token_embedding_enabled": true,
+    "host_token_embedding_reason": "mapped_host_private_c1_auto",
+    "tracked_peak_gib": 16.083275202661753,
+    "sampled_absolute_peak_gib": 16.74951171875,
+    "sampled_before_load_gib": 0.0703125,
+    "sampled_peak_delta_gib": 16.67919921875,
+    "tracked_after_close_bytes": 0,
+    "source": "/tmp/qwen36-27b-xtx-hipengine-mapped-host/fit-512x1.json"
+  },
+  "transport_comparison": {
+    "protocol": {
+      "workload": "512/128",
+      "persistent_session": true,
+      "warmup_runs": 0,
+      "measured_runs": 3,
+      "steps_per_replay": 1,
+      "same_graph_rearmed_after_identical_reset_and_prefill": true,
+      "compiler_cache_only": true,
+      "token_id": 9707
+    },
+    "hipgraph": {
+      "prefill_tok_s_samples": [
+        693.5146475790041,
+        720.2106721969598,
+        721.6605854815504
+      ],
+      "prefill_tok_s_median": 720.2106721969598,
+      "decode_tok_s_samples": [
+        32.94383138032497,
+        32.897225658488686,
+        32.886548071572044
+      ],
+      "decode_tok_s_median": 32.897225658488686,
+      "replay_launches_total": 384,
+      "native_fallbacks": 0,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-mapped-host/hipgraph-512x128-r3.json"
+    },
+    "pm4": {
+      "prefill_tok_s_samples": [
+        689.087586736267,
+        719.4805472234348,
+        720.2282696722787
+      ],
+      "prefill_tok_s_median": 719.4805472234348,
+      "decode_tok_s_samples": [
+        33.45790801831797,
+        33.423773251973515,
+        33.405067739563236
+      ],
+      "decode_tok_s_median": 33.423773251973515,
+      "decode_speedup_vs_hipgraph_percent": 1.600583584011006,
+      "replay_launches_total": 384,
+      "native_fallbacks": 0,
+      "native_generations": 1,
+      "native_children": 1,
+      "native_unretired_submissions": 0,
+      "native_context_usable": true,
+      "native_executable_retired": true,
+      "native_executable_usable": true,
+      "stateful_registers": true,
+      "local_cache_dependencies": true,
+      "graph_nodes": 950,
+      "hsaco_modules": 14,
+      "pm4_dwords": 26443,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-mapped-host/pm4-512x128-r3.json"
+    },
+    "decision": "Promote PM4 for Qwen3.6-27B MOSTLY_Q4_K_M only at private c1 replay horizons >=128. Keep HIP graph below 128 and for every wider physical-row shape until independently measured."
+  },
+  "memory": {
+    "old_tracked_peak_gib": 16.749321345239878,
+    "new_tracked_peak_gib": 16.083275202661753,
+    "tracked_reduction_gib": 0.666046142578125,
+    "tracked_reduction_percent": 3.976555997998177,
+    "same_workload": "512/1 eager",
+    "old_sampled_peak_delta_gib": 17.34716796875,
+    "new_sampled_peak_delta_gib": 16.67919921875,
+    "sampled_peak_delta_reduction_gib": 0.66796875,
+    "sampled_peak_delta_reduction_percent": 3.8505925071072755,
+    "standard_512_128_pm4_r3_peak_delta_gib": 16.71240234375,
+    "new_weight_vram_gib": 15.279573440551758,
+    "new_decode_scratch_gib": 0.19899194687604904,
+    "new_session_buffers_gib": 0.6047098152339458,
+    "tracked_after_close_bytes": 0,
+    "sampled_after_close_gib": 0.24951171875
+  },
+  "frozen_gates_512_128": {
+    "prefill_gate_tok_s": 974.252,
+    "prefill_observed_tok_s": 719.4805472234348,
+    "prefill_passed": false,
+    "decode_gate_tok_s": 33.355,
+    "decode_observed_tok_s": 33.423773251973515,
+    "decode_margin_percent": 0.20618573519268768,
+    "decode_passed": true,
+    "peak_delta_gate_gib": 15.69,
+    "peak_delta_observed_gib": 16.71240234375,
+    "memory_passed": false,
+    "campaign_closed": false
+  },
+  "commands": {
+    "common": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "hipgraph_prefix": "HIPENGINE_SUBMISSION_TRANSPORT=hipgraph",
+    "pm4_prefix": "HIPENGINE_SUBMISSION_TRANSPORT=pm4",
+    "tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_host_token_embedding.py tests/test_qwen35_gguf_decode_graph.py tests/test_qwen35_gguf_bench_metadata.py tests/test_gguf_true_ar_category_bench.py"
+  },
+  "validation": {
+    "host_embedding_decode_graph_key_stable_across_rearms": true,
+    "hipgraph_replays": 384,
+    "pm4_replays": 384,
+    "native_fallbacks": 0,
+    "finite_full_model_runs": true,
+    "final_token_id": 9707,
+    "mapped_host_unregistered_on_close_unit_test": true,
+    "tracked_teardown_zero_full_model": true
+  },
+  "notes": [
+    "The sampled memory gate compares peak-minus-before-load, not absolute hipMemGetInfo use.",
+    "The PM4 promotion is intentionally narrow: no MTP or physical rows >1 were measured here.",
+    "Prefill and memory still miss frozen gates, so this row is a retained partial pass rather than campaign closure."
+  ]
+}

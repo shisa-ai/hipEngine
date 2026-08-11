@@ -628,6 +628,9 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
 # shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
 # or transactionally restores the exact resident Q8_0 table.
 GGUF_HOST_TOKEN_EMBEDDING_C1 = True
+# gfx1151 retains its qualified CPU-copy Q8_0 route; mapped host kernel reads
+# require an independent lifecycle/performance gate on that device.
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = False
 # SH16-M2 retains one bounded private-c1 owner for allocations <=16 MiB.
 # The environment selector is a temporary explicit opt-out for rollback.
 GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
@@ -1738,6 +1741,7 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
