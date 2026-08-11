@@ -4,13 +4,16 @@ Protocols, baselines, and artifact formats for every perf claim hipEngine retain
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it.
 
-Human-readable rollup: `benchmarks/README.md` is the platform-indexed topline
-scoreboard. It records evidence status, run date, measured revision, build
-environment, exact protocol, artifacts, refresh commands, and root README export
-blocks. `benchmarks/HISTORY.md` holds the superseded experiment notebook,
+Human-readable rollup: `benchmarks/README.md` is the compact platform-indexed
+topline scoreboard. It records current protocol summaries, evidence status,
+artifact pointers, user-visible blockers, refresh entrypoints, and the root
+README export block. Exact commands, measured revisions, build environments,
+samples, correctness gates, profiler summaries, and optimization deltas belong
+in the linked machine-readable artifacts under `benchmarks/results/`.
+`benchmarks/HISTORY.md` holds the superseded experiment notebook,
 source-lineage targets, and external baselines. `benchmarks/CHANGELOG.md` keeps
-reverse-chronological rollup history. Machine-readable artifacts live under
-`benchmarks/results/`.
+reverse-chronological one-line rollup history; substantial implementation
+narratives belong in immutable `worklog/entries/`.
 
 ## Evidence Policy (restated)
 
@@ -579,29 +582,37 @@ legacy/diagnostic status until rerun.
 
 ## Human-readable Rollup
 
-`benchmarks/README.md` is the scoreboard. A reader must be able to identify the
-latest eligible row for a platform and protocol without reconstructing shell
-history or diffing JSON artifacts.
+`benchmarks/README.md` is the compact current scoreboard. A reader must be able
+to identify the latest eligible row for a platform and protocol without
+reconstructing shell history, but the README must not duplicate the experiment
+notebook contained in artifacts, the changelog, and worklog entries.
 
 Maintain it with every retained benchmark:
 
-1. Update the top review date and the platform index.
+1. Update the top review date.
 2. Add or replace the row keyed by platform, GPU, model fingerprint, quant, KV
-   type, backend, workload, concurrency, policy, and timing scope.
-3. Record the measured source revision, dependency builds, command, repetition
-   policy, correctness status, memory scope, and compact artifact links.
-4. Keep diagnostics visible only with their blocker. A diagnostic cannot replace
-   a retained row for the same protocol.
-5. Update the marked public table and run
+   type, backend, workload, concurrency, policy, and timing scope. Never append
+   a chronological optimization diary below the current row.
+3. Keep only the concise protocol scope, evidence classification, memory/timing
+   scope where needed for interpretation, and compact artifact links. The
+   artifact owns exact revisions, dependencies, commands, repetitions,
+   correctness details, samples, profiler data, and optimization deltas.
+4. Mention a diagnostic, blocked run, or rejected run only when it removes a
+   current row or explains a user-visible limitation. Link one durable artifact
+   and a concrete refresh condition; candidate ladders stay out of the README.
+5. Keep superseded tables in `benchmarks/HISTORY.md`, compact artifacts, or Git
+   history rather than copying them into the live scoreboard.
+6. Update the marked public table and run
    `python3 scripts/sync_benchmark_readme.py --write` followed by `--check`.
-6. Add a dated entry to `benchmarks/CHANGELOG.md`: model, quant, workload,
+7. Add a dated entry to `benchmarks/CHANGELOG.md`: model, quant, workload,
    metric `old -> new`, percent delta, reason, and artifact. State explicitly
    when a contract-only change has no metric supersession.
+8. Record substantial implementation decisions in a new immutable file under
+   `worklog/entries/`; do not turn either benchmark Markdown rollup into a
+   substitute worklog.
 
-Blocked and rejected attempts may be summarized in the scoreboard when their
-status and next action are explicit. Detailed experiment history belongs in
-JSON artifacts, `WORKLOG.md`, and `benchmarks/HISTORY.md`. JSON artifacts remain
-the durable evidence.
+JSON artifacts remain the durable evidence. The README is an index and current
+scoreboard over that evidence, not another evidence store.
 
 ## Hardware & Software Context (default)
 
@@ -770,7 +781,7 @@ performance claims. Use them to answer "what does current llama.cpp do on this
 model and prompt mix?" before comparing hipEngine changes.
 
 For cross-engine decode-only tables, follow the
-[`benchmarks/README.md` transition contract](../benchmarks/README.md#cross-engine-gguf-decode-timing-contract).
+[`Cross-Engine Decode Timing Boundary`](MTP-LLAMACPP-PARITY.md#cross-engine-decode-timing-boundary).
 llama.cpp starts `predicted_ms` after sampling the first output while including
 that token in `predicted_n`; native `predicted_per_second` is therefore a
 self-reported diagnostic, not the cross-engine rate. Request `N+1` outputs and

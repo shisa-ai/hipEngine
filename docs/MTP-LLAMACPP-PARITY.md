@@ -107,9 +107,10 @@ and [historical `llama-compat` B2](../benchmarks/results/2026-07-03-ar-mtp-llama
 
 ## Cross-Engine Decode Timing Boundary
 
-The canonical boundary is maintained in
-[`benchmarks/README.md`](../benchmarks/README.md#cross-engine-gguf-decode-timing-contract).
-In compact form:
+This section is the canonical timing boundary; the compact current rows are
+published in
+[`benchmarks/README.md`](../benchmarks/README.md#current-speculative-decode-scoreboards).
+The boundary is:
 
 1. hipEngine AR counts returned post-prefill `session.step()` transitions;
 2. hipEngine MTP cross-engine rates use complete `cycle_wall_ms` rather than
