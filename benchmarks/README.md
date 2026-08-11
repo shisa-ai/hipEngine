@@ -163,7 +163,7 @@ Current hipEngine partial-gate row (three persistent-session reset/replays):
 
 | Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | **730.589 tok/s** | **33.507 tok/s** | **15.605 GiB** | **16.171 GiB** | prefill fail / **decode pass** / memory fail |
+| 512/128 | **731.185 tok/s** | **33.525 tok/s** | **15.605 GiB** | **16.095 GiB** | prefill fail / **decode pass** / memory fail |
 
 The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
 sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
@@ -185,15 +185,21 @@ peak at 15.605 GiB. Storing the shared Q4T16 K256 slab output-major then turns
 scalar LDS fragment traffic into vector loads, cuts the traced 288-call Q4
 family **433.351 -> 421.447 ms (-2.747%)**, and improves exact 512/128 prefill
 **719.232 -> 730.589 tok/s (+1.579%)** without changing decode or residency.
-Prefill remains below the 974.252-tok/s gate and memory remains above the
-15.690-GiB ceiling, so this is a retained partial pass rather than a
-root-topline promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
+The model-scoped arena cutoff then widens from 16 to the first complete 80-MiB
+inventory crossover: **849** immutable allocations share one owner, only the
+994.6-MiB untied head remains dedicated, physical weight owners fall **370 ->
+2**, and standard process peak delta falls **16.171 -> 16.095 GiB (-77.840
+MiB)** with neutral exact **731.185/33.525 tok/s** prefill/decode. Prefill
+remains below the 974.252-tok/s gate and memory remains above the 15.690-GiB
+ceiling, so this is a retained partial pass rather than a root-topline
+promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
 [`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`mapped-host/PM4 partial pass`](results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
 [`dense scratch liveness`](results/2026-08-12-qwen36-27b-xtx-dense-prefill-scratch-liveness.json),
 [`small-weight arena`](results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json),
-and [`Q4T16 output-major LDS`](results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json).
+[`Q4T16 output-major LDS`](results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
+and [`wide weight arena`](results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

@@ -275,6 +275,7 @@ from hipengine.loading.qwen35_gguf_expert_sidecar import (
     save_packed_expert_tensor,
 )
 from hipengine.loading.qwen35_gguf_materialize import (
+    GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
     Qwen35GGUFDeviceWeight,
     Qwen35GGUFResidentWeights,
     gguf_decode_repack_enabled,
@@ -1927,6 +1928,9 @@ class Qwen35GGUFFullStackRunner:
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
     use_selective_weight_arena: bool = False
+    selective_weight_max_allocation_bytes: int = (
+        GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
+    )
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -1967,6 +1971,9 @@ class Qwen35GGUFFullStackRunner:
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
             if self.use_selective_weight_arena:
                 materialize_kwargs["use_selective_weight_arena"] = True
+                materialize_kwargs["selective_weight_max_allocation_bytes"] = int(
+                    self.selective_weight_max_allocation_bytes
+                )
             self.weights = materialize_qwen35_gguf_weights(
                 self.model_path,
                 **materialize_kwargs,
@@ -9578,6 +9585,31 @@ def _resolve_gguf_private_c1_small_weight_arena(
     return True, "private_c1_selective"
 
 
+def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+    *,
+    backend: str,
+    model_name: str | None = None,
+    file_type_name: str | None = None,
+) -> int:
+    """Resolve the model-scoped arena cutoff without changing peer defaults."""
+
+    default = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
+    policies = backend_package_capability(
+        backend,
+        "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return default
+    policy = policies.get((model_name, file_type_name))
+    if not isinstance(policy, Mapping):
+        return default
+    parsed = int(policy.get("max_allocation_bytes", default))
+    if parsed <= 0:
+        raise ValueError("private c1 weight arena max_allocation_bytes must be positive")
+    return parsed
+
+
 def _gguf_host_token_embedding_requested() -> bool:
     """Compatibility view for diagnostics that still inspect the legacy env."""
 
@@ -11563,6 +11595,10 @@ class Qwen35GGUFResidentSession:
     host_token_embedding_reason: str | None = field(default=None, init=False)
     small_weight_arena_enabled: bool = field(default=False, init=False)
     small_weight_arena_reason: str = field(default="disabled", init=False)
+    small_weight_arena_max_allocation_bytes: int = field(
+        default=GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
+        init=False,
+    )
     _owns_runner: bool = field(default=True, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
@@ -11645,6 +11681,14 @@ class Qwen35GGUFResidentSession:
                 requested=self.use_small_weight_arena,
             )
         )
+        if self.small_weight_arena_enabled:
+            self.small_weight_arena_max_allocation_bytes = (
+                _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+                    backend=resolved_backend,
+                    model_name=small_weight_model_name,
+                    file_type_name=small_weight_file_type_name,
+                )
+            )
         if self.shared_runner is None:
             self.runner = Qwen35GGUFFullStackRunner(
                 self.model_path,
@@ -11654,6 +11698,9 @@ class Qwen35GGUFResidentSession:
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
                 use_selective_weight_arena=self.small_weight_arena_enabled,
+                selective_weight_max_allocation_bytes=(
+                    self.small_weight_arena_max_allocation_bytes
+                ),
             )
             self._owns_runner = True
         else:

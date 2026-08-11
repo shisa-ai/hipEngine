@@ -26,6 +26,36 @@ from hipengine.quant.gguf import GGMLQuantizationType
 
 
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+DENSE_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+
+
+def test_qwen36_dense_wide_weight_arena_plan_matches_exact_inventory() -> None:
+    if not DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {DENSE_MODEL}")
+    reader = GGUFReader(DENSE_MODEL)
+    plan = plan_qwen35_gguf_materialization(
+        build_qwen35_gguf_tensor_map(reader.info),
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q6_qmicro_planar=True,
+    )
+
+    arena = plan_qwen35_gguf_selective_weight_arena(
+        plan,
+        deferred_device_slots=("root.token_embedding",),
+        max_allocation_bytes=80 * 1024 * 1024,
+    )
+
+    assert arena.supported is True
+    assert arena.reason is None
+    assert arena.alignment == 4096
+    assert arena.max_allocation_bytes == 80 * 1024 * 1024
+    assert arena.allocation_count == 849
+    assert arena.requested_bytes == 15_363_373_056
+    assert arena.capacity_bytes == 15_364_018_176
+    assert arena.dedicated_allocation_count == 1
+    assert arena.dedicated_requested_bytes == 1_042_944_000
 
 
 def test_qwen35moe_selective_weight_arena_plan_matches_exact_inventory(
