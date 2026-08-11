@@ -9495,6 +9495,7 @@ def _resolve_gguf_token_embedding_placement(
     max_batch_size: int,
     has_shared_runner: bool,
     requested: str = "auto",
+    token_embedding_type_name: str | None = None,
 ) -> tuple[str, str]:
     """Select loader-time token-table ownership without mutating shared weights."""
 
@@ -9535,6 +9536,16 @@ def _resolve_gguf_token_embedding_placement(
             False,
         )
     ):
+        supported_types = tuple(
+            str(value)
+            for value in backend_package_capability(
+                backend,
+                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+                (),
+            )
+        )
+        if supported_types and str(token_embedding_type_name) not in supported_types:
+            return "device", "mapped_host_type_device_fallback"
         return "host", "mapped_host_private_c1_auto"
     return "device", "backend_device_fallback"
 
@@ -11652,25 +11663,43 @@ class Qwen35GGUFResidentSession:
         )
         self.runtime = self.runtime or get_hip_runtime()
         resolved_backend = resolve_backend(self.backend)
-        embedding_placement, embedding_reason = _resolve_gguf_token_embedding_placement(
-            backend=resolved_backend,
-            max_batch_size=self.max_batch_size,
-            has_shared_runner=self.shared_runner is not None,
-            requested=self.token_embedding_placement,
+        mapped_host_embedding = bool(
+            backend_package_capability(
+                resolved_backend,
+                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+                False,
+            )
         )
         small_weight_model_name = None
         small_weight_file_type_name = None
+        token_embedding_type_name = None
         small_weight_policies = backend_package_capability(
             resolved_backend,
             "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
             {},
         )
-        if isinstance(small_weight_policies, Mapping) and small_weight_policies:
-            small_weight_info = GGUFReader(self.model_path).info
-            small_weight_model_name = str(
-                small_weight_info.metadata.get("general.name", "")
-            )
-            small_weight_file_type_name = str(small_weight_info.file_type_name)
+        if mapped_host_embedding or (
+            isinstance(small_weight_policies, Mapping) and small_weight_policies
+        ):
+            model_info = GGUFReader(self.model_path).info
+            small_weight_model_name = str(model_info.metadata.get("general.name", ""))
+            small_weight_file_type_name = str(model_info.file_type_name)
+            if mapped_host_embedding:
+                token_embedding_type_name = next(
+                    (
+                        str(tensor.ggml_type_name)
+                        for tensor in model_info.tensors
+                        if tensor.name == "token_embd.weight"
+                    ),
+                    None,
+                )
+        embedding_placement, embedding_reason = _resolve_gguf_token_embedding_placement(
+            backend=resolved_backend,
+            max_batch_size=self.max_batch_size,
+            has_shared_runner=self.shared_runner is not None,
+            requested=self.token_embedding_placement,
+            token_embedding_type_name=token_embedding_type_name,
+        )
         self.small_weight_arena_enabled, self.small_weight_arena_reason = (
             _resolve_gguf_private_c1_small_weight_arena(
                 backend=resolved_backend,
