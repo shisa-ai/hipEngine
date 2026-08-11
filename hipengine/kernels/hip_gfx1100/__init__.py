@@ -204,6 +204,9 @@ GGUF_DENSE_Q4_T16 = True
 # Private-c1 token lookup reads one compressed row from a pinned GGUF mmap.
 # The mapping is device-visible but does not create a VRAM weight shadow.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
+# Auto placement must fail closed before deferring unsupported root tables. The
+# explicit host override remains strict and reports the unsupported tensor.
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q4_K",)
 # Pack bounded immutable weights into one private-c1 allocation owner only for
 # measured model/quant identities. Each policy freezes its screened cutoff;
 # larger tensors remain dedicated and the planner fails closed before upload.
@@ -684,6 +687,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
