@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; the 512/128 decode gate passes with sole-T16 + mapped-host + PM4 and exact prefill is now 730.589 tok/s, while prefill, memory, longer shapes, MTP, and W7900 closure remain open.**
+Status: **in progress; the 512/128 decode gate passes at 33.525 tok/s and exact prefill is 731.185 tok/s, while the reduced 16.095-GiB peak, longer shapes, MTP, and final W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -677,14 +677,19 @@ arena cuts physical bulk scratch 0.589 to 0.111 GiB and a model-scoped
 small-weight arena reduces physical weight owners 850 to 370. An output-major
 Q4 shared-B slab then cuts the traced 288-call Q4 family 433.351 to 421.447 ms
 and raises exact 512/128 prefill 719.232 to 730.589 tok/s without changing
-decode or residency. The three rearmed runs reach 33.507 PM4 decode tok/s;
-tracked peak is 15.605 GiB and sampled peak delta remains 16.171 GiB. Decode
+decode or residency. Widening the model-scoped arena from 16 MiB to the first
+complete 80-MiB inventory crossover then packs 849 immutable allocations into
+one owner, leaves only the 1,042,944,000-byte untied head dedicated, reduces
+physical weight owners 370 to 2, and lowers standard sampled peak delta 16.171
+to 16.095 GiB (-77.840 MiB). Three rearmed runs remain neutral/exact at
+731.185 prefill / 33.525 PM4 decode tok/s; tracked peak is 15.605 GiB. Decode
 passes its frozen gate, while prefill and memory do not. Evidence:
 [`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`mapped-host/PM4 partial pass`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
 [`dense scratch liveness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-dense-prefill-scratch-liveness.json),
 [`small-weight arena`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json),
-and [`Q4T16 output-major LDS`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json).
+[`Q4T16 output-major LDS`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
+and [`wide weight arena`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json).
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 
@@ -790,7 +795,9 @@ uses no more memory than the lower-memory comparison row.
 
 - [ ] **P8.1 Re-run current W7900 controls.** 512/128 and 4096/128 use one
   discarded warmup plus at least three measured resets; add 1024/128 as the new
-  campaign midpoint.
+  campaign midpoint. Partial arena evidence: one fresh 512/128 r3 opt-out/on
+  process pair is exact and within the frozen 1% gate at -0.429% prefill /
+  -0.117% decode; the final warmed three-shape control remains open.
 - [ ] **P8.2 Re-run W7900 natural MTP.** Preserve full category/heldout output,
   acceptance, state, and complete-wall semantics.
 - [ ] **P8.3 Apply the frozen paired gate.** Initial published controls are
@@ -857,9 +864,9 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **730.589** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.507 PM4** | >=33.356 (1% margin) — **pass** |
-| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.171** | <=15.690 — fail |
+| 512 prefill tok/s | 964.606 | 870.872 | **731.185** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.525 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.095** | <=15.690 — fail |
 | 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
 | 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | TBD | <=15.700 |
@@ -873,7 +880,7 @@ Populate only from committed artifacts:
 | Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | TBD | <=16.673 |
 | Alternate-layout weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
 | Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
-| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.743 GiB** | hipEngine >=1.0 GiB |
+| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + PM4 pass; matrix pending** | all pass |
 

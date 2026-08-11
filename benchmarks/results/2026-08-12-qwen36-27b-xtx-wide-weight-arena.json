@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_exact_memory_improvement_partial_gate",
+  "title": "Qwen3.6-27B model-scoped wide immutable-weight arena",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "scope": {
+    "backend": "hip_gfx1100",
+    "admission": "private c1, model/file-type policy only",
+    "environment_opt_out": "HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0",
+    "peer_defaults_changed": false,
+    "weight_payload_bytes_changed": false,
+    "kernel_or_dispatch_changed": false
+  },
+  "arena": {
+    "max_allocation_bytes": 83886080,
+    "selection_reason": "80 MiB is the first inventory crossover that captures all non-head owners; increasing it below the 994.6-MiB untied head captures no additional allocation",
+    "alignment_bytes": 4096,
+    "selected_allocation_count_before": 481,
+    "selected_allocation_count_after": 849,
+    "selected_requested_bytes": 15363373056,
+    "owner_capacity_bytes": 15364018176,
+    "alignment_padding_bytes": 645120,
+    "dedicated_allocation_count": 1,
+    "dedicated_requested_bytes": 1042944000,
+    "physical_weight_owner_count_before": 370,
+    "physical_weight_owner_count_after": 2,
+    "planner_fail_closed": true,
+    "owner_denial_falls_back_before_upload": true
+  },
+  "xtx": {
+    "hardware": {
+      "device": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "hip_visible_device": 1,
+      "pci": "0000:10:00.0",
+      "sysfs_card": "card0",
+      "vram_total_bytes": 25753026560
+    },
+    "standard_512_128": {
+      "measured_runs": 3,
+      "transport": "pm4",
+      "prefill_tok_s_samples": [
+        710.2508267102999,
+        731.889319578289,
+        731.1852968710588
+      ],
+      "prefill_tok_s_median": 731.1852968710588,
+      "prefill_prior_tok_s": 730.5892525373627,
+      "prefill_delta_percent": 0.08158405446372363,
+      "decode_tok_s_samples": [
+        33.57601612801916,
+        33.52505456189598,
+        33.5162128103736
+      ],
+      "decode_tok_s_median": 33.52505456189598,
+      "decode_prior_tok_s": 33.506592091936625,
+      "decode_delta_percent": 0.055101007911195765,
+      "final_logit_samples": [
+        24.12371826171875,
+        24.12371826171875,
+        24.12371826171875
+      ],
+      "final_token_id": 9707,
+      "native_fallbacks": 0,
+      "replay_launches_total": 384,
+      "tracked_peak_gib": 15.605462968349457,
+      "whole_device_baseline_gib": 0.060455322265625,
+      "whole_device_peak_gib": 16.155826568603516,
+      "whole_device_peak_delta_gib": 16.09537124633789,
+      "prior_peak_delta_gib": 16.17138671875,
+      "peak_delta_reduction_gib": 0.07601547241210938,
+      "peak_delta_reduction_mib": 77.83984375,
+      "peak_delta_reduction_percent": 0.47006155832000074,
+      "whole_device_final_gib": 0.062084197998046875,
+      "sampling_interval_ms": 5,
+      "benchmark_source": "/tmp/qwen36-27b-xtx-wide80-weight-arena-512x128-r3.json",
+      "memory_source": "/tmp/qwen36-27b-xtx-wide80-weight-arena-512x128-r3-vram.json"
+    },
+    "512_1_cold_process": {
+      "prefill_tok_s": 708.3386257550854,
+      "final_logit": 24.801517486572266,
+      "final_token_id": 9707,
+      "whole_device_peak_delta_gib": 15.963916778564453,
+      "prior_peak_delta_gib": 16.13818359375,
+      "peak_delta_reduction_mib": 178.44921875,
+      "tracked_after_close_bytes": 0,
+      "source": "/tmp/qwen36-27b-xtx-wide80-weight-arena-512x1.json"
+    },
+    "intermediate_64_mib_screen": {
+      "selected_allocation_count": 817,
+      "physical_weight_owner_count": 34,
+      "standard_512_128_peak_delta_gib": 16.103103637695312,
+      "decision": "Superseded by the minimal 80-MiB inventory crossover, which saves another 7.92 MiB and leaves only the untied head dedicated."
+    }
+  },
+  "w7900_non_regression": {
+    "hardware": {
+      "device": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "hip_visible_device": 0,
+      "pci": "0000:0d:00.0",
+      "vram_total_bytes": 48301604864
+    },
+    "workload": "512/128, three persistent-session reset/replays per process",
+    "arena_off": {
+      "physical_weight_owner_count": 850,
+      "prefill_tok_s_samples": [658.5139077714615, 670.6300942171582, 671.1928379359919],
+      "prefill_tok_s_median": 670.6300942171582,
+      "decode_tok_s_samples": [28.517228150450713, 28.47644547070895, 28.40320393919661],
+      "decode_tok_s_median": 28.47644547070895,
+      "tracked_peak_gib": 15.60486215353012,
+      "source": "/tmp/qwen36-27b-w7900-wide80-arena-off-512x128-r3.json"
+    },
+    "arena_on": {
+      "physical_weight_owner_count": 2,
+      "prefill_tok_s_samples": [663.050458330516, 668.5850139703025, 667.7510309122715],
+      "prefill_tok_s_median": 667.7510309122715,
+      "prefill_delta_percent": -0.42930720373464126,
+      "decode_tok_s_samples": [28.551726967222297, 28.443181682652177, 28.34795954947617],
+      "decode_tok_s_median": 28.443181682652177,
+      "decode_delta_percent": -0.11681158763647836,
+      "tracked_peak_gib": 15.605462968349457,
+      "source": "/tmp/qwen36-27b-w7900-wide80-arena-on-512x128-r3.json"
+    },
+    "paired_noise_gate_percent": 1.0,
+    "passed": true,
+    "note": "This directional process pair qualifies the arena change only; the final three-shape and natural-MTP W7900 campaign gate remains open."
+  },
+  "validation": {
+    "focused_tests": "29 passed: host embedding/arena policy, materialization helpers/inventory, and runtime residency census",
+    "xtx_two_cold_processes_finite_and_exact": true,
+    "xtx_standard_three_reset_exact": true,
+    "w7900_off_on_three_reset_exact": true,
+    "tracked_teardown_zero": true,
+    "sysfs_teardown_within_64_mib": true
+  },
+  "frozen_gates_512_128": {
+    "prefill_gate_tok_s": 974.252,
+    "prefill_observed_tok_s": 731.1852968710588,
+    "prefill_passed": false,
+    "decode_gate_tok_s": 33.355,
+    "decode_observed_tok_s": 33.52505456189598,
+    "decode_passed": true,
+    "memory_gate_gib": 15.69,
+    "memory_observed_peak_delta_gib": 16.09537124633789,
+    "memory_passed": false,
+    "memory_gap_gib": 0.4053712463378911,
+    "campaign_closed": false
+  },
+  "commands": {
+    "xtx_standard": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/run_vram_subprocess.py /tmp/qwen36-27b-xtx-wide80-weight-arena-512x128-r3-vram.json uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-xtx-wide80-weight-arena-512x128-r3.json",
+    "w7900_control": "Run the same qwen35_gguf_bench.py 512/128 r3 command serially under HIP_VISIBLE_DEVICES=0 with HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0, then selector-unset production.",
+    "tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_host_token_embedding.py tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_gguf_residency.py"
+  },
+  "decision": "Retain the 80-MiB model-scoped cutoff. It is the minimal metadata-defined crossover that reduces physical weight owners from 370 to 2, saves 77.84 MiB on the standard XTX process peak, preserves exact XTX output and passing decode, and stays within the predeclared 1% W7900 paired noise gate. The remaining 0.405-GiB memory gap requires a payload or non-weight owner reduction."
+}

@@ -33,6 +33,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFResidentSession,
     _q8_0_embedding_rows_to_bf16,
     _resolve_gguf_private_c1_small_weight_arena,
+    _resolve_gguf_private_c1_weight_arena_max_allocation_bytes,
     _resolve_gguf_token_embedding_placement,
 )
 from tests._gguf_synthetic_weights import make_q4_k_weight
@@ -320,7 +321,10 @@ def test_private_c1_small_weight_arena_admits_model_scoped_policy(
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 
     policy = {
-        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"enabled": True},
+        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+            "enabled": True,
+            "max_allocation_bytes": 80 * 1024 * 1024,
+        },
     }
     monkeypatch.setattr(
         gguf_runner,
@@ -344,6 +348,16 @@ def test_private_c1_small_weight_arena_admits_model_scoped_policy(
         model_name="Other",
         file_type_name="MOSTLY_Q4_K_M",
     ) == (False, "backend_capability_fallback")
+    assert _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+        backend="hip_gfx1100",
+        model_name="Qwen3.6-27B",
+        file_type_name="MOSTLY_Q4_K_M",
+    ) == 80 * 1024 * 1024
+    assert _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+        backend="hip_gfx1100",
+        model_name="Other",
+        file_type_name="MOSTLY_Q4_K_M",
+    ) == 16 * 1024 * 1024
 
 
 def test_materializer_defers_token_embedding_without_allocating(
@@ -518,10 +532,12 @@ def test_full_stack_host_placement_defers_before_materialization(
         backend="hip_gfx1151",
         token_embedding_placement="host",
         use_selective_weight_arena=True,
+        selective_weight_max_allocation_bytes=64 * 1024 * 1024,
     )
 
     assert materialize_kwargs[0]["deferred_device_slots"] == ("root.token_embedding",)
     assert materialize_kwargs[0]["use_selective_weight_arena"] is True
+    assert materialize_kwargs[0]["selective_weight_max_allocation_bytes"] == 64 * 1024 * 1024
     assert runner.host_token_embedding_raw is raw
     assert runner.token_embedding_placement == "host"
 

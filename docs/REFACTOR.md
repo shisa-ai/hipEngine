@@ -206,7 +206,7 @@ should be removed or collapsed.
   geometry now dispatches directly; unsupported geometry uses local128. Both
   primitives remain separately registered and directly compared bit-for-bit.
 
-## SH16 gfx1151 private-c1 selective small-weight arena
+## SH16 private-c1 selective immutable-weight arena
 
 - Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact
   four-transition plus 18-prompt gates and four-depth whole-GTT savings of
@@ -214,10 +214,18 @@ should be removed or collapsed.
   MiB** while all **161 larger owners / 95.965% of weight bytes**, all
   state/scratch, c>N requests, unsupported layouts, and denied routes keep
   dedicated behavior.
+- The gfx1100 Qwen3.6-27B policy was added on 2026-08-12 and subsequently
+  widened to the first complete 80-MiB inventory crossover. It packs 849
+  allocations into one owner, leaves only the 1,042,944,000-byte untied head
+  dedicated, reduces physical weight owners **370 -> 2**, and cuts the XTX
+  512/128 process peak **16.171 -> 16.095 GiB** with exact output. A fresh
+  W7900 512/128 opt-out/on pair remains within 1%; the full three-shape/MTP
+  non-regression matrix is still open.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Remove the environment seam after the
-  next cumulative gfx1151 GGUF policy refresh confirms the retained **3/4
-  fork-memory parity** and no supported private-c1 consumer requires rollback.
+  disable-only rollback/bisection seam. Remove the environment seam after both
+  the next cumulative gfx1151 GGUF policy refresh confirms retained **3/4
+  fork-memory parity** and the Qwen3.6 campaign closes its W7900 three-shape/MTP
+  matrix with no supported private-c1 consumer requiring rollback.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
   telemetry while this production owner is active. Do not add the rejected SH15
   state arena or compact-Q4 stack to this package; 4K still needs a separately
