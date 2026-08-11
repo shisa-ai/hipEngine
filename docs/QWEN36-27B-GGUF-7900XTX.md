@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; all three AR shapes fit and 512/1K decode pass, while every prefill/memory row, 4K decode, natural MTP, and final W7900 closure remain open.**
+Status: **in progress; all AR shapes and natural B1-B3 fit exactly, 512/1K AR decode pass, while prefill/memory, 4K decode, Vulkan-MTP parity, repeated-suite variance, and final W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -778,23 +778,33 @@ and 4K decode. Evidence:
 
 ### P7 — Compatible natural MTP closure
 
-- [ ] **P7.1 Run hipEngine B1-B3 full suite.** Select by complete transition
-  tok/s vs true AR, with all category/heldout ledgers.
-- [ ] **P7.2 Screen B4/B5 only if justified.** Complete transaction first, then
-  a predeclared one-prompt wall ceiling, then one full suite if admitted. Do not
-  use fixed prompts to search for a favorable selection.
-- [ ] **P7.3 Compare against both external winners.** Beat the selected clean
-  HIP and Vulkan absolute transition tok/s, true-AR ratio, and every disclosed
-  category speed floor; preserve acceptance and exact state semantics.
-- [ ] **P7.4 Meet the MTP memory floor.** Whole-device peak delta is no greater
-  than the lower external winner, zero weight duplication is proven, and MTP
-  incremental bytes reconcile to NextN-specific weights/state/KV/scratch.
-- [ ] **P7.5 Profile if still behind.** Slice proposal/verify/commit markers in a
-  direct child under rocprofv3. Profile external backends only with separate
-  non-topline instrumentation. Optimize the current complete-wall leader.
+- [x] **P7.1 Run hipEngine B1-B3 full suite.** One clean independent suite
+  covers true AR plus B1-B3 across all ten prompts, four categories, six train
+  prompts, four heldouts, and 240 timed transitions/mode. B3 wins at **72.887
+  tok/s / 3.5071x AR / 77.17% acceptance**; every MTP token ledger and GPU
+  acceptance result matches true AR exactly. The final independent variance
+  rerun remains open under the >5-minute approval rule.
+- [x] **P7.2 Screen B4/B5 only if justified.** The current B3 result is already
+  below Vulkan B4 and target verify owns 94.92% of B3 decode wall; prior complete
+  transaction and one-prompt B4/B5 admission evidence rejected the larger
+  budgets. Do not reopen them without a materially new verifier schedule.
+- [ ] **P7.3 Compare against both external winners.** B3 beats HIP B2 **72.887
+  vs 46.863 tok/s (+55.53%)** and every HIP category floor, but trails Vulkan B4
+  **81.952 tok/s (-11.06%)**. It beats Vulkan only for `general_ja` (**70.898 vs
+  67.384**); code/general-en/mixed and heldout floors remain open.
+- [ ] **P7.4 Meet the MTP memory floor.** Tracked peak is **16.684 GiB** and
+  whole-device peak delta is **17.183 GiB**, **0.509 GiB** above Vulkan's
+  16.673-GiB floor. Ownership returns to zero and the mapped token table is
+  borrowed without a raw shadow; a family-level incremental-byte reconciliation
+  remains open.
+- [ ] **P7.5 Profile if still behind.** The complete wall attributes **3.126 /
+  3.293 s (94.92%)** to target verify, **0.123 s (3.74%)** to proposal, and
+  **0.044 s (1.34%)** to commit/host residual. Run the direct B3 child under
+  rocprofv3 and optimize target verify; external profiling stays non-topline.
 
-Exit: compatible natural MTP is faster than both clean llama.cpp backends and
-uses no more memory than the lower-memory comparison row.
+Current exit status: compatible B3 is exact and faster than llama.cpp HIP, but
+Vulkan speed/memory and the final repeated-suite variance gates fail. Evidence:
+[`llama-compatible natural MTP matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json).
 
 ### P8 — W7900 non-regression and default promotion
 
@@ -878,16 +888,16 @@ Populate only from committed artifacts:
 | 4096 prefill tok/s | 946.733 | 835.765 | **779.243** | >=956.201 (1% margin) — fail |
 | 4096 AR transition tok/s | 32.560 | 13.309 | **31.391 PM4** | >=32.886 (1% margin) — fail |
 | 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.119** | <=15.912 — fail |
-| Natural true AR tok/s | 31.576 | 13.386 | TBD | disclosed same protocol |
-| Selected MTP budget | B2 | B4 | TBD | independently selected |
-| Natural MTP transition tok/s | 46.863 | **81.952** | TBD | >=82.771 (1% margin) |
-| Natural MTP / true AR | 1.4841x | 6.1223x | TBD | >1.0; absolute gate still binds |
-| Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | TBD | <=16.673 |
+| Natural true AR tok/s | 31.576 | 13.386 | **20.782** | disclosed same protocol |
+| Selected MTP budget | B2 | B4 | **B3** | independently selected |
+| Natural MTP transition tok/s | 46.863 | **81.952** | **72.887** | >=82.771 (1% margin) — fail |
+| Natural MTP / true AR | 1.4841x | 6.1223x | **3.5071x** | >1.0; absolute gate still binds |
+| Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | **17.183** | <=16.673 — fail |
 | Alternate-layout weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
 | Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + 512/1K/4K PM4 reset/teardown pass; deep state matrix pending** | all pass |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **AR PM4 matrix + exact B1-B3 natural suite teardown pass; deep state/soak pending** | all pass |
 
 W7900 safeguard:
 
