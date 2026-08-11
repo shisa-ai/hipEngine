@@ -37,6 +37,10 @@ from hipengine.quant.gguf_q4_k import (
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
+    GGUF_Q6_K_BLOCK_BYTES,
+    GGUF_Q6_K_T16_BLOCK_BYTES,
+    GGUF_Q8_0_BLOCK_BYTES,
+    GGUF_Q8_0_T16_BLOCK_BYTES,
     GGUF_T16_COLS,
     repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
@@ -333,6 +337,10 @@ def plan_qwen35_gguf_selective_weight_arena(
             if key in seen:
                 continue
             seen.add(key)
+            if spec.layout == LAYOUT_Q4_K_PACK8:
+                raise ValueError(
+                    f"unsupported selective arena layout {spec.layout!r} for {spec.slot_path}"
+                )
             for allocation_name, nbytes in _planned_weight_allocation_nbytes(spec):
                 if nbytes <= parsed_max:
                     capacity_bytes = _align_arena(capacity_bytes, parsed_alignment) + nbytes
@@ -367,56 +375,88 @@ def plan_qwen35_gguf_selective_weight_arena(
     )
 
 
-def _planned_weight_allocation_nbytes(
+def planned_qwen35_gguf_weight_allocation_nbytes(
     spec: Qwen35GGUFWeightSpec,
 ) -> tuple[tuple[str, int], ...]:
+    """Return exact metadata-only device bytes for one resident weight spec."""
+
     source = spec.source
+    primary_nbytes: int
     if spec.layout == LAYOUT_Q4_K_PACK8:
-        raise ValueError(f"unsupported selective arena layout {spec.layout!r} for {spec.slot_path}")
+        if len(source.shape) != 2:
+            raise ValueError(f"Q4 pack8 plan requires rank-2 storage for {spec.slot_path}")
+        out_features, in_features = (int(dim) for dim in source.shape)
+        if out_features % 8 or in_features % 256:
+            raise ValueError(f"Q4 pack8 shape is not tile-aligned for {spec.slot_path}")
+        pack8_nbytes = {
+            "qweight": out_features * in_features // 2,
+            "scales": out_features * in_features // 8,
+            "mins": out_features * in_features // 8,
+        }
+        records: list[tuple[str, int]] = []
+        for allocation_name in spec.allocation_names:
+            if allocation_name in pack8_nbytes:
+                nbytes = pack8_nbytes[allocation_name]
+            elif allocation_name in {Q4_T16_DECODE_TILES, Q4_T16_DECODE_TILES_R3PLUS}:
+                nbytes = _planned_t16_nbytes(
+                    source,
+                    block_bytes=GGUF_Q4_K_BLOCK_BYTES,
+                    tile_block_bytes=GGUF_Q4_K_TILE16_BLOCK_BYTES,
+                    slot_path=spec.slot_path,
+                )
+            else:
+                raise ValueError(
+                    f"unsupported Q4 pack8 allocation {allocation_name!r} for {spec.slot_path}"
+                )
+            records.append((allocation_name, int(nbytes)))
+        return tuple(records)
     if spec.layout == LAYOUT_DENSE_F32:
         primary_nbytes = int(source.n_elements) * DType.FP32.itemsize
     elif spec.layout == LAYOUT_DENSE_BF16:
         primary_nbytes = int(source.n_elements) * DType.BF16.itemsize
     elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
-        if len(source.byte_shape) != 3:
-            raise ValueError(f"Q4 T16 arena plan requires rank-3 storage for {spec.slot_path}")
-        experts, out_features, bytes_per_row = (int(dim) for dim in source.byte_shape)
-        if out_features % GGUF_Q4_K_TILE16_COLS or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES:
-            raise ValueError(f"Q4 T16 arena shape is not tile-aligned for {spec.slot_path}")
-        primary_nbytes = (
-            experts
-            * (out_features // GGUF_Q4_K_TILE16_COLS)
-            * (bytes_per_row // GGUF_Q4_K_BLOCK_BYTES)
-            * GGUF_Q4_K_TILE16_BLOCK_BYTES
+        primary_nbytes = _planned_t16_nbytes(
+            source,
+            block_bytes=GGUF_Q4_K_BLOCK_BYTES,
+            tile_block_bytes=GGUF_Q4_K_TILE16_BLOCK_BYTES,
+            slot_path=spec.slot_path,
         )
     elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
-        if len(source.byte_shape) != 3:
-            raise ValueError(f"Q5 T16 arena plan requires rank-3 storage for {spec.slot_path}")
-        experts, out_features, bytes_per_row = (int(dim) for dim in source.byte_shape)
-        if out_features % GGUF_T16_COLS or bytes_per_row % GGUF_Q5_K_BLOCK_BYTES:
-            raise ValueError(f"Q5 T16 arena shape is not tile-aligned for {spec.slot_path}")
-        primary_nbytes = (
-            experts
-            * (out_features // GGUF_T16_COLS)
-            * (bytes_per_row // GGUF_Q5_K_BLOCK_BYTES)
-            * GGUF_Q5_K_T16_BLOCK_BYTES
+        primary_nbytes = _planned_t16_nbytes(
+            source,
+            block_bytes=GGUF_Q5_K_BLOCK_BYTES,
+            tile_block_bytes=GGUF_Q5_K_T16_BLOCK_BYTES,
+            slot_path=spec.slot_path,
+        )
+    elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
+        primary_nbytes = _planned_t16_nbytes(
+            source,
+            block_bytes=GGUF_Q6_K_BLOCK_BYTES,
+            tile_block_bytes=GGUF_Q6_K_T16_BLOCK_BYTES,
+            slot_path=spec.slot_path,
+        )
+    elif spec.layout == LAYOUT_GGUF_Q8_0_T16:
+        primary_nbytes = _planned_t16_nbytes(
+            source,
+            block_bytes=GGUF_Q8_0_BLOCK_BYTES,
+            tile_block_bytes=GGUF_Q8_0_T16_BLOCK_BYTES,
+            slot_path=spec.slot_path,
         )
     elif spec.layout in {
         LAYOUT_RAW_GGUF,
         LAYOUT_GGUF_Q4_K_X8,
         LAYOUT_GGUF_Q5_K_QMICRO_T16,
         LAYOUT_GGUF_Q5_K_X8,
-        LAYOUT_GGUF_Q6_K_T16,
+        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
         LAYOUT_GGUF_Q6_K_X8,
-        LAYOUT_GGUF_Q8_0_T16,
     }:
         primary_nbytes = int(source.nbytes)
     else:
-        raise ValueError(f"unsupported selective arena layout {spec.layout!r} for {spec.slot_path}")
+        raise ValueError(f"unsupported resident layout {spec.layout!r} for {spec.slot_path}")
 
-    records: list[tuple[str, int]] = []
+    records = []
     for allocation_name in spec.allocation_names:
-        if allocation_name == "tiles" or allocation_name == "raw":
+        if allocation_name in {"tiles", "raw"}:
             nbytes = (
                 primary_nbytes
                 if allocation_name == spec.allocation_names[0]
@@ -426,11 +466,43 @@ def _planned_weight_allocation_nbytes(
             nbytes = int(source.nbytes)
         else:
             raise ValueError(
-                f"unsupported selective arena allocation {allocation_name!r} "
-                f"for {spec.slot_path}"
+                f"unsupported resident allocation {allocation_name!r} for {spec.slot_path}"
             )
         records.append((allocation_name, int(nbytes)))
     return tuple(records)
+
+
+def _planned_weight_allocation_nbytes(
+    spec: Qwen35GGUFWeightSpec,
+) -> tuple[tuple[str, int], ...]:
+    """Compatibility alias used by the selective arena planner."""
+
+    return planned_qwen35_gguf_weight_allocation_nbytes(spec)
+
+
+def _planned_t16_nbytes(
+    source: GGUFTensorInfo,
+    *,
+    block_bytes: int,
+    tile_block_bytes: int,
+    slot_path: str,
+) -> int:
+    byte_shape = tuple(int(dim) for dim in source.byte_shape)
+    if len(byte_shape) == 2:
+        experts = 1
+        out_features, bytes_per_row = byte_shape
+    elif len(byte_shape) == 3:
+        experts, out_features, bytes_per_row = byte_shape
+    else:
+        raise ValueError(f"T16 plan requires rank-2 or rank-3 storage for {slot_path}")
+    if out_features % GGUF_T16_COLS or bytes_per_row % int(block_bytes):
+        raise ValueError(f"T16 shape is not tile-aligned for {slot_path}")
+    return (
+        experts
+        * (out_features // GGUF_T16_COLS)
+        * (bytes_per_row // int(block_bytes))
+        * int(tile_block_bytes)
+    )
 
 
 def _validate_arena_alignment(alignment: int) -> int:
@@ -1488,4 +1560,5 @@ __all__ = [
     "plan_qwen35_gguf_materialization",
     "plan_qwen35_gguf_selective_weight_arena",
     "plan_qwen35_gguf_weight_spec",
+    "planned_qwen35_gguf_weight_allocation_nbytes",
 ]

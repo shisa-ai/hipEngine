@@ -596,15 +596,18 @@ current hipEngine no-number/OOM state is explicit.
 
 ### P1 — Make weight duplication mechanically visible
 
-- [ ] **P1.1 Add a plan-time byte census.** For every weight spec, report source
+- [x] **P1.1 Add a plan-time byte census.** For every weight spec, report source
   bytes, planned allocations, canonical layout, aliases, and alternate-layout
-  bytes without requiring a GPU.
+  bytes without requiring a GPU. Implemented by
+  `census_qwen35_gguf_weight_specs()` with a device-free actual-model fixture.
 - [ ] **P1.2 Add a runtime physical-range census.** Deduplicate by actual
   `(device, ptr, nbytes)` range and attach owner/view names. Report target,
   NextN, root-shared, state/KV, graph, code/backend, and workspace classes.
-- [ ] **P1.3 Add a duplicate invariant checker.** Fail if one logical source
+- [x] **P1.3 Add a duplicate invariant checker.** Fail if one logical source
   tensor owns multiple physical payloads or if a payload appears under an
-  undeclared logical owner.
+  undeclared logical owner. `Qwen35GGUFRuntimeResidencyCensus.assert_single_layout()`
+  rejects duplicate allocation roles, alternate layouts, and cross-source
+  physical aliases.
 - [ ] **P1.4 Cover aliases.** Test tied and untied embedding/head, shared target
   assets, model-map aliases, arena slices, and intentional views so the checker
   neither double-counts aliases nor hides disjoint allocations.
