@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import ctypes
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.core.tensor import Tensor
 from hipengine.loading.gguf import GGUFTensorInfo
-from hipengine.loading.materialize import float_array_to_bf16_bits
+from hipengine.loading.materialize import DeviceTensorAllocation, float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFDeviceWeight,
     Qwen35GGUFMaterializationPlan,
@@ -15,6 +27,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
@@ -22,6 +35,15 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _resolve_gguf_private_c1_small_weight_arena,
     _resolve_gguf_token_embedding_placement,
 )
+from tests._gguf_synthetic_weights import make_q4_k_weight
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
 
 
 def _q8_row(seed: int, *, blocks: int) -> np.ndarray:
@@ -48,6 +70,107 @@ def test_q8_0_host_token_embedding_matches_reference_bf16() -> None:
     np.testing.assert_array_equal(actual, reference)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_k_mapped_host_embedding_is_bit_exact_to_device_owner() -> None:
+    from hipengine.core.hip import HIP_HOST_REGISTER_MAPPED, get_hip_runtime
+
+    runtime = get_hip_runtime()
+    hidden_size = 256
+    vocab_size = 32
+    raw = make_q4_k_weight(vocab_size, hidden_size)
+    token_ids = np.asarray([0, 3, 31], dtype=np.int64)
+    output = np.empty((len(token_ids), hidden_size), dtype=np.uint16)
+    reference = np.empty_like(output)
+    spec = Qwen35GGUFWeightSpec(
+        slot_path="root.token_embedding",
+        source=SimpleNamespace(name="token_embd.weight"),
+        quant_key="gguf_q4_k",
+        layout="raw_gguf",
+        allocation_names=("raw",),
+    )
+    host_ptr = int(raw.ctypes.data)
+    runtime.host_register(host_ptr, raw.nbytes, flags=HIP_HOST_REGISTER_MAPPED)
+    buffers: list[DeviceBuffer] = []
+    try:
+        mapped_ptr = runtime.host_get_device_pointer(host_ptr)
+        mapped_allocation = DeviceTensorAllocation(
+            name="mapped.raw",
+            source=spec.source,
+            buffer=DeviceBuffer(mapped_ptr, raw.nbytes),
+            tensor=Tensor.from_handle(
+                mapped_ptr,
+                (raw.nbytes,),
+                DType.INT8,
+                Device("hip", 0),
+            ),
+            owns_buffer=False,
+        )
+        mapped_weight = Qwen35GGUFDeviceWeight(
+            spec=spec,
+            allocations=MappingProxyType({"raw": mapped_allocation}),
+            backend="hip_gfx1100",
+        )
+        raw_device = malloc(raw.nbytes, runtime=runtime)
+        token_device = malloc(token_ids.nbytes, runtime=runtime)
+        output_device = malloc(output.nbytes, runtime=runtime)
+        reference_device = malloc(reference.nbytes, runtime=runtime)
+        buffers.extend(
+            (raw_device, token_device, output_device, reference_device)
+        )
+        copy_host_to_device(raw_device, host_array_ptr(raw), runtime=runtime)
+        copy_host_to_device(
+            token_device,
+            host_array_ptr(token_ids),
+            runtime=runtime,
+        )
+        device_allocation = DeviceTensorAllocation(
+            name="device.raw",
+            source=spec.source,
+            buffer=raw_device,
+            tensor=Tensor.from_handle(
+                raw_device.ptr,
+                (raw.nbytes,),
+                DType.INT8,
+                Device("hip", 0),
+            ),
+        )
+        device_weight = Qwen35GGUFDeviceWeight(
+            spec=spec,
+            allocations=MappingProxyType({"raw": device_allocation}),
+            backend="hip_gfx1100",
+        )
+        for weight, out_buffer in (
+            (mapped_weight, output_device),
+            (device_weight, reference_device),
+        ):
+            launch_gguf_embedding(
+                weight,
+                token_device.ptr,
+                out_buffer.ptr,
+                len(token_ids),
+                hidden_size,
+                vocab_size,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(output),
+            output_device,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(reference),
+            reference_device,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+        runtime.host_unregister(host_ptr)
+
+    np.testing.assert_array_equal(output, reference)
+
+
 def test_q8_0_host_token_embedding_uses_supplied_cache() -> None:
     hidden_size = 64
     blocks = hidden_size // 32
@@ -63,11 +186,11 @@ def test_q8_0_host_token_embedding_uses_supplied_cache() -> None:
     np.testing.assert_array_equal(first[1], second[0])
 
 
-def _token_spec() -> Qwen35GGUFWeightSpec:
+def _token_spec(*, quant_key: str = "gguf_q8_0") -> Qwen35GGUFWeightSpec:
     return Qwen35GGUFWeightSpec(
         slot_path="root.token_embedding",
         source=SimpleNamespace(name="token_embd.weight"),
-        quant_key="gguf_q8_0",
+        quant_key=quant_key,
         layout="raw_gguf",
         allocation_names=("raw",),
     )
@@ -115,6 +238,36 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
         max_batch_size=1,
         has_shared_runner=False,
     ) == ("device", "backend_device_fallback")
+
+
+def test_mapped_host_embedding_policy_admits_private_gfx1100_c1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+
+    monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: backend == "hip_gfx1100"
+        and name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    )
+
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1100",
+        max_batch_size=1,
+        has_shared_runner=False,
+    ) == ("host", "mapped_host_private_c1_auto")
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1100",
+        max_batch_size=2,
+        has_shared_runner=False,
+    ) == ("device", "multi_row_device_fallback")
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1100",
+        max_batch_size=1,
+        has_shared_runner=True,
+    ) == ("device", "shared_runner_device_fallback")
 
 
 def test_private_c1_small_weight_arena_defaults_on_with_capability_and_private_shape(
@@ -341,6 +494,77 @@ def test_full_stack_host_placement_defers_before_materialization(
     assert runner.token_embedding_placement == "host"
 
 
+def test_full_stack_maps_q4_host_embedding_and_unregisters_on_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+
+    raw = np.arange(288, dtype=np.uint8).reshape(1, 288)
+    reader = SimpleNamespace(tensor_data=lambda name: raw)
+    token_weight = Qwen35GGUFDeviceWeight(
+        spec=_token_spec(quant_key="gguf_q4_k"),
+        allocations=MappingProxyType({}),
+        backend="hip_gfx1100",
+    )
+    resident = Qwen35GGUFResidentWeights(
+        config=SimpleNamespace(),
+        root_weights=MappingProxyType({"token_embedding": token_weight}),
+        layers=(),
+        backend="hip_gfx1100",
+    )
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.registered: list[tuple[int, int, int]] = []
+            self.unregistered: list[int] = []
+
+        def host_register(self, ptr, nbytes, *, flags=0):
+            self.registered.append((int(ptr), int(nbytes), int(flags)))
+
+        def host_get_device_pointer(self, ptr):
+            return int(ptr) + 0x1000
+
+        def host_unregister(self, ptr):
+            self.unregistered.append(int(ptr))
+
+    runtime = FakeRuntime()
+    monkeypatch.setattr(gguf_runner, "load_backend_kernel_package", lambda backend: None)
+    monkeypatch.setattr(gguf_runner, "resolve", lambda **kwargs: object())
+    monkeypatch.setattr(gguf_runner, "GGUFReader", lambda path: reader)
+    monkeypatch.setattr(
+        gguf_runner,
+        "materialize_qwen35_gguf_weights",
+        lambda path, **kwargs: resident,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: name
+        == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    )
+
+    runner = Qwen35GGUFFullStackRunner(
+        "/tmp/fake.gguf",
+        runtime=runtime,
+        backend="hip_gfx1100",
+        token_embedding_placement="host",
+    )
+    mapped = runner.host_token_embedding_mapped_weight
+
+    assert mapped is not None
+    assert resident.root("token_embedding").allocations == {}
+    assert mapped.spec is token_weight.spec
+    assert mapped.allocation("raw").owns_buffer is False
+    assert mapped.allocation("raw").buffer.ptr == raw.ctypes.data + 0x1000
+    assert runtime.registered == [(raw.ctypes.data, raw.nbytes, 2)]
+
+    runner.close()
+
+    assert runtime.unregistered == [raw.ctypes.data]
+    assert runner.host_token_embedding_mapped_weight is None
+    assert runner.host_token_embedding_raw is None
+
+
 def test_full_stack_host_reader_failure_releases_materialized_weights(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -411,6 +635,36 @@ def _host_session(runner: object) -> Qwen35GGUFResidentSession:
     session._host_token_embedding_raw = np.empty((1, 34), dtype=np.uint8)
     session._host_token_embedding_cache = {0: np.empty((32,), dtype=np.uint16)}
     return session
+
+
+def test_device_pointer_uses_mapped_host_owner_without_vram_rehydration() -> None:
+    mapped_weight = Qwen35GGUFDeviceWeight(
+        spec=_token_spec(quant_key="gguf_q4_k"),
+        allocations=MappingProxyType({"raw": object()}),
+        backend="hip_gfx1100",
+    )
+    runner = SimpleNamespace(
+        weights=_resident_with_token(
+            Qwen35GGUFDeviceWeight(
+                spec=_token_spec(quant_key="gguf_q4_k"),
+                allocations=MappingProxyType({}),
+                backend="hip_gfx1100",
+            )
+        ),
+        host_token_embedding_mapped_weight=mapped_weight,
+        ensure_device_token_embedding=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("mapped owner must not be rehydrated")
+        ),
+    )
+    session = _host_session(runner)
+
+    actual = session._device_token_embedding_weight(reason="decode_graph")
+    again = session._device_token_embedding_weight(reason="packed_ar")
+
+    assert actual is mapped_weight
+    assert again is mapped_weight
+    assert session.host_token_embedding_enabled is True
+    assert session.host_token_embedding_reason == "gfx1151_private_c1_auto"
 
 
 def test_device_pointer_fallback_rehydrates_once_and_disables_host_copy() -> None:

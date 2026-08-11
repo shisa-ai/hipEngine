@@ -79,7 +79,11 @@ def test_gfx1100_admits_measured_24_transition_decode_graph() -> None:
         ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
             "transport": "pm4",
             "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
-        }
+        },
+        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+            "transport": "pm4",
+            "min_replay_steps_by_physical_rows": {1: 128},
+        },
     }
     resolve = gguf_runner._resolve_gguf_decode_graph_submission_transport
     identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
@@ -101,6 +105,29 @@ def test_gfx1100_admits_measured_24_transition_decode_graph() -> None:
             file_type_name=identity[1],
             physical_rows=1,
             replay_steps=160,
+            env={},
+        )
+        == "pm4"
+    )
+    dense_identity = ("Qwen3.6-27B", "MOSTLY_Q4_K_M")
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=dense_identity[0],
+            file_type_name=dense_identity[1],
+            physical_rows=1,
+            replay_steps=127,
+            env={},
+        )
+        == "hipgraph"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=dense_identity[0],
+            file_type_name=dense_identity[1],
+            physical_rows=1,
+            replay_steps=128,
             env={},
         )
         == "pm4"

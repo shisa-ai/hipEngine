@@ -158,14 +158,19 @@ GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH = {
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
-# Full PM4 attribution and the complete c1/c2/c4/c8 promotion matrix admit the
-# canonical stateful/local-cache owner only for the measured model/quant pair.
-# The c1 floor includes >10% margin over the clean p4096 break-even at 143
-# transitions; packed-width floors retain their independently measured margins.
+# Full PM4 attribution admits only measured model/quant/physical-row horizons.
+# The 35B-A3B c1 floor includes >10% margin over its clean p4096 break-even at
+# 143 transitions; packed-width floors retain their independent margins. The
+# dense 27B private-c1 row is separately qualified at the measured 128-token
+# campaign horizon; wider speculative rows remain HIP graph until measured.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
         "transport": "pm4",
         "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
+    },
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+        "transport": "pm4",
+        "min_replay_steps_by_physical_rows": {1: 128},
     },
 }
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
@@ -196,6 +201,9 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
+# Private-c1 token lookup reads one compressed row from a pinned GGUF mmap.
+# The mapping is device-visible but does not create a VRAM weight shadow.
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -660,6 +668,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",

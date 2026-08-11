@@ -141,8 +141,8 @@ Evidence: [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27
 
 The pre-campaign dual-layout hipEngine path could not admit this model on the
 23.984-GiB XTX. The first sole-T16 candidate now fits and is retained as an
-implementation checkpoint, but there is still no protocol-complete 512/128,
-1024/128, or 4096/128 hipEngine publication row. Clean same-commit llama.cpp
+implementation checkpoint. A three-run 512/128 hipEngine partial row is now
+available; 1024/128 and 4096/128 remain unmeasured. Clean same-commit llama.cpp
 `c8e03ce81` HIP and Vulkan establish the frozen speed and whole-device VRAM
 targets:
 
@@ -159,14 +159,26 @@ peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-The retained first-fit checkpoint uses one T16 payload for each of all 288
-rank-2 Q4 tensors and reports zero planned alternate-layout bytes. A cache-only
-512/1 diagnostic reaches **695.854 prefill tok/s**, finite output, **16.749
-tracked GiB**, and clean teardown. It is explicitly below the 974.252-tok/s
-prefill gate and above the 15.690-GiB memory gate, so it does not replace the
-external rows or create a topline claim. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
+Current hipEngine partial-gate row (three persistent-session reset/replays):
+
+| Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 512/128 | **719.481 tok/s** | **33.424 tok/s** | **16.083 GiB** | **16.712 GiB** | prefill fail / **decode pass** / memory fail |
+
+The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
+sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
+table, with no VRAM shadow. PM4 beats HIP graph **33.424 vs 32.897 tok/s
+(+1.601%)** across three rearmed 128-transition runs, has zero native fallbacks,
+and is now the narrowly-scoped default for this model at private-c1 horizons
+of at least 128. The mapping cuts tracked residency **16.749 -> 16.083 GiB** and
+same-workload sampled peak delta **17.347 -> 16.679 GiB**; the standard
+512/128 PM4 row peaks at **16.712 GiB** and full graph/session teardown returns
+tracked bytes to zero. Prefill remains below the 974.252-tok/s gate and memory
+remains above the 15.690-GiB ceiling, so this is a retained partial pass rather
+than a root-topline promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
-and [`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json).
+[`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
+and [`mapped-host/PM4 partial pass`](results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

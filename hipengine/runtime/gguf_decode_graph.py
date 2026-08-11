@@ -107,6 +107,15 @@ def _session_buffer_ptrs(session: Any) -> tuple[int, ...]:
             ptr = _buffer_ptr(getattr(allocation(), "tensor", None))
             if ptr is not None:
                 pointers.append(ptr)
+    mapped_embedding = getattr(
+        session.runner,
+        "host_token_embedding_mapped_weight",
+        None,
+    )
+    if mapped_embedding is not None:
+        ptr = _buffer_ptr(mapped_embedding.allocation("raw").tensor)
+        if ptr is not None:
+            pointers.append(ptr)
     return tuple(pointers)
 
 

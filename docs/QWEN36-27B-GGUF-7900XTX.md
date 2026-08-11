@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; clean comparators and the first operation-complete sole-T16 XTX fit are complete; final speed/memory closure remains open.**
+Status: **in progress; the 512/128 decode gate now passes with sole-T16 + mapped-host + PM4, while prefill, memory, longer shapes, MTP, and W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -669,11 +669,14 @@ Exit: the current implementation fails the new tests for the intended reason.
 Exit: **functional layout/kernel exit reached; P3.2 host-RSS evidence remains.**
 Plan census reports zero rank-2 Q4 alternate-layout bytes; exact c1/rows-2-4
 coverage and M512/M1024/M4096/tail prefill pass, and the complete model first
-fits the XTX at 16.749 tracked GiB. The retained 512/1 diagnostic reaches
-695.854 prefill tok/s with finite output and clean teardown. This is not P6
-closure: it remains below the 974.252 tok/s speed gate and above the
-15.690-GiB external memory gate. Evidence:
-[`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json).
+fits the XTX. A sole device-visible mapped GGUF mmap subsequently removes the
+715,161,600-byte root token-table VRAM shadow: tracked residency falls 16.749
+to 16.083 GiB and same-workload sampled peak delta falls 17.347 to 16.679 GiB
+(the standard 512/128 PM4 row is 16.712 GiB). Three 512/128
+rearmed runs reach 719.481 prefill / 33.424 PM4 decode tok/s; decode passes its
+frozen gate, while prefill and memory do not. Evidence:
+[`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json)
+and [`mapped-host/PM4 partial pass`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json).
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 
@@ -704,11 +707,18 @@ weight bytes.
 
 - [ ] **P5.1 CPU/layout bundle.** Run mapping/materialization, quant round-trip,
   registry/fusion, and allocator-audit tests.
-- [ ] **P5.2 Kernel correctness.** Every new/ported body passes CPU-reference,
-  representative/tail shapes, launch smoke, and a named cached rocprof trace.
+- [x] **P5.2 Kernel correctness.** Q4 shared-B is BF16-bit exact to the prior
+  T16 producer at rows 16/33/512/1024/4096 and passes its independent CPU gate;
+  Q5 is exact to selected T16; planar Q6 is exact to legacy T16 and passes the
+  CPU quality gate. Cache-only rocprof names all three retained dense bodies
+  with scratch0; mapped-host Q4 embedding is bit-exact to a device owner.
 - [ ] **P5.3 Full eager/graph AR state.** At 512, 1024, and 4096, compare eager
   and production graph/transport logits, hidden, Conv/GDN, KV+`KVLiveSpans`,
-  positions, final IDs, and teardown.
+  positions, final IDs, and teardown. Partial evidence: 512/128 HIP graph and
+  PM4 each survive three exact reset/rearms with finite token 9707, stable graph
+  identity, zero native fallbacks, one PM4 generation/child, no unretired
+  submissions, and zero tracked bytes after close. PM4 is +1.601% and is
+  promoted only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128.
 - [ ] **P5.4 Dense MTP transaction.** Cover reject, partial accept, full accept,
   correction, rollback/reseed, dynamic positions, proposal/target graph reuse,
   and provider-vs-scalar behavior for every admitted budget.
@@ -727,9 +737,10 @@ Exit: correctness is green before any keep is based on performance.
   512/128, 1024/128, 4096/128 matrix. Record tracked and whole-device peaks.
 - [ ] **P6.2 Compare sole T16 to frozen floors.** If it beats both backends and
   meets lower memory peak, skip raw-layout work.
-- [ ] **P6.3 Profile only the failing column.** Use cached direct children and
-  reconcile kernel sum plus host/submission residual to wall. Rank complete-wall
-  impact; do not optimize merely because a llama.cpp intrinsic exists.
+- [x] **P6.3 Profile only the failing column.** A cache-only selected-region
+  512 trace reconciles 709.241 ms kernel sum against 760.887 ms profiled wall:
+  Q4 is 433.351 ms (61.10%), Q6 130.514 ms (18.40%), Q5 63.502 ms (8.95%).
+  Decode was separately compared at complete-wall scope before PM4 promotion.
 - [ ] **P6.4 Raw-GGUF rung if needed.** Port/audit MMVQ for c1 and MMQ for
   prefill/verifier one family at a time, with exact source commit, RED fixture,
   registry key, same-layout fallback, and actual-weight component evidence.
@@ -835,9 +846,9 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | TBD | >=974.252 (1% margin) |
-| 512 AR transition tok/s | 33.025 | 13.391 | TBD | >=33.356 (1% margin) |
-| 512 peak VRAM delta GiB | 16.348 | **15.690** | TBD | <=15.690 |
+| 512 prefill tok/s | 964.606 | 870.872 | **719.481** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.424 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.712** | <=15.690 — fail |
 | 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
 | 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | TBD | <=15.700 |
@@ -849,11 +860,11 @@ Populate only from committed artifacts:
 | Natural MTP transition tok/s | 46.863 | **81.952** | TBD | >=82.771 (1% margin) |
 | Natural MTP / true AR | 1.4841x | 6.1223x | TBD | >1.0; absolute gate still binds |
 | Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | TBD | <=16.673 |
-| Alternate-layout weight bytes | not audited | not audited | TBD | exactly 0 |
-| Duplicate logical weight bytes | not audited | not audited | TBD | exactly 0 |
-| Minimum free VRAM at selected MTP peak | 6.957 GiB | 7.251 GiB | TBD | hipEngine >=1.0 GiB |
-| Tracked bytes after close | n/a | n/a | TBD | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | TBD | all pass |
+| Alternate-layout weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
+| Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
+| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.202 GiB** | hipEngine >=1.0 GiB |
+| Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + PM4 pass; matrix pending** | all pass |
 
 W7900 safeguard:
 
