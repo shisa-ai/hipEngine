@@ -1,0 +1,3300 @@
+{
+  "schema": 1,
+  "kind": "qwen36_27b_xtx_clean_same_commit_llamacpp_floors",
+  "created_at": "2026-08-12T01:47:45+09:00",
+  "status": "complete_frozen_before_runtime_change",
+  "performance_claim": true,
+  "summary": "Clean same-commit llama.cpp c8e03ce81 XTX comparator packet. HIP wins standardized prefill and context-matched AR decode; Vulkan B4 wins natural MTP. Vulkan sets every lower matched memory ceiling.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "Q4_K_M"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "hip_physical_index": 1,
+    "vulkan_index": 1,
+    "sysfs_card": "card0",
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "vram_total_gib": 23.984375
+  },
+  "software": {
+    "llama_cpp_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llama_cpp_describe": "gguf-v0.19.0-1244-gc8e03ce81",
+    "build_artifact": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-builds.json",
+    "hipengine_context_harness_commit": "6a8d38ae70b9e2c4244df10d8621db83da6c8112",
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "vulkan_driver": "RADV",
+    "mesa": "26.1.4-arch3.1"
+  },
+  "protocol": {
+    "standardized_ar": "llama-bench split phase, one warmup, five internal repetitions, llama-bench avg_ts arithmetic mean reported with all samples and stddev, 5 ms sysfs VRAM",
+    "context_ar": "llama-server token-repeat shape control, 129 visible outputs / 128 timed transitions, 5 ms sysfs VRAM",
+    "natural_mtp": "ten prompts, all four categories, B1-B5, candidate-local process/warmup, 25 visible outputs / 24 timed transitions per prompt, true no-MTP control",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "heldout_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "practical_speed_margin": 0.01,
+    "margin_rule": "Final hipEngine speed must exceed the faster comparator by at least 1%; memory must not exceed the lower comparator peak delta."
+  },
+  "standardized_ar": {
+    "hip": {
+      "source_sha256": "5fc9323f04affc3d5ede0555641f40931d084659787669dd4c15e1d0e028955d",
+      "command": [
+        "/home/lhl/hipEngine-main/scripts/llamacpp_bench_with_peak.py",
+        "--llama-bench",
+        "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-bench",
+        "--model",
+        "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "--quant",
+        "Q4_K_M",
+        "--backend",
+        "hip",
+        "--workloads",
+        "512/128",
+        "1K/128",
+        "4K/128",
+        "--repetitions",
+        "5",
+        "--ngl",
+        "99",
+        "--flash-attn",
+        "1",
+        "--cache-type-k",
+        "f16",
+        "--cache-type-v",
+        "f16",
+        "--extra-args=-dev ROCm0",
+        "--poll",
+        "5",
+        "--memory-domain",
+        "vram",
+        "--card-name",
+        "card0",
+        "--output",
+        "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-ar-peak.json"
+      ],
+      "hipengine_harness_commit": "46d75dd801e8bc7d3a65e52a1264ec1d2e8ad958",
+      "harness_dirty_at_capture": true,
+      "rows": [
+        {
+          "workload": "512/128",
+          "prompt_length": 512,
+          "decode_tokens": 128,
+          "prefill_tok_s": 964.60567,
+          "decode_tok_s": 33.615874,
+          "prefill_peak_vram_gib": 16.4088134765625,
+          "decode_peak_vram_gib": 16.42760467529297,
+          "peak_vram_gib": 16.42760467529297,
+          "prefill_peak_delta_gib": 16.348358154296875,
+          "decode_peak_delta_gib": 16.33957290649414,
+          "peak_delta_gib": 16.348358154296875,
+          "prefill_samples_tok_s": [
+            852.586,
+            992.604,
+            994.008,
+            992.595,
+            991.235
+          ],
+          "prefill_stddev_tok_s": 62.628634,
+          "decode_samples_tok_s": [
+            33.2843,
+            33.7155,
+            33.71,
+            33.6836,
+            33.6859
+          ],
+          "decode_stddev_tok_s": 0.185889
+        },
+        {
+          "workload": "1K/128",
+          "prompt_length": 1024,
+          "decode_tokens": 128,
+          "prefill_tok_s": 981.039726,
+          "decode_tok_s": 33.447942,
+          "prefill_peak_vram_gib": 16.399124145507812,
+          "decode_peak_vram_gib": 16.460819244384766,
+          "peak_vram_gib": 16.460819244384766,
+          "prefill_peak_delta_gib": 16.311279296875,
+          "decode_peak_delta_gib": 16.372692108154297,
+          "peak_delta_gib": 16.372692108154297,
+          "prefill_samples_tok_s": [
+            981.347,
+            981.188,
+            981.422,
+            981.179,
+            980.062
+          ],
+          "prefill_stddev_tok_s": 0.556161,
+          "decode_samples_tok_s": [
+            33.1282,
+            33.5327,
+            33.5356,
+            33.5245,
+            33.5188
+          ],
+          "decode_stddev_tok_s": 0.178864
+        },
+        {
+          "workload": "4K/128",
+          "prompt_length": 4096,
+          "decode_tokens": 128,
+          "prefill_tok_s": 946.733397,
+          "decode_tok_s": 33.07241,
+          "prefill_peak_vram_gib": 16.588302612304688,
+          "decode_peak_vram_gib": 16.649505615234375,
+          "peak_vram_gib": 16.649505615234375,
+          "prefill_peak_delta_gib": 16.500438690185547,
+          "decode_peak_delta_gib": 16.56165313720703,
+          "peak_delta_gib": 16.56165313720703,
+          "prefill_samples_tok_s": [
+            948.066,
+            945.591,
+            946.442,
+            946.508,
+            947.06
+          ],
+          "prefill_stddev_tok_s": 0.911772,
+          "decode_samples_tok_s": [
+            32.762,
+            33.1593,
+            33.158,
+            33.15,
+            33.1328
+          ],
+          "decode_stddev_tok_s": 0.173871
+        }
+      ]
+    },
+    "vulkan": {
+      "source_sha256": "4cc4668b331da0c33ff5295c961b1cb3d8781950da3c66cb30738f51ea85efe3",
+      "command": [
+        "/home/lhl/hipEngine-main/scripts/llamacpp_bench_with_peak.py",
+        "--llama-bench",
+        "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-bench",
+        "--model",
+        "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "--quant",
+        "Q4_K_M",
+        "--backend",
+        "vulkan",
+        "--workloads",
+        "512/128",
+        "1K/128",
+        "4K/128",
+        "--repetitions",
+        "5",
+        "--ngl",
+        "99",
+        "--flash-attn",
+        "1",
+        "--cache-type-k",
+        "f16",
+        "--cache-type-v",
+        "f16",
+        "--extra-args=-dev Vulkan1",
+        "--poll",
+        "5",
+        "--memory-domain",
+        "vram",
+        "--card-name",
+        "card0",
+        "--output",
+        "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-ar-peak.json"
+      ],
+      "hipengine_harness_commit": "6a8d38ae70b9e2c4244df10d8621db83da6c8112",
+      "harness_dirty_at_capture": false,
+      "rows": [
+        {
+          "workload": "512/128",
+          "prompt_length": 512,
+          "decode_tokens": 128,
+          "prefill_tok_s": 870.871574,
+          "decode_tok_s": 39.068597,
+          "prefill_peak_vram_gib": 15.73404312133789,
+          "decode_peak_vram_gib": 15.749961853027344,
+          "peak_vram_gib": 15.749961853027344,
+          "prefill_peak_delta_gib": 15.673587799072266,
+          "decode_peak_delta_gib": 15.689502716064453,
+          "peak_delta_gib": 15.689502716064453,
+          "prefill_samples_tok_s": [
+            870.727,
+            871.575,
+            871.507,
+            870.486,
+            870.063
+          ],
+          "prefill_stddev_tok_s": 0.656153,
+          "decode_samples_tok_s": [
+            39.0581,
+            39.0653,
+            39.0976,
+            39.0612,
+            39.0607
+          ],
+          "decode_stddev_tok_s": 0.016436
+        },
+        {
+          "workload": "1K/128",
+          "prompt_length": 1024,
+          "decode_tokens": 128,
+          "prefill_tok_s": 836.898285,
+          "decode_tok_s": 21.482441,
+          "prefill_peak_vram_gib": 15.760417938232422,
+          "decode_peak_vram_gib": 15.636066436767578,
+          "peak_vram_gib": 15.760417938232422,
+          "prefill_peak_delta_gib": 15.699958801269531,
+          "decode_peak_delta_gib": 15.575607299804688,
+          "peak_delta_gib": 15.699958801269531,
+          "prefill_samples_tok_s": [
+            837.367,
+            836.868,
+            836.737,
+            836.68,
+            836.84
+          ],
+          "prefill_stddev_tok_s": 0.272621,
+          "decode_samples_tok_s": [
+            21.4811,
+            21.4797,
+            21.4873,
+            21.4819,
+            21.4821
+          ],
+          "decode_stddev_tok_s": 0.002884
+        },
+        {
+          "workload": "4K/128",
+          "prompt_length": 4096,
+          "decode_tokens": 128,
+          "prefill_tok_s": 835.76463,
+          "decode_tok_s": 38.323418,
+          "prefill_peak_vram_gib": 15.706703186035156,
+          "decode_peak_vram_gib": 15.972618103027344,
+          "peak_vram_gib": 15.972618103027344,
+          "prefill_peak_delta_gib": 15.646244049072266,
+          "decode_peak_delta_gib": 15.912158966064453,
+          "peak_delta_gib": 15.912158966064453,
+          "prefill_samples_tok_s": [
+            836.581,
+            836.022,
+            836.271,
+            835.21,
+            834.739
+          ],
+          "prefill_stddev_tok_s": 0.766202,
+          "decode_samples_tok_s": [
+            38.3093,
+            38.3166,
+            38.3234,
+            38.3522,
+            38.3156
+          ],
+          "decode_stddev_tok_s": 0.01685
+        }
+      ]
+    }
+  },
+  "context_matched_ar": {
+    "hip": {
+      "source_sha256": "63429fb50e40d7da439773d573162ad31d0df54f33971edb1d925a1ae5c43e6b",
+      "command": [
+        "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "-c",
+        "8192",
+        "-np",
+        "1",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8011",
+        "--alias",
+        "qwen36",
+        "--no-cache-prompt",
+        "-dev",
+        "ROCm0",
+        "--reasoning",
+        "off",
+        "--perf"
+      ],
+      "hipengine_harness_commit": "6a8d38ae70b9e2c4244df10d8621db83da6c8112",
+      "harness_dirty_at_capture": false,
+      "rows": [
+        {
+          "shape": "512/128",
+          "prompt_length": 512,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 820.5562153126688,
+          "native_output_tok_s": 33.28329658410173,
+          "decode_ms": 3875.818,
+          "transition_tok_s": 33.02528653306218,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        },
+        {
+          "shape": "1024/128",
+          "prompt_length": 1024,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 902.769757565766,
+          "native_output_tok_s": 33.181504372241946,
+          "decode_ms": 3887.708,
+          "transition_tok_s": 32.92428340811604,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        },
+        {
+          "shape": "4096/128",
+          "prompt_length": 4096,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 928.7937631135998,
+          "native_output_tok_s": 32.814499633571415,
+          "decode_ms": 3931.189,
+          "transition_tok_s": 32.5601236674197,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        }
+      ],
+      "process_memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 64913408,
+        "baseline_gib": 0.060455322265625,
+        "peak_bytes": 17783181312,
+        "peak_gib": 16.561878204345703,
+        "peak_delta_bytes": 17718267904,
+        "peak_delta_gib": 16.501422882080078,
+        "final_bytes": 95014912,
+        "final_gib": 0.08848953247070312,
+        "samples_count": 4953,
+        "interval_seconds": 0.005,
+        "elapsed_seconds": 24.754218420013785,
+        "scope": "before llama-server Popen through post-termination sysfs sample"
+      }
+    },
+    "vulkan": {
+      "source_sha256": "b13b8ec6ef6c77ba2c54fe65808f90e28eaca4367dba8fc63e6558fc8879ea83",
+      "command": [
+        "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "-c",
+        "8192",
+        "-np",
+        "1",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8011",
+        "--alias",
+        "qwen36",
+        "--no-cache-prompt",
+        "-dev",
+        "Vulkan1",
+        "--reasoning",
+        "off",
+        "--perf"
+      ],
+      "hipengine_harness_commit": "6a8d38ae70b9e2c4244df10d8621db83da6c8112",
+      "harness_dirty_at_capture": false,
+      "rows": [
+        {
+          "shape": "512/128",
+          "prompt_length": 512,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 83.09392437349291,
+          "native_output_tok_s": 13.495416423043016,
+          "decode_ms": 9558.801,
+          "transition_tok_s": 13.390800791856636,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        },
+        {
+          "shape": "1024/128",
+          "prompt_length": 1024,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 83.40630027082612,
+          "native_output_tok_s": 13.484011411863797,
+          "decode_ms": 9566.886,
+          "transition_tok_s": 13.379484191616791,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        },
+        {
+          "shape": "4096/128",
+          "prompt_length": 4096,
+          "timed_decode_transitions": 128,
+          "visible_output_tokens": 129,
+          "prefill_tok_s": 84.26152671353715,
+          "native_output_tok_s": 13.412477346949597,
+          "decode_ms": 9617.91,
+          "transition_tok_s": 13.308504654337584,
+          "output_token_sha256": "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652"
+        }
+      ],
+      "process_memory": {
+        "card": {
+          "card_name": "card0",
+          "pci_id": "0000:10:00.0",
+          "sysfs_path": "/sys/class/drm/card0/device",
+          "vram_total_bytes": 25753026560,
+          "vram_total_gib": 23.984375
+        },
+        "memory_domain": "vram",
+        "memory_total_bytes": 25753026560,
+        "memory_total_gib": 23.984375,
+        "baseline_bytes": 64913408,
+        "baseline_gib": 0.060455322265625,
+        "peak_bytes": 16867835904,
+        "peak_gib": 15.709396362304688,
+        "peak_delta_bytes": 16802922496,
+        "peak_delta_gib": 15.648941040039062,
+        "final_bytes": 64917504,
+        "final_gib": 0.060459136962890625,
+        "samples_count": 20632,
+        "interval_seconds": 0.005,
+        "elapsed_seconds": 103.14690826786682,
+        "scope": "before llama-server Popen through post-termination sysfs sample"
+      }
+    }
+  },
+  "natural_mtp": {
+    "hip": {
+      "rows": [
+        {
+          "budget": 1,
+          "source_sha256": "4c51f88b5bf267c4cfab3bb94832fe4fe8aaf2628848223f4123c580b2a893b5",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "1",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 31.556658402328463,
+          "mtp_transition_tok_s": 42.058150650543205,
+          "mtp_over_base": 1.3327821379034186,
+          "base_client_output_tok_s": 24.111509697003747,
+          "mtp_client_output_tok_s": 28.870709129422146,
+          "draft_acceptance": 0.9112903225806451,
+          "accepted_per_output": 0.452,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 7605.368,
+              "transition_tok_s": 31.55665840232846
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 4564.41,
+              "transition_tok_s": 31.548436709235148
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3040.958,
+              "transition_tok_s": 31.568998979926718
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 3045.14,
+                "transition_tok_s": 31.52564414115607
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1523.55,
+                "transition_tok_s": 31.505365757605592
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1519.741,
+                "transition_tok_s": 31.58432917187863
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1516.937,
+                "transition_tok_s": 31.642711595801277
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 5706.385,
+              "transition_tok_s": 42.058150650543205
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 3342.94,
+              "transition_tok_s": 43.07585538478106
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 2363.4449999999997,
+              "transition_tok_s": 40.61867316565438
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 2241.053,
+                "transition_tok_s": 42.837005639759525
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1128.675,
+                "transition_tok_s": 42.52774270715663
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1213.931,
+                "transition_tok_s": 39.54096237759806
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1122.726,
+                "transition_tok_s": 42.753084902282474
+              }
+            }
+          },
+          "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "mtp_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64913408,
+            "baseline_gib": 0.060455322265625,
+            "peak_bytes": 17474240512,
+            "peak_gib": 16.274154663085938,
+            "peak_delta_bytes": 17409327104,
+            "peak_delta_gib": 16.213699340820312,
+            "final_bytes": 94969856,
+            "final_gib": 0.08844757080078125,
+            "samples_count": 3538,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 17.67996541596949,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 94969856,
+            "baseline_gib": 0.08844757080078125,
+            "peak_bytes": 18126712832,
+            "peak_gib": 16.881816864013672,
+            "peak_delta_bytes": 18031742976,
+            "peak_delta_gib": 16.79336929321289,
+            "final_bytes": 93892608,
+            "final_gib": 0.08744430541992188,
+            "samples_count": 3676,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 18.369360448792577,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 2,
+          "source_sha256": "1cf866b5856e4d2daf44c9895976da9f201a9219075aa0fe1b4428b1ce9869de",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "2",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 31.576238459542676,
+          "mtp_transition_tok_s": 46.863183521498776,
+          "mtp_over_base": 1.4841281231626948,
+          "base_client_output_tok_s": 24.184016725558095,
+          "mtp_client_output_tok_s": 31.27555419743697,
+          "draft_acceptance": 0.8409090909090909,
+          "accepted_per_output": 0.592,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 7600.652,
+              "transition_tok_s": 31.57623845954268
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 4558.443,
+              "transition_tok_s": 31.589733599827834
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3042.209,
+              "transition_tok_s": 31.556017354494713
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 3033.2889999999998,
+                "transition_tok_s": 31.64881420794392
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1522.861,
+                "transition_tok_s": 31.519619978448457
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1523.1750000000002,
+                "transition_tok_s": 31.513122261066517
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1521.327,
+                "transition_tok_s": 31.551402164031796
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 5121.291,
+              "transition_tok_s": 46.863183521498776
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 2951.409,
+              "transition_tok_s": 48.79025577275125
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 2169.882,
+              "transition_tok_s": 44.2420371245994
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1919.156,
+                "transition_tok_s": 50.02198883259099
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1010.3230000000001,
+                "transition_tok_s": 47.50955882425719
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1142.226,
+                "transition_tok_s": 42.02320731624039
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1049.586,
+                "transition_tok_s": 45.73231731368368
+              }
+            }
+          },
+          "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "mtp_output_ledger_sha256": "abcb41e0b0434fc8d45b828e21f7adfd252ee4dd9b7a6760ea9c59558d68f290",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 93892608,
+            "baseline_gib": 0.08744430541992188,
+            "peak_bytes": 17474076672,
+            "peak_gib": 16.274002075195312,
+            "peak_delta_bytes": 17380184064,
+            "peak_delta_gib": 16.18655776977539,
+            "final_bytes": 94806016,
+            "final_gib": 0.08829498291015625,
+            "samples_count": 3923,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 19.60184283182025,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 94806016,
+            "baseline_gib": 0.08829498291015625,
+            "peak_bytes": 18283483136,
+            "peak_gib": 17.027820587158203,
+            "peak_delta_bytes": 18188677120,
+            "peak_delta_gib": 16.939525604248047,
+            "final_bytes": 93380608,
+            "final_gib": 0.08696746826171875,
+            "samples_count": 3523,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 17.603643722832203,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 3,
+          "source_sha256": "da1b5c80c759452818ad1785275eea051f071226e1e915dd5b834f2d9ee04abc",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "3",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 30.63449789100628,
+          "mtp_transition_tok_s": 45.64994971848246,
+          "mtp_over_base": 1.4901484555385658,
+          "base_client_output_tok_s": 23.536170919393214,
+          "mtp_client_output_tok_s": 30.016405445320697,
+          "draft_acceptance": 0.7373271889400922,
+          "accepted_per_output": 0.64,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 7834.305,
+              "transition_tok_s": 30.634497891006284
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 4599.578,
+              "transition_tok_s": 31.30721992321904
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3234.727,
+              "transition_tok_s": 29.677929543976973
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 3044.754,
+                "transition_tok_s": 31.529640818273005
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1520.248,
+                "transition_tok_s": 31.573795854360604
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1518.5230000000001,
+                "transition_tok_s": 31.609662810507313
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1750.78,
+                "transition_tok_s": 27.416351569014953
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 5257.399,
+              "transition_tok_s": 45.64994971848246
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 2971.061,
+              "transition_tok_s": 48.46753398869966
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 2286.338,
+              "transition_tok_s": 41.98854237649901
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1873.36,
+                "transition_tok_s": 51.244822137763165
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 988.408,
+                "transition_tok_s": 48.56294161925035
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1220.748,
+                "transition_tok_s": 39.3201545282073
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1174.883,
+                "transition_tok_s": 40.85513195782048
+              }
+            }
+          },
+          "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "mtp_output_ledger_sha256": "abcb41e0b0434fc8d45b828e21f7adfd252ee4dd9b7a6760ea9c59558d68f290",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 93380608,
+            "baseline_gib": 0.08696746826171875,
+            "peak_bytes": 17474060288,
+            "peak_gib": 16.27398681640625,
+            "peak_delta_bytes": 17380679680,
+            "peak_delta_gib": 16.18701934814453,
+            "final_bytes": 94695424,
+            "final_gib": 0.08819198608398438,
+            "samples_count": 4052,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 20.247442246880382,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 94695424,
+            "baseline_gib": 0.08819198608398438,
+            "peak_bytes": 18440384512,
+            "peak_gib": 17.173946380615234,
+            "peak_delta_bytes": 18345689088,
+            "peak_delta_gib": 17.08575439453125,
+            "final_bytes": 92958720,
+            "final_gib": 0.08657455444335938,
+            "samples_count": 3586,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 17.915159692056477,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 4,
+          "source_sha256": "77fa14b6aa97868ee763309de7310759564f9e558e12f8cd02c3e0866660425c",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "4",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 31.71312308854106,
+          "mtp_transition_tok_s": 43.000757709184796,
+          "mtp_over_base": 1.3559294551069399,
+          "base_client_output_tok_s": 24.215626812899085,
+          "mtp_client_output_tok_s": 29.402274976588846,
+          "draft_acceptance": 0.6423076923076924,
+          "accepted_per_output": 0.668,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 7567.845,
+              "transition_tok_s": 31.713123088541057
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 4537.925,
+              "transition_tok_s": 31.732564993912415
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3029.92,
+              "transition_tok_s": 31.684004858214077
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 3018.564,
+                "transition_tok_s": 31.80320178733994
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1513.711,
+                "transition_tok_s": 31.710148106210497
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1518.291,
+                "transition_tok_s": 31.614492873895717
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1517.279,
+                "transition_tok_s": 31.635579217797122
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 5581.297,
+              "transition_tok_s": 43.0007577091848
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 3196.457,
+              "transition_tok_s": 45.049878662531675
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 2384.84,
+              "transition_tok_s": 40.254272823334055
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1924.616,
+                "transition_tok_s": 49.880079974394896
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1073.857,
+                "transition_tok_s": 44.69868893158028
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1331.175,
+                "transition_tok_s": 36.05836948560482
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1251.649,
+                "transition_tok_s": 38.34940945904164
+              }
+            }
+          },
+          "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "mtp_output_ledger_sha256": "abcb41e0b0434fc8d45b828e21f7adfd252ee4dd9b7a6760ea9c59558d68f290",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 92958720,
+            "baseline_gib": 0.08657455444335938,
+            "peak_bytes": 17474043904,
+            "peak_gib": 16.273971557617188,
+            "peak_delta_bytes": 17381085184,
+            "peak_delta_gib": 16.187397003173828,
+            "final_bytes": 94765056,
+            "final_gib": 0.0882568359375,
+            "samples_count": 3931,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 19.64215906523168,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 94765056,
+            "baseline_gib": 0.0882568359375,
+            "peak_bytes": 18599309312,
+            "peak_gib": 17.321956634521484,
+            "peak_delta_bytes": 18504544256,
+            "peak_delta_gib": 17.233699798583984,
+            "final_bytes": 92540928,
+            "final_gib": 0.08618545532226562,
+            "samples_count": 3562,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 17.79961789213121,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 5,
+          "source_sha256": "8a91f06ec728cee5ab1ab3b56b14bc83b2a3622dba54dd7ddfe9702ed88ac252",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "5",
+            "-dev",
+            "ROCm0",
+            "--spec-draft-device",
+            "ROCm0",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 31.59416661104777,
+          "mtp_transition_tok_s": 43.254060655169255,
+          "mtp_over_base": 1.3690521160967823,
+          "base_client_output_tok_s": 24.190893873727326,
+          "mtp_client_output_tok_s": 29.34615699323162,
+          "draft_acceptance": 0.6376811594202898,
+          "accepted_per_output": 0.704,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 7596.339,
+              "transition_tok_s": 31.59416661104777
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 4558.518,
+              "transition_tok_s": 31.589213862926503
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3037.821,
+              "transition_tok_s": 31.601598645871498
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 3037.277,
+                "transition_tok_s": 31.607258738666246
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1520.902,
+                "transition_tok_s": 31.560218870117865
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1517.845,
+                "transition_tok_s": 31.62378240202392
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1520.315,
+                "transition_tok_s": 31.572404403034895
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 5548.612,
+              "transition_tok_s": 43.254060655169255
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 3176.591,
+              "transition_tok_s": 45.331614929337775
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 2372.021,
+              "transition_tok_s": 40.471817070759485
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1969.853,
+                "transition_tok_s": 48.73460100829859
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1050.4070000000002,
+                "transition_tok_s": 45.69657285223727
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1321.4499999999998,
+                "transition_tok_s": 36.32373529077908
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 1206.902,
+                "transition_tok_s": 39.77124903264722
+              }
+            }
+          },
+          "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "mtp_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 92540928,
+            "baseline_gib": 0.08618545532226562,
+            "peak_bytes": 17473953792,
+            "peak_gib": 16.273887634277344,
+            "peak_delta_bytes": 17381412864,
+            "peak_delta_gib": 16.187702178955078,
+            "final_bytes": 94633984,
+            "final_gib": 0.088134765625,
+            "samples_count": 3952,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 19.745916444808245,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 94633984,
+            "baseline_gib": 0.088134765625,
+            "peak_bytes": 18756329472,
+            "peak_gib": 17.46819305419922,
+            "peak_delta_bytes": 18661695488,
+            "peak_delta_gib": 17.38005828857422,
+            "final_bytes": 92274688,
+            "final_gib": 0.0859375,
+            "samples_count": 3536,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 17.66646644100547,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        }
+      ],
+      "selected_budget": 2,
+      "selection_metric": "maximum complete-suite transition_tok_s",
+      "selected": {
+        "budget": 2,
+        "source_sha256": "1cf866b5856e4d2daf44c9895976da9f201a9219075aa0fe1b4428b1ce9869de",
+        "base_server_command": [
+          "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+          "-m",
+          "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "-ngl",
+          "99",
+          "-fa",
+          "on",
+          "-ctk",
+          "f16",
+          "-ctv",
+          "f16",
+          "-c",
+          "8192",
+          "-np",
+          "1",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8011",
+          "--alias",
+          "qwen36",
+          "--no-cache-prompt",
+          "-dev",
+          "ROCm0",
+          "--spec-draft-device",
+          "ROCm0",
+          "--reasoning",
+          "off",
+          "--perf"
+        ],
+        "mtp_server_command": [
+          "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-server",
+          "-m",
+          "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "-ngl",
+          "99",
+          "-fa",
+          "on",
+          "-ctk",
+          "f16",
+          "-ctv",
+          "f16",
+          "-c",
+          "8192",
+          "-np",
+          "1",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8011",
+          "--alias",
+          "qwen36",
+          "--no-cache-prompt",
+          "--spec-type",
+          "draft-mtp",
+          "--spec-draft-n-max",
+          "2",
+          "-dev",
+          "ROCm0",
+          "--spec-draft-device",
+          "ROCm0",
+          "--reasoning",
+          "off",
+          "--perf"
+        ],
+        "base_transition_tok_s": 31.576238459542676,
+        "mtp_transition_tok_s": 46.863183521498776,
+        "mtp_over_base": 1.4841281231626948,
+        "base_client_output_tok_s": 24.184016725558095,
+        "mtp_client_output_tok_s": 31.27555419743697,
+        "draft_acceptance": 0.8409090909090909,
+        "accepted_per_output": 0.592,
+        "base_scopes": {
+          "full": {
+            "requests": 10,
+            "timed_transitions": 240,
+            "decode_ms": 7600.652,
+            "transition_tok_s": 31.57623845954268
+          },
+          "train": {
+            "requests": 6,
+            "timed_transitions": 144,
+            "decode_ms": 4558.443,
+            "transition_tok_s": 31.589733599827834
+          },
+          "heldout": {
+            "requests": 4,
+            "timed_transitions": 96,
+            "decode_ms": 3042.209,
+            "transition_tok_s": 31.556017354494713
+          },
+          "categories": {
+            "code": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 3033.2889999999998,
+              "transition_tok_s": 31.64881420794392
+            },
+            "general_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1522.861,
+              "transition_tok_s": 31.519619978448457
+            },
+            "general_ja": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1523.1750000000002,
+              "transition_tok_s": 31.513122261066517
+            },
+            "mixed_ja_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1521.327,
+              "transition_tok_s": 31.551402164031796
+            }
+          }
+        },
+        "mtp_scopes": {
+          "full": {
+            "requests": 10,
+            "timed_transitions": 240,
+            "decode_ms": 5121.291,
+            "transition_tok_s": 46.863183521498776
+          },
+          "train": {
+            "requests": 6,
+            "timed_transitions": 144,
+            "decode_ms": 2951.409,
+            "transition_tok_s": 48.79025577275125
+          },
+          "heldout": {
+            "requests": 4,
+            "timed_transitions": 96,
+            "decode_ms": 2169.882,
+            "transition_tok_s": 44.2420371245994
+          },
+          "categories": {
+            "code": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1919.156,
+              "transition_tok_s": 50.02198883259099
+            },
+            "general_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1010.3230000000001,
+              "transition_tok_s": 47.50955882425719
+            },
+            "general_ja": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1142.226,
+              "transition_tok_s": 42.02320731624039
+            },
+            "mixed_ja_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 1049.586,
+              "transition_tok_s": 45.73231731368368
+            }
+          }
+        },
+        "base_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+        "mtp_output_ledger_sha256": "abcb41e0b0434fc8d45b828e21f7adfd252ee4dd9b7a6760ea9c59558d68f290",
+        "base_process_memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 93892608,
+          "baseline_gib": 0.08744430541992188,
+          "peak_bytes": 17474076672,
+          "peak_gib": 16.274002075195312,
+          "peak_delta_bytes": 17380184064,
+          "peak_delta_gib": 16.18655776977539,
+          "final_bytes": 94806016,
+          "final_gib": 0.08829498291015625,
+          "samples_count": 3923,
+          "interval_seconds": 0.005,
+          "elapsed_seconds": 19.60184283182025,
+          "scope": "before llama-server Popen through post-termination sysfs sample"
+        },
+        "mtp_process_memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 94806016,
+          "baseline_gib": 0.08829498291015625,
+          "peak_bytes": 18283483136,
+          "peak_gib": 17.027820587158203,
+          "peak_delta_bytes": 18188677120,
+          "peak_delta_gib": 16.939525604248047,
+          "final_bytes": 93380608,
+          "final_gib": 0.08696746826171875,
+          "samples_count": 3523,
+          "interval_seconds": 0.005,
+          "elapsed_seconds": 17.603643722832203,
+          "scope": "before llama-server Popen through post-termination sysfs sample"
+        }
+      }
+    },
+    "vulkan": {
+      "rows": [
+        {
+          "budget": 1,
+          "source_sha256": "eb19e9ad9a217fc462544e549ace42aefeee98c0f11291398c3bfbd0e604fcff",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "1",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 13.387505129087906,
+          "mtp_transition_tok_s": 64.01051479389682,
+          "mtp_over_base": 4.781362485144226,
+          "base_client_output_tok_s": 9.927822386284337,
+          "mtp_client_output_tok_s": 33.39887333034171,
+          "draft_acceptance": 0.926829268292683,
+          "accepted_per_output": 0.456,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 17927.164,
+              "transition_tok_s": 13.387505129087902
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 10755.121,
+              "transition_tok_s": 13.388970705211035
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7172.043,
+              "transition_tok_s": 13.385307366394764
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 7171.691,
+                "transition_tok_s": 13.385964342300861
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3585.395,
+                "transition_tok_s": 13.387646270494605
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3584.111,
+                "transition_tok_s": 13.392442365763785
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3585.967,
+                "transition_tok_s": 13.385510798063674
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 3749.384,
+              "transition_tok_s": 64.01051479389682
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 2182.362,
+              "transition_tok_s": 65.98355359926538
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1567.022,
+              "transition_tok_s": 61.26270084274503
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1463.95,
+                "transition_tok_s": 65.5760101096349
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 770.012,
+                "transition_tok_s": 62.33669085676587
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 773.854,
+                "transition_tok_s": 62.027204097930614
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 741.568,
+                "transition_tok_s": 64.72771209113662
+              }
+            }
+          },
+          "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+          "mtp_output_ledger_sha256": "abcb41e0b0434fc8d45b828e21f7adfd252ee4dd9b7a6760ea9c59558d68f290",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 92274688,
+            "baseline_gib": 0.0859375,
+            "peak_bytes": 16864493568,
+            "peak_gib": 15.706283569335938,
+            "peak_delta_bytes": 16772218880,
+            "peak_delta_gib": 15.620346069335938,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 6621,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 33.091475835070014,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64917504,
+            "baseline_gib": 0.060459136962890625,
+            "peak_bytes": 17497104384,
+            "peak_gib": 16.295448303222656,
+            "peak_delta_bytes": 17432186880,
+            "peak_delta_gib": 16.234989166259766,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 2838,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 14.184453069232404,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 2,
+          "source_sha256": "a53e3431e1206df6a9de4d6fde50e44f1a29ab8d43c7578fe930c09d5883011e",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "2",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 13.38594381082761,
+          "mtp_transition_tok_s": 78.55189580091022,
+          "mtp_over_base": 5.868237377283119,
+          "base_client_output_tok_s": 9.994322995898424,
+          "mtp_client_output_tok_s": 38.20038228350548,
+          "draft_acceptance": 0.8563218390804598,
+          "accepted_per_output": 0.596,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 17929.255,
+              "transition_tok_s": 13.38594381082761
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 10754.593,
+              "transition_tok_s": 13.389628040782203
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7174.662,
+              "transition_tok_s": 13.380421265838027
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 7170.864,
+                "transition_tok_s": 13.387508116176797
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3587.138,
+                "transition_tok_s": 13.381141177172443
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3586.458,
+                "transition_tok_s": 13.383678269758073
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3584.795,
+                "transition_tok_s": 13.389887008880564
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 3055.305,
+              "transition_tok_s": 78.55189580091023
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 1742.019,
+              "transition_tok_s": 82.66270344927352
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1313.286,
+              "transition_tok_s": 73.09908123592271
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1112.432,
+                "transition_tok_s": 86.29740963942065
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 638.779,
+                "transition_tok_s": 75.14335944043245
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 669.3389999999999,
+                "transition_tok_s": 71.7125402822785
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 634.755,
+                "transition_tok_s": 75.61972729635843
+              }
+            }
+          },
+          "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+          "mtp_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64913408,
+            "baseline_gib": 0.060455322265625,
+            "peak_bytes": 16864493568,
+            "peak_gib": 15.706283569335938,
+            "peak_delta_bytes": 16799580160,
+            "peak_delta_gib": 15.645828247070312,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 7007,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 35.02076353831217,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64917504,
+            "baseline_gib": 0.060459136962890625,
+            "peak_bytes": 17653997568,
+            "peak_gib": 16.441566467285156,
+            "peak_delta_bytes": 17589080064,
+            "peak_delta_gib": 16.381107330322266,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 2641,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 13.19361079717055,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 3,
+          "source_sha256": "bee1b1a78b0bac4ff918d0173049757fa6d14d5df6194e0a944f51a9ea82b33a",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "3",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 13.386862935926457,
+          "mtp_transition_tok_s": 81.80943378668259,
+          "mtp_over_base": 6.1111728848085685,
+          "base_client_output_tok_s": 10.045018058672726,
+          "mtp_client_output_tok_s": 39.757707332298644,
+          "draft_acceptance": 0.7725118483412322,
+          "accepted_per_output": 0.652,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 17928.024,
+              "transition_tok_s": 13.386862935926457
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 10759.377,
+              "transition_tok_s": 13.383674538033196
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7168.647,
+              "transition_tok_s": 13.391648382184254
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 7171.296,
+                "transition_tok_s": 13.386701650580314
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3585.736,
+                "transition_tok_s": 13.386373118377929
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3585.937,
+                "transition_tok_s": 13.385622781437599
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3585.0550000000003,
+                "transition_tok_s": 13.388915930160065
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 2933.647,
+              "transition_tok_s": 81.80943378668259
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 1670.957,
+              "transition_tok_s": 86.17816018006447
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1262.69,
+              "transition_tok_s": 76.02816209837727
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1064.369,
+                "transition_tok_s": 90.19428412514833
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 537.359,
+                "transition_tok_s": 89.32575801279962
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 681.254,
+                "transition_tok_s": 70.45830189620905
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 650.665,
+                "transition_tok_s": 73.77068076506345
+              }
+            }
+          },
+          "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+          "mtp_output_ledger_sha256": "e1e35fbf8effd0d1617267a23a2bcd0a3d665fba9739c5ac6e848f5a51121710",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64913408,
+            "baseline_gib": 0.060455322265625,
+            "peak_bytes": 16864493568,
+            "peak_gib": 15.706283569335938,
+            "peak_delta_bytes": 16799580160,
+            "peak_delta_gib": 15.645828247070312,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 6961,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 34.79309885390103,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64917504,
+            "baseline_gib": 0.060459136962890625,
+            "peak_bytes": 17810890752,
+            "peak_gib": 16.587684631347656,
+            "peak_delta_bytes": 17745973248,
+            "peak_delta_gib": 16.527225494384766,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 3009,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 15.030450371094048,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 4,
+          "source_sha256": "2d86d046022c30e4734cda82d440616fd5188b5cd8a28f0b2099f2e69307bf92",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "4",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 13.385678027258928,
+          "mtp_transition_tok_s": 81.95170722479422,
+          "mtp_over_base": 6.122342630526875,
+          "base_client_output_tok_s": 10.061887498534016,
+          "mtp_client_output_tok_s": 40.67885789885244,
+          "draft_acceptance": 0.7037037037037037,
+          "accepted_per_output": 0.684,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 17929.611,
+              "transition_tok_s": 13.385678027258928
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 10757.696,
+              "transition_tok_s": 13.38576587403102
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7171.915,
+              "transition_tok_s": 13.385546259262693
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 7171.228,
+                "transition_tok_s": 13.386828587795563
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3584.781,
+                "transition_tok_s": 13.389939301731403
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3586.3819999999996,
+                "transition_tok_s": 13.383961886937868
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3587.2200000000003,
+                "transition_tok_s": 13.380835298643516
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 2928.554,
+              "transition_tok_s": 81.95170722479422
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 1779.694,
+              "transition_tok_s": 80.91278613064942
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1148.8600000000001,
+              "transition_tok_s": 83.56109534669149
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1027.638,
+                "transition_tok_s": 93.41811026840192
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 551.611,
+                "transition_tok_s": 87.01784409665507
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 712.33,
+                "transition_tok_s": 67.3844987575983
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 636.975,
+                "transition_tok_s": 75.35617567408454
+              }
+            }
+          },
+          "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+          "mtp_output_ledger_sha256": "b4622dd533f2ad082067d495cc18934ece60e7023743cb17f4f41ca8abd9984b",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64913408,
+            "baseline_gib": 0.060455322265625,
+            "peak_bytes": 16864493568,
+            "peak_gib": 15.706283569335938,
+            "peak_delta_bytes": 16799580160,
+            "peak_delta_gib": 15.645828247070312,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 6550,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 32.73942801030353,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64917504,
+            "baseline_gib": 0.060459136962890625,
+            "peak_bytes": 17967812608,
+            "peak_gib": 16.733829498291016,
+            "peak_delta_bytes": 17902895104,
+            "peak_delta_gib": 16.673370361328125,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 2567,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 12.821714967954904,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        },
+        {
+          "budget": 5,
+          "source_sha256": "1bff94fba71a74195a1b3c1d21df072f402a29cbacb61643841ed0b23057f248",
+          "base_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "mtp_server_command": [
+            "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+            "-m",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "-ngl",
+            "99",
+            "-fa",
+            "on",
+            "-ctk",
+            "f16",
+            "-ctv",
+            "f16",
+            "-c",
+            "8192",
+            "-np",
+            "1",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8011",
+            "--alias",
+            "qwen36",
+            "--no-cache-prompt",
+            "--spec-type",
+            "draft-mtp",
+            "--spec-draft-n-max",
+            "5",
+            "-dev",
+            "Vulkan1",
+            "--spec-draft-device",
+            "Vulkan1",
+            "--reasoning",
+            "off",
+            "--perf"
+          ],
+          "base_transition_tok_s": 13.389163915332952,
+          "mtp_transition_tok_s": 81.93002561337427,
+          "mtp_over_base": 6.119129329617808,
+          "base_client_output_tok_s": 10.081965431465374,
+          "mtp_client_output_tok_s": 40.27382709071644,
+          "draft_acceptance": 0.6716981132075471,
+          "accepted_per_output": 0.712,
+          "base_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 17924.943,
+              "transition_tok_s": 13.389163915332952
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 10750.530999999999,
+              "transition_tok_s": 13.394687201962398
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7174.412,
+              "transition_tok_s": 13.380887520817037
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 7169.459,
+                "transition_tok_s": 13.390131668233266
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3586.005,
+                "transition_tok_s": 13.385368955146465
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3586.111,
+                "transition_tok_s": 13.3849733039496
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 3583.368,
+                "transition_tok_s": 13.395219246251013
+              }
+            }
+          },
+          "mtp_scopes": {
+            "full": {
+              "requests": 10,
+              "timed_transitions": 240,
+              "decode_ms": 2929.3289999999997,
+              "transition_tok_s": 81.93002561337427
+            },
+            "train": {
+              "requests": 6,
+              "timed_transitions": 144,
+              "decode_ms": 1807.806,
+              "transition_tok_s": 79.6545647043986
+            },
+            "heldout": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1121.523,
+              "transition_tok_s": 85.59788787211676
+            },
+            "categories": {
+              "code": {
+                "requests": 4,
+                "timed_transitions": 96,
+                "decode_ms": 1021.524,
+                "transition_tok_s": 93.97723401505985
+              },
+              "general_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 510.885,
+                "transition_tok_s": 93.95460817992307
+              },
+              "general_ja": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 696.884,
+                "transition_tok_s": 68.87803422090333
+              },
+              "mixed_ja_en": {
+                "requests": 2,
+                "timed_transitions": 48,
+                "decode_ms": 700.0360000000001,
+                "transition_tok_s": 68.56790222217143
+              }
+            }
+          },
+          "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+          "mtp_output_ledger_sha256": "60955067df976a3bc5690fcd31b54bcb06259a7b71296b10ffada10cdb55f6b0",
+          "base_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64913408,
+            "baseline_gib": 0.060455322265625,
+            "peak_bytes": 16865579008,
+            "peak_gib": 15.707294464111328,
+            "peak_delta_bytes": 16800665600,
+            "peak_delta_gib": 15.646839141845703,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 6587,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 32.92374431202188,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          },
+          "mtp_process_memory": {
+            "card": {
+              "card_name": "card0",
+              "pci_id": "0000:10:00.0",
+              "sysfs_path": "/sys/class/drm/card0/device",
+              "vram_total_bytes": 25753026560,
+              "vram_total_gib": 23.984375
+            },
+            "memory_domain": "vram",
+            "memory_total_bytes": 25753026560,
+            "memory_total_gib": 23.984375,
+            "baseline_bytes": 64917504,
+            "baseline_gib": 0.060459136962890625,
+            "peak_bytes": 18126053376,
+            "peak_gib": 16.881202697753906,
+            "peak_delta_bytes": 18061135872,
+            "peak_delta_gib": 16.820743560791016,
+            "final_bytes": 64917504,
+            "final_gib": 0.060459136962890625,
+            "samples_count": 2601,
+            "interval_seconds": 0.005,
+            "elapsed_seconds": 12.990495225880295,
+            "scope": "before llama-server Popen through post-termination sysfs sample"
+          }
+        }
+      ],
+      "selected_budget": 4,
+      "selection_metric": "maximum complete-suite transition_tok_s",
+      "selected": {
+        "budget": 4,
+        "source_sha256": "2d86d046022c30e4734cda82d440616fd5188b5cd8a28f0b2099f2e69307bf92",
+        "base_server_command": [
+          "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+          "-m",
+          "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "-ngl",
+          "99",
+          "-fa",
+          "on",
+          "-ctk",
+          "f16",
+          "-ctv",
+          "f16",
+          "-c",
+          "8192",
+          "-np",
+          "1",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8011",
+          "--alias",
+          "qwen36",
+          "--no-cache-prompt",
+          "-dev",
+          "Vulkan1",
+          "--spec-draft-device",
+          "Vulkan1",
+          "--reasoning",
+          "off",
+          "--perf"
+        ],
+        "mtp_server_command": [
+          "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-server",
+          "-m",
+          "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "-ngl",
+          "99",
+          "-fa",
+          "on",
+          "-ctk",
+          "f16",
+          "-ctv",
+          "f16",
+          "-c",
+          "8192",
+          "-np",
+          "1",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "8011",
+          "--alias",
+          "qwen36",
+          "--no-cache-prompt",
+          "--spec-type",
+          "draft-mtp",
+          "--spec-draft-n-max",
+          "4",
+          "-dev",
+          "Vulkan1",
+          "--spec-draft-device",
+          "Vulkan1",
+          "--reasoning",
+          "off",
+          "--perf"
+        ],
+        "base_transition_tok_s": 13.385678027258928,
+        "mtp_transition_tok_s": 81.95170722479422,
+        "mtp_over_base": 6.122342630526875,
+        "base_client_output_tok_s": 10.061887498534016,
+        "mtp_client_output_tok_s": 40.67885789885244,
+        "draft_acceptance": 0.7037037037037037,
+        "accepted_per_output": 0.684,
+        "base_scopes": {
+          "full": {
+            "requests": 10,
+            "timed_transitions": 240,
+            "decode_ms": 17929.611,
+            "transition_tok_s": 13.385678027258928
+          },
+          "train": {
+            "requests": 6,
+            "timed_transitions": 144,
+            "decode_ms": 10757.696,
+            "transition_tok_s": 13.38576587403102
+          },
+          "heldout": {
+            "requests": 4,
+            "timed_transitions": 96,
+            "decode_ms": 7171.915,
+            "transition_tok_s": 13.385546259262693
+          },
+          "categories": {
+            "code": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 7171.228,
+              "transition_tok_s": 13.386828587795563
+            },
+            "general_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 3584.781,
+              "transition_tok_s": 13.389939301731403
+            },
+            "general_ja": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 3586.3819999999996,
+              "transition_tok_s": 13.383961886937868
+            },
+            "mixed_ja_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 3587.2200000000003,
+              "transition_tok_s": 13.380835298643516
+            }
+          }
+        },
+        "mtp_scopes": {
+          "full": {
+            "requests": 10,
+            "timed_transitions": 240,
+            "decode_ms": 2928.554,
+            "transition_tok_s": 81.95170722479422
+          },
+          "train": {
+            "requests": 6,
+            "timed_transitions": 144,
+            "decode_ms": 1779.694,
+            "transition_tok_s": 80.91278613064942
+          },
+          "heldout": {
+            "requests": 4,
+            "timed_transitions": 96,
+            "decode_ms": 1148.8600000000001,
+            "transition_tok_s": 83.56109534669149
+          },
+          "categories": {
+            "code": {
+              "requests": 4,
+              "timed_transitions": 96,
+              "decode_ms": 1027.638,
+              "transition_tok_s": 93.41811026840192
+            },
+            "general_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 551.611,
+              "transition_tok_s": 87.01784409665507
+            },
+            "general_ja": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 712.33,
+              "transition_tok_s": 67.3844987575983
+            },
+            "mixed_ja_en": {
+              "requests": 2,
+              "timed_transitions": 48,
+              "decode_ms": 636.975,
+              "transition_tok_s": 75.35617567408454
+            }
+          }
+        },
+        "base_output_ledger_sha256": "f9b9ca47a19cfaffbb0367023c5dc0ccbd7297f44e61c520e78ec4963ef89d97",
+        "mtp_output_ledger_sha256": "b4622dd533f2ad082067d495cc18934ece60e7023743cb17f4f41ca8abd9984b",
+        "base_process_memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 64913408,
+          "baseline_gib": 0.060455322265625,
+          "peak_bytes": 16864493568,
+          "peak_gib": 15.706283569335938,
+          "peak_delta_bytes": 16799580160,
+          "peak_delta_gib": 15.645828247070312,
+          "final_bytes": 64917504,
+          "final_gib": 0.060459136962890625,
+          "samples_count": 6550,
+          "interval_seconds": 0.005,
+          "elapsed_seconds": 32.73942801030353,
+          "scope": "before llama-server Popen through post-termination sysfs sample"
+        },
+        "mtp_process_memory": {
+          "card": {
+            "card_name": "card0",
+            "pci_id": "0000:10:00.0",
+            "sysfs_path": "/sys/class/drm/card0/device",
+            "vram_total_bytes": 25753026560,
+            "vram_total_gib": 23.984375
+          },
+          "memory_domain": "vram",
+          "memory_total_bytes": 25753026560,
+          "memory_total_gib": 23.984375,
+          "baseline_bytes": 64917504,
+          "baseline_gib": 0.060459136962890625,
+          "peak_bytes": 17967812608,
+          "peak_gib": 16.733829498291016,
+          "peak_delta_bytes": 17902895104,
+          "peak_delta_gib": 16.673370361328125,
+          "final_bytes": 64917504,
+          "final_gib": 0.060459136962890625,
+          "samples_count": 2567,
+          "interval_seconds": 0.005,
+          "elapsed_seconds": 12.821714967954904,
+          "scope": "before llama-server Popen through post-termination sysfs sample"
+        }
+      }
+    }
+  },
+  "frozen_targets": {
+    "ar": [
+      {
+        "shape": "512/128",
+        "comparator_prefill_tok_s": {
+          "hip": 964.60567,
+          "vulkan": 870.871574
+        },
+        "prefill_winner": "hip",
+        "hipengine_prefill_gate_tok_s_1pct": 974.2517267000001,
+        "comparator_context_ar_transition_tok_s": {
+          "hip": 33.02528653306218,
+          "vulkan": 13.390800791856636
+        },
+        "decode_winner": "hip",
+        "hipengine_decode_gate_tok_s_1pct": 33.3555393983928,
+        "comparator_peak_delta_gib": {
+          "hip": 16.348358154296875,
+          "vulkan": 15.689502716064453
+        },
+        "memory_floor_backend": "vulkan",
+        "hipengine_peak_delta_ceiling_gib": 15.689502716064453
+      },
+      {
+        "shape": "1K/128",
+        "comparator_prefill_tok_s": {
+          "hip": 981.039726,
+          "vulkan": 836.898285
+        },
+        "prefill_winner": "hip",
+        "hipengine_prefill_gate_tok_s_1pct": 990.85012326,
+        "comparator_context_ar_transition_tok_s": {
+          "hip": 32.92428340811604,
+          "vulkan": 13.379484191616791
+        },
+        "decode_winner": "hip",
+        "hipengine_decode_gate_tok_s_1pct": 33.2535262421972,
+        "comparator_peak_delta_gib": {
+          "hip": 16.372692108154297,
+          "vulkan": 15.699958801269531
+        },
+        "memory_floor_backend": "vulkan",
+        "hipengine_peak_delta_ceiling_gib": 15.699958801269531
+      },
+      {
+        "shape": "4K/128",
+        "comparator_prefill_tok_s": {
+          "hip": 946.733397,
+          "vulkan": 835.76463
+        },
+        "prefill_winner": "hip",
+        "hipengine_prefill_gate_tok_s_1pct": 956.20073097,
+        "comparator_context_ar_transition_tok_s": {
+          "hip": 32.5601236674197,
+          "vulkan": 13.308504654337584
+        },
+        "decode_winner": "hip",
+        "hipengine_decode_gate_tok_s_1pct": 32.8857249040939,
+        "comparator_peak_delta_gib": {
+          "hip": 16.56165313720703,
+          "vulkan": 15.912158966064453
+        },
+        "memory_floor_backend": "vulkan",
+        "hipengine_peak_delta_ceiling_gib": 15.912158966064453
+      }
+    ],
+    "natural_mtp": {
+      "comparator_selected_budgets": {
+        "hip": 2,
+        "vulkan": 4
+      },
+      "comparator_selected_transition_tok_s": {
+        "hip": 46.863183521498776,
+        "vulkan": 81.95170722479422
+      },
+      "speed_winner_backend": "vulkan",
+      "hipengine_transition_gate_tok_s_1pct": 82.77122429704217,
+      "selected_peak_delta_gib": {
+        "hip": 16.939525604248047,
+        "vulkan": 16.673370361328125
+      },
+      "memory_floor_backend": "vulkan",
+      "hipengine_peak_delta_ceiling_gib": 16.673370361328125
+    }
+  },
+  "source_artifacts": [
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-ar-peak.json",
+      "sha256": "5fc9323f04affc3d5ede0555641f40931d084659787669dd4c15e1d0e028955d"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-ar-peak.json",
+      "sha256": "4cc4668b331da0c33ff5295c961b1cb3d8781950da3c66cb30738f51ea85efe3"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-context-ar.json",
+      "sha256": "63429fb50e40d7da439773d573162ad31d0df54f33971edb1d925a1ae5c43e6b"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-context-ar.json",
+      "sha256": "b13b8ec6ef6c77ba2c54fe65808f90e28eaca4367dba8fc63e6558fc8879ea83"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-natural-b1.json",
+      "sha256": "4c51f88b5bf267c4cfab3bb94832fe4fe8aaf2628848223f4123c580b2a893b5"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-natural-b2.json",
+      "sha256": "1cf866b5856e4d2daf44c9895976da9f201a9219075aa0fe1b4428b1ce9869de"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-natural-b3.json",
+      "sha256": "da1b5c80c759452818ad1785275eea051f071226e1e915dd5b834f2d9ee04abc"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-natural-b4.json",
+      "sha256": "77fa14b6aa97868ee763309de7310759564f9e558e12f8cd02c3e0866660425c"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-hip-natural-b5.json",
+      "sha256": "8a91f06ec728cee5ab1ab3b56b14bc83b2a3622dba54dd7ddfe9702ed88ac252"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-natural-b1.json",
+      "sha256": "eb19e9ad9a217fc462544e549ace42aefeee98c0f11291398c3bfbd0e604fcff"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-natural-b2.json",
+      "sha256": "a53e3431e1206df6a9de4d6fde50e44f1a29ab8d43c7578fe930c09d5883011e"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-natural-b3.json",
+      "sha256": "bee1b1a78b0bac4ff918d0173049757fa6d14d5df6194e0a944f51a9ea82b33a"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-natural-b4.json",
+      "sha256": "2d86d046022c30e4734cda82d440616fd5188b5cd8a28f0b2099f2e69307bf92"
+    },
+    {
+      "path": "/tmp/qwen36-27b-xtx-baselines/llamacpp-vulkan-natural-b5.json",
+      "sha256": "1bff94fba71a74195a1b3c1d21df072f402a29cbacb61643841ed0b23057f248"
+    }
+  ],
+  "validation": {
+    "complete": true,
+    "source_files": 14,
+    "standardized_samples_per_phase": 5,
+    "context_shapes_per_backend": 3,
+    "natural_budget_rows_per_backend": 5,
+    "natural_requests_per_mode_budget": 10,
+    "natural_transitions_per_mode_budget": 240,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "note": "The raw wrappers conservatively emit diagnostic_retained/performance_claim=false; this compact packet graduates only the externally validated comparator floors. Standardized AR captured while another change made the hipEngine worktree dirty, but the external binaries were tracked-clean and scripts/llamacpp_bench_with_peak.py is unchanged between harness commits 46d75dd80 and 6a8d38ae7. Context/MTP captures report clean harness state. The generic Vulkan provenance helper enumerated both global Vulkan GPUs and identified default HIP GPU0 as its device_name; the selected -dev Vulkan1 command, llama-bench GPU record, sysfs card0 PCI/unique-id, and process-memory sampler all identify the measured RX 7900 XTX."
+  },
+  "decision": {
+    "runtime_changes_allowed": true,
+    "next": "Implement one-payload Q4 residency against these immutable speed and memory targets."
+  }
+}

@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-12
+
+- [clean external XTX floors frozen before residency changes] Qwen3.6-27B / Q4_K_M / llama.cpp `c8e03ce81` HIP+Vulkan on RX 7900 XTX: no valid hipEngine XTX row -> clean comparator targets **964.606/981.040/946.733 prefill tok/s**, **33.025/32.924/32.560 context-AR transition tok/s** (HIP), and selected natural **B4 81.952 tok/s / 6.1223x AR** (Vulkan), while Vulkan freezes lower **15.690/15.700/15.912 GiB AR** and **16.673 GiB MTP** peak-delta ceilings; `benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json`.
+
 ## 2026-08-09
 
 - [retained/default Maple CUDA exact split-K global c1 decode] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / 18-prompt natural+category-heldout c1 on RTX PRO 6000 Blackwell GPU0: prior retained **396.328 -> 402.361 tok/s (+1.52%)** and same-session direct wave32 **397.214 -> 402.361 (+1.30%, 1,152/1,152 wins)** by parallelizing local128-exact QK scores only in six growing global layers while preserving an ordered softmax/PV reducer and direct wave32 for all 18 SWA layers; the same full suite at p512 improves **102.688 -> 106.893 tok/s (+4.10%, 1,152/1,152 wins)**, both protocols preserve all **1,296/1,296** token/top-logit positions and **36/36** state pairs, and cached p512 Nsight names the exact 18-direct/6-producer/6-reducer per-token route; `benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json`.

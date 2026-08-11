@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; P0.1-P0.2 identity/blocker evidence complete.**
+Status: **in progress; P0 comparator and blocker evidence complete.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -579,10 +579,16 @@ atomic commit.
   startup/teardown scope. Fake-sysfs/subprocess coverage lives in
   `tests/test_llamacpp_mtp_bench_metrics.py`; real-run evidence is attached by
   P0.5.
-- [ ] **P0.5 Run the complete llama.cpp XTX baseline.** Produce standardized AR,
-  context-matched AR, and natural B1-B5 artifacts for both HIP and Vulkan.
-- [ ] **P0.6 Freeze the target table.** Record per-column winning performance
-  and lower memory floor before changing runtime code. Baseline refresh after a
+- [x] **P0.5 Run the complete llama.cpp XTX baseline.** Standardized five-sample
+  AR, context-matched 128-transition AR, and natural B1-B5 completed for both
+  clean same-commit backends. Each natural budget covers ten prompts, 250
+  visible outputs, 240 transitions, all four categories, and the fixed
+  train/heldout split with process-scope 5 ms VRAM sampling. Evidence:
+  [`2026-08-12 clean llama.cpp floors`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json).
+- [x] **P0.6 Freeze the target table.** HIP wins every standardized-prefill and
+  context-AR speed column; Vulkan sets every lower AR memory ceiling and its B4
+  wins natural MTP. The scorecard and artifact freeze the exact rows plus a 1%
+  practical speed margin before runtime changes. Baseline refresh after a
   source/driver change creates a new table; it does not overwrite this one.
 
 Exit: two clean external backends have reproducible perf+memory rows and the
@@ -814,25 +820,25 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | TBD | TBD | TBD | hipEngine > both |
-| 512 AR transition tok/s | TBD | TBD | TBD | hipEngine > both |
-| 512 peak VRAM delta GiB | TBD | TBD | TBD | hipEngine <= lower |
-| 1024 prefill tok/s | TBD | TBD | TBD | hipEngine > both |
-| 1024 AR transition tok/s | TBD | TBD | TBD | hipEngine > both |
-| 1024 peak VRAM delta GiB | TBD | TBD | TBD | hipEngine <= lower |
-| 4096 prefill tok/s | TBD | TBD | TBD | hipEngine > both |
-| 4096 AR transition tok/s | TBD | TBD | TBD | hipEngine > both |
-| 4096 peak VRAM delta GiB | TBD | TBD | TBD | hipEngine <= lower |
-| Natural true AR tok/s | TBD | TBD | TBD | disclosed same protocol |
-| Selected MTP budget | TBD | TBD | TBD | independently selected |
-| Natural MTP transition tok/s | TBD | TBD | TBD | hipEngine > both |
-| Natural MTP / true AR | TBD | TBD | TBD | >1.0; absolute gate still binds |
-| Natural MTP peak VRAM delta GiB | TBD | TBD | TBD | hipEngine <= lower |
-| Alternate-layout weight bytes | 0 expected | 0 expected | TBD | exactly 0 |
-| Duplicate logical weight bytes | 0 expected | 0 expected | TBD | exactly 0 |
-| Minimum free VRAM at peak | TBD | TBD | TBD | hipEngine >=1.0 GiB |
+| 512 prefill tok/s | 964.606 | 870.872 | TBD | >=974.252 (1% margin) |
+| 512 AR transition tok/s | 33.025 | 13.391 | TBD | >=33.356 (1% margin) |
+| 512 peak VRAM delta GiB | 16.348 | **15.690** | TBD | <=15.690 |
+| 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
+| 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |
+| 1024 peak VRAM delta GiB | 16.373 | **15.700** | TBD | <=15.700 |
+| 4096 prefill tok/s | 946.733 | 835.765 | TBD | >=956.201 (1% margin) |
+| 4096 AR transition tok/s | 32.560 | 13.309 | TBD | >=32.886 (1% margin) |
+| 4096 peak VRAM delta GiB | 16.562 | **15.912** | TBD | <=15.912 |
+| Natural true AR tok/s | 31.576 | 13.386 | TBD | disclosed same protocol |
+| Selected MTP budget | B2 | B4 | TBD | independently selected |
+| Natural MTP transition tok/s | 46.863 | **81.952** | TBD | >=82.771 (1% margin) |
+| Natural MTP / true AR | 1.4841x | 6.1223x | TBD | >1.0; absolute gate still binds |
+| Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | TBD | <=16.673 |
+| Alternate-layout weight bytes | not audited | not audited | TBD | exactly 0 |
+| Duplicate logical weight bytes | not audited | not audited | TBD | exactly 0 |
+| Minimum free VRAM at selected MTP peak | 6.957 GiB | 7.251 GiB | TBD | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | TBD | exactly 0 |
-| Cold/warm/transport lifecycle | TBD | TBD | TBD | all pass |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | TBD | all pass |
 
 W7900 safeguard:
 
