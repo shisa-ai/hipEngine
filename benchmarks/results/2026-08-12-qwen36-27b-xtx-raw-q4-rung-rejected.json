@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "rejected_no_runtime_change",
+  "title": "Qwen3.6-27B RX 7900 XTX sole-raw Q4 rung and exact T16 tile-pressure rejection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "scope": "Actual-weight component screens used only to decide whether the predeclared sole-raw Q4 rung or a smaller exact T16 fused output tile warranted runtime integration. No kernel, wrapper, registry key, materialization policy, allocation, environment flag, or package default changed.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "software": {
+    "hipengine_commit": "9553381e4",
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "llama_cpp_reference_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "tracked_clean_before_screen": true
+  },
+  "trigger": {
+    "source": "benchmarks/results/2026-08-12-qwen36-27b-xtx-b3-target-verify-profile.json",
+    "target_verify_wall_ms": 293.49606,
+    "q4_t16_dense_ms": 113.776507,
+    "q4_share_of_target_wall_percent": 38.76594016287646,
+    "dominant_q4_fused_ms": 62.310683,
+    "dominant_q4_fused_calls": 448
+  },
+  "source_audit": {
+    "cuda_hip": [
+      "ggml/src/ggml-cuda/mmvq.cu",
+      "ggml/src/ggml-cuda/vecdotq.cuh"
+    ],
+    "vulkan": [
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_funcs.glsl",
+      "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_base.glsl"
+    ],
+    "observed_mechanisms": [
+      "raw block_q4_K source bytes with prequantized Q8_1 activations and RDNA3 sudot4",
+      "one wave per output-column group with rows 1-8 accumulated in registers",
+      "Vulkan Q4_K minimum term using the stored Q8_1 block sum split across two K16 contributions",
+      "CUDA/HIP Q4_K minimum term recomputing the corresponding signed integer sums",
+      "optional gate pointer and SWIGLU fusion in llama.cpp MMVQ only for the single-column destination case"
+    ]
+  },
+  "candidate_ladder": [
+    "raw Q4_K plus Q8_1 integer-sum col1/2/4/8 rows4",
+    "Vulkan stored-sum arithmetic col1/2/4/8 rows4",
+    "two-wave raw gate/up plus SiLU and correct split-kernel fallback",
+    "raw Q4_K WMMA prefill tiles 16x16 through 64x32",
+    "exact compact-T16 fused gate/up plus SiLU with output tile reduced from eight to four columns"
+  ],
+  "cache_discipline": {
+    "problem": "A repeated 30-50 MiB single matrix fits in the RX 7900 XTX cache and made several raw candidates appear 8-23% faster. Production streams many distinct layer weights, and the 100+ MiB gate/up pair already reversed that result.",
+    "adjudication": "Repeat the fastest Vulkan-arithmetic candidate over distinct same-role pools whose raw and T16 payloads each exceed approximately 96 MiB. Report per-weight event medians; do not retain the favorable one-weight numbers.",
+    "pool_protocol": {
+      "rows": 4,
+      "samples": 11,
+      "warmup_pool_iterations": 15,
+      "burst_pool_iterations": 10,
+      "counterbalanced": true,
+      "q8_quantization_included_per_weight": true
+    }
+  },
+  "cache_cold_verifier_pools": [
+    {
+      "role": "attn_gate",
+      "weights": 6,
+      "raw_pool_mib": 101.25,
+      "t16_pool_mib": 104.0625,
+      "t16_us_per_weight": 26.309516,
+      "raw_q8_inclusive_us_per_weight": 43.602316,
+      "raw_over_t16_speedup": 0.603397,
+      "raw_delta_percent": 65.728
+    },
+    {
+      "role": "attn_output",
+      "weights": 6,
+      "raw_pool_mib": 101.25,
+      "t16_pool_mib": 104.0625,
+      "t16_us_per_weight": 30.193549,
+      "raw_q8_inclusive_us_per_weight": 35.599581,
+      "raw_over_t16_speedup": 0.848143,
+      "raw_delta_percent": 17.905
+    },
+    {
+      "role": "attn_q",
+      "weights": 4,
+      "raw_pool_mib": 135.0,
+      "t16_pool_mib": 138.75,
+      "t16_us_per_weight": 50.253373,
+      "raw_q8_inclusive_us_per_weight": 64.919502,
+      "raw_over_t16_speedup": 0.774087,
+      "raw_delta_percent": 29.185
+    },
+    {
+      "role": "attn_qkv",
+      "weights": 4,
+      "raw_pool_mib": 112.5,
+      "t16_pool_mib": 115.625,
+      "t16_us_per_weight": 45.291376,
+      "raw_q8_inclusive_us_per_weight": 56.690449,
+      "raw_over_t16_speedup": 0.798924,
+      "raw_delta_percent": 25.168
+    },
+    {
+      "role": "ffn_down",
+      "weights": 3,
+      "raw_pool_mib": 143.4375,
+      "t16_pool_mib": 147.421875,
+      "t16_us_per_weight": 84.289932,
+      "raw_q8_inclusive_us_per_weight": 94.854037,
+      "raw_over_t16_speedup": 0.888628,
+      "raw_delta_percent": 12.533
+    }
+  ],
+  "fused_ffn": {
+    "shape": {
+      "rows": 4,
+      "in_features": 5120,
+      "out_features": 17408
+    },
+    "t16_fused_us": 129.413,
+    "raw_split_inclusive_us": 166.988,
+    "raw_split_over_t16_speedup": 0.774985,
+    "raw_dual_inclusive_us": 174.145,
+    "raw_dual_over_t16_speedup": 0.743135,
+    "correct_split_quality": {
+      "max_kl": 1.646347396415005e-08,
+      "top1_agreement": 1.0
+    },
+    "disposable_dual_quality": {
+      "max_kl": 4.133583721447758e-05,
+      "top1_agreement": 0.25,
+      "decision": "failed independently and was not considered for integration"
+    }
+  },
+  "exact_t16_tile_pressure": {
+    "shape": {
+      "rows": 4,
+      "in_features": 5120,
+      "out_features": 17408
+    },
+    "tile8_us": 144.799118,
+    "tile4_us": 158.701639,
+    "tile4_over_tile8_speedup": 0.912398,
+    "tile4_delta_percent": 9.601,
+    "bf16_mismatches": 0,
+    "decision": "reject exact tile4 and keep tile8"
+  },
+  "prefill_and_operation_completeness": {
+    "rows": 512,
+    "result": "The existing compact-T16 path remained fastest for attn_gate, attn_qkv, attn_q, attn_output, ffn_down, and ffn_gate across the raw 16x16 through 64x32 tile screen. Raw won only the small attn_k one-weight prefill leaf (191.289 versus 300.062 us), but its inclusive rows4 verifier route lost (11.466 versus 9.182 us). No tensor role therefore qualified raw as an operation-complete canonical format.",
+    "hybrid_rule": "No raw role was retained. A favorable cached leaf cannot justify different canonical bytes when the same role regresses another required operation, and no logical tensor may own both layouts."
+  },
+  "memory_ceiling": {
+    "target_rank2_q4_tensors": 288,
+    "raw_q4_bytes": 10498867200,
+    "t16_q4_bytes": 10790502400,
+    "maximum_raw_savings_bytes": 291635200,
+    "maximum_raw_savings_gib": 0.2716064453125,
+    "ar_whole_device_gap_to_lower_llamacpp_floor_gib": {
+      "512/128": 0.40587615966796875,
+      "1024/128": 0.6205253601074219,
+      "4096/128": 1.2064781188964844
+    },
+    "mtp_gap_to_vulkan_floor_gib": 0.509,
+    "conclusion": "Even an otherwise free all-Q4 raw conversion cannot meet any external memory gate by itself. A role subset would save less."
+  },
+  "correctness_disclosure": {
+    "vulkan_arithmetic": "Component KL stayed below 1.33e-6, but projection-local top-1 was 0.75 in isolated attn_qkv and attn_output cases. Because every cache-cold performance row already failed, the changed-association route was rejected before a full model quality admission run.",
+    "production": "Unchanged exact compact-T16 production remains the correctness authority."
+  },
+  "decision": {
+    "action": "reject_sole_raw_q4_and_exact_t16_col4",
+    "reason": "Every production-representative cache-cold raw verifier pool regressed 12.53-65.73%, fused raw regressed 29.03-34.56%, compact T16 retained every broad prefill role, and maximum raw residency savings are insufficient for every memory gate. Exact T16 tile4 also regressed 9.60%.",
+    "retained_path": "sole compact Q4T16 with exact tile8 fused gate/up+SiLU and shared-B dense prefill",
+    "runtime_changed": false,
+    "reopen_condition": "A new operation-complete source format or producer-fused transform that wins cache-cold verifier and populated prefill while saving enough whole-device memory; repeated one-weight cache-resident results are not a reopen condition."
+  },
+  "commands": {
+    "pool_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.:/tmp uv run python /tmp/screen_qwen36_q4_raw_q8_pool.py --role <role> --pool <count> --cols <1|2|4> --candidate-library /tmp/qwen36_q4_raw_q8_source_output_tile_vkmin.so --samples 11 --warmup 15 --burst 10 --output <json>",
+    "fused": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.:/tmp uv run python /tmp/screen_qwen36_q4_raw_q8_dual_col4.py --candidate-library /tmp/qwen36_q4_raw_q8_dual_col4_vkmin.so --single-library /tmp/qwen36_q4_raw_q8_source_output_tile_vkmin.so --samples 15 --warmup 50 --burst 50 --output /tmp/qwen36-q4-raw-q8-dual-col4-vkmin-xtx.json",
+    "t16_tile4": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.:/tmp uv run python /tmp/screen_qwen36_q4_t16_dual_col4.py --candidate-library /tmp/gguf_t16_selected_gemv_dual_col4.so --samples 21 --warmup 100 --burst 100 --output /tmp/qwen36-q4-t16-dual-col4-xtx.json"
+  },
+  "raw_sources": {
+    "/tmp/qwen36-q4-raw-q8-dual-col4-vkmin-xtx.json": "e4ef2a6016afd0b1a1c43bee554e37567dd8626e5639c9a70cc19260f7b7b82d",
+    "/tmp/qwen36-attn_gate-q4-raw-q8-pool-xtx.json": "040e7d1d9fe15a8a0829b9a5052fa938a46b8325aca8598db47689602c87db51",
+    "/tmp/qwen36-attn_output-q4-raw-q8-pool-xtx.json": "4c6daef7c298380b6d686814403bb9c2260d88ed23d4021408b256c3b8563a42",
+    "/tmp/qwen36-attn_qkv-q4-raw-q8-pool-xtx.json": "10abd47c68b3f8856f987ce41e3fac7666df3c2c6d0fb70f8b1036cf0259ef3b",
+    "/tmp/qwen36-attn_q-q4-raw-q8-pool-xtx.json": "48423c70fcca4cfa1511284b8d00642b927df676a6671ff5e98ccce70272164f",
+    "/tmp/qwen36-ffn_down-q4-raw-q8-pool-xtx.json": "22acbd8ab1579fa65b65df1a504408612b7eaad0dfb3e11146923f0aba8f2263",
+    "/tmp/qwen36-q4-t16-dual-col4-xtx.json": "3d0211e093a69a4f195438f84debd728b864ca0a500949e40cfccde0e0f7a237"
+  }
+}

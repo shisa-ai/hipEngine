@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; all AR shapes and natural B1-B3 fit exactly, 512/1K AR decode pass, while prefill/memory, 4K decode, Vulkan-MTP parity, repeated-suite variance, and final W7900 closure remain open.**
+Status: **in progress; all AR shapes and natural B1-B3 fit exactly, 512/1K AR decode pass, and the sole-raw Q4 rung is rejected, while prefill/memory, 4K decode, Vulkan-MTP parity, repeated-suite variance, and final W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -754,27 +754,37 @@ Exit: correctness is green before any keep is based on performance.
   512/128, 1024/128, and 4096/128 matrix includes first-token and full
   128-transition execution, records tracked/sysfs peaks, and closes cleanly.
 - [x] **P6.2 Compare sole T16 to frozen floors.** Sole T16 fits every shape and
-  passes 512/1K decode, but fails every prefill/memory gate and 4K decode. The
-  predeclared raw-GGUF rung is therefore required.
+  passes 512/1K decode, but fails every prefill/memory gate and 4K decode. This
+  triggered the predeclared raw-GGUF evaluation in P6.4.
 - [x] **P6.3 Profile only the failing column.** The latest cache-only 512 trace
   reconciles 700.435 ms kernel sum against 739.837 ms profiled wall: Q4 is
   421.447 ms (60.17%), Q6 131.298 ms (18.75%), and Q5 63.647 ms (9.09%). The
   output-major LDS keep reduced Q4 from the prior 433.351 ms (-2.747%). Decode
   was separately compared at complete-wall scope before PM4 promotion.
-- [ ] **P6.4 Raw-GGUF rung if needed.** Port/audit MMVQ for c1 and MMQ for
-  prefill/verifier one family at a time, with exact source commit, RED fixture,
-  registry key, same-layout fallback, and actual-weight component evidence.
-- [ ] **P6.5 No hybrid salvage.** A raw win for one role and T16 win for another
-  may define different canonical formats by tensor role only if each logical
-  tensor still has one payload and the rule is architecture/shape based. Never
-  retain both formats for one tensor or tune a favorable arbitrary layer set.
-- [ ] **P6.6 Re-run complete shapes after each structural keep.** Exact small
-  cycle-wall wins are retained under project policy, but closure still requires
-  every requested shape and both external backends.
+- [x] **P6.4 Raw-GGUF rung if needed.** The source audit covered llama.cpp
+  `c8e03ce8122b` CUDA/HIP MMVQ and Vulkan integer-dot MMVQ/MMQ arithmetic.
+  Actual-weight raw-Q4/Q8_1 col1/2/4/8, fused gate/up+SiLU, and raw WMMA
+  prefill were screened before runtime integration. Favorable repeated
+  one-weight results were cache artifacts: distinct same-role pools larger
+  than the XTX cache regressed every tested rows-4 family by **12.53-65.73%**,
+  and raw fused FFN regressed **29.03-34.56%**. Exact T16 tile4 also regressed
+  **9.60%** versus tile8. No source body or route was retained.
+- [x] **P6.5 No hybrid salvage.** Raw won only a cache-resident `attn_k`
+  prefill leaf while losing that role's required rows-4 verifier operation.
+  Every production-representative verifier pool preferred T16. Moreover,
+  converting all 288 target Q4 tensors would save at most **0.2716 GiB**,
+  below every remaining AR/MTP memory gap; any role subset saves less. No
+  mixed canonical policy or dual payload was admitted.
+- [x] **P6.6 Re-run complete shapes after each structural keep.** The final
+  engine matrix followed the retained shared-B/arena/PM4 changes. The raw and
+  tile4 candidates made no runtime change, so no additional broad rerun is
+  warranted.
 
 Current exit status: all shapes fit, but closure fails all prefill/memory rows
-and 4K decode. Evidence:
-[`complete engine AR matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json).
+and 4K decode; both operation-complete Q4 representation rungs are now
+adjudicated and compact T16 remains production. Evidence:
+[`complete engine AR matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json),
+[`rejected raw-Q4 rung`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-raw-q4-rung-rejected.json).
 
 ### P7 — Compatible natural MTP closure
 
@@ -803,13 +813,17 @@ and 4K decode. Evidence:
   captured seven exact target cycles: 267.172 / 293.496 ms (91.03%) of the
   target ROCTX wall is kernel time. Dense Q4 T16 owns 113.777 ms (38.77% of
   wall), Q6 qmicro-planar 80.002 ms (27.26%), and Q5 T16 19.961 ms (6.80%).
-  The next iteration therefore targets actual-weight rows=4 Q4 verifier
-  primitives, not proposal or host scheduling; profiling remains non-topline.
+  The resulting actual-weight Q4 rung found that repeated one-weight wins were
+  cache artifacts: cache-cold raw pools lost **12.53-65.73%**, fused raw lost
+  **29.03-34.56%**, and exact T16 tile4 lost **9.60%**. No Q4 verifier candidate
+  was integrated; profiling remains non-topline and the remaining Vulkan gap is
+  an explicit blocker rather than an unmeasured Q4 proposal.
 
 Current exit status: compatible B3 is exact and faster than llama.cpp HIP, but
 Vulkan speed/memory and the final repeated-suite variance gates fail. Evidence:
 [`llama-compatible natural MTP matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
-[`warmed B3 target-verify profile`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-b3-target-verify-profile.json).
+[`warmed B3 target-verify profile`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-b3-target-verify-profile.json),
+[`rejected raw-Q4 rung`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-raw-q4-rung-rejected.json).
 
 ### P8 — W7900 non-regression and default promotion
 
