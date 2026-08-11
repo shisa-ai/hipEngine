@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; the 512/128 decode gate now passes with sole-T16 + mapped-host + PM4, while prefill, memory, longer shapes, MTP, and W7900 closure remain open.**
+Status: **in progress; the 512/128 decode gate passes with sole-T16 + mapped-host + PM4 and exact prefill is now 730.589 tok/s, while prefill, memory, longer shapes, MTP, and W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -672,16 +672,19 @@ coverage and M512/M1024/M4096/tail prefill pass, and the complete model first
 fits the XTX. A sole device-visible mapped GGUF mmap subsequently removes the
 715,161,600-byte root token-table VRAM shadow: tracked residency falls 16.749
 to 16.083 GiB and same-workload sampled peak delta falls 17.347 to 16.679 GiB
-(the standard 512/128 PM4 row is 16.712 GiB). Three 512/128
-rearmed runs now reach 719.232 prefill / 33.485 PM4 decode tok/s after a
-model-scoped dense scratch arena cuts physical bulk scratch 0.589 to 0.111 GiB
-and a model-scoped small-weight arena reduces physical weight owners 850 to
-370. Tracked peak is 15.605 GiB and sampled peak delta is 16.171 GiB. Decode
+(the standard 512/128 PM4 row is 16.712 GiB). A model-scoped dense scratch
+arena cuts physical bulk scratch 0.589 to 0.111 GiB and a model-scoped
+small-weight arena reduces physical weight owners 850 to 370. An output-major
+Q4 shared-B slab then cuts the traced 288-call Q4 family 433.351 to 421.447 ms
+and raises exact 512/128 prefill 719.232 to 730.589 tok/s without changing
+decode or residency. The three rearmed runs reach 33.507 PM4 decode tok/s;
+tracked peak is 15.605 GiB and sampled peak delta remains 16.171 GiB. Decode
 passes its frozen gate, while prefill and memory do not. Evidence:
 [`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`mapped-host/PM4 partial pass`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
 [`dense scratch liveness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-dense-prefill-scratch-liveness.json),
-and [`small-weight arena`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json).
+[`small-weight arena`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json),
+and [`Q4T16 output-major LDS`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json).
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 
@@ -716,7 +719,9 @@ weight bytes.
   T16 producer at rows 16/33/512/1024/4096 and passes its independent CPU gate;
   Q5 is exact to selected T16; planar Q6 is exact to legacy T16 and passes the
   CPU quality gate. Cache-only rocprof names all three retained dense bodies
-  with scratch0; mapped-host Q4 embedding is bit-exact to a device owner.
+  with scratch0; mapped-host Q4 embedding is bit-exact to a device owner. The
+  output-major Q4 shared-B slab keeps those exact outputs while replacing 132
+  scalar LDS instructions with 28 b128 instructions at unchanged resources.
 - [ ] **P5.3 Full eager/graph AR state.** At 512, 1024, and 4096, compare eager
   and production graph/transport logits, hidden, Conv/GDN, KV+`KVLiveSpans`,
   positions, final IDs, and teardown. Partial evidence: 512/128 HIP graph and
@@ -742,10 +747,11 @@ Exit: correctness is green before any keep is based on performance.
   512/128, 1024/128, 4096/128 matrix. Record tracked and whole-device peaks.
 - [ ] **P6.2 Compare sole T16 to frozen floors.** If it beats both backends and
   meets lower memory peak, skip raw-layout work.
-- [x] **P6.3 Profile only the failing column.** A cache-only selected-region
-  512 trace reconciles 709.241 ms kernel sum against 760.887 ms profiled wall:
-  Q4 is 433.351 ms (61.10%), Q6 130.514 ms (18.40%), Q5 63.502 ms (8.95%).
-  Decode was separately compared at complete-wall scope before PM4 promotion.
+- [x] **P6.3 Profile only the failing column.** The latest cache-only 512 trace
+  reconciles 700.435 ms kernel sum against 739.837 ms profiled wall: Q4 is
+  421.447 ms (60.17%), Q6 131.298 ms (18.75%), and Q5 63.647 ms (9.09%). The
+  output-major LDS keep reduced Q4 from the prior 433.351 ms (-2.747%). Decode
+  was separately compared at complete-wall scope before PM4 promotion.
 - [ ] **P6.4 Raw-GGUF rung if needed.** Port/audit MMVQ for c1 and MMQ for
   prefill/verifier one family at a time, with exact source commit, RED fixture,
   registry key, same-layout fallback, and actual-weight component evidence.
@@ -851,8 +857,8 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **719.232** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.485 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 prefill tok/s | 964.606 | 870.872 | **730.589** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.507 PM4** | >=33.356 (1% margin) — **pass** |
 | 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.171** | <=15.690 — fail |
 | 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
 | 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |

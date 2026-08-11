@@ -592,8 +592,10 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
 
 // Cooperative dense Q4T16 producer. Four waves keep the same 48-column x
 // 64-row arithmetic owner as the single-wave kernel, but share one decoded
-// K256 weight slab through LDS across 256 input rows. Every output retains the
-// same FP16 operand, K16 WMMA sequence, FP32 accumulator, and BF16 store.
+// K256 weight slab through LDS across 256 input rows. The slab is output-major
+// so one lane's K16 B fragment is contiguous and compiles to vector LDS loads.
+// Every output retains the same FP16 operand, K16 WMMA sequence, FP32
+// accumulator, and BF16 store.
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -681,10 +683,10 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
               tile_pair];
           const int k = sb * Q4_SUBBLOCK + lane32;
           const int col0 = decode_pair * 2;
-          weight_tile[k * OUT_COLS_PER_BLOCK + col0] =
+          weight_tile[col0 * QK_K + k] =
               static_cast<half_t>(
                   scale0 * static_cast<float>(packed & 0x0Fu) - min0);
-          weight_tile[k * OUT_COLS_PER_BLOCK + col0 + 1] =
+          weight_tile[(col0 + 1) * QK_K + k] =
               static_cast<half_t>(
                   scale1 * static_cast<float>(packed >> 4) - min1);
         }
@@ -716,7 +718,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
 #pragma unroll
           for (int kk = 0; kk < 16; ++kk) {
             b_reg[kk] = weight_tile[
-                (k_off + kk) * OUT_COLS_PER_BLOCK + tm * T16_COLS + lane16];
+                (tm * T16_COLS + lane16) * QK_K + k_off + kk];
           }
 #pragma unroll
           for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
