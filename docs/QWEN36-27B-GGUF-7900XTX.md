@@ -567,8 +567,11 @@ atomic commit.
   Do not benchmark a partial model. Evidence: the same artifact records both
   entries failing target materialization at `blk.49.ffn_gate.weight.pack8.qweight`
   after 24,462,066,048 tracked bytes, with zero tracked bytes after cleanup.
-- [ ] **P0.3 Build clean same-commit llama.cpp HIP and Vulkan.** Use the process
-  in section 5.1; never use the dirty/stale HIP tree for the headline.
+- [x] **P0.3 Build clean same-commit llama.cpp HIP and Vulkan.** Use the process
+  in section 5.1; never use the dirty/stale HIP tree for the headline. Both
+  clean `c8e03ce8122b` builds and their cache/binary/library identities are
+  frozen in
+  [`2026-08-12 clean llama.cpp builds`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-builds.json).
 - [x] **P0.4 Extend server memory sampling.** Reuse
   `hipengine.util.amdgpu_vram.VramSampler` in `llamacpp_mtp_bench.py` (or a
   small shared wrapper) so base and each MTP server process record baseline,

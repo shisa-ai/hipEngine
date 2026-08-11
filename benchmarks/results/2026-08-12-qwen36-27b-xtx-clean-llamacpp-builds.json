@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "kind": "qwen36_27b_xtx_clean_same_commit_llamacpp_builds",
+  "created_at": "2026-08-12T01:20:00+09:00",
+  "status": "complete",
+  "performance_claim": false,
+  "source": {
+    "reference_tree": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "worktree": "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "describe": "gguf-v0.19.0-1244-gc8e03ce81",
+    "detached": true,
+    "tracked_clean_after_build": true
+  },
+  "build_environment": {
+    "cmake": "4.3.4",
+    "ninja": "1.13.0.git.kitware.jobserver-pipe-1",
+    "build_type": "Release",
+    "jobs": 16,
+    "therock_python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "therock_root": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "hip_version": "7.2.53211-3d9ef42",
+    "hip_compiler": "AMD clang 22.0.0git",
+    "hip_compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "vulkan_driver": "RADV",
+    "mesa": "26.1.4-arch3.1",
+    "hip_runtime_rule": "Configure, build, and retained HIP runs use the same env -i TheRock root/library set. Ambient /opt/rocm linkage is excluded."
+  },
+  "configure": {
+    "hip": {
+      "command": "env -i <TheRock component environment> cmake -S $ROOT -B $ROOT/build-hip -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DGGML_VULKAN=OFF -DAMDGPU_TARGETS=gfx1100",
+      "build_command": "env -i <same TheRock component environment> cmake --build $ROOT/build-hip -j 16 --target llama-bench llama-server",
+      "cmake_cache_path": "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/CMakeCache.txt",
+      "cmake_cache_sha256": "f61dcffa35150d54bd43cbd4ecf0fa6fe14fb3cae492a5edb82a2b644ab9651c",
+      "cache_contract": {
+        "AMDGPU_TARGETS": "gfx1100",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_HIP_COMPILER": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin/clang++",
+        "GGML_HIP": true,
+        "GGML_VULKAN": false
+      },
+      "hermetic_runtime_linkage": {
+        "libhipblas.so.3": "_rocm_sdk_devel/lib/libhipblas.so.3",
+        "librocblas.so.5": "_rocm_sdk_devel/lib/librocblas.so.5",
+        "libamdhip64.so.7": "_rocm_sdk_devel/lib/libamdhip64.so.7",
+        "libhipblaslt.so.1": "_rocm_sdk_devel/lib/libhipblaslt.so.1",
+        "libhsa-runtime64.so.1": "_rocm_sdk_devel/lib/libhsa-runtime64.so.1",
+        "all_found": true
+      }
+    },
+    "vulkan": {
+      "command": "cmake -S $ROOT -B $ROOT/build-vulkan -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=OFF -DGGML_VULKAN=ON",
+      "build_command": "cmake --build $ROOT/build-vulkan -j 16 --target llama-bench llama-server",
+      "cmake_cache_path": "/tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/CMakeCache.txt",
+      "cmake_cache_sha256": "ca0fa0b568634dd55651e256f2afb1f667cf2f24b52a6d48533b13a668965c8a",
+      "cache_contract": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GGML_HIP": false,
+        "GGML_VULKAN": true
+      },
+      "libvulkan": "/usr/lib/libvulkan.so.1"
+    }
+  },
+  "sha256": {
+    "hip": {
+      "llama-bench": "73e31b13cffc7146de806809d9f3bbd11136f430085cab83145c86a5dd5a5cc8",
+      "llama-server": "299f5903fbf45fec62a894c4d7de19d391b67e85678fcbbfd7657af690767780",
+      "libggml-base.so.0.18.1": "194905dd0487c0ca10b7488758c31eba92570d49e376667f539d648da83a9542",
+      "libggml-cpu.so.0.18.1": "ead8b258e5afd67e08959216b6c41ec168a1035ad9475bd24fc7917473feef6c",
+      "libggml-hip.so.0.18.1": "c02c4ffe376d700d8af7623373ba5db9b98032a8422b6ca897c019ea5e235f20",
+      "libggml.so.0.18.1": "6b5a06265d237df5c7b361b2ce9ef1012087caa090f763a247bf7ca78e9ef2e3",
+      "libllama-bench-impl.so": "d211117087c1e012710a3ab8e1f67b75316d0be6c1aad3d61f2abb19696b83cc",
+      "libllama-common.so.0.0.10290": "f8549c9569e94acdc3f5af4f7564a7beac5f3ca48c1c79f098b4b6d2e23c5888",
+      "libllama-server-impl.so": "3e644a3afa5ee61092e5d2ea3a6ee6ebb3615842604636c01d8abdd048a3c0de",
+      "libllama.so.0.0.10290": "b046492327e8b5dd409343f5ab50ad387662cb3e9800ae3bf0fb996683d9e4a3",
+      "libmtmd.so.0.0.10290": "9544df9f876fe78a6f0a88c1d724061c3338e6055d9a6d3db6b05358d4a82699"
+    },
+    "vulkan": {
+      "llama-bench": "abb93af3055ce6049772e7acb8f2000d4bc17bd55f941382f1424a8ffeea7787",
+      "llama-server": "9f19ee89045773e005ea3592ece680dc03d7b5164212c19f6aacaefd48c41927",
+      "libggml-base.so.0.18.1": "194905dd0487c0ca10b7488758c31eba92570d49e376667f539d648da83a9542",
+      "libggml-cpu.so.0.18.1": "650a829c05dc11e4270c2995ce24049d683769a901a3f650a29b28aae8d01f61",
+      "libggml-vulkan.so.0.18.1": "a8f7953702ddc5af73ce2de607667fe00770a84a17bd8decf6e8af52992d9d4f",
+      "libggml.so.0.18.1": "e595ad259854ce98f8223fb112a30c9afea041102e9b0bb97762be6c54fd2593",
+      "libllama-bench-impl.so": "e37d7b9a477911b1488ac7aecc807286ea9bee6173c71b2ae613edd2e35c67d5",
+      "libllama-common.so.0.0.10290": "671e801b0da779f49721bcf80df2bec49918012819c47596bfb661cf73fdfac3",
+      "libllama-server-impl.so": "f8e7b9326d74ba0cc3e076b3066fb64e501b4acdb9a904a2d4afa94e828c23d2",
+      "libllama.so.0.0.10290": "d544d0fbb0578ab0ee963fa5f795e0333f0ae8365f9757db08ddc71d711227b1",
+      "libmtmd.so.0.0.10290": "bf0824e4526febfadd624990e4a6086a594bc6f283034b258c16ed4d953b4bc6"
+    }
+  },
+  "device_enumeration_smoke": {
+    "hip": [
+      "ROCm0 AMD Radeon Pro W7900 gfx1100",
+      "ROCm1 AMD Radeon RX 7900 XTX gfx1100"
+    ],
+    "vulkan": [
+      "Vulkan0 AMD Radeon Pro W7900 RADV NAVI31",
+      "Vulkan1 AMD Radeon RX 7900 XTX RADV NAVI31"
+    ],
+    "expected_xtx_indices_matched": true
+  },
+  "next": "Run all XTX comparator shapes serially and freeze speed/memory floors before hipEngine residency changes."
+}
