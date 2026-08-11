@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_partial_gate_pass",
+  "title": "Qwen3.6-27B XTX model-scoped small-weight arena",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "policy": "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+    "scope": "Qwen3.6-27B/MOSTLY_Q4_K_M private c1 on gfx1100",
+    "max_allocation_bytes": 16777216,
+    "alignment_bytes": 4096,
+    "selected_logical_allocation_count": 481,
+    "selected_requested_bytes": 212105216,
+    "arena_owner_bytes": 212750336,
+    "alignment_padding_bytes": 645120,
+    "large_dedicated_allocation_count": 369,
+    "large_dedicated_requested_bytes": 16194211840,
+    "physical_weight_owner_count_before": 850,
+    "physical_weight_owner_count_after": 370,
+    "large_payloads_unchanged": true,
+    "kernel_associations_unchanged": true,
+    "planner_fail_closed": true
+  },
+  "memory": {
+    "same_workload": "512/1 eager",
+    "sampled_peak_delta_before_gib": 16.18115234375,
+    "sampled_peak_delta_after_gib": 16.13818359375,
+    "sampled_peak_delta_reduction_gib": 0.04296875,
+    "sampled_peak_delta_reduction_bytes": 46137344,
+    "standard_512_128_peak_delta_before_gib": 16.21435546875,
+    "standard_512_128_peak_delta_after_gib": 16.17138671875,
+    "standard_peak_delta_reduction_percent": 0.2650043665492263,
+    "tracked_peak_before_gib": 15.60486215353012,
+    "tracked_peak_after_gib": 15.605462968349457,
+    "tracked_padding_increase_bytes": 645120,
+    "tracked_after_close_bytes": 0,
+    "sampled_after_close_gib": 0.24951171875
+  },
+  "performance_512_128": {
+    "transport": "pm4",
+    "measured_runs": 3,
+    "prefill_tok_s_samples": [
+      703.0332222320059,
+      727.7805876212802,
+      719.2324269544397
+    ],
+    "prefill_tok_s_median": 719.2324269544397,
+    "prefill_delta_percent": -0.2200302024579437,
+    "prefill_prior_stdev_percent": 1.965727638555934,
+    "decode_tok_s_samples": [
+      33.515375957987125,
+      33.470045480319094,
+      33.48549336855728
+    ],
+    "decode_tok_s_median": 33.48549336855728,
+    "decode_delta_percent": 0.1193051238798315,
+    "decode_stdev_percent": 0.06882113224395342,
+    "final_logit_samples": [
+      24.12371826171875,
+      24.12371826171875,
+      24.12371826171875
+    ],
+    "final_token_id": 9707,
+    "replay_launches_total": 384,
+    "native_fallbacks": 0,
+    "load_seconds": 82.06163111655042,
+    "source": "/tmp/qwen36-27b-xtx-small-weight-arena/pm4-default-512x128-r3.json"
+  },
+  "frozen_gates_512_128": {
+    "prefill_gate_tok_s": 974.252,
+    "prefill_observed_tok_s": 719.2324269544397,
+    "prefill_passed": false,
+    "decode_gate_tok_s": 33.355,
+    "decode_observed_tok_s": 33.48549336855728,
+    "decode_passed": true,
+    "memory_gate_gib": 15.69,
+    "memory_observed_peak_delta_gib": 16.17138671875,
+    "memory_passed": false,
+    "campaign_closed": false
+  },
+  "commands": {
+    "benchmark": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_host_token_embedding.py"
+  },
+  "validation": {
+    "small_weight_policy_tests": "15 passed host-embedding/ownership file",
+    "three_reset_exact_final_logit": true,
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "pm4_native_fallbacks": 0,
+    "tracked_teardown_zero": true
+  },
+  "decision": "Keep the model-scoped small-weight arena. It trades 645,120 tracked padding bytes for a measured 46,137,344-byte whole-device reduction, preserves exact output and passing decode, and does not expose the pointer-layout change to unmeasured models."
+}
