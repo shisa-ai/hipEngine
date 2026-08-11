@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "kind": "qwen36_27b_xtx_pre_single_layout_admission_blocker",
+  "created_at": "2026-08-12T01:06:04+09:00",
+  "status": "blocked_oom_captured",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "summary": "The package-default duplicated pack8+T16 route cannot finish target-weight admission on the 23.984 GiB RX 7900 XTX. Both the AR and dense-MTP entry paths fail on blk.49.ffn_gate.weight.pack8.qweight after 24,462,066,048 tracked bytes; cleanup returns tracked ownership to zero and sysfs VRAM to its pre-run baseline after settling.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "cpu_threads": 32,
+    "kernel": "Linux epyc 7.1.3-2-cachyos x86_64",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "hip_physical_index": 1,
+    "hip_visible_logical_index": 0,
+    "vulkan_index": 1,
+    "sysfs_card": "card0",
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560,
+    "preflight_vram_used_bytes": 64950272,
+    "performance_level": "auto",
+    "power_cap_sysfs_uw": 0,
+    "power_cap_default_uw": 303000000,
+    "power_cap_max_uw": 348000000,
+    "preflight_idle_power_w": 10.0,
+    "preflight_idle_clocks": {
+      "sclk_mhz": 8,
+      "mclk_mhz": 96,
+      "fclk_mhz": 1200,
+      "socclk_mhz": 750,
+      "pcie": "16.0GT/s x8"
+    }
+  },
+  "software": {
+    "hipengine_commit": "19ebd5fa0d42daf57a8eca7999c1fbefda20aefd",
+    "hipengine_tracked_clean_before_probe": true,
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "rocm_llvm_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "amdgpu_driver_version": "7.1.3-2-cachyos",
+    "vulkan_driver": "RADV",
+    "mesa_version": "26.1.4-arch3.1",
+    "llama_comparator_source": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "llama_comparator_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llama_comparator_tracked_clean": true,
+    "llama_comparator_untracked_only": [
+      ".pi/tasks/"
+    ]
+  },
+  "identity_preflight": {
+    "expected_identity_matched": true,
+    "hip_runtime_loaded": true,
+    "hip_agents": [
+      "gfx1100 W7900",
+      "gfx1100 RX 7900 XTX"
+    ],
+    "vulkan_devices": [
+      "Vulkan0 AMD Radeon Pro W7900 (RADV NAVI31)",
+      "Vulkan1 AMD Radeon RX 7900 XTX (RADV NAVI31)"
+    ],
+    "material_background_vram_use": false
+  },
+  "probe_method": {
+    "description": "A temporary stdlib probe wrapped hipEngine's device-upload helper to record the allocation attempted at failure, sampled /sys/class/drm/card0/device/mem_info_vram_used every 5 ms, and used the production Qwen35GGUFResidentSession target constructor. The MTP mode would then construct Qwen35GGUFNextNDraftProvider, but target admission failed first as expected.",
+    "probe_path": "/tmp/qwen36_27b_xtx_admission_probe.py",
+    "probe_sha256": "24ff8996d277158d3f7f348fb1821ead8bcf83757778f97d76bd9c3491c9459e",
+    "sampling_interval_ms": 5
+  },
+  "admission_probes": {
+    "ar": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 /tmp/qwen36_27b_xtx_admission_probe.py --mode ar --output /tmp/qwen36-27b-xtx-ar-admission.json",
+      "status": "blocked_oom",
+      "elapsed_seconds": 183.19340931018814,
+      "exception": "HipError: HIP error 2: out of memory",
+      "stage": "target weight materialization",
+      "failed_allocation_name": "blk.49.ffn_gate.weight.pack8.qweight",
+      "failed_allocation_bytes": 44564480,
+      "attempted_allocation_count": 1337,
+      "attempted_allocation_bytes": 24506630528,
+      "tracked_before_failed_allocation_bytes": 24462066048,
+      "active_allocations_before_failure": 1336,
+      "tracked_peak_bytes": 24462066048,
+      "sysfs_baseline_used_bytes": 64913408,
+      "sysfs_peak_used_bytes": 25741619200,
+      "sysfs_peak_delta_bytes": 25676705792,
+      "tracked_after_cleanup_bytes": 0,
+      "active_allocations_after_cleanup": 0
+    },
+    "mtp": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 /tmp/qwen36_27b_xtx_admission_probe.py --mode mtp --output /tmp/qwen36-27b-xtx-mtp-admission.json",
+      "status": "blocked_oom",
+      "elapsed_seconds": 187.40992913395166,
+      "exception": "HipError: HIP error 2: out of memory",
+      "stage": "target weight materialization before NextN provider construction",
+      "failed_allocation_name": "blk.49.ffn_gate.weight.pack8.qweight",
+      "failed_allocation_bytes": 44564480,
+      "attempted_allocation_count": 1337,
+      "attempted_allocation_bytes": 24506630528,
+      "tracked_before_failed_allocation_bytes": 24462066048,
+      "active_allocations_before_failure": 1336,
+      "tracked_peak_bytes": 24462066048,
+      "sysfs_baseline_used_bytes": 64913408,
+      "sysfs_peak_used_bytes": 25741647872,
+      "sysfs_peak_delta_bytes": 25676734464,
+      "tracked_after_cleanup_bytes": 0,
+      "active_allocations_after_cleanup": 0
+    }
+  },
+  "post_probe_settle": {
+    "settle_seconds": 2,
+    "sysfs_vram_used_bytes": 64913408,
+    "returned_to_preflight_baseline": true
+  },
+  "decision": {
+    "partial_model_benchmark_allowed": false,
+    "baseline_performance_row": null,
+    "next": "Freeze clean same-commit llama.cpp HIP/Vulkan XTX floors, then replace the 288 dense Q4 pack8+T16 records with one operation-complete sole-resident format."
+  }
+}

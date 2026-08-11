@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **planned; implementation and same-card baselines not started.**
+Status: **in progress; P0.1-P0.2 identity/blocker evidence complete.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -554,13 +554,16 @@ atomic commit.
 
 ### P0 — Freeze comparator and blocker evidence
 
-- [ ] **P0.1 Record immutable XTX identity.** Capture HIP/Vulkan/sysfs mapping,
+- [x] **P0.1 Record immutable XTX identity.** Capture HIP/Vulkan/sysfs mapping,
   total/idle VRAM, clocks/power policy, driver, ROCm, Mesa/RADV, CPU, and host.
-  Stop on identity mismatch or material background VRAM use.
-- [ ] **P0.2 Preserve the current hipEngine blocker.** Re-run the shortest
+  Stop on identity mismatch or material background VRAM use. Evidence:
+  [`2026-08-12 pre-single-layout blocker`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json).
+- [x] **P0.2 Preserve the current hipEngine blocker.** Re-run the shortest
   current-production AR admission and dense MTP admission once, record exact
   OOM stage/current peak/active allocations, and publish a blocked artifact.
-  Do not benchmark a partial model.
+  Do not benchmark a partial model. Evidence: the same artifact records both
+  entries failing target materialization at `blk.49.ffn_gate.weight.pack8.qweight`
+  after 24,462,066,048 tracked bytes, with zero tracked bytes after cleanup.
 - [ ] **P0.3 Build clean same-commit llama.cpp HIP and Vulkan.** Use the process
   in section 5.1; never use the dirty/stale HIP tree for the headline.
 - [ ] **P0.4 Extend server memory sampling.** Reuse
