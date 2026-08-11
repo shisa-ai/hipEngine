@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-09**
+Last updated: **2026-08-11**
 
 ## Root README performance summary
 
@@ -9,37 +9,61 @@ protocols, artifacts, history, rejected experiments, and platform-freshness
 records remain in the model-specific sections below.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-| Model and format | GPU | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
-| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 | 4,096 input tokens; prompt processing only | **440.893** | — |
-| Maple-Preview 2-bit | Radeon 8060S | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
-| Maple-Preview 2-bit | RTX PRO 6000 Blackwell | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+### Radeon Pro W7900 (`gfx1100`)
 
-These rows use different hardware and tests. Do not compare one row directly
-with another.
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **235.434** | **23.296** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
-### Multiple requests
+#### Multiple requests
 
 Each value is the total tokens per second across all active requests:
 
-| Model and interface | GPU | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6 GGUF, low-level engine test | Radeon Pro W7900 | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
-| Qwen3.6 GGUF, OpenAI streaming server | Radeon Pro W7900 | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
-| Maple, public generation API | Radeon 8060S | **123.131** | **165.697** | **202.038** | **214.788** | — | — |
+| Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (engine) | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (server) | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
 
-### Optional speculative modes
+#### MTP
 
-| Model and mode | GPU | Total text generation | Speed compared with normal generation |
+| Model and mode | Text generation | Speed compared with AR |
+| --- | ---: | ---: |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **61.147 tok/s** | **2.6671x** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
+
+### Strix Halo / Radeon 8060S (`gfx1151`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6 GGUF, optional compatibility mode | Radeon Pro W7900 | **122.67 tok/s** | **1.2679x** |
-| Qwen3.6 GGUF, optional native mode | Radeon 8060S | **80.10 tok/s** | **1.4282x** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
+| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
-These speculative modes are opt-in because their output can differ from normal
+#### Multiple requests
+
+| Model and interface | 1 request | 2 requests | 4 requests | 8 requests |
+| --- | ---: | ---: | ---: | ---: |
+| Maple-Preview 2-bit (engine) | **123.131** | **165.697** | **202.038** | **214.788** |
+
+#### MTP
+
+| Model and mode | Text generation | Speed compared with AR |
+| --- | ---: | ---: |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
+
+### RTX PRO 6000 Blackwell (`sm_120a`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+
+These rows use different models and tests. Compare results only when their
+protocols match. MTP-2 and MTP-3 use two and three draft tokens per cycle. The
+35B-A3B MTP-2 path matches llama.cpp's MTP output on the validated prompt suite.
+It remains opt-in because that output can differ from normal autoregressive
 generation.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
