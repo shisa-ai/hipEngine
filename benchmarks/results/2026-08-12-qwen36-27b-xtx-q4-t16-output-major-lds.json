@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_exact_prefill_improvement_partial_gate",
+  "title": "Qwen3.6-27B XTX Q4T16 output-major shared-B LDS",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "file": "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
+    "description": "Store the existing decoded 48-column x K256 shared-B slab output-major so each lane's K16 WMMA B fragment is contiguous in LDS.",
+    "weight_layout_changed": false,
+    "arithmetic_changed": false,
+    "dispatch_changed": false,
+    "residency_changed": false
+  },
+  "isa": {
+    "compiler": "HIP 7.2.53211-3d9ef42, AMD clang 22.0.0git f58b06dce1f9",
+    "compile_flags": "-shared -fPIC -O3 -mllvm -amdgpu-unroll-threshold-local=600 --offload-arch=gfx1100 -mcumode",
+    "old_symbol_instruction_lines": 3843,
+    "new_symbol_instruction_lines": 3595,
+    "old_lds_instructions": {
+      "ds_load_u16_d16": 48,
+      "ds_load_u16_d16_hi": 48,
+      "ds_store_2addr_b32": 28,
+      "ds_store_b32": 8
+    },
+    "new_lds_instructions": {
+      "ds_load_b128": 12,
+      "ds_store_b128": 16
+    },
+    "old_waitcnt_instructions": 109,
+    "new_waitcnt_instructions": 66,
+    "metadata_unchanged": {
+      "vgpr_count": 254,
+      "sgpr_count": 24,
+      "lds_bytes": 24576,
+      "private_segment_bytes": 0,
+      "spill_count": 0,
+      "workgroup_size": 128
+    }
+  },
+  "profile_512": {
+    "old_source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/rocprof-prefill512-t16-shared-b/qwen36-t16-shared-b-prefill512_kernel_trace.csv",
+    "new_source": "/tmp/qwen36-27b-xtx-transposed-lds-rocprof/qwen36-transposed-lds-prefill512_kernel_trace.csv",
+    "kernel_calls": 288,
+    "q4_kernel_sum_ms_old": 433.35057,
+    "q4_kernel_sum_ms_new": 421.446694,
+    "q4_kernel_sum_delta_percent": -2.746939042909302,
+    "q4_kernel_median_ms_old": 1.8005555,
+    "q4_kernel_median_ms_new": 1.743194,
+    "profiled_prefill_wall_ms_old": 760.8873220160604,
+    "profiled_prefill_wall_ms_new": 739.8372930474579,
+    "profiled_prefill_wall_delta_percent": -2.7665106724117705,
+    "runtime_resources": {
+      "vgpr_count": 256,
+      "sgpr_count": 128,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0,
+      "workgroup_size": 128
+    },
+    "compiler_invocations_in_profiled_process": 0
+  },
+  "performance_512_128": {
+    "transport": "pm4",
+    "measured_runs": 3,
+    "prefill_tok_s_before": 719.2324269544397,
+    "prefill_tok_s_samples_after": [
+      711.2538853343077,
+      731.4635114427106,
+      730.5892525373627
+    ],
+    "prefill_tok_s_median_after": 730.5892525373627,
+    "prefill_delta_percent": 1.5790202384246,
+    "decode_tok_s_samples_after": [
+      33.517816395983736,
+      33.506592091936625,
+      33.47267138401732
+    ],
+    "decode_tok_s_median_after": 33.506592091936625,
+    "decode_tok_s_before": 33.48549336855728,
+    "decode_delta_percent": 0.06301225675771027,
+    "final_logit_samples": [
+      24.12371826171875,
+      24.12371826171875,
+      24.12371826171875
+    ],
+    "final_token_id": 9707,
+    "replay_launches_total": 384,
+    "native_fallbacks": 0,
+    "tracked_peak_gib": 15.605462968349457,
+    "source": "/tmp/qwen36-27b-xtx-transposed-lds-512x128-r3.json"
+  },
+  "actual_weight_micro_512": {
+    "method": "21 counterbalanced synchronized-wall samples for the original single-wave owner versus the output-major shared-B owner",
+    "all_bf16_mismatch_counts": 0,
+    "ffn_gate": {
+      "shape": [512, 5120, 17408],
+      "base_median_ms": 2.2358738351613283,
+      "candidate_median_ms": 1.7834842205047607,
+      "geometric_speedup": 1.253247113211929,
+      "wins": "21/21"
+    },
+    "ffn_down": {
+      "shape": [512, 17408, 5120],
+      "base_median_ms": 2.3331480100750923,
+      "candidate_median_ms": 2.26023206487298,
+      "geometric_speedup": 1.0322361038771053,
+      "wins": "21/21"
+    },
+    "attn_gate": {
+      "shape": [512, 5120, 6144],
+      "base_median_ms": 0.9177214000374079,
+      "candidate_median_ms": 0.7216489873826504,
+      "geometric_speedup": 1.267166329228668,
+      "wins": "21/21"
+    }
+  },
+  "correctness": {
+    "focused_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_t16_dense.py",
+    "focused_result": "9 passed",
+    "rows_covered": [16, 33, 512, 1024, 4096],
+    "full_model_finite_all": true,
+    "full_model_exact_final_logit_three_resets": true,
+    "full_model_exact_token_three_resets": true,
+    "tracked_teardown_zero": true
+  },
+  "frozen_gates_512_128": {
+    "prefill_gate_tok_s": 974.252,
+    "prefill_observed_tok_s": 730.5892525373627,
+    "prefill_passed": false,
+    "decode_gate_tok_s": 33.355,
+    "decode_observed_tok_s": 33.506592091936625,
+    "decode_passed": true,
+    "memory_gate_gib": 15.69,
+    "memory_observed_peak_delta_gib_from_unchanged_prior_route": 16.17138671875,
+    "memory_passed": false,
+    "campaign_closed": false
+  },
+  "commands": {
+    "benchmark": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-xtx-transposed-lds-512x128-r3.json",
+    "profile": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/qwen36-27b-xtx-transposed-lds-rocprof --output-file qwen36-transposed-lds-prefill512 -- uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build"
+  },
+  "decision": "Retain the output-major LDS specialization as the sole Q4T16 dense prefill owner. It preserves exact arithmetic and resources, improves the complete 512/128 prefill row by 1.579%, and leaves decode neutral. The frozen prefill and memory closure gates remain open."
+}
