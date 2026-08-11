@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; the 512/128 decode gate passes at 33.525 tok/s and exact prefill is 731.185 tok/s, while the reduced 16.095-GiB peak, longer shapes, MTP, and final W7900 closure remain open.**
+Status: **in progress; all three AR shapes fit and 512/1K decode pass, while every prefill/memory row, 4K decode, natural MTP, and final W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -730,10 +730,12 @@ weight bytes.
 - [ ] **P5.3 Full eager/graph AR state.** At 512, 1024, and 4096, compare eager
   and production graph/transport logits, hidden, Conv/GDN, KV+`KVLiveSpans`,
   positions, final IDs, and teardown. Partial evidence: 512/128 HIP graph and
-  PM4 each survive three exact reset/rearms with finite token 9707, stable graph
-  identity, zero native fallbacks, one PM4 generation/child, no unretired
-  submissions, and zero tracked bytes after close. PM4 is +1.601% and is
-  promoted only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128.
+  PM4 each survive three exact reset/rearms; the final 512/1K/4K PM4 matrix adds
+  one warmup plus five exact resets per shape with finite token 9707, stable
+  graph reuse, zero native fallbacks/unretired submissions, and zero tracked
+  bytes after close. PM4 is +1.601% in the focused 512 control and is promoted
+  only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128. Full eager
+  hidden/Conv/GDN/KV parity at 1K/4K remains open.
 - [ ] **P5.4 Dense MTP transaction.** Cover reject, partial accept, full accept,
   correction, rollback/reseed, dynamic positions, proposal/target graph reuse,
   and provider-vs-scalar behavior for every admitted budget.
@@ -748,10 +750,12 @@ Exit: correctness is green before any keep is based on performance.
 
 ### P6 — XTX fit and performance optimization
 
-- [ ] **P6.1 First complete XTX fit.** Run 512/1, 1024/1, 4096/1, then the
-  512/128, 1024/128, 4096/128 matrix. Record tracked and whole-device peaks.
-- [ ] **P6.2 Compare sole T16 to frozen floors.** If it beats both backends and
-  meets lower memory peak, skip raw-layout work.
+- [x] **P6.1 First complete XTX fit.** The final one-warmup/five-measurement
+  512/128, 1024/128, and 4096/128 matrix includes first-token and full
+  128-transition execution, records tracked/sysfs peaks, and closes cleanly.
+- [x] **P6.2 Compare sole T16 to frozen floors.** Sole T16 fits every shape and
+  passes 512/1K decode, but fails every prefill/memory gate and 4K decode. The
+  predeclared raw-GGUF rung is therefore required.
 - [x] **P6.3 Profile only the failing column.** The latest cache-only 512 trace
   reconciles 700.435 ms kernel sum against 739.837 ms profiled wall: Q4 is
   421.447 ms (60.17%), Q6 131.298 ms (18.75%), and Q5 63.647 ms (9.09%). The
@@ -768,8 +772,9 @@ Exit: correctness is green before any keep is based on performance.
   cycle-wall wins are retained under project policy, but closure still requires
   every requested shape and both external backends.
 
-Exit: XTX AR beats HIP and Vulkan at all three shapes with memory no higher
-than the lower comparator.
+Current exit status: all shapes fit, but closure fails all prefill/memory rows
+and 4K decode. Evidence:
+[`complete engine AR matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json).
 
 ### P7 — Compatible natural MTP closure
 
@@ -864,15 +869,15 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **731.185** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.525 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 prefill tok/s | 964.606 | 870.872 | **727.961** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.508 PM4** | >=33.356 (1% margin) — **pass** |
 | 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.095** | <=15.690 — fail |
-| 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
-| 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |
-| 1024 peak VRAM delta GiB | 16.373 | **15.700** | TBD | <=15.700 |
-| 4096 prefill tok/s | 946.733 | 835.765 | TBD | >=956.201 (1% margin) |
-| 4096 AR transition tok/s | 32.560 | 13.309 | TBD | >=32.886 (1% margin) |
-| 4096 peak VRAM delta GiB | 16.562 | **15.912** | TBD | <=15.912 |
+| 1024 prefill tok/s | 981.040 | 836.898 | **785.347** | >=990.850 (1% margin) — fail |
+| 1024 AR transition tok/s | 32.924 | 13.379 | **34.537 PM4** | >=33.254 (1% margin) — **pass** |
+| 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.320** | <=15.700 — fail |
+| 4096 prefill tok/s | 946.733 | 835.765 | **779.243** | >=956.201 (1% margin) — fail |
+| 4096 AR transition tok/s | 32.560 | 13.309 | **31.391 PM4** | >=32.886 (1% margin) — fail |
+| 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.119** | <=15.912 — fail |
 | Natural true AR tok/s | 31.576 | 13.386 | TBD | disclosed same protocol |
 | Selected MTP budget | B2 | B4 | TBD | independently selected |
 | Natural MTP transition tok/s | 46.863 | **81.952** | TBD | >=82.771 (1% margin) |
@@ -882,7 +887,7 @@ Populate only from committed artifacts:
 | Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + PM4 pass; matrix pending** | all pass |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + 512/1K/4K PM4 reset/teardown pass; deep state matrix pending** | all pass |
 
 W7900 safeguard:
 

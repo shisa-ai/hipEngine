@@ -141,8 +141,8 @@ Evidence: [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27
 
 The pre-campaign dual-layout hipEngine path could not admit this model on the
 23.984-GiB XTX. The first sole-T16 candidate now fits and is retained as an
-implementation checkpoint. A three-run 512/128 hipEngine partial row is now
-available; 1024/128 and 4096/128 remain unmeasured. Clean same-commit llama.cpp
+implementation checkpoint. The complete five-sample 512/128, 1024/128, and
+4096/128 hipEngine AR matrix is now available. Clean same-commit llama.cpp
 `c8e03ce81` HIP and Vulkan establish the frozen speed and whole-device VRAM
 targets:
 
@@ -159,11 +159,14 @@ peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-Current hipEngine partial-gate row (three persistent-session reset/replays):
+Current hipEngine matrix (one warmup plus five persistent-session
+reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | **731.185 tok/s** | **33.525 tok/s** | **15.605 GiB** | **16.095 GiB** | prefill fail / **decode pass** / memory fail |
+| 512/128 | **727.961 tok/s** | **33.508 tok/s** | **15.605 GiB** | **16.095 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **785.347 tok/s** | **34.537 tok/s** | **15.720 GiB** | **16.320 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **779.243 tok/s** | **31.391 tok/s** | **16.368 GiB** | **17.119 GiB** | prefill fail / decode fail / memory fail |
 
 The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
 sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
@@ -189,17 +192,19 @@ The model-scoped arena cutoff then widens from 16 to the first complete 80-MiB
 inventory crossover: **849** immutable allocations share one owner, only the
 994.6-MiB untied head remains dedicated, physical weight owners fall **370 ->
 2**, and standard process peak delta falls **16.171 -> 16.095 GiB (-77.840
-MiB)** with neutral exact **731.185/33.525 tok/s** prefill/decode. Prefill
-remains below the 974.252-tok/s gate and memory remains above the 15.690-GiB
-ceiling, so this is a retained partial pass rather than a root-topline
-promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
+MiB)** with neutral exact 512/128 behavior. The final five-sample matrix is
+**727.961/33.508**, **785.347/34.537**, and **779.243/31.391 tok/s** at
+512/1K/4K. Every shape fits and is deterministic; 512/1K decode pass, but all
+prefill/memory rows and 4K decode fail their frozen gates. This is a retained
+partial pass rather than a root-topline promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
 [`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`mapped-host/PM4 partial pass`](results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
 [`dense scratch liveness`](results/2026-08-12-qwen36-27b-xtx-dense-prefill-scratch-liveness.json),
 [`small-weight arena`](results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json),
 [`Q4T16 output-major LDS`](results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
-and [`wide weight arena`](results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json).
+[`wide weight arena`](results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json),
+and [`complete engine AR matrix`](results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
