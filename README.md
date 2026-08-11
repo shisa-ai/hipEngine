@@ -31,16 +31,16 @@ models perform well, particularly Qwen 3.x variants and fine-tunes.
 ## Supported models
 
 `Yes` means that public text generation has been tested. A dash means that the
-combination is not supported. Features such as batching, sampling, tools, and
-long context can differ by model.
+combination is not supported. The Qwen rows group closely related model
+versions, with size-specific format coverage shown explicitly. Features such as
+batching, sampling, tools, and long context can differ by model.
 
-| Model | Formats | RX 7900 XTX / W7900 (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
+| Model family | Tested models and formats | RX 7900 XTX / W7900 (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
 | --- | --- | :---: | :---: | :---: |
-| [Qwen3.5 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) | `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL` | Yes | Yes | — |
-| [Qwen3.5 35B-A3B](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) and [Qwen3.6 35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) | `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M` | Yes | Yes | — |
-| [Qwen3.6 35B-A3B ParoQuant](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | ParoQuant W4 | Yes | Yes | — |
-| [Laguna S 2.1](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | `Q4_K_M` | — | Yes | — |
-| [Maple-Preview 20B-A1B](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | 2-bit MLX | Yes | Yes | Python API only |
+| Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) `Q4_K_M` | Yes | Yes | — |
+| Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
+| Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
+| Maple-Preview 20B-A1B | [2-bit MLX](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Yes | Yes | Python API only |
 
 CPU model generation is not supported. The CPU backend is used for correctness
 tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
@@ -160,37 +160,61 @@ These are measured results, not estimates. Prompt processing is the speed of
 reading the input. Text generation is the speed of producing new tokens.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-| Model and format | GPU | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
-| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 | 4,096 input tokens; prompt processing only | **440.893** | — |
-| Maple-Preview 2-bit | Radeon 8060S | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
-| Maple-Preview 2-bit | RTX PRO 6000 Blackwell | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+### Radeon Pro W7900 (`gfx1100`)
 
-These rows use different hardware and tests. Do not compare one row directly
-with another.
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **235.434** | **23.296** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
-### Multiple requests
+#### Multiple requests
 
 Each value is the total tokens per second across all active requests:
 
-| Model and interface | GPU | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6 GGUF, low-level engine test | Radeon Pro W7900 | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
-| Qwen3.6 GGUF, OpenAI streaming server | Radeon Pro W7900 | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
-| Maple, public generation API | Radeon 8060S | **123.131** | **165.697** | **202.038** | **214.788** | — | — |
+| Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (engine) | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (server) | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
 
-### Optional speculative modes
+#### MTP
 
-| Model and mode | GPU | Total text generation | Speed compared with normal generation |
+| Model and mode | Text generation | Speed compared with AR |
+| --- | ---: | ---: |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **61.147 tok/s** | **2.6671x** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
+
+### Strix Halo / Radeon 8060S (`gfx1151`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6 GGUF, optional compatibility mode | Radeon Pro W7900 | **122.67 tok/s** | **1.2679x** |
-| Qwen3.6 GGUF, optional native mode | Radeon 8060S | **80.10 tok/s** | **1.4282x** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
+| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
-These speculative modes are opt-in because their output can differ from normal
+#### Multiple requests
+
+| Model and interface | 1 request | 2 requests | 4 requests | 8 requests |
+| --- | ---: | ---: | ---: | ---: |
+| Maple-Preview 2-bit (engine) | **123.131** | **165.697** | **202.038** | **214.788** |
+
+#### MTP
+
+| Model and mode | Text generation | Speed compared with AR |
+| --- | ---: | ---: |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
+
+### RTX PRO 6000 Blackwell (`sm_120a`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+
+These rows use different models and tests. Compare results only when their
+protocols match. MTP-2 and MTP-3 use two and three draft tokens per cycle. The
+35B-A3B MTP-2 path matches llama.cpp's MTP output on the validated prompt suite.
+It remains opt-in because that output can differ from normal autoregressive
 generation.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
