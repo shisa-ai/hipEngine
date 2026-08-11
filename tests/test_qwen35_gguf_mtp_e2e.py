@@ -22,7 +22,10 @@ from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
     Qwen35GGUFTransactionalVerifier,
 )
-from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNDraftProvider,
+    borrow_qwen35_gguf_nextn_fallback_weights,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.speculative import (
     DraftBatch,
@@ -322,10 +325,9 @@ def test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output() -> None
             expected.append(int(target.step(expected[-1], return_logits=False).token_id))
 
         assert target.runner.weights is not None
-        borrowed_fallback_weights = {
-            slot: target.runner.weights.root(slot)
-            for slot in ("token_embedding", "lm_head")
-        }
+        borrowed_fallback_weights = borrow_qwen35_gguf_nextn_fallback_weights(
+            target
+        )
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             _MODEL,
             max_positions=128,
@@ -1302,10 +1304,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         while len(expected) < 8:
             expected.append(int(target.step(expected[-1], return_logits=False).token_id))
         assert target.runner.weights is not None
-        borrowed_fallback_weights = {
-            slot: target.runner.weights.root(slot)
-            for slot in ("token_embedding", "lm_head")
-        }
+        borrowed_fallback_weights = borrow_qwen35_gguf_nextn_fallback_weights(
+            target
+        )
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             _DENSE_MODEL,
             max_positions=64,

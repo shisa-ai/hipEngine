@@ -10,6 +10,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _CallLedger,
     _TimedDraftProvider,
     _TimedVerifier,
+    _borrowed_nextn_fallback_weights,
     aggregate_scopes,
     build_parser,
     parse_candidate_budgets,
@@ -54,6 +55,43 @@ def test_candidate_budget_parser_accepts_unique_b1_b2_b3_subset() -> None:
         parse_candidate_budgets("1,4")
     with pytest.raises(ValueError, match="duplicates"):
         parse_candidate_budgets("2,2")
+
+
+def test_dense_suite_borrows_effective_mapped_embedding_without_rehydration() -> None:
+    placeholder_embedding = object()
+    mapped_embedding = object()
+    lm_head = object()
+    calls: list[object] = []
+
+    class Runner:
+        weights = type(
+            "Weights",
+            (),
+            {
+                "root": staticmethod(
+                    lambda slot: {
+                        "token_embedding": placeholder_embedding,
+                        "lm_head": lm_head,
+                    }[slot]
+                )
+            },
+        )()
+
+        def ensure_device_token_embedding(self, *, runtime):
+            calls.append(runtime)
+            return mapped_embedding
+
+    runtime = object()
+    target = type("Target", (), {"runner": Runner(), "runtime": runtime})()
+
+    borrowed = _borrowed_nextn_fallback_weights(target)
+
+    assert borrowed == {
+        "token_embedding": mapped_embedding,
+        "lm_head": lm_head,
+    }
+    assert borrowed["token_embedding"] is not placeholder_embedding
+    assert calls == [runtime]
 
 
 def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> None:

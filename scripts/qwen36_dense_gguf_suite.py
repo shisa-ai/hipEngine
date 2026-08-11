@@ -38,7 +38,10 @@ from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
     Qwen35GGUFTransactionalVerifier,
 )
-from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNDraftProvider,
+    borrow_qwen35_gguf_nextn_fallback_weights,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 from scripts.gguf_mtp_bench import build_chat_prompt
@@ -493,6 +496,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _borrowed_nextn_fallback_weights(
+    target: Qwen35GGUFResidentSession,
+) -> dict[str, Any]:
+    """Borrow the target's effective roots, including a mapped token table."""
+
+    return borrow_qwen35_gguf_nextn_fallback_weights(target)
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     if int(args.max_new_tokens) <= 1:
         raise ValueError("--max-new-tokens must exceed one for transition-normalized timing")
@@ -546,10 +557,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         target.select_prefill_quant(str(args.quant))
         if target.runner.weights is None:
             raise RuntimeError("target GGUF weights are unavailable")
-        borrowed_fallback_weights = {
-            slot: target.runner.weights.root(slot)
-            for slot in ("token_embedding", "lm_head")
-        }
+        borrowed_fallback_weights = _borrowed_nextn_fallback_weights(target)
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             model,
             max_positions=max_sequence_length,

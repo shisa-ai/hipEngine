@@ -16,7 +16,10 @@ from typing import Sequence
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.loading import load_gguf_index
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
-from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNDraftProvider,
+    borrow_qwen35_gguf_nextn_fallback_weights,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -144,10 +147,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         target.select_prefill_quant(str(args.quant))
         if target.runner.weights is None:
             raise RuntimeError("target GGUF weights are unavailable")
-        borrowed_fallback_weights = {
-            slot: target.runner.weights.root(slot)
-            for slot in ("token_embedding", "lm_head")
-        }
+        borrowed_fallback_weights = borrow_qwen35_gguf_nextn_fallback_weights(
+            target
+        )
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             model,
             max_positions=max_sequence,
