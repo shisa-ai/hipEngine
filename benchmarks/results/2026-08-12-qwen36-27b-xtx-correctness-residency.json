@@ -1,0 +1,169 @@
+{
+  "correctness_claim": true,
+  "created_at": "2026-08-12T07:01:59+09:00",
+  "existing_model_level_gates": {
+    "ar_exactness": "one warmup plus five exact reset/rearms at each of 512/1024/4096, PM4 zero fallback/unretired submissions, tracked zero after close",
+    "ar_matrix": "benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json",
+    "mtp_exactness": "all ten prompts and B1-B3 exact to true AR; every GPU acceptance result matches CPU; tracked zero after close",
+    "natural_mtp": "benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json"
+  },
+  "focused_test_bundle": {
+    "final_selected_node_accounting": "64 passed, 5 skipped after focused repair; broad already-passing nodes were not rerun",
+    "notes": [
+      "The initial bundle established 58 passed/4 skipped; seven GPU nodes used an invalid simultaneous HIP/ROCR index filter.",
+      "Corrected GPU mapping made three 27B Q4 nodes pass, skipped one 32-GiB dense-only node on the XTX, and exposed three Q6_K auto-placement regressions.",
+      "Commit 719bd743f gates mapped-host auto placement by package-declared GGML type; all three Q3_K_M MTP nodes and all 15 mapped-host tests then pass.",
+      "Kernel registry, fusion, loading materialization, GGUF quant layout, model quant/import, and Qwen materialization bundle also passes with expected unavailable-model skips."
+    ],
+    "result": "passed"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "hip_physical_index": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "kind": "qwen36_27b_xtx_correctness_and_runtime_residency",
+  "memory_claim": true,
+  "model": {
+    "bytes": 17106773120,
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "p512_teacher_forced_oracle": {
+    "all_steps_passed": true,
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/gguf_eager_teacher_forced_oracle.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --prompt-token-id 9707 --prompt-length 512 --decode-steps 4 --llama-completion <clean-c8e03ce81>/build-hip/bin/llama-completion --llama-tokenize <clean-c8e03ce81>/build-hip/bin/llama-tokenize --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-xtx-eager-oracle-512.json",
+    "components": "predicted token, FP32 hidden seed, all layer outputs, all Conv/GDN state, and every live full-attention K/V prefix",
+    "decode_steps": 4,
+    "every_state_exact": true,
+    "every_token_external_exact": true,
+    "passed": true,
+    "predicted_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "production_bulk_eager_exact_external": true,
+    "raw_sha256": "13b7ab0ba470aadc621df65c5da327fcb733ae12bd0b747e99a906d908fad957",
+    "raw_source": "/tmp/qwen36-27b-xtx-eager-oracle-512.json",
+    "status": "passed_repeated_stream_valid",
+    "total_mismatches": 0
+  },
+  "pending": [
+    {
+      "expected_duration": "about 6 minutes",
+      "gate": "1K four-step fresh-prefix eager oracle",
+      "reason": "requires explicit approval under the >5-minute rule"
+    },
+    {
+      "expected_duration": "about 16-18 minutes",
+      "gate": "4K four-step fresh-prefix eager oracle",
+      "reason": "requires explicit approval under the >5-minute rule"
+    }
+  ],
+  "performance_claim": false,
+  "plan_residency": {
+    "draft": {
+      "alternate_layout_nbytes": 0,
+      "issues": [],
+      "logical_tensor_count": 17,
+      "resident_nbytes": 2051975168,
+      "source_nbytes": 2047633408
+    },
+    "rank2_q4": {
+      "allocation_name": "tiles",
+      "alternate_layout_nbytes": 0,
+      "layout": "gguf_q4_k_t16_v1",
+      "logical_tensor_count": 288,
+      "resident_nbytes": 10790502400
+    },
+    "target": {
+      "alternate_layout_nbytes": 0,
+      "issues": [],
+      "logical_tensor_count": 851,
+      "resident_nbytes": 17121478656,
+      "source_nbytes": 16806250496
+    }
+  },
+  "runtime_residency": {
+    "alternate_layout_nbytes": 0,
+    "distinct_nextn_shared_head_norm": {
+      "owned": true,
+      "source": "blk.64.nextn.shared_head_norm.weight"
+    },
+    "duplicate_allocation_roles": [],
+    "duplicate_payload_nbytes": 0,
+    "issues": [],
+    "memory_class_nbytes": {
+      "nextn": 293869568,
+      "root_shared": 1758105600,
+      "target": 15363373056
+    },
+    "nextn_owned_weight_count": 15,
+    "physical_nbytes": 17415348224,
+    "physical_range_count": 866,
+    "ref_count": 870,
+    "shared_roots": {
+      "lm_head": {
+        "ptrs": {
+          "tiles": 139756899926016
+        },
+        "same_object": true,
+        "source": "output.weight"
+      },
+      "token_embedding": {
+        "ptrs": {
+          "raw": 139758272652416
+        },
+        "same_object": true,
+        "source": "token_embd.weight"
+      }
+    },
+    "status": "passed",
+    "tracked_after_provider_close": {
+      "active_allocations": 217,
+      "current_allocated_bytes": 16817842308,
+      "peak_allocated_bytes": 17121850408,
+      "peak_allocations": 306,
+      "total_allocated_bytes": 17121850408,
+      "total_freed_bytes": 304008100
+    },
+    "tracked_after_target_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17121850408,
+      "peak_allocations": 306,
+      "total_allocated_bytes": 17121850408,
+      "total_freed_bytes": 17121850408
+    },
+    "tracked_live": {
+      "active_allocations": 306,
+      "current_allocated_bytes": 17121850408,
+      "peak_allocated_bytes": 17121850408,
+      "peak_allocations": 306,
+      "total_allocated_bytes": 17121850408,
+      "total_freed_bytes": 0
+    }
+  },
+  "runtime_residency_source": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/qwen36_27b_runtime_residency.py",
+    "raw_sha256": "fe8c75eae7861e0eba19f62ab98f0c41b5f57ac612f1d5c2d33834b702c4c08f",
+    "raw_source": "/tmp/qwen36-27b-xtx-runtime-residency.json"
+  },
+  "schema_version": 1,
+  "software": {
+    "hipengine_commit": "719bd743f6cca66a1fdb8e3e28d58514a61b0953",
+    "hipengine_dirty": false,
+    "llama_completion_sha256": "06f765cda69f22feb9275abd269fea5ef15bee58c2b5d7b3cbda6e3938e90c44",
+    "llama_cpp_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llama_tokenize_sha256": "c0a3393b02dddcf822834126047fcec1bd69987ee6673186f783647c1a93dcd2",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "status": "passed_512_oracle_and_full_runtime_residency_deeper_contexts_pending",
+  "summary": "Focused CPU/layout/registry coverage is green after a mapped-host Q6_K auto-placement regression repair. At p512, bulk eager tokens match clean llama.cpp and four teacher-forced transitions are byte-exact to fresh serial-prefix hidden, Conv/GDN, and live-KV state. A live target+NextN census has zero duplicate payload or alternate-layout bytes, aliases the mapped embedding and untied head exactly once, owns only 15 distinct NextN weights, and returns tracked ownership to zero. The expensive 1K/4K fresh-prefix eager oracles remain pending approval."
+}

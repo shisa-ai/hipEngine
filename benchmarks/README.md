@@ -211,7 +211,20 @@ MiB)** with neutral exact 512/128 behavior. The final five-sample matrix is
 **727.961/33.508**, **785.347/34.537**, and **779.243/31.391 tok/s** at
 512/1K/4K. Every shape fits and is deterministic; 512/1K decode pass, but all
 prefill/memory rows and 4K decode fail their frozen gates. This is a retained
-partial pass rather than a root-topline promotion. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
+partial pass rather than a root-topline promotion.
+
+The final live target+NextN census now proves **zero duplicate-payload and zero
+alternate-layout bytes** across 870 references / 866 physical ranges; mapped
+embedding and untied output head are shared exactly once and all tracked
+ownership closes to zero. Stability evidence adds three AR plus three natural
+MTP cold process cycles, then **100 mixed 512/1K/4K reset/rearms / 400 PM4
+submissions** in one resident process with exact tokens/logits, constant
+post-warm ownership, zero fallback/unretired work, and fully retired graph,
+executable, and context children. The p512 deep eager oracle is also exact for
+tokens, all hidden/layer outputs, Conv/GDN, and live K/V; the >5-minute 1K/4K
+oracles and soak remain pending approval.
+
+Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
 [`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`mapped-host/PM4 partial pass`](results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
@@ -220,7 +233,9 @@ partial pass rather than a root-topline promotion. Evidence: [`clean comparator 
 [`Q4T16 output-major LDS`](results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
 [`wide weight arena`](results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json),
 [`complete engine AR matrix`](results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json),
-and [`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json).
+[`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
+[`correctness/runtime residency`](results/2026-08-12-qwen36-27b-xtx-correctness-residency.json),
+and [`cold/warm PM4 lifecycle`](results/2026-08-12-qwen36-27b-xtx-lifecycle.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

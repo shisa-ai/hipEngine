@@ -1,0 +1,317 @@
+{
+  "cold_ar": {
+    "artifact": "benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json",
+    "passed": true,
+    "process_cycles": 3,
+    "rows": [
+      {
+        "baseline_vram_gib": 0.060455322265625,
+        "final_delta_mib": 1.671875,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_vram_gib": 0.0620880126953125,
+        "peak_vram_gib": 16.155834197998047,
+        "pm4_native_fallbacks": 0,
+        "pm4_unretired_submissions": 0,
+        "shape": "512/128",
+        "tracked_peak_gib": 15.605462968349457
+      },
+      {
+        "baseline_vram_gib": 0.060455322265625,
+        "final_delta_mib": 1.68359375,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_vram_gib": 0.062099456787109375,
+        "peak_vram_gib": 16.380939483642578,
+        "pm4_native_fallbacks": 0,
+        "pm4_unretired_submissions": 0,
+        "shape": "1024/128",
+        "tracked_peak_gib": 15.720211334526539
+      },
+      {
+        "baseline_vram_gib": 0.062099456787109375,
+        "final_delta_mib": -0.03125,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_vram_gib": 0.062068939208984375,
+        "peak_vram_gib": 17.180736541748047,
+        "pm4_native_fallbacks": 0,
+        "pm4_unretired_submissions": 0,
+        "shape": "4096/128",
+        "tracked_peak_gib": 16.367618195712566
+      }
+    ],
+    "shapes": [
+      "512/128",
+      "1024/128",
+      "4096/128"
+    ]
+  },
+  "cold_mtp": {
+    "child_command": "python scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 5 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output <cycle.json>",
+    "passed": true,
+    "process_cycles": 3,
+    "production_environment": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+      "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE": "x8",
+      "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+      "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+      "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A": "1",
+      "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL": "1"
+    },
+    "protocol": "each fresh child runs one natural prompt through true AR and B1/B2/B3 with five visible outputs, no candidate-local warmup, exact production llama-compatible environment, then closes provider/verifier/target",
+    "raw_sha256": "22637e874ebca820ded8a2d149b50313bf33125ea7c10b1a1367f25b109a50e0",
+    "raw_source": "/tmp/qwen36-27b-xtx-cold-mtp-lifecycle.json",
+    "rows": [
+      {
+        "all_exact": true,
+        "baseline_vram_bytes": 64913408,
+        "child_status": "complete_exact",
+        "cycle": 0,
+        "elapsed_seconds": 92.69657152099535,
+        "final_vram_bytes": 66650112,
+        "final_vram_delta_bytes": 1736704,
+        "peak_vram_delta_bytes": 18449911808,
+        "settled_within_64_mib": true,
+        "tracked_active_after_close": 0,
+        "tracked_current_after_close": 0
+      },
+      {
+        "all_exact": true,
+        "baseline_vram_bytes": 66650112,
+        "child_status": "complete_exact",
+        "cycle": 1,
+        "elapsed_seconds": 90.90501212608069,
+        "final_vram_bytes": 66625536,
+        "final_vram_delta_bytes": -24576,
+        "peak_vram_delta_bytes": 18448146432,
+        "settled_within_64_mib": true,
+        "tracked_active_after_close": 0,
+        "tracked_current_after_close": 0
+      },
+      {
+        "all_exact": true,
+        "baseline_vram_bytes": 66625536,
+        "child_status": "complete_exact",
+        "cycle": 2,
+        "elapsed_seconds": 91.49794536596164,
+        "final_vram_bytes": 66625536,
+        "final_vram_delta_bytes": 0,
+        "peak_vram_delta_bytes": 18448171008,
+        "settled_within_64_mib": true,
+        "tracked_active_after_close": 0,
+        "tracked_current_after_close": 0
+      }
+    ],
+    "tolerance_bytes": 67108864
+  },
+  "correctness_claim": true,
+  "created_at": "2026-08-12T07:09:00+09:00",
+  "guarded_not_run": [
+    {
+      "gate": "native PM4 submit plus queue/resource recreation",
+      "reason": "known GPU reset/VM-fault risk tracked by ROCm/ROCm#6529; requires explicit warning, journal/devcoredump setup, --ack-reset-risk, and separate user approval",
+      "safe_reproducer": "scripts/pm4_lifecycle_issue_capture.py"
+    },
+    {
+      "gate": "P9.5 thermal/allocator soak longer than five minutes",
+      "reason": "requires explicit approval under AGENTS.md and the campaign"
+    }
+  ],
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "hip_physical_index": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "kind": "qwen36_27b_xtx_cold_warm_pm4_lifecycle",
+  "memory_claim": true,
+  "model": {
+    "bytes": 17106773120,
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "performance_claim": false,
+  "pm4_recreate_teardown": {
+    "after_close_checks": [
+      {
+        "context_children": 0,
+        "executable_retired": true,
+        "executable_usable": true,
+        "graph_closed": true,
+        "native_callback_status": 0,
+        "native_children": 0,
+        "native_usable": true,
+        "shape": 512,
+        "transport": "pm4",
+        "unretired_submissions": 0
+      },
+      {
+        "context_children": 0,
+        "executable_retired": true,
+        "executable_usable": true,
+        "graph_closed": true,
+        "native_callback_status": 0,
+        "native_children": 0,
+        "native_usable": true,
+        "shape": 1024,
+        "transport": "pm4",
+        "unretired_submissions": 0
+      },
+      {
+        "context_children": 0,
+        "executable_retired": true,
+        "executable_usable": true,
+        "graph_closed": true,
+        "native_callback_status": 0,
+        "native_children": 0,
+        "native_usable": true,
+        "shape": 4096,
+        "transport": "pm4",
+        "unretired_submissions": 0
+      }
+    ],
+    "after_session_close_memory_stats": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17574596216,
+      "peak_allocations": 217,
+      "total_allocated_bytes": 17574596216,
+      "total_freed_bytes": 17574596216
+    },
+    "graph_generations": 3,
+    "interpretation": "All retained PM4 graph/executable/context ownership retires at session close; remaining sysfs bytes are process-lifetime HIP/JIT module residency, not tracked weights or unretired PM4 pointees.",
+    "passed": true,
+    "post_process_exit_delta_bytes": 0,
+    "post_process_exit_vram_bytes": 64913408,
+    "raw_sha256": "5327be2fb7321c3964ec1c7c188c85baa88a29f6e7387cd2ace65098fc048043",
+    "raw_source": "/tmp/qwen36-27b-xtx-pm4-teardown.json",
+    "replayed_steps_each": 4,
+    "session_close_vram_delta_bytes": 920866816
+  },
+  "schema_version": 1,
+  "software": {
+    "hipengine_commit": "719bd743f6cca66a1fdb8e3e28d58514a61b0953",
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "tracked_clean": true
+  },
+  "status": "passed_p9_1_p9_2_p9_3_soak_and_destructive_recreate_pending",
+  "summary": "Three independent AR process cycles and three production-equivalent natural MTP process cycles recover tracked ownership and whole-card VRAM. One resident process then completed 100 deterministic mixed 512/1024/4096 PM4 reset/rearm cycles (400 submissions) with exact tokens/logits, constant post-warm tracked ownership, zero fallback or unretired work, and zero tracked bytes after session close. A focused three-generation close confirms every graph closed, executable retired, context child count zero, and callback status zero. HIP/JIT modules retain about 0.8-0.9 GiB until Python process exit; whole-card VRAM then returns exactly to baseline. The guarded submit-plus-queue/resource-recreate ROCm#6529 arm and >5-minute soak remain pending explicit approval.",
+  "warm_mixed_pm4": {
+    "after_session_close_memory_stats": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17574596216,
+      "peak_allocations": 217,
+      "total_allocated_bytes": 17574596216,
+      "total_freed_bytes": 17574596216
+    },
+    "cycles": 100,
+    "distinct_final_logits_by_shape": {
+      "1024": 1,
+      "4096": 1,
+      "512": 1
+    },
+    "elapsed_seconds": 204.68952094111592,
+    "live_memory_stats": {
+      "active_allocations": 217,
+      "current_allocated_bytes": 17574596216,
+      "peak_allocated_bytes": 17574596216,
+      "peak_allocations": 217,
+      "total_allocated_bytes": 17574596216,
+      "total_freed_bytes": 0
+    },
+    "passed": true,
+    "post_process_exit_delta_bytes": 0,
+    "post_process_exit_vram_bytes": 64913408,
+    "raw_harness_status": "failed",
+    "raw_harness_status_note": "The temporary harness incorrectly included a cold-process sysfs recovery check before interpreter exit; every P9.2 warm-resident criterion passed.",
+    "raw_sha256": "5b85bb3028a536f028184fba83f9192583eb9516088a41a19a8e3466b50f5205",
+    "raw_source": "/tmp/qwen36-27b-xtx-warm-mixed-lifecycle.json",
+    "replay_steps_per_cycle": 4,
+    "session_close_vram_delta_bytes": 846925824,
+    "shape_counts": {
+      "1024": 5,
+      "4096": 5,
+      "512": 90
+    },
+    "steady_tracked_current_values": [
+      17574596216
+    ],
+    "token_pairs": [
+      "9707->9707"
+    ],
+    "total_pm4_submissions": 400,
+    "transport_rows": [
+      {
+        "context_children": 3,
+        "context_generations": 3,
+        "graph_key": "abede070ef9f543f5f1d9aef5df999ec05e5711112c2f0f4b6ba081802296499",
+        "launches": 360,
+        "local_cache_dependencies": true,
+        "native_callback_status": 0,
+        "native_fallbacks": 0,
+        "native_submissions": 400,
+        "native_unretired_submissions": 0,
+        "native_usable": true,
+        "node_count": 950,
+        "shape": 512,
+        "stateful_registers": true,
+        "transport": "pm4"
+      },
+      {
+        "context_children": 3,
+        "context_generations": 3,
+        "graph_key": "581dcdfe28e9f2ec9b934f57c853a3f96c91ffcd1f7bc8a4c2a0acb4715075e5",
+        "launches": 20,
+        "local_cache_dependencies": true,
+        "native_callback_status": 0,
+        "native_fallbacks": 0,
+        "native_submissions": 400,
+        "native_unretired_submissions": 0,
+        "native_usable": true,
+        "node_count": 950,
+        "shape": 1024,
+        "stateful_registers": true,
+        "transport": "pm4"
+      },
+      {
+        "context_children": 3,
+        "context_generations": 3,
+        "graph_key": "dd3101a6a26520d343a10570ce5ccb0560351828205ffa16fcd5a9b202f0846a",
+        "launches": 20,
+        "local_cache_dependencies": true,
+        "native_callback_status": 0,
+        "native_fallbacks": 0,
+        "native_submissions": 400,
+        "native_unretired_submissions": 0,
+        "native_usable": true,
+        "node_count": 950,
+        "shape": 4096,
+        "stateful_registers": true,
+        "transport": "pm4"
+      }
+    ]
+  }
+}
