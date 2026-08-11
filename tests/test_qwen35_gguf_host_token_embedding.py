@@ -314,6 +314,38 @@ def test_private_c1_small_weight_arena_defaults_on_with_capability_and_private_s
     ) == (False, "backend_capability_fallback")
 
 
+def test_private_c1_small_weight_arena_admits_model_scoped_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+
+    policy = {
+        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"enabled": True},
+    }
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: policy
+        if name == "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES"
+        else False,
+    )
+
+    assert _resolve_gguf_private_c1_small_weight_arena(
+        backend="hip_gfx1100",
+        max_batch_size=1,
+        has_shared_runner=False,
+        model_name="Qwen3.6-27B",
+        file_type_name="MOSTLY_Q4_K_M",
+    ) == (True, "private_c1_selective")
+    assert _resolve_gguf_private_c1_small_weight_arena(
+        backend="hip_gfx1100",
+        max_batch_size=1,
+        has_shared_runner=False,
+        model_name="Other",
+        file_type_name="MOSTLY_Q4_K_M",
+    ) == (False, "backend_capability_fallback")
+
+
 def test_materializer_defers_token_embedding_without_allocating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

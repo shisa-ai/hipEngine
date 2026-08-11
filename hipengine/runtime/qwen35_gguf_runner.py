@@ -9537,6 +9537,8 @@ def _resolve_gguf_private_c1_small_weight_arena(
     backend: str,
     max_batch_size: int,
     has_shared_runner: bool,
+    model_name: str | None = None,
+    file_type_name: str | None = None,
     requested: bool | None = None,
 ) -> tuple[bool, str]:
     """Select the retained allocator-owned private-c1 path with explicit opt-out."""
@@ -9552,13 +9554,26 @@ def _resolve_gguf_private_c1_small_weight_arena(
         return False, "multi_row_fallback"
     if has_shared_runner:
         return False, "shared_runner_fallback"
-    if not bool(
+    admitted = bool(
         backend_package_capability(
             backend,
             "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
             False,
         )
-    ):
+    )
+    if not admitted:
+        policies = backend_package_capability(
+            backend,
+            "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+            {},
+        )
+        if not isinstance(policies, Mapping):
+            return False, "backend_capability_fallback"
+        policy = policies.get((model_name, file_type_name))
+        admitted = isinstance(policy, Mapping) and bool(
+            policy.get("enabled", False)
+        )
+    if not admitted:
         return False, "backend_capability_fallback"
     return True, "private_c1_selective"
 
@@ -11607,11 +11622,26 @@ class Qwen35GGUFResidentSession:
             has_shared_runner=self.shared_runner is not None,
             requested=self.token_embedding_placement,
         )
+        small_weight_model_name = None
+        small_weight_file_type_name = None
+        small_weight_policies = backend_package_capability(
+            resolved_backend,
+            "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+            {},
+        )
+        if isinstance(small_weight_policies, Mapping) and small_weight_policies:
+            small_weight_info = GGUFReader(self.model_path).info
+            small_weight_model_name = str(
+                small_weight_info.metadata.get("general.name", "")
+            )
+            small_weight_file_type_name = str(small_weight_info.file_type_name)
         self.small_weight_arena_enabled, self.small_weight_arena_reason = (
             _resolve_gguf_private_c1_small_weight_arena(
                 backend=resolved_backend,
                 max_batch_size=self.max_batch_size,
                 has_shared_runner=self.shared_runner is not None,
+                model_name=small_weight_model_name,
+                file_type_name=small_weight_file_type_name,
                 requested=self.use_small_weight_arena,
             )
         )

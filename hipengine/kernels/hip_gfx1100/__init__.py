@@ -204,6 +204,12 @@ GGUF_DENSE_Q4_T16 = True
 # Private-c1 token lookup reads one compressed row from a pinned GGUF mmap.
 # The mapping is device-visible but does not create a VRAM weight shadow.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
+# Pack <=16-MiB immutable weights into one private-c1 allocation owner only for
+# measured model/quant identities. Large tensors remain dedicated and the
+# planner fails closed before any upload.
+GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"enabled": True},
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -675,6 +681,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
