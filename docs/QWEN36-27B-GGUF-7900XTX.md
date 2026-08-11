@@ -393,6 +393,7 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_mtp_bench.py \
   --protocol token-repeat --token-id 9707 \
   --shapes 512/128 1024/128 4096/128 \
   --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
+  --sample-memory --poll 5 --memory-domain vram --card-name card0 \
   --server-extra-arg=-dev --server-extra-arg=ROCm0 \
   --server-extra-arg=--reasoning --server-extra-arg=off \
   --server-extra-arg=--perf --output "$OUT/llamacpp-hip-context-ar.json"
@@ -405,6 +406,7 @@ python3 scripts/llamacpp_mtp_bench.py \
   --protocol token-repeat --token-id 9707 \
   --shapes 512/128 1024/128 4096/128 \
   --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
+  --sample-memory --poll 5 --memory-domain vram --card-name card0 \
   --server-extra-arg=-dev --server-extra-arg=Vulkan1 \
   --server-extra-arg=--reasoning --server-extra-arg=off \
   --server-extra-arg=--perf --output "$OUT/llamacpp-vulkan-context-ar.json"
@@ -441,6 +443,7 @@ for B in 1 2 3 4 5; do
     --draft-max "$B" --mode both --protocol natural \
     --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
     --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
+    --sample-memory --poll 5 --memory-domain vram --card-name card0 \
     --server-extra-arg=-dev --server-extra-arg="$DEVICE" \
     --server-extra-arg=--spec-draft-device --server-extra-arg="$DEVICE" \
     --server-extra-arg=--reasoning --server-extra-arg=off \
@@ -566,11 +569,13 @@ atomic commit.
   after 24,462,066,048 tracked bytes, with zero tracked bytes after cleanup.
 - [ ] **P0.3 Build clean same-commit llama.cpp HIP and Vulkan.** Use the process
   in section 5.1; never use the dirty/stale HIP tree for the headline.
-- [ ] **P0.4 Extend server memory sampling.** Reuse
+- [x] **P0.4 Extend server memory sampling.** Reuse
   `hipengine.util.amdgpu_vram.VramSampler` in `llamacpp_mtp_bench.py` (or a
   small shared wrapper) so base and each MTP server process record baseline,
   phase peak, process peak, delta, sample count, interval, card identity, and
-  startup/teardown scope. Add fake-sysfs/subprocess tests before real runs.
+  startup/teardown scope. Fake-sysfs/subprocess coverage lives in
+  `tests/test_llamacpp_mtp_bench_metrics.py`; real-run evidence is attached by
+  P0.5.
 - [ ] **P0.5 Run the complete llama.cpp XTX baseline.** Produce standardized AR,
   context-matched AR, and natural B1-B5 artifacts for both HIP and Vulkan.
 - [ ] **P0.6 Freeze the target table.** Record per-column winning performance

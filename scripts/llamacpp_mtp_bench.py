@@ -17,6 +17,7 @@ import os
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -26,9 +27,114 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.util.amdgpu_vram import AmdgpuCard, VramSampler, select_card  # noqa: E402
+
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 DEFAULT_MODEL = "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"
 DEFAULT_SERVER_BIN = "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server"
+
+_MEMORY_PROCESS_SCOPE = "before llama-server Popen through post-termination sysfs sample"
+_MEMORY_PHASE_SCOPES = {
+    "startup": "before llama-server Popen through successful health readiness",
+    "natural": "healthy resident server around the complete natural protocol",
+    "token_repeat": "healthy resident server around the complete token-repeat protocol",
+    "teardown": "before server termination through process exit",
+}
+
+
+class _ServerMemoryRecorder:
+    """Whole-device process and phase VRAM sampling for one llama-server."""
+
+    def __init__(
+        self,
+        card: AmdgpuCard,
+        *,
+        interval_ms: float,
+        memory_domain: str,
+    ) -> None:
+        self.card = card
+        self.interval_ms = float(interval_ms)
+        self.memory_domain = str(memory_domain)
+        self._process_sampler = VramSampler(
+            card,
+            interval_ms=self.interval_ms,
+            memory_domain=self.memory_domain,
+            keep_samples=False,
+        )
+        self._process_payload: dict[str, Any] | None = None
+        self._phase_sampler: VramSampler | None = None
+        self._phase_name: str | None = None
+        self._phase_payloads: dict[str, dict[str, Any]] = {}
+
+    @property
+    def active_phase(self) -> str | None:
+        return self._phase_name
+
+    def start_process(self) -> None:
+        self._process_sampler.start()
+
+    def stop_process(self) -> None:
+        if self._phase_sampler is not None:
+            raise RuntimeError("cannot stop process memory sampling with an active phase")
+        self._process_sampler.stop()
+        payload = self._process_sampler.result().to_dict()
+        payload["scope"] = _MEMORY_PROCESS_SCOPE
+        self._process_payload = payload
+
+    def start_phase(self, name: str) -> None:
+        phase = str(name)
+        if phase not in _MEMORY_PHASE_SCOPES:
+            raise ValueError(f"unknown llama-server memory phase {phase!r}")
+        if self._phase_sampler is not None:
+            raise RuntimeError(f"memory phase {self._phase_name!r} is already active")
+        sampler = VramSampler(
+            self.card,
+            interval_ms=self.interval_ms,
+            memory_domain=self.memory_domain,
+            keep_samples=False,
+        )
+        sampler.start()
+        self._phase_sampler = sampler
+        self._phase_name = phase
+
+    def stop_phase(self, name: str) -> None:
+        phase = str(name)
+        if self._phase_sampler is None or self._phase_name != phase:
+            raise RuntimeError(
+                f"cannot stop memory phase {phase!r}; active={self._phase_name!r}"
+            )
+        sampler = self._phase_sampler
+        sampler.stop()
+        payload = sampler.result().to_dict()
+        payload["scope"] = _MEMORY_PHASE_SCOPES[phase]
+        self._phase_payloads[phase] = payload
+        self._phase_sampler = None
+        self._phase_name = None
+
+    def stop_active_phase(self) -> None:
+        if self._phase_name is not None:
+            self.stop_phase(self._phase_name)
+
+    def to_dict(self) -> dict[str, Any]:
+        if self._process_payload is None:
+            raise RuntimeError("process memory sampling has not stopped")
+        return {
+            "card": self.card.to_dict(),
+            "memory_domain": self.memory_domain,
+            "memory_total_bytes": self.card.memory_total_bytes(self.memory_domain),
+            "poll_interval_ms": self.interval_ms,
+            "scope": {
+                "process": _MEMORY_PROCESS_SCOPE,
+                "startup": _MEMORY_PHASE_SCOPES["startup"],
+                "request_phases": "one independent sampler around each enabled protocol",
+                "teardown": _MEMORY_PHASE_SCOPES["teardown"],
+            },
+            "process": self._process_payload,
+            "phases": dict(self._phase_payloads),
+        }
 
 
 def main() -> int:
@@ -80,6 +186,27 @@ def main() -> int:
     )
     parser.add_argument("--server-start-timeout", type=float, default=600.0)
     parser.add_argument("--request-timeout", type=float, default=900.0)
+    parser.add_argument(
+        "--sample-memory",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Sample whole-device amdgpu memory around each server process and phase.",
+    )
+    parser.add_argument(
+        "--poll",
+        type=float,
+        default=5.0,
+        help="amdgpu memory polling interval in milliseconds (default: 5).",
+    )
+    parser.add_argument(
+        "--memory-domain",
+        choices=("vram", "gtt"),
+        default="vram",
+        help="amdgpu memory domain (default: vram; use gtt for UMA APUs).",
+    )
+    parser.add_argument("--card-name", help="DRM/sysfs card name, e.g. card0.")
+    parser.add_argument("--pci-id", help="Physical PCI identity, e.g. 0000:10:00.0.")
+    parser.add_argument("--card-index", type=int, help="Zero-based enumerated DRM card index.")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--log-dir",
@@ -126,43 +253,28 @@ def main() -> int:
         ],
     }
 
-    server_process: subprocess.Popen[bytes] | None = None
-    try:
-        for mode in modes:
-            log_path = logs_dir / f"server-{mode}.log"
-            command = _server_command(args, mode)
-            env = os.environ.copy()
-            stage_timing_path: Path | None = None
-            if mode == "mtp" and args.stage_timings_jsonl is not None:
-                stage_timing_path = args.stage_timings_jsonl
-                stage_timing_path.parent.mkdir(parents=True, exist_ok=True)
-                stage_timing_path.unlink(missing_ok=True)
-                env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_timing_path)
-                if args.stage_token_trace:
-                    env["LLAMA_MTP_TOKEN_TRACE"] = "1"
-            with log_path.open("wb") as log:
-                server_process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env)
-            try:
-                _wait_for_health(args.host, args.port, args.server_start_timeout)
-                mode_payload: dict[str, Any] = {
-                    "server_command": command,
-                    "server_log": str(log_path),
-                    "stage_timings_jsonl": str(stage_timing_path) if stage_timing_path is not None else None,
-                    "protocols": {},
-                }
-                if "natural" in protocols:
-                    mode_payload["protocols"]["natural"] = _run_natural(args)
-                if "token_repeat" in protocols:
-                    mode_payload["protocols"]["token_repeat"] = _run_token_repeat(args)
-                artifact["runs"][mode] = mode_payload
-            finally:
-                _terminate(server_process)
-                server_process = None
-                if mode == "mtp" and stage_timing_path is not None:
-                    artifact["stage_timing_summary"] = _summarize_stage_timings(stage_timing_path)
-    finally:
-        if server_process is not None:
-            _terminate(server_process)
+    memory_card = _select_memory_card(args) if args.sample_memory else None
+    for mode in modes:
+        memory_recorder = (
+            None
+            if memory_card is None
+            else _ServerMemoryRecorder(
+                memory_card,
+                interval_ms=args.poll,
+                memory_domain=args.memory_domain,
+            )
+        )
+        mode_payload = _run_server_mode(
+            args=args,
+            mode=mode,
+            protocols=protocols,
+            logs_dir=logs_dir,
+            memory_recorder=memory_recorder,
+        )
+        artifact["runs"][mode] = mode_payload
+        stage_timing_path = args.stage_timings_jsonl if mode == "mtp" else None
+        if stage_timing_path is not None:
+            artifact["stage_timing_summary"] = _summarize_stage_timings(stage_timing_path)
 
     artifact["summary"] = _summarize_artifact(artifact)
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +284,96 @@ def main() -> int:
     )
     print(_summary_text(artifact))
     return 0
+
+
+def _select_memory_card(args: argparse.Namespace) -> AmdgpuCard:
+    selectors = tuple(
+        value
+        for value in (args.card_name, args.pci_id, args.card_index)
+        if value is not None
+    )
+    if len(selectors) > 1:
+        raise ValueError("select at most one of --card-name, --pci-id, or --card-index")
+    return select_card(
+        card_name=args.card_name,
+        pci_id=args.pci_id,
+        index=args.card_index,
+    )
+
+
+def _run_server_mode(
+    *,
+    args: argparse.Namespace,
+    mode: str,
+    protocols: list[str],
+    logs_dir: Path,
+    memory_recorder: _ServerMemoryRecorder | None,
+) -> dict[str, Any]:
+    """Run one base/MTP server and retain complete lifecycle memory scopes."""
+
+    log_path = logs_dir / f"server-{mode}.log"
+    command = _server_command(args, mode)
+    env = os.environ.copy()
+    stage_timing_path: Path | None = None
+    if mode == "mtp" and args.stage_timings_jsonl is not None:
+        stage_timing_path = args.stage_timings_jsonl
+        stage_timing_path.parent.mkdir(parents=True, exist_ok=True)
+        stage_timing_path.unlink(missing_ok=True)
+        env["LLAMA_MTP_STAGE_TIMINGS"] = str(stage_timing_path)
+        if args.stage_token_trace:
+            env["LLAMA_MTP_TOKEN_TRACE"] = "1"
+
+    server_process: subprocess.Popen[bytes] | None = None
+    mode_payload: dict[str, Any] = {
+        "server_command": command,
+        "server_log": str(log_path),
+        "stage_timings_jsonl": (
+            str(stage_timing_path) if stage_timing_path is not None else None
+        ),
+        "protocols": {},
+    }
+    if memory_recorder is not None:
+        memory_recorder.start_process()
+        memory_recorder.start_phase("startup")
+    try:
+        with log_path.open("wb") as log:
+            server_process = subprocess.Popen(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
+        _wait_for_health(args.host, args.port, args.server_start_timeout)
+        if memory_recorder is not None:
+            memory_recorder.stop_phase("startup")
+        for protocol in protocols:
+            if memory_recorder is not None:
+                memory_recorder.start_phase(protocol)
+            try:
+                if protocol == "natural":
+                    mode_payload["protocols"][protocol] = _run_natural(args)
+                elif protocol == "token_repeat":
+                    mode_payload["protocols"][protocol] = _run_token_repeat(args)
+                else:  # pragma: no cover - parser normalizes this list
+                    raise ValueError(f"unsupported protocol {protocol!r}")
+            finally:
+                if memory_recorder is not None:
+                    memory_recorder.stop_phase(protocol)
+    finally:
+        if memory_recorder is not None:
+            memory_recorder.stop_active_phase()
+        if server_process is not None:
+            if memory_recorder is not None:
+                memory_recorder.start_phase("teardown")
+            try:
+                _terminate(server_process)
+            finally:
+                if memory_recorder is not None:
+                    memory_recorder.stop_phase("teardown")
+        if memory_recorder is not None:
+            memory_recorder.stop_process()
+            mode_payload["memory"] = memory_recorder.to_dict()
+    return mode_payload
 
 
 def _server_command(args: argparse.Namespace, mode: str) -> list[str]:
@@ -793,6 +995,14 @@ def _config_json(args: argparse.Namespace) -> dict[str, Any]:
         "server_extra_arg": args.server_extra_arg,
         "stage_timings_jsonl": str(args.stage_timings_jsonl) if args.stage_timings_jsonl is not None else None,
         "stage_token_trace": bool(args.stage_token_trace),
+        "memory_sampling": {
+            "enabled": bool(getattr(args, "sample_memory", False)),
+            "poll_ms": float(getattr(args, "poll", 5.0)),
+            "memory_domain": str(getattr(args, "memory_domain", "vram")),
+            "card_name": getattr(args, "card_name", None),
+            "pci_id": getattr(args, "pci_id", None),
+            "card_index": getattr(args, "card_index", None),
+        },
     }
 
 
