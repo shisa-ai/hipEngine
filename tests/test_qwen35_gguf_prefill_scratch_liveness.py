@@ -40,6 +40,39 @@ def _fake_runner(backend: str = "hip_gfx1100") -> SimpleNamespace:
     )
 
 
+def _fake_dense_qwen36_runner() -> SimpleNamespace:
+    cfg = SimpleNamespace(
+        expert_used_count=0,
+        is_moe=False,
+        expert_count=0,
+        expert_shared_feed_forward_length=0,
+        ssm_inner_size=6144,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=48,
+        ssm_state_size=128,
+        ssm_group_count=16,
+        head_count_kv=4,
+        key_length=256,
+        rope_dimension_count=64,
+        rope_freq_base=10_000_000.0,
+        head_count=24,
+    )
+    return SimpleNamespace(
+        backend="hip_gfx1100",
+        hidden_size=5120,
+        q_width=6144,
+        kv_width=1024,
+        ffn_size=17408,
+        linear_qkv_width=10240,
+        ssm_value_dim=128,
+        weights=SimpleNamespace(
+            config=cfg,
+            model_name="Qwen3.6-27B",
+            file_type_name="MOSTLY_Q4_K_M",
+        ),
+    )
+
+
 def _install_fake_device(monkeypatch):
     next_ptr = 0x10000000
     allocations: list[DeviceBuffer] = []
@@ -70,6 +103,56 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32",
         }:
             monkeypatch.delenv(name, raising=False)
+
+
+def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
+    monkeypatch,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 120 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
+    assert scratch.ffn_gate_up.ptr != 0
+    assert scratch.ffn_intermediate.ptr != 0
+    assert scratch.ffn_down.ptr != 0
+    assert scratch.moe_q8_1 == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.moe_shared_gate == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.moe_shared_intermediate == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.moe_down_out == DeviceBuffer(ptr=0, nbytes=0)
+    offsets = dict(scratch.allocation_offsets)
+    lifetimes = dict(scratch.allocation_lifetimes)
+    assert offsets
+    intermediate_offset, intermediate_size = offsets["ffn_intermediate"]
+    down_offset, down_size = offsets["ffn_down"]
+    assert (
+        intermediate_offset + intermediate_size <= down_offset
+        or down_offset + down_size <= intermediate_offset
+    )
+    entries = list(offsets.items())
+    for index, (name_a, (offset_a, size_a)) in enumerate(entries):
+        for name_b, (offset_b, size_b) in entries[index + 1 :]:
+            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
+                lifetimes[name_a],
+                lifetimes[name_b],
+            )
+            ranges_overlap = (
+                offset_a < offset_b + size_b
+                and offset_b < offset_a + size_a
+            )
+            assert not (lifetimes_overlap and ranges_overlap), (
+                f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
+                f"{name_b}={offsets[name_b]}"
+            )
 
 
 def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:

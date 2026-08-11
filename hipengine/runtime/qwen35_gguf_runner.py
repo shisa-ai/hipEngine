@@ -20769,6 +20769,18 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "moe_shared_out": _both_prefill_routes(15, 17),
     }
 )
+_GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS = frozenset(
+    name for name in _GGUF_PREFILL_SCRATCH_LIFETIMES if name.startswith("moe_")
+)
+_GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES = MappingProxyType(
+    {
+        **_GGUF_PREFILL_SCRATCH_LIFETIMES,
+        # Dense down reads all intermediate columns while writing hidden-width
+        # output; unlike the admitted MoE owner plan, these buffers must not
+        # alias at the stage-12 handoff.
+        "ffn_intermediate": _both_prefill_routes(10, 13),
+    }
+)
 
 
 def _prefill_scratch_lifetimes_overlap(
@@ -20811,8 +20823,11 @@ def _allocate_prefill_scratch_liveness_arena(
     sizes: Mapping[str, int],
     *,
     runtime: HipRuntime,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
+        _GGUF_PREFILL_SCRATCH_LIFETIMES
+    ),
 ) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
-    missing = sorted(set(sizes) - set(_GGUF_PREFILL_SCRATCH_LIFETIMES))
+    missing = sorted(set(sizes) - set(lifetimes))
     if missing:
         raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
     offsets: dict[str, tuple[int, int]] = {}
@@ -20833,8 +20848,8 @@ def _allocate_prefill_scratch_liveness_arena(
             for other, (other_offset, other_size) in offsets.items():
                 ranges_overlap = candidate < other_offset + other_size and other_offset < candidate + size
                 if ranges_overlap and _prefill_scratch_lifetimes_overlap(
-                    _GGUF_PREFILL_SCRATCH_LIFETIMES[name],
-                    _GGUF_PREFILL_SCRATCH_LIFETIMES[other],
+                    lifetimes[name],
+                    lifetimes[other],
                 ):
                     conflict = True
                     break
@@ -20856,13 +20871,16 @@ def _allocate_prefill_scratch_liveness_owner_slots(
     sizes: Mapping[str, int],
     *,
     runtime: HipRuntime,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
+        _GGUF_PREFILL_SCRATCH_LIFETIMES
+    ),
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
     Mapping[str, tuple[int, int]],
     Mapping[str, str],
 ]:
-    missing = sorted(set(sizes) - set(_GGUF_PREFILL_SCRATCH_LIFETIMES))
+    missing = sorted(set(sizes) - set(lifetimes))
     if missing:
         raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
 
@@ -20877,8 +20895,8 @@ def _allocate_prefill_scratch_liveness_owner_slots(
         for members in slot_members:
             if all(
                 not _prefill_scratch_lifetimes_overlap(
-                    _GGUF_PREFILL_SCRATCH_LIFETIMES[name],
-                    _GGUF_PREFILL_SCRATCH_LIFETIMES[other],
+                    lifetimes[name],
+                    lifetimes[other],
                 )
                 for other in members
             ):
@@ -20914,6 +20932,9 @@ def _allocate_prefill_scratch_liveness_arenas(
     *,
     grouping: str,
     runtime: HipRuntime,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
+        _GGUF_PREFILL_SCRATCH_LIFETIMES
+    ),
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
@@ -20924,12 +20945,14 @@ def _allocate_prefill_scratch_liveness_arenas(
         return _allocate_prefill_scratch_liveness_owner_slots(
             sizes,
             runtime=runtime,
+            lifetimes=lifetimes,
         )
     if grouping != "single":  # pragma: no cover - validated by capability lookup
         raise ValueError(f"unsupported prefill scratch arena grouping {grouping!r}")
     arena, views, offsets = _allocate_prefill_scratch_liveness_arena(
         sizes,
         runtime=runtime,
+        lifetimes=lifetimes,
     )
     return (
         (arena,),
@@ -20944,32 +20967,55 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     *,
     rows: int,
 ) -> frozenset[str] | None:
-    cfg = getattr(getattr(runner, "weights", None), "config", None)
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
-    if cfg is None or not bool(getattr(cfg, "is_moe", False)) or not isinstance(backend, str):
+    if cfg is None or not isinstance(backend, str):
         return None
-    try:
-        admitted = bool(
-            backend_package_capability(
+    is_moe = bool(getattr(cfg, "is_moe", False))
+    if is_moe:
+        try:
+            admitted = bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+                    False,
+                )
+            )
+            min_rows = int(
+                backend_package_capability(
+                    backend,
+                    "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
+                    1,
+                )
+            )
+        except ValueError:
+            return None
+        if not admitted:
+            return None
+    else:
+        try:
+            policies = backend_package_capability(
                 backend,
-                "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
-                False,
+                "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+                {},
+            )
+        except ValueError:
+            return None
+        if not isinstance(policies, Mapping):
+            return None
+        policy = policies.get(
+            (
+                getattr(weights, "model_name", None),
+                getattr(weights, "file_type_name", None),
             )
         )
-    except ValueError:
-        return None
-    if not admitted:
-        return None
-    try:
-        min_rows = int(
-            backend_package_capability(
-                backend,
-                "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
-                1,
-            )
-        )
-    except ValueError:
-        return None
+        if not isinstance(policy, Mapping):
+            return None
+        try:
+            min_rows = int(policy.get("min_rows", 1))
+        except (TypeError, ValueError):
+            return None
     if int(rows) < max(1, min_rows):
         return None
     requested_mode = _gguf_gdn_prefill_mode()
@@ -20988,6 +21034,10 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
     else:
         return None
+    if not is_moe:
+        disabled_fields = frozenset(
+            (*disabled_fields, *_GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS)
+        )
     # F32/capture diagnostics intentionally retain independently-owned buffers
     # so post-layer inspection can observe every intermediate concurrently.
     if any(
@@ -21292,6 +21342,11 @@ class _GGUFFullAttentionPrefillScratch:
             runner,
             rows=rows,
         )
+        scratch_lifetimes = (
+            _GGUF_PREFILL_SCRATCH_LIFETIMES
+            if bool(cfg.is_moe)
+            else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
+        )
         if liveness_disabled_fields is not None:
             active_sizes = {
                 name: int(nbytes)
@@ -21303,6 +21358,7 @@ class _GGUFFullAttentionPrefillScratch:
                     active_sizes,
                     grouping=_gguf_prefill_scratch_arena_grouping(runner.backend),
                     runtime=runtime,
+                    lifetimes=scratch_lifetimes,
                 )
             )
             fields = {
@@ -21316,7 +21372,7 @@ class _GGUFFullAttentionPrefillScratch:
             owners.extend(arenas)
             allocation_mode = "liveness_aliased"
             allocation_lifetimes = MappingProxyType(
-                {name: _GGUF_PREFILL_SCRATCH_LIFETIMES[name] for name in active_sizes}
+                {name: scratch_lifetimes[name] for name in active_sizes}
             )
         else:
             fields = {name: buf(nbytes) for name, nbytes in field_sizes.items()}

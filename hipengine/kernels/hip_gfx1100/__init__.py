@@ -596,6 +596,11 @@ GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 # LCP-M1 validates an aligned phase-liveness arena for the production Qwen3.6
 # MoE prefill route. Diagnostic/F32 layouts retain dedicated allocations.
 GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
+# Dense Qwen3.6 has no MoE/shared-expert route, so those fields are omitted and
+# the remaining linear/full-attention/FFN phases reuse the proven arena plan.
+GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"min_rows": 1},
+}
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
@@ -651,6 +656,7 @@ __all__ = [
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+    "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
