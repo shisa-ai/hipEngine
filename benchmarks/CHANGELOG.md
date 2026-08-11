@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-12
 
+- [retained XTX implementation checkpoint; not campaign closure] Qwen3.6-27B / Q4_K_M / 512/1 on RX 7900 XTX: pre-campaign admission OOM -> **695.854 prefill tok/s / finite token 9707 / 16.749 tracked GiB** after replacing all 288 rank-2 Q4 pack8+T16 pairs with sole T16 and exact shared-B/wide dense owners; misses frozen HIP speed and Vulkan memory gates, so no topline row is promoted; `benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json`.
 - [clean external XTX floors frozen before residency changes] Qwen3.6-27B / Q4_K_M / llama.cpp `c8e03ce81` HIP+Vulkan on RX 7900 XTX: no valid hipEngine XTX row -> clean comparator targets **964.606/981.040/946.733 prefill tok/s**, **33.025/32.924/32.560 context-AR transition tok/s** (HIP), and selected natural **B4 81.952 tok/s / 6.1223x AR** (Vulkan), while Vulkan freezes lower **15.690/15.700/15.912 GiB AR** and **16.673 GiB MTP** peak-delta ceilings; `benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json`.
 
 ## 2026-08-09

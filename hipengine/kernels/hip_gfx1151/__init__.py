@@ -672,6 +672,9 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = True
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
+# Dense Qwen3.6 sole-Q4 ownership is gfx1100-only until gfx1151 receives its
+# own c1/verifier/prefill and complete-model gate.
+GGUF_DENSE_Q4_T16 = False
 # Dense Qwen3.6 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
@@ -1752,6 +1755,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",

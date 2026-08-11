@@ -19,6 +19,7 @@ from hipengine.loading.qwen35_gguf import (
 )
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
@@ -184,6 +185,7 @@ def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> No
     optimized_plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=True,
+        dense_q4_t16=True,
         dense_q5_t16_ssm_out=True,
         dense_q6_qmicro_planar=True,
     )
@@ -260,41 +262,39 @@ def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> No
     )
     assert all(spec.allocation_names == ("tiles",) for spec in qmicro_narrow_v)
 
-    q4_t16_sidecars = [
+    q4_t16_owners = [
         spec
-        for spec in plan.specs
+        for spec in optimized_plan.specs
         if spec.source.ggml_type_name == "Q4_K"
-        and any(name.startswith("decode_tiles") for name in spec.allocation_names)
+        and spec.layout == LAYOUT_GGUF_Q4_K_T16
     ]
-    expected_q4_sidecars = {
-        "attn_gate": (48, "decode_tiles"),
-        "attn_k": (16, "decode_tiles"),
-        "attn_output": (16, "decode_tiles"),
-        "attn_q": (16, "decode_tiles"),
-        "attn_qkv": (24, "decode_tiles_r3plus"),
-        "attn_v": (8, "decode_tiles_r3plus"),
-        "ffn_down": (32, "decode_tiles"),
-        "ffn_gate": (64, "decode_tiles"),
-        "ffn_up": (64, "decode_tiles"),
+    expected_q4_owners = {
+        "attn_gate": 48,
+        "attn_k": 16,
+        "attn_output": 16,
+        "attn_q": 16,
+        "attn_qkv": 24,
+        "attn_v": 8,
+        "ffn_down": 32,
+        "ffn_gate": 64,
+        "ffn_up": 64,
     }
-    assert len(q4_t16_sidecars) == sum(
-        count for count, _allocation in expected_q4_sidecars.values()
-    )
-    for role, (count, sidecar_name) in expected_q4_sidecars.items():
+    assert len(q4_t16_owners) == sum(expected_q4_owners.values()) == 288
+    for role, count in expected_q4_owners.items():
         role_specs = [
             spec
-            for spec in q4_t16_sidecars
+            for spec in q4_t16_owners
             if spec.slot_path.endswith(f".{role}")
         ]
         assert len(role_specs) == count
         for spec in role_specs:
-            assert spec.layout == LAYOUT_Q4_K_PACK8
-            assert spec.quant_key == "gguf_q4_k"
-            assert spec.allocation_names == (
-                "qweight",
-                "scales",
-                "mins",
-                sidecar_name,
+            assert spec.quant_key == "gguf_q4_k_t16_v1"
+            assert spec.allocation_names == ("tiles",)
+            current = plan_by_slot[spec.slot_path]
+            assert current.layout == LAYOUT_Q4_K_PACK8
+            assert any(
+                name.startswith("decode_tiles")
+                for name in current.allocation_names
             )
             assert all(
                 not name.startswith("decode_tiles")
@@ -306,6 +306,32 @@ def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> No
         if spec.source.ggml_type_name == "Q4_K"
         and spec.slot_path.endswith(".token_embedding")
     )
+
+
+def test_qwen36_dense_q4_materializes_sole_t16_owner() -> None:
+    if not DENSE_UNTIED_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        DENSE_UNTIED_MODEL,
+        selected_slots=("layers.0.attn_gate",),
+        decode_repack=True,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    try:
+        weight = resident.layer(0).weight("attn_gate")
+        assert weight.spec.layout == LAYOUT_GGUF_Q4_K_T16
+        assert weight.spec.quant_key == "gguf_q4_k_t16_v1"
+        assert tuple(weight.allocations) == ("tiles",)
+        assert weight.allocation("tiles").tensor.dtype == DType.INT8
+        assert weight.allocation("tiles").buffer.nbytes == 18_186_240
+    finally:
+        resident.free(runtime=runtime)
 
 
 def test_qwen36_dense_attn_v_materializes_sole_qmicro_owner() -> None:

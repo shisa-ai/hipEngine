@@ -565,10 +565,13 @@ _SELECTED_CASES = [
 ]
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_q5_t16_dense_wmma_matches_one_expert_selected_bits_and_quality_gate() -> None:
+@pytest.mark.parametrize("rows", [17, 33])
+def test_q5_t16_dense_wmma_matches_one_expert_selected_bits_and_quality_gate(
+    rows: int,
+) -> None:
     fixture = _build_compact_t16_fixture(
         quant="gguf_q5_k_t16_v1",
-        counts=[17],
+        counts=[rows],
         in_features=512,
         out_features=64,
         dtype="bf16",

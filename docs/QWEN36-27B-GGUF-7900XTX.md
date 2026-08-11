@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; P0 comparator and blocker evidence complete.**
+Status: **in progress; clean comparators and the first operation-complete sole-T16 XTX fit are complete; final speed/memory closure remains open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -611,17 +611,19 @@ current hipEngine no-number/OOM state is explicit.
 - [ ] **P1.4 Cover aliases.** Test tied and untied embedding/head, shared target
   assets, model-map aliases, arena slices, and intentional views so the checker
   neither double-counts aliases nor hides disjoint allocations.
-- [ ] **P1.5 Freeze current and target manifests.** Current 288-Q4 pack8/T16
-  duplication must be reproduced exactly; the candidate target manifest must
-  predict zero alternate-layout bytes before GPU implementation begins.
+- [x] **P1.5 Freeze current and target manifests.** The current census
+  reproduces all 288 Q4 pack8/T16 owners and 10,790,502,400 alternate-layout
+  bytes. The candidate predicts the same 10,790,502,400 canonical T16 bytes,
+  zero alternate-layout bytes, and passes `assert_single_layout()`. Evidence:
+  [`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json).
 
 Exit: memory ownership is a testable contract, not inferred from peak deltas.
 
 ### P2 — RED: define the sole-Q4 representation
 
-- [ ] **P2.1 Flip the mapping expectation.** Replace the current test that
-  requires 288 Q4 sidecars with RED assertions that each Q4 spec owns exactly
-  one allocation family.
+- [x] **P2.1 Flip the mapping expectation.** Candidate mapping coverage now
+  requires all 288 rank-2 Q4 specs to own only `gguf_q4_k_t16_v1/tiles`, while
+  separately freezing the old dual-layout control census.
 - [ ] **P2.2 Add actual-weight layout oracles.** Cover all nine Q4 roles and
   representative/tail shapes for source->T16/raw->dequant equivalence, BF16
   output bits where the current path is exact, and finite F32 accumulation.
@@ -641,27 +643,37 @@ Exit: the current implementation fails the new tests for the intended reason.
 
 ### P3 — Sole-T16 materialization and same-layout fallbacks
 
-- [ ] **P3.1 Change rank-2 Q4 planning.** Under the candidate selector,
-  materialize only `gguf_q4_k_t16_v1`; do not build/upload pack8 first.
+- [x] **P3.1 Change rank-2 Q4 planning.** The gfx1100 package capability now
+  materializes only `gguf_q4_k_t16_v1/tiles` for all 288 rank-2 Q4 tensors;
+  pack8 is never uploaded first.
 - [ ] **P3.2 Keep host loading bounded.** Repack from mmap/host source directly
   to one upload buffer, release temporary arrays promptly, and record host RSS
   separately. Device admission is based on the final manifest plus worst-case
   workspace/KV/graph reserve.
-- [ ] **P3.3 Route c1 decode and fused FFN.** Preserve current exact T16
-  single/dual/fused owners and their row policy without pack8 fallback.
-- [ ] **P3.4 Route verifier rows.** Cover every production B1-B3 row shape; add
-  rows 5/6 only if B4/B5 is separately admitted.
-- [ ] **P3.5 Implement dense T16 bulk prefill.** Reuse or adapt registered T16
-  WMMA/MMQ primitives for M512/M1024/M4096 and tails. Activation quantization is
-  bounded reusable scratch; weights remain one payload.
-- [ ] **P3.6 Implement same-layout unfused fallbacks.** Unsupported fusion or
-  graph capture uses T16 primitive chains, never pack8. Fail planning if no
-  semantically equivalent T16 chain exists.
-- [ ] **P3.7 Reconcile registry keys.** No direct backend/quant branch enters
-  engine/model dispatch; architecture role mapping selects registered variants.
+- [x] **P3.3 Route c1 decode and fused FFN.** Exact T16 single/dual/fused c1
+  owners consume canonical `tiles`; no pack8 allocation remains.
+- [x] **P3.4 Route verifier rows.** Existing exact rows-2-4 single and fused
+  owners now consume canonical `tiles`, covering the admitted B1-B3 shapes.
+  Rows 5/6 remain outside admission.
+- [x] **P3.5 Implement dense T16 bulk prefill.** Q4/Q5/Q6 now have registered
+  dense T16 WMMA owners. Actual-weight 512/1024/4096 and tail screens are exact
+  to their prior T16 associations; the retained Q4 producer shares one decoded
+  K256 slab across four waves without another weight payload.
+- [x] **P3.6 Implement same-layout unfused fallbacks.** Unsupported composites
+  use the registered T16 primitive chain; no pack8 shadow is available to lazy
+  fallback.
+- [x] **P3.7 Reconcile registry keys.** Dense/small-row/c1 owners resolve through
+  four-axis keys and package capabilities; no model/backend capacity branch was
+  added.
 
-Exit: plan/runtime census reports zero rank-2 Q4 alternate-layout bytes and an
-isolated layer stack passes decode, verifier, and three-shape prefill.
+Exit: **functional layout/kernel exit reached; P3.2 host-RSS evidence remains.**
+Plan census reports zero rank-2 Q4 alternate-layout bytes; exact c1/rows-2-4
+coverage and M512/M1024/M4096/tail prefill pass, and the complete model first
+fits the XTX at 16.749 tracked GiB. The retained 512/1 diagnostic reaches
+695.854 prefill tok/s with finite output and clean teardown. This is not P6
+closure: it remains below the 974.252 tok/s speed gate and above the
+15.690-GiB external memory gate. Evidence:
+[`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json).
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 

@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading import qwen35_gguf_nextn_materialize as nextn_materialize
-from hipengine.loading.qwen35_gguf_materialize import Qwen35GGUFWeightSpec
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q4_K_T16,
+    Qwen35GGUFWeightSpec,
+)
 from hipengine.loading.qwen35_gguf_nextn_materialize import (
     Qwen35GGUFNextNMaterializationPlan,
     materialize_qwen35_gguf_nextn_weights,
+    plan_qwen35_gguf_nextn_materialization,
 )
+from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
 from hipengine.quant.gguf import GGMLQuantizationType
 
 
@@ -58,6 +64,28 @@ def _spec(
         layout=layout,
         allocation_names=(allocation,),
     )
+
+
+def test_qwen36_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights() -> None:
+    model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    model_map = build_qwen35_gguf_nextn_tensor_map(GGUFReader(model).info)
+
+    plan = plan_qwen35_gguf_nextn_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q6_qmicro_planar=True,
+    )
+    q4_specs = tuple(
+        spec for spec in plan.draft_specs if spec.source.ggml_type_name == "Q4_K"
+    )
+
+    assert len(q4_specs) == 5
+    assert all(spec.layout == LAYOUT_GGUF_Q4_K_T16 for spec in q4_specs)
+    assert all(spec.quant_key == "gguf_q4_k_t16_v1" for spec in q4_specs)
+    assert all(spec.allocation_names == ("tiles",) for spec in q4_specs)
 
 
 def test_nextn_materialization_borrows_compatible_target_fallbacks_without_owning_them(
@@ -151,7 +179,11 @@ def test_nextn_materialization_borrows_compatible_target_fallbacks_without_ownin
 
     monkeypatch.setattr(nextn_materialize, "GGUFReader", _FakeReader)
     monkeypatch.setattr(nextn_materialize, "build_qwen35_gguf_nextn_tensor_map", lambda info: object())
-    monkeypatch.setattr(nextn_materialize, "plan_qwen35_gguf_nextn_materialization", lambda model_map: plan)
+    monkeypatch.setattr(
+        nextn_materialize,
+        "plan_qwen35_gguf_nextn_materialization",
+        lambda model_map, **kwargs: plan,
+    )
     monkeypatch.setattr(nextn_materialize, "materialize_qwen35_gguf_weight_spec", fake_materialize)
 
     resident = materialize_qwen35_gguf_nextn_weights(

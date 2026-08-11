@@ -3200,6 +3200,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k_t16_v1",
+            "dense_dual_local32_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_bf16_bf16_out",
