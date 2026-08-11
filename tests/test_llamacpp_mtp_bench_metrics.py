@@ -97,10 +97,87 @@ def test_llamacpp_mtp_token_repeat_summary_reports_accepted_per_output() -> None
 
     assert summary["draft_acceptance"] == 0.5
     assert summary["accepted_per_output"] == 6 / 16
+    assert summary["first_output_tokens_untimed"] == 2
+    assert summary["timed_decode_transitions"] == 14
+    assert summary["transition_normalized_predicted_per_second"] == 14 / 0.16
     assert summary["denominators"] == {
         "draft_acceptance": "draft_n_accepted / draft_n",
         "accepted_per_output": "draft_n_accepted / tokens_predicted",
+        "native_predicted_per_second": "tokens_predicted / predicted_ms",
+        "transition_normalized_predicted_per_second": (
+            "(tokens_predicted - one prompt-produced first output token per request) / "
+            "predicted_ms"
+        ),
     }
+    assert summary["timing_boundary"]["cross_engine_rule"] == (
+        "request N+1 outputs and report N timed transitions per shape"
+    )
+
+
+def test_token_repeat_payload_requests_one_extra_visible_output() -> None:
+    args = argparse.Namespace(
+        alias="model",
+        token_id=9707,
+        temperature=0.0,
+        top_k=1,
+        top_p=1.0,
+        min_p=0.0,
+        seed=12345,
+    )
+
+    payload = bench._completion_payload(args, prompt_len=512, decode_tokens=128)
+
+    assert len(payload["prompt"]) == 512
+    assert payload["n_predict"] == 129
+    assert payload["return_tokens"] is True
+
+
+def test_token_repeat_records_exact_output_ids_and_hash(monkeypatch) -> None:
+    args = argparse.Namespace(
+        alias="model",
+        token_id=9707,
+        temperature=0.0,
+        top_k=1,
+        top_p=1.0,
+        min_p=0.0,
+        seed=12345,
+        request_timeout=5.0,
+        shapes=["2/3"],
+    )
+    calls = []
+    responses = iter(
+        [
+            {"tokens": [1] * 9, "timings": {"predicted_n": 9}},
+            {
+                "tokens": [11, 12, 13, 14],
+                "tokens_evaluated": 2,
+                "timings": {
+                    "predicted_n": 4,
+                    "predicted_ms": 40.0,
+                    "prompt_n": 2,
+                    "prompt_ms": 20.0,
+                },
+            },
+        ]
+    )
+
+    def fake_post(_args, path, payload, *, timeout):
+        calls.append((path, payload, timeout))
+        return next(responses)
+
+    monkeypatch.setattr(bench, "_post_json", fake_post)
+
+    result = bench._run_token_repeat(args)
+    row = result["rows"][0]
+
+    assert calls[0][1]["n_predict"] == 9
+    assert calls[1][1]["n_predict"] == 4
+    assert row["decode_tokens_requested"] == 3
+    assert row["visible_output_tokens_requested"] == 4
+    assert row["timed_decode_transitions"] == 3
+    assert row["output_token_ids"] == [11, 12, 13, 14]
+    assert row["output_token_count"] == 4
+    assert row["output_token_sha256"] == bench._token_ids_sha256([11, 12, 13, 14])
 
 
 def test_llamacpp_mtp_artifact_summary_and_text_include_accepted_per_output() -> None:

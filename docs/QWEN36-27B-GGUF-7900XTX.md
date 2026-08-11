@@ -378,11 +378,11 @@ context-matched server decode row below.
 
 ### 5.4 Context-matched AR
 
-Use the repeated-token server protocol only for AR shape control, with 129
-visible outputs if the harness needs 128 timed transitions. Extend the harness
-first if necessary so the artifact records prompt time, 128 transition-normalized
-decode steps, client wall, exact IDs/hash, and phase peak VRAM for each shape.
-The existing token-repeat mode is a shape control, not a natural MTP claim.
+Use the repeated-token server protocol only for AR shape control. The harness
+interprets each shape's decode count as timed transitions, requests one extra
+visible output (129 for a 128-transition row), and records native plus
+transition-normalized timing, client wall, exact IDs/hash, and phase peak VRAM
+for each shape. Token-repeat mode is a shape control, not a natural MTP claim.
 
 ```bash
 # HIP: HIP_VISIBLE_DEVICES=1, device becomes ROCm0.

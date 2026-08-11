@@ -524,11 +524,23 @@ def _run_token_repeat(args: argparse.Namespace) -> dict[str, Any]:
         resp = _post_json(args, "/completion", payload, timeout=args.request_timeout)
         wall_s = time.perf_counter() - t0
         timings = resp.get("timings") or {}
+        tokens_predicted = int(timings.get("predicted_n") or 0)
+        output_token_ids = [int(token) for token in resp.get("tokens", ())]
+        if len(output_token_ids) != tokens_predicted:
+            raise RuntimeError(
+                "llama-server token-repeat response did not return every predicted token: "
+                f"tokens={len(output_token_ids)} predicted_n={tokens_predicted}"
+            )
         rows.append(
             {
                 "shape": shape,
                 "prompt_len_requested": prompt_len,
                 "decode_tokens_requested": decode_tokens,
+                "visible_output_tokens_requested": decode_tokens + 1,
+                "timed_decode_transitions": max(0, tokens_predicted - 1),
+                "output_token_ids": output_token_ids,
+                "output_token_count": len(output_token_ids),
+                "output_token_sha256": _token_ids_sha256(output_token_ids),
                 "tokens_evaluated": resp.get("tokens_evaluated"),
                 "tokens_predicted": timings.get("predicted_n"),
                 "prompt_per_second": timings.get("prompt_per_second"),
@@ -560,7 +572,10 @@ def _completion_payload(
 ) -> dict[str, Any]:
     return {
         "prompt": [args.token_id] * prompt_len,
-        "n_predict": decode_tokens,
+        # llama.cpp samples one visible output before t_start_generation. Ask
+        # for N+1 outputs so ``decode_tokens`` remains the cross-engine count of
+        # timed transitions.
+        "n_predict": decode_tokens + 1,
         "temperature": args.temperature,
         "top_k": args.top_k,
         "top_p": args.top_p,
@@ -569,7 +584,15 @@ def _completion_payload(
         "ignore_eos": True,
         "cache_prompt": False,
         "stream": False,
+        "return_tokens": True,
     }
+
+
+def _token_ids_sha256(tokens: list[int]) -> str:
+    digest = hashlib.sha256()
+    for token in tokens:
+        digest.update(int(token).to_bytes(8, byteorder="little", signed=True))
+    return digest.hexdigest()
 
 
 def _read_prompts(path: Path) -> list[dict[str, Any]]:
@@ -730,17 +753,37 @@ def _summarize_by_category(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _summarize_token_repeat(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    total_predicted = sum((row.get("tokens_predicted") or 0) for row in rows)
+    total_predicted = sum(int(row.get("tokens_predicted") or 0) for row in rows)
+    first_outputs = sum(1 for row in rows if int(row.get("tokens_predicted") or 0) > 0)
+    timed_transitions = max(0, total_predicted - first_outputs)
+    total_predicted_ms = sum(float(row.get("predicted_ms") or 0.0) for row in rows)
     total_accepted = sum((row.get("draft_n_accepted") or 0) for row in rows)
     return {
         "rows": len(rows),
         "weighted_predicted_per_second": _weighted_tps(rows, "tokens_predicted", "predicted_ms"),
+        "first_output_tokens_untimed": first_outputs,
+        "timed_decode_transitions": timed_transitions,
+        "transition_normalized_predicted_per_second": (
+            1000.0 * timed_transitions / total_predicted_ms
+            if timed_transitions > 0 and total_predicted_ms > 0.0
+            else None
+        ),
         "weighted_prompt_per_second": _weighted_tps(rows, "tokens_evaluated", "prompt_ms"),
         "draft_acceptance": _weighted_draft_acceptance(rows),
         "accepted_per_output": (total_accepted / total_predicted) if total_predicted else None,
         "denominators": {
             "draft_acceptance": "draft_n_accepted / draft_n",
             "accepted_per_output": "draft_n_accepted / tokens_predicted",
+            "native_predicted_per_second": "tokens_predicted / predicted_ms",
+            "transition_normalized_predicted_per_second": (
+                "(tokens_predicted - one prompt-produced first output token per request) / "
+                "predicted_ms"
+            ),
+        },
+        "timing_boundary": {
+            "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+            "first_output_token": "sampled before t_start_generation and included in tokens_predicted",
+            "cross_engine_rule": "request N+1 outputs and report N timed transitions per shape",
         },
     }
 
