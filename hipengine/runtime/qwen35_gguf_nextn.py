@@ -36,7 +36,10 @@ from hipengine.loading.qwen35_gguf_nextn_materialize import (
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+from hipengine.runtime.qwen35_gguf_runner import (
+    Qwen35GGUFFullStackRunner,
+    Qwen35GGUFResidentSession,
+)
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
     MtpDraftRequest,
@@ -121,6 +124,21 @@ _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
 _NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
 _NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
 _NEXTN_TOP1_RESULT_CAPACITY = max(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS)
+
+
+def borrow_qwen35_gguf_nextn_fallback_weights(
+    target: Qwen35GGUFResidentSession,
+) -> dict[str, Qwen35GGUFDeviceWeight]:
+    """Borrow effective target roots without rehydrating a mapped token table."""
+
+    if target.runner is None or target.runner.weights is None:
+        raise RuntimeError("target GGUF weights are unavailable")
+    return {
+        "token_embedding": target.runner.ensure_device_token_embedding(
+            runtime=target.runtime,
+        ),
+        "lm_head": target.runner.weights.root("lm_head"),
+    }
 
 
 class Qwen35GGUFNextNStepExecutor(Protocol):
@@ -1301,4 +1319,5 @@ __all__ = [
     "Qwen35GGUFNextNStateAdvance",
     "Qwen35GGUFNextNStepExecutor",
     "Qwen35GGUFNextNStepResult",
+    "borrow_qwen35_gguf_nextn_fallback_weights",
 ]
