@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-11**
+Last updated: **2026-08-12**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -136,6 +136,26 @@ repeated here.
 
 The same final review records exact natural-prompt MTP separately below.
 Evidence: [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
+
+### Radeon RX 7900 XTX: Qwen3.6-27B Dense GGUF comparator floors
+
+Current hipEngine cannot admit this model on the 23.984-GiB XTX, so there is no
+numeric hipEngine row yet. Clean same-commit llama.cpp `c8e03ce81` HIP and
+Vulkan establish the pre-implementation speed and whole-device VRAM targets:
+
+| Workload | HIP prefill | Vulkan prefill | HIP context AR | Vulkan context AR | Lower peak delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **964.606** | 870.872 | **33.025** | 13.391 | **15.690 GiB** (Vulkan) |
+| 1024/128 | **981.040** | 836.898 | **32.924** | 13.379 | **15.700 GiB** (Vulkan) |
+| 4096/128 | **946.733** | 835.765 | **32.560** | 13.309 | **15.912 GiB** (Vulkan) |
+
+Prefill is llama-bench `avg_ts` over five internal repetitions after one
+warmup; context AR is 128 timed server transitions. On the complete ten-prompt
+natural suite, HIP selects B2 at **46.863 tok/s / 1.4841x AR / 16.940 GiB**
+peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
+GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
+the lower Vulkan memory row. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json)
+and [`current hipEngine admission blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
