@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 
+from hipengine.util.amdgpu_vram import AmdgpuCard
 from scripts import llamacpp_mtp_bench as bench
 
 
@@ -299,3 +301,175 @@ def test_llamacpp_mtp_server_command_passes_extra_args_after_mtp_flags() -> None
         "--reasoning",
         "off",
     ]
+
+
+def test_llamacpp_config_records_memory_sampling() -> None:
+    args = argparse.Namespace(
+        server_bin="llama-server",
+        model="model.gguf",
+        alias="model",
+        host="127.0.0.1",
+        port=8011,
+        ctx_size=8192,
+        concurrency=4,
+        gpu_layers=99,
+        flash_attn="on",
+        cache_type_k="f16",
+        cache_type_v="f16",
+        draft_max=2,
+        protocol="natural",
+        prompts=bench.DEFAULT_PROMPTS,
+        max_tokens=25,
+        seed=12345,
+        temperature=0.0,
+        top_k=1,
+        top_p=1.0,
+        min_p=0.0,
+        token_id=9707,
+        shapes=["512/128"],
+        server_extra_arg=[],
+        stage_timings_jsonl=None,
+        stage_token_trace=False,
+        sample_memory=True,
+        poll=5.0,
+        memory_domain="vram",
+        card_name="card0",
+        pci_id=None,
+        card_index=None,
+    )
+
+    config = bench._config_json(args)
+
+    assert config["ctx_size_per_sequence"] == 8192
+    assert config["server_ctx_size"] == 32768
+    assert config["concurrency"] == 4
+    assert config["memory_sampling"] == {
+        "enabled": True,
+        "poll_ms": 5.0,
+        "memory_domain": "vram",
+        "card_name": "card0",
+        "pci_id": None,
+        "card_index": None,
+    }
+
+
+def _fake_amdgpu_card(tmp_path, *, used_bytes: int = 100) -> AmdgpuCard:
+    device = tmp_path / "card0" / "device"
+    device.mkdir(parents=True)
+    (device / "mem_info_vram_total").write_text("1000\n")
+    (device / "mem_info_vram_used").write_text(f"{used_bytes}\n")
+    return AmdgpuCard(
+        card_name="card0",
+        pci_id="0000:10:00.0",
+        sysfs_path=device,
+        vram_total_bytes=1000,
+    )
+
+
+def test_server_memory_recorder_reports_process_and_phase_fake_sysfs(tmp_path) -> None:
+    card = _fake_amdgpu_card(tmp_path)
+    used_path = card.vram_used_path
+    recorder = bench._ServerMemoryRecorder(
+        card,
+        interval_ms=1.0,
+        memory_domain="vram",
+    )
+
+    recorder.start_process()
+    recorder.start_phase("startup")
+    used_path.write_text("400\n")
+    time.sleep(0.01)
+    recorder.stop_phase("startup")
+    recorder.start_phase("teardown")
+    used_path.write_text("100\n")
+    time.sleep(0.005)
+    recorder.stop_phase("teardown")
+    recorder.stop_process()
+    payload = recorder.to_dict()
+
+    assert payload["card"]["card_name"] == "card0"
+    assert payload["card"]["pci_id"] == "0000:10:00.0"
+    assert payload["process"]["baseline_bytes"] == 100
+    assert payload["process"]["peak_bytes"] == 400
+    assert payload["process"]["final_bytes"] == 100
+    assert payload["process"]["peak_delta_bytes"] == 300
+    assert payload["process"]["samples_count"] >= 3
+    assert payload["phases"]["startup"]["peak_bytes"] == 400
+    assert payload["phases"]["startup"]["scope"] == (
+        "before llama-server Popen through successful health readiness"
+    )
+    assert payload["phases"]["teardown"]["final_bytes"] == 100
+
+
+def test_run_server_mode_samples_fake_subprocess_lifecycle(tmp_path, monkeypatch) -> None:
+    card = _fake_amdgpu_card(tmp_path)
+    used_path = card.vram_used_path
+    recorder = bench._ServerMemoryRecorder(
+        card,
+        interval_ms=1.0,
+        memory_domain="vram",
+    )
+    popen_calls = []
+
+    class FakeProcess:
+        pass
+
+    def fake_popen(command, *, stdout, stderr, env):
+        popen_calls.append((command, stdout, stderr, env))
+        return FakeProcess()
+
+    def fake_health(_host, _port, _timeout):
+        used_path.write_text("300\n")
+        time.sleep(0.005)
+
+    def fake_natural(_args):
+        used_path.write_text("500\n")
+        time.sleep(0.005)
+        return {"summary": {}}
+
+    def fake_terminate(_process):
+        used_path.write_text("100\n")
+        time.sleep(0.005)
+
+    monkeypatch.setattr(bench.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(bench, "_wait_for_health", fake_health)
+    monkeypatch.setattr(bench, "_run_natural", fake_natural)
+    monkeypatch.setattr(bench, "_terminate", fake_terminate)
+    args = argparse.Namespace(
+        server_bin="/tmp/llama.cpp/build/bin/llama-server",
+        model="model.gguf",
+        alias="model",
+        host="127.0.0.1",
+        port=8011,
+        ctx_size=8192,
+        concurrency=1,
+        gpu_layers=99,
+        flash_attn="on",
+        cache_type_k="f16",
+        cache_type_v="f16",
+        draft_max=2,
+        server_extra_arg=[],
+        stage_timings_jsonl=None,
+        stage_token_trace=False,
+        server_start_timeout=5.0,
+    )
+
+    payload = bench._run_server_mode(
+        args=args,
+        mode="base",
+        protocols=["natural"],
+        logs_dir=tmp_path,
+        memory_recorder=recorder,
+    )
+
+    assert len(popen_calls) == 1
+    assert payload["protocols"]["natural"] == {"summary": {}}
+    assert payload["memory"]["process"]["baseline_bytes"] == 100
+    assert payload["memory"]["process"]["peak_bytes"] == 500
+    assert payload["memory"]["process"]["final_bytes"] == 100
+    assert payload["memory"]["phases"]["startup"]["peak_bytes"] >= 300
+    assert payload["memory"]["phases"]["natural"]["peak_bytes"] == 500
+    assert payload["memory"]["phases"]["teardown"]["final_bytes"] == 100
+    assert payload["memory"]["scope"]["process"] == (
+        "before llama-server Popen through post-termination sysfs sample"
+    )
