@@ -213,16 +213,22 @@ MiB)** with neutral exact 512/128 behavior. The final five-sample matrix is
 prefill/memory rows and 4K decode fail their frozen gates. This is a retained
 partial pass rather than a root-topline promotion.
 
-The final live target+NextN census now proves **zero duplicate-payload and zero
+The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped
 embedding and untied output head are shared exactly once and all tracked
 ownership closes to zero. Stability evidence adds three AR plus three natural
 MTP cold process cycles, then **100 mixed 512/1K/4K reset/rearms / 400 PM4
 submissions** in one resident process with exact tokens/logits, constant
 post-warm ownership, zero fallback/unretired work, and fully retired graph,
-executable, and context children. The p512 deep eager oracle is also exact for
-tokens, all hidden/layer outputs, Conv/GDN, and live K/V; the >5-minute 1K/4K
-oracles and soak remain pending approval.
+executable, and context children. Deep 512/1K/4K eager oracles match fresh
+serial-prefix token, FP32 hidden, every Conv/GDN state, and all live BF16 K/V
+bytes at all 12 transitions. PM4 matches those eager states plus full logits and
+complete `KVLiveSpans` at the common pre-execution boundary, again with zero
+fallback/unretired submissions and clean retirement. Real dense B1-B3
+reject/partial/full/rollback/reseed transactions, proposal-time cancellation,
+and the public AR/repeated-MTP/HTTP torch-free owner-reuse lifecycle also pass;
+tracked public teardown is zero and final VRAM is within 0.8 MiB of baseline.
+The fixed ten-minute natural AR/MTP thermal/allocator soak is active.
 
 Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),

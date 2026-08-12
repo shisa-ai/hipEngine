@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, P9.1-P9.3 lifecycle gates pass, the shared gfx1100 route passes the complete same-commit W7900 non-regression gate, 512/1K XTX AR decode pass, and the sole-raw Q4 rung is rejected, while XTX prefill/memory, 4K decode, Vulkan-MTP parity, deep 1K/4K state, rollback/soak, and repeated-suite variance remain open.**
+Status: **in progress with correctness closure complete; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, deep 512/1K/4K eager+PM4 state and full `KVLiveSpans` pass, dense transactions/cancellation/public torch-free lifecycle pass, P9.1-P9.4 pass, the shared gfx1100 route passes the complete same-commit W7900 safeguard, 512/1K XTX AR decode pass, and the sole-raw Q4 rung is rejected. XTX prefill/memory, 4K decode, Vulkan-MTP parity, the active mixed soak, and repeated-suite variance remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -739,29 +739,38 @@ weight bytes.
   with scratch0; mapped-host Q4 embedding is bit-exact to a device owner. The
   output-major Q4 shared-B slab keeps those exact outputs while replacing 132
   scalar LDS instructions with 28 b128 instructions at unchanged resources.
-- [ ] **P5.3 Full eager/graph AR state.** At 512, 1024, and 4096, compare eager
-  and production graph/transport logits, hidden, Conv/GDN, KV+`KVLiveSpans`,
-  positions, final IDs, and teardown. Partial evidence: 512/128 HIP graph and
-  PM4 each survive three exact reset/rearms; the final 512/1K/4K PM4 matrix adds
-  one warmup plus five exact resets per shape with finite token 9707, stable
-  graph reuse, zero native fallbacks/unretired submissions, and zero tracked
-  bytes after close. PM4 is +1.601% in the focused 512 control and is promoted
-  only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128. A clean
-  same-commit llama.cpp p512 trajectory now matches production bulk eager
-  exactly, and four teacher-forced transitions match fresh serial-prefix token,
-  hidden, every layer output, Conv/GDN state, and all live K/V bytes with zero
-  mismatches. The corresponding 1K (~6 minute) and 4K (~16-18 minute) deep
-  oracles remain open pending explicit expensive-test approval. Evidence:
+- [x] **P5.3 Full eager/graph AR state.** At 512, 1024, and 4096, clean
+  same-file llama.cpp and production bulk eager emit token 9707; each of four
+  eager transitions is byte-exact to a freshly recomputed serial-prefix
+  reference for FP32 hidden, all 48 Conv/GDN state pairs, and every live byte in
+  all 16 full-attention BF16 K/V pairs. From the same resident checkpoints, PM4
+  matches eager at all 12 transitions for those fields plus full FP32 logits.
+  Complete `KVLiveSpans` (`base_offsets`, device live counts, row positions,
+  host `max_live_count`, token positions, and evict mask) is exact when compared
+  at the common pre-execution boundary: PM4 stages the next append during replay,
+  while scalar eager stages it on entry to `step()`. Each PM4 generation has four
+  launches, zero native fallback/unretired submissions, and a retired executable
+  after close. The retained 128-transition PM4-vs-HIP speed claim remains the
+  separate +1.601% focused control; this packet is correctness-only. Evidence:
   [`correctness and runtime residency`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
-- [ ] **P5.4 Dense MTP transaction.** Cover reject, partial accept, full accept,
-  correction, rollback/reseed, dynamic positions, proposal/target graph reuse,
-  and provider-vs-scalar behavior for every admitted budget.
+- [x] **P5.4 Dense MTP transaction.** The real XTX B1-B3 gate passes scalar
+  logits, reject/partial/full accept, correction, forced and post-commit
+  rollback/reseed, dynamic positions, proposal/target graph reuse, provider
+  generation, state/KV identity, and zero removed-layout pack8 calls in 93.88 s.
+  Cancellation injected during proposal is now observed before target
+  verify/commit; request KV buffers are freed and poisoned target/draft owners
+  close rather than re-enter their pools.
 - [x] **P5.5 Natural semantic gate.** All ten prompts, four categories, six
   train cases, and four fixed heldouts pass for true AR and B1-B3. Every MTP
   token ledger is exact to true AR and every GPU accept result matches CPU.
   Layout-only changes preserve the exact current hipEngine output.
-- [ ] **P5.6 Torch-free and lifecycle.** Public `LLM.generate()` and server paths
-  remain torch-free, finite, deterministic under greedy settings, and leak-free.
+- [x] **P5.6 Torch-free and lifecycle.** A real public XTX gate runs AR, two
+  deterministic dense layer-64 MTP requests with target/provider reuse, and the
+  opt-in HTTP MTP route. AR/MTP IDs and HTTP text match exactly, torch is absent
+  before and after `LLM.close()`, tracked current bytes/allocations return to
+  zero, and final whole-card VRAM is 0.8 MiB above baseline. The maximum public
+  AR+pooled-MTP/server footprint is disclosed separately at 20.413 GiB delta;
+  it is lifecycle evidence, not the selected natural-MTP memory topline.
 
 Exit: correctness is green before any keep is based on performance.
 
@@ -890,9 +899,13 @@ Capacity is not purchased with a regression on the original target card.
   submit+queue/resource-recreate ROCm#6529 arm remains separately guarded and
   requires explicit reset-risk approval. Evidence:
   [`cold/warm PM4 lifecycle`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-lifecycle.json).
-- [ ] **P9.4 MTP rollback stress.** Cycle accepted/rejected patterns, budget
-  changes among admitted graphs, cancellation, and repeated provider reuse;
-  check all state/KV journals and allocation ownership.
+- [x] **P9.4 MTP rollback stress.** The dense B1-B3 transaction gate covers
+  reject/partial/full acceptance, correction, forced and post-commit rollback,
+  reseed, changing admitted budget/graph shapes, dynamic positions, repeated
+  graph/provider operation, and exact state/KV journals. Proposal-time
+  cancellation stops before target mutation and closes poisoned owners; a real
+  public lifecycle then proves two normal requests reuse the same target/provider
+  and final teardown returns tracked ownership to zero.
 - [ ] **P9.5 Soak.** Run a predeclared c=1 AR/MTP mixed workload long enough to
   observe thermals and allocator stability. Record clocks, temperatures,
   errors, max VRAM, and throughput drift. Get explicit approval before this
@@ -950,7 +963,7 @@ Populate only from committed artifacts:
 | Duplicate logical weight bytes | not audited | not audited | **0 live duplicate-payload bytes** | exactly 0 |
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly** | P9.1-P9.3 pass; rollback stress/soak pending |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass** | P9.1-P9.4 pass; soak active |
 
 W7900 safeguard:
 
