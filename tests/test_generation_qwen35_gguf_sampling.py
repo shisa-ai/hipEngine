@@ -351,6 +351,109 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     assert timing["mtp_hidden_seed_extra_rows"] == 0.0
 
 
+def test_gguf_speculative_mtp_cancellation_releases_request_buffers_and_poisoned_draft(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+    token = GenerationCancellationToken()
+
+    class FakeRuntime:
+        def memcpy(self, dst, src, nbytes, kind):
+            calls.append(("memcpy", int(nbytes)))
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+
+        def reset(self):
+            self.position = 0
+
+        def prefill(self, token_ids, **kwargs):
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=1)
+
+        def fp32_verify_hidden_seed_ptr(self, row_index: int = 0) -> int:
+            return 0xD000 + int(row_index) * 8
+
+        def mtp_draft_seed(self, *, token_id: int, position: int):
+            return SimpleNamespace(
+                token_id=int(token_id),
+                position=int(position),
+                hidden_ptr=0xABC0,
+                hidden_contract=SimpleNamespace(ready_for_mtp=True, rows=1, hidden_size=2),
+            )
+
+        def close(self):
+            calls.append(("session_close",))
+
+    class FakeDraft:
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            token.cancel()
+            calls.append(("draft_cancel", int(hidden_seed_ptr)))
+            return [2], [[2]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows(self, hidden_rows, token_ids, **kwargs):
+            return len(token_ids)
+
+        def close(self):
+            calls.append(("draft_close",))
+
+    runner = SimpleNamespace(
+        runtime=FakeRuntime(),
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4)),
+        close=lambda: calls.append(("runner_close",)),
+    )
+    draft = FakeDraft()
+    assets = qwen35_gguf._GGUFMTPServingAssets(
+        weights={
+            "blk.40.attn_q_norm.weight": (np.zeros((2,), dtype=np.float32), 0, (2,)),
+            "output.weight": (np.zeros((8, 1), dtype=np.uint8), 0, (8, 1)),
+        },
+        token_embd_f32=np.zeros((8, 2), dtype=np.float32),
+        rope_cos=np.ones((16, 2), dtype=np.float32),
+        rope_sin=np.zeros((16, 2), dtype=np.float32),
+    )
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: draft)
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "_allocate_mtp_dense_kv",
+        lambda **kwargs: (SimpleNamespace(ptr=0x1000), SimpleNamespace(ptr=0x2000), ["k", "v"]),
+    )
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "_free_mtp_buffers",
+        lambda buffers, *, runtime: calls.append(("free_kv", tuple(buffers))),
+    )
+
+    generator = _generator()
+    generator.backend = "hip_gfx1100"
+    generator.weight_index = _mtp_capable_weight_index()
+    generator._shared_runner = runner
+    generator._shared_runner_lock = threading.Lock()
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+    generator._prepared_max_sequence_length = 64
+    generator._mtp_serving_assets = assets
+
+    with pytest.raises(GenerationCancelled):
+        generator.generate_speculative_mtp_detailed(
+            _request(prompts=("long",), max_tokens=4, cancellation_token=token)
+        )
+
+    assert ("free_kv", ("k", "v")) in calls
+    assert ("draft_close",) in calls
+    assert generator._shared_mtp_draft_pool == {}
+    assert generator._shared_session_pool == {}
+    assert ("session_close",) in calls
+    generator.close()
+    assert calls[-1] == ("runner_close",)
+
+
 def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     calls: list[tuple] = []
 
