@@ -625,6 +625,7 @@ class Qwen35GGUFDecodeGraph:
                 self.graph_exec = 0
         else:
             self.submission.close()
+            self.graph_exec = 0
         if self.graph:
             runtime.graph_destroy(self.graph)
             self.graph = 0

@@ -185,10 +185,15 @@ variance rerun remains pending and no root-topline MTP row is promoted.
 
 The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
 sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
-table, with no VRAM shadow. PM4 beats HIP graph **33.424 vs 32.897 tok/s
-(+1.601%)** across three rearmed 128-transition runs, has zero native fallbacks,
-and is now the narrowly-scoped default for this model at private-c1 horizons
-of at least 128. The mapping cuts tracked residency **16.749 -> 16.083 GiB** and
+table, with no VRAM shadow. The initial 512 screen measured PM4 at **33.424
+vs 32.897 tok/s (+1.601%)** across three rearmed 128-transition runs. A stricter
+same-session, counterbalanced transport matrix confirms PM4 over HIP graph at
+all campaign contexts: **33.494 vs 33.027 (+1.412%)** at 512, **34.445 vs
+33.854 (+1.747%)** at 1K, and **31.320 vs 30.830 tok/s (+1.588%)** at 4K.
+PM4 won all **15/15** paired samples with exact recorded outputs, zero native
+fallbacks or unretired submissions, and clean teardown. It remains the
+narrowly-scoped default for this model at private-c1 horizons of at least 128.
+The mapping cuts tracked residency **16.749 -> 16.083 GiB** and
 same-workload sampled peak delta **17.347 -> 16.679 GiB**; the standard
 512/128 PM4 row peaks at **16.712 GiB** and full graph/session teardown returns
 tracked bytes to zero. A model-scoped dense phase-liveness arena then removes
@@ -242,6 +247,7 @@ Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-ll
 [`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
 [`correctness/runtime residency`](results/2026-08-12-qwen36-27b-xtx-correctness-residency.json),
 [`cold/warm PM4 lifecycle`](results/2026-08-12-qwen36-27b-xtx-lifecycle.json),
+[`PM4 versus HIP graph at all contexts`](results/2026-08-12-qwen36-27b-xtx-pm4-all-contexts.json),
 and [`same-commit W7900 non-regression`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 
 The shared gfx1100 default also passes its original-card safeguard. Against a

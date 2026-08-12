@@ -261,7 +261,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
 
     class FakeSubmission:
         name = "pm4"
-        graph_exec = 0
+        graph_exec = 17
 
         def launch(self, stream: int) -> None:
             calls.append(("submission_launch", int(stream)))
@@ -304,7 +304,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
         owner=owner,
         sessions=sessions,
         graph=0xA0,
-        graph_exec=0,
+        graph_exec=17,
         stream=0xB0,
         position_tuple=(5, 5),
         steps_per_replay=1,
@@ -360,6 +360,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
     assert ("submission_close",) in calls
     assert ("graph_destroy", 0xA0) in calls
     assert ("stream_destroy", 0xB0) in calls
+    assert graph.graph_exec == 0
     assert graph not in owner._decode_graphs
     assert not any(call[0].startswith("unexpected") for call in calls)
 

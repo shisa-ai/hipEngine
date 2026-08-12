@@ -375,7 +375,7 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
 
     class FakeSubmission:
         name = "pm4"
-        graph_exec = 0
+        graph_exec = 17
 
         def launch(self, stream: int) -> None:
             calls.append(("submit", stream))
@@ -407,7 +407,7 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
     graph = Qwen35GGUFDecodeGraph(
         session=session,
         graph=11,
-        graph_exec=0,
+        graph_exec=17,
         stream=13,
         position=0,
         steps_per_replay=1,
@@ -444,6 +444,7 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
         ("graph_destroy", 11),
         ("stream_destroy", 13),
     ]
+    assert graph.graph_exec == 0
     assert unpinned == [graph]
 
 
