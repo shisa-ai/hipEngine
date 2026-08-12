@@ -649,6 +649,7 @@ class Qwen35GGUFBringupGenerator:
     _shared_session_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _shared_mtp_draft_pool: dict[int, list[Any]] = field(default_factory=dict, init=False, repr=False)
     _shared_mtp_draft_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
@@ -1173,6 +1174,52 @@ class Qwen35GGUFBringupGenerator:
             return
         with self._shared_mtp_draft_pool_lock:
             self._shared_mtp_draft_pool.setdefault(int(key), []).append(draft)
+
+    @_target_arch_scoped
+    def close(self) -> None:
+        """Close pooled sessions/drafts before releasing shared model weights."""
+
+        if bool(getattr(self, "_closed", False)):
+            return
+        self._closed = True
+        self._ensure_shared_pools()
+        with self._shared_session_pool_lock:
+            sessions = [
+                session
+                for pool in self._shared_session_pool.values()
+                for session in pool
+            ]
+            self._shared_session_pool.clear()
+        with self._shared_mtp_draft_pool_lock:
+            drafts = [
+                draft
+                for pool in self._shared_mtp_draft_pool.values()
+                for draft in pool
+            ]
+            self._shared_mtp_draft_pool.clear()
+        lock = getattr(self, "_shared_runner_lock", None)
+        if lock is None:
+            self._shared_runner_lock = threading.Lock()
+            lock = self._shared_runner_lock
+        with lock:
+            shared_runner = getattr(self, "_shared_runner", None)
+            self._shared_runner = None
+        self._mtp_serving_assets = None
+
+        error: BaseException | None = None
+        for resource in (*reversed(sessions), *reversed(drafts), shared_runner):
+            if resource is None:
+                continue
+            closer = getattr(resource, "close", None)
+            if not callable(closer):
+                continue
+            try:
+                closer()
+            except BaseException as exc:  # pragma: no cover - defensive cleanup
+                if error is None:
+                    error = exc
+        if error is not None:
+            raise error
 
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
         # Prefill correctness policy is selected by the generator registry
@@ -4571,6 +4618,7 @@ class Qwen35GGUFResidentModelRunner:
         self._last_execution_manifest: dict[str, Any] = {}
         self._last_physical_group_plan: dict[str, Any] = {}
         self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
+        self._closed = False
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
         self._graph_handle_replays: dict[int, int] = {}
@@ -5765,16 +5813,34 @@ class Qwen35GGUFResidentModelRunner:
         )
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        error: BaseException | None = None
         with hip_target_arch_environment(self.generator.target_arch):
-            self._flush_all_packed_owners()
-            for row in tuple(self._rows.values()):
-                self._release_row_resources(row)
-            self._rows.clear()
-            self._clear_prefix_snapshots()
-            if self._kv_pool is not None:
-                self._kv_pool.close()
-                self._kv_pool = None
-            self._release_available_sessions()
+            try:
+                self._flush_all_packed_owners()
+                for row in tuple(self._rows.values()):
+                    self._release_row_resources(row)
+                self._rows.clear()
+                self._outputs.clear()
+                self._completed_metadata.clear()
+                self._clear_prefix_snapshots()
+                if self._kv_pool is not None:
+                    self._kv_pool.close()
+                    self._kv_pool = None
+                self._release_available_sessions()
+            except BaseException as exc:  # pragma: no cover - defensive cleanup
+                error = exc
+            generator_close = getattr(self.generator, "close", None)
+            if callable(generator_close):
+                try:
+                    generator_close()
+                except BaseException as exc:  # pragma: no cover - defensive cleanup
+                    if error is None:
+                        error = exc
+        if error is not None:
+            raise error
 
     def _reserve_sessions(self) -> None:
         acquired: list[_GGUFResidentSessionLease] = []
