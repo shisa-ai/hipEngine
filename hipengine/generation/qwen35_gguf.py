@@ -3679,6 +3679,7 @@ class Qwen35GGUFBringupGenerator:
                         )
                     except NativeSpecTargetGraphUnsupportedError:
                         native_result = None
+                    raise_if_generation_deadline_expired(request)
                 if native_result is not None:
                     mtp_device_kv_len = int(native_result.draft_cache_len_after)
                     output_tokens = [int(token) for token in native_result.output_token_ids]
@@ -3728,6 +3729,7 @@ class Qwen35GGUFBringupGenerator:
                     draft_p_min=0.0,
                 )
                 _timing_add(timing, "draft_propose_ms", draft_start)
+                raise_if_generation_deadline_expired(request)
                 draft_tokens = [int(token) for token in draft_tokens]
                 if not draft_tokens:
                     ar_tail_start = time.perf_counter()
