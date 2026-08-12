@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import threading
 from collections import Counter
+from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -58,6 +60,103 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     generator._mtp_serving_assets = None
     generator._mtp_serving_lock = threading.Lock()
     return generator
+
+
+def test_submit_poll_adapter_explicitly_delegates_model_owned_mtp_route() -> None:
+    sentinel = [SimpleNamespace(text="mtp")]
+    inner = SimpleNamespace(
+        supports_speculative_mtp=True,
+        generate_speculative_mtp_detailed=lambda request: sentinel,
+    )
+    adapter = SubmitPollTextGenerator(inner)
+
+    assert "supports_speculative_mtp" in SubmitPollTextGenerator.__dict__
+    assert "generate_speculative_mtp_detailed" in SubmitPollTextGenerator.__dict__
+    assert adapter.supports_speculative_mtp is True
+    assert adapter.generate_speculative_mtp_detailed(_request()) == sentinel
+
+
+def test_qwen36_dense_blk64_inventory_advertises_public_mtp() -> None:
+    model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    info = qwen35_gguf.GGUFReader(model).info
+
+    config, block_id, required = qwen35_gguf._gguf_mtp_required_tensor_names(info)
+
+    assert config.architecture == "qwen35"
+    assert block_id == 64
+    assert "blk.64.nextn.eh_proj.weight" in required
+    assert "blk.64.ffn_gate.weight" in required
+    assert not any(name.startswith("blk.40.") for name in required)
+    assert qwen35_gguf._gguf_info_has_mtp_tensors(info) is True
+
+
+def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+    config = SimpleNamespace(
+        ignored_block_ids=(64,),
+        is_moe=False,
+        architecture="qwen35",
+    )
+
+    class FakeDecoder:
+        def __init__(self, target, provider, **kwargs):
+            calls.append(("decoder_init", target, provider, kwargs))
+
+        def generate(self, prompt_ids, **kwargs):
+            calls.append(("generate", tuple(prompt_ids), kwargs))
+            return SimpleNamespace(
+                token_ids=(1, 2, 3),
+                cycle_records=(
+                    {"draft_tokens": [2, 4], "accepted": 1},
+                ),
+                prefill_seconds=0.001,
+                decode_seconds=0.002,
+                proposal_seconds=0.0005,
+                verify_seconds=0.00075,
+            )
+
+        def close(self):
+            calls.append(("decoder_close",))
+
+    provider = SimpleNamespace(
+        release_request=lambda request_id: calls.append(("provider_release", int(request_id))),
+        close=lambda: calls.append(("provider_close",)),
+    )
+    @contextmanager
+    def session_scope(**kwargs):
+        yield SimpleNamespace(require_cached_build=True), False
+
+    generator = _generator()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_runner = SimpleNamespace()
+    generator._resident_session_scope = session_scope
+    generator._acquire_dense_mtp_draft_provider = lambda *args, **kwargs: (
+        provider,
+        (7, "dense_nextn", 64),
+        False,
+    )
+    generator._release_mtp_draft_runner = lambda key, draft: calls.append(
+        ("release", key, draft)
+    )
+    monkeypatch.setattr(
+        "hipengine.runtime.qwen35_gguf_mtp.Qwen35GGUFMTPDecodeSession",
+        FakeDecoder,
+    )
+
+    outputs = generator._generate_dense_speculative_mtp_detailed(
+        _request(prompts=("long",), max_tokens=3),
+        config=config,
+    )
+
+    assert outputs[0].generated_token_ids == (1, 2, 3)
+    assert ("provider_release", 0) in calls
+    assert calls[-1] == ("release", (7, "dense_nextn", 64), provider)
+    assert generator.last_batch_generation["speculative_mtp"]["nextn_block_id"] == 64
+    assert generator.last_batch_generation["speculative_mtp"]["target_verify"] == "transactional_native"
 
 
 def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -> None:
@@ -129,11 +228,55 @@ def _decode_state(output):
 
 
 def _mtp_capable_weight_index():
+    required = (
+        "token_embd.weight",
+        "output.weight",
+        "blk.40.nextn.eh_proj.weight",
+        "blk.40.nextn.hnorm.weight",
+        "blk.40.nextn.enorm.weight",
+        "blk.40.nextn.shared_head_norm.weight",
+        "blk.40.attn_norm.weight",
+        "blk.40.attn_q.weight",
+        "blk.40.attn_k.weight",
+        "blk.40.attn_v.weight",
+        "blk.40.attn_output.weight",
+        "blk.40.attn_q_norm.weight",
+        "blk.40.attn_k_norm.weight",
+        "blk.40.post_attention_norm.weight",
+        "blk.40.ffn_gate_inp.weight",
+        "blk.40.ffn_gate_exps.weight",
+        "blk.40.ffn_up_exps.weight",
+        "blk.40.ffn_down_exps.weight",
+        "blk.40.ffn_gate_inp_shexp.weight",
+        "blk.40.ffn_gate_shexp.weight",
+        "blk.40.ffn_up_shexp.weight",
+        "blk.40.ffn_down_shexp.weight",
+    )
+    metadata = {
+        "general.architecture": "qwen35moe",
+        "qwen35moe.block_count": 41,
+        "qwen35moe.embedding_length": 8,
+        "qwen35moe.context_length": 128,
+        "qwen35moe.attention.head_count": 2,
+        "qwen35moe.attention.head_count_kv": 1,
+        "qwen35moe.attention.key_length": 4,
+        "qwen35moe.attention.value_length": 4,
+        "qwen35moe.rope.dimension_count": 4,
+        "qwen35moe.ssm.inner_size": 16,
+        "qwen35moe.ssm.group_count": 2,
+        "qwen35moe.ssm.state_size": 3,
+        "qwen35moe.ssm.conv_kernel": 4,
+        "qwen35moe.ssm.time_step_rank": 2,
+    }
+    tensors = [
+        SimpleNamespace(name=name, shape=(11, 8) if name == "token_embd.weight" else (8, 8))
+        for name in required
+    ]
+    by_name = {tensor.name: tensor for tensor in tensors}
     return SimpleNamespace(
-        tensors=[
-            SimpleNamespace(name=name)
-            for name in qwen35_gguf._GGUF_MTP_REQUIRED_TENSORS
-        ]
+        metadata=metadata,
+        tensors=tensors,
+        tensor=lambda name: by_name[name],
     )
 
 

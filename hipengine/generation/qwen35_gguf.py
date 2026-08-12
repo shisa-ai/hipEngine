@@ -51,6 +51,11 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
+from hipengine.loading.qwen35_gguf import (
+    Qwen35GGUFConfig,
+    qwen35_gguf_config_from_metadata,
+)
+from hipengine.loading.qwen35_gguf_nextn import required_qwen35_gguf_nextn_tensor_names
 from hipengine.kvcache import (
     FixedPagedKVPolicy,
     RadixCache,
@@ -72,32 +77,6 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _rope_tables as _gguf_rope_tables,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
-
-
-_GGUF_MTP_REQUIRED_TENSORS = (
-    "token_embd.weight",
-    "output.weight",
-    "blk.40.nextn.eh_proj.weight",
-    "blk.40.nextn.hnorm.weight",
-    "blk.40.nextn.enorm.weight",
-    "blk.40.nextn.shared_head_norm.weight",
-    "blk.40.attn_norm.weight",
-    "blk.40.attn_q.weight",
-    "blk.40.attn_k.weight",
-    "blk.40.attn_v.weight",
-    "blk.40.attn_output.weight",
-    "blk.40.attn_q_norm.weight",
-    "blk.40.attn_k_norm.weight",
-    "blk.40.post_attention_norm.weight",
-    "blk.40.ffn_gate_inp.weight",
-    "blk.40.ffn_gate_exps.weight",
-    "blk.40.ffn_up_exps.weight",
-    "blk.40.ffn_down_exps.weight",
-    "blk.40.ffn_gate_inp_shexp.weight",
-    "blk.40.ffn_gate_shexp.weight",
-    "blk.40.ffn_up_shexp.weight",
-    "blk.40.ffn_down_shexp.weight",
-)
 
 
 def _new_gguf_timing_batch_id(kind: str) -> str:
@@ -251,6 +230,8 @@ class _GGUFMTPServingAssets:
     token_embd_f32: np.ndarray
     rope_cos: np.ndarray
     rope_sin: np.ndarray
+    config: Qwen35GGUFConfig | None = None
+    nextn_block_id: int = 40
 
 
 @dataclass(frozen=True)
@@ -277,7 +258,7 @@ class _GGUFMTPServingSlot:
     cycles: list[dict[str, Any]] = field(default_factory=list)
     timing: dict[str, float] = field(default_factory=dict)
     session_pool_key: _GGUFSessionPoolKey | None = None
-    draft_pool_key: int | None = None
+    draft_pool_key: Any | None = None
     mtp_device_kv_len: int = 0
     draft_stream: int = 0
     verify_stream: int = 0
@@ -359,12 +340,27 @@ def _exact_env(values: dict[str, str | None]):
                 os.environ[name] = value
 
 
+def _gguf_mtp_required_tensor_names(
+    info: GGUFModelInfo,
+) -> tuple[Qwen35GGUFConfig, int, tuple[str, ...]]:
+    """Resolve the one trailing NextN block from the GGUF architecture."""
+
+    config = qwen35_gguf_config_from_metadata(info)
+    if len(config.ignored_block_ids) != 1:
+        raise ValueError("GGUF speculative MTP requires exactly one trailing NextN block")
+    block_id = int(config.ignored_block_ids[0])
+    required = required_qwen35_gguf_nextn_tensor_names(block_id, config=config)
+    root_names = ("token_embd.weight", config.lm_head_tensor_name)
+    return config, block_id, tuple(dict.fromkeys((*root_names, *required)))
+
+
 def _gguf_info_has_mtp_tensors(info: Any) -> bool:
     try:
+        _config, _block_id, required = _gguf_mtp_required_tensor_names(info)
         by_name = {tensor.name for tensor in info.tensors}
     except Exception:
         return False
-    return all(name in by_name for name in _GGUF_MTP_REQUIRED_TENSORS)
+    return all(name in by_name for name in required)
 
 
 def _timing_ms_since(start: float) -> float:
@@ -647,7 +643,7 @@ class Qwen35GGUFBringupGenerator:
         list[Qwen35GGUFResidentSession],
     ] = field(default_factory=dict, init=False, repr=False)
     _shared_session_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
-    _shared_mtp_draft_pool: dict[int, list[Any]] = field(default_factory=dict, init=False, repr=False)
+    _shared_mtp_draft_pool: dict[Any, list[Any]] = field(default_factory=dict, init=False, repr=False)
     _shared_mtp_draft_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
@@ -1165,7 +1161,7 @@ class Qwen35GGUFBringupGenerator:
             return draft, key, True
         return _new_mtp_draft_runner(assets, runtime=runtime), key, False
 
-    def _release_mtp_draft_runner(self, key: int | None, draft: Any) -> None:
+    def _release_mtp_draft_runner(self, key: Any | None, draft: Any) -> None:
         self._ensure_shared_pools()
         if key is None:
             close = getattr(draft, "close", None)
@@ -1173,7 +1169,43 @@ class Qwen35GGUFBringupGenerator:
                 close()
             return
         with self._shared_mtp_draft_pool_lock:
-            self._shared_mtp_draft_pool.setdefault(int(key), []).append(draft)
+            self._shared_mtp_draft_pool.setdefault(key, []).append(draft)
+
+    def _acquire_dense_mtp_draft_provider(
+        self,
+        target: Qwen35GGUFResidentSession,
+        *,
+        max_positions: int,
+        pool_enabled: bool,
+    ) -> tuple[Any, Any | None, bool]:
+        """Open or reuse the architecture-shaped dense NextN provider."""
+
+        from hipengine.runtime.qwen35_gguf_nextn import (
+            Qwen35GGUFNextNDraftProvider,
+            borrow_qwen35_gguf_nextn_fallback_weights,
+        )
+
+        self._ensure_shared_pools()
+        key = (
+            int(id(target.runtime)),
+            "dense_nextn",
+            int(max_positions),
+        )
+        if pool_enabled:
+            with self._shared_mtp_draft_pool_lock:
+                pool = self._shared_mtp_draft_pool.get(key)
+                provider = pool.pop() if pool else None
+            if provider is not None:
+                return provider, key, True
+        provider = Qwen35GGUFNextNDraftProvider.from_model(
+            self.model_path,
+            max_positions=int(max_positions),
+            max_requests=1,
+            runtime=target.runtime,
+            require_cached_build=bool(target.require_cached_build),
+            borrowed_fallback_weights=borrow_qwen35_gguf_nextn_fallback_weights(target),
+        )
+        return provider, key if pool_enabled else None, False
 
     @_target_arch_scoped
     def close(self) -> None:
@@ -2058,6 +2090,128 @@ class Qwen35GGUFBringupGenerator:
                 slot.session.close()
 
     @_target_arch_scoped
+    def _generate_dense_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+        *,
+        config: Qwen35GGUFConfig,
+    ) -> list[GenerationOutput]:
+        """Generate dense Qwen3.6 MTP through the shared transactional ABI."""
+
+        from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
+
+        shared_runner = self._prepared_shared_runner()
+        outputs: list[GenerationOutput] = []
+        prompt_rows_by_request: dict[int, list[int]] = {}
+        generated_ids_by_request: dict[int, list[int]] = {}
+        cycles_by_request: dict[int, list[dict[str, Any]]] = {}
+        request_started = time.perf_counter()
+        encoded_prompts: dict[int, tuple[list[int], float]] = {
+            row_index: _encode_prompt_timed(self.tokenizer, prompt)
+            for row_index, prompt in enumerate(request.prompts)
+        }
+        max_positions = max(
+            int(getattr(self, "_prepared_max_sequence_length", 0) or 0),
+            max(len(tokens) for tokens, _tokenize_ms in encoded_prompts.values())
+            + int(request.max_tokens)
+            + 4,
+        )
+        with self._resident_session_scope(
+            shared_runner=shared_runner,
+            pool_name="mtp_target_dense",
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as (target, _session_reused):
+            provider, provider_pool_key, _provider_reused = self._acquire_dense_mtp_draft_provider(
+                target,
+                max_positions=max_positions,
+                pool_enabled=shared_runner is not None,
+            )
+            release_provider_to_pool = False
+            try:
+                for row_index, _prompt in enumerate(request.prompts):
+                    raise_if_generation_deadline_expired(request)
+                    prompt_ids, tokenize_ms = encoded_prompts[row_index]
+                    if not prompt_ids:
+                        raise ValueError("GGUF prompt tokenization produced no token IDs")
+                    decoder = Qwen35GGUFMTPDecodeSession(
+                        target,
+                        provider,
+                        candidate_budget=2,
+                        quant="gguf_q4_k_m",
+                        target_verify_mode="native",
+                    )
+                    try:
+                        result = decoder.generate(
+                            prompt_ids,
+                            max_new_tokens=int(request.max_tokens),
+                            request_id=row_index,
+                        )
+                    finally:
+                        decoder.close()
+                    raise_if_generation_deadline_expired(request)
+                    generated_ids = list(result.token_ids)
+                    cycle_rows = [
+                        {
+                            "mode": "llama_compat_direct_commit",
+                            "generated_draft_tokens": len(record.get("draft_tokens", ())),
+                            "accepted_draft_tokens": int(record.get("accepted", 0)),
+                            "visible_output_tokens": int(record.get("accepted", 0)) + 1,
+                        }
+                        for record in result.cycle_records
+                    ]
+                    timing = {
+                        "tokenize_ms": tokenize_ms,
+                        "prefill_ms": float(result.prefill_seconds) * 1000.0,
+                        "decode_ms": float(result.decode_seconds) * 1000.0,
+                        "draft_propose_ms": float(result.proposal_seconds) * 1000.0,
+                        "target_verify_ms": float(result.verify_seconds) * 1000.0,
+                    }
+                    _add_mtp_cycle_timing_metrics(timing, cycle_rows)
+                    _timing_set(timing, "request_total_ms", request_started)
+                    prompt_rows_by_request[row_index] = prompt_ids
+                    generated_ids_by_request[row_index] = generated_ids
+                    cycles_by_request[row_index] = cycle_rows
+                    outputs.append(
+                        self._mtp_generation_output(
+                            prompt_ids,
+                            generated_ids,
+                            request,
+                            row_index=row_index,
+                            resident_slot_count=1,
+                            timing=timing,
+                        )
+                    )
+                    provider.release_request(row_index)
+                release_provider_to_pool = True
+            finally:
+                self._release_mtp_draft_runner(
+                    provider_pool_key if release_provider_to_pool else None,
+                    provider,
+                )
+        self.last_generation_outputs = tuple(outputs)
+        self.last_batch_generation = _gguf_mtp_last_batch_generation(
+            self.tokenizer,
+            request,
+            _gguf_sampler_plan(request),
+            prompt_rows_by_request,
+            generated_ids_by_request,
+            {},
+            outputs=self.last_generation_outputs,
+            cycles_by_request=cycles_by_request,
+            resident_slot_count=1,
+            target_verify_batching="single_slot_transactional_native",
+        )
+        self.last_batch_generation["speculative_mtp"].update(
+            {
+                "draft_model": "architecture_shaped_nextn",
+                "nextn_block_id": int(config.ignored_block_ids[0]),
+                "target_verify": "transactional_native",
+            }
+        )
+        return outputs
+
+    @_target_arch_scoped
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
         """Generate through the llama.cpp-compatible GGUF MTP route.
 
@@ -2071,11 +2225,14 @@ class Qwen35GGUFBringupGenerator:
         raise_if_generation_deadline_expired(request)
         if not self.supports_speculative_mtp:
             raise NotImplementedError("GGUF speculative MTP requires Qwen NextN tensors")
+        config, _block_id, _required = _gguf_mtp_required_tensor_names(self.weight_index)
         plan = _gguf_sampler_plan(request)
         if plan.mode is not SamplingMode.GREEDY_FAST:
             raise NotImplementedError("GGUF speculative MTP currently supports only greedy-fast sampling")
         if request.max_tokens == 0:
             return self.generate_detailed(request)
+        if not config.is_moe:
+            return self._generate_dense_speculative_mtp_detailed(request, config=config)
 
         request_start = time.perf_counter()
         encoded_prompts: dict[int, list[int]] = {}
@@ -2468,8 +2625,12 @@ class Qwen35GGUFBringupGenerator:
         if cached is not None:
             return cached
         reader = GGUFReader(self.model_path)
+        try:
+            config, block_id, required_names = _gguf_mtp_required_tensor_names(reader.info)
+        except ValueError as exc:
+            raise NotImplementedError(str(exc)) from exc
         weights: dict[str, tuple[np.ndarray, int, tuple[int, ...]]] = {}
-        required = set(_GGUF_MTP_REQUIRED_TENSORS)
+        required = set(required_names)
         for tensor in reader.info.tensors:
             if tensor.name in required:
                 weights[tensor.name] = (
@@ -2486,19 +2647,18 @@ class Qwen35GGUFBringupGenerator:
             weights["token_embd.weight"][0],
             weights["token_embd.weight"][1],
         ).astype(np.float32, copy=False)
-        meta = reader.info.metadata
-        rope_dim = int(meta.get("qwen35moe.rope.dimension_count", 64))
-        rope_base = float(meta.get("qwen35moe.rope.freq_base", 10000000.0))
         rope_cos, rope_sin = _gguf_rope_tables(
             max_positions=262144,
-            rotary_dim=rope_dim,
-            base=rope_base,
+            rotary_dim=int(config.rope_dimension_count),
+            base=float(config.rope_freq_base),
         )
         assets = _GGUFMTPServingAssets(
             weights=weights,
             token_embd_f32=np.ascontiguousarray(token_embd_f32, dtype=np.float32),
             rope_cos=rope_cos,
             rope_sin=rope_sin,
+            config=config,
+            nextn_block_id=block_id,
         )
         self._mtp_serving_assets = assets
         return assets
@@ -2667,7 +2827,11 @@ class Qwen35GGUFBringupGenerator:
 
             slots: list[_GGUFMTPServingSlot] = []
             hidden_size = int(assets.token_embd_f32.shape[1])
-            qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+            qk_head_dim = int(
+                np.asarray(
+                    assets.weights[f"blk.{assets.nextn_block_id}.attn_q_norm.weight"][0]
+                ).shape[0]
+            )
             max_cycles = max(1, int(request.max_tokens))
             for entry, prefill_result, prefill_ms in zip(
                 acquired,
@@ -2853,7 +3017,11 @@ class Qwen35GGUFBringupGenerator:
                 position=int(session.position) - 1,
                 mtp_block=resident_draft,
             )
-            qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+            qk_head_dim = int(
+                np.asarray(
+                    assets.weights[f"blk.{assets.nextn_block_id}.attn_q_norm.weight"][0]
+                ).shape[0]
+            )
             max_cycles = max(1, int(request.max_tokens))
             mtp_device_kv_capacity = max(
                 1,
@@ -3588,7 +3756,11 @@ class Qwen35GGUFBringupGenerator:
             position=int(session.position) - 1,
             mtp_block=resident_draft,
         )
-        qk_head_dim = int(np.asarray(assets.weights["blk.40.attn_q_norm.weight"][0]).shape[0])
+        qk_head_dim = int(
+            np.asarray(
+                assets.weights[f"blk.{assets.nextn_block_id}.attn_q_norm.weight"][0]
+            ).shape[0]
+        )
         max_cycles = max(1, int(request.max_tokens))
         mtp_device_kv_capacity = max(
             1,
