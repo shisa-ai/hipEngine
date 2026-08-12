@@ -13778,6 +13778,11 @@ class Qwen35GGUFResidentSession:
             out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
             tile_out_features_by_shape=q6_shape_tiles,
             q4_tile_out_features_by_shape=q4_shape_tiles,
+            q4_x_inplace_shapes=frozenset(
+                shape
+                for shape in q4_shape_tiles
+                if shape[1:] == (17_408, 5_120)
+            ),
             x_inplace_shapes=frozenset(
                 shape
                 for shape in q6_shape_tiles

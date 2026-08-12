@@ -237,12 +237,13 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
-# Production-shape Q4 changed-arithmetic screen admits only FFN-down. It wins
-# at M512/1K/4K and can consume its dead BF16 activation in place. Gate/up and
-# full-attention Q4 projections remain exact; their screens lost or require a
-# new scratch lifetime before they can be reconsidered.
+# Production-shape Q4 changed-arithmetic screen admits FFN-down and narrow
+# full-attention K/V. Both win at M512/1K/4K; only FFN-down can consume its dead
+# BF16 activation in place. Gate/up and wider attention projections remain
+# exact because their screens lose or do not win consistently at every target.
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
+    (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
 }
 # Full-category changed-arithmetic admission for sole-planar Q6 dense prefill.
 # Rows below 512 (decode/MTP) and the Q6 lm-head remain on exact owners.
