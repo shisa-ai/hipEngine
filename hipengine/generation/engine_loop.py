@@ -320,6 +320,27 @@ class SubmitPollTextGenerator:
     def inner(self) -> TextGenerator:
         return self._inner
 
+    @property
+    def supports_speculative_mtp(self) -> bool:
+        """Whether the wrapped model exposes its out-of-band MTP route."""
+
+        supports = getattr(self._inner, "supports_speculative_mtp", None)
+        return bool(supports) and callable(
+            getattr(self._inner, "generate_speculative_mtp_detailed", None)
+        )
+
+    def generate_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> list[GenerationOutput]:
+        """Delegate model-owned MTP outside the plain-AR submit/poll loop."""
+
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        return list(self._inner.generate_speculative_mtp_detailed(request))
+
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
 
