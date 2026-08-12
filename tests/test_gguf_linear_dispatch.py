@@ -342,6 +342,7 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         out_f16_nbytes=4096 * 2048 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         q4_tile_out_features_by_shape={(512, 17_408, 5120): 1024},
+        q4_x_inplace_shapes={(512, 17_408, 5120)},
         dequant_library="dequant-library",
         cast_library="cast-library",
         rocblas="rocblas-handle",
@@ -391,6 +392,35 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         5_120,
     )
     assert kwargs["tile_out_features"] == 1024
+
+
+def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x10000000,
+        x_f16_nbytes=4096 * 17_408 * 2,
+        weight_f16_ptr=0x20000000,
+        weight_f16_nbytes=1024 * 17_408 * 2,
+        out_f16_ptr=0x30000000,
+        out_f16_nbytes=4096 * 1024 * 2,
+        tile_out_features_by_shape={(512, 5120, 10240): 1024},
+        q4_tile_out_features_by_shape={
+            (512, 17_408, 5120): 1024,
+            (512, 5120, 1024): 1024,
+        },
+        q4_x_inplace_shapes={(512, 17_408, 5120)},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+
+    assert session.activation_is_inplace(
+        512, 17_408, 5120, quant="gguf_q4_k_t16_v1"
+    )
+    assert not session.activation_is_inplace(
+        512, 5120, 1024, quant="gguf_q4_k_t16_v1"
+    )
 
 
 def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -> None:

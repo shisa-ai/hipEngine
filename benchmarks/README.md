@@ -199,6 +199,12 @@ Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
 **-0.21%/-0.03%/-0.02%**, tracked residency is unchanged, and the complete
 10-prompt category suite passes with minimum per-prompt top-1 **96.97%** and max
 KL **0.03176**. Evidence: [`retained Q4 FFN-down F16 prefill`](results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json).
+A subsequent byte-neutral extension admits only 1,024-output Q4 full-attention
+K/V. Counterbalanced full-prefill A/B improves XTX **+0.326%/+0.172%/+0.079%**
+and W7900 **+0.123%/+0.203%/+0.315%** at 512/1K/4K; complete quality improves
+to max KL **0.01563**. Because independent-run thermal drift exceeds this small
+increment, the higher FFN-only absolute matrix above remains the conservative
+public rollup. Evidence: [`retained narrow-attention F16`](results/2026-08-13-qwen36-27b-q4-narrow-attention-f16-prefill-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 

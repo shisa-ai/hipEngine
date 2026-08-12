@@ -410,6 +410,7 @@ class T16F16RocblasPrefillSession:
     cast_library: object
     rocblas: object
     q4_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
+    q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
 
     def __post_init__(self) -> None:
@@ -463,17 +464,34 @@ class T16F16RocblasPrefillSession:
             self.q4_tile_out_features_by_shape or {}, required=False
         )
         object.__setattr__(self, "q4_tile_out_features_by_shape", q4_normalized)
-        inplace = frozenset(
-            tuple(int(value) for value in shape)
-            for shape in self.x_inplace_shapes
-        )
-        if any(len(shape) not in {2, 3} for shape in inplace):
-            raise ValueError(
-                "T16 F16/rocBLAS in-place policies require (K, N) or (M, K, N) shapes"
+        def normalize_inplace(
+            raw_shapes: frozenset[tuple[int, ...]],
+            policy: Mapping[tuple[int, ...], int],
+        ) -> frozenset[tuple[int, ...]]:
+            inplace = frozenset(
+                tuple(int(value) for value in shape) for shape in raw_shapes
             )
-        if not inplace.issubset(normalized):
-            raise ValueError("T16 F16/rocBLAS in-place shapes must have tile policies")
-        object.__setattr__(self, "x_inplace_shapes", inplace)
+            if any(len(shape) not in {2, 3} for shape in inplace):
+                raise ValueError(
+                    "T16 F16/rocBLAS in-place policies require "
+                    "(K, N) or (M, K, N) shapes"
+                )
+            if not inplace.issubset(policy):
+                raise ValueError(
+                    "T16 F16/rocBLAS in-place shapes must have tile policies"
+                )
+            return inplace
+
+        object.__setattr__(
+            self,
+            "x_inplace_shapes",
+            normalize_inplace(self.x_inplace_shapes, normalized),
+        )
+        object.__setattr__(
+            self,
+            "q4_x_inplace_shapes",
+            normalize_inplace(self.q4_x_inplace_shapes, q4_normalized),
+        )
 
     def tile_out_features(
         self,
@@ -515,7 +533,7 @@ class T16F16RocblasPrefillSession:
     ) -> bool:
         exact = (int(rows), int(in_features), int(out_features))
         policy = {
-            "gguf_q4_k_t16_v1": self.q4_tile_out_features_by_shape,
+            "gguf_q4_k_t16_v1": self.q4_x_inplace_shapes,
             "gguf_q6_k_t16_qmicro_planar_v1": self.x_inplace_shapes,
         }.get(quant, ())
         assert policy is not None
