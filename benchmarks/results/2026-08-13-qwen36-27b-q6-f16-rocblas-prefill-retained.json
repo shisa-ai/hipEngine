@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_model_scoped_changed_arithmetic_prefill",
+  "title": "Qwen3.6-27B sole-T16 bounded Q6 F16 rocBLAS prefill",
+  "performance_claim": true,
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "hip_visible_device": 1
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "hip_visible_device": 0,
+      "role": "safeguard"
+    }
+  ],
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "description": "Dequantize sole-resident planar Q6T16 weights one bounded F16 output tile at a time, cast BF16 activations once, execute FP16 rocBLAS GEMM, and cast output tiles to BF16.",
+    "persistent_weight_layouts": 1,
+    "raw_q6_sidecar": false,
+    "f16_weight_sidecar": false,
+    "workspace": "three liveness-aliased prefill scratch views; FFN-down activation cast in place",
+    "dispatch_scope": "Qwen3.6-27B MOSTLY_Q4_K_M, rows 512-4096 and three measured Q6 projection shapes; nearest measured lower row anchor; exact fallback otherwise",
+    "decode_mtp_changed": false,
+    "rocblas_workspace": "caller-owned null/zero workspace; qualified GEMMs need no auxiliary storage and rocBLAS retains no default device reserve"
+  },
+  "component_actual_weight_screen": {
+    "ffn_down": {
+      "shape": [
+        5120,
+        17408
+      ],
+      "m512_best_speedup": 1.5502461328128805,
+      "m1024_best_speedup": 1.5830946445774265
+    },
+    "attn_qkv": {
+      "shape": [
+        10240,
+        5120
+      ],
+      "m512_best_speedup": 1.3074211220033627,
+      "m1024_best_speedup": 1.3501615795291888
+    },
+    "attn_v": {
+      "shape": [
+        1024,
+        5120
+      ],
+      "m512_best_speedup": 3.0577358737209717,
+      "m1024_best_speedup": 2.550462137517041
+    }
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompts": 10,
+    "teacher_forced_transitions": 330,
+    "candidate_dispatches_asserted": 1280,
+    "top1_agreement_min": 1.0,
+    "max_transition_kl": 0.04112835795945689,
+    "candidate_repeats_exact": true,
+    "gate": "KL <= 0.05 and top1 >= 90%",
+    "passed": true,
+    "source": "/tmp/qwen36-q6-t16-f16-rocblas-quality-production-interval.json"
+  },
+  "xtx_engine": {
+    "protocol": "one warmup plus three measured persistent-session PM4 resets; p512/p1024/p4096 and d128",
+    "rows": [
+      {
+        "workload": "512/128",
+        "prompt_length": 512,
+        "prefill_tok_s_before": 727.9607094992731,
+        "prefill_tok_s_samples_after": [
+          780.8486439320783,
+          784.0706129193369,
+          779.3255015395811
+        ],
+        "prefill_tok_s_median_after": 780.8486439320783,
+        "prefill_delta_percent": 7.265218265582507,
+        "decode_tok_s_before": 33.50844458851885,
+        "decode_tok_s_samples_after": [
+          33.62001710199496,
+          33.592447529666366,
+          33.5605541915119
+        ],
+        "decode_tok_s_median_after": 33.592447529666366,
+        "decode_delta_percent": 0.25069185448345355,
+        "tracked_peak_gib_before": 15.605462968349457,
+        "tracked_peak_gib_after": 15.605462968349457,
+        "hip_used_peak_sampled_gib_after": 15.95849609375,
+        "finite": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "source": "/tmp/qwen36-q6-f16-no-rocblas-reserve-512x128-r3.json"
+      },
+      {
+        "workload": "1024/128",
+        "prompt_length": 1024,
+        "prefill_tok_s_before": 785.3466054220361,
+        "prefill_tok_s_samples_after": [
+          839.3360092105248,
+          840.055657271081,
+          838.790113796841
+        ],
+        "prefill_tok_s_median_after": 839.3360092105248,
+        "prefill_delta_percent": 6.874595677341144,
+        "decode_tok_s_before": 34.53699587727266,
+        "decode_tok_s_samples_after": [
+          34.55174794231927,
+          34.52365113115563,
+          34.50564005389561
+        ],
+        "decode_tok_s_median_after": 34.52365113115563,
+        "decode_delta_percent": -0.03863898922896736,
+        "tracked_peak_gib_before": 15.720211334526539,
+        "tracked_peak_gib_after": 15.720211334526539,
+        "hip_used_peak_sampled_gib_after": 16.1142578125,
+        "finite": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "source": "/tmp/qwen36-q6-f16-final-xtx-1024x128-r3.json"
+      },
+      {
+        "workload": "4096/128",
+        "prompt_length": 4096,
+        "prefill_tok_s_before": 779.2426591460635,
+        "prefill_tok_s_samples_after": [
+          830.24963736347,
+          826.9997426993705,
+          827.208541243452
+        ],
+        "prefill_tok_s_median_after": 827.208541243452,
+        "prefill_delta_percent": 6.155448695526,
+        "decode_tok_s_before": 31.391086180916275,
+        "decode_tok_s_samples_after": [
+          31.40121913314822,
+          31.39221756218619,
+          31.391060133306055
+        ],
+        "decode_tok_s_median_after": 31.39221756218619,
+        "decode_delta_percent": 0.003604148207525526,
+        "tracked_peak_gib_before": 16.367618195712566,
+        "tracked_peak_gib_after": 16.367618195712566,
+        "hip_used_peak_sampled_gib_after": 16.7578125,
+        "finite": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "source": "/tmp/qwen36-q6-f16-final-xtx-4096x128-r3.json"
+      }
+    ],
+    "notes": [
+      "All rows use the final caller-owned null/zero rocBLAS workspace and one persistent sole-T16 weight layout.",
+      "All tracked residency rows are identical to the prior exact matrix. Decode/MTP rows never enter the candidate dispatch."
+    ]
+  },
+  "w7900_safeguard": {
+    "p512_final": {
+      "prefill_tok_s": 709.1707765453075,
+      "decode_tok_s": 28.427574238093133,
+      "tracked_peak_gib": 15.605462968349457,
+      "hip_used_peak_sampled_gib": 15.92333984375,
+      "source": "/tmp/qwen36-q6-f16-final-w7900-512x128-r3.json"
+    },
+    "p1024_final": {
+      "prefill_tok_s": 759.1036778593307,
+      "decode_tok_s": 28.986301338019533,
+      "tracked_peak_gib": 15.720211334526539,
+      "hip_used_peak_sampled_gib": 16.0791015625,
+      "source": "/tmp/qwen36-q6-f16-final-w7900-1024x128-r3.json"
+    },
+    "p4096_final": {
+      "prefill_tok_s": 737.8279998817662,
+      "decode_tok_s": 26.26634571810663,
+      "tracked_peak_gib": 16.367618195712566,
+      "hip_used_peak_sampled_gib": 16.72265625,
+      "source": "/tmp/qwen36-q6-f16-final-w7900-4096x128-r3.json"
+    }
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 ... rocprofv3 --kernel-trace ... python /tmp/qwen36_q6_t16_f16_rocblas_tile_screen.py --rows 512 --tiles 1024 --warmups 0 --samples 1",
+    "trace": "/tmp/qwen36-q6-f16-rocprof/q6-f16-actual-shape_kernel_trace.csv",
+    "named_producer_calls": 16,
+    "named_producer_sum_ms": 1.524852,
+    "named_rocblas_gemm_calls": 16,
+    "compiler_invocations_in_profiled_process": 0,
+    "named_rocblas_gemm_sum_ms": 4.619356,
+    "named_cast_calls": 19,
+    "named_cast_sum_ms": 0.287561
+  },
+  "validation": {
+    "focused": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q6_k_f16_rocblas_prefill.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_gguf_runner.py",
+    "result": "97 passed, 9 skipped",
+    "rocblas_unit": "pytest -q tests/test_rocblas.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_prefill_scratch_liveness.py",
+    "rocblas_unit_result": "93 passed"
+  },
+  "decision": "Retain as the Qwen3.6-27B dense prefill default. It improves all measured full-engine prefill rows by 6.16-7.27%, keeps decode neutral, preserves one persistent T16 weight layout and tracked residency, passes the full-category quality gate, and leaves exact decode/MTP/fallback owners unchanged. The remaining llama.cpp HIP prefill gap is 12.6-19.1%, so proceed to dense Q5."
+}

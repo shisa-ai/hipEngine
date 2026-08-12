@@ -21,12 +21,33 @@ class _Call:
 class _Library:
     def __init__(self) -> None:
         self.rocblas_set_stream = _Call()
+        self.rocblas_set_workspace = _Call()
         self.rocblas_gemm_ex = _Call()
         self.rocblas_sgemm = _Call()
 
 
 def _value(arg) -> int:
-    return int(arg.value) if hasattr(arg, "value") else int(arg)
+    if hasattr(arg, "value"):
+        return 0 if arg.value is None else int(arg.value)
+    return int(arg)
+
+
+def test_rocblas_caller_workspace_validates_and_forwards_contract() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    blas.set_workspace(0, 0)
+    assert library.rocblas_set_workspace.args is not None
+    assert tuple(_value(arg) for arg in library.rocblas_set_workspace.args) == (
+        17,
+        0,
+        0,
+    )
+
+    with pytest.raises(ValueError, match="pointer/size"):
+        blas.set_workspace(0, 4096)
+    with pytest.raises(ValueError, match="pointer/size"):
+        blas.set_workspace(-1, 0)
 
 
 def test_rocblas_fp16_compute_f16_uses_f16_output_and_compute_descriptors() -> None:

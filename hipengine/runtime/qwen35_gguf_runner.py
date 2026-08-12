@@ -31,6 +31,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from hipengine.runtime.moe_graph import MoeGraphCache
@@ -283,6 +284,9 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+    build_gguf_q6_k_f16_rocblas_prefill,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     q8_t16_two_wave_prefill_session,
 )
@@ -291,6 +295,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
+    Q6T16F16RocblasPrefillSession,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
     gguf_wmma_prefill_enabled,
@@ -302,6 +307,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
@@ -9388,6 +9394,45 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q6_t16_f16_rocblas_prefill_policy(
+    runner: object,
+) -> Mapping[tuple[int, int], Mapping[int, int]] | None:
+    """Resolve the model/backend-qualified Q6 source-F16 prefill policy."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+        or getattr(weights, "model_name", None) != "Qwen3.6-27B"
+        or getattr(weights, "file_type_name", None) != "MOSTLY_Q4_K_M"
+    ):
+        return None
+    raw = backend_package_capability(
+        backend,
+        "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(raw, Mapping) or not raw:
+        return None
+    normalized: dict[tuple[int, int], Mapping[int, int]] = {}
+    for raw_shape, raw_rows in raw.items():
+        if (
+            not isinstance(raw_shape, tuple)
+            or len(raw_shape) != 2
+            or not isinstance(raw_rows, Mapping)
+        ):
+            return None
+        shape = (int(raw_shape[0]), int(raw_shape[1]))
+        rows = {int(count): int(tile) for count, tile in raw_rows.items()}
+        if shape[0] <= 0 or shape[1] <= 0 or not rows:
+            return None
+        normalized[shape] = MappingProxyType(rows)
+    return MappingProxyType(normalized)
+
+
 def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
     if int(query_rows) < _GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS:
         return False
@@ -11498,6 +11543,7 @@ class Qwen35GGUFResidentSession:
     preload_expert_sidecars: bool = True
     use_wmma_prefill: bool | None = None
     use_gemv_decode: bool | None = None
+    use_q6_f16_rocblas_prefill: bool | None = None
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
@@ -11576,6 +11622,8 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
+    _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
     _q8_mmq_risk_count: object | None = field(default=None, init=False)
     _q8_mmq_risk_indices: object | None = field(default=None, init=False)
@@ -13663,6 +13711,58 @@ class Qwen35GGUFResidentSession:
             free(key_cache, runtime=runtime)
         self._int8_prefill_oracle_buffers.clear()
 
+    def _q6_f16_rocblas_prefill_context(self):
+        """Return the model-scoped, sole-resident Q6 prefill owner context."""
+
+        if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self.use_q6_f16_rocblas_prefill is False:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        policy = _gguf_q6_t16_f16_rocblas_prefill_policy(self.runner)
+        if policy is None:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        scratch = self._bulk_prefill_scratch
+        shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        if not shape_tiles:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        if self._q6_f16_rocblas_prefill_library is None:
+            self._q6_f16_rocblas_prefill_library = (
+                build_gguf_q6_k_f16_rocblas_prefill(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
+            )
+        if self._q6_f16_rocblas is None:
+            self._q6_f16_rocblas = Rocblas.load()
+            # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
+            # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
+            # this route remains inside hipEngine's existing tracked arena.
+            self._q6_f16_rocblas.set_workspace(0, 0)
+        owner = Q6T16F16RocblasPrefillSession(
+            min_rows=min(shape[0] for shape in shape_tiles),
+            max_rows=max(shape[0] for shape in shape_tiles),
+            x_f16_ptr=int(scratch.q6_f16_x.ptr),
+            x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
+            weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
+            weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
+            out_f16_ptr=int(scratch.q6_f16_out.ptr),
+            out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
+            tile_out_features_by_shape=shape_tiles,
+            x_inplace_shapes=frozenset(
+                shape for shape in shape_tiles if shape[1:] == (17_408, 5_120)
+            ),
+            dequant_library=self._q6_f16_rocblas_prefill_library,
+            cast_library=self.runner._cast_library(),
+            rocblas=self._q6_f16_rocblas,
+        )
+        return q6_t16_f16_rocblas_prefill_session(owner)
+
     def _q8_mmq_prefill_context(self):
         """Return the bounded Q8 MMQ context selected by the generator plugin."""
 
@@ -13771,6 +13871,7 @@ class Qwen35GGUFResidentSession:
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 self._q8_mmq_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(),
             ):
                 bulk_kwargs: dict[str, object] = {}
                 if capture_hidden_seed_fp32:
@@ -13855,6 +13956,7 @@ class Qwen35GGUFResidentSession:
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 self._q8_mmq_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(),
             ):
                 self._run_bulk_prefill_and_sample(
                     token_ids,
@@ -20725,6 +20827,11 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
+        if self._q6_f16_rocblas is not None:
+            runtime.device_synchronize()
+            self._q6_f16_rocblas.close()
+            self._q6_f16_rocblas = None
+        self._q6_f16_rocblas_prefill_library = None
         for graph in tuple(self._decode_graphs):
             graph.close()
         self._decode_graphs.clear()
@@ -20807,6 +20914,8 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_a = None
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
+        self._q6_f16_rocblas_prefill_library = None
+        self._q6_f16_rocblas = None
         self._q8_mmq_risk_count = None
         self._q8_mmq_risk_indices = None
         self._logits_host = None
@@ -20873,6 +20982,13 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "prefill_query": (("linear", 3, 5),),
         "prefill_key": (("linear", 3, 5),),
         "prefill_value": (("linear", 3, 5),),
+        # The optional changed-arithmetic Q6 route consumes these during
+        # initial projections and dense FFN down. Production lifetimes let its
+        # three transient planes reuse stage-disjoint scratch instead of
+        # growing a persistent weight sidecar.
+        "q6_f16_x": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
+        "q6_f16_weight": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
+        "q6_f16_out": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
         "prefill_beta": (("linear", 3, 5),),
         "prefill_decay": (("linear", 3, 5),),
         "prefill_query_scale": (("linear", 3, 5),),
@@ -20928,9 +21044,9 @@ _GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS = frozenset(
 _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES = MappingProxyType(
     {
         **_GGUF_PREFILL_SCRATCH_LIFETIMES,
-        # Dense down reads all intermediate columns while writing hidden-width
-        # output; unlike the admitted MoE owner plan, these buffers must not
-        # alias at the stage-12 handoff.
+        # Dense gate/up is dead after SiLU. Dense down reads all intermediate
+        # columns through stage 13, so only intermediate/output stay disjoint.
+        "ffn_gate_up": _both_prefill_routes(9, 12),
         "ffn_intermediate": _both_prefill_routes(10, 13),
     }
 )
@@ -21222,6 +21338,9 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_query: object
     prefill_key: object
     prefill_value: object
+    q6_f16_x: object
+    q6_f16_weight: object
+    q6_f16_out: object
     prefill_beta: object
     prefill_decay: object
     prefill_query_scale: object
@@ -21386,6 +21505,33 @@ class _GGUFFullAttentionPrefillScratch:
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
+        q6_f16_policy = _gguf_q6_t16_f16_rocblas_prefill_policy(runner)
+        q6_f16_x_bytes = (
+            rows * runner.hidden_size * DType.FP16.itemsize
+            if q6_f16_policy is not None
+            else 0
+        )
+        q6_f16_weight_bytes = (
+            max(
+                int(tile) * int(shape[0])
+                for shape, row_policy in q6_f16_policy.items()
+                for tile in row_policy.values()
+            )
+            * DType.FP16.itemsize
+            if q6_f16_policy is not None
+            else 0
+        )
+        q6_f16_out_bytes = (
+            rows
+            * max(
+                int(tile)
+                for row_policy in q6_f16_policy.values()
+                for tile in row_policy.values()
+            )
+            * DType.FP16.itemsize
+            if q6_f16_policy is not None
+            else 0
+        )
         conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
         recurrent_state_bytes = (
             cfg.ssm_time_step_rank
@@ -21437,6 +21583,9 @@ class _GGUFFullAttentionPrefillScratch:
             "prefill_query": recurrent_f32_bytes,
             "prefill_key": recurrent_f32_bytes,
             "prefill_value": recurrent_f32_bytes,
+            "q6_f16_x": q6_f16_x_bytes,
+            "q6_f16_weight": q6_f16_weight_bytes,
+            "q6_f16_out": q6_f16_out_bytes,
             "prefill_beta": prefill_scalar_bytes,
             "prefill_decay": prefill_scalar_bytes,
             "prefill_query_scale": prefill_scalar_bytes,
@@ -21486,6 +21635,11 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_shared_out": hidden_bytes,
             "moe_shared_out_f32": hidden_f32_bytes,
         }
+        inactive_fields = frozenset(
+            name
+            for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out")
+            if int(field_sizes[name]) == 0
+        )
         allocation_mode = "dedicated"
         allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
         allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
@@ -21504,7 +21658,7 @@ class _GGUFFullAttentionPrefillScratch:
             active_sizes = {
                 name: int(nbytes)
                 for name, nbytes in field_sizes.items()
-                if name not in liveness_disabled_fields
+                if name not in liveness_disabled_fields and name not in inactive_fields
             }
             arenas, active_fields, allocation_offsets, allocation_groups = (
                 _allocate_prefill_scratch_liveness_arenas(
@@ -21517,7 +21671,7 @@ class _GGUFFullAttentionPrefillScratch:
             fields = {
                 name: (
                     _GGUF_PREFILL_SCRATCH_EMPTY
-                    if name in liveness_disabled_fields
+                    if name in liveness_disabled_fields or name in inactive_fields
                     else active_fields[name]
                 )
                 for name in field_sizes
@@ -21528,8 +21682,13 @@ class _GGUFFullAttentionPrefillScratch:
                 {name: scratch_lifetimes[name] for name in active_sizes}
             )
         else:
-            fields = {name: buf(nbytes) for name, nbytes in field_sizes.items()}
-            owners.extend(fields.values())
+            fields = {
+                name: (_GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes))
+                for name, nbytes in field_sizes.items()
+            }
+            owners.extend(
+                value for name, value in fields.items() if name not in inactive_fields
+            )
 
         dedicated_fields = {
             "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),

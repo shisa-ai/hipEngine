@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-13
+
+- [retained/default model-scoped Q6 source-F16 dense prefill] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K: prefill **727.961/785.347/779.243 -> 780.849/839.336/827.209 tok/s (+7.27%/+6.87%/+6.16%)** by consuming sole-resident planar Q6T16 weights through bounded F16 tiles and rocBLAS, while decode is neutral at **+0.25%/-0.04%/+0.00%**, tracked peaks stay **15.605/15.720/16.368 GiB**, the complete category suite passes **330/330 top-1 / max KL 0.04113**, and exact decode/MTP/fallback owners remain unchanged; `benchmarks/results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json`.
+
 ## 2026-08-12
 
 - [Qwen3.6-27B gfx1100 publication closure; XTX cross-engine objective explicitly blocked] W7900 compact topline refreshes the superseded dual-layout **235.434/23.296 -> current sole-T16 670.227/28.444 tok/s (+184.68%/+22.10%)** at 512/128 and natural B3 **61.147 -> 60.875 tok/s (-0.45%)**, while the current same-protocol ratio is **2.9672x** versus historical **2.6671x**; XTX publishes its exact **727.961/33.508** current 512/128 snapshot but closes below llama.cpp HIP prefill at all 512/1K/4K rows (**-24.53%/-19.95%/-17.69%**), below HIP decode at 4K (**-3.59%**), **0.406-1.206 GiB** above Vulkan AR memory, and **11.06% / 0.509 GiB** behind Vulkan B4 MTP speed/memory; `benchmarks/results/2026-08-12-qwen36-27b-{w7900-single-layout-non-regression,xtx-engine-ar-matrix,xtx-llama-compatible-mtp}.json`.

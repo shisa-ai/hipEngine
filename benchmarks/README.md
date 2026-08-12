@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-13**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **670.227** | **28.444** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **709.171** | **28.428** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -40,11 +40,12 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **727.961** | **33.508** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **780.849** | **33.592** |
 
-The 27B row is an exact current single-layout snapshot, not a cross-engine win.
-The campaign is explicitly blocked below llama.cpp HIP prefill and Vulkan memory
-at every measured context, plus Vulkan MTP and 4K AR decode.
+The 27B row is a current single-layout snapshot with model-qualified Q6
+source-F16 prefill; decode and MTP retain their exact owners. It is not a
+cross-engine win: the campaign remains below llama.cpp HIP prefill and Vulkan
+memory at every measured context, plus Vulkan MTP and 4K AR decode.
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -141,12 +142,15 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **670.227 tok/s** | **28.444 tok/s** | 15.605 GiB | Current sole-T16 package snapshot |
-| 1024/128 | **714.771 tok/s** | **28.988 tok/s** | 15.720 GiB | Current sole-T16 package snapshot |
-| 4096/128 | **697.749 tok/s** | **26.388 tok/s** | 16.368 GiB | Current sole-T16 package snapshot |
+| 512/128 | **709.171 tok/s** | **28.428 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
+| 1024/128 | **759.104 tok/s** | **28.986 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
+| 4096/128 | **746.335 tok/s** | **26.478 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
 
-These rows use one discarded warmup plus three measured PM4 resets. Against the
-same-commit diagnostic dual-layout rollback, the shared package default improves
+These rows use one discarded warmup plus three measured PM4 resets. The Q6-F16
+owner improves final 512/1K/4K prefill **+5.81%/+6.20%/+6.96%** over the prior
+sole-T16 package rows with decode neutral and tracked residency unchanged.
+Against the same-commit diagnostic dual-layout rollback, the earlier shared
+package default improves
 prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
 **45.50-47.03%**, with exact outputs and clean teardown. The current exact
 natural suite is true AR **20.516 tok/s** and B3 **60.875 tok/s / 2.9672x**;
@@ -159,8 +163,9 @@ The superseded dual-layout publication remains in the
 ### Radeon RX 7900 XTX: Qwen3.6-27B Dense GGUF — blocked cross-engine closure
 
 The pre-campaign dual-layout hipEngine path could not admit this model on the
-23.984-GiB XTX. The package-default sole-T16 route now fits, is exact and stable,
-and passes the same-commit W7900 safeguard. It does **not** meet the campaign's
+23.984-GiB XTX. The package-default sole-T16 route now fits and is stable; its
+model-qualified prefill-only Q6 F16 arithmetic passes the full-category quality
+gate and same-commit W7900 safeguard. It does **not** meet the campaign's
 cross-engine acceptance policy: llama.cpp HIP remains faster for prefill,
 Vulkan remains lower-memory, and Vulkan wins selected MTP plus 4K AR decode.
 The complete five-sample 512/128, 1024/128, and 4096/128 hipEngine AR matrix is
@@ -180,14 +185,20 @@ peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-Current hipEngine matrix (one warmup plus five persistent-session
+Current hipEngine matrix (one warmup plus three persistent-session
 reset/replays per shape):
 
-| Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
-| --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | **727.961 tok/s** | **33.508 tok/s** | **15.605 GiB** | **16.095 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **785.347 tok/s** | **34.537 tok/s** | **15.720 GiB** | **16.320 GiB** | prefill fail / **decode pass** / memory fail |
-| 4096/128 | **779.243 tok/s** | **31.391 tok/s** | **16.368 GiB** | **17.119 GiB** | prefill fail / decode fail / memory fail |
+| Workload | Prefill | Decode | Tracked peak | Gate status |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | **780.849 tok/s** | **33.592 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **839.336 tok/s** | **34.524 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **827.209 tok/s** | **31.392 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
+
+The bounded sole-T16 Q6-to-F16/rocBLAS owner improves prefill over the prior
+exact matrix by **7.27%/6.87%/6.16%** at 512/1K/4K while decode changes
+**+0.25%/-0.04%/+0.00%**, tracked residency is unchanged, and the complete
+10-prompt category suite passes **330/330 top-1** with max KL **0.04113**.
+Evidence: [`retained Q6 F16 prefill`](results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
@@ -235,11 +246,13 @@ The model-scoped arena cutoff then widens from 16 to the first complete 80-MiB
 inventory crossover: **849** immutable allocations share one owner, only the
 994.6-MiB untied head remains dedicated, physical weight owners fall **370 ->
 2**, and standard process peak delta falls **16.171 -> 16.095 GiB (-77.840
-MiB)** with neutral exact 512/128 behavior. The final five-sample matrix is
-**727.961/33.508**, **785.347/34.537**, and **779.243/31.391 tok/s** at
-512/1K/4K. Every shape fits and is deterministic; 512/1K decode pass, but all
-prefill/memory rows and 4K decode fail their frozen gates. This is a retained
-current snapshot, not a cross-engine win.
+MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified
+bounded Q6 F16/rocBLAS owner raises the current matrix to **780.849/33.592**, **839.336/34.524**, and **827.209/31.392 tok/s**
+at 512/1K/4K while keeping one persistent T16 weight layout and the same
+15.605/15.720/16.368-GiB tracked peaks. Every shape fits and is deterministic;
+512/1K decode pass, but all prefill/memory rows and 4K decode still fail their
+frozen cross-engine gates. This is a retained current snapshot, not a
+cross-engine win.
 
 The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped
