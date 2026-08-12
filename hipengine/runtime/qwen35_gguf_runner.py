@@ -9394,10 +9394,10 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
-def _gguf_q6_t16_f16_rocblas_prefill_policy(
+def _gguf_t16_f16_rocblas_prefill_policy(
     runner: object,
-) -> Mapping[tuple[int, int], Mapping[int, int]] | None:
-    """Resolve the model/backend-qualified Q6 source-F16 prefill policy."""
+) -> Mapping[str, Mapping[tuple[int, int], Mapping[int, int]]] | None:
+    """Resolve model/backend-qualified Q4/Q6 source-F16 prefill policies."""
 
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
@@ -9410,27 +9410,39 @@ def _gguf_q6_t16_f16_rocblas_prefill_policy(
         or getattr(weights, "file_type_name", None) != "MOSTLY_Q4_K_M"
     ):
         return None
-    raw = backend_package_capability(
-        backend,
-        "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
-        {},
+    normalized_by_quant: dict[
+        str, Mapping[tuple[int, int], Mapping[int, int]]
+    ] = {}
+    for quant, capability in (
+        ("gguf_q4_k_t16_v1", "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES"),
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+        ),
+    ):
+        raw = backend_package_capability(backend, capability, {})
+        if not isinstance(raw, Mapping):
+            return None
+        normalized: dict[tuple[int, int], Mapping[int, int]] = {}
+        for raw_shape, raw_rows in raw.items():
+            if (
+                not isinstance(raw_shape, tuple)
+                or len(raw_shape) != 2
+                or not isinstance(raw_rows, Mapping)
+            ):
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            rows = {int(count): int(tile) for count, tile in raw_rows.items()}
+            if shape[0] <= 0 or shape[1] <= 0 or not rows:
+                return None
+            normalized[shape] = MappingProxyType(rows)
+        if normalized:
+            normalized_by_quant[quant] = MappingProxyType(normalized)
+    return (
+        MappingProxyType(normalized_by_quant)
+        if normalized_by_quant
+        else None
     )
-    if not isinstance(raw, Mapping) or not raw:
-        return None
-    normalized: dict[tuple[int, int], Mapping[int, int]] = {}
-    for raw_shape, raw_rows in raw.items():
-        if (
-            not isinstance(raw_shape, tuple)
-            or len(raw_shape) != 2
-            or not isinstance(raw_rows, Mapping)
-        ):
-            return None
-        shape = (int(raw_shape[0]), int(raw_shape[1]))
-        rows = {int(count): int(tile) for count, tile in raw_rows.items()}
-        if shape[0] <= 0 or shape[1] <= 0 or not rows:
-            return None
-        normalized[shape] = MappingProxyType(rows)
-    return MappingProxyType(normalized)
 
 
 def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
@@ -13712,24 +13724,35 @@ class Qwen35GGUFResidentSession:
         self._int8_prefill_oracle_buffers.clear()
 
     def _q6_f16_rocblas_prefill_context(self):
-        """Return the model-scoped, sole-resident Q6 prefill owner context."""
+        """Return the model-scoped, sole-resident Q4/Q6 prefill owner context."""
 
         if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
         if self.use_q6_f16_rocblas_prefill is False:
             return q6_t16_f16_rocblas_prefill_session(None)
-        policy = _gguf_q6_t16_f16_rocblas_prefill_policy(self.runner)
+        policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
         if policy is None:
             return q6_t16_f16_rocblas_prefill_session(None)
         scratch = self._bulk_prefill_scratch
-        shape_tiles = {
+        q6_shape_tiles = {
             (int(rows), int(shape[0]), int(shape[1])): int(tile)
-            for shape, row_policy in policy.items()
+            for shape, row_policy in policy.get(
+                "gguf_q6_k_t16_qmicro_planar_v1", {}
+            ).items()
             for rows, tile in row_policy.items()
             if int(rows) <= int(scratch.rows)
         }
-        if not shape_tiles:
+        q4_shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.get(
+                "gguf_q4_k_t16_v1", {}
+            ).items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        if not q6_shape_tiles:
             return q6_t16_f16_rocblas_prefill_session(None)
+        all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles}
         if self._q6_f16_rocblas_prefill_library is None:
             self._q6_f16_rocblas_prefill_library = (
                 build_gguf_q6_k_f16_rocblas_prefill(
@@ -13745,17 +13768,20 @@ class Qwen35GGUFResidentSession:
             # this route remains inside hipEngine's existing tracked arena.
             self._q6_f16_rocblas.set_workspace(0, 0)
         owner = Q6T16F16RocblasPrefillSession(
-            min_rows=min(shape[0] for shape in shape_tiles),
-            max_rows=max(shape[0] for shape in shape_tiles),
+            min_rows=min(shape[0] for shape in all_shape_tiles),
+            max_rows=max(shape[0] for shape in all_shape_tiles),
             x_f16_ptr=int(scratch.q6_f16_x.ptr),
             x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
             weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
             weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
             out_f16_ptr=int(scratch.q6_f16_out.ptr),
             out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
-            tile_out_features_by_shape=shape_tiles,
+            tile_out_features_by_shape=q6_shape_tiles,
+            q4_tile_out_features_by_shape=q4_shape_tiles,
             x_inplace_shapes=frozenset(
-                shape for shape in shape_tiles if shape[1:] == (17_408, 5_120)
+                shape
+                for shape in q6_shape_tiles
+                if shape[1:] == (17_408, 5_120)
             ),
             dequant_library=self._q6_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
@@ -20982,8 +21008,8 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "prefill_query": (("linear", 3, 5),),
         "prefill_key": (("linear", 3, 5),),
         "prefill_value": (("linear", 3, 5),),
-        # The optional changed-arithmetic Q6 route consumes these during
-        # initial projections and dense FFN down. Production lifetimes let its
+        # Optional changed-arithmetic Q4/Q6 routes consume these during
+        # initial projections and dense FFN down. Production lifetimes let their
         # three transient planes reuse stage-disjoint scratch instead of
         # growing a persistent weight sidecar.
         "q6_f16_x": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
@@ -21505,31 +21531,40 @@ class _GGUFFullAttentionPrefillScratch:
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
-        q6_f16_policy = _gguf_q6_t16_f16_rocblas_prefill_policy(runner)
+        q6_f16_policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
         q6_f16_x_bytes = (
             rows * runner.hidden_size * DType.FP16.itemsize
             if q6_f16_policy is not None
             else 0
         )
+        all_f16_shape_policies = (
+            tuple(
+                (shape, row_policy)
+                for quant_policy in q6_f16_policy.values()
+                for shape, row_policy in quant_policy.items()
+            )
+            if q6_f16_policy is not None
+            else ()
+        )
         q6_f16_weight_bytes = (
             max(
                 int(tile) * int(shape[0])
-                for shape, row_policy in q6_f16_policy.items()
+                for shape, row_policy in all_f16_shape_policies
                 for tile in row_policy.values()
             )
             * DType.FP16.itemsize
-            if q6_f16_policy is not None
+            if all_f16_shape_policies
             else 0
         )
         q6_f16_out_bytes = (
             rows
             * max(
                 int(tile)
-                for row_policy in q6_f16_policy.values()
+                for _shape, row_policy in all_f16_shape_policies
                 for tile in row_policy.values()
             )
             * DType.FP16.itemsize
-            if q6_f16_policy is not None
+            if all_f16_shape_policies
             else 0
         )
         conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize

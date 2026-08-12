@@ -50,6 +50,19 @@ should be removed or collapsed.
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they
   have conclusively failed to distinguish the lifecycle fault.
 
+## Qwen3.6 bounded Q4/Q6 source-F16 rollback seam
+
+- Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
+  prefill owner; the retained Q4 FFN-down extension now shares that owner and
+  keeps compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a
+  whole-route exact rollback. The name is stale but the rollback is still useful
+  while changed-arithmetic Q4/Q6 accumulates release evidence.
+- Removal trigger: after one release window with the complete category gate and
+  512/1K/4K XTX/W7900 safeguards stable, rename the private runner fields/method
+  to Q4/Q6-neutral T16-F16 terminology and remove the Q6-named compatibility
+  aliases if no external caller depends on them. Keep the registry-key misses
+  and exact T16 kernels as required numerical/peer-backend fallbacks.
+
 ## Dense Qwen3.6 bulk-prefill MTP native-verifier gap
 
 - Added 2026-08-12 after public dense MTP was aligned with public AR prompt

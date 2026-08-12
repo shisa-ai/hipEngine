@@ -15,6 +15,7 @@ from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
@@ -294,6 +295,102 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "rocblas": "rocblas-handle",
         "runtime": "runtime-sentinel",
     }
+
+
+def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    exact_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "f16_rocblas_t16_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (exact_key, candidate_key)
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 17_408 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=2048 * 17_408 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 2048 * 2,
+        tile_out_features_by_shape={(512, 5120, 10240): 2048},
+        q4_tile_out_features_by_shape={(512, 17_408, 5120): 1024},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    register(exact_key, capture("exact"), replace=True)
+    register(candidate_key, capture("candidate"), replace=True)
+    try:
+        with q6_t16_f16_rocblas_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=17_408,
+                out_features=5_120,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=5_120,
+                out_features=17_408,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _args, _kwargs in calls] == ["candidate", "exact"]
+    _, args, kwargs = calls[0]
+    assert args == (
+        0x10000000,
+        14,
+        0x20000000,
+        0x10000000,
+        0x40000000,
+        0x50000000,
+        512,
+        17_408,
+        5_120,
+    )
+    assert kwargs["tile_out_features"] == 1024
 
 
 def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -> None:

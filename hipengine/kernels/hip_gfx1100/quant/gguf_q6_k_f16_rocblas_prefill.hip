@@ -13,6 +13,21 @@ namespace {
 using half_t = _Float16;
 
 constexpr int QK_K = 256;
+constexpr int Q4_K_THREADS = 64;
+constexpr int Q4_T16_COLS = 16;
+constexpr int Q4_T16_SUBBLOCK = 32;
+constexpr int Q4_T16_SUBBLOCKS = 8;
+constexpr int Q4_T16_D_OFFSET = 0;
+constexpr int Q4_T16_DMIN_OFFSET = Q4_T16_D_OFFSET + Q4_T16_COLS * 2;
+constexpr int Q4_T16_SCALE_OFFSET =
+    Q4_T16_DMIN_OFFSET + Q4_T16_COLS * 2;
+constexpr int Q4_T16_MIN_OFFSET =
+    Q4_T16_SCALE_OFFSET + Q4_T16_SUBBLOCKS * Q4_T16_COLS;
+constexpr int Q4_T16_Q_OFFSET =
+    Q4_T16_MIN_OFFSET + Q4_T16_SUBBLOCKS * Q4_T16_COLS;
+constexpr int Q4_T16_BLOCK_BYTES =
+    Q4_T16_Q_OFFSET +
+    Q4_T16_SUBBLOCKS * Q4_T16_SUBBLOCK * (Q4_T16_COLS / 2);
 constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int Q6_K_THREADS = 64;
 constexpr int Q6_T16_COLS = 16;
@@ -107,6 +122,52 @@ __global__ void gguf_q6_k_dequantize_bf16_to_f16_source_fused_kernel(
                                         (((qh >> 6) & 3u) << 4)) - 32));
 }
 
+__global__ void gguf_q4_k_t16_dequantize_f16_tile_kernel(
+    const uint8_t* __restrict__ tiles,
+    half_t* __restrict__ out,
+    int64_t blocks_per_row,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count) {
+  const int64_t task = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t block = task % blocks_per_row;
+  const int64_t local_col = task / blocks_per_row;
+  if (local_col >= col_count) {
+    return;
+  }
+  const int64_t out_col = col_start + local_col;
+  const int64_t col_tile = out_col / Q4_T16_COLS;
+  const int col16 = static_cast<int>(out_col % Q4_T16_COLS);
+  const uint8_t* tile =
+      tiles + (col_tile * blocks_per_row + block) * Q4_T16_BLOCK_BYTES;
+  const float d = static_cast<float>(
+      *reinterpret_cast<const half_t*>(tile + Q4_T16_D_OFFSET + col16 * 2));
+  const float dmin = static_cast<float>(
+      *reinterpret_cast<const half_t*>(tile + Q4_T16_DMIN_OFFSET + col16 * 2));
+
+  for (int k = tid; k < QK_K; k += Q4_K_THREADS) {
+    const int subblock = k >> 5;
+    const int lane32 = k & 31;
+    const uint8_t packed = tile[
+        Q4_T16_Q_OFFSET +
+        (subblock * Q4_T16_SUBBLOCK + lane32) * (Q4_T16_COLS / 2) +
+        (col16 >> 1)];
+    const uint8_t quant =
+        (col16 & 1) ? (packed >> 4) : (packed & 0x0Fu);
+    const float value =
+        d * static_cast<float>(
+                tile[Q4_T16_SCALE_OFFSET +
+                     subblock * Q4_T16_COLS + col16]) *
+            static_cast<float>(quant) -
+        dmin * static_cast<float>(
+                   tile[Q4_T16_MIN_OFFSET +
+                        subblock * Q4_T16_COLS + col16]);
+    out[local_col * (blocks_per_row * QK_K) + block * QK_K + k] =
+        static_cast<half_t>(value);
+  }
+}
+
 __global__ void gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_kernel(
     const uint8_t* __restrict__ tiles,
     half_t* __restrict__ out,
@@ -160,6 +221,36 @@ bool valid_shape(int64_t in_features, int64_t out_features) {
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q4_k_t16_dequantize_f16_tile(
+    const uint8_t* tiles,
+    half_t* out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count,
+    hipStream_t stream) {
+  if (!tiles || !out || !valid_shape(in_features, out_features) ||
+      out_features % Q4_T16_COLS != 0 || col_start < 0 || col_count <= 0 ||
+      col_start % Q4_T16_COLS != 0 || col_start + col_count > out_features) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t tasks = col_count * blocks_per_row;
+  hipLaunchKernelGGL(
+      gguf_q4_k_t16_dequantize_f16_tile_kernel,
+      dim3(static_cast<unsigned int>(tasks)),
+      dim3(Q4_K_THREADS),
+      0,
+      stream,
+      tiles,
+      out,
+      blocks_per_row,
+      out_features,
+      col_start,
+      col_count);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
     const uint8_t* tiles,

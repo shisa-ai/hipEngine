@@ -1,4 +1,4 @@
-"""Bounded source-shaped Q6_K F16 dequantize/cast/rocBLAS prefill."""
+"""Bounded Q4_K/Q6_K F16 dequantize/cast/rocBLAS prefill."""
 
 from __future__ import annotations
 
@@ -22,13 +22,18 @@ _DEQUANT_SYMBOL = "hipengine_gguf_q6_k_dequantize_f16_source"
 _FUSED_PRODUCER_SYMBOL = (
     "hipengine_gguf_q6_k_dequantize_bf16_to_f16_source_fused"
 )
+_Q4_T16_TILE_DEQUANT_SYMBOL = (
+    "hipengine_gguf_q4_k_t16_dequantize_f16_tile"
+)
 _T16_TILE_DEQUANT_SYMBOL = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile"
 )
 _DEQUANT_VARIANT = "raw_f16_source_local64"
 _FUSED_PRODUCER_VARIANT = "raw_f16_bf16_input_source_local64"
+_Q4_T16_TILE_DEQUANT_VARIANT = "t16_f16_tile_local64"
 _T16_TILE_DEQUANT_VARIANT = "t16_qmicro_planar_f16_tile_local64"
 _LINEAR_VARIANT = "f16_rocblas_source_bf16_{output_dtype}_out"
+_Q4_T16_LINEAR_VARIANT = "f16_rocblas_t16_bf16_bf16_out"
 _T16_LINEAR_VARIANT = "f16_rocblas_t16_qmicro_planar_bf16_{output_dtype}_out"
 _QK_K = 256
 _F16_NBYTES = 2
@@ -191,7 +196,8 @@ def gguf_q6_k_dequantize_f16_source(
         runtime.check(int(error))
 
 
-def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
+def _launch_t16_dequantize_f16_tile(
+    symbol: str,
     tiles_ptr: int,
     out_ptr: int,
     in_features: int,
@@ -199,9 +205,9 @@ def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
     *,
     col_start: int,
     col_count: int,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
 ) -> None:
     hidden = _check_in_features(in_features)
     outputs = _check_out_features(out_features)
@@ -213,7 +219,7 @@ def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
         )
     library = library or build_gguf_q6_k_f16_rocblas_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    function = getattr(library, _T16_TILE_DEQUANT_SYMBOL)
+    function = getattr(library, symbol)
     function.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -235,6 +241,58 @@ def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
     )
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+def gguf_q4_k_t16_dequantize_f16_tile(
+    tiles_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    col_start: int,
+    col_count: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_t16_dequantize_f16_tile(
+        _Q4_T16_TILE_DEQUANT_SYMBOL,
+        tiles_ptr,
+        out_ptr,
+        in_features,
+        out_features,
+        col_start=col_start,
+        col_count=col_count,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
+    tiles_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    col_start: int,
+    col_count: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_t16_dequantize_f16_tile(
+        _T16_TILE_DEQUANT_SYMBOL,
+        tiles_ptr,
+        out_ptr,
+        in_features,
+        out_features,
+        col_start=col_start,
+        col_count=col_count,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gguf_q6_k_dequantize_bf16_to_f16_source_fused(
@@ -366,8 +424,9 @@ def gguf_q6_k_f16_rocblas_bf16_f32_out(*args, **kwargs) -> None:
     _launch_q6_f16_rocblas("f32", *args, **kwargs)
 
 
-def _launch_q6_t16_f16_rocblas(
+def _launch_t16_f16_rocblas(
     output_dtype: str,
+    dequantize_tile,
     x_ptr: int,
     tiles_ptr: int,
     out_ptr: int,
@@ -385,10 +444,10 @@ def _launch_q6_t16_f16_rocblas(
     rocblas: Rocblas | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Run source-F16 arithmetic from sole-resident planar Q6T16 bytes.
+    """Run source-F16 arithmetic from a sole-resident T16 weight layout.
 
     The activation is cast once. Weight columns are dequantized one bounded
-    tile at a time and consumed immediately by rocBLAS; no raw-Q6 or F16 weight
+    tile at a time and consumed immediately by rocBLAS; no raw or F16 weight
     sidecar is retained.
     """
 
@@ -419,7 +478,7 @@ def _launch_q6_t16_f16_rocblas(
         raise NotImplementedError("T16 F16/rocBLAS F32 output is not yet supported")
     for col_start in range(0, outputs, tile_outputs):
         col_count = min(tile_outputs, outputs - col_start)
-        gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
+        dequantize_tile(
             tiles_ptr,
             weight_tile_f16_ptr,
             hidden,
@@ -452,10 +511,21 @@ def _launch_q6_t16_f16_rocblas(
         )
 
 
+def gguf_q4_k_t16_f16_rocblas_bf16_bf16_out(*args, **kwargs) -> None:
+    _launch_t16_f16_rocblas(
+        "bf16", gguf_q4_k_t16_dequantize_f16_tile, *args, **kwargs
+    )
+
+
 def gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out(
     *args, **kwargs
 ) -> None:
-    _launch_q6_t16_f16_rocblas("bf16", *args, **kwargs)
+    _launch_t16_f16_rocblas(
+        "bf16",
+        gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile,
+        *args,
+        **kwargs,
+    )
 
 
 def register_gguf_q6_k_f16_rocblas_prefill_kernels(
@@ -480,10 +550,30 @@ def register_gguf_q6_k_f16_rocblas_prefill_kernels(
         KernelKey(
             "hip_gfx1100",
             "dequant",
+            "gguf_q4_k_t16_v1",
+            _Q4_T16_TILE_DEQUANT_VARIANT,
+        ),
+        gguf_q4_k_t16_dequantize_f16_tile,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "dequant",
             "gguf_q6_k_t16_qmicro_planar_v1",
             _T16_TILE_DEQUANT_VARIANT,
         ),
         gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            _Q4_T16_LINEAR_VARIANT,
+        ),
+        gguf_q4_k_t16_f16_rocblas_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -517,6 +607,8 @@ register_gguf_q6_k_f16_rocblas_prefill_kernels()
 
 __all__ = [
     "build_gguf_q6_k_f16_rocblas_prefill",
+    "gguf_q4_k_t16_dequantize_f16_tile",
+    "gguf_q4_k_t16_f16_rocblas_bf16_bf16_out",
     "gguf_q6_k_dequantize_bf16_to_f16_source_fused",
     "gguf_q6_k_dequantize_f16_source",
     "gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile",
