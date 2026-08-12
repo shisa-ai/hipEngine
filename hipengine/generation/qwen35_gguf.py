@@ -2110,7 +2110,7 @@ class Qwen35GGUFBringupGenerator:
             row_index: _encode_prompt_timed(self.tokenizer, prompt)
             for row_index, prompt in enumerate(request.prompts)
         }
-        max_positions = max(
+        requested_max_positions = max(
             int(getattr(self, "_prepared_max_sequence_length", 0) or 0),
             max(len(tokens) for tokens, _tokenize_ms in encoded_prompts.values())
             + int(request.max_tokens)
@@ -2122,6 +2122,10 @@ class Qwen35GGUFBringupGenerator:
             use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as (target, _session_reused):
+            max_positions = max(
+                requested_max_positions,
+                int(target.target_layout.max_sequence_length),
+            )
             provider, provider_pool_key, _provider_reused = self._acquire_dense_mtp_draft_provider(
                 target,
                 max_positions=max_positions,
@@ -2139,7 +2143,7 @@ class Qwen35GGUFBringupGenerator:
                         provider,
                         candidate_budget=2,
                         quant="gguf_q4_k_m",
-                        target_verify_mode="native",
+                        target_verify_mode="serial_exact",
                     )
                     try:
                         result = decoder.generate(
@@ -2200,13 +2204,13 @@ class Qwen35GGUFBringupGenerator:
             outputs=self.last_generation_outputs,
             cycles_by_request=cycles_by_request,
             resident_slot_count=1,
-            target_verify_batching="single_slot_transactional_native",
+            target_verify_batching="single_slot_transactional_serial_exact",
         )
         self.last_batch_generation["speculative_mtp"].update(
             {
                 "draft_model": "architecture_shaped_nextn",
                 "nextn_block_id": int(config.ignored_block_ids[0]),
-                "target_verify": "transactional_native",
+                "target_verify": "transactional_serial_exact",
             }
         )
         return outputs
