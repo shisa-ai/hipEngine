@@ -50,6 +50,27 @@ class Rocblas:
             "rocblas_set_stream",
         )
 
+    def set_workspace(self, workspace_ptr: int, workspace_nbytes: int) -> None:
+        """Use caller-owned workspace and release rocBLAS-managed residency.
+
+        A null, zero-sized workspace is valid for GEMM algorithms that require
+        no auxiliary storage. This also prevents the handle from retaining its
+        default device allocation outside hipEngine's tracked ownership.
+        """
+
+        ptr = int(workspace_ptr)
+        nbytes = int(workspace_nbytes)
+        if ptr < 0 or nbytes < 0 or (nbytes > 0 and ptr == 0):
+            raise ValueError("rocBLAS workspace pointer/size must be valid")
+        _check(
+            self.library.rocblas_set_workspace(
+                ctypes.c_void_p(self.handle),
+                ctypes.c_void_p(ptr),
+                ctypes.c_size_t(nbytes),
+            ),
+            "rocblas_set_workspace",
+        )
+
     def hgemm_rowmajor_nt(
         self,
         x_ptr: int,
@@ -401,6 +422,12 @@ def _configure(library: ctypes.CDLL) -> None:
     library.rocblas_destroy_handle.restype = ctypes.c_int
     library.rocblas_set_stream.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     library.rocblas_set_stream.restype = ctypes.c_int
+    library.rocblas_set_workspace.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    library.rocblas_set_workspace.restype = ctypes.c_int
     library.rocblas_hgemm.argtypes = [
         ctypes.c_void_p,
         ctypes.c_int,

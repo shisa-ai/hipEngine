@@ -237,6 +237,13 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Full-category changed-arithmetic admission for sole-planar Q6 dense prefill.
+# Rows below 512 (decode/MTP) and the Q6 lm-head remain on exact owners.
+GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (17_408, 5_120): {512: 1024, 768: 1024, 1024: 512, 1280: 512, 4096: 512},
+    (5_120, 10_240): {512: 2048, 768: 2048, 1024: 512, 1280: 512, 4096: 256},
+    (5_120, 1_024): {512: 1024, 768: 1024, 1024: 512, 1280: 512, 4096: 512},
+}
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
@@ -691,6 +698,7 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

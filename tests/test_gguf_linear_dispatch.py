@@ -27,6 +27,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
     GGUF_OUTPUT_FP16,
+    Q6T16F16RocblasPrefillSession,
     launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear,
     launch_gguf_linear_moe_tail_host_batch,
@@ -35,6 +36,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
@@ -160,6 +162,226 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(q8_t16, activation_dtype=GGUF_ACTIVATION_F32).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_f32_bf16_out"
     )
+
+
+def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None:
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    exact_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (exact_key, candidate_key)
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 17_408 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=2048 * 17_408 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 2048 * 2,
+        tile_out_features_by_shape={(512, 5120, 10240): 2048},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    register(exact_key, capture("exact"), replace=True)
+    register(candidate_key, capture("candidate"), replace=True)
+    try:
+        # Outside the owner context, the production exact WMMA route remains.
+        launch_gguf_linear(
+            weight,
+            x_ptr=0x10000000,
+            out_ptr=0x20000000,
+            rows=512,
+            in_features=5120,
+            out_features=10240,
+            use_wmma_prefill=True,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        with q6_t16_f16_rocblas_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=5120,
+                out_features=10240,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            # Ordinary row counts inherit the nearest measured policy anchor.
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=513,
+                in_features=5120,
+                out_features=10240,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            # Decode/verifier-sized rows remain exact even inside the context.
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=4,
+                in_features=5120,
+                out_features=10240,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _args, _kwargs in calls] == [
+        "exact",
+        "candidate",
+        "candidate",
+        "exact",
+    ]
+    _, args, kwargs = calls[1]
+    assert args == (
+        0x10000000,
+        14,
+        0x20000000,
+        0x30000000,
+        0x40000000,
+        0x50000000,
+        512,
+        5120,
+        10240,
+    )
+    assert kwargs == {
+        "tile_out_features": 2048,
+        "stream": 7,
+        "dequant_library": "dequant-library",
+        "cast_library": "cast-library",
+        "rocblas": "rocblas-handle",
+        "runtime": "runtime-sentinel",
+    }
+
+
+def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -> None:
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=512 * 17_408 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=1024 * 17_408 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=512 * 2048 * 2,
+        tile_out_features_by_shape={(512, 17_408, 5_120): 1024},
+        x_inplace_shapes=frozenset({(512, 17_408, 5_120)}),
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    assert session.activation_is_inplace(512, 17_408, 5_120)
+    assert session.activation_is_inplace(513, 17_408, 5_120)
+    assert not session.activation_is_inplace(512, 5_120, 10_240)
+
+
+def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 5120 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=2048 * 5120 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 2048 * 2,
+        tile_out_features_by_shape={
+            (512, 5120, 10240): 2048,
+            (768, 5120, 10240): 1024,
+            (1024, 5120, 10240): 512,
+        },
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    assert session.tile_out_features(511, 5120, 10240) is None
+    assert session.tile_out_features(513, 5120, 10240) == 2048
+    assert session.tile_out_features(767, 5120, 10240) == 2048
+    assert session.tile_out_features(768, 5120, 10240) == 1024
+    assert session.tile_out_features(1000, 5120, 10240) == 1024
+    assert session.tile_out_features(1024, 5120, 10240) == 512
+    assert session.tile_out_features(1024, 5120, 1024) is None
+
+
+def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() -> None:
+    q6_weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    q8_weight = _fake_weight(
+        layout=LAYOUT_RAW_GGUF,
+        quant_key="gguf_q8_0",
+    )
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=512 * 5120 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=2048 * 5120 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=512 * 2048 * 2,
+        tile_out_features_by_shape={(512, 5120, 10240): 2048},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+
+    with q6_t16_f16_rocblas_prefill_session(session):
+        assert not launch_gguf_linear_pair(
+            q6_weight,
+            q8_weight,
+            x_ptr=0x10000000,
+            out_a_ptr=0x20000000,
+            out_b_ptr=0x21000000,
+            rows=512,
+            in_features=5120,
+            out_features=10240,
+            out_features_b=6144,
+            use_wmma_prefill=True,
+        )
 
 
 def test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners() -> None:

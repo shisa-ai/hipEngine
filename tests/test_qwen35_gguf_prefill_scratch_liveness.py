@@ -120,8 +120,14 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 120 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
+    # Q6 source-F16 prefill adds three liveness-aliased transient planes while
+    # preserving the sole resident T16 weight allocation. FFN down safely casts
+    # its dead BF16 input in place, so the shared arena does not grow here.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 113 * _MIB
+    assert scratch.q6_f16_x.ptr != 0
+    assert scratch.q6_f16_weight.ptr != 0
+    assert scratch.q6_f16_out.ptr != 0
     assert scratch.ffn_gate_up.ptr != 0
     assert scratch.ffn_intermediate.ptr != 0
     assert scratch.ffn_down.ptr != 0

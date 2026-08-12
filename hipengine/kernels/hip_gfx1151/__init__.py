@@ -886,6 +886,10 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 ("linear", "t16_gemv_rowtile_bf16_f32_out"),
                 ("linear", "t16_wmma_prefill_bf16_bf16_out"),
                 (
+                    "linear",
+                    "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+                ),
+                (
                     "linear+residual",
                     "t16_gemv_rowtile_bf16_residual_bf16_out",
                 ),
