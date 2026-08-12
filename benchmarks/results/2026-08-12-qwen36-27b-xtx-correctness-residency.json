@@ -54,18 +54,127 @@
     "status": "passed_repeated_stream_valid",
     "total_mismatches": 0
   },
-  "pending": [
-    {
-      "expected_duration": "about 6 minutes",
-      "gate": "1K four-step fresh-prefix eager oracle",
-      "reason": "requires explicit approval under the >5-minute rule"
+  "deep_context_teacher_forced_oracles": {
+    "protocol": "For each context, compare four eager transitions against a freshly recomputed serial-prefix reference and the clean same-file llama.cpp token trajectory. Compare predicted token, FP32 hidden seed, every Conv/GDN state, and every live full-attention BF16 K/V prefix byte-for-byte.",
+    "1024": {
+      "status": "passed_repeated_stream_valid",
+      "hipengine_commit": "8069596eec5694f600b266455ba6d14a9289102d",
+      "bulk_eager_exact_external": true,
+      "initial_token_exact_external": true,
+      "decode_steps": 4,
+      "all_steps_state_exact": true,
+      "all_steps_token_exact_external": true,
+      "total_mismatches": 0,
+      "raw_source": "/tmp/qwen36-27b-xtx-eager-oracle-1024.json",
+      "raw_sha256": "8c4022777b0b9c1843bbf4cc4bf774e6ab67fa44d275b40896b521d5d3c280c0"
     },
-    {
-      "expected_duration": "about 16-18 minutes",
-      "gate": "4K four-step fresh-prefix eager oracle",
-      "reason": "requires explicit approval under the >5-minute rule"
+    "4096": {
+      "status": "passed_repeated_stream_valid",
+      "hipengine_commit": "948863d9d3e40a8435f39e35be22ed1576b2826b",
+      "bulk_eager_exact_external": true,
+      "initial_token_exact_external": true,
+      "decode_steps": 4,
+      "all_steps_state_exact": true,
+      "all_steps_token_exact_external": true,
+      "total_mismatches": 0,
+      "raw_source": "/tmp/qwen36-27b-xtx-eager-oracle-4096.json",
+      "raw_sha256": "8f4bce154659279c304361d6e576427d6158bf3d69b2f938c3204a16c7be274c"
     }
-  ],
+  },
+  "pm4_eager_full_state_parity": {
+    "status": "passed",
+    "hipengine_commit": "b6a275d0182c8a4ddb3ad6b49f51c35be66cf006",
+    "contexts": [
+      512,
+      1024,
+      4096
+    ],
+    "transitions_per_context": 4,
+    "state_protocol": "From the same resident prefill state, compare each PM4 transition with eager for token, FP32 hidden seed, all 48 Conv/GDN state pairs, and all live bytes in each of 16 full-attention BF16 K/V pairs.",
+    "every_transition_state_exact": true,
+    "every_transition_token_exact": true,
+    "full_logits_exact": true,
+    "kvlivespans_exact_at_common_pre_execution_boundary": true,
+    "kvlivespans_boundary_note": "PM4 stages device row position/live count for the next append during replay; scalar eager stages the same metadata on entry to step(). Comparing both immediately before execution makes base offsets, device live counts, row positions, host max_live_count, token positions, and evict mask exact. A post-transition comparison mixed these two boundaries and was invalid; it did not indicate device-state corruption.",
+    "transport": {
+      "selected": "pm4",
+      "launches_per_context": 4,
+      "native_fallbacks": 0,
+      "unretired_submissions": 0,
+      "closed": true,
+      "executable_retired": true
+    },
+    "state_raw_sources": {
+      "512": {
+        "path": "/tmp/qwen36-27b-xtx-pm4-state-512.json",
+        "sha256": "8013ae0e71db2ce742066ef2fbf4f3387f1eeb31fb941253150c8d49751e00ae"
+      },
+      "1024": {
+        "path": "/tmp/qwen36-27b-xtx-pm4-state-1024.json",
+        "sha256": "b362e21e47e969a7111c882ad842cdfd7887b274dd7813f8dd2e9a146eea970c"
+      },
+      "4096": {
+        "path": "/tmp/qwen36-27b-xtx-pm4-state-4096.json",
+        "sha256": "d9c9aeda65e87dc26f5f277e6d34a95e42ab7ef75d9cdc8f784389e645a0bc98"
+      }
+    },
+    "logits_and_spans_raw_source": "/tmp/qwen36-27b-xtx-pm4-pretransition-metadata.json",
+    "logits_and_spans_raw_sha256": "86bbc7e047f025bc4e562e1df332dbb114892a8e53771cea9be14a18f940fbd6",
+    "performance_scope": "correctness only; the retained 128-transition PM4 versus HIP-graph speed result remains in the mapped-host/PM4 artifact"
+  },
+  "dense_mtp_transaction": {
+    "status": "passed",
+    "hipengine_commit": "8069596eec5694f600b266455ba6d14a9289102d",
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "budgets": [
+      1,
+      2,
+      3
+    ],
+    "covered": [
+      "scalar-logit parity",
+      "reject",
+      "partial accept",
+      "full accept",
+      "correction",
+      "forced rollback and reseed",
+      "post-commit rollback",
+      "dynamic positions",
+      "proposal and target graph reuse",
+      "provider generation",
+      "state and KV identity",
+      "sole-T16 dispatch with zero pack8 calls"
+    ],
+    "command": "HIP_VISIBLE_DEVICES=1 <cached production llama-compatible environment> uv run pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar -vv",
+    "result": "1 passed in 93.88 s"
+  },
+  "public_torch_free_lifecycle": {
+    "status": "passed",
+    "hipengine_commit": "b6a275d0182c8a4ddb3ad6b49f51c35be66cf006",
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "public_ar_equals_mtp": true,
+    "repeated_mtp_deterministic": true,
+    "draft_provider_reused": true,
+    "target_session_reused": true,
+    "http_status": 200,
+    "http_speculative_route_exact": true,
+    "torch_loaded": false,
+    "torch_loaded_after_close": false,
+    "tracked_current_after_close_bytes": 0,
+    "tracked_active_after_close": 0,
+    "whole_device_peak_delta_gib": 20.412639617919922,
+    "whole_device_final_delta_bytes": 856064,
+    "raw_source": "/tmp/qwen36-27b-xtx-public-lifecycle2.json",
+    "raw_sha256": "deff63e3eab4baedbaca4612272f654bbaa97c73afef1c939f8720deae965cda",
+    "vram_raw_source": "/tmp/qwen36-27b-xtx-public-lifecycle2-vram.json",
+    "vram_raw_sha256": "656999d23a010877c1480c309b4cf0c60fb5ebe1a44b601f2781c0e50f1ef380"
+  },
+  "cancellation_failure_boundary": {
+    "status": "passed",
+    "hipengine_commit": "948863d9d3e40a8435f39e35be22ed1576b2826b",
+    "covered": "Cancellation injected during draft proposal is observed before target verification/commit; request-local MTP KV buffers are freed and poisoned draft/session owners are closed rather than pooled."
+  },
+  "pending": [],
   "performance_claim": false,
   "plan_residency": {
     "draft": {
@@ -164,6 +273,7 @@
     "llama_tokenize_sha256": "c0a3393b02dddcf822834126047fcec1bd69987ee6673186f783647c1a93dcd2",
     "rocm_version": "HIP version: 7.2.53211-3d9ef42"
   },
-  "status": "passed_512_oracle_and_full_runtime_residency_deeper_contexts_pending",
-  "summary": "Focused CPU/layout/registry coverage is green after a mapped-host Q6_K auto-placement regression repair. At p512, bulk eager tokens match clean llama.cpp and four teacher-forced transitions are byte-exact to fresh serial-prefix hidden, Conv/GDN, and live-KV state. A live target+NextN census has zero duplicate payload or alternate-layout bytes, aliases the mapped embedding and untied head exactly once, owns only 15 distinct NextN weights, and returns tracked ownership to zero. The expensive 1K/4K fresh-prefix eager oracles remain pending approval."
+  "status": "passed_full_ar_mtp_pm4_public_correctness_and_residency",
+  "updated_at": "2026-08-12T15:16:17Z",
+  "summary": "Focused CPU/layout/registry coverage is green after a mapped-host Q6_K auto-placement regression repair. At p512, p1024, and p4096, production bulk eager matches clean llama.cpp and four teacher-forced transitions are byte-exact to fresh serial-prefix hidden, every Conv/GDN state, and every live K/V byte. PM4 then matches eager for all of that state plus full logits and complete KVLiveSpans at the common pre-execution boundary, with zero fallback/unretired submissions and full retirement. Dense B1-B3 reject/partial/full/rollback/reseed transactions pass on the XTX, proposal-time cancellation stops before target mutation, and public AR/MTP/server generation is deterministic, torch-free, owner-reusing, and leak-free. The live target+NextN census remains at zero duplicate payload or alternate-layout bytes and tracked ownership returns to zero."
 }
