@@ -235,7 +235,16 @@ Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-ll
 [`complete engine AR matrix`](results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json),
 [`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
 [`correctness/runtime residency`](results/2026-08-12-qwen36-27b-xtx-correctness-residency.json),
-and [`cold/warm PM4 lifecycle`](results/2026-08-12-qwen36-27b-xtx-lifecycle.json).
+[`cold/warm PM4 lifecycle`](results/2026-08-12-qwen36-27b-xtx-lifecycle.json),
+and [`same-commit W7900 non-regression`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
+
+The shared gfx1100 default also passes its original-card safeguard. Against a
+same-commit W7900 rollback that reconstructs rank-2 Q4 pack8+T16 residency, the
+single-layout route improves 512/1K/4K prefill by **152.61-184.82%**, decode by
+**17.58-18.74%**, natural true AR by **2.61%**, and B3 by **0.24%**, while
+cutting natural-suite peak delta **31.680 -> 17.183 GiB (-45.76%)**. All outputs
+and acceptance ledgers remain exact and teardown returns tracked ownership to
+zero.
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

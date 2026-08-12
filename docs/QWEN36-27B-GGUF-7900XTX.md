@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, P9.1-P9.3 lifecycle gates pass, 512/1K AR decode pass, and the sole-raw Q4 rung is rejected, while prefill/memory, 4K decode, Vulkan-MTP parity, deep 1K/4K state, rollback/soak, repeated-suite variance, and final W7900 closure remain open.**
+Status: **in progress; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, P9.1-P9.3 lifecycle gates pass, the shared gfx1100 route passes the complete same-commit W7900 non-regression gate, 512/1K XTX AR decode pass, and the sole-raw Q4 rung is rejected, while XTX prefill/memory, 4K decode, Vulkan-MTP parity, deep 1K/4K state, rollback/soak, and repeated-suite variance remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -844,22 +844,29 @@ Vulkan speed/memory and the final repeated-suite variance gates fail. Evidence:
 
 ### P8 — W7900 non-regression and default promotion
 
-- [ ] **P8.1 Re-run current W7900 controls.** 512/128 and 4096/128 use one
-  discarded warmup plus at least three measured resets; add 1024/128 as the new
-  campaign midpoint. Partial arena evidence: one fresh 512/128 r3 opt-out/on
-  process pair is exact and within the frozen 1% gate at -0.429% prefill /
-  -0.117% decode; the final warmed three-shape control remains open.
-- [ ] **P8.2 Re-run W7900 natural MTP.** Preserve full category/heldout output,
-  acceptance, state, and complete-wall semantics.
-- [ ] **P8.3 Apply the frozen paired gate.** Initial published controls are
-  235.434/23.296 at 512 and 216.784/21.897 at 4096, with natural true AR 22.926
-  and production B3 61.147 tok/s. Compare against freshly measured same-commit
-  controls, not only these historical medians.
-- [ ] **P8.4 Promote one gfx1100 default.** XTX and W7900 use the same
-  single-layout registry route. Keep an opt-out only for concrete rollback
-  value and give it a deletion milestone.
+- [x] **P8.1 Re-run current W7900 controls.** One discarded warmup plus three
+  measured PM4 resets at 512/128, 1024/128, and 4096/128 compare package-default
+  sole T16 against a same-commit diagnostic rollback of only
+  `GGUF_DENSE_Q4_T16`. Every row is exact with zero native fallback and clean
+  teardown.
+- [x] **P8.2 Re-run W7900 natural MTP.** Both routes cover the complete ten-prompt
+  suite, all four categories, six train/four heldout prompts, true AR and B1-B3,
+  240 transitions/mode, exact output/acceptance ledgers, complete-wall timing,
+  and whole-card memory.
+- [x] **P8.3 Apply the frozen paired gate.** Single-layout improves same-commit
+  AR prefill by **152.61-184.82%**, AR decode by **17.58-18.74%**, true AR by
+  **2.61%**, and B1/B2/B3 by **2.47%/0.16%/0.24%**. It cuts whole-device peak
+  delta by **45.50-47.03%**. The lower fresh true-AR absolute row versus the
+  historical 22.926 tok/s is protocol/code drift, not a layout regression: the
+  same-commit dual-layout control is slower at 19.993 versus 20.516 tok/s.
+- [x] **P8.4 Promote one gfx1100 default.** XTX and W7900 both use the same
+  package-default single-layout registry route; the old dual layout is retained
+  only as an out-of-tree diagnostic wrapper for this evidence, not a runtime
+  selector or default.
 
-Exit: capacity is not purchased with a regression on the original target card.
+Exit evidence:
+[`same-commit W7900 non-regression`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
+Capacity is not purchased with a regression on the original target card.
 
 ### P9 — Stability, fragmentation, and transport lifecycle
 
@@ -949,11 +956,12 @@ W7900 safeguard:
 
 | Metric | Fresh duplicated control | Single-layout candidate | Gate |
 | --- | ---: | ---: | --- |
-| 512 prefill/decode | TBD | TBD | frozen paired non-regression |
-| 1024 prefill/decode | TBD | TBD | frozen paired non-regression |
-| 4096 prefill/decode | TBD | TBD | frozen paired non-regression |
-| Natural true AR / selected MTP | TBD | TBD | correctness + paired non-regression |
-| Alternate-layout weight bytes | current >0 | TBD | candidate exactly 0 |
+| 512 prefill/decode | 265.323 / 23.955 | **670.227 / 28.444** | **pass: +152.61% / +18.74%** |
+| 1024 prefill/decode | 258.497 / 24.491 | **714.771 / 28.988** | **pass: +176.51% / +18.36%** |
+| 4096 prefill/decode | 244.983 / 22.442 | **697.749 / 26.388** | **pass: +184.82% / +17.58%** |
+| Natural true AR / selected B3 | 19.993 / 60.732 | **20.516 / 60.875** | **pass: +2.61% / +0.24%** |
+| Natural peak delta | 31.680 GiB | **17.183 GiB** | **pass: -45.76%** |
+| Alternate-layout weight bytes | 13.037-GiB pack8 payload plus T16 sidecars | **0** | **pass: candidate exactly 0** |
 
 ---
 
