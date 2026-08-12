@@ -1,0 +1,199 @@
+{
+  "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 <retained Qwen3.6 llama-compatible selectors> PYTHONPATH=. uv run python /tmp/qwen36_xtx_pm4_vs_hipgraph_all_contexts.py",
+  "correctness_claim": true,
+  "date": "2026-08-12",
+  "decision": "Retain PM4 as superior to HIP graph for this model at 128-transition c1 windows at all three measured contexts. Every one of 15 paired samples wins, recorded outputs are exact, native fallback/unretired counts are zero, and teardown is clean.",
+  "hardware": {
+    "arch": "gfx1100",
+    "device": "AMD Radeon RX 7900 XTX",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "kind": "qwen36_27b_xtx_pm4_vs_hipgraph_all_contexts",
+  "model": {
+    "bytes": 17106773120,
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "performance_claim": true,
+  "postprocess_correction": {
+    "gpu_rerun_required": false,
+    "raw_harness_status": "failed",
+    "raw_output_checks_passed": true,
+    "raw_transport_speed_checks_passed": true,
+    "reason": "The raw harness falsely required the Qwen35GGUFDecodeGraph mirror graph_exec to be zero after GraphSubmission.close(). The HIP submission owner was closed and destroyed its executable, but the wrapper mirror remained stale. Focused RED/GREEN coverage now zeros the mirror for scalar and packed graph wrappers. No timing or output sample was changed."
+  },
+  "protocol": {
+    "correctness_fields_in_this_run": [
+      "prefill token",
+      "final token",
+      "selected final logit",
+      "finite full logits",
+      "transport identity",
+      "fallback count",
+      "retirement"
+    ],
+    "counterbalanced_order": true,
+    "decode_transitions": 128,
+    "full_state_cross_reference": "benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json",
+    "identical_reset_and_bulk_prefill_before_each_replay": true,
+    "measured_repetitions_per_transport": 5,
+    "prompt": "token 9707 repeated to the requested length",
+    "prompt_lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "same_resident_session": true,
+    "timing_scope": "synchronized graph replay only; capture, reset, prefill, and readback excluded equally",
+    "warmups_per_transport": 1
+  },
+  "rows": [
+    {
+      "all_graph_wrappers_closed": true,
+      "final_token_id": 9707,
+      "hipgraph_median_tok_s": 33.02739697015722,
+      "hipgraph_submission_closed": true,
+      "hipgraph_tok_s_samples": [
+        33.02739697015722,
+        33.024102056955066,
+        32.955392114250365,
+        33.031294589800865,
+        33.029210493895725
+      ],
+      "output_exact_for_recorded_fields": true,
+      "paired_speedups": [
+        1.014470061851778,
+        1.0147558711017652,
+        1.0159584567805588,
+        1.013492696542649,
+        1.0140679407740234
+      ],
+      "paired_wins": 5,
+      "pm4_callback_status": [
+        0
+      ],
+      "pm4_executable_retired": true,
+      "pm4_median_tok_s": 33.4938634709366,
+      "pm4_native_fallbacks": 0,
+      "pm4_speedup_percent": 1.4123622918296386,
+      "pm4_tok_s_samples": [
+        33.505305447118616,
+        33.511401450159035,
+        33.481309314992,
+        33.47697582411189,
+        33.4938634709366
+      ],
+      "pm4_unretired_submissions": 0,
+      "prompt_length": 512,
+      "selected_final_logit": 24.12371826171875,
+      "workload": "512/128"
+    },
+    {
+      "all_graph_wrappers_closed": true,
+      "final_token_id": 9707,
+      "hipgraph_median_tok_s": 33.853774391902995,
+      "hipgraph_submission_closed": true,
+      "hipgraph_tok_s_samples": [
+        33.853774391902995,
+        33.916854937954824,
+        33.82784994958001,
+        33.91725738522473,
+        33.79872007603066
+      ],
+      "output_exact_for_recorded_fields": true,
+      "paired_speedups": [
+        1.018185130892326,
+        1.0161559209891156,
+        1.0181602757079455,
+        1.0155656436061347,
+        1.0188634084125996
+      ],
+      "paired_wins": 5,
+      "pm4_callback_status": [
+        0
+      ],
+      "pm4_executable_retired": true,
+      "pm4_median_tok_s": 34.44520132578068,
+      "pm4_native_fallbacks": 0,
+      "pm4_speedup_percent": 1.7470044167930077,
+      "pm4_tok_s_samples": [
+        34.46940971041902,
+        34.46481296653172,
+        34.442173031271395,
+        34.44520132578068,
+        34.436279136647954
+      ],
+      "pm4_unretired_submissions": 0,
+      "prompt_length": 1024,
+      "selected_final_logit": 25.001060485839844,
+      "workload": "1024/128"
+    },
+    {
+      "all_graph_wrappers_closed": true,
+      "final_token_id": 9707,
+      "hipgraph_median_tok_s": 30.83026414703568,
+      "hipgraph_submission_closed": true,
+      "hipgraph_tok_s_samples": [
+        30.83026414703568,
+        30.797959740591736,
+        30.825519756564155,
+        30.8350253007067,
+        30.876951253620643
+      ],
+      "output_exact_for_recorded_fields": true,
+      "paired_speedups": [
+        1.0160616106962512,
+        1.0173660716902044,
+        1.0156897552156916,
+        1.015725092059576,
+        1.0142984081027895
+      ],
+      "paired_wins": 5,
+      "pm4_callback_status": [
+        0
+      ],
+      "pm4_executable_retired": true,
+      "pm4_median_tok_s": 31.319908912219667,
+      "pm4_native_fallbacks": 0,
+      "pm4_speedup_percent": 1.5881951670889682,
+      "pm4_tok_s_samples": [
+        31.325447847427963,
+        31.332799317358884,
+        31.30916461594111,
+        31.319908912219667,
+        31.31844250361485
+      ],
+      "pm4_unretired_submissions": 0,
+      "prompt_length": 4096,
+      "selected_final_logit": 26.065093994140625,
+      "workload": "4096/128"
+    }
+  ],
+  "schema_version": 1,
+  "software": {
+    "compiler_cache": "prebuilt require_cached",
+    "measurement_commit": "dc1da822a19cbfd1258c2d24e8f433437d1075ea",
+    "rocm_hip_version": "7.2.53211-3d9ef42"
+  },
+  "sources": {
+    "raw": "/tmp/qwen36-27b-xtx-pm4-vs-hipgraph-all-contexts.json",
+    "raw_sha256": "e7fc2658758cea621549184ee7f92c288c70b084ef9264a7e574019e96736086"
+  },
+  "status": "passed",
+  "summary": {
+    "all_graph_wrappers_closed": true,
+    "all_pm4_fallbacks_zero": true,
+    "all_pm4_submissions_retired": true,
+    "all_recorded_outputs_exact": true,
+    "paired_samples": 15,
+    "paired_wins": 15,
+    "pm4_superior_at_every_context": true,
+    "tracked_allocations_after_close": 0,
+    "tracked_bytes_after_close": 0
+  },
+  "title": "Qwen3.6-27B Q4_K_M PM4 versus HIP graph at 512/1K/4K on RX 7900 XTX"
+}
