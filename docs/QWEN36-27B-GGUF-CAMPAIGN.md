@@ -1,13 +1,13 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: **tabled on 2026-08-07 below selected Vulkan parity after the reopened
-source-faithful review exhausted current mechanisms.** Latest tracked-clean
-llama.cpp `c8e03ce81` (build 10290) selects B4 at 69.798 tok/s. The post-module
-hipEngine production control is B3 61.147 tok/s (**12.394% short; +14.148%
-required**); the cleaner retained canonical row remains 61.394 tok/s (**12.040%
-short; +13.688% required**). Populated prefill and true AR beat Vulkan at both
-512/128 and 4096/128. Resume only under the explicit high-leverage conditions
-in the final 2026-08-07 audit.
+Status: **superseded for current gfx1100 package ownership by the 2026-08-12
+single-layout campaign.** This W7900 study remains the historical Vulkan-parity
+optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
+both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
+fits the 24-GiB card; its XTX cross-engine campaign closes explicitly blocked on
+prefill, memory, 4K decode, and Vulkan MTP rather than claiming full parity. See
+[`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
+[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **235.434** | **23.296** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **670.227** | **28.444** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -182,8 +182,18 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **61.147 tok/s** | **2.6671x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
+
+### Radeon RX 7900 XTX (`gfx1100`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **727.961** | **33.508** |
+
+The 27B row is an exact current single-layout snapshot, not a cross-engine win.
+The campaign is explicitly blocked below llama.cpp HIP prefill and Vulkan memory
+at every measured context, plus Vulkan MTP and 4K AR decode.
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

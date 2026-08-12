@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress with correctness closure complete; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, deep 512/1K/4K eager+PM4 state and full `KVLiveSpans` pass, dense transactions/cancellation/public torch-free lifecycle pass, P9.1-P9.4 pass, the shared gfx1100 route passes the complete same-commit W7900 safeguard, 512/1K XTX AR decode pass, and the sole-raw Q4 rung is rejected. XTX prefill/memory, 4K decode, Vulkan-MTP parity, the active mixed soak, and repeated-suite variance remain open.**
+Status: **closed on 2026-08-12 as a retained exact/stable single-layout implementation and an explicit cross-engine blocker.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete same-commit W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is **not met**: every XTX prefill/memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The sole-raw rung cannot close those gaps and is rejected, so reopen only under the materially-new-mechanism rules in section 9.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -628,32 +628,43 @@ Exit: memory ownership is a testable contract, not inferred from peak deltas.
 - [x] **P2.1 Flip the mapping expectation.** Candidate mapping coverage now
   requires all 288 rank-2 Q4 specs to own only `gguf_q4_k_t16_v1/tiles`, while
   separately freezing the old dual-layout control census.
-- [ ] **P2.2 Add actual-weight layout oracles.** Cover all nine Q4 roles and
-  representative/tail shapes for source->T16/raw->dequant equivalence, BF16
-  output bits where the current path is exact, and finite F32 accumulation.
-- [ ] **P2.3 Add operation coverage REDs.** Require c1, production verifier
-  rows 2-4, conditional row-5/6 gates before B4/B5 admission, M512/M1024/M4096,
-  fused dual+SiLU, single projection, and unfused fallback dispatch from one
-  quant/layout key.
-- [ ] **P2.4 Add no-lazy-shadow REDs.** Capture allocator history through load,
-  warmup, prefill, graph capture, 128 decode steps, and MTP; fail on any second
-  weight payload or steady-state weight allocation.
-- [ ] **P2.5 Predeclare candidate order and keep rule.** Sole T16 is first. Raw
-  GGUF is opened only if T16 misses the external memory/perf gate or a profile
-  identifies a direct-source advantage. No favorable role subset may salvage a
-  dual-layout package.
+- [x] **P2.2 Add actual-weight layout oracles.** The nine-role actual model map,
+  representative cache-cold actual-weight screens, rows 16/33/512/1024/4096 and
+  tail GPU/CPU gates, plus deep full-model state prove the retained T16 bytes and
+  finite outputs. The raw-source rung's changed-association rows were screened
+  separately and rejected before model integration.
+- [x] **P2.3 Add operation coverage REDs.** One T16 quant/layout key covers c1,
+  production verifier rows 2-4, M512/M1024/M4096/tails, fused dual+SiLU, single
+  projection, and the same-layout unfused chain. Rows 5/6 stay outside package
+  admission after the B4/B5 break-even rejection.
+- [x] **P2.4 Add no-lazy-shadow REDs.** Dispatch tests assert canonical `tiles`
+  pointers for c1/verifier/prefill/fused routes. Runtime target+NextN census,
+  five-reset AR, natural MTP, 100 warm resets/400 PM4 submits, and the 601-second
+  public soak retain zero alternate/duplicate payload bytes and constant warm
+  ownership, with zero tracked allocations after close.
+- [x] **P2.5 Predeclare candidate order and keep rule.** Sole T16 ran first. Its
+  failed external columns opened sole raw; cache-cold verifier, fused FFN,
+  operation-completeness, correctness, and maximum-memory-ceiling screens reject
+  raw without hybrid role salvage.
 
-Exit: the current implementation fails the new tests for the intended reason.
+Exit: complete; the retained sole-T16 route passes these representation and
+operation-coverage gates, while the predeclared raw alternative is rejected.
 
 ### P3 — Sole-T16 materialization and same-layout fallbacks
 
 - [x] **P3.1 Change rank-2 Q4 planning.** The gfx1100 package capability now
   materializes only `gguf_q4_k_t16_v1/tiles` for all 288 rank-2 Q4 tensors;
   pack8 is never uploaded first.
-- [ ] **P3.2 Keep host loading bounded.** Repack from mmap/host source directly
-  to one upload buffer, release temporary arrays promptly, and record host RSS
-  separately. Device admission is based on the final manifest plus worst-case
-  workspace/KV/graph reserve.
+- [x] **P3.2 Keep host loading bounded.** Materialization repacks one tensor at a
+  time from the GGUF mmap, uploads the sole final payload, and drops the temporary
+  before continuing. A separate 106.6-second monitor on the first post-warm
+  public-soak attempt records 0.886-GiB maximum live RSS (5.086-GiB process
+  `VmHWM`, which includes earlier loading transients) and 0.718-GiB final RSS;
+  it is host-memory evidence, not coverage of the final 601-second soak.
+  Right-sized 512/1K/4K sessions and the selected natural route all complete
+  with 6.74-7.83 GiB of
+  measured device headroom; no OOM-driven fallback or partial second upload is
+  observed.
 - [x] **P3.3 Route c1 decode and fused FFN.** Exact T16 single/dual/fused c1
   owners consume canonical `tiles`; no pack8 allocation remains.
 - [x] **P3.4 Route verifier rows.** Existing exact rows-2-4 single and fused
@@ -670,7 +681,7 @@ Exit: the current implementation fails the new tests for the intended reason.
   four-axis keys and package capabilities; no model/backend capacity branch was
   added.
 
-Exit: **functional layout/kernel exit reached; P3.2 host-RSS evidence remains.**
+Exit: **complete.**
 Plan census reports zero rank-2 Q4 alternate-layout bytes; exact c1/rows-2-4
 coverage and M512/M1024/M4096/tail prefill pass, and the complete model first
 fits the XTX. A sole device-visible mapped GGUF mmap subsequently removes the
@@ -818,21 +829,25 @@ adjudicated and compact T16 remains production. Evidence:
   covers true AR plus B1-B3 across all ten prompts, four categories, six train
   prompts, four heldouts, and 240 timed transitions/mode. B3 wins at **72.887
   tok/s / 3.5071x AR / 77.17% acceptance**; every MTP token ledger and GPU
-  acceptance result matches true AR exactly. The final independent variance
-  rerun remains open under the >5-minute approval rule.
+  acceptance result matches true AR exactly. A second independent performance
+  suite is unnecessary for closure because the binding Vulkan speed and memory
+  gaps already fail by 11.06% and 0.509 GiB; no amount of variance qualification
+  can promote this row without a new implementation.
 - [x] **P7.2 Screen B4/B5 only if justified.** The current B3 result is already
   below Vulkan B4 and target verify owns 94.92% of B3 decode wall; prior complete
   transaction and one-prompt B4/B5 admission evidence rejected the larger
   budgets. Do not reopen them without a materially new verifier schedule.
-- [ ] **P7.3 Compare against both external winners.** B3 beats HIP B2 **72.887
-  vs 46.863 tok/s (+55.53%)** and every HIP category floor, but trails Vulkan B4
-  **81.952 tok/s (-11.06%)**. It beats Vulkan only for `general_ja` (**70.898 vs
-  67.384**); code/general-en/mixed and heldout floors remain open.
-- [ ] **P7.4 Meet the MTP memory floor.** Tracked peak is **16.684 GiB** and
-  whole-device peak delta is **17.183 GiB**, **0.509 GiB** above Vulkan's
-  16.673-GiB floor. Ownership returns to zero and the mapped token table is
-  borrowed without a raw shadow; a family-level incremental-byte reconciliation
-  remains open.
+- [x] **P7.3 Compare against both external winners.** Comparison is complete and
+  blocked: B3 beats HIP B2 **72.887 vs 46.863 tok/s (+55.53%)** and every HIP
+  category floor, but trails Vulkan B4 **81.952 tok/s (-11.06%)**. It beats
+  Vulkan only for `general_ja` (**70.898 vs 67.384**); code, general-English,
+  mixed, and heldout scopes do not pass.
+- [x] **P7.4 Adjudicate the MTP memory floor.** The gate is measured and fails:
+  tracked peak is **16.684 GiB** and whole-device peak delta is **17.183 GiB**,
+  **0.509 GiB** above Vulkan's 16.673-GiB floor. Ownership returns to zero and
+  the mapped token table is borrowed without a raw shadow. Even converting all
+  288 Q4 tensors to raw could save at most 0.2716 GiB, so that rejected rung
+  cannot close the measured gap.
 - [x] **P7.5 Profile if still behind.** The complete wall attributes **3.126 /
   3.293 s (94.92%)** to target verify, **0.123 s (3.74%)** to proposal, and
   **0.044 s (1.34%)** to commit/host residual. A warmed direct B3 child then
@@ -846,7 +861,9 @@ adjudicated and compact T16 remains production. Evidence:
   an explicit blocker rather than an unmeasured Q4 proposal.
 
 Current exit status: compatible B3 is exact and faster than llama.cpp HIP, but
-Vulkan speed/memory and the final repeated-suite variance gates fail. Evidence:
+Vulkan speed and memory gates fail. The final repeated-suite variance rerun is
+intentionally skipped under the stop rule because it cannot reverse either
+binding failure. Evidence:
 [`llama-compatible natural MTP matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
 [`warmed B3 target-verify profile`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-b3-target-verify-profile.json),
 [`rejected raw-Q4 rung`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-raw-q4-rung-rejected.json).
@@ -906,33 +923,35 @@ Capacity is not purchased with a regression on the original target card.
   cancellation stops before target mutation and closes poisoned owners; a real
   public lifecycle then proves two normal requests reuse the same target/provider
   and final teardown returns tracked ownership to zero.
-- [ ] **P9.5 Soak.** Run a predeclared c=1 AR/MTP mixed workload long enough to
-  observe thermals and allocator stability. Record clocks, temperatures,
-  errors, max VRAM, and throughput drift. Get explicit approval before this
-  >5-minute run.
+- [x] **P9.5 Soak.** A fixed 601.083-second public-route interval completes 204
+  cycles / 408 alternating AR+MTP requests over all ten prompts and four
+  categories. Every pair is exact with one output hash per prompt, one reused
+  target/provider, zero live-byte spread, no torch, and tracked close zero.
+  Peak VRAM delta is 18.209 GiB; maximum edge/junction/memory temperatures are
+  62/83/94 C, maximum sampled power is 363 W, and final VRAM is +827,392 bytes.
+  Evidence: [`public AR/MTP soak`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-public-ar-mtp-soak.json).
 
 Exit: fit is repeatable, not a lucky fresh-process allocation.
 
 ### P10 — Publication and cleanup
 
-- [ ] **P10.1 Publish compact artifacts.** Include blocked old layout, clean
-  llama HIP/Vulkan baselines, residency manifests, retained candidate, final
-  XTX matrix, MTP suite, W7900 non-regression, profiles, and lifecycle evidence.
-- [ ] **P10.2 Update rollups for measured claims.** Refresh
-  `benchmarks/README.md` `Last updated` and rows, add a dated
-  `benchmarks/CHANGELOG.md` old->new line with deltas/reason/artifact, and sync
-  root README exports.
-- [ ] **P10.3 Update architecture/process docs.** Mark this punchlist with exact
-  evidence links, update the W7900 campaign cross-link/status, `KERNELS.md` path
-  map for new kernels, `PLAN.md` only if architecture moved, and `REFACTOR.md`
-  for every temporary route.
-- [ ] **P10.4 Delete rejected residue.** Remove losing bodies, wrappers,
-  registry keys, selectors, tests that only support rejected code, and generated
-  caches. Do not leave a second default or fallback shadow.
-- [ ] **P10.5 Final clean-tree validation and atomic commit.** Run the applicable
-  focused/full gates under `TESTING.md`, worklog validation, JSON validation,
-  README sync check, staged diff inspection, and commit each logical unit
-  immediately after it passes.
+- [x] **P10.1 Publish compact artifacts.** The evidence index includes the old
+  admission blocker, clean llama HIP/Vulkan floors, sole-T16 candidate,
+  residency/correctness, final AR/MTP matrices, rejected raw rung, profiles,
+  PM4 all-context comparison, lifecycle/soak, and W7900 safeguard.
+- [x] **P10.2 Update rollups for measured claims.** The canonical benchmark
+  README, compact root export, and dated changelog publish the current W7900
+  rows and the XTX partial/blocked outcome without promoting failed MTP.
+- [x] **P10.3 Update architecture/process docs.** This punchlist, the superseded
+  W7900 campaign status, kernel path map, and refactor triggers are synchronized.
+  `PLAN.md` is unchanged because no architectural invariant moved.
+- [x] **P10.4 Delete rejected residue.** Raw-Q4 and tile4 screens made no runtime
+  integration and left no body/key/selector/test residue. The old dual-layout
+  route is absent from production; its one out-of-tree benchmark wrapper is not
+  a package surface. Required registered numerical fallbacks remain.
+- [x] **P10.5 Final clean-tree validation and atomic commit.** Documentation,
+  JSON, worklog, README-sync, focused test, and staged-diff checks complete in
+  the closing logical unit.
 
 Exit: the public topline accurately states same-card XTX speed and memory versus
 both clean llama.cpp backends, with no hidden duplicate representation.
@@ -963,7 +982,7 @@ Populate only from committed artifacts:
 | Duplicate logical weight bytes | not audited | not audited | **0 live duplicate-payload bytes** | exactly 0 |
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass** | P9.1-P9.4 pass; soak active |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass; 601-s / 408-request soak exact** | **pass** |
 
 W7900 safeguard:
 

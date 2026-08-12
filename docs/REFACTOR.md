@@ -112,17 +112,21 @@ should be removed or collapsed.
   next Qwen3.6 kernel-catalog cleanup, delete the registry key, wrapper/export,
   body, gfx1151 exclusion, and dedicated test together.
 
-## Qwen3.6 dense Q4T16 FFN dual residency
+## Qwen3.6 dense Q4T16 FFN dual residency — closed
 
-- Added 2026-08-05 for the retained exact dense-verifier FFN route. Exactly 64
-  gate and 64 up tensors retain pack8 for populated prefill/fallback and add
-  compact-T16 decode sidecars, costing **6,595,543,040 bytes / 6.143 GiB**.
-- Remove the duplicate pack8 residents only after a source-Q4-preserving T16
-  prefill owner passes the campaign's exact 512/4096 logits/state gate and is
-  non-regressive at both populated shapes. The replacement must also preserve
-  exact c1 and rows-2-4 fallbacks before T16 can become sole-resident.
-- Until then, keep pack8 as the required unfused/prefill fallback and disclose
-  that the retained W7900 route is not claimed to fit the 24-GiB component GPU.
+- Added 2026-08-05 for the former exact dense-verifier FFN route, where 64 gate
+  and 64 up tensors kept pack8 plus **6,595,543,040 bytes / 6.143 GiB** of T16
+  decode sidecars.
+- **Closed 2026-08-12:** gfx1100 now materializes one canonical
+  `gguf_q4_k_t16_v1/tiles` payload for all 288 rank-2 Q4 tensors. Registered T16
+  owners cover c1, rows 2-4, fused gate/up+SiLU, M512/M1024/M4096/tails, and the
+  same-layout unfused chain. Live target+NextN census reports zero alternate or
+  duplicate payload bytes; exact 512/1K/4K state, natural B1-B3 transactions,
+  W7900 same-commit non-regression, and teardown gates pass. No runtime selector
+  or package path retains the old Q4 pack8 shadow.
+- Keep raw/pack8 kernels only as separately registered numerical/diagnostic
+  fallbacks for other model/layout owners; do not reattach them as sidecars to
+  this dense sole-T16 package without a new operation-complete residency gate.
 
 ## Maple CUDA sm_120a native-prefill follow-ups
 
@@ -233,14 +237,15 @@ should be removed or collapsed.
   widened to the first complete 80-MiB inventory crossover. It packs 849
   allocations into one owner, leaves only the 1,042,944,000-byte untied head
   dedicated, reduces physical weight owners **370 -> 2**, and cuts the XTX
-  512/128 process peak **16.171 -> 16.095 GiB** with exact output. A fresh
-  W7900 512/128 opt-out/on pair remains within 1%; the full three-shape/MTP
-  non-regression matrix is still open.
+  512/128 process peak **16.171 -> 16.095 GiB** with exact output. The complete
+  W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
+  true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
+  peak delta falls **45.50-47.03%**.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Remove the environment seam after both
-  the next cumulative gfx1151 GGUF policy refresh confirms retained **3/4
-  fork-memory parity** and the Qwen3.6 campaign closes its W7900 three-shape/MTP
-  matrix with no supported private-c1 consumer requiring rollback.
+  disable-only rollback/bisection seam. Its Qwen3.6 removal trigger is closed;
+  remove the shared environment seam after the next cumulative gfx1151 GGUF
+  policy refresh confirms retained **3/4 fork-memory parity** and no supported
+  gfx1151 private-c1 consumer requires rollback.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
   telemetry while this production owner is active. Do not add the rejected SH15
   state arena or compact-Q4 stack to this package; 4K still needs a separately

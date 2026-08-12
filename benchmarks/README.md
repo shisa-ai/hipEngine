@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **235.434** | **23.296** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **670.227** | **28.444** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -33,8 +33,18 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **61.147 tok/s** | **2.6671x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
+
+### Radeon RX 7900 XTX (`gfx1100`)
+
+| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | ---: | ---: |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **727.961** | **33.508** |
+
+The 27B row is an exact current single-layout snapshot, not a cross-engine win.
+The campaign is explicitly blocked below llama.cpp HIP prefill and Vulkan memory
+at every measured context, plus Vulkan MTP and 4K AR decode.
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -131,20 +141,31 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **235.434 tok/s** | **23.296 tok/s** | 29.786 GiB | Retained current production |
-| 4096/128 | **216.784 tok/s** | **21.897 tok/s** | 32.611 GiB | Retained current production |
+| 512/128 | **670.227 tok/s** | **28.444 tok/s** | 15.605 GiB | Current sole-T16 package snapshot |
+| 1024/128 | **714.771 tok/s** | **28.988 tok/s** | 15.720 GiB | Current sole-T16 package snapshot |
+| 4096/128 | **697.749 tok/s** | **26.388 tok/s** | 16.368 GiB | Current sole-T16 package snapshot |
 
-The same final review records exact natural-prompt MTP separately below.
-Evidence: [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
+These rows use one discarded warmup plus three measured PM4 resets. Against the
+same-commit diagnostic dual-layout rollback, the shared package default improves
+prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
+**45.50-47.03%**, with exact outputs and clean teardown. The current exact
+natural suite is true AR **20.516 tok/s** and B3 **60.875 tok/s / 2.9672x**;
+its lower absolute rate than the historical **61.147** row is protocol/code
+drift, not a single-layout regression. Evidence:
+[`same-commit W7900 non-regression`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
+The superseded dual-layout publication remains in the
+[`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
 
-### Radeon RX 7900 XTX: Qwen3.6-27B Dense GGUF comparator floors
+### Radeon RX 7900 XTX: Qwen3.6-27B Dense GGUF — blocked cross-engine closure
 
 The pre-campaign dual-layout hipEngine path could not admit this model on the
-23.984-GiB XTX. The first sole-T16 candidate now fits and is retained as an
-implementation checkpoint. The complete five-sample 512/128, 1024/128, and
-4096/128 hipEngine AR matrix is now available. Clean same-commit llama.cpp
-`c8e03ce81` HIP and Vulkan establish the frozen speed and whole-device VRAM
-targets:
+23.984-GiB XTX. The package-default sole-T16 route now fits, is exact and stable,
+and passes the same-commit W7900 safeguard. It does **not** meet the campaign's
+cross-engine acceptance policy: llama.cpp HIP remains faster for prefill,
+Vulkan remains lower-memory, and Vulkan wins selected MTP plus 4K AR decode.
+The complete five-sample 512/128, 1024/128, and 4096/128 hipEngine AR matrix is
+retained as a current partial result. Clean same-commit llama.cpp `c8e03ce81`
+HIP and Vulkan establish the frozen speed and whole-device VRAM targets:
 
 | Workload | HIP prefill | Vulkan prefill | HIP context AR | Vulkan context AR | Lower peak delta |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -180,8 +201,10 @@ The complete ten-prompt llama-compatible natural suite selects B3:
 All B1-B3 outputs match true AR across all ten prompts, four categories, six
 train prompts, and four heldouts. B3 is **55.53% faster** than clean llama.cpp
 HIP B2 but **11.06% slower** than Vulkan B4 and exceeds Vulkan's lower memory
-floor by **0.509 GiB**. One independent full suite is complete; the final
-variance rerun remains pending and no root-topline MTP row is promoted.
+floor by **0.509 GiB**. One independent full suite is complete. A second suite
+cannot reverse the binding speed/memory failures, so the stop rule closes the
+campaign without spending another expensive variance run; no XTX MTP row is
+promoted to the compact root topline.
 
 The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
 sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
@@ -216,7 +239,7 @@ MiB)** with neutral exact 512/128 behavior. The final five-sample matrix is
 **727.961/33.508**, **785.347/34.537**, and **779.243/31.391 tok/s** at
 512/1K/4K. Every shape fits and is deterministic; 512/1K decode pass, but all
 prefill/memory rows and 4K decode fail their frozen gates. This is a retained
-partial pass rather than a root-topline promotion.
+current snapshot, not a cross-engine win.
 
 The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped
@@ -319,7 +342,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 22.926 | **61.147** | **2.6671x** | Exact own-engine win; still below selected llama.cpp Vulkan B4. [`artifact`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json) |
+| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Current exact natural25 B3 | 20.516 | **60.875** | **2.9672x** | Current sole-T16 package snapshot; exact and faster than same-commit dual-layout control, but still below selected llama.cpp Vulkan B4. [`artifact`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
