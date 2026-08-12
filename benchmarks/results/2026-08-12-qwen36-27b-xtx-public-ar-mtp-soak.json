@@ -101,7 +101,21 @@
     "raw_parent_source": "/tmp/qwen36-27b-xtx-public-mixed-soak.json",
     "raw_parent_sha256": "726d73b29ec21aa9d7bd7d787e5e1a70cce1396faefae460b48945477f2d652d",
     "raw_child_source": "/tmp/qwen36-27b-xtx-public-mixed-soak-child.json",
-    "raw_child_sha256": "b8690e5a229169cf05c9a307978636f931f3212c7def37d4882c7939ec40eb0d"
+    "raw_child_sha256": "b8690e5a229169cf05c9a307978636f931f3212c7def37d4882c7939ec40eb0d",
+    "host_rss_monitor": {
+      "scope": "separate first post-warm public-soak attempt; not the final 601-second soak",
+      "elapsed_seconds": 106.62529094703496,
+      "interval_seconds": 0.25,
+      "samples": 426,
+      "max_rss_bytes": 950845440,
+      "max_rss_gib": 0.8855438232421875,
+      "process_vmhwm_bytes": 5461479424,
+      "process_vmhwm_gib": 5.085467792510986,
+      "final_rss_bytes": 770740224,
+      "final_rss_gib": 0.7178077697753906,
+      "raw_source": "/tmp/qwen36-27b-xtx-public-mixed-soak-rss.json",
+      "raw_sha256": "8b698d48b1f17665671d4978cb3c74cc46494c9a787595b1eb3cf3a2b18c0568"
+    }
   },
   "focused_tests": {
     "command": "uv run pytest -q tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_gguf_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py",

@@ -157,6 +157,16 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. |
 | Selected pack8/T16 support files | `quant/gguf_*selected*.{hip,py}`, `quant/gguf_*pack8*.{hip,py}`, `quant/gguf_*t16*.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, producer/metadata variants | Build/registration partitions for selected-expert storage layouts; exact ownership stays in each wrapper. |
 
+For dense Qwen3.6-27B on gfx1100, the package-default rank-2 Q4 map is one
+`gguf_q4_k_t16_v1/tiles` payload across all 288 tensors. Its c1/rows-2-4 owners
+live in `gguf_t16_selected_gemv.{hip,py}` and its M16-through-M4096/tail
+shared-B owner lives in `gguf_k_t16_selected_prefill.{hip,py}`; the output-major
+K256 LDS slab is the retained implementation. Raw/pack8 Q4 bodies remain
+registered for other layouts and diagnostics, not as dense-27B sidecars.
+Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
+[`output-major LDS keep`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
+and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
+
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
 #### Laguna model families
