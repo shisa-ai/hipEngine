@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "date": "2026-08-12",
+  "status": "rejected_no_runtime_change",
+  "title": "Qwen3.6-27B sole-T16 dense Q4 integer-MMQ screen",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1
+  },
+  "software": {
+    "hipengine_base_commit": "6b0476d16f9c557eb71fd0a3c7c3702da6004ac1",
+    "compiler": "HIP 7.2.53211-3d9ef42 / AMD clang 22.0.0git f58b06dce1f9"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "tensor": "blk.0.attn_gate.weight",
+    "tensor_bytes_sha256": "b6735f3046e6459b583ba335409bf952bc4fe3ef5d12163ba616e343f96c9a4d",
+    "shape": [512, 5120, 6144]
+  },
+  "candidate": {
+    "description": "Source-shaped dense Q4T16 x K-major Q8_1 integer WMMA. The candidate decoded only the existing resident Q4T16 bytes, used a bounded transient DS4 activation workspace, applied Q4 scale/min and Q8 scale/sum corrections after integer WMMA, and never changed runtime dispatch or persistent residency.",
+    "source_lineage": "llama.cpp HIP 1ebf790cda38 ggml-cuda mmq.cuh/mma.cuh/quantize.cu, adapted through hipEngine's existing Q5 I128/J128/K256 scaffold",
+    "persistent_weight_bytes_added": 0,
+    "transient_q8_1_workspace_bytes": 2949120,
+    "runtime_dispatch_changed": false,
+    "decode_changed": false,
+    "mtp_changed": false
+  },
+  "correctness": {
+    "targeted_result": "5 passed",
+    "shapes": [[17, 256, 32], [128, 512, 128], [129, 512, 144]],
+    "deterministic": true,
+    "finite": true,
+    "actual_weight_reference_rows": 16,
+    "kl_mean": 3.7713087546423963e-7,
+    "kl_max": 4.6994850065535755e-7,
+    "top1_agreement": 1.0,
+    "allocation_teardown_zero": true
+  },
+  "measurements": {
+    "protocol": "balanced HIP-event leaf timing, three warmups, nine samples, actual immutable Qwen3.6-27B weight",
+    "retained_output_major_shared_b_fp16_wmma_median_ms": 0.7064859867095947,
+    "source_i128_j128_initial_pack_plus_mmq_median_ms": 2.0695290565490723,
+    "source_i128_j128_initial_prepacked_mmq_median_ms": 2.037247896194458,
+    "source_i128_j128_initial_speedup_vs_retained": 0.36172625069784986,
+    "spill_free_bounded_i128_j128_pack_plus_mmq_median_ms": 1.5178380012512207,
+    "spill_free_bounded_i128_j128_prepacked_mmq_median_ms": 1.5051590204238892,
+    "spill_free_bounded_i128_j128_speedup_vs_retained": 0.4730142387839418,
+    "i64_j64_pack_plus_mmq_median_ms": 1.6204140186309814,
+    "i64_j64_prepacked_mmq_median_ms": 1.6048500537872314,
+    "i64_j64_speedup_vs_retained": 0.4359910359862688
+  },
+  "resource_diagnosis": {
+    "branch_free_i128_j128": {
+      "vgpr": 256,
+      "vgpr_spills": 418,
+      "private_segment_bytes": 1364,
+      "dynamic_lds_bytes": 59392
+    },
+    "bounded_i128_j128": {
+      "vgpr": 187,
+      "vgpr_spills": 0,
+      "private_segment_bytes": 0,
+      "dynamic_lds_bytes": 59392
+    },
+    "interpretation": "HIP 7.2 catastrophically spilled the branch-free specialization. Using the bounded body removed spills and improved the candidate 25.9%, but the spill-free integer consumer remained about 2.1x slower than the retained FP16-WMMA owner. Activation packing was only about 0.013-0.032 ms and was not the blocker. A smaller I64/J64 tile also lost."
+  },
+  "commands": {
+    "guard": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_t16_dense_mmq.py",
+    "benchmark": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python scripts/gguf_q4_t16_dense_mmq_bench.py --rows 512 --in-features 5120 --out-features 6144 --warmups 3 --samples 9 --json /tmp/q4-t16-dense-mmq.json",
+    "resource_extract": "llvm-objcopy --dump-section .hip_fatbin=/tmp/q4-fatbin.bin <candidate.so>; clang-offload-bundler --type=o --input=/tmp/q4-fatbin.bin --targets=hipv4-amdgcn-amd-amdhsa--gfx1100 --output=/tmp/q4.hsaco --unbundle; llvm-readelf --notes /tmp/q4.hsaco"
+  },
+  "decision": "Reject and remove the kernel, wrapper, tests, and benchmark harness. No runtime/default, decode, MTP, or residency path changed. Do not repeat source-shaped I128/J128 or smaller I64/J64 T16 integer MMQ without a materially different weight-consumer dataflow or compiler/source change."
+}
