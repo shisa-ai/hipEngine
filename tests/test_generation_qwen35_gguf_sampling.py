@@ -60,6 +60,37 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     return generator
 
 
+def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -> None:
+    events: list[str] = []
+
+    class Resource:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def close(self) -> None:
+            events.append(self.name)
+
+    generator = _generator()
+    generator.backend = "hip_gfx1100"
+    generator._closed = False
+    generator._shared_runner = Resource("shared_runner")
+    generator._shared_runner_lock = threading.Lock()
+    generator._shared_session_pool = {("pool",): [Resource("session0"), Resource("session1")]}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {7: [Resource("draft0"), Resource("draft1")]}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+    generator._mtp_serving_assets = SimpleNamespace()
+
+    generator.close()
+    generator.close()
+
+    assert events == ["session1", "session0", "draft1", "draft0", "shared_runner"]
+    assert generator._shared_session_pool == {}
+    assert generator._shared_mtp_draft_pool == {}
+    assert generator._mtp_serving_assets is None
+    assert generator._shared_runner is None
+
+
 def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None:
     monkeypatch.setattr(
         qwen35_gguf,
@@ -2415,6 +2446,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
             calls.append(("runner_init", self.model_path))
 
+        def close(self):
+            calls.append(("runner_close",))
+
     class FakeSession:
         next_slot = 0
 
@@ -2687,6 +2721,11 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert len(observability["routes"]["recent_completed"]) == 5
     assert observability["graph_buckets"]["captures_total"] == 0
     assert observability["graph_buckets"]["buckets"] == {}
+
+    adapter.close()
+    adapter.close()
+    assert len([call for call in calls if call[0] == "close"]) == 4
+    assert [call[0] for call in calls][-1] == "runner_close"
 
 
 def test_gguf_c1_graph_seeds_survivor_token_after_packed_width_transition() -> None:
