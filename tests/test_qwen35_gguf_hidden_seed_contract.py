@@ -8,6 +8,7 @@ import pytest
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFHiddenSeedContract,
@@ -292,6 +293,42 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
     ]
 
 
+def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
+    )
+    session.use_wmma_prefill = None
+    session.use_gemv_decode = None
+    target_hidden_rows = DeviceBuffer(0xD000, 32)
+    bulk_calls: list[dict[str, object]] = []
+
+    def fake_bulk_prefill_and_sample(token_ids, **kwargs):
+        bulk_calls.append({"token_ids": tuple(token_ids), **kwargs})
+        return SimpleNamespace(token_id=8)
+
+    session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
+    session._q8_mmq_prefill_context = lambda: nullcontext()
+
+    result = session.prefill(
+        [10, 11],
+        use_bulk=True,
+        return_logits=False,
+        capture_target_hidden_rows=target_hidden_rows,
+    )
+
+    assert result.token_id == 8
+    assert bulk_calls == [
+        {
+            "token_ids": (10, 11),
+            "bulk_attention_mode": "bulk",
+            "return_logits": False,
+            "capture_target_hidden_rows": target_hidden_rows,
+        }
+    ]
+
+
 def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[object, ...]] = []
 
@@ -401,11 +438,13 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
     session._ensure_verify_block_buffers = fake_ensure
     session._sample_from_hidden = fake_sample_from_hidden
 
+    target_hidden_rows = DeviceBuffer(0xD000, 3 * 8 * DType.BF16.itemsize)
     result = session._run_bulk_prefill_and_sample(
         [3, 4, 7],
         bulk_attention_mode="bulk",
         return_logits=False,
         capture_hidden_seed_fp32=True,
+        capture_target_hidden_rows=target_hidden_rows,
     )
 
     hidden_row_bytes = 8 * DType.FP32.itemsize
@@ -415,6 +454,14 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
     assert ("ensure_verify", 3, runtime) in calls
     assert ("bf16", 0x1000, 0x6000, 0x7000, 3, 8) in calls
     assert ("f32", 0x1000, 0x6000, 0x8000, 3, 8) in calls
+    assert (
+        "memcpy_async",
+        0xD000,
+        0x1000,
+        3 * 8 * DType.BF16.itemsize,
+        int(HipMemcpyKind.DEVICE_TO_DEVICE),
+        0,
+    ) in calls
     assert (
         "memcpy_async",
         0x9000,

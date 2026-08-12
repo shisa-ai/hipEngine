@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "kind": "qwen36_27b_xtx_public_ar_mtp_bulk_admission_soak",
+  "date": "2026-08-12",
+  "status": "passed",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "stability_claim": true,
+  "decision": "Retain bulk target prompt admission with shifted NextN catch-up and serial-exact transactional verification as the dense public MTP route. It matches public graph/eager AR across the complete natural category suite and remains allocation/provider/session stable for ten minutes.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "software": {
+    "measurement_base_commit": "dd6efa4360ac92f45d7e4f67fbc68b9b87679b61",
+    "measurement_diff": "dense public MTP bulk target admission, shifted NextN catch-up, serial-exact public verification, and resident-capacity provider pooling",
+    "compiler_cache": "prebuilt require_cached",
+    "rocm_hip_version": "7.2.53211-3d9ef42"
+  },
+  "route": {
+    "target_prompt_admission": "public length-selected bulk prefill",
+    "draft_prompt_catchup": "shifted NextN sequence: zero then target trunk hidden rows 0..n-2",
+    "target_verifier": "transactional_serial_exact",
+    "provider_pool_capacity": "resident target max_sequence_length",
+    "native_after_bulk_blocker": "Dense rows=3 native verification emits INT32_MAX top-1 sentinels from a valid bulk-prefilled prefix in both eager-row and reusable-N2 modes. Serial-exact verification is exact from the same state; native serial-prefill protocol remains separately gated."
+  },
+  "focused_public_parity": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/qwen36_public_ar_mtp_divergence.py",
+    "prompt_id": "general_ja_explain",
+    "output_tokens": 25,
+    "graph_ar_sha256": "5e53b101bfe39d25152ed5a28773f906975b1c251ba93362b4ae0fba8e6b6679",
+    "eager_ar_sha256": "5e53b101bfe39d25152ed5a28773f906975b1c251ba93362b4ae0fba8e6b6679",
+    "mtp_sha256": "5e53b101bfe39d25152ed5a28773f906975b1c251ba93362b4ae0fba8e6b6679",
+    "graph_equals_eager": true,
+    "mtp_equals_graph_ar": true,
+    "tracked_allocations_after_close": 0,
+    "tracked_bytes_after_close": 0,
+    "raw_source": "/tmp/qwen36-public-ar-mtp-divergence.json",
+    "raw_sha256": "f0ea8c4b2656ca63fe4ef47f963c733a437017c487d5d39151231706b645297a"
+  },
+  "soak": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/qwen36_27b_xtx_public_mixed_soak_parent.py",
+    "duration_target_seconds": 600.0,
+    "measured_route_seconds": 601.0829586093314,
+    "process_elapsed_seconds": 690.5663451962173,
+    "cycles": 204,
+    "public_requests": 408,
+    "output_tokens_per_request": 25,
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "category_cycle_counts": {
+      "code": 84,
+      "general_en": 40,
+      "general_ja": 40,
+      "mixed_ja_en": 40
+    },
+    "all_ar_mtp_exact": true,
+    "all_token_counts_exact": true,
+    "one_output_hash_per_prompt": true,
+    "errors": [],
+    "provider_pool_keys_warm_to_final": [
+      1,
+      1
+    ],
+    "draft_provider_count_warm_to_final": [
+      1,
+      1
+    ],
+    "target_session_count_warm_to_final": [
+      1,
+      1
+    ],
+    "same_draft_provider_reused": true,
+    "same_target_session_reused": true,
+    "stable_tracked_current_spread_bytes": 0,
+    "torch_loaded": false,
+    "tracked_allocations_after_close": 0,
+    "tracked_bytes_after_close": 0,
+    "baseline_vram_bytes": 64913408,
+    "peak_vram_delta_gib": 18.209484100341797,
+    "final_vram_delta_bytes": 827392,
+    "max_edge_temp_c": 62.0,
+    "max_junction_temp_c": 83.0,
+    "max_memory_temp_c": 94.0,
+    "max_power_w": 363.0,
+    "raw_parent_source": "/tmp/qwen36-27b-xtx-public-mixed-soak.json",
+    "raw_parent_sha256": "726d73b29ec21aa9d7bd7d787e5e1a70cce1396faefae460b48945477f2d652d",
+    "raw_child_source": "/tmp/qwen36-27b-xtx-public-mixed-soak-child.json",
+    "raw_child_sha256": "b8690e5a229169cf05c9a307978636f931f3212c7def37d4882c7939ec40eb0d"
+  },
+  "focused_tests": {
+    "command": "uv run pytest -q tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_gguf_hidden_seed_contract.py tests/test_qwen35_gguf_runner.py tests/test_generation_qwen35_gguf_sampling.py",
+    "passed": 115,
+    "skipped": 9,
+    "failed": 0
+  }
+}

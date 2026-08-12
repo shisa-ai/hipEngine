@@ -13727,6 +13727,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        capture_target_hidden_rows: DeviceBuffer | None = None,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
@@ -13739,7 +13740,9 @@ class Qwen35GGUFResidentSession:
         ``return_logits=False`` for public generation paths that only need the
         sampled token and should avoid copying full logits back to the host.
         Set ``capture_hidden_seed_fp32=True`` to populate the M2.5
-        post-output_norm fp32 seed row for the final prompt token.
+        post-output_norm fp32 seed row for the final prompt token. An internal
+        MTP caller may provide ``capture_target_hidden_rows`` to retain every
+        pre-output-norm trunk row on device for shifted NextN prompt catch-up.
         """
 
         if not token_ids:
@@ -13774,6 +13777,8 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_hidden_seed_fp32"] = True
                 if capture_layer_output_hidden is not None:
                     bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
+                if capture_target_hidden_rows is not None:
+                    bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
                 return self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
@@ -13781,9 +13786,18 @@ class Qwen35GGUFResidentSession:
                     **bulk_kwargs,
                 )
 
+        target_hidden_row_nbytes = 0
+        if capture_target_hidden_rows is not None:
+            target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+            required_nbytes = len(token_ids) * target_hidden_row_nbytes
+            if int(capture_target_hidden_rows.nbytes) < required_nbytes:
+                raise ValueError(
+                    "capture_target_hidden_rows is smaller than the prompt hidden rows"
+                )
         self.reset()
         hidden_ptr = None
         final_index = len(token_ids) - 1
+        runtime = self.runtime or get_hip_runtime()
         for index, token_id in enumerate(token_ids):
             token_kwargs: dict[str, object] = {}
             if index == final_index and capture_layer_output_hidden is not None:
@@ -13794,6 +13808,14 @@ class Qwen35GGUFResidentSession:
                 capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32) and index == final_index,
                 **token_kwargs,
             )
+            if capture_target_hidden_rows is not None:
+                runtime.memcpy_async(
+                    capture_target_hidden_rows.ptr + index * target_hidden_row_nbytes,
+                    self._last_target_hidden_ptr,
+                    target_hidden_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    0,
+                )
             self._position += 1
         assert hidden_ptr is not None
         return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
@@ -13867,6 +13889,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = True,
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        capture_target_hidden_rows: DeviceBuffer | None = None,
         enqueue_sample_only: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -13880,6 +13903,13 @@ class Qwen35GGUFResidentSession:
             raise ValueError("token_ids must be non-empty")
         if rows > self.scratch.max_positions:
             raise ValueError(f"GGUF bulk prefill rows {rows} exceed cache capacity {self.scratch.max_positions}")
+        target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        if capture_target_hidden_rows is not None:
+            required_nbytes = rows * target_hidden_row_nbytes
+            if int(capture_target_hidden_rows.nbytes) < required_nbytes:
+                raise ValueError(
+                    "capture_target_hidden_rows is smaller than the prompt hidden rows"
+                )
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
         runtime = self.runtime or get_hip_runtime()
@@ -14060,6 +14090,15 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                         stream=stream,
                     )
+                    if capture_target_hidden_rows is not None:
+                        runtime.memcpy_async(
+                            capture_target_hidden_rows.ptr
+                            + chunk_start * target_hidden_row_nbytes,
+                            src.ptr,
+                            chunk_rows * target_hidden_row_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
                     last_bulk_scratch = bulk_scratch
                     last_src_ptr = src.ptr + (chunk_rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
                 if last_bulk_scratch is None:
@@ -14221,6 +14260,14 @@ class Qwen35GGUFResidentSession:
                     runtime=runtime,
                     stream=stream,
                 )
+                if capture_target_hidden_rows is not None:
+                    runtime.memcpy_async(
+                        capture_target_hidden_rows.ptr,
+                        src.ptr,
+                        rows * target_hidden_row_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
                 last_bulk_scratch = active_bulk_scratch
                 if last_bulk_scratch is None:
                     # Empty synthetic layer stacks still need the shared norm

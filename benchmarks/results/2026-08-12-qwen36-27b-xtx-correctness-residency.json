@@ -274,6 +274,40 @@
     "rocm_version": "HIP version: 7.2.53211-3d9ef42"
   },
   "status": "passed_full_ar_mtp_pm4_public_correctness_and_residency",
-  "updated_at": "2026-08-12T15:16:17Z",
-  "summary": "Focused CPU/layout/registry coverage is green after a mapped-host Q6_K auto-placement regression repair. At p512, p1024, and p4096, production bulk eager matches clean llama.cpp and four teacher-forced transitions are byte-exact to fresh serial-prefix hidden, every Conv/GDN state, and every live K/V byte. PM4 then matches eager for all of that state plus full logits and complete KVLiveSpans at the common pre-execution boundary, with zero fallback/unretired submissions and full retirement. Dense B1-B3 reject/partial/full/rollback/reseed transactions pass on the XTX, proposal-time cancellation stops before target mutation, and public AR/MTP/server generation is deterministic, torch-free, owner-reusing, and leak-free. The live target+NextN census remains at zero duplicate payload or alternate-layout bytes and tracked ownership returns to zero."
+  "updated_at": "2026-08-12T17:13:24Z",
+  "summary": "Focused CPU/layout/registry coverage is green after a mapped-host Q6_K auto-placement regression repair. At p512, p1024, and p4096, production bulk eager matches clean llama.cpp and four teacher-forced transitions are byte-exact to fresh serial-prefix hidden, every Conv/GDN state, and every live K/V byte. PM4 then matches eager for all of that state plus full logits and complete KVLiveSpans at the common pre-execution boundary, with zero fallback/unretired submissions and full retirement. Dense B1-B3 reject/partial/full/rollback/reseed transactions pass on the XTX and proposal-time cancellation stops before target mutation. Public dense MTP now shares public bulk-AR prompt admission, catches shifted NextN state up from retained device hidden rows, and uses serial-exact transactional verification; a 601-second all-category soak completes 408 exact AR/MTP requests with one stable provider/session, torch-free execution, zero live allocation spread, tracked close zero, and post-exit VRAM within 0.8 MiB of baseline. The live target+NextN census remains at zero duplicate payload or alternate-layout bytes.",
+  "public_ar_mtp_bulk_admission_soak": {
+    "status": "passed",
+    "hipengine_measurement_base": "dd6efa4360ac92f45d7e4f67fbc68b9b87679b61",
+    "target_prompt_admission": "public bulk prefill",
+    "draft_prompt_catchup": "shifted NextN zero then target trunk hidden rows 0..n-2",
+    "target_verifier": "transactional_serial_exact",
+    "duration_seconds": 601.0829586093314,
+    "cycles": 204,
+    "public_requests": 408,
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "all_ar_mtp_exact": true,
+    "one_output_hash_per_prompt": true,
+    "same_draft_provider_reused": true,
+    "same_target_session_reused": true,
+    "stable_tracked_current_spread_bytes": 0,
+    "torch_loaded": false,
+    "tracked_current_after_close_bytes": 0,
+    "tracked_active_after_close": 0,
+    "peak_vram_delta_gib": 18.209484100341797,
+    "whole_device_final_delta_bytes": 827392,
+    "max_edge_temp_c": 62.0,
+    "max_junction_temp_c": 83.0,
+    "max_memory_temp_c": 94.0,
+    "max_power_w": 363.0,
+    "artifact": "benchmarks/results/2026-08-12-qwen36-27b-xtx-public-ar-mtp-soak.json",
+    "raw_parent_sha256": "726d73b29ec21aa9d7bd7d787e5e1a70cce1396faefae460b48945477f2d652d",
+    "raw_child_sha256": "b8690e5a229169cf05c9a307978636f931f3212c7def37d4882c7939ec40eb0d"
+  }
 }

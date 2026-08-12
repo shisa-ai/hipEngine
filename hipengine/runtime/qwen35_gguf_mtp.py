@@ -1148,7 +1148,11 @@ class Qwen35GGUFMTPDecodeSession:
 
         prefill_started = time.perf_counter()
         if prefill_draft:
-            first = self._prefill_target_and_draft(prompt, request_id=rid)
+            first = self._prefill_target_and_draft(
+                prompt,
+                request_id=rid,
+                use_bulk=use_bulk_prefill,
+            )
         else:
             first = self.target.prefill(
                 prompt,
@@ -1415,38 +1419,55 @@ class Qwen35GGUFMTPDecodeSession:
         prompt: tuple[int, ...],
         *,
         request_id: int,
+        use_bulk: bool | None,
     ):
+        """Admit one target prompt and catch the shifted NextN state up.
+
+        The target owns the public AR prefill policy, including bulk prefill.
+        Retaining each target trunk-hidden row lets the one-layer NextN model
+        consume the same shifted sequence as llama.cpp afterwards: token 0 is
+        paired with zero, then token ``i`` is paired with target hidden
+        ``i - 1``.  Draft catch-up therefore does not force the target back to
+        token-serial prompt arithmetic.
+        """
+
         if self.target.runner is None or self.target.runtime is None:
             raise RuntimeError("GGUF target session is closed")
-        hidden_nbytes = int(self.target.runner.hidden_size) * DType.BF16.itemsize
+        hidden_size = int(self.target.runner.hidden_size)
+        hidden_nbytes = hidden_size * DType.BF16.itemsize
         zero = malloc(hidden_nbytes, runtime=self.target.runtime)
-        self.target.runtime.memset(zero.ptr, 0, zero.nbytes)
-        previous_hidden = Tensor.from_handle(
-            zero.ptr,
-            (1, self.target.runner.hidden_size),
-            DType.BF16,
-            Device("hip", 0),
-        )
-        result = None
+        hidden_rows = None
         try:
+            hidden_rows = malloc(len(prompt) * hidden_nbytes, runtime=self.target.runtime)
+            self.target.runtime.memset(zero.ptr, 0, zero.nbytes)
+            result = self.target.prefill(
+                prompt,
+                use_bulk=use_bulk,
+                return_logits=False,
+                capture_target_hidden_rows=hidden_rows,
+            )
             for position, token in enumerate(prompt):
+                previous_hidden_ptr = (
+                    zero.ptr
+                    if position == 0
+                    else hidden_rows.ptr + (position - 1) * hidden_nbytes
+                )
                 self.draft_provider.executor.run_step(
                     int(request_id),
                     int(token),
                     int(position),
-                    previous_hidden,
+                    Tensor.from_handle(
+                        previous_hidden_ptr,
+                        (1, hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
                     return_logits=False,
                 )
-                result = self.target.step(
-                    int(token),
-                    position=int(position),
-                    return_logits=False,
-                )
-                previous_hidden = self.target.last_target_hidden
         finally:
+            if hidden_rows is not None:
+                free(hidden_rows, runtime=self.target.runtime)
             free(zero, runtime=self.target.runtime)
-        if result is None:
-            raise RuntimeError("GGUF MTP prompt prefill produced no target root")
         return result
 
     def _register_kv_policy(self, request_id: int) -> FixedPagedKVPolicy:

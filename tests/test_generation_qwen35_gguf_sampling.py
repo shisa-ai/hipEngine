@@ -128,17 +128,20 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     )
     @contextmanager
     def session_scope(**kwargs):
-        yield SimpleNamespace(require_cached_build=True), False
+        yield SimpleNamespace(
+            require_cached_build=True,
+            target_layout=SimpleNamespace(max_sequence_length=256),
+        ), False
 
     generator = _generator()
     generator._prepared_max_sequence_length = 64
     generator._shared_runner = SimpleNamespace()
     generator._resident_session_scope = session_scope
-    generator._acquire_dense_mtp_draft_provider = lambda *args, **kwargs: (
-        provider,
-        (7, "dense_nextn", 64),
-        False,
-    )
+    def acquire_provider(*args, **kwargs):
+        calls.append(("provider_acquire", kwargs))
+        return provider, (7, "dense_nextn", int(kwargs["max_positions"])), False
+
+    generator._acquire_dense_mtp_draft_provider = acquire_provider
     generator._release_mtp_draft_runner = lambda key, draft: calls.append(
         ("release", key, draft)
     )
@@ -153,10 +156,21 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     )
 
     assert outputs[0].generated_token_ids == (1, 2, 3)
+    assert any(
+        call[0] == "generate"
+        and call[2] == {"max_new_tokens": 3, "request_id": 0}
+        for call in calls
+    )
+    assert ("provider_acquire", {"max_positions": 256, "pool_enabled": True}) in calls
     assert ("provider_release", 0) in calls
-    assert calls[-1] == ("release", (7, "dense_nextn", 64), provider)
+    assert calls[-1] == ("release", (7, "dense_nextn", 256), provider)
     assert generator.last_batch_generation["speculative_mtp"]["nextn_block_id"] == 64
-    assert generator.last_batch_generation["speculative_mtp"]["target_verify"] == "transactional_native"
+    decoder_init = next(call for call in calls if call[0] == "decoder_init")
+    assert decoder_init[3]["target_verify_mode"] == "serial_exact"
+    assert (
+        generator.last_batch_generation["speculative_mtp"]["target_verify"]
+        == "transactional_serial_exact"
+    )
 
 
 def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -> None:

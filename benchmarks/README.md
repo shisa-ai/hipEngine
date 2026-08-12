@@ -233,7 +233,7 @@ fallback/unretired submissions and clean retirement. Real dense B1-B3
 reject/partial/full/rollback/reseed transactions, proposal-time cancellation,
 and the public AR/repeated-MTP/HTTP torch-free owner-reuse lifecycle also pass;
 tracked public teardown is zero and final VRAM is within 0.8 MiB of baseline.
-The fixed ten-minute natural AR/MTP thermal/allocator soak is active.
+Public dense MTP now shares public AR's bulk prompt admission and catches NextN up from shifted device-resident target hidden rows. A fixed 601-second soak completes **204 cycles / 408 requests** across all ten prompts/four categories with every AR/MTP pair exact, stable per-prompt hashes, one reused target/draft owner, zero live-byte spread, no torch, tracked close zero, **18.209-GiB** peak VRAM delta, **62/83/94 C** max edge/junction/memory temperatures, and final VRAM **+0.79 MiB**. Public verification uses correctness-first serial-exact; native verification after bulk prefill remains a documented blocker.
 
 Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
 [`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
@@ -247,6 +247,7 @@ Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-ll
 [`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
 [`correctness/runtime residency`](results/2026-08-12-qwen36-27b-xtx-correctness-residency.json),
 [`cold/warm PM4 lifecycle`](results/2026-08-12-qwen36-27b-xtx-lifecycle.json),
+[`public AR/MTP bulk-admission soak`](results/2026-08-12-qwen36-27b-xtx-public-ar-mtp-soak.json),
 [`PM4 versus HIP graph at all contexts`](results/2026-08-12-qwen36-27b-xtx-pm4-all-contexts.json),
 and [`same-commit W7900 non-regression`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 
