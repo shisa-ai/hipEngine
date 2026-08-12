@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **709.171** | **28.428** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **725.849** | **28.420** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -40,9 +40,9 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **780.849** | **33.592** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.326** | **33.523** |
 
-The 27B row is a current single-layout snapshot with model-qualified Q6
+The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
 source-F16 prefill; decode and MTP retain their exact owners. It is not a
 cross-engine win: the campaign remains below llama.cpp HIP prefill and Vulkan
 memory at every measured context, plus Vulkan MTP and 4K AR decode.
@@ -142,13 +142,13 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **709.171 tok/s** | **28.428 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
-| 1024/128 | **759.104 tok/s** | **28.986 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
-| 4096/128 | **746.335 tok/s** | **26.478 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q6-F16 package snapshot |
+| 512/128 | **725.849 tok/s** | **28.420 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
+| 1024/128 | **777.508 tok/s** | **29.007 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
+| 4096/128 | **751.982 tok/s** | **26.270 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
 
-These rows use one discarded warmup plus three measured PM4 resets. The Q6-F16
-owner improves final 512/1K/4K prefill **+5.81%/+6.20%/+6.96%** over the prior
-sole-T16 package rows with decode neutral and tracked residency unchanged.
+These rows use one discarded warmup plus three measured PM4 resets. Adding the
+Q4 FFN-down owner to the retained Q6-F16 route improves 512/1K/4K prefill
+**+2.35%/+2.42%/+1.92%** with decode neutral and tracked residency unchanged.
 Against the same-commit diagnostic dual-layout rollback, the earlier shared
 package default improves
 prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
@@ -190,15 +190,15 @@ reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Gate status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **780.849 tok/s** | **33.592 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **839.336 tok/s** | **34.524 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
-| 4096/128 | **827.209 tok/s** | **31.392 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
+| 512/128 | **801.326 tok/s** | **33.523 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **859.484 tok/s** | **34.514 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **847.283 tok/s** | **31.387 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
 
-The bounded sole-T16 Q6-to-F16/rocBLAS owner improves prefill over the prior
-exact matrix by **7.27%/6.87%/6.16%** at 512/1K/4K while decode changes
-**+0.25%/-0.04%/+0.00%**, tracked residency is unchanged, and the complete
-10-prompt category suite passes **330/330 top-1** with max KL **0.04113**.
-Evidence: [`retained Q6 F16 prefill`](results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json).
+The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
+Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
+**-0.21%/-0.03%/-0.02%**, tracked residency is unchanged, and the complete
+10-prompt category suite passes with minimum per-prompt top-1 **96.97%** and max
+KL **0.03176**. Evidence: [`retained Q4 FFN-down F16 prefill`](results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
@@ -247,9 +247,10 @@ inventory crossover: **849** immutable allocations share one owner, only the
 994.6-MiB untied head remains dedicated, physical weight owners fall **370 ->
 2**, and standard process peak delta falls **16.171 -> 16.095 GiB (-77.840
 MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified
-bounded Q6 F16/rocBLAS owner raises the current matrix to **780.849/33.592**, **839.336/34.524**, and **827.209/31.392 tok/s**
-at 512/1K/4K while keeping one persistent T16 weight layout and the same
-15.605/15.720/16.368-GiB tracked peaks. Every shape fits and is deterministic;
+bounded Q6 F16/rocBLAS owner and Q4 FFN-down extension raise the current matrix to **801.326/33.523**, **859.484/34.514**,
+and **847.283/31.387 tok/s** at 512/1K/4K while keeping one persistent T16
+weight layout per tensor and the same 15.605/15.720/16.368-GiB tracked peaks.
+Every shape fits and is deterministic;
 512/1K decode pass, but all prefill/memory rows and 4K decode still fail their
 frozen cross-engine gates. This is a retained current snapshot, not a
 cross-engine win.

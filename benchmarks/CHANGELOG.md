@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-13
 
+- [retained/default model-scoped Q4 FFN-down source-F16 prefill] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K: prefill **780.849/839.336/827.209 -> 801.326/859.484/847.283 tok/s (+2.62%/+2.40%/+2.43%)** by consuming sole-resident Q4T16 FFN-down weights through bounded F16 tiles and rocBLAS, while decode is neutral at **-0.21%/-0.03%/-0.02%**, tracked peaks stay **15.605/15.720/16.368 GiB**, the complete category suite passes with minimum per-prompt top-1 **96.97% / max KL 0.03176**, and exact gate/up/attention/decode/MTP/fallback owners remain unchanged; `benchmarks/results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json`.
 - [retained/default model-scoped Q6 source-F16 dense prefill] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K: prefill **727.961/785.347/779.243 -> 780.849/839.336/827.209 tok/s (+7.27%/+6.87%/+6.16%)** by consuming sole-resident planar Q6T16 weights through bounded F16 tiles and rocBLAS, while decode is neutral at **+0.25%/-0.04%/+0.00%**, tracked peaks stay **15.605/15.720/16.368 GiB**, the complete category suite passes **330/330 top-1 / max KL 0.04113**, and exact decode/MTP/fallback owners remain unchanged; `benchmarks/results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json`.
 
 ## 2026-08-12

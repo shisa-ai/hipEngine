@@ -237,12 +237,19 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Production-shape Q4 changed-arithmetic screen admits only FFN-down. It wins
+# at M512/1K/4K and can consume its dead BF16 activation in place. Gate/up and
+# full-attention Q4 projections remain exact; their screens lost or require a
+# new scratch lifetime before they can be reconsidered.
+GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
+}
 # Full-category changed-arithmetic admission for sole-planar Q6 dense prefill.
 # Rows below 512 (decode/MTP) and the Q6 lm-head remain on exact owners.
 GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {
-    (17_408, 5_120): {512: 1024, 768: 1024, 1024: 512, 1280: 512, 4096: 512},
-    (5_120, 10_240): {512: 2048, 768: 2048, 1024: 512, 1280: 512, 4096: 256},
-    (5_120, 1_024): {512: 1024, 768: 1024, 1024: 512, 1280: 512, 4096: 512},
+    (17_408, 5_120): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
+    (5_120, 10_240): {512: 2_048, 768: 2_048, 1_024: 512, 1_280: 512, 4_096: 256},
+    (5_120, 1_024): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
 }
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
@@ -698,6 +705,7 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
