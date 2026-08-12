@@ -973,7 +973,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
-    _require_free_vram(32.0)
+    # The package-default sole-layout target+NextN route peaks below 18 GiB on
+    # the 24-GiB XTX.  The old 32-GiB guard reflected the removed pack8+T16
+    # dual residency and silently skipped this product gate on its target card.
+    _require_free_vram(19.0)
     prompt = (9707, 9707, 9707, 9707)
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     with Qwen35GGUFResidentSession(
@@ -1400,7 +1403,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
         if (in_features, out_features) == (5_120, 1_024)
     } == {2, 4}
-    assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
+    # Rank-2 Q4 weights are sole-resident T16. The old draft-projection pack8
+    # assertion was the last test dependency on removed dual residency.
+    assert not q4_single_rowtile_calls["pack8"]
     # Narrow V no longer owns a dense-BF16 allocation; scalar AR and
     # verifier rows consume one planar-Q6 representation.
     assert not dense_virtual256_calls
