@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B final retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "b387895de",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached prefill-only M512 rocprofv3 kernel trace after retained exact rocBLAS solution indices and shared K/V activation cast; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-final-prefill-profile-b387895de -o qwen36-final-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-final-prefill-profile-b387895de/bench.json"
+  },
+  "profile": {
+    "profiled_wall_ms": 917.3804353922606,
+    "kernel_sum_ms": 579.541962,
+    "kernel_dispatches": 3174,
+    "profiler_host_submission_sync_residual_ms": 337.8384733922606,
+    "tracked_peak_gib": 15.605462968349457,
+    "families": [
+      {"name": "dual Q4T16 FFN gate/up plus SiLU", "dispatches": 64, "kernel_ms": 207.577441, "kernel_share_percent": 35.817500},
+      {"name": "bounded source-F16 rocBLAS GEMMs", "dispatches": 552, "kernel_ms": 99.701136, "kernel_share_percent": 17.203438},
+      {"name": "remaining exact dense Q4T16", "dispatches": 88, "kernel_ms": 90.067098, "kernel_share_percent": 15.540820},
+      {"name": "exact dense Q5T16", "dispatches": 48, "kernel_ms": 60.679510, "kernel_share_percent": 10.470253},
+      {"name": "linear-attention recurrent GDN", "dispatches": 48, "kernel_ms": 30.147951, "kernel_share_percent": 5.202029},
+      {"name": "bounded Q6T16 to F16 producers", "dispatches": 288, "kernel_ms": 22.771094, "kernel_share_percent": 3.929155},
+      {"name": "bounded Q4T16 to F16 producers", "dispatches": 264, "kernel_ms": 16.746164, "kernel_share_percent": 2.889550},
+      {"name": "dense F32-weight projections", "dispatches": 96, "kernel_ms": 12.827595, "kernel_share_percent": 2.213416},
+      {"name": "flash attention", "dispatches": 16, "kernel_ms": 7.377947, "kernel_share_percent": 1.273071},
+      {"name": "BF16 to FP16 activation casts", "dispatches": 120, "kernel_ms": 3.445746, "kernel_share_percent": 0.594558},
+      {"name": "FP16 to BF16 output casts", "dispatches": 552, "kernel_ms": 3.036109, "kernel_share_percent": 0.523877}
+    ]
+  },
+  "comparison_to_post_dual_profile": {
+    "prior_commit": "6d8da0157",
+    "prior_kernel_sum_ms": 579.619311,
+    "prior_dispatches": 3190,
+    "kernel_sum_delta_percent": -0.01334479347601114,
+    "dispatch_delta": -16,
+    "bounded_rocblas_gemm_ms": {"prior": 101.592624, "current": 99.701136, "delta_percent": -1.861849},
+    "activation_cast": {"prior_dispatches": 136, "current_dispatches": 120, "prior_ms": 3.624186, "current_ms": 3.445746, "delta_percent": -4.923589},
+    "interpretation": "The intended selected-GEMM and activation-cast subwindows improve. Unrelated one-shot Q4/Q5 clock drift offsets them in aggregate kernel sum; authoritative retained performance remains the existing counterbalanced engine A/B evidence."
+  },
+  "next_lane": {
+    "selected": "sole-resident Q5T16 source-F16 bounded rocBLAS screen",
+    "reason": "Exact dense Q5T16 remains 10.47% of M512 kernel sum. The current bounded source-F16 producer supports Q4T16 and planar Q6T16 but not the sole-resident Q5T16 layout, so this is a genuinely untested byte-neutral dataflow rather than another rejected integer-MMQ or tile-geometry repeat.",
+    "first_gate": "Implement a temporary Q5T16-to-F16 tile producer and compare dequantize plus rocBLAS plus output cast against the exact Q5T16 leaf on the actual K6144/N5120 tensor at M512/1024/4096. Continue to model quality only if the complete leaf wins; changed arithmetic requires the full category gate before retention."
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-final-prefill-profile-b387895de/bench.json",
+    "bench_sha256": "5092bab6313ada0b5b29395151d0de74963f1661bbe58af7d538667556d9b6a0",
+    "kernel_trace": "/tmp/qwen36-27b-final-prefill-profile-b387895de/qwen36-final-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "22d325052deacf5d19491e21723ab7b039db001f3271d69a2345ad5909ab70e4",
+    "summary": "/tmp/qwen36-27b-final-prefill-profile-b387895de/summary.json",
+    "summary_sha256": "7f1743df6b43b505372c5f3740765d7607c259a44b17b49e514c807b879ec1f0"
+  }
+}
