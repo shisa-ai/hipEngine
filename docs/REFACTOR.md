@@ -73,10 +73,9 @@ should be removed or collapsed.
   Qwen3.6-27B recurrent-output prefill at measured bulk-row anchors and casts its
   dead K6,144 input in place. Exact Q4 pair-owned and Q5 natural-octet-owned
   source-F16 production are selected through a generic quant/shape/inclusive-row
-  variant policy; misses retain each scalar producer. Q4 pair ownership now also
-  covers the Q6-QKV/Q4-gate shared-activation pair at M512-M2047. A separate
-  generic per-quant/shape row ceiling prevents nearest-anchor extrapolation for
-  both that gate and full-attention Q through M2048/4K, which remain exact.
+  variant policy; misses retain each scalar producer. A separate generic
+  per-quant/shape row ceiling prevents nearest-anchor extrapolation through the
+  known-losing Q4 full-attention-Q M2048/4K boundary while admitting M512/1K.
   Decode, verifier, peer backends, and all other misses retain exact T16.
 - Removal trigger: after one release window with the complete category gate and
   512/1K/4K XTX/W7900 safeguards stable, rename the private runner fields/method
