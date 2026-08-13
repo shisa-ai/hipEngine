@@ -49,11 +49,14 @@ def test_parser_accepts_gfx1151_uniform_int8_candidate() -> None:
             "hip_gfx1151",
             "--candidate-kv-storage",
             "int8_per_token_head",
+            "--kv-scale-dtype",
+            "fp32",
         ]
     )
 
     assert args.backend == "hip_gfx1151"
     assert args.candidate_kv_storage == "int8_per_token_head"
+    assert args.kv_scale_dtype == "fp32"
 
 
 def test_parser_accepts_forced_long_uniform_int8_layout_audit() -> None:
@@ -83,6 +86,7 @@ def test_parser_accepts_forced_long_uniform_int8_layout_audit() -> None:
 
 def test_parse_layer_indices_rejects_duplicates_and_descending_ranges() -> None:
     assert _parse_layer_indices("0-2,4,6-7") == [0, 1, 2, 4, 6, 7]
+    assert _parse_layer_indices("none") == []
 
     for value in ("2,2", "7-3", "-1", "1,,2"):
         try:
