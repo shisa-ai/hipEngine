@@ -267,6 +267,11 @@ GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
             (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
         },
     },
+    "gguf_q5_k_t16_v1": {
+        (6_144, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+        },
+    },
 }
 # Quality-gated Q5T16 recurrent-output policy. The K6,144 activation is cast in
 # its dead input, preserving the sole resident T16 payload and bounded workspace.

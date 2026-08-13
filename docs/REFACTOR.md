@@ -71,10 +71,10 @@ should be removed or collapsed.
   exact rollback. The name is stale but the rollback remains useful while
   changed-arithmetic Q4/Q5/Q6 accumulates release evidence. Q5 is limited to
   Qwen3.6-27B recurrent-output prefill at measured bulk-row anchors and casts its
-  dead K6,144 input in place. Exact Q4 pair-owned source-F16 production is
-  selected through a generic quant/shape/inclusive-row variant policy; misses
-  retain the scalar producer. Decode, verifier, peer backends, and all other
-  misses retain exact T16.
+  dead K6,144 input in place. Exact Q4 pair-owned and Q5 natural-octet-owned
+  source-F16 production are selected through a generic quant/shape/inclusive-row
+  variant policy; misses retain each scalar producer. Decode, verifier, peer
+  backends, and all other misses retain exact T16.
 - Removal trigger: after one release window with the complete category gate and
   512/1K/4K XTX/W7900 safeguards stable, rename the private runner fields/method
   to quant-neutral T16-F16 terminology and remove the Q6-named compatibility

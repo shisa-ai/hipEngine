@@ -160,6 +160,11 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
         },
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+            },
+        },
     }
     # Q4/Q5/Q6 source-F16 prefill shares three liveness-aliased transient
     # planes while preserving each sole resident T16 weight allocation. Q5
