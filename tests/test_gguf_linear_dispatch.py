@@ -197,10 +197,7 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
         None,
     ) == {
-        "gguf_q4_k_t16_v1": {
-            (5_120, 6_144): 2_047,
-            (5_120, 12_288): 2_047,
-        },
+        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -227,9 +224,6 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
             },
             (6_144, 5_120): {
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
-            },
-            (5_120, 6_144): {
-                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
             (5_120, 12_288): {
                 (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
@@ -623,22 +617,16 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         q4_tile_out_features_by_shape={
             (512, 17_408, 5_120): 1_024,
             (512, 6_144, 5_120): 1_024,
-            (512, 5_120, 6_144): 2_048,
-            (1_024, 5_120, 6_144): 512,
             (512, 5_120, 12_288): 2_048,
             (1_024, 5_120, 12_288): 512,
         },
         max_rows_by_quant_shape={
-            "gguf_q4_k_t16_v1": {
-                (5_120, 6_144): 2_047,
-                (5_120, 12_288): 2_047,
-            },
+            "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
         },
         linear_variant_intervals_by_quant={
             "gguf_q4_k_t16_v1": {
                 (17_408, 5_120): {(512, 4_096): pair_key.variant},
                 (6_144, 5_120): {(512, 768): pair_key.variant},
-                (5_120, 6_144): {(512, 2_047): pair_key.variant},
                 (5_120, 12_288): {(512, 2_047): pair_key.variant},
             },
         },
@@ -656,11 +644,6 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
                 (4_096, 17_408, 5_120),
                 (768, 6_144, 5_120),
                 (769, 6_144, 5_120),
-                (512, 5_120, 6_144),
-                (1_024, 5_120, 6_144),
-                (2_047, 5_120, 6_144),
-                (2_048, 5_120, 6_144),
-                (4_096, 5_120, 6_144),
                 (512, 5_120, 12_288),
                 (1_024, 5_120, 12_288),
                 (2_047, 5_120, 12_288),
@@ -699,11 +682,6 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         "pair",
         "pair",
         "scalar",
-        "pair",
-        "pair",
-        "pair",
-        "exact",
-        "exact",
         "pair",
         "pair",
         "pair",

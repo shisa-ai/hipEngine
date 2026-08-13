@@ -147,19 +147,12 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         1_024: 1_280,
         4_096: 1_024,
     }
-    assert source_f16_policy["gguf_q4_k_t16_v1"][(5_120, 6_144)] == {
-        512: 2_048,
-        1_024: 512,
-    }
     assert source_f16_policy["gguf_q4_k_t16_v1"][(5_120, 12_288)] == {
         512: 2_048,
         1_024: 512,
     }
     assert source_f16_policy["max_rows_by_quant_shape"] == {
-        "gguf_q4_k_t16_v1": {
-            (5_120, 6_144): 2_047,
-            (5_120, 12_288): 2_047,
-        },
+        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
     }
     assert source_f16_policy["linear_variant_intervals_by_quant"] == {
         "gguf_q4_k_t16_v1": {
@@ -172,9 +165,6 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             },
             (6_144, 5_120): {
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
-            },
-            (5_120, 6_144): {
-                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
             (5_120, 12_288): {
                 (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
