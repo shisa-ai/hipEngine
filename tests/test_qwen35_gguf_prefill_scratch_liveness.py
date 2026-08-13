@@ -300,7 +300,7 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
     assert set(intervals) == expected_intervals
 
 
-def test_gfx1100_pair_only_source_f16_owner_rejects_invalid_request_rows(
+def test_gfx1100_source_f16_owner_keeps_exact_fallback_beyond_scratch_rows(
     monkeypatch,
 ) -> None:
     runner = _fake_dense_qwen36_runner()
@@ -310,10 +310,30 @@ def test_gfx1100_pair_only_source_f16_owner_rejects_invalid_request_rows(
         _bulk_prefill_scratch=scratch,
         use_q6_f16_rocblas_prefill=None,
     )
+    fallback = object()
+    monkeypatch.setattr(
+        gguf_runner,
+        "q6_t16_f16_rocblas_prefill_session",
+        lambda owner: fallback if owner is None else owner,
+    )
 
-    with pytest.raises(ValueError, match="request rows must fit"):
+    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+        session, request_rows=769
+    )
+
+    assert owner is fallback
+
+
+def test_gfx1100_source_f16_owner_rejects_nonpositive_request_rows() -> None:
+    session = SimpleNamespace(
+        runner=_fake_dense_qwen36_runner(),
+        _bulk_prefill_scratch=SimpleNamespace(rows=768),
+        use_q6_f16_rocblas_prefill=None,
+    )
+
+    with pytest.raises(ValueError, match="request rows must be positive"):
         gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
-            session, request_rows=769
+            session, request_rows=0
         )
 
 

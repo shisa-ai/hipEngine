@@ -13896,8 +13896,13 @@ class Qwen35GGUFResidentSession:
         current_request_rows = (
             int(scratch.rows) if request_rows is None else int(request_rows)
         )
-        if current_request_rows <= 0 or current_request_rows > int(scratch.rows):
-            raise ValueError("source-F16 request rows must fit bulk prefill scratch")
+        if current_request_rows <= 0:
+            raise ValueError("source-F16 request rows must be positive")
+        if current_request_rows > int(scratch.rows):
+            # Source-F16 arithmetic is admitted by complete request shape, not
+            # by an implementation chunk that happens to fit this scratch.
+            # Long chunked requests therefore retain the exact T16 owner.
+            return q6_t16_f16_rocblas_prefill_session(None)
         pair_only_policies = {
             key: MappingProxyType(
                 {
