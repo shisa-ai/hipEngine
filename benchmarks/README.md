@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **725.849** | **28.420** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **766.203** | **28.318** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -40,16 +40,17 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.326** | **33.523** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **852.668** | **33.513** |
 
 The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
-source-F16 prefill; decode and MTP retain their exact owners. It is not a
-cross-engine win: the campaign remains below llama.cpp HIP prefill and Vulkan
-memory at every measured context, plus Vulkan MTP and 4K AR decode. A
-post-closure zero-workspace hipBLASLt screen does not reopen prefill: best-of-32
-FFN-gate source-F16 is 0.691x/1.051x/1.183x exact T16 at 512/1K/4K, while the
-live library handle adds 172 MiB outside the tracked arena
-([artifact](results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json)).
+source-F16 prefill plus an exact operation-complete Q4 gate/up+SiLU owner;
+decode and MTP retain their exact owners. The new sole-T16 dual-output dataflow
+improves XTX 512/1K/4K full prefill by **5.80%/6.21%/6.02%** in seven-pair A/B
+and establishes independent **852.668/914.600/901.068 tok/s** rows with no
+tracked-memory change. It is not yet a cross-engine win: llama.cpp HIP remains
+faster for prefill, Vulkan remains lower-memory, and Vulkan wins selected MTP
+plus 4K AR decode. Evidence:
+[`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -146,13 +147,14 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **725.849 tok/s** | **28.420 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
-| 1024/128 | **777.508 tok/s** | **29.007 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
-| 4096/128 | **751.982 tok/s** | **26.270 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q4/Q6-F16 package snapshot |
+| 512/128 | **766.203 tok/s** | **28.318 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
+| 1024/128 | **818.097 tok/s** | **28.873 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
+| 4096/128 | **791.953 tok/s** | **26.186 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
 
-These rows use one discarded warmup plus three measured PM4 resets. Adding the
-Q4 FFN-down owner to the retained Q6-F16 route improves 512/1K/4K prefill
-**+2.35%/+2.42%/+1.92%** with decode neutral and tracked residency unchanged.
+These rows use one discarded warmup plus three measured PM4 resets. The latest
+operation-complete sole-T16 Q4 gate/up+SiLU owner improves counterbalanced
+W7900 512/1K/4K full prefill **+5.43%/+5.78%/+5.43%** with 21/21 wins, while
+decode ownership and tracked residency remain unchanged.
 Against the same-commit diagnostic dual-layout rollback, the earlier shared
 package default improves
 prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
@@ -194,9 +196,9 @@ reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Gate status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **801.326 tok/s** | **33.523 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **859.484 tok/s** | **34.514 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
-| 4096/128 | **847.283 tok/s** | **31.387 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
+| 512/128 | **852.668 tok/s** | **33.513 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **914.600 tok/s** | **34.539 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **901.068 tok/s** | **31.413 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
@@ -215,17 +217,19 @@ same counterbalanced XTX rows **+0.350%/+0.306%/+0.074%** and W7900 rows
 not replace the conservative independent-run topline. Evidence:
 [`retained attention-output F16`](results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json).
 
-The requested prefill ladder is now exhausted without reaching the target. The
-conservative Q6+Q4 FFN-down matrix improves the pre-ladder package
-**+10.08%/+9.44%/+8.73%** at 512/1K/4K. Even compounding the later same-session
-K/V and output A/B ratios gives only an explicitly non-topline estimate of
-**806.751/863.593/848.582 tok/s**, still **16.36%/11.97%/10.37% below** clean
-llama.cpp HIP and requiring **+19.57%/+13.60%/+11.57%** more hipEngine
-throughput merely for parity. Source-shaped Q4/Q5 integer MMQ lost, gate/up and
-wide Q/QKV are non-uniform, wider FFN-down tiles add 61-346 MiB, GDN already
-lacks a matched comparator deficit, and smaller residual families lack enough
-ceiling. Reopen only for a materially new byte-neutral/sole-resident Q4 dataflow
-or changed compiler/hardware/source economics. Evidence:
+The earlier prefill exhaustion audit is superseded by exactly its stated reopen
+condition: a materially new operation-complete, byte-neutral sole-T16 Q4
+dataflow. One four-wave kernel reuses each BF16 activation fragment across both
+FFN gate/up weights, rounds both projections at the existing BF16 boundary, and
+applies SiLU without global intermediates. It is BF16-bit exact and improves
+counterbalanced full prefill on W7900 **+5.43%/+5.78%/+5.43%** and XTX
+**+5.80%/+6.21%/+6.02%**, all 42/42 pairs winning. The independent XTX matrix
+is now **852.668/914.600/901.068 tok/s**, still **11.60%/6.77%/4.82% below**
+clean llama.cpp HIP and requiring **+13.13%/+7.26%/+5.07%** more throughput for
+raw parity. The objective therefore remains active; select the next lane from a
+fresh retained-path profile rather than the obsolete exhaustion profile.
+Evidence: [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json)
+and the now-historical
 [`prefill exhaustion audit`](results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:

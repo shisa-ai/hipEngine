@@ -152,6 +152,7 @@ _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
+_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
@@ -1246,6 +1247,36 @@ def _pack8_dual_rowtile_silu_dispatch(
         "gguf_q4_k",
         "pack8_dual_rowtile_bf16_bf16_out",
     )
+    return candidate if is_registered(candidate) else None
+
+
+def _q4_t16_dual_wmma_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> KernelKey | None:
+    """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
+
+    if (
+        rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS
+        or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
+        or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
+        or dispatch_a.abi != "t16"
+        or dispatch_b.abi != "t16"
+        or dispatch_a.key.quant != "gguf_q4_k_t16_v1"
+        or dispatch_b.key.quant != "gguf_q4_k_t16_v1"
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_wmma_prefill_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(candidate)
     return candidate if is_registered(candidate) else None
 
 
@@ -2884,6 +2915,37 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        t16_wmma_key = _q4_t16_dual_wmma_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if t16_wmma_key is not None:
+            fn = resolve(
+                backend=t16_wmma_key.backend,
+                layer=t16_wmma_key.layer,
+                quant=t16_wmma_key.quant,
+                variant=t16_wmma_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None if libraries is None else libraries.get(t16_wmma_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         t16_rowtile_key = _q4_t16_dual_rowtile_silu_dispatch(
             dispatch_a,
             dispatch_b,

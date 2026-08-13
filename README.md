@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **725.849** | **28.420** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **766.203** | **28.318** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,12 +189,17 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.326** | **33.523** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **852.668** | **33.513** |
 
 The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
-source-F16 prefill; decode and MTP retain their exact owners. It is not a
-cross-engine win: the campaign remains below llama.cpp HIP prefill and Vulkan
-memory at every measured context, plus Vulkan MTP and 4K AR decode.
+source-F16 prefill plus an exact operation-complete Q4 gate/up+SiLU owner;
+decode and MTP retain their exact owners. The new sole-T16 dual-output dataflow
+improves XTX 512/1K/4K full prefill by **5.80%/6.21%/6.02%** in seven-pair A/B
+and establishes independent **852.668/914.600/901.068 tok/s** rows with no
+tracked-memory change. It is not yet a cross-engine win: llama.cpp HIP remains
+faster for prefill, Vulkan remains lower-memory, and Vulkan wins selected MTP
+plus 4K AR decode. Evidence:
+[`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
