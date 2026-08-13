@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_exact_q5_packed_column_producer_leaves_runtime_unwired",
+  "title": "Qwen3.6-27B Q5T16 pair- and octet-owned source-F16 producers",
+  "performance_claim": true,
+  "commit": "pending_this_commit",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor": "blk.0.ssm_out.weight",
+    "shape_n_k": [5120, 6144]
+  },
+  "hardware": [
+    {
+      "board": "xtx",
+      "device": "AMD Radeon RX 7900 XTX",
+      "selector": 1,
+      "arch": "gfx1100"
+    },
+    {
+      "board": "w7900",
+      "device": "AMD Radeon Pro W7900",
+      "selector": 0,
+      "arch": "gfx1100"
+    }
+  ],
+  "change": {
+    "pair_mechanism": "One local64 workgroup owns an adjacent Q5T16 column pair for one K256 block, reads each shared low-nibble and high-bit payload byte once, and emits both scalar-source-equivalent F16 columns.",
+    "octet_mechanism": "One local256 workgroup owns the natural Q5T16 K256xN8 packed unit, reads four low-nibble bytes and one high-bit byte per K value, and emits all eight scalar-source-equivalent F16 columns.",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "runtime_default_changed": false,
+    "decode_mtp_changed": false,
+    "fallback_changed": false,
+    "fallback": "registered scalar column-owned Q5T16 source-F16 producer"
+  },
+  "protocol": {
+    "input": "actual immutable Qwen3.6-27B blk.0.ssm_out.weight sole-Q5T16 payload",
+    "tiles": [1024, 1280],
+    "timing": "20 warmups, 31 alternating-order HIP-event samples, ten producer launches per timed burst",
+    "correctness": "every candidate source-F16 byte compared with the current scalar producer at nonzero col_start=16",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q5_packed_producer_screen.py --tiles 1024,1280 --warmups 20 --samples 31 --burst 10 --output <output>"
+  },
+  "measurements": {
+    "xtx": {
+      "tile_1024": {
+        "scalar_ms": 0.02621220052242279,
+        "pair_ms": 0.01759220063686371,
+        "octet_ms": 0.015080100297927857,
+        "pair_speedup": 1.4899898576359023,
+        "octet_speedup": 1.7381980228622609,
+        "pair_wins": "31/31",
+        "octet_wins": "31/31",
+        "pair_f16_mismatches": 0,
+        "octet_f16_mismatches": 0
+      },
+      "tile_1280": {
+        "scalar_ms": 0.03120810091495514,
+        "pair_ms": 0.020600099861621857,
+        "octet_ms": 0.017628100514411927,
+        "pair_speedup": 1.5149490111499928,
+        "octet_speedup": 1.7703609580306638,
+        "pair_wins": "31/31",
+        "octet_wins": "31/31",
+        "pair_f16_mismatches": 0,
+        "octet_f16_mismatches": 0
+      }
+    },
+    "w7900": {
+      "tile_1024": {
+        "scalar_ms": 0.029464301466941834,
+        "pair_ms": 0.019616200029850005,
+        "octet_ms": 0.016568100452423094,
+        "pair_speedup": 1.5020392034189067,
+        "octet_speedup": 1.7783753515710163,
+        "pair_wins": "31/31",
+        "octet_wins": "31/31",
+        "pair_f16_mismatches": 0,
+        "octet_f16_mismatches": 0
+      },
+      "tile_1280": {
+        "scalar_ms": 0.03526040017604828,
+        "pair_ms": 0.022920200228691102,
+        "octet_ms": 0.019296200573444368,
+        "pair_speedup": 1.5383984356257905,
+        "octet_speedup": 1.8273234692934321,
+        "pair_wins": "31/31",
+        "octet_wins": "31/31",
+        "pair_f16_mismatches": 0,
+        "octet_f16_mismatches": 0
+      }
+    }
+  },
+  "summary": {
+    "pair_cells": 4,
+    "pair_paired_wins": 124,
+    "pair_pairs": 124,
+    "pair_speedup_min": 1.4899898576359023,
+    "pair_speedup_max": 1.5383984356257905,
+    "octet_cells": 4,
+    "octet_paired_wins": 124,
+    "octet_pairs": 124,
+    "octet_speedup_min": 1.7381980228622609,
+    "octet_speedup_max": 1.8273234692934321,
+    "source_f16_byte_exact": true,
+    "selected_for_complete_chain_screen": "octet",
+    "runtime_global_switch": false
+  },
+  "rocprof": {
+    "board": "w7900",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-q5-packed-producer-trace -o qwen36-q5-packed-producer -- /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q5_packed_producer_screen.py --tiles 1024 --warmups 1 --samples 1 --burst 1 --output /tmp/qwen36-q5-packed-producer-trace/screen.json",
+    "pair": {
+      "kernel": "(anonymous namespace)::gguf_q5_k_t16_dequantize_f16_tile_pair_kernel(unsigned char const*, _Float16*, long, long)",
+      "workgroup_size": 64,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "plausible_duration_us": 26.76
+    },
+    "octet": {
+      "kernel": "(anonymous namespace)::gguf_q5_k_t16_dequantize_f16_tile_octet_kernel(unsigned char const*, _Float16*, long, long)",
+      "workgroup_size": 256,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "plausible_duration_us": 20.48
+    },
+    "cache_only": true
+  },
+  "validation": {
+    "red": "pair/octet producer symbols, wrappers, composites, and registry keys were absent; five focused RED assertions failed",
+    "green_xtx": "tests/test_gguf_q6_k_f16_rocblas_prefill.py: 21 passed",
+    "green_w7900": "focused Q5 packed-column byte and registry bundle: 3 passed",
+    "correctness": "both packed-column outputs are byte-identical to the existing scalar source-F16 producer on a nonzero tile offset and all actual-weight producer cells",
+    "ruff": "passed",
+    "git_diff_check": "passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat; only the four known unrelated external parent drifts"
+  },
+  "sources": [
+    {
+      "path": "/tmp/qwen36-q5-packed-producer-xtx.json",
+      "sha256": "76a204a33a1cb64bb83c98997ed5400b8c5b65ddcb5a25834c3cb6aad8d59ed0"
+    },
+    {
+      "path": "/tmp/qwen36-q5-packed-producer-w7900.json",
+      "sha256": "d76f857b6a5500d39c31010f4dcaa6393a1d54b35a107b7f6360004fba982268"
+    },
+    {
+      "path": "/tmp/qwen36_q5_packed_producer_screen.py",
+      "sha256": "f0461b34977bdf4e86748f75afb1f4dac184003b8b05bfd29400a84ee36227a5"
+    },
+    {
+      "path": "/tmp/qwen36-q5-packed-producer-trace/qwen36-q5-packed-producer_kernel_trace.csv",
+      "sha256": "99b0121ae316500dcd1031ddd3f4fb9b125f0fcf4977c10b7a2caaaa5203b793"
+    }
+  ],
+  "decision": "Retain both exact producer leaves and their diagnostic composites. Advance the faster octet owner to producer-inclusive production-chain screening; do not change runtime selection in this unit."
+}

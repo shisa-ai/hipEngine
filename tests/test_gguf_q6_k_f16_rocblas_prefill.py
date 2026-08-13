@@ -306,6 +306,33 @@ def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> N
         KernelKey("hip_gfx1151", q5_key.layer, q5_key.quant, q5_key.variant)
     )
 
+    for variant, function_name in (
+        ("t16_f16_tile_pair_local64", "gguf_q5_k_t16_dequantize_f16_tile_pair"),
+        (
+            "t16_f16_tile_octet_local256",
+            "gguf_q5_k_t16_dequantize_f16_tile_octet",
+        ),
+    ):
+        function = getattr(q6_f16, function_name, None)
+        assert callable(function)
+        dequant_key = KernelKey(
+            "hip_gfx1100", "dequant", "gguf_q5_k_t16_v1", variant
+        )
+        assert resolve(
+            backend=dequant_key.backend,
+            layer=dequant_key.layer,
+            quant=dequant_key.quant,
+            variant=dequant_key.variant,
+        ) is function
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                dequant_key.layer,
+                dequant_key.quant,
+                dequant_key.variant,
+            )
+        )
+
     key = KernelKey(
         "hip_gfx1100",
         "linear",
@@ -393,6 +420,80 @@ def test_q5_t16_dequantizes_to_source_f16_bytes() -> None:
             free(buffer, runtime=runtime)
     assert np.array_equal(expected.view(np.uint16), actual.view(np.uint16))
     after = memory_stats()
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+@pytest.mark.parametrize(
+    "function_name",
+    [
+        "gguf_q5_k_t16_dequantize_f16_tile_pair",
+        "gguf_q5_k_t16_dequantize_f16_tile_octet",
+    ],
+)
+def test_q5_t16_packed_column_dequant_matches_scalar_source_f16_bytes(
+    function_name: str,
+) -> None:
+    """Packed-column owners must preserve a nonzero tile's scalar bytes."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from tests.test_gguf_k_gemv import make_q5_k_weight
+
+    candidate_dequant = getattr(q6_f16, function_name, None)
+    assert callable(candidate_dequant)
+    in_features = 512
+    out_features = 32
+    col_start = 16
+    col_count = 16
+    raw = make_q5_k_weight(out_features, in_features)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles[0]
+    scalar = np.empty((col_count, in_features), dtype=np.float16)
+    candidate = np.empty_like(scalar)
+    runtime = get_hip_runtime()
+    library = q6_f16.build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        tiles_dev = _device(tiles, runtime)
+        scalar_dev = malloc(scalar.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        buffers.extend((tiles_dev, scalar_dev, candidate_dev))
+        q6_f16.gguf_q5_k_t16_dequantize_f16_tile(
+            tiles_dev.ptr,
+            scalar_dev.ptr,
+            in_features,
+            out_features,
+            col_start=col_start,
+            col_count=col_count,
+            library=library,
+            runtime=runtime,
+        )
+        candidate_dequant(
+            tiles_dev.ptr,
+            candidate_dev.ptr,
+            in_features,
+            out_features,
+            col_start=col_start,
+            col_count=col_count,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(scalar), scalar_dev, scalar.nbytes, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(candidate),
+            candidate_dev,
+            candidate.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    np.testing.assert_array_equal(candidate.view(np.uint16), scalar.view(np.uint16))
     assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
     assert after["active_allocations"] == before["active_allocations"]
 
@@ -946,6 +1047,40 @@ def test_q4_t16_f16_rocblas_pair_composite_uses_pair_owned_producer(
     assert len(captured) == 1
     assert captured[0][0] == "bf16"
     assert captured[0][1] is q6_f16.gguf_q4_k_t16_dequantize_f16_tile_pair
+
+
+@pytest.mark.parametrize(
+    ("composite_name", "producer_name"),
+    [
+        (
+            "gguf_q5_k_t16_f16_rocblas_pair_bf16_bf16_out",
+            "gguf_q5_k_t16_dequantize_f16_tile_pair",
+        ),
+        (
+            "gguf_q5_k_t16_f16_rocblas_octet_bf16_bf16_out",
+            "gguf_q5_k_t16_dequantize_f16_tile_octet",
+        ),
+    ],
+)
+def test_q5_t16_f16_rocblas_packed_column_composite_uses_candidate_producer(
+    monkeypatch: pytest.MonkeyPatch,
+    composite_name: str,
+    producer_name: str,
+) -> None:
+    captured: list[tuple[object, ...]] = []
+
+    def capture(*args, **kwargs) -> None:
+        captured.append(args)
+
+    composite = getattr(q6_f16, composite_name, None)
+    producer = getattr(q6_f16, producer_name, None)
+    assert callable(composite)
+    assert callable(producer)
+    monkeypatch.setattr(q6_f16, "_launch_t16_f16_rocblas", capture)
+    composite(1, 2, 3, 4, 5, 6, 512, 6_144, 5_120)
+    assert len(captured) == 1
+    assert captured[0][0] == "bf16"
+    assert captured[0][1] is producer
 
 
 def test_q6_t16_f16_rocblas_composite_uses_record_owned_direct_producer(

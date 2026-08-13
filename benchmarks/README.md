@@ -266,6 +266,14 @@ XTX matrix moves **855.960/917.774/912.359 -> 892.123/963.237/956.770 tok/s**;
 **0.060%**, while 512/1K remain **7.514%/1.815% below** HIP. Decode and natural
 MTP rows remain exact Q5T16 fallbacks. Evidence:
 [`retained Q5 recurrent prefill`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-prefill-retained.json).
+A later runtime-unwired producer leaf follows the packed Q5T16 payload rather
+than reopening integer MMQ: adjacent-pair ownership improves the scalar producer
+**1.490-1.538x**, while natural-octet ownership improves it **1.738-1.827x** on
+both gfx1100 boards and both 1024/1280-column production tiles. All **248/248**
+pairs win with byte-exact source-F16 output and no new residency/workspace;
+production remains unchanged until the octet owner wins the complete M512/1K/4K
+rocBLAS chain. Evidence:
+[`retained Q5 packed-column producers`](results/2026-08-13-qwen36-27b-q5-packed-column-f16-producers-retained.json).
 The subsequent exact unequal Q4/Q4 linear-attention owner reuses each BF16 K16
 fragment across QKV and gate for their common 6,144 output columns, then computes
 the QKV-only tail in the retained singleton geometry. The actual-weight leaf is
