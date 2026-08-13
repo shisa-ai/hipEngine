@@ -418,6 +418,9 @@ class T16F16RocblasPrefillSession:
     q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     q5_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    max_rows_by_quant_shape: Mapping[
+        str, Mapping[tuple[int, int], int]
+    ] | None = None
     linear_variant_intervals_by_quant: Mapping[
         str, Mapping[tuple[int, int], Mapping[tuple[int, int], str]]
     ] | None = None
@@ -535,6 +538,47 @@ class T16F16RocblasPrefillSession:
             "gguf_q5_k_t16_v1": q5_normalized,
             "gguf_q6_k_t16_qmicro_planar_v1": normalized,
         }
+        normalized_max_rows: dict[str, Mapping[tuple[int, int], int]] = {}
+        for raw_quant, raw_shapes in (self.max_rows_by_quant_shape or {}).items():
+            quant = str(raw_quant)
+            quant_policy = quant_policies.get(quant)
+            if quant_policy is None or not isinstance(raw_shapes, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS max-row policies require a known quant"
+                )
+            shape_limits: dict[tuple[int, int], int] = {}
+            for raw_shape, raw_maximum in raw_shapes.items():
+                if len(raw_shape) != 2:
+                    raise ValueError(
+                        "T16 F16/rocBLAS max-row policies require (K, N) shapes"
+                    )
+                shape = (int(raw_shape[0]), int(raw_shape[1]))
+                maximum = int(raw_maximum)
+                matching_anchors = tuple(
+                    policy_shape[0]
+                    for policy_shape in quant_policy
+                    if len(policy_shape) == 3 and policy_shape[1:] == shape
+                )
+                if not any(
+                    policy_shape[-2:] == shape for policy_shape in quant_policy
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS max-row shapes require a tile policy"
+                    )
+                if maximum <= 0 or (
+                    matching_anchors and max(matching_anchors) > maximum
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS max rows must include every row anchor"
+                    )
+                shape_limits[shape] = maximum
+            normalized_max_rows[quant] = MappingProxyType(shape_limits)
+        object.__setattr__(
+            self,
+            "max_rows_by_quant_shape",
+            MappingProxyType(normalized_max_rows),
+        )
+
         normalized_variants: dict[
             str,
             Mapping[tuple[int, int], Mapping[tuple[int, int], str]],
@@ -634,6 +678,11 @@ class T16F16RocblasPrefillSession:
             "gguf_q6_k_t16_qmicro_planar_v1": self.tile_out_features_by_shape,
         }.get(quant, {})
         assert policy is not None
+        max_rows = self.max_rows_by_quant_shape
+        assert max_rows is not None
+        shape_maximum = max_rows.get(quant, {}).get(exact[1:])
+        if shape_maximum is not None and exact[0] > shape_maximum:
+            return None
         direct = policy.get(exact, policy.get(exact[1:]))
         if direct is not None:
             return direct
