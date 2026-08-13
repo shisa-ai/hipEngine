@@ -174,9 +174,11 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     },
 }
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
-# the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.
+# the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.  The
+# compact producer/consumer retains those bits while materializing shared Q/K
+# once per K head; cross-board M512/M1024 complete-chain gates admit it.
 # Scalar-exact direct LDS32 remains available through the explicit selector.
-GGUF_GDN_PREFILL_AUTO_MODE = "chain_peer_wave32"
+GGUF_GDN_PREFILL_AUTO_MODE = "chain_compact_peer_wave32"
 # Strict-exact rollback/oracle stays architecture-scoped and does not replace
 # the quality-admitted peer-wave production default.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"

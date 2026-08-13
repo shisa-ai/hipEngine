@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-13**
+Last updated: **2026-08-14**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -53,13 +53,17 @@ latest independent XTX matrix is **965.209/1003.206/983.082 tok/s** at
 **1.25%/2.81%**, while 512 is only **0.93%** short. Memory, 4K decode, and
 Vulkan MTP remain blocked. Evidence:
 [`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
-The residual prefill lane is now exhausted under the sole-T16, byte-neutral,
-cross-board no-regression constraints. The final 41.024-ms exact-Q4/Q4
-operation passes complete quality and improves XTX **+0.201%/+0.081%** at
-M512/M1024, but W7900 M512 regresses **0.037%** with only **1/7** wins, so the
-exact production owner remains. Raw HIP parity is achieved at all three shapes;
-the frozen HIP+1% gate remains blocked only at 512 by **0.928%**. Evidence:
-[`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
+A newly measured GDN dataflow reopens that prior projection-only exhaustion:
+normalized Q/K are now materialized once per K head rather than once per value
+head while retaining the same peer-wave32 arithmetic. Complete GDN-chain leaf
+walls improve **1.061-1.116x** cross-board with bit-exact BF16 output and FP32
+state. Counterbalanced full prefill improves XTX **+0.64%/+0.74%/+0.70%** and
+W7900 **+0.62%/+0.98%/+1.17%** at 512/1K/4K, all **42/42** pairs winning with
+exact IDs and unchanged peaks. Applied to the preceding independent XTX
+snapshot, the new expected selector-unset topline is approximately
+**971.4/1010.6/989.9 tok/s**, which clears the frozen 512 HIP+1% threshold;
+that compounded number is inferred, not a fresh independent topline run.
+Evidence: [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

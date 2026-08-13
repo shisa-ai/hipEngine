@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-14
+
+- [retained/default compact peer-GDN prefill] Qwen3.6-27B / Q4_K_M / gfx1100 512/1K/4K: materialize normalized Q/K once per K head instead of per value head, improving counterbalanced full prefill RX 7900 XTX **966.416/1002.106/981.859 -> 972.647/1009.483/988.721 tok/s (+0.64%/+0.74%/+0.70%)** and W7900 **869.227/900.685/855.755 -> 874.653/909.493/865.807 tok/s (+0.62%/+0.98%/+1.17%)** with **42/42** engine pairs winning, exact token IDs/peaks, bit-exact leaf output/state, and 14/28 MiB less transient Q/K at M512/M1024; `benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json`.
+
 ## 2026-08-13
 
 - [dense-27B INT8 quality/runtime diagnostic; default unchanged] Qwen3.6-27B / Q4_K_M / gfx1100 complete 512/8 + 4K/16 and bounded mixed 8K/16K/32K: native 24Q/4KV FP32-scale pure INT8 fails 512/8 at **77.78%** minimum-prompt top-1; a selected 9-BF16/7-INT8 map passes measured quality but saves only **0.434 GiB** live while adding **0.448 GiB** peak at 32K, projects **7 GiB** of 256K prefill oracles, remains graph-unsafe, and executes eager decode **10.52%** below BF16 graph, so BF16 stays the sole supported/default route; `benchmarks/results/2026-08-13-qwen36-27b-int8-kv-fp32-mixed-layer-diagnostic.json`.
