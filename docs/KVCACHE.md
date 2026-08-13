@@ -6,7 +6,9 @@ the current Qwen3.6 W4-PARO model. The final clean 128K/16 matched-context gate
 rejects at mean/max KL `0.85128/4.97382` and `41.18%` top-1. The former llama.cpp
 Q8_0 128K/16 pass is now classified as a repeated-token saturation control:
 native Q8_0 fails exact mixed 4K/16 at mean/max KL `0.07565/1.26009` despite
-`94.12%` top-1. K2 compact DMS remains planned. Last updated: 2026-07-13._
+`94.12%` top-1. Dense Qwen3.6-27B GGUF is a separate blocked scope: its 24-query/
+4-KV-head geometry has no native INT8 decode specialization, so it has no native
+quality verdict. K2 compact DMS remains planned. Last updated: 2026-08-13._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -24,11 +26,53 @@ long-context evidence controls the support decision.
 | Did clipping, groupwise scales, mixed K/V precision, BF16 layers/heads, or sink/recent residuals solve it? | **No.** Some pass at 512; none pass both gates at 4K within the memory budget. |
 | Does high KL change a bounded functional answer? | **Sometimes.** At 4K, INT8 flips one of two BF16-qualified restricted-choice tasks; at 32K it retains all three qualified tasks. Evidence is partial, not broad quality validation. |
 | Does llama.cpp Q8_0 establish representative eight-bit fidelity? | **No.** It passes repeated-token 128K/16, but exact mixed 4K/16 rejects at `0.07565/1.26009` mean/max KL and `94.12%` top-1. Prompt content dominates the former comparison. |
-| Product status | BF16 K/V remains supported. INT8 is an explicit approximate/capacity diagnostic, not a default or supported 256K route. |
+| Can dense Qwen3.6-27B run the current native INT8 decode? | **No.** Policy/allocation and writes are generic, but the direct split-K consumer is compiled and guarded only for 16 query heads / 2 KV heads / head dim 256; 27B requires 24 / 4 / 256. |
+| Did a recent-token BF16 tail solve 27B in emulation? | **No evidence of a repair.** Pure INT8, recent 4K BF16, and recent 8K BF16 all passed one 32K/16 host screen, but pure INT8 had the lowest mean KL. Native INT8 must exist and fail before temporal-tail complexity is justified. |
+| Product status | BF16 K/V remains supported. INT8 is an explicit approximate/capacity diagnostic where the model geometry is implemented; dense 27B INT8 is currently unsupported, not quality-rejected. |
 
 The retained implementation and memory reduction are still valuable. The
 product boundary is simply explicit: **capacity evidence is not quality
 evidence**.
+
+## Qwen3.6-27B scope refresh
+
+The August 13 dense-27B check separates three issues that earlier model-general
+wording conflated:
+
+1. **The temporary BF16 prefill oracle is implementation-wide, not a 27B
+   algorithm.** PARO reserves one reusable layer-local BF16 K/V pair. At 256K
+   that pair is `1.0 GiB` for 27B (`4` KV heads) versus `0.5 GiB` for 35B (`2`
+   KV heads). PARO can choose its existing direct-streaming INT8 prefill under
+   memory pressure, but that path is historically far slower.
+2. **GGUF chunk-outer prefill has a different lifetime.** It keeps one
+   full-length BF16 oracle pair per INT8-retained full-attention layer until
+   prefill exits. Pure 27B INT8 would therefore imply `16 GiB` at 256K across
+   its 16 full-attention layers. Blindly inheriting the 35B prefix-eight setting
+   would still leave eight 27B INT8 layers and `8 GiB` of oracle transients. The
+   35B policy has no transferable 27B quality or capacity claim.
+3. **Native 27B decode is missing.** The current direct per-token/head INT8 GQA
+   split-K kernel accepts only `(Q heads, KV heads, head dim) = (16, 2, 256)`.
+   Dense 27B requires `(24, 4, 256)`, and its native mixed 4K/16 attempt stops at
+   that fail-closed shape guard before producing candidate logits.
+
+A same-weight host reconstruction screen at mixed 32K/16 compared pure INT8
+history with disjoint recent 4K and 8K BF16 tails. All three rows retained 100%
+top-1 and passed mean-KL, but pure INT8 was best (`0.0000963` mean KL) versus
+4K (`0.001599`) and 8K (`0.0009546`). The tails cost another `0.1240` and
+`0.2480 GiB` of projected 256K K/V. This is diagnostic evidence only: it neither
+validates native INT8 arithmetic nor supports implementing a temporal tail.
+
+The existing `tail4_hadamard_group32` policy is a **layer tail**: it quantizes
+the last four full-attention layers. A true recent-token BF16 tail needs two
+disjoint arenas per layer, position-aware split attention with stable softmax
+merge, demotion when rows age out, and transaction/copy/rollback support. The
+lowest-risk order is to add and gate the 24Q/4KV native INT8 consumer, test pure
+INT8 across all prompt categories, then screen existing layer-local BF16
+retention if needed. Temporal storage is last, and only advances if it beats
+pure INT8 across that suite.
+
+Compact evidence:
+[`2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json`](../benchmarks/results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json).
 
 ## Scope and terminology
 
@@ -716,10 +760,15 @@ The core capacity path is landed:
    - Direct INT8 K/V loads and scale application.
    - FP32 QK/softmax accumulation and inline V dequantization.
    - No cache-sized INT8-to-BF16 decode workspace.
+   - Current c1 specialization is limited to block 256, 16 query heads, 2 KV
+     heads, and head dim 256. Dense Qwen3.6-27B's 24/4/256 geometry fails closed
+     and requires a new CPU-gated native specialization before quality testing.
 3. **Transient exact-prefill bridge**
-   - Full-attention prefill uses a temporary BF16 oracle K/V workspace, then
-     appends retained INT8 plus scales.
-   - Workspace is layer-local/reused and released before decode.
+   - Full-attention prefill uses temporary BF16 oracle K/V, then appends
+     retained INT8 plus scales.
+   - PARO reuses one layer-local workspace. GGUF chunk-outer execution instead
+     retains one oracle pair per INT8 layer until prefill exits; both release
+     their transient buffers before decode.
 4. **Policy/registry integration**
    - `FixedPagedKVPolicy(storage_dtype="int8_per_token_head")` with
      `scale_dtype="fp16"`, `scale_granularity="per_token_head"`.
@@ -903,6 +952,7 @@ body. Do not make the layout a GGUF default from quality/storage alone.
 | Same-weight hipEngine GGUF Hadamard/KIVI screen | [`2026-07-13-w7900-gguf-int8-kv-external-format-screen.json`](../benchmarks/results/2026-07-13-w7900-gguf-int8-kv-external-format-screen.json) |
 | Native GGUF/PARO tail-four implementation outcome | [`2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json`](../benchmarks/results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json) |
 | Clean current-stack GGUF tail-four quality/perf/memory closure | [`2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`](../benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) |
+| Dense-27B oracle scope, temporal-tail host screen, and native decode blocker | [`2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json`](../benchmarks/results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json) |
 | July 12 independent rollout and FP32-scale control | [`2026-07-12-w7900-v030-paro-context-capacity.json`](../benchmarks/results/2026-07-12-w7900-v030-paro-context-capacity.json) |
 
 Format/policy development tools:

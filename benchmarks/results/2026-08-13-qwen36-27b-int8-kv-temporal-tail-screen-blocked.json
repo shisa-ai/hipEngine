@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "native_int8_blocked_temporal_tail_not_selected",
+  "title": "Qwen3.6-27B INT8 KV scope and temporal BF16-tail screen",
+  "performance_claim": false,
+  "commit": "2512f47f75715486bdf54068271d496aa454a146",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m",
+    "layers": 64,
+    "full_attention_layers": 16,
+    "query_heads": 24,
+    "kv_heads": 4,
+    "head_dim": 256,
+    "context_length": 262144
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "device": "card0 / HIP_VISIBLE_DEVICES=0",
+    "arch": "gfx1100"
+  },
+  "runtime_scope": {
+    "current_int8_decode_specialization": {
+      "query_heads": 16,
+      "kv_heads": 2,
+      "head_dim": 256,
+      "block_size": 256
+    },
+    "qwen36_27b_required": {
+      "query_heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256,
+      "block_size": 256
+    },
+    "native_result": "blocked_before_first INT8 decode quality row",
+    "blocker": "ValueError: Qwen3.5 INT8 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+    "interpretation": "The generic policy and writer can allocate/write 27B INT8 KV, but the registered c1 direct-INT8 decode consumer is specialized to the 35B 16Q/2KV geometry. Qwen3.6-27B pure INT8 and any temporal mixed derivative are not currently runnable native routes."
+  },
+  "prefill_oracle_scope": {
+    "paro": {
+      "allocation": "one reusable layer-local BF16 K/V workspace across full-attention layers",
+      "qwen36_27b_256k_bytes": 1073741824,
+      "qwen36_27b_256k_gib": 1.0,
+      "qwen36_35b_256k_bytes": 536870912,
+      "qwen36_35b_256k_gib": 0.5,
+      "memory_pressure_fallback": "existing direct-streaming INT8 prefill; measured historically far slower"
+    },
+    "gguf": {
+      "allocation": "one full-length BF16 K/V oracle pair per INT8-retained full-attention layer for chunk-outer prefill; all survive until prefill exits",
+      "qwen36_27b_per_int8_layer_256k_bytes": 1073741824,
+      "qwen36_27b_pure_int8_16_layers_256k_gib": 16.0,
+      "qwen36_27b_inherited_prefix8_8_int8_layers_256k_gib": 8.0,
+      "qwen36_35b_per_int8_layer_256k_bytes": 536870912,
+      "qwen36_35b_tail4_128k_gib": 1.0,
+      "interpretation": "The implementation behavior is generic, but byte cost follows each model's KV geometry and number of INT8-retained full-attention layers. The 35B prefix-eight qualification does not transfer to 27B."
+    }
+  },
+  "host_emulation": {
+    "kind": "same-weight BF16-cache roundtrip screen; not native split attention",
+    "prompt_profile": "mixed_v1",
+    "prompt_length": 32768,
+    "decode_steps": 16,
+    "teacher": "BF16 reference token history",
+    "thresholds": {
+      "mean_kl_max": 0.05,
+      "top1_min": 0.9
+    },
+    "format": {
+      "history": "per-token/per-head symmetric INT8 K/V with FP16 scales, reconstructed into BF16",
+      "recent_tail": "disjoint BF16 rows",
+      "demotion": "current row remains BF16 for its attention and is quantized when it leaves the recent window"
+    },
+    "rows": [
+      {
+        "recent_bf16_tokens": 0,
+        "mean_kl": 0.00009634640062975592,
+        "max_kl": 0.001322754042620707,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "projected_256k_kv_gib": 8.0625,
+        "delta_over_pure_int8_gib": 0.0
+      },
+      {
+        "recent_bf16_tokens": 4096,
+        "mean_kl": 0.0015986786538918004,
+        "max_kl": 0.0268161474952818,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "projected_256k_kv_gib": 8.1865234375,
+        "delta_over_pure_int8_gib": 0.1240234375
+      },
+      {
+        "recent_bf16_tokens": 8192,
+        "mean_kl": 0.000954648073985839,
+        "max_kl": 0.01571611429572645,
+        "top1_agreement": 1.0,
+        "passed": true,
+        "projected_256k_kv_gib": 8.310546875,
+        "delta_over_pure_int8_gib": 0.248046875
+      }
+    ],
+    "decision": "Do not implement a temporal tail from this screen. Both tails pass this single prompt, but pure emulated INT8 is numerically better and cheaper. Host reconstruction cannot validate the missing native 24Q/4KV consumer or split-attention arithmetic."
+  },
+  "commands": {
+    "host_emulation": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=/home/lhl/hipEngine-main .venv/bin/python /tmp/qwen36_27b_temporal_bf16_tail_screen.py --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --json /tmp/qwen36-27b-temporal-bf16-tail-32k16.json",
+    "native_gate": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=/home/lhl/hipEngine-main .venv/bin/python scripts/qwen35_gguf_int8_kv_correctness.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --prompt-token-file /tmp/mixed-v1-32768.tokens --prompt-lengths 4K --decode-steps 16 --max-sequence-length 32786 --kv-scale-dtype fp16 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-no-bf16-mirror --json /tmp/qwen36-27b-native-int8-kv-mixed-4k16.json"
+  },
+  "provenance": {
+    "host_emulation_driver_sha256": "b6c85545479eb7aba772fce2e21023dadcbdce3305e9843c9cd2920bde88cdc1",
+    "prompt_token_file_sha256": "716a8e8b22029bd4409c30674599b162d81f38702b174bef5f4dc0cd5d82efc4",
+    "compiler_version_file_sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7"
+  },
+  "lowest_risk_sequence": [
+    "Add and CPU-oracle-gate a native per-token/head INT8 split-K decode specialization for 24 query heads, 4 KV heads, head_dim 256, block size 256; retain the current 16/2 specialization as fallback for its admitted geometry.",
+    "Run native pure INT8 at 512/8 and complete 4K/16 category/train/heldout plus mixed_v1 with no BF16 mirror and all 16 full-attention layers audited as INT8.",
+    "Only if pure native INT8 fails, screen layer-local BF16 retention first because current policy/allocation already supports per-layer storage. Do not inherit the 35B prefix-eight policy without 27B quality and memory gates.",
+    "Consider a temporal tail only after it materially beats pure INT8 across the full prompt suite. A native temporal route requires two disjoint K/V arenas per layer, position-aware split attention with stable softmax merge, row demotion as tokens age, complete KVLiveSpans transaction/copy/rollback support, and new no-shadow/capacity gates."
+  ],
+  "product_decision": "BF16 KV remains the only supported Qwen3.6-27B GGUF route. Current 27B INT8 KV has no quality verdict because native decode is unsupported; temporal BF16 tail remains a rejected-for-now design candidate, not an implementation or user-facing mode."
+}

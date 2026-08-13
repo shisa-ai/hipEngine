@@ -80,11 +80,12 @@ Do not treat this document as a performance claim. It is an implementation plan.
 
 ## GGUF Q8 / INT8 KV cache status
 
-Last updated: 2026-08-06. Evidence artifacts:
+Last updated: 2026-08-13. Evidence artifacts:
 [`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json),
 [`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json), the gfx1151 SH-K1 closure
-[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json), and the final SH-G recertification
-[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json).
+[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json), the final SH-G recertification
+[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json), and the dense-27B scope/blocker refresh
+[`benchmarks/results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json`](../benchmarks/results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json).
 
 Terminology matters:
 
@@ -104,7 +105,7 @@ Current format comparison:
 
 | Path | Payload | Scale granularity/storage | Current role |
 | --- | --- | --- | --- |
-| hipEngine GGUF default INT8 KV | int8 K + int8 V | one fp16/fp32 sideband scale per token x KV-head x K/V side, over the full 256-dim head | Admitted only as the guarded hybrid long-context path; pure/no-mirror fails strict gate. |
+| hipEngine GGUF default INT8 KV | int8 K + int8 V | one fp16/fp32 sideband scale per token x KV-head x K/V side, over the full 256-dim head | 35B: admitted only as the guarded hybrid long-context path; pure/no-mirror fails strict gate. Dense 27B: unsupported because native 24Q/4KV decode is missing. |
 | hipEngine GGUF block16 diagnostic | int8 K + int8 V | sideband scale per token x KV-head x 16-dim block x K/V side | Primitive-correct but model-quality rejected; do not promote. |
 | llama.cpp ROCm Q8 KV | `GGML_TYPE_Q8_0` K + V | interleaved fp16 scale per 32 values | External comparator; completes but does not pass hipEngine's strict BF16-vs-candidate quality bar on this GGUF. |
 | hipEngine PARO KV8 | int8 K + int8 V | sideband scale per token x KV-head x K/V side | Passing control case for the packed PARO model. |
@@ -113,6 +114,11 @@ Strict hipEngine GGUF KV quality is judged against the BF16-KV candidate with th
 repository logit guard (KL mean <= `0.05` and top-1 agreement >= `0.9`). Under
 that guard, the current GGUF results are:
 
+- Dense Qwen3.6-27B does **not** yet have a native INT8 quality result. The
+  generic writer/policy accepts its 24-query/4-KV-head layout, but the direct
+  split-K decode consumer is specialized to 16 query heads and 2 KV heads. The
+  forced-long no-mirror 4K/16 attempt fails at that shape guard before the first
+  INT8 decode logit row. Its supported route remains BF16 K/V.
 - Actual no-mirror pure GGUF `int8_per_token_head` FP32-scale runtime fails on
   the fixed repeated-token prompt at `128/1`, `512/1`, and `4K/1`: `KL mean=0.0824`
   / top-1 `0.5`, `KL mean=0.05698` / top-1 `1.0`, and `KL mean=0.15398` /
@@ -165,14 +171,18 @@ that guard, the current GGUF results are:
 
 Operational policy:
 
-1. **Exact/admitted GGUF path:** keep BF16 KV as the gfx1151 production default.
+1. **Dense Qwen3.6-27B:** keep BF16 K/V. Add and CPU-oracle-gate the 24Q/4KV
+   direct INT8 consumer before assigning any native fidelity verdict. One 32K/16
+   host screen found pure INT8 reconstruction numerically better than recent
+   4K/8K BF16 tails, so do not add temporal mixed storage first.
+2. **Exact/admitted 35B GGUF path:** keep BF16 KV as the gfx1151 production default.
    The current guarded hybrid (`8` BF16 full-attention layers + `2` INT8 K+V
    layers for long contexts) is strict-quality-qualified and remains available
    under its existing explicit/admission semantics, but must not be described
    as a speed or peak-memory win. Reopen default promotion only after removing
    or shrinking the layer-local BF16 prefill-oracle high water and repeating the
    complete quality, 32K/64K wall, allocator, GTT, and trace gates.
-2. **Approximate/relaxed option:** pure per-token/head FP32 INT8 is now a
+3. **Approximate/relaxed 35B option:** pure per-token/head FP32 INT8 is now a
    plausible long-context relaxed candidate because it passes the matched
    generated-corpus `4K/16` gate while llama.cpp ROCm `q8_0` fails its matched
    `4K` corpus row. It is still **not user-facing**: short rows remain mixed and
@@ -182,7 +192,7 @@ Operational policy:
    generated-token drift, memory, and the exact llama.cpp baseline used for
    comparison. This is a "better than llama.cpp-Q8" relaxed mode, not an
    exactness claim.
-3. **Rejected:** any GGUF INT8 KV layout that fails the strict guard and is not
+4. **Rejected:** any GGUF INT8 KV layout that fails the strict guard and is not
    better than the refreshed llama.cpp `q8_0` comparator should remain
    diagnostic-only.
 
