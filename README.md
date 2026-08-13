@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **848.080** | **28.227** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **859.869** | **28.324** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,18 +189,18 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **952.759** | **33.527** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **957.489** | **33.551** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
-shape-scoped rocBLAS solutions, exact packed-record Q6 and adjacent-pair Q4 F16
-producers, and exact natural-octet ownership for bounded Q5 source-F16
-production. Decode and MTP retain exact owners. The latest independent XTX
-matrix is **952.759/990.403/982.619 tok/s** at 512/1K/4K with unchanged tracked
-peaks. It remains **1.23% below** llama.cpp HIP at 512; 1K reaches **0.95% above
-raw HIP parity** and is threshold-flat 0.045% below HIP+1%, while 4K is **3.79%
-above HIP** and clears HIP+1% by 2.76%. Memory, 4K decode, and Vulkan MTP remain
-blocked. Evidence: [`retained natural-octet Q5 producer`](results/2026-08-13-qwen36-27b-q5-octet-producer-engine-retained.json).
+shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
+F16 producers, and a bounded pair-produced full-attention-Q route. Decode and
+MTP retain exact owners. The latest independent XTX matrix is
+**957.489/995.070/983.483 tok/s** at 512/1K/4K with unchanged tracked peaks.
+It is **0.74% below** llama.cpp HIP at 512, while 1K and 4K lead raw HIP by
+**1.43%/3.88%** and clear the frozen HIP+1% gates by **0.43%/2.85%**. Memory,
+4K decode, and Vulkan MTP remain blocked. Evidence:
+[`retained pair-produced full-attention Q`](results/2026-08-13-qwen36-27b-q4-pair-fullq-engine-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
