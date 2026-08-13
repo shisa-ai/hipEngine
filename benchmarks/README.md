@@ -280,6 +280,14 @@ pairs winning with exact trajectories and unchanged tracked peaks. The current
 selector-unset XTX matrix is **939.535/985.387/975.862 tok/s**: 512 remains
 **2.60% below** raw HIP, 1K is **0.44% above** raw HIP, and 4K clears the frozen
 HIP+1% gate by **2.06%**. Evidence: [`retained direct Q6 F16 producer`](results/2026-08-13-qwen36-27b-q6-direct-f16-producer-engine-retained.json).
+An exact Q4T16 pair-owned source-F16 producer is retained but not yet part of
+those topline rows. It loads one packed payload byte for two adjacent columns
+and improves actual-weight producer leaves **1.358-1.878x** with **66/66** wins.
+The complete chain is role dependent: FFN-down wins every measured anchor,
+attention-V wins the confirmed production anchors, but attention-output loses at
+M1024 and is not cross-board positive above it. Production therefore keeps the
+scalar owner until a separate fail-closed role/row selector is qualified.
+Evidence: [`retained Q4 pair-owned F16 producer`](results/2026-08-13-qwen36-27b-q4-pair-owned-f16-producer-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
