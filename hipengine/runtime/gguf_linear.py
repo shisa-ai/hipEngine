@@ -424,6 +424,10 @@ class T16F16RocblasPrefillSession:
     linear_variant_intervals_by_quant: Mapping[
         str, Mapping[tuple[int, int], Mapping[tuple[int, int], str]]
     ] | None = None
+    pair_only_second_operand_policies: Mapping[
+        tuple[str, int, int, str, int],
+        Mapping[tuple[int, int], tuple[int, str, bool]],
+    ] | None = None
 
     def __post_init__(self) -> None:
         if not 1 < int(self.min_rows) <= int(self.max_rows):
@@ -637,6 +641,80 @@ class T16F16RocblasPrefillSession:
             MappingProxyType(normalized_variants),
         )
 
+        normalized_pair_only: dict[
+            tuple[str, int, int, str, int],
+            Mapping[tuple[int, int], tuple[int, str, bool]],
+        ] = {}
+        for raw_key, raw_intervals in (
+            self.pair_only_second_operand_policies or {}
+        ).items():
+            if len(raw_key) != 5 or not isinstance(raw_intervals, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS pair-only policies require "
+                    "(first_quant, K, first_N, second_quant, second_N) keys"
+                )
+            key = (
+                str(raw_key[0]),
+                int(raw_key[1]),
+                int(raw_key[2]),
+                str(raw_key[3]),
+                int(raw_key[4]),
+            )
+            first_policy = quant_policies.get(key[0])
+            if (
+                first_policy is None
+                or key[3] not in quant_policies
+                or key[1] <= 0
+                or key[1] % 256
+                or key[2] <= 0
+                or key[4] <= 0
+                or not any(
+                    shape[-2:] == (key[1], key[2]) for shape in first_policy
+                )
+            ):
+                raise ValueError(
+                    "T16 F16/rocBLAS pair-only policies require an admitted "
+                    "first operand and known quant/shape axes"
+                )
+            intervals: dict[tuple[int, int], tuple[int, str, bool]] = {}
+            for raw_interval, raw_spec in raw_intervals.items():
+                if len(raw_interval) != 2 or len(raw_spec) != 3:
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only entries require inclusive "
+                        "row bounds and (tile, variant, in_place) values"
+                    )
+                interval = (int(raw_interval[0]), int(raw_interval[1]))
+                tile = int(raw_spec[0])
+                variant = str(raw_spec[1]).strip()
+                in_place = raw_spec[2]
+                if (
+                    interval[0] <= 0
+                    or interval[1] < interval[0]
+                    or tile <= 0
+                    or tile % 16
+                    or tile > key[4]
+                    or key[4] % tile
+                    or not variant
+                    or not isinstance(in_place, bool)
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only entries must be valid"
+                    )
+                if any(
+                    max(interval[0], prior[0]) <= min(interval[1], prior[1])
+                    for prior in intervals
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only intervals must not overlap"
+                    )
+                intervals[interval] = (tile, variant, in_place)
+            normalized_pair_only[key] = MappingProxyType(intervals)
+        object.__setattr__(
+            self,
+            "pair_only_second_operand_policies",
+            MappingProxyType(normalized_pair_only),
+        )
+
     def linear_variant(
         self,
         rows: int,
@@ -661,6 +739,40 @@ class T16F16RocblasPrefillSession:
                 if minimum <= row_count <= maximum
             ),
             str(default),
+        )
+
+    def pair_only_second_operand(
+        self,
+        rows: int,
+        in_features: int,
+        first_out_features: int,
+        second_out_features: int,
+        *,
+        first_quant: str,
+        second_quant: str,
+    ) -> tuple[int, str, bool] | None:
+        """Resolve an ordered pair-only second operand or fail closed."""
+
+        policies = self.pair_only_second_operand_policies
+        assert policies is not None
+        intervals = policies.get(
+            (
+                str(first_quant),
+                int(in_features),
+                int(first_out_features),
+                str(second_quant),
+                int(second_out_features),
+            ),
+            {},
+        )
+        row_count = int(rows)
+        return next(
+            (
+                spec
+                for (minimum, maximum), spec in intervals.items()
+                if minimum <= row_count <= maximum
+            ),
+            None,
         )
 
     def tile_out_features(
@@ -2860,6 +2972,12 @@ def launch_gguf_linear_pair(
         use_wmma,
         use_gemv,
         _q4_t16_unequal_pair_prefill_enabled.get(),
+        (
+            None
+            if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
+            is None
+            else id(source_f16_session)
+        ),
         bool(registered_decode_only),
         registered_decode_variant,
     )
@@ -2913,29 +3031,61 @@ def launch_gguf_linear_pair(
         )
         return True
 
-    if pair_kind == "t16_f16_rocblas_shared_activation":
+    if pair_kind in {
+        "t16_f16_rocblas_shared_activation",
+        "t16_f16_rocblas_pair_only_second",
+    }:
+        session = _t16_f16_rocblas_prefill_session.get()
+        assert session is not None
+        pair_only_spec = (
+            session.pair_only_second_operand(
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                first_quant=weight_a.spec.quant_key,
+                second_quant=weight_b.spec.quant_key,
+            )
+            if pair_kind == "t16_f16_rocblas_pair_only_second"
+            else None
+        )
         for index, (weight, out_ptr, outputs) in enumerate(
             (
                 (weight_a, out_a_ptr, out_features),
                 (weight_b, out_b_ptr, out_features_b),
             )
         ):
-            dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
-                _pack8_decode_dispatch(
-                    resolve_gguf_linear_dispatch(
-                        weight,
-                        activation_dtype=activation_dtype,
-                        output_dtype=output_dtype,
-                        backend=resolved_backend,
-                        rows=rows,
-                    ),
+            dispatch = _pack8_decode_dispatch(
+                resolve_gguf_linear_dispatch(
+                    weight,
+                    activation_dtype=activation_dtype,
+                    output_dtype=output_dtype,
+                    backend=resolved_backend,
                     rows=rows,
-                    out_features=outputs,
                 ),
                 rows=rows,
-                in_features=in_features,
                 out_features=outputs,
             )
+            tile_override = None
+            activation_inplace_override = None
+            if index == 1 and pair_only_spec is not None:
+                tile_override, variant, activation_inplace_override = pair_only_spec
+                dispatch = GGUFLinearDispatch(
+                    KernelKey(
+                        dispatch.key.backend,
+                        "linear",
+                        dispatch.key.quant,
+                        variant,
+                    ),
+                    _T16_F16_ROCBLAS_ROUTE_BY_QUANT[dispatch.key.quant][1],
+                )
+            else:
+                dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+                    dispatch,
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=outputs,
+                )
             _ensure_linear_kernel_registered(dispatch.key)
             fn = resolve(
                 backend=dispatch.key.backend,
@@ -2954,6 +3104,8 @@ def launch_gguf_linear_pair(
                 outputs,
                 {"stream": stream, "runtime": runtime},
                 cast_activation=index == 0,
+                tile_override=tile_override,
+                activation_inplace_override=activation_inplace_override,
             )
         return True
 
@@ -3566,10 +3718,40 @@ def _resolve_gguf_linear_pair_kind(
             if inplace[0] == inplace[1]:
                 return "t16_f16_rocblas_shared_activation"
             return "none"
+        if (
+            rewritten_count == 1
+            and rewritten[0] is not dispatch_a
+            and rewritten[1] is dispatch_b
+        ):
+            session = _t16_f16_rocblas_prefill_session.get()
+            assert session is not None
+            pair_only_spec = session.pair_only_second_operand(
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                first_quant=dispatch_a.key.quant,
+                second_quant=dispatch_b.key.quant,
+            )
+            if pair_only_spec is not None:
+                _tile, variant, second_inplace = pair_only_spec
+                first_inplace = session.activation_is_inplace(
+                    rows,
+                    in_features,
+                    out_features,
+                    quant=dispatch_a.key.quant,
+                )
+                pair_key = KernelKey(
+                    dispatch_b.key.backend,
+                    "linear",
+                    dispatch_b.key.quant,
+                    variant,
+                )
+                if first_inplace == second_inplace and is_registered(pair_key):
+                    return "t16_f16_rocblas_pair_only_second"
         if rewritten_count:
-            # A mixed candidate/exact pair has no shared-activation ABI.
-            # Decline the incumbent pair so the qualified operand reaches its
-            # owner while the peer projection retains its exact singleton.
+            # A mixed candidate/exact pair has no ordinary shared-activation
+            # ABI. Decline unless an explicit ordered pair-only policy matched.
             return "none"
     if use_wmma and rows > 1:
         q4_t16_unequal_dual = KernelKey(
@@ -3998,15 +4180,25 @@ def _launch_t16_f16_rocblas(
     kwargs,
     *,
     cast_activation: bool = True,
+    tile_override: int | None = None,
+    activation_inplace_override: bool | None = None,
 ) -> None:
     session = _t16_f16_rocblas_prefill_session.get()
     if session is None:
         raise RuntimeError("T16 F16/rocBLAS launch escaped its owner session")
-    tile = session.tile_out_features(rows, in_features, out_features, quant=quant)
+    tile = (
+        int(tile_override)
+        if tile_override is not None
+        else session.tile_out_features(rows, in_features, out_features, quant=quant)
+    )
     if tile is None:
         raise RuntimeError("T16 F16/rocBLAS dispatch escaped its shape policy")
-    activation_inplace = session.activation_is_inplace(
-        rows, in_features, out_features, quant=quant
+    activation_inplace = (
+        bool(activation_inplace_override)
+        if activation_inplace_override is not None
+        else session.activation_is_inplace(
+            rows, in_features, out_features, quant=quant
+        )
     )
     required = {
         "activation": q6_k_f16_input_nbytes(rows, in_features),

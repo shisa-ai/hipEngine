@@ -257,6 +257,22 @@ GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
 GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
 }
+# Ordered pair-only admission lets one otherwise-exact second operand reuse an
+# already-admitted first operand's FP16 activation without exposing the second
+# shape to singleton or unrelated pair dispatch. Values are inclusive row
+# intervals -> (second-operand tile, registered variant, activation-in-place).
+GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES = {
+    (
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        5_120,
+        10_240,
+        "gguf_q4_k_t16_v1",
+        6_144,
+    ): {
+        (512, 1_023): (2_048, "f16_rocblas_t16_pair_bf16_bf16_out", False),
+        (1_024, 2_047): (512, "f16_rocblas_t16_pair_bf16_bf16_out", False),
+    },
+}
 # Registered linear-variant overrides for source-F16 chains. Shape and inclusive
 # row intervals are model-scoped by the runner policy; absent intervals retain
 # each quant's ordinary registered composite. The disjoint K/V M4096 singleton
@@ -765,6 +781,7 @@ __all__ = [
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
+    "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
     "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
     "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",

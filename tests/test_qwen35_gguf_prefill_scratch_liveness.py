@@ -154,6 +154,26 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     assert source_f16_policy["max_rows_by_quant_shape"] == {
         "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
     }
+    assert source_f16_policy["pair_only_second_operand_policies"] == {
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            5_120,
+            10_240,
+            "gguf_q4_k_t16_v1",
+            6_144,
+        ): {
+            (512, 1_023): (
+                2_048,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+            (1_024, 2_047): (
+                512,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+        },
+    }
     assert source_f16_policy["linear_variant_intervals_by_quant"] == {
         "gguf_q4_k_t16_v1": {
             (17_408, 5_120): {

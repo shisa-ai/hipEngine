@@ -9530,6 +9530,52 @@ def _gguf_t16_f16_rocblas_prefill_policy(
         normalized_by_quant["linear_variant_intervals_by_quant"] = (
             MappingProxyType(normalized_variants)
         )
+
+    raw_pair_only = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES", {}
+    )
+    if not isinstance(raw_pair_only, Mapping):
+        return None
+    normalized_pair_only: dict[tuple[object, ...], object] = {}
+    for raw_key, raw_intervals in raw_pair_only.items():
+        if (
+            not isinstance(raw_key, tuple)
+            or len(raw_key) != 5
+            or not isinstance(raw_intervals, Mapping)
+        ):
+            return None
+        key = (
+            str(raw_key[0]),
+            int(raw_key[1]),
+            int(raw_key[2]),
+            str(raw_key[3]),
+            int(raw_key[4]),
+        )
+        intervals: dict[tuple[int, int], tuple[int, str, bool]] = {}
+        for raw_interval, raw_spec in raw_intervals.items():
+            if (
+                not isinstance(raw_interval, tuple)
+                or len(raw_interval) != 2
+                or not isinstance(raw_spec, tuple)
+                or len(raw_spec) != 3
+                or not isinstance(raw_spec[2], bool)
+            ):
+                return None
+            interval = (int(raw_interval[0]), int(raw_interval[1]))
+            spec = (int(raw_spec[0]), str(raw_spec[1]).strip(), raw_spec[2])
+            if (
+                interval[0] <= 0
+                or interval[1] < interval[0]
+                or spec[0] <= 0
+                or not spec[1]
+            ):
+                return None
+            intervals[interval] = spec
+        normalized_pair_only[key] = MappingProxyType(intervals)
+    if normalized_pair_only:
+        normalized_by_quant["pair_only_second_operand_policies"] = (
+            MappingProxyType(normalized_pair_only)
+        )
     return MappingProxyType(normalized_by_quant) if normalized_by_quant else None
 
 
@@ -13844,6 +13890,7 @@ class Qwen35GGUFResidentSession:
             for rows, tile in row_policy.items()
             if int(rows) <= int(scratch.rows)
         }
+        pair_only_policies = policy.get("pair_only_second_operand_policies", {})
         all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
         if not all_shape_tiles:
             return q6_t16_f16_rocblas_prefill_session(None)
@@ -13915,6 +13962,7 @@ class Qwen35GGUFResidentSession:
             linear_variant_intervals_by_quant=policy.get(
                 "linear_variant_intervals_by_quant", {}
             ),
+            pair_only_second_operand_policies=pair_only_policies,
             dequant_library=self._q6_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
             rocblas=self._q6_f16_rocblas,
@@ -21696,6 +21744,7 @@ class _GGUFFullAttentionPrefillScratch:
                 not in {
                     "linear_variant_intervals_by_quant",
                     "max_rows_by_quant_shape",
+                    "pair_only_second_operand_policies",
                 }
                 for shape, row_policy in quant_policy.items()
             )

@@ -240,6 +240,35 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
         None,
     ) is None
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
+        None,
+    ) == {
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            5_120,
+            10_240,
+            "gguf_q4_k_t16_v1",
+            6_144,
+        ): {
+            (512, 1_023): (
+                2_048,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+            (1_024, 2_047): (
+                512,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+        },
+    }
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
+        None,
+    ) is None
 
 
 def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None:
@@ -862,16 +891,16 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
             (512, 5120, 10240): 2048,
             (1024, 5120, 10240): 512,
         },
-        q4_tile_out_features_by_shape={
-            (512, 5120, 6144): 2048,
-            (1024, 5120, 6144): 512,
-        },
-        max_rows_by_quant_shape={
-            "gguf_q4_k_t16_v1": {(5120, 6144): 2047},
-        },
-        linear_variant_intervals_by_quant={
-            "gguf_q4_k_t16_v1": {
-                (5120, 6144): {(512, 2047): q4_pair_key.variant},
+        pair_only_second_operand_policies={
+            (
+                "gguf_q6_k_t16_qmicro_planar_v1",
+                5120,
+                10240,
+                "gguf_q4_k_t16_v1",
+                6144,
+            ): {
+                (512, 1023): (2048, q4_pair_key.variant, False),
+                (1024, 2047): (512, q4_pair_key.variant, False),
             },
         },
         dequant_library="dequant-library",
@@ -906,6 +935,22 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
                 out_a_ptr=0x20000000,
                 out_b_ptr=0x22000000,
                 rows=2048,
+                in_features=5120,
+                out_features=10240,
+                out_features_b=6144,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            unregister(q4_pair_key)
+            gguf_linear_module.clear_gguf_linear_dispatch_cache()
+            assert not launch_gguf_linear_pair(
+                q6_weight,
+                q4_weight,
+                x_ptr=0x10000000,
+                out_a_ptr=0x20000000,
+                out_b_ptr=0x22000000,
+                rows=512,
                 in_features=5120,
                 out_features=10240,
                 out_features_b=6144,
