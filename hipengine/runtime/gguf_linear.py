@@ -394,8 +394,8 @@ class T16F16RocblasPrefillSession:
     """Caller-owned transient planes for changed-arithmetic T16 prefill.
 
     This context never changes resident weight ownership: admitted candidates
-    read canonical Q4T16 or planar Q6T16 allocations and dequantize one bounded
-    output tile immediately before rocBLAS consumes it.
+    read canonical Q4T16/Q5T16 or planar Q6T16 allocations and dequantize one
+    bounded output tile immediately before rocBLAS consumes it.
     """
 
     min_rows: int
@@ -412,7 +412,9 @@ class T16F16RocblasPrefillSession:
     rocblas: object
     solution_indices_by_gemm_shape: Mapping[tuple[int, int, int], int] | None = None
     q4_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
+    q5_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
     q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    q5_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
 
     def __post_init__(self) -> None:
@@ -483,7 +485,12 @@ class T16F16RocblasPrefillSession:
         q4_normalized = normalize_policy(
             self.q4_tile_out_features_by_shape or {}, required=False
         )
+        q5_normalized = normalize_policy(
+            self.q5_tile_out_features_by_shape or {}, required=False
+        )
         object.__setattr__(self, "q4_tile_out_features_by_shape", q4_normalized)
+        object.__setattr__(self, "q5_tile_out_features_by_shape", q5_normalized)
+
         def normalize_inplace(
             raw_shapes: frozenset[tuple[int, ...]],
             policy: Mapping[tuple[int, ...], int],
@@ -512,6 +519,11 @@ class T16F16RocblasPrefillSession:
             "q4_x_inplace_shapes",
             normalize_inplace(self.q4_x_inplace_shapes, q4_normalized),
         )
+        object.__setattr__(
+            self,
+            "q5_x_inplace_shapes",
+            normalize_inplace(self.q5_x_inplace_shapes, q5_normalized),
+        )
 
     def tile_out_features(
         self,
@@ -524,6 +536,7 @@ class T16F16RocblasPrefillSession:
         exact = (int(rows), int(in_features), int(out_features))
         policy = {
             "gguf_q4_k_t16_v1": self.q4_tile_out_features_by_shape,
+            "gguf_q5_k_t16_v1": self.q5_tile_out_features_by_shape,
             "gguf_q6_k_t16_qmicro_planar_v1": self.tile_out_features_by_shape,
         }.get(quant, {})
         assert policy is not None
@@ -568,6 +581,7 @@ class T16F16RocblasPrefillSession:
         exact = (int(rows), int(in_features), int(out_features))
         policy = {
             "gguf_q4_k_t16_v1": self.q4_x_inplace_shapes,
+            "gguf_q5_k_t16_v1": self.q5_x_inplace_shapes,
             "gguf_q6_k_t16_qmicro_planar_v1": self.x_inplace_shapes,
         }.get(quant, ())
         assert policy is not None
@@ -588,7 +602,7 @@ _t16_f16_rocblas_prefill_session: ContextVar[
 def t16_f16_rocblas_prefill_session(
     session: T16F16RocblasPrefillSession | None,
 ) -> Iterator[None]:
-    """Expose bounded Q4/Q6 source-F16 planes for one owner-controlled pass."""
+    """Expose bounded Q4/Q5/Q6 source-F16 planes for one owner-controlled pass."""
 
     token = _t16_f16_rocblas_prefill_session.set(session)
     try:
@@ -3808,6 +3822,7 @@ def _launch_t16_f16_rocblas(
     tiles_ptr = int(weight.allocation("tiles").tensor.ptr)
     block_bytes_per_output = {
         "gguf_q4_k_t16_v1": 148,
+        "gguf_q5_k_t16_v1": 180,
         "gguf_q6_k_t16_qmicro_planar_v1": 210,
     }[quant]
     live_regions = {
@@ -4188,6 +4203,10 @@ _T16_F16_ROCBLAS_ROUTE_BY_QUANT = MappingProxyType(
             "f16_rocblas_t16_bf16_bf16_out",
             "t16_q4_f16_rocblas",
         ),
+        "gguf_q5_k_t16_v1": (
+            "f16_rocblas_t16_bf16_bf16_out",
+            "t16_q5_f16_rocblas",
+        ),
         "gguf_q6_k_t16_qmicro_planar_v1": (
             "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
             "t16_q6_f16_rocblas",
@@ -4547,6 +4566,9 @@ _LAUNCH_ABI = {
     "t16": _launch_t16,
     "t16_q4_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
         "gguf_q4_k_t16_v1", *args
+    ),
+    "t16_q5_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
+        "gguf_q5_k_t16_v1", *args
     ),
     "t16_q6_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
         "gguf_q6_k_t16_qmicro_planar_v1", *args

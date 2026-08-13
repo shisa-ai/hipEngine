@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **767.745** | **28.325** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.479** | **28.271** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,17 +189,15 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **855.960** | **33.499** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **892.123** | **33.567** |
 
-The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
-source-F16 prefill, an exact operation-complete Q4 gate/up+SiLU owner, and
-rocBLAS-version/shape-scoped zero-workspace FP16 GEMM solutions. Decode and MTP
-retain their exact owners. The latest independent XTX matrix is
-**855.960/917.774/912.359 tok/s** at 512/1K/4K, with no tracked-memory change.
-It is not yet a cross-engine win: llama.cpp HIP remains faster for prefill,
-Vulkan remains lower-memory, and Vulkan wins selected MTP plus 4K AR decode.
-Evidence: [`rocBLAS solution indices`](results/2026-08-13-qwen36-27b-rocblas-solution-indices-retained.json)
-and [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json).
+The 27B row is a current sole-T16 snapshot with model-qualified Q4/Q5/Q6
+source-F16 prefill, exact dual-Q4 gate/up+SiLU, and shape-scoped rocBLAS
+solutions. Decode and MTP retain exact owners. The latest independent XTX
+matrix is **892.123/963.237/956.770 tok/s** at 512/1K/4K with unchanged tracked
+peaks; 4K now clears the frozen llama.cpp HIP+1% prefill gate, while 512/1K,
+memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`retained Q5 recurrent prefill`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

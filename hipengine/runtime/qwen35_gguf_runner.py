@@ -9397,7 +9397,7 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
 def _gguf_t16_f16_rocblas_prefill_policy(
     runner: object,
 ) -> Mapping[str, Mapping[tuple[int, int], Mapping[int, int]]] | None:
-    """Resolve model/backend-qualified Q4/Q6 source-F16 prefill policies."""
+    """Resolve model/backend-qualified Q4/Q5/Q6 source-F16 prefill policies."""
 
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
@@ -9415,6 +9415,7 @@ def _gguf_t16_f16_rocblas_prefill_policy(
     ] = {}
     for quant, capability in (
         ("gguf_q4_k_t16_v1", "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES"),
+        ("gguf_q5_k_t16_v1", "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES"),
         (
             "gguf_q6_k_t16_qmicro_planar_v1",
             "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
@@ -13724,7 +13725,7 @@ class Qwen35GGUFResidentSession:
         self._int8_prefill_oracle_buffers.clear()
 
     def _q6_f16_rocblas_prefill_context(self):
-        """Return the model-scoped, sole-resident Q4/Q6 prefill owner context."""
+        """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
 
         if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
@@ -13750,9 +13751,15 @@ class Qwen35GGUFResidentSession:
             for rows, tile in row_policy.items()
             if int(rows) <= int(scratch.rows)
         }
-        if not q6_shape_tiles:
+        q5_shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.get("gguf_q5_k_t16_v1", {}).items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
+        if not all_shape_tiles:
             return q6_t16_f16_rocblas_prefill_session(None)
-        all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles}
         if self._q6_f16_rocblas_prefill_library is None:
             self._q6_f16_rocblas_prefill_library = (
                 build_gguf_q6_k_f16_rocblas_prefill(
@@ -13803,11 +13810,13 @@ class Qwen35GGUFResidentSession:
             out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
             tile_out_features_by_shape=q6_shape_tiles,
             q4_tile_out_features_by_shape=q4_shape_tiles,
+            q5_tile_out_features_by_shape=q5_shape_tiles,
             q4_x_inplace_shapes=frozenset(
                 shape
                 for shape in q4_shape_tiles
                 if shape[1:] in {(17_408, 5_120), (6_144, 5_120)}
             ),
+            q5_x_inplace_shapes=frozenset(q5_shape_tiles),
             x_inplace_shapes=frozenset(
                 shape
                 for shape in q6_shape_tiles
@@ -21039,10 +21048,10 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "prefill_query": (("linear", 3, 5),),
         "prefill_key": (("linear", 3, 5),),
         "prefill_value": (("linear", 3, 5),),
-        # Optional changed-arithmetic Q4/Q6 routes consume these during
-        # initial projections and dense FFN down. Production lifetimes let their
-        # three transient planes reuse stage-disjoint scratch instead of
-        # growing a persistent weight sidecar.
+        # Optional changed-arithmetic Q4/Q5/Q6 routes consume these during
+        # initial projections, recurrent output, and dense FFN down. Production
+        # lifetimes let their transient planes reuse stage-disjoint scratch
+        # instead of growing a persistent weight sidecar.
         "q6_f16_x": (
             _both_prefill_routes(0, 1)
             + (("full", 5, 6),)
@@ -21050,12 +21059,12 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         ),
         "q6_f16_weight": (
             _both_prefill_routes(0, 1)
-            + (("full", 5, 6),)
+            + _both_prefill_routes(5, 6)
             + _both_prefill_routes(12, 13)
         ),
         "q6_f16_out": (
             _both_prefill_routes(0, 1)
-            + (("full", 5, 6),)
+            + _both_prefill_routes(5, 6)
             + _both_prefill_routes(12, 13)
         ),
         "prefill_beta": (("linear", 3, 5),),

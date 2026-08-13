@@ -25,6 +25,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_RAW_GGUF,
 )
 from hipengine.runtime.gguf_linear import (
+    GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
@@ -184,8 +185,20 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         (4_096, 6_144, 512): -1_140_855_996,
     }
     assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
+        None,
+    ) == {
+        (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+    }
+    assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+        None,
+    ) is None
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
         None,
     ) is None
 
@@ -322,6 +335,104 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "cast_activation": True,
         "runtime": "runtime-sentinel",
     }
+
+
+def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        quant_key="gguf_q5_k_t16_v1",
+    )
+    exact_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "f16_rocblas_t16_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (exact_key, candidate_key)
+    }
+    calls = []
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 6144 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=1280 * 6144 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 1280 * 2,
+        tile_out_features_by_shape={(512, 17_408, 5120): 512},
+        q5_tile_out_features_by_shape={
+            (512, 6144, 5120): 1280,
+            (4096, 6144, 5120): 1024,
+        },
+        q5_x_inplace_shapes=frozenset(
+            {(512, 6144, 5120), (4096, 6144, 5120)}
+        ),
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    register(exact_key, capture("exact"), replace=True)
+    register(candidate_key, capture("candidate"), replace=True)
+    try:
+        with q6_t16_f16_rocblas_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=6144,
+                out_features=5120,
+                backend="hip_gfx1100",
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                output_dtype=GGUF_OUTPUT_BF16,
+                use_wmma_prefill=True,
+            )
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=256,
+                in_features=6144,
+                out_features=5120,
+                backend="hip_gfx1100",
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                output_dtype=GGUF_OUTPUT_BF16,
+                use_wmma_prefill=True,
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert [label for label, _args, _kwargs in calls] == ["candidate", "exact"]
+    _, args, kwargs = calls[0]
+    assert args[:4] == (
+        0x10000000,
+        weight.allocation("tiles").tensor.ptr,
+        0x20000000,
+        0x10000000,
+    )
+    assert kwargs["tile_out_features"] == 1280
 
 
 def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
