@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "prefill_residual_exhausted_raw_hip_parity_reached_margin_blocked",
+  "title": "Qwen3.6-27B final sole-T16 prefill residual exhaustion audit",
+  "performance_claim": true,
+  "commit": "19ec032e2",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "primary": "AMD Radeon RX 7900 XTX",
+    "canonical_non_regression": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "retained_production": {
+    "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json",
+    "rx_7900_xtx": {
+      "512": {
+        "prefill_tok_s": 965.209103187136,
+        "decode_tok_s": 33.56868733728038,
+        "tracked_peak_gib": 15.605462968349457,
+        "llamacpp_hip_prefill_tok_s": 964.606,
+        "raw_hip_delta_percent": 0.06252326723408252,
+        "frozen_hip_plus_1_margin_percent": -0.9281947849167582
+      },
+      "1024": {
+        "prefill_tok_s": 1003.205718663584,
+        "decode_tok_s": 34.506480207338655,
+        "tracked_peak_gib": 15.720211334526539,
+        "llamacpp_hip_prefill_tok_s": 981.04,
+        "raw_hip_delta_percent": 2.2594102853690012,
+        "frozen_hip_plus_1_margin_percent": 1.2469408766029755
+      },
+      "4096": {
+        "prefill_tok_s": 983.0817041495385,
+        "decode_tok_s": 31.36572032345864,
+        "tracked_peak_gib": 16.367618195712566,
+        "llamacpp_hip_prefill_tok_s": 946.733,
+        "raw_hip_delta_percent": 3.8393828196058077,
+        "frozen_hip_plus_1_margin_percent": 2.8112701184215716
+      }
+    },
+    "correctness": "Complete retained category and llama-compatible safeguards pass; decode and MTP use exact small-row owners; tracked peaks are unchanged and close returns zero."
+  },
+  "final_profile": {
+    "artifact": "benchmarks/results/2026-08-13-qwen36-27b-post-pair-only-prefill-profile.json",
+    "board": "AMD Radeon Pro W7900",
+    "rows": 512,
+    "kernel_sum_ms": 561.263039,
+    "dispatches": 4230,
+    "tracked_peak_gib": 15.605462968349457,
+    "selected_residual_operation": "24 exact Q4/Q4 unequal QKV+gate pairs",
+    "selected_residual_kernel_ms": 41.024059,
+    "selected_residual_share_percent": 7.309239367176644
+  },
+  "final_residual_screen": {
+    "leaf_artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-leaf-retained.json",
+    "engine_rejection_artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-engine-rejected.json",
+    "quality": {
+      "top1_matches": "320/330",
+      "minimum_prompt_top1_agreement": 0.9696969696969697,
+      "maximum_prompt_kl": 0.00564463002053749,
+      "deterministic": true,
+      "asserted_pair_launches": 1920
+    },
+    "rx_7900_xtx": {
+      "512_delta_percent": 0.2009073922989182,
+      "512_paired_wins": "7/7",
+      "1024_delta_percent": 0.08148934334044622,
+      "1024_paired_wins": "6/7"
+    },
+    "w7900": {
+      "512_delta_percent": -0.03703458967480189,
+      "512_paired_ratio_delta_percent": -0.36174798649603646,
+      "512_paired_wins": "1/7"
+    },
+    "decision": "Remove runtime ownership because the mandatory canonical W7900 M512 non-regression gate fails. Retain only the diagnostic leaf and exact production owner."
+  },
+  "attempted_lanes_reconciled": [
+    "Source-shaped dense Q4/Q5 integer MMQ and raw-Q sidecar routes lose or violate sole-layout residency.",
+    "Exact dual-Q4 gate/up+SiLU, unequal Q4 QKV/gate, direct Q6 record producer, selective Q4 pair producer, Q5 octet producer, full-attention-Q pair producer, and mixed Q6/Q4 pair-only gate routes are retained defaults.",
+    "Direct BF16 rocBLAS output and source-F16 ping-pong pipeline were measured regressions.",
+    "Full-attention Q4 source-F16 is bounded below M2048 because large rows lose; singleton Q4 gates were rejected until the retained mixed-pair-only boundary made only 24 layers positive.",
+    "The final remaining exact Q4/Q4 operation passes quality and XTX but fails W7900 complete-wall non-regression.",
+    "GDN, FlashAttention, casts/fills/copies, dense F32 projections, KV format, and launch-count-only work lack a new reconciled byte-neutral operation boundary large enough to justify reopening prefill parity."
+  ],
+  "scope_result": {
+    "raw_llamacpp_hip_parity": "passed at 512/1024/4096",
+    "frozen_hip_plus_1_gate": "passed at 1024/4096; blocked by 0.928% at 512",
+    "decode_regression": false,
+    "tracked_memory_regression": false,
+    "dflash_or_mtp_regression": false,
+    "single_layout_preserved": true,
+    "objective_status": "exhausted under current no-regression, sole-T16, byte-neutral constraints"
+  },
+  "reopen_rules": [
+    "A materially new operation-complete sole-resident Q4 dataflow that differs from the rejected source-F16 Q4/Q4 operation.",
+    "A producer-consumer fusion that removes enough rocBLAS/output-cast launch or memory traffic to pass both gfx1100 boards, not another tile-only sweep.",
+    "A compiler, rocBLAS, driver, hardware, or llama.cpp baseline change that invalidates current cross-board economics.",
+    "A fresh reconciled retained-path profile proving a different byte-neutral family has enough complete-wall ceiling and a matched comparator deficit."
+  ],
+  "do_not_reopen_without_new_mechanism": [
+    "raw Q4/Q5 sidecars or canonical-format pools",
+    "source-shaped Q4/Q5 integer MMQ variants already screened",
+    "the Q4/Q4 unequal source-F16 operation recorded in the final rejection artifact",
+    "small FP16 tile, direct-BF16 output, ping-pong, attention-only, KV, GDN, or launch-count-only prefill work"
+  ],
+  "decision": "Close the residual prefill lane. Keep the retained pair-only package and public matrix unchanged; report raw HIP parity as achieved, HIP+1% as achieved at 1K/4K and blocked by 0.928% at 512, with no decode/memory/MTP regression."
+}

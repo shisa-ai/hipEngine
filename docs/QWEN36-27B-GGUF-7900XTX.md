@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **reopened on 2026-08-13 for the prefill gate after retained materially new sole-T16 dataflows; all other cross-engine blockers remain.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met**: the 512 HIP+1% prefill margin, every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The latest ordered pair-only Q6-QKV/Q4-gate source-F16 route improves binding M512/M1024 full prefill **0.80%/0.57%** on XTX and **0.45%/0.74%** on W7900, moving selector-unset XTX to **965.209/1003.206/983.082 tok/s** at 512/1K/4K. This reaches raw-HIP parity at 512 with a **0.06% lead**, puts 1K/4K **2.26%/3.84% above** raw HIP, and clears the frozen HIP+1% gates at 1K/4K by **1.25%/2.81%**; 512 is now only **0.93%** short of that margin.
+Status: **the 2026-08-13 sole-T16 prefill reopen is exhausted; all other cross-engine blockers remain.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met**: the 512 HIP+1% prefill margin, every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The retained ordered pair-only Q6-QKV/Q4-gate source-F16 route improves binding M512/M1024 full prefill **0.80%/0.57%** on XTX and **0.45%/0.74%** on W7900, moving selector-unset XTX to **965.209/1003.206/983.082 tok/s** at 512/1K/4K. This reaches raw-HIP parity at 512 with a **0.06% lead**, puts 1K/4K **2.26%/3.84% above** raw HIP, and clears the frozen HIP+1% gates at 1K/4K by **1.25%/2.81%**; 512 is only **0.93%** short of that margin. The final measured 41.024-ms residual—source-F16 conversion of both Q4/Q4 unequal-pair operands—passes complete quality and improves XTX **0.201%/0.081%** at 512/1K, but canonical W7900 M512 regresses **0.037%** with only **1/7** wins, so runtime ownership is removed and the residual lane is closed under the current no-regression/byte-neutral constraints.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -1002,6 +1002,19 @@ verifier/MTP, peer backends, and all shape/model misses retain exact prior
 owners
 ([artifact](../benchmarks/results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json)).
 
+The final residual screen converts both operands of the remaining 24 exact
+Q4/Q4 unequal QKV/gate pairs through one shared activation cast, exact
+pair-produced source-F16 tiles, rocBLAS, and BF16 publication. Complete quality
+passes **320/330 top-1**, max KL **0.005645**, deterministic repeats, and
+**1,920** asserted launches. Binding XTX improves **+0.201%/+0.081%** at
+M512/M1024, but W7900 M512 moves **847.684 -> 847.370 tok/s (-0.037%)**, paired
+median **-0.362%**, only **1/7** wins. Runtime ownership is therefore removed;
+the exact unequal-Q4 owner remains production. This exhausts the measured
+post-pair-only residual while preserving decode, memory, MTP, and sole-T16
+ownership
+([rejection](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-engine-rejected.json),
+[exhaustion audit](../benchmarks/results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json)).
+
 The earlier zero-workspace hipBLASLt route remains rejected: best-of-32
 FFN-gate source-F16 is **0.691x/1.051x/1.183x** retained exact T16 at
 M512/1K/4K, M512 loses **0/7**, and the live handle consumes **172 MiB** outside
@@ -1025,7 +1038,10 @@ W7900 safeguard:
 
 Do not declare closure merely because the model fits. Continue until all scorecard
 gates pass or publish an explicit blocker with the failed column and measured
-ceiling.
+ceiling. The prefill lane now has that blocker: raw HIP parity passes at every
+shape, HIP+1% passes at 1K/4K, and 512 remains **0.928%** short after the final
+41.024-ms residual operation failed canonical W7900 complete-wall
+non-regression.
 
 Stop a candidate immediately when it:
 
