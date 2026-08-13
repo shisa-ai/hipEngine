@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_no_runtime_change",
+  "title": "Qwen3.6-27B sole-T16 Q4 linear-attention gate F16 prefill",
+  "performance_claim": false,
+  "parent_commit": "c2e2369c9be190efec69b8b434da2f369ba4a629",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "candidate": {
+    "shape_k_n": [5120, 6144],
+    "role": "48 Q4_K linear-attention gate projections",
+    "description": "Extend the existing sole-Q4T16 bounded source-F16/rocBLAS prefill owner with row anchors 512:2048, 768:2048, 1024:512, 1280:512, and 4096:256.",
+    "persistent_weight_bytes_added": 0,
+    "additional_tracked_workspace_bytes": 0,
+    "decode_changed": false,
+    "mtp_changed": false,
+    "runtime_dispatch_changed": false
+  },
+  "actual_weight_component_screen": {
+    "tensor": "blk.0.attn_gate.weight",
+    "source": "/tmp/qwen36-q4-t16-f16-rocblas-screen.json and /tmp/qwen36-q4-t16-f16-rocblas-screen-1k-4k.json",
+    "speedup_m512_m1024_m4096": [1.1099505933220255, 1.26413592621059, 1.0175279239105939],
+    "projected_family_savings_ms": [3.7017600000000037, 13.499663999999996, 3.887999999999977]
+  },
+  "complete_quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 1.0,
+    "max_transition_kl": 0.015891023894184078,
+    "candidate_repeats_exact": true,
+    "q4_candidate_dispatches": 2400,
+    "q6_candidate_dispatches": 1280,
+    "passed": true,
+    "source": "/tmp/qwen36-q4q6-t16-f16-rocblas-quality-linear-gate.json",
+    "source_sha256": "3a574d531845afe860604df154722913bd0508d8ed81ebfe0bb0b57bc2fc1a75"
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "one resident model/session per board/shape, warm baseline and candidate, alternating pairs; paired-ratio median is the decision statistic for the thermally drifting W7900 512 confirmation",
+    "rx_7900_xtx": {
+      "512": {"paired_ratio_delta_percent": 0.38004574196432994, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-linear-gate-ab-xtx-512.json"},
+      "1024": {"paired_ratio_delta_percent": 0.8175282253158889, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-linear-gate-ab-xtx-1024.json"},
+      "4096": {"paired_ratio_delta_percent": 0.7245467599278355, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-linear-gate-ab-xtx-4096.json"}
+    },
+    "w7900": {
+      "512_initial": {"paired_ratio_delta_percent": 0.09541649549436038, "paired_wins": "5/7", "source": "/tmp/qwen36-q4-linear-gate-ab-w7900-512.json"},
+      "512_confirmation": {"paired_ratio_delta_percent": -0.04738859374026072, "paired_wins": "7/15", "source": "/tmp/qwen36-q4-linear-gate-ab-w7900-512-r15.json"},
+      "1024": {"paired_ratio_delta_percent": 0.4511442984173941, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-linear-gate-ab-w7900-1024.json"},
+      "4096": {"paired_ratio_delta_percent": 0.5031242603233066, "paired_wins": "6/7", "source": "/tmp/qwen36-q4-linear-gate-ab-w7900-4096.json"}
+    }
+  },
+  "decision": "Reject before retention. The candidate improves every XTX shape and W7900 1K/4K, but the higher-confidence shared-gfx1100 W7900 512 confirmation is slightly negative with fewer than half of pairs winning. Remove the policy/test experiment and preserve the exact T16 owner for this shape."
+}
