@@ -153,6 +153,8 @@ _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
+_Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
+_Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
@@ -596,6 +598,20 @@ class T16F16RocblasPrefillSession:
 _t16_f16_rocblas_prefill_session: ContextVar[
     T16F16RocblasPrefillSession | None
 ] = ContextVar("t16_f16_rocblas_prefill_session", default=None)
+_q4_t16_unequal_pair_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q4_t16_unequal_pair_prefill_enabled", default=False
+)
+
+
+@contextlib.contextmanager
+def q4_t16_unequal_pair_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified unequal Q4T16 bulk pair for one request."""
+
+    token = _q4_t16_unequal_pair_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q4_t16_unequal_pair_prefill_enabled.reset(token)
 
 
 @contextlib.contextmanager
@@ -2702,6 +2718,7 @@ def launch_gguf_linear_pair(
         resolved_backend,
         use_wmma,
         use_gemv,
+        _q4_t16_unequal_pair_prefill_enabled.get(),
         bool(registered_decode_only),
         registered_decode_variant,
     )
@@ -2723,6 +2740,37 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q4_t16_unequal_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
 
     if pair_kind == "t16_f16_rocblas_shared_activation":
         for index, (weight, out_ptr, outputs) in enumerate(
@@ -3383,6 +3431,26 @@ def _resolve_gguf_linear_pair_kind(
             # owner while the peer projection retains its exact singleton.
             return "none"
     if use_wmma and rows > 1:
+        q4_t16_unequal_dual = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        )
+        if (
+            _q4_t16_unequal_pair_prefill_enabled.get()
+            and rows >= _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS
+            and (in_features, out_features, out_features_b)
+            == _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE
+            and dispatch_a.abi == "t16"
+            and dispatch_b.abi == "t16"
+            and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
+            and dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+        ):
+            _ensure_linear_kernel_registered(q4_t16_unequal_dual)
+            if is_registered(q4_t16_unequal_dual):
+                return "q4_t16_unequal_dual_wmma"
+
         # A populated resident-pack8 pair has no exact fused tile owner. Decline
         # only when the registered singleton rewrite is available; callers then
         # issue two tile8x8 leaves. Missing keys retain the legacy dual owner.
@@ -4600,6 +4668,7 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
+    "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
     "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",

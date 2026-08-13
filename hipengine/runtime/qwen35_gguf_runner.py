@@ -307,6 +307,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
@@ -9394,6 +9395,30 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
+    """Return whether this request owner is the qualified dense-27B model."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return False
+    policies = backend_package_capability(
+        backend, "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES", {}
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = (
+        getattr(weights, "model_name", None),
+        getattr(weights, "file_type_name", None),
+    )
+    return bool(policies.get(identity, False))
+
+
 def _gguf_t16_f16_rocblas_prefill_policy(
     runner: object,
 ) -> Mapping[str, Mapping[tuple[int, int], Mapping[int, int]]] | None:
@@ -13936,6 +13961,9 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_t16_unequal_pair_prefill_session(
+                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+                ),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(),
             ):
@@ -14021,6 +14049,9 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_t16_unequal_pair_prefill_session(
+                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+                ),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(),
             ):

@@ -166,10 +166,14 @@ K=5,120/N=17,408 FFN gate/up pair at M>=512, the same prefill family also owns
 an operation-complete dual-output WMMA+SiLU variant: one four-wave block reuses
 each activation fragment across independent gate/up weights, rounds both
 projection outputs to BF16 in LDS, then applies the existing SiLU boundary.
+The model's Q4/Q4 linear-attention K=5,120/N=10,240+6,144 pair has a separate
+exact unequal-output owner at M>=512: a dual-WMMA shared 6,144-column prefix plus
+a singleton-geometry QKV tail, with two direct BF16 outputs and no new storage.
 Raw/pack8 Q4 bodies remain registered for other layouts and diagnostics, not as
 dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`output-major LDS keep`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
 [`dual-WMMA SiLU keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
+[`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.

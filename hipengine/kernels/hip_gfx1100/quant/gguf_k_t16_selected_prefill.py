@@ -670,6 +670,16 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
         gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out,
+        replace=replace,
+    )
 
     for quant_key, fn_bf16, fn_fp16 in (
         (

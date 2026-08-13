@@ -39,6 +39,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
@@ -702,6 +703,105 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
     assert session.solution_index(512, 5120, 2048) == -1_140_856_092
     assert session.solution_index(4096, 5120, 512) == -1_140_855_996
     assert session.solution_index(1024, 5120, 512) is None
+
+
+def test_q4_t16_bulk_unequal_pair_routes_only_admitted_shape() -> None:
+    q4_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    q4_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q4_k_t16_v1",
+        "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+    try:
+        register(key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
+        assert not launch_gguf_linear_pair(
+            q4_a,
+            q4_b,
+            x_ptr=0x1000,
+            out_a_ptr=0x2000,
+            out_b_ptr=0x3000,
+            rows=512,
+            in_features=5_120,
+            out_features=10_240,
+            out_features_b=6_144,
+            use_wmma_prefill=True,
+        )
+        with q4_t16_unequal_pair_prefill_session(True):
+            assert launch_gguf_linear_pair(
+                q4_a,
+                q4_b,
+                x_ptr=0x1000,
+                out_a_ptr=0x2000,
+                out_b_ptr=0x3000,
+                rows=512,
+                in_features=5_120,
+                out_features=10_240,
+                out_features_b=6_144,
+                use_wmma_prefill=True,
+                runtime="runtime-sentinel",
+            )
+        with q4_t16_unequal_pair_prefill_session(True):
+            for rows in (1, 4, 511):
+                assert not launch_gguf_linear_pair(
+                    q4_a,
+                    q4_b,
+                    x_ptr=0x1000,
+                    out_a_ptr=0x2000,
+                    out_b_ptr=0x3000,
+                    rows=rows,
+                    in_features=5_120,
+                    out_features=10_240,
+                    out_features_b=6_144,
+                    use_wmma_prefill=True,
+                )
+            assert not launch_gguf_linear_pair(
+                q4_a,
+                q4_b,
+                x_ptr=0x1000,
+                out_a_ptr=0x2000,
+                out_b_ptr=0x3000,
+                rows=512,
+                in_features=5_120,
+                out_features=10_240,
+                out_features_b=6_112,
+                use_wmma_prefill=True,
+            )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (0x1000, 14, 14, 0x2000, 0x3000, 512, 5_120, 10_240, 6_144),
+            {"stream": 0, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_q4_t16_unequal_pair_context_is_nested_and_cache_safe() -> None:
+    context = gguf_linear_module._q4_t16_unequal_pair_prefill_enabled
+    assert context.get() is False
+    with q4_t16_unequal_pair_prefill_session(True):
+        assert context.get() is True
+        with q4_t16_unequal_pair_prefill_session(False):
+            assert context.get() is False
+        assert context.get() is True
+    assert context.get() is False
 
 
 def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() -> None:
