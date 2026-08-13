@@ -3693,10 +3693,11 @@ def _check_int8_qwen35_gqa_shape(
     if num_q_heads % num_kv_heads != 0:
         raise ValueError("num_q_heads must be divisible by num_kv_heads")
     _check_positive(head_dim, "head_dim")
-    if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
+    supported_gqa = (num_q_heads, num_kv_heads) in {(16, 2), (24, 4)}
+    if block_size != 256 or not supported_gqa or head_dim != 256:
         raise ValueError(
-            "Qwen3.5 INT8 GQA split-K specialization requires block_size=256, "
-            "num_q_heads=16, num_kv_heads=2, head_dim=256"
+            "INT8 GQA split-K specialization requires block_size=256, head_dim=256, "
+            "and (num_q_heads, num_kv_heads) in {(16, 2), (24, 4)}"
         )
     if ((chunk_size * num_splits + block_size - 1) // block_size) > spans.base_offsets.numel:
         raise ValueError("span base_offsets block table is too short for max split-K context")
