@@ -239,6 +239,72 @@ __global__ void gguf_q5_k_t16_dequantize_f16_tile_kernel(
   }
 }
 
+__global__ __launch_bounds__(256, 2)
+void gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct_kernel(
+    const uint8_t* __restrict__ tiles,
+    half_t* __restrict__ out,
+    int64_t blocks_per_row,
+    int64_t col_start) {
+  // One workgroup owns a complete K256 x N16 tile block.  The planar qmicro
+  // layout has exactly 256 contiguous 12-byte records per tile: one record for
+  // each (K32 subblock, N4 quartet, K4 pack).  Owning records rather than
+  // individual output columns reads each packed record once while preserving
+  // the source-F16 multiply order and output bytes.
+  const int64_t task = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t block = task % blocks_per_row;
+  const int64_t local_col_tile = task / blocks_per_row;
+  const int64_t out_col_tile = col_start / Q6_T16_COLS + local_col_tile;
+  const uint8_t* tile =
+      tiles + (out_col_tile * blocks_per_row + block) * Q6_T16_BLOCK_BYTES;
+
+  __shared__ uint16_t d_bits[Q6_T16_COLS];
+  __shared__ int8_t scale_values[Q6_T16_GROUPS * Q6_T16_COLS];
+  if (tid < Q6_T16_COLS) {
+    d_bits[tid] = *reinterpret_cast<const uint16_t*>(
+        tile + Q6_T16_D_OFFSET + tid * 2);
+  }
+  scale_values[tid] = *reinterpret_cast<const int8_t*>(
+      tile + Q6_T16_SCALE_OFFSET + tid);
+  __syncthreads();
+
+  const int subblock = tid >> 5;
+  const int col_quartet = (tid >> 3) & 3;
+  const int pack = tid & 7;
+  const uint8_t* record =
+      tile + Q6_T16_QMICRO_OFFSET + tid * Q6_T16_QMICRO_RECORD_BYTES;
+  const uint32_t low01 = *reinterpret_cast<const uint32_t*>(record + 0);
+  const uint32_t low23 = *reinterpret_cast<const uint32_t*>(record + 4);
+  const uint32_t high_word = *reinterpret_cast<const uint32_t*>(record + 8);
+  const int group16 = subblock * 2 + (pack >> 2);
+  const int k_base = subblock * 32 + pack * 4;
+  const int64_t in_features = blocks_per_row * QK_K;
+
+#pragma unroll
+  for (int col4 = 0; col4 < 4; ++col4) {
+    const int col16 = col_quartet * 4 + col4;
+    const float d = static_cast<float>(
+        *reinterpret_cast<const half_t*>(&d_bits[col16]));
+    const float scale = static_cast<float>(
+        scale_values[group16 * Q6_T16_COLS + col16]);
+    const uint32_t low_word = col4 < 2 ? low01 : low23;
+    const int nibble_shift = (col4 & 1) * 4;
+    half_t* dst =
+        out + (local_col_tile * Q6_T16_COLS + col16) * in_features +
+        block * QK_K + k_base;
+#pragma unroll
+    for (int k4 = 0; k4 < 4; ++k4) {
+      const uint8_t low = static_cast<uint8_t>(
+          (low_word >> (8 * k4 + nibble_shift)) & 0x0Fu);
+      const uint8_t high = static_cast<uint8_t>(
+          (high_word >> (8 * k4 + 2 * col4)) & 0x03u);
+      const int quant = static_cast<int>(low | (high << 4)) - 32;
+      const float value = d * scale * static_cast<float>(quant);
+      dst[k4] = static_cast<half_t>(value);
+    }
+  }
+}
+
 __global__ void gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_kernel(
     const uint8_t* __restrict__ tiles,
     half_t* __restrict__ out,
@@ -350,6 +416,35 @@ extern "C" int hipengine_gguf_q5_k_t16_dequantize_f16_tile(
       out_features,
       col_start,
       col_count);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct(
+    const uint8_t* tiles,
+    half_t* out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count,
+    hipStream_t stream) {
+  if (!tiles || !out || !valid_shape(in_features, out_features) ||
+      out_features % Q6_T16_COLS != 0 || col_start < 0 || col_count <= 0 ||
+      col_start % Q6_T16_COLS != 0 || col_count % Q6_T16_COLS != 0 ||
+      col_start + col_count > out_features) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t tasks = (col_count / Q6_T16_COLS) * blocks_per_row;
+  hipLaunchKernelGGL(
+      gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct_kernel,
+      dim3(static_cast<unsigned int>(tasks)),
+      dim3(256),
+      0,
+      stream,
+      tiles,
+      out,
+      blocks_per_row,
+      col_start);
   return static_cast<int>(hipGetLastError());
 }
 
