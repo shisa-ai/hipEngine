@@ -2710,6 +2710,50 @@ def launch_gguf_linear_pair(
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
 
+    if pair_kind == "t16_f16_rocblas_shared_activation":
+        for index, (weight, out_ptr, outputs) in enumerate(
+            (
+                (weight_a, out_a_ptr, out_features),
+                (weight_b, out_b_ptr, out_features_b),
+            )
+        ):
+            dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+                _pack8_decode_dispatch(
+                    resolve_gguf_linear_dispatch(
+                        weight,
+                        activation_dtype=activation_dtype,
+                        output_dtype=output_dtype,
+                        backend=resolved_backend,
+                        rows=rows,
+                    ),
+                    rows=rows,
+                    out_features=outputs,
+                ),
+                rows=rows,
+                in_features=in_features,
+                out_features=outputs,
+            )
+            _ensure_linear_kernel_registered(dispatch.key)
+            fn = resolve(
+                backend=dispatch.key.backend,
+                layer=dispatch.key.layer,
+                quant=dispatch.key.quant,
+                variant=dispatch.key.variant,
+            )
+            _launch_t16_f16_rocblas(
+                dispatch.key.quant,
+                fn,
+                weight,
+                x_ptr,
+                out_ptr,
+                rows,
+                in_features,
+                outputs,
+                {"stream": stream, "runtime": runtime},
+                cast_activation=index == 0,
+            )
+        return True
+
     if pair_kind == "q4_raw_dual_wmma":
         gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
             x_ptr,
@@ -3284,23 +3328,46 @@ def _resolve_gguf_linear_pair_kind(
         rows=rows,
         out_features=out_features_b,
     )
-    if _t16_f16_rocblas_prefill_session.get() is not None and any(
-        _q6_t16_f16_rocblas_prefill_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
-            out_features=outputs,
+    if _t16_f16_rocblas_prefill_session.get() is not None:
+        rewritten = tuple(
+            _q6_t16_f16_rocblas_prefill_dispatch(
+                dispatch,
+                rows=rows,
+                in_features=in_features,
+                out_features=outputs,
+            )
+            for dispatch, outputs in (
+                (dispatch_a, out_features),
+                (dispatch_b, out_features_b),
+            )
         )
-        is not dispatch
-        for dispatch, outputs in (
-            (dispatch_a, out_features),
-            (dispatch_b, out_features_b),
+        rewritten_count = sum(
+            candidate is not original
+            for candidate, original in zip(rewritten, (dispatch_a, dispatch_b))
         )
-    ):
-        # The changed-arithmetic Q6 singleton has no mixed-quant pair ABI.
-        # Decline any incumbent pair so each qualified Q6 operand reaches its
-        # owner while the peer projection retains its exact singleton path.
-        return "none"
+        if rewritten_count == 2:
+            session = _t16_f16_rocblas_prefill_session.get()
+            assert session is not None
+            inplace = tuple(
+                session.activation_is_inplace(
+                    rows,
+                    in_features,
+                    outputs,
+                    quant=dispatch.key.quant,
+                )
+                for dispatch, outputs in (
+                    (dispatch_a, out_features),
+                    (dispatch_b, out_features_b),
+                )
+            )
+            if inplace[0] == inplace[1]:
+                return "t16_f16_rocblas_shared_activation"
+            return "none"
+        if rewritten_count:
+            # A mixed candidate/exact pair has no shared-activation ABI.
+            # Decline the incumbent pair so the qualified operand reaches its
+            # owner while the peer projection retains its exact singleton.
+            return "none"
     if use_wmma and rows > 1:
         # A populated resident-pack8 pair has no exact fused tile owner. Decline
         # only when the registered singleton rewrite is available; callers then
@@ -3706,6 +3773,8 @@ def _launch_t16_f16_rocblas(
     in_features,
     out_features,
     kwargs,
+    *,
+    cast_activation: bool = True,
 ) -> None:
     session = _t16_f16_rocblas_prefill_session.get()
     if session is None:
@@ -3795,6 +3864,7 @@ def _launch_t16_f16_rocblas(
         cast_library=session.cast_library,
         rocblas=session.rocblas,
         solution_index=session.solution_index(rows, in_features, tile),
+        cast_activation=cast_activation,
         runtime=kwargs.get("runtime"),
     )
 

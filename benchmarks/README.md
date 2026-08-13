@@ -231,7 +231,12 @@ fresh retained-path profile rather than the obsolete exhaustion profile.
 A subsequent exact rocBLAS solution-index policy improves counterbalanced XTX
 full prefill **+0.43%/+1.33%** at 512/4K and W7900 **+0.17%/+1.32%**, with
 unqualified shapes and rocBLAS versions falling back to standard dispatch. The
-independent XTX deficit is now **11.26%/6.45%/3.63%** at 512/1K/4K. Evidence:
+independent XTX deficit is now **11.26%/6.45%/3.63%** at 512/1K/4K. A final
+exact dataflow cleanup shares the existing F16 activation plane across each
+admitted full-attention K/V pair, removing **16** M512 casts/launches and cutting
+total profiled kernel sum **0.246%**; aggregate full-prefill movement is noise,
+so no topline number is changed. Evidence:
+[`shared F16 activation cast`](results/2026-08-13-qwen36-27b-shared-f16-activation-cast-retained.json),
 [`rocBLAS solution indices`](results/2026-08-13-qwen36-27b-rocblas-solution-indices-retained.json),
 [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
 and the now-historical
