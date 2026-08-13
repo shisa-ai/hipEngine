@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **818.230** | **28.366** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **842.117** | **28.412** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,16 +189,17 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **912.509** | **33.530** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **939.535** | **33.596** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
-and shape-scoped rocBLAS solutions. Decode and MTP retain exact owners. The
-latest independent XTX matrix is **912.509/969.550/956.213 tok/s** at 512/1K/4K
-with unchanged tracked peaks. It remains **5.40%/1.17% below** llama.cpp HIP at
-512/1K; 4K is threshold-flat at **1.0013% above** HIP versus the frozen +1%
-gate, while memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
-[`retained unequal Q4 pair prefill`](results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json).
+shape-scoped rocBLAS solutions, and an exact record-owned planar-Q6 F16
+producer. Decode and MTP retain exact owners. The latest independent XTX matrix
+is **939.535/985.387/975.862 tok/s** at 512/1K/4K with unchanged tracked peaks.
+It remains **2.60% below** llama.cpp HIP at 512; 1K reaches **0.44% above raw HIP
+parity** but remains 0.55% below HIP+1%, while 4K is **3.08% above HIP** and
+clears HIP+1% by 2.06%. Memory, 4K decode, and Vulkan MTP remain blocked.
+Evidence: [`retained direct Q6 F16 producer`](results/2026-08-13-qwen36-27b-q6-direct-f16-producer-engine-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
