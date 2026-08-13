@@ -2135,6 +2135,20 @@ reranking. Artifact:
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning, or close by measured exhaustion. | complete by exhaustion; clean populated controls beat Vulkan, post-module B3 is **61.147** and retained canonical is **61.394** versus selected Vulkan B4 **69.798 tok/s**; no current mechanism closes the 12.04-12.39% gap |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | complete as a below-parity publication; rejected source routes are removed and no Qwen3.6-specific refactor debt remains |
 
+### Post-campaign dense-KV diagnostic
+
+The 24Q/4KV/head-256 direct INT8 split-K consumer is now implemented,
+CPU-reference gated, and traced at `73,321 ns`. This closes the former missing-
+kernel blocker but does **not** promote compressed K/V. Pure per-token/head INT8
+with FP32 scales fails the complete 512/8 suite at **77.78%** minimum-prompt
+top-1. A deterministic 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16
+quality plus bounded mixed 8K/16K/32K rows, but at 32K its chunk-outer BF16
+prefill oracles raise tracked peak `18.177 -> 18.625 GiB`; graph admission is
+unsafe, eager 4K/128 decode is `10.52%` below BF16 graph, and the seven oracle
+pairs project to `7 GiB` at 256K. BF16 remains the sole supported/default 27B
+cache route; no temporal-tail or prompt-conditioned policy is admitted. Artifact:
+`benchmarks/results/2026-08-13-qwen36-27b-int8-kv-fp32-mixed-layer-diagnostic.json`.
+
 ### Historical first pass
 
 The table below records the now-superseded `ee0445c99` B3 campaign. Its

@@ -407,16 +407,19 @@ frozen HIP+1% prefill gates. The 512 HIP+1% prefill margin, all memory rows, and
 4K decode remain below their frozen cross-engine gates. This is
 a retained current snapshot, not complete cross-engine closure.
 
-BF16 K/V remains the only supported dense-27B cache route. The generic INT8
-policy and writer can allocate/write 24-query/4-KV-head rows, but the registered
-direct INT8 split-K decode consumer is specialized to the 35B 16-query/2-KV-
-head geometry; a native no-mirror 4K/16 attempt therefore blocks before any
-INT8 quality row. A same-weight 32K/16 host reconstruction screen is not a
-repair signal: pure INT8, recent 4K BF16, and recent 8K BF16 all pass its single
-prompt, but pure INT8 has the lowest mean KL (`0.0000963` versus `0.001599` and
-`0.0009546`). Implement the missing native consumer before considering a
-layer-local BF16 fallback; do not add a two-arena temporal policy first.
-Evidence: [`dense-27B INT8/temporal-tail blocker`](results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json).
+BF16 K/V remains the only supported dense-27B cache route. The new native
+24-query/4-KV-head INT8 split-K consumer is CPU-reference gated and traced, but
+pure FP32-scale INT8 is quality-rejected: its complete 512/8 suite passes 10/11
+prompts and falls to **77.78%** minimum-prompt top-1, even though 4K/16 passes.
+A deterministic 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16 suites
+plus bounded mixed 8K/16K/32K rows, but is not supportable yet. At 32K it saves
+**0.434 GiB** live while raising tracked peak **0.448 GiB**; seven prefill-
+oracle pairs project to **7 GiB** at 256K, graph admission faulted and was
+reverted, and eager 4K/128 decode is **10.52%** below same-capacity BF16 graph
+decode. The earlier host screen also found no reason to prefer a recent-token
+BF16 tail. Production defaults are unchanged.
+Evidence: [`initial temporal-tail blocker`](results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json)
+and [`native FP32-scale/mixed-layer diagnostic`](results/2026-08-13-qwen36-27b-int8-kv-fp32-mixed-layer-diagnostic.json).
 
 The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped
