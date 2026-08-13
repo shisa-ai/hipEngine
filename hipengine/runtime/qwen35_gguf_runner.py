@@ -13857,7 +13857,7 @@ class Qwen35GGUFResidentSession:
             free(key_cache, runtime=runtime)
         self._int8_prefill_oracle_buffers.clear()
 
-    def _q6_f16_rocblas_prefill_context(self):
+    def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
 
         if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
@@ -13893,18 +13893,22 @@ class Qwen35GGUFResidentSession:
         raw_pair_only_policies = policy.get(
             "pair_only_second_operand_policies", {}
         )
-        request_rows = int(scratch.rows)
+        current_request_rows = (
+            int(scratch.rows) if request_rows is None else int(request_rows)
+        )
+        if current_request_rows <= 0 or current_request_rows > int(scratch.rows):
+            raise ValueError("source-F16 request rows must fit bulk prefill scratch")
         pair_only_policies = {
             key: MappingProxyType(
                 {
                     interval: spec
                     for interval, spec in intervals.items()
-                    if interval[0] <= request_rows <= interval[1]
+                    if interval[0] <= current_request_rows <= interval[1]
                 }
             )
             for key, intervals in raw_pair_only_policies.items()
             if any(
-                interval[0] <= request_rows <= interval[1]
+                interval[0] <= current_request_rows <= interval[1]
                 for interval in intervals
             )
         }
@@ -14098,7 +14102,7 @@ class Qwen35GGUFResidentSession:
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
                 self._q8_mmq_prefill_context(),
-                self._q6_f16_rocblas_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
                 bulk_kwargs: dict[str, object] = {}
                 if capture_hidden_seed_fp32:
@@ -14186,7 +14190,7 @@ class Qwen35GGUFResidentSession:
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
                 self._q8_mmq_prefill_context(),
-                self._q6_f16_rocblas_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
                 self._run_bulk_prefill_and_sample(
                     token_ids,

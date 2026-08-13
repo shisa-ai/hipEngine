@@ -261,21 +261,28 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
 
 
 @pytest.mark.parametrize(
-    ("rows", "expected_intervals"),
+    ("scratch_rows", "request_rows", "expected_intervals"),
     (
-        (768, {(512, 1_023)}),
-        (1_024, {(1_024, 2_047)}),
-        (2_048, set()),
-        (4_096, set()),
+        (768, None, {(512, 1_023)}),
+        (1_024, None, {(1_024, 2_047)}),
+        (2_048, None, set()),
+        (4_096, None, set()),
+        (836, 517, {(512, 1_023)}),
+        (2_176, 1_024, {(1_024, 2_047)}),
+        (4_224, 2_048, set()),
+        (4_224, 4_096, set()),
     ),
 )
 def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
-    monkeypatch, rows: int, expected_intervals: set[tuple[int, int]]
+    monkeypatch,
+    scratch_rows: int,
+    request_rows: int | None,
+    expected_intervals: set[tuple[int, int]],
 ) -> None:
     runner = _fake_dense_qwen36_runner()
     runner._cast_library = lambda: "cast-library"
     scratch = SimpleNamespace(
-        rows=rows,
+        rows=scratch_rows,
         q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
         q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
         q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
@@ -297,13 +304,30 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
     )
 
     owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
-        session
+        session, request_rows=request_rows
     )
 
     pair_only = owner.pair_only_second_operand_policies
     assert pair_only is not None
     assert len(pair_only) == (2 if expected_intervals else 0)
     assert all(set(intervals) == expected_intervals for intervals in pair_only.values())
+
+
+def test_gfx1100_pair_only_source_f16_owner_rejects_invalid_request_rows(
+    monkeypatch,
+) -> None:
+    runner = _fake_dense_qwen36_runner()
+    scratch = SimpleNamespace(rows=768)
+    session = SimpleNamespace(
+        runner=runner,
+        _bulk_prefill_scratch=scratch,
+        use_q6_f16_rocblas_prefill=None,
+    )
+
+    with pytest.raises(ValueError, match="request rows must fit"):
+        gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+            session, request_rows=769
+        )
 
 
 def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
