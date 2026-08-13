@@ -53,6 +53,13 @@ latest independent XTX matrix is **965.209/1003.206/983.082 tok/s** at
 **1.25%/2.81%**, while 512 is only **0.93%** short. Memory, 4K decode, and
 Vulkan MTP remain blocked. Evidence:
 [`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
+The residual prefill lane is now exhausted under the sole-T16, byte-neutral,
+cross-board no-regression constraints. The final 41.024-ms exact-Q4/Q4
+operation passes complete quality and improves XTX **+0.201%/+0.081%** at
+M512/M1024, but W7900 M512 regresses **0.037%** with only **1/7** wins, so the
+exact production owner remains. Raw HIP parity is achieved at all three shapes;
+the frozen HIP+1% gate remains blocked only at 512 by **0.928%**. Evidence:
+[`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -332,6 +339,15 @@ prior package. The strictly serial selector-unset XTX matrix is
 **965.209/1003.206/983.082 tok/s**, reaching raw HIP parity at 512 and clearing
 the frozen HIP+1% prefill gates at both 1K and 4K. Evidence:
 [`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
+The remaining exact Q4/Q4 operation was the final fresh-profile-selected lane.
+Its source-F16 replacement passes complete quality at **320/330 top-1 / max KL
+0.005645** and improves binding XTX **+0.201%/+0.081%** at M512/M1024, but
+canonical W7900 M512 regresses **0.037%** with only **1/7** wins. Runtime
+ownership is removed, the exact unequal-Q4 owner remains, and the residual
+prefill lane is exhausted with raw-HIP parity at all shapes but the frozen
+HIP+1% 512 gate still **0.928%** short. Evidence:
+[`final residual rejection`](results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-engine-rejected.json)
+and [`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 

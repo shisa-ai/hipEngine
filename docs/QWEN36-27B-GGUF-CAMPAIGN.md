@@ -4,15 +4,18 @@ Status: **superseded for current gfx1100 package ownership by the 2026-08-12
 single-layout campaign.** This W7900 study remains the historical Vulkan-parity
 optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
 both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
-fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on prefill,
-memory, 4K decode, and Vulkan MTP rather than claiming full parity, but the
-prefill lane reopened after materially new byte-neutral Q4 dual-output, exact
-unequal-Q4 and selective packed-column source-F16 owners, bounded pair-produced
-full-attention Q, ordered pair-only Q6-QKV/Q4-gate ownership, Q5 source-F16 plus
-its exact natural-octet producer, the exact record-owned Q6 producer, and
-shape-scoped rocBLAS policies reached **0.06% raw-HIP lead at 512**, reached
-**2.26% raw-HIP lead at 1K** (and cleared HIP+1% by 1.25%), and cleared the
-frozen HIP+1% 4K gate by **2.81%**. See
+fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on the 512
+HIP+1% prefill margin, memory, 4K decode, and Vulkan MTP rather than claiming
+full parity. The prefill lane reopened after materially new byte-neutral Q4
+dual-output, exact unequal-Q4 and selective packed-column source-F16 owners,
+bounded pair-produced full-attention Q, ordered pair-only Q6-QKV/Q4-gate
+ownership, Q5 source-F16 plus its exact natural-octet producer, the exact
+record-owned Q6 producer, and shape-scoped rocBLAS policies reached **0.06%
+raw-HIP lead at 512**, reached **2.26% raw-HIP lead at 1K** (and cleared HIP+1%
+by 1.25%), and cleared the frozen HIP+1% 4K gate by **2.81%**. That reopen is now
+exhausted: the final exact-Q4/Q4 residual source-F16 route passes quality and
+XTX but regresses canonical W7900 M512, leaving the 512 HIP+1% margin **0.928%**
+short without any retained decode, memory, or MTP regression. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 
