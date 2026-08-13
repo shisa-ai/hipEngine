@@ -9421,7 +9421,7 @@ def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
 
 def _gguf_t16_f16_rocblas_prefill_policy(
     runner: object,
-) -> Mapping[str, Mapping[tuple[int, int], Mapping[int, int]]] | None:
+) -> Mapping[str, object] | None:
     """Resolve model/backend-qualified Q4/Q5/Q6 source-F16 prefill policies."""
 
     weights = getattr(runner, "weights", None)
@@ -9435,9 +9435,7 @@ def _gguf_t16_f16_rocblas_prefill_policy(
         or getattr(weights, "file_type_name", None) != "MOSTLY_Q4_K_M"
     ):
         return None
-    normalized_by_quant: dict[
-        str, Mapping[tuple[int, int], Mapping[int, int]]
-    ] = {}
+    normalized_by_quant: dict[str, object] = {}
     for quant, capability in (
         ("gguf_q4_k_t16_v1", "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES"),
         ("gguf_q5_k_t16_v1", "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES"),
@@ -9464,11 +9462,47 @@ def _gguf_t16_f16_rocblas_prefill_policy(
             normalized[shape] = MappingProxyType(rows)
         if normalized:
             normalized_by_quant[quant] = MappingProxyType(normalized)
-    return (
-        MappingProxyType(normalized_by_quant)
-        if normalized_by_quant
-        else None
+
+    raw_variants = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES", {}
     )
+    if not isinstance(raw_variants, Mapping):
+        return None
+    normalized_variants: dict[str, object] = {}
+    for raw_quant, raw_shapes in raw_variants.items():
+        quant = str(raw_quant)
+        quant_tiles = normalized_by_quant.get(quant)
+        if not isinstance(quant_tiles, Mapping) or not isinstance(
+            raw_shapes, Mapping
+        ):
+            return None
+        shape_variants: dict[tuple[int, int], object] = {}
+        for raw_shape, raw_intervals in raw_shapes.items():
+            if (
+                not isinstance(raw_shape, tuple)
+                or len(raw_shape) != 2
+                or not isinstance(raw_intervals, Mapping)
+            ):
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            if shape not in quant_tiles:
+                return None
+            intervals: dict[tuple[int, int], str] = {}
+            for raw_interval, raw_variant in raw_intervals.items():
+                if not isinstance(raw_interval, tuple) or len(raw_interval) != 2:
+                    return None
+                interval = (int(raw_interval[0]), int(raw_interval[1]))
+                variant = str(raw_variant).strip()
+                if interval[0] <= 0 or interval[1] < interval[0] or not variant:
+                    return None
+                intervals[interval] = variant
+            shape_variants[shape] = MappingProxyType(intervals)
+        normalized_variants[quant] = MappingProxyType(shape_variants)
+    if normalized_variants:
+        normalized_by_quant["linear_variant_intervals_by_quant"] = (
+            MappingProxyType(normalized_variants)
+        )
+    return MappingProxyType(normalized_by_quant) if normalized_by_quant else None
 
 
 def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
@@ -13846,6 +13880,9 @@ class Qwen35GGUFResidentSession:
                 shape
                 for shape in q6_shape_tiles
                 if shape[1:] == (17_408, 5_120)
+            ),
+            linear_variant_intervals_by_quant=policy.get(
+                "linear_variant_intervals_by_quant", {}
             ),
             dequant_library=self._q6_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
@@ -21623,7 +21660,8 @@ class _GGUFFullAttentionPrefillScratch:
         all_f16_shape_policies = (
             tuple(
                 (shape, row_policy)
-                for quant_policy in q6_f16_policy.values()
+                for quant, quant_policy in q6_f16_policy.items()
+                if quant != "linear_variant_intervals_by_quant"
                 for shape, row_policy in quant_policy.items()
             )
             if q6_f16_policy is not None

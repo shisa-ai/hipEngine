@@ -927,6 +927,27 @@ def test_q6_t16_planar_dequant_matches_independent_source_f16_bytes() -> None:
     assert after["active_allocations"] == before["active_allocations"]
 
 
+def test_q4_t16_f16_rocblas_pair_composite_uses_pair_owned_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[object, ...]] = []
+
+    def capture(*args, **kwargs) -> None:
+        captured.append(args)
+
+    pair_composite = getattr(
+        q6_f16,
+        "gguf_q4_k_t16_f16_rocblas_pair_bf16_bf16_out",
+        None,
+    )
+    assert callable(pair_composite)
+    monkeypatch.setattr(q6_f16, "_launch_t16_f16_rocblas", capture)
+    pair_composite(1, 2, 3, 4, 5, 6, 512, 17_408, 5_120)
+    assert len(captured) == 1
+    assert captured[0][0] == "bf16"
+    assert captured[0][1] is q6_f16.gguf_q4_k_t16_dequantize_f16_tile_pair
+
+
 def test_q6_t16_f16_rocblas_composite_uses_record_owned_direct_producer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

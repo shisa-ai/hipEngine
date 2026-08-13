@@ -418,6 +418,9 @@ class T16F16RocblasPrefillSession:
     q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     q5_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    linear_variant_intervals_by_quant: Mapping[
+        str, Mapping[tuple[int, int], Mapping[tuple[int, int], str]]
+    ] | None = None
 
     def __post_init__(self) -> None:
         if not 1 < int(self.min_rows) <= int(self.max_rows):
@@ -525,6 +528,95 @@ class T16F16RocblasPrefillSession:
             self,
             "q5_x_inplace_shapes",
             normalize_inplace(self.q5_x_inplace_shapes, q5_normalized),
+        )
+
+        quant_policies = {
+            "gguf_q4_k_t16_v1": q4_normalized,
+            "gguf_q5_k_t16_v1": q5_normalized,
+            "gguf_q6_k_t16_qmicro_planar_v1": normalized,
+        }
+        normalized_variants: dict[
+            str,
+            Mapping[tuple[int, int], Mapping[tuple[int, int], str]],
+        ] = {}
+        for raw_quant, raw_shapes in (
+            self.linear_variant_intervals_by_quant or {}
+        ).items():
+            quant = str(raw_quant)
+            quant_policy = quant_policies.get(quant)
+            if quant_policy is None or not isinstance(raw_shapes, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS variant policies require a known quant"
+                )
+            shape_variants: dict[
+                tuple[int, int], Mapping[tuple[int, int], str]
+            ] = {}
+            for raw_shape, raw_intervals in raw_shapes.items():
+                if len(raw_shape) != 2 or not isinstance(raw_intervals, Mapping):
+                    raise ValueError(
+                        "T16 F16/rocBLAS variant policies require (K, N) shapes"
+                    )
+                shape = (int(raw_shape[0]), int(raw_shape[1]))
+                if not any(
+                    policy_shape[-2:] == shape for policy_shape in quant_policy
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS variant shapes require a tile policy"
+                    )
+                intervals: dict[tuple[int, int], str] = {}
+                for raw_interval, raw_variant in raw_intervals.items():
+                    if len(raw_interval) != 2:
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals require "
+                            "inclusive (min_rows, max_rows) bounds"
+                        )
+                    interval = (int(raw_interval[0]), int(raw_interval[1]))
+                    variant = str(raw_variant).strip()
+                    if interval[0] <= 0 or interval[1] < interval[0] or not variant:
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals must be valid"
+                        )
+                    if any(
+                        max(interval[0], prior[0])
+                        <= min(interval[1], prior[1])
+                        for prior in intervals
+                    ):
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals must not overlap"
+                        )
+                    intervals[interval] = variant
+                shape_variants[shape] = MappingProxyType(intervals)
+            normalized_variants[quant] = MappingProxyType(shape_variants)
+        object.__setattr__(
+            self,
+            "linear_variant_intervals_by_quant",
+            MappingProxyType(normalized_variants),
+        )
+
+    def linear_variant(
+        self,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        quant: str,
+        default: str,
+    ) -> str:
+        """Resolve an admitted registered composite variant or its fallback."""
+
+        by_quant = self.linear_variant_intervals_by_quant
+        assert by_quant is not None
+        intervals = by_quant.get(str(quant), {}).get(
+            (int(in_features), int(out_features)), {}
+        )
+        row_count = int(rows)
+        return next(
+            (
+                variant
+                for (minimum, maximum), variant in intervals.items()
+                if minimum <= row_count <= maximum
+            ),
+            str(default),
         )
 
     def tile_out_features(
@@ -4311,18 +4403,28 @@ def _q6_t16_f16_rocblas_prefill_dispatch(
     ):
         return dispatch
     assert route is not None
-    variant, launch_abi = route
+    default_variant, launch_abi = route
+    variant = session.linear_variant(
+        rows,
+        in_features,
+        out_features,
+        quant=dispatch.key.quant,
+        default=default_variant,
+    )
     key = KernelKey(
         dispatch.key.backend,
         "linear",
         dispatch.key.quant,
         variant,
     )
-    return (
-        GGUFLinearDispatch(key, launch_abi)
-        if is_registered(key)
-        else dispatch
-    )
+    if not is_registered(key) and variant != default_variant:
+        key = KernelKey(
+            dispatch.key.backend,
+            "linear",
+            dispatch.key.quant,
+            default_variant,
+        )
+    return GGUFLinearDispatch(key, launch_abi) if is_registered(key) else dispatch
 
 
 def _wmma_prefill_dispatch(
