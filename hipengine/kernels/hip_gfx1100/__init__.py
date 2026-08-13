@@ -249,13 +249,17 @@ GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
     (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
     (6_144, 5_120): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
+    (5_120, 6_144): {512: 2_048, 1_024: 512},
     (5_120, 12_288): {512: 2_048, 1_024: 512},
 }
 # Row ceilings prevent nearest-anchor extrapolation through known losing shape
 # boundaries. Full-attention Q wins with the pair producer at 512/1K but keeps
 # exact Q4T16 at 2K/4K and above.
 GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE = {
-    "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
+    "gguf_q4_k_t16_v1": {
+        (5_120, 6_144): 2_047,
+        (5_120, 12_288): 2_047,
+    },
 }
 # Registered linear-variant overrides for source-F16 chains. Shape and inclusive
 # row intervals are model-scoped by the runner policy; absent intervals retain
@@ -272,6 +276,9 @@ GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
         },
         (6_144, 5_120): {
             (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (5_120, 6_144): {
+            (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
         },
         (5_120, 12_288): {
             (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
