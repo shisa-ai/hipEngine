@@ -61,8 +61,10 @@ state. Counterbalanced full prefill improves XTX **+0.64%/+0.74%/+0.70%** and
 W7900 **+0.62%/+0.98%/+1.17%** at 512/1K/4K, all **42/42** pairs winning with
 exact IDs and unchanged peaks. Applied to the preceding independent XTX
 snapshot, the new expected selector-unset topline is approximately
-**971.4/1010.6/989.9 tok/s**, which clears the frozen 512 HIP+1% threshold;
-that compounded number is inferred, not a fresh independent topline run.
+**971.4/1010.6/990.0 tok/s**. That compounded number is inferred, not a fresh
+independent topline run; it remains **0.29% below** the frozen 512 HIP+1%
+threshold, while 1K/4K extend their passing margins to approximately
+**1.99%/3.53%**.
 Evidence: [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
