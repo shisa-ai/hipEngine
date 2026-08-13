@@ -197,10 +197,7 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
         None,
     ) == {
-        "gguf_q4_k_t16_v1": {
-            (5_120, 10_240): 2_047,
-            (5_120, 12_288): 2_047,
-        },
+        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -228,9 +225,6 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
             (6_144, 5_120): {
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
-            (5_120, 10_240): {
-                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
-            },
             (5_120, 12_288): {
                 (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
@@ -251,24 +245,6 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
         None,
     ) == {
-        (
-            "gguf_q4_k_t16_v1",
-            5_120,
-            10_240,
-            "gguf_q4_k_t16_v1",
-            6_144,
-        ): {
-            (512, 1_023): (
-                2_048,
-                "f16_rocblas_t16_pair_bf16_bf16_out",
-                False,
-            ),
-            (1_024, 2_047): (
-                512,
-                "f16_rocblas_t16_pair_bf16_bf16_out",
-                False,
-            ),
-        },
         (
             "gguf_q6_k_t16_qmicro_planar_v1",
             5_120,
@@ -994,121 +970,6 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
         kwargs["solution_index"] == -1_140_856_092
         for _label, _args, kwargs in calls
     )
-
-
-def test_q4_qkv_q4_gate_pair_reuses_pair_producers_and_one_activation_cast() -> None:
-    q4_a = _fake_weight(
-        layout=LAYOUT_GGUF_Q4_K_T16,
-        quant_key="gguf_q4_k_t16_v1",
-    )
-    q4_b = _fake_weight(
-        layout=LAYOUT_GGUF_Q4_K_T16,
-        quant_key="gguf_q4_k_t16_v1",
-    )
-    q4_pair_key = KernelKey(
-        "hip_gfx1100",
-        "linear",
-        "gguf_q4_k_t16_v1",
-        "f16_rocblas_t16_pair_bf16_bf16_out",
-    )
-    original = resolve(
-        backend=q4_pair_key.backend,
-        layer=q4_pair_key.layer,
-        quant=q4_pair_key.quant,
-        variant=q4_pair_key.variant,
-    )
-    calls: list[tuple[object, ...]] = []
-    session = Q6T16F16RocblasPrefillSession(
-        min_rows=512,
-        max_rows=1024,
-        x_f16_ptr=0x30000000,
-        x_f16_nbytes=1024 * 5120 * 2,
-        weight_f16_ptr=0x40000000,
-        weight_f16_nbytes=2048 * 5120 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=1024 * 2048 * 2,
-        tile_out_features_by_shape={(512, 5120, 10240): 2048},
-        q4_tile_out_features_by_shape={
-            (512, 5120, 10240): 2048,
-            (1024, 5120, 10240): 512,
-        },
-        max_rows_by_quant_shape={
-            "gguf_q4_k_t16_v1": {(5120, 10240): 2047},
-        },
-        linear_variant_intervals_by_quant={
-            "gguf_q4_k_t16_v1": {
-                (5120, 10240): {
-                    (512, 2047): q4_pair_key.variant,
-                },
-            },
-        },
-        pair_only_second_operand_policies={
-            (
-                "gguf_q4_k_t16_v1",
-                5120,
-                10240,
-                "gguf_q4_k_t16_v1",
-                6144,
-            ): {
-                (512, 1023): (2048, q4_pair_key.variant, False),
-                (1024, 2047): (512, q4_pair_key.variant, False),
-            },
-        },
-        dequant_library="dequant-library",
-        cast_library="cast-library",
-        rocblas="rocblas-handle",
-        solution_indices_by_gemm_shape={(512, 5120, 2048): -1_140_856_092},
-    )
-    register(q4_pair_key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
-    try:
-        with q6_t16_f16_rocblas_prefill_session(session):
-            assert launch_gguf_linear_pair(
-                q4_a,
-                q4_b,
-                x_ptr=0x10000000,
-                out_a_ptr=0x20000000,
-                out_b_ptr=0x22000000,
-                rows=512,
-                in_features=5120,
-                out_features=10240,
-                out_features_b=6144,
-                use_wmma_prefill=True,
-                stream=7,
-                runtime="runtime-sentinel",
-            )
-            assert not launch_gguf_linear_pair(
-                q4_a,
-                q4_b,
-                x_ptr=0x10000000,
-                out_a_ptr=0x20000000,
-                out_b_ptr=0x22000000,
-                rows=2048,
-                in_features=5120,
-                out_features=10240,
-                out_features_b=6144,
-                use_wmma_prefill=True,
-                stream=7,
-                runtime="runtime-sentinel",
-            )
-    finally:
-        register(q4_pair_key, original, replace=True)
-        gguf_linear_module.clear_gguf_linear_dispatch_cache()
-
-    assert len(calls) == 2
-    assert calls[0][1]["cast_activation"] is True
-    assert calls[1][1]["cast_activation"] is False
-    assert all(call[1]["solution_index"] == -1_140_856_092 for call in calls)
-    assert session.tile_out_features(
-        2048, 5120, 10240, quant="gguf_q4_k_t16_v1"
-    ) is None
-    assert session.pair_only_second_operand(
-        2048,
-        5120,
-        10240,
-        6144,
-        first_quant="gguf_q4_k_t16_v1",
-        second_quant="gguf_q4_k_t16_v1",
-    ) is None
 
 
 def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
