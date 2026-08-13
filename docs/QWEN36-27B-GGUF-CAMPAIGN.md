@@ -18,9 +18,10 @@ preserving peer-wave32 output/state bits. The compact route improves complete
 GDN-chain wall **1.061-1.116x** and full prefill **+0.62% to +1.17%** across
 512/1K/4K on both gfx1100 boards, with all **42/42** engine pairs winning,
 unchanged tracked peaks, and no decode/MTP owner change. Compounded with the
-preceding independent XTX snapshot it closes the remaining 512 HIP+1% margin;
-the compounded topline is explicitly inferred pending a fresh independent
-selector-unset publication. See
+preceding independent XTX snapshot, the inferred **971.4 tok/s** M512 result
+narrows the remaining frozen HIP+1% gap from **0.928% to 0.289%**, but does not
+close it; the compounded topline remains explicitly inferred pending a fresh
+independent selector-unset publication. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json) and
 [`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
