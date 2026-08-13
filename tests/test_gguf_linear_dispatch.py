@@ -219,6 +219,11 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
         },
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+            },
+        },
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -645,6 +650,99 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
     assert calls == ["pair", "pair", "pair", "scalar", "scalar"]
+
+
+def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        quant_key="gguf_q5_k_t16_v1",
+    )
+    scalar_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "f16_rocblas_t16_bf16_bf16_out",
+    )
+    octet_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "f16_rocblas_t16_octet_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (scalar_key, octet_key)
+    }
+    calls: list[str] = []
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 6_144 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=1280 * 6_144 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 1280 * 2,
+        tile_out_features_by_shape={(512, 5_120, 10_240): 2_048},
+        q5_tile_out_features_by_shape={
+            (512, 6_144, 5_120): 1_280,
+            (1_024, 6_144, 5_120): 1_280,
+            (4_096, 6_144, 5_120): 1_024,
+        },
+        q5_x_inplace_shapes=frozenset(
+            {
+                (512, 6_144, 5_120),
+                (1_024, 6_144, 5_120),
+                (4_096, 6_144, 5_120),
+            }
+        ),
+        linear_variant_intervals_by_quant={
+            "gguf_q5_k_t16_v1": {
+                (6_144, 5_120): {(512, 4_096): octet_key.variant},
+            },
+        },
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+    )
+    register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
+    register(octet_key, lambda *args, **kwargs: calls.append("octet"), replace=True)
+    try:
+        with q6_t16_f16_rocblas_prefill_session(session):
+            for rows in (512, 1_024, 4_096):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=0x10000000,
+                    out_ptr=0x20000000,
+                    rows=rows,
+                    in_features=6_144,
+                    out_features=5_120,
+                    use_wmma_prefill=True,
+                    runtime="runtime-sentinel",
+                )
+            unregister(octet_key)
+            gguf_linear_module.clear_gguf_linear_dispatch_cache()
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=6_144,
+                out_features=5_120,
+                use_wmma_prefill=True,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == ["octet", "octet", "octet", "scalar"]
 
 
 def test_t16_f16_rocblas_variant_policy_rejects_overlapping_intervals() -> None:
