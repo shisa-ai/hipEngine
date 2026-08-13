@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **the 2026-08-14 compact peer-GDN route reopens and retains one exact prefill dataflow; all cross-engine blockers remain.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met**: the 512 HIP+1% prefill margin, every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The retained ordered pair-only Q6-QKV/Q4-gate source-F16 route produced the latest independent selector-unset XTX matrix at **965.209/1003.206/983.082 tok/s**. The compact GDN route then materializes normalized Q/K once per K head instead of per value head, preserving peer-wave32 output/state bits while improving paired full prefill XTX **+0.64%/+0.74%/+0.70%** and W7900 **+0.62%/+0.98%/+1.17%** at 512/1K/4K, all **42/42** pairs winning with unchanged peaks. Compounding that measured delta with the prior independent XTX matrix infers **971.4/1010.6/990.0 tok/s**: 1K/4K clear HIP+1% by about **1.99%/3.53%**, while 512 narrows from **0.928% to 0.289% short**. This compounded row is inferred pending a fresh independent selector-unset publication. The earlier 41.024-ms Q4/Q4 source-F16 residual remains rejected because canonical W7900 M512 regressed.
+Status: **the 2026-08-14 compact peer-GDN route closes the prefill target independently; the remaining cross-engine blockers are memory, 4K decode, and Vulkan MTP.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met** because every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The compact GDN route materializes normalized Q/K once per K head instead of per value head, preserving peer-wave32 output/state bits while improving paired full prefill XTX **+0.64%/+0.74%/+0.70%** and W7900 **+0.62%/+0.98%/+1.17%** at 512/1K/4K, all **42/42** pairs winning with unchanged peaks. The fresh strictly serial selector-unset XTX matrix measures **977.397/1012.309/987.809 tok/s**: all three rows clear llama.cpp HIP+1% by **0.323%/2.166%/3.306%**. Decode is non-regressive versus the preceding independent matrix, IDs remain exact, and tracked peaks are unchanged. The earlier 41.024-ms Q4/Q4 source-F16 residual remains rejected because canonical W7900 M512 regressed.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -966,14 +966,14 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **965.209 independent; 971.432 inferred current** | >=974.252 (1% margin) — fail by 0.289% |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.569 current** | >=33.356 (1% margin) — **pass** |
+| 512 prefill tok/s | 964.606 | 870.872 | **977.397 current independent** | >=974.252 (1% margin) — **pass by 0.323%** |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.645 current** | >=33.356 (1% margin) — **pass** |
 | 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.095** | <=15.690 — fail |
-| 1024 prefill tok/s | 981.040 | 836.898 | **1003.206 independent; 1010.591 inferred current** | >=990.850 (1% margin) — **pass** |
-| 1024 AR transition tok/s | 32.924 | 13.379 | **34.506 current** | >=33.254 (1% margin) — **pass** |
+| 1024 prefill tok/s | 981.040 | 836.898 | **1012.309 current independent** | >=990.850 (1% margin) — **pass** |
+| 1024 AR transition tok/s | 32.924 | 13.379 | **34.567 current** | >=33.254 (1% margin) — **pass** |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.320** | <=15.700 — fail |
-| 4096 prefill tok/s | 946.733 | 835.765 | **983.082 independent; 989.953 inferred current** | >=956.201 (1% margin) — **pass** |
-| 4096 AR transition tok/s | 32.560 | 13.309 | **31.366 current** | >=32.886 (1% margin) — fail |
+| 4096 prefill tok/s | 946.733 | 835.765 | **987.809 current independent** | >=956.201 (1% margin) — **pass** |
+| 4096 AR transition tok/s | 32.560 | 13.309 | **31.421 current** | >=32.886 (1% margin) — fail |
 | 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.119** | <=15.912 — fail |
 | Natural true AR tok/s | 31.576 | 13.386 | **20.782** | disclosed same protocol |
 | Selected MTP budget | B2 | B4 | **B3** | independently selected |
@@ -986,18 +986,19 @@ Populate only from committed artifacts:
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass; 601-s / 408-request soak exact** | **pass** |
 
-The current prefill cells are the strictly serial selector-unset
+The preceding pre-compact matrix was the strictly serial selector-unset
 one-warmup/three-measurement production matrix after promoting the ordered
 pair-only Q6-QKV/Q4-gate route on top of the exact Q4/Q5/Q6 producer and
-consumer package. Binding M512/M1024 full prefill improves XTX
+consumer package. Binding M512/M1024 full prefill improved XTX
 **+0.801%/+0.571%** and W7900 **+0.447%/+0.738%**, with **25/28** admitted
 pairs winning, exact trajectories, and byte-identical tracked peaks. Only the
 24 mixed Q6-QKV/Q4-gate layers change; standalone Q4 gates and all 24 Q4/Q4
 unequal pairs remain exact. M2048/4K retains the exact T16 owner. Production
 tracing observes **432 pair / 0 scalar** Q4 producer launches at M512, exactly
-72 more than the prior package. Current XTX is **0.063%/2.259%/3.839% above**
-llama.cpp HIP at 512/1K/4K; relative to the frozen HIP+1% gates, 512 misses by
-only **0.928%**, while 1K/4K pass by **1.247%/2.811%**. Decode, natural
+72 more than the prior package. At that checkpoint XTX was
+**0.063%/2.259%/3.839% above** llama.cpp HIP at 512/1K/4K; relative to the
+frozen HIP+1% gates, 512 missed by **0.928%**, while 1K/4K passed by
+**1.247%/2.811%**. Decode, natural
 verifier/MTP, peer backends, and all shape/model misses retain exact prior
 owners
 ([artifact](../benchmarks/results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json)).
@@ -1021,11 +1022,14 @@ changing weight residency or arithmetic. It materializes normalized Q/K as
 `[token, v_head, 128]`, saving 14/28 MiB transient Q/K at M512/M1024. The
 complete chain is BF16-output-bit and FP32-state-bit exact, improves
 **1.061-1.116x** at the leaf, and wins all **42/42** cross-board full-engine
-pairs with exact IDs and unchanged tracked peaks. The compounded scorecard
-values above apply the measured same-session full-engine deltas to the preceding
-independent matrix; they are not a substitute for a fresh selector-unset run.
-The 512 HIP+1% gap therefore narrows to an inferred **0.289%**, not closure
-([artifact](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json)).
+pairs with exact IDs and unchanged tracked peaks. The subsequent independent
+package-default XTX run supersedes the earlier compounded estimate: prefill is
+**977.397/1012.309/987.809 tok/s**, passing HIP+1% by
+**0.323%/2.166%/3.306%**, while decode improves
+**0.227%/0.174%/0.176%** versus the prior independent matrix and tracked peaks
+remain byte-identical
+([independent matrix](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json),
+[retained route](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json)).
 
 The earlier zero-workspace hipBLASLt route remains rejected: best-of-32
 FFN-gate source-F16 is **0.691x/1.051x/1.183x** retained exact T16 at
@@ -1050,11 +1054,11 @@ W7900 safeguard:
 
 Do not declare closure merely because the model fits. Continue until all scorecard
 gates pass or publish an explicit blocker with the failed column and measured
-ceiling. The prefill lane retains the compact peer-GDN win: raw HIP parity passes at
-every shape, HIP+1% passes at 1K/4K, and 512 is now an inferred **0.289%** short
-pending a fresh independent default-path publication. The prior 41.024-ms Q4/Q4
-residual remains rejected after failing canonical W7900 complete-wall
-non-regression.
+ceiling. The prefill lane is closed: the fresh independent compact peer-GDN
+matrix passes raw HIP and HIP+1% at every shape, including M512 by **0.323%**.
+The prior 41.024-ms Q4/Q4 residual remains rejected after failing canonical
+W7900 complete-wall non-regression. Continue only on the separate memory, 4K
+decode, and Vulkan MTP blockers.
 
 Stop a candidate immediately when it:
 

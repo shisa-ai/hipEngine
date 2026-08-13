@@ -17,14 +17,16 @@ normalized Q/K are materialized once per K head rather than per value head while
 preserving peer-wave32 output/state bits. The compact route improves complete
 GDN-chain wall **1.061-1.116x** and full prefill **+0.62% to +1.17%** across
 512/1K/4K on both gfx1100 boards, with all **42/42** engine pairs winning,
-unchanged tracked peaks, and no decode/MTP owner change. Compounded with the
-preceding independent XTX snapshot, the inferred **971.4 tok/s** M512 result
-narrows the remaining frozen HIP+1% gap from **0.928% to 0.289%**, but does not
-close it; the compounded topline remains explicitly inferred pending a fresh
-independent selector-unset publication. See
-[`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
-[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json) and
-[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
+unchanged tracked peaks, and no decode/MTP owner change. A fresh independent
+selector-unset XTX matrix now measures **977.397/1012.309/987.809 tok/s** at
+512/1K/4K, passing the frozen HIP+1% gates by **0.323%/2.166%/3.306%** with
+non-regressive decode, exact IDs, unchanged tracked peaks, and clean teardown.
+The prefill objective is closed; memory, 4K decode, and Vulkan MTP remain
+separate blockers. See
+[`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
+[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
+[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json), and
+[`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

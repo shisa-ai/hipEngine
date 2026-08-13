@@ -40,32 +40,23 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **965.209** | **33.569** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **977.397** | **33.645** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
-F16 producers, bounded pair-produced full-attention Q, and pair-only Q4 gates
-behind the 24 admitted Q6-QKV peers. Decode and MTP retain exact owners. The
-latest independent XTX matrix is **965.209/1003.206/983.082 tok/s** at
-512/1K/4K with unchanged tracked peaks. It leads llama.cpp HIP by
-**0.06%/2.26%/3.84%**; 1K and 4K clear the frozen HIP+1% gates by
-**1.25%/2.81%**, while 512 is only **0.93%** short. Memory, 4K decode, and
-Vulkan MTP remain blocked. Evidence:
-[`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
-A newly measured GDN dataflow reopens that prior projection-only exhaustion:
-normalized Q/K are now materialized once per K head rather than once per value
-head while retaining the same peer-wave32 arithmetic. Complete GDN-chain leaf
-walls improve **1.061-1.116x** cross-board with bit-exact BF16 output and FP32
-state. Counterbalanced full prefill improves XTX **+0.64%/+0.74%/+0.70%** and
-W7900 **+0.62%/+0.98%/+1.17%** at 512/1K/4K, all **42/42** pairs winning with
-exact IDs and unchanged peaks. Applied to the preceding independent XTX
-snapshot, the new expected selector-unset topline is approximately
-**971.4/1010.6/990.0 tok/s**. That compounded number is inferred, not a fresh
-independent topline run; it remains **0.29% below** the frozen 512 HIP+1%
-threshold, while 1K/4K extend their passing margins to approximately
-**1.99%/3.53%**.
-Evidence: [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
+F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
+behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
+materialized once per K head. Decode and MTP retain exact owners. The fresh
+strictly serial selector-unset XTX matrix is
+**977.397/1012.309/987.809 tok/s** at 512/1K/4K with unchanged tracked peaks;
+it clears llama.cpp HIP by **1.33%/3.19%/4.34%** and the frozen HIP+1%
+prefill gates by **0.32%/2.17%/3.31%**. Versus the preceding independent
+matrix, decode also moves **+0.23%/+0.17%/+0.18%**, every token remains 9707,
+and tracked teardown reaches zero. This closes the prefill target, while
+memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json) and
+[`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -231,14 +222,14 @@ peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-Current hipEngine matrix (one warmup plus three persistent-session
-reset/replays per shape):
+Current compact peer-GDN hipEngine matrix (one warmup plus three strictly
+serial, selector-unset persistent-session reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Gate status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **965.209 tok/s** | **33.569 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **1003.206 tok/s** | **34.506 tok/s** | **15.720 GiB** | **prefill pass** / **decode pass** / memory fail |
-| 4096/128 | **983.082 tok/s** | **31.366 tok/s** | **16.368 GiB** | **prefill pass** / decode fail / memory fail |
+| 512/128 | **977.397 tok/s** | **33.645 tok/s** | **15.605 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 1024/128 | **1012.309 tok/s** | **34.567 tok/s** | **15.720 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 4096/128 | **987.809 tok/s** | **31.421 tok/s** | **16.368 GiB** | **prefill pass** / decode fail / memory fail |
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
@@ -354,6 +345,13 @@ prefill lane is exhausted with raw-HIP parity at all shapes but the frozen
 HIP+1% 512 gate still **0.928%** short. Evidence:
 [`final residual rejection`](results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-engine-rejected.json)
 and [`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
+The later compact peer-GDN route supersedes that projection-only exhaustion:
+it is bit-exact at the complete chain, wins all **42/42** cross-board engine
+pairs, and its fresh selector-unset XTX matrix reaches
+**977.397/1012.309/987.809 tok/s**. All three prefill rows now pass the frozen
+HIP+1% gates by **0.323%/2.166%/3.306%** with unchanged tracked peaks and
+non-regressive decode versus the prior independent matrix. Evidence:
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
@@ -404,14 +402,14 @@ inventory crossover: **849** immutable allocations share one owner, only the
 MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified
 bounded Q4/Q5/Q6 F16/rocBLAS owners, exact unequal-Q4 pair, exact record-owned planar-Q6 and pair-owned Q4 producers,
 plus the natural-octet-owned Q5 producer, bounded pair-produced full-Q route,
-and ordered pair-only Q6-QKV/Q4-gate route raise the current matrix to
-**965.209/33.569**, **1003.206/34.506**, and **983.082/31.366 tok/s** at
-512/1K/4K while keeping one persistent T16 weight layout per tensor and the same
-15.605/15.720/16.368-GiB tracked peaks. Every shape fits and is deterministic;
-512/1K decode pass, raw-HIP prefill passes all three rows, and 1K/4K clear the
-frozen HIP+1% prefill gates. The 512 HIP+1% prefill margin, all memory rows, and
-4K decode remain below their frozen cross-engine gates. This is
-a retained current snapshot, not complete cross-engine closure.
+ordered pair-only Q6-QKV/Q4-gate route, and compact peer-GDN route raise the
+current matrix to **977.397/33.645**, **1012.309/34.567**, and
+**987.809/31.421 tok/s** at 512/1K/4K while keeping one persistent T16 weight
+layout per tensor and the same 15.605/15.720/16.368-GiB tracked peaks. Every
+shape fits and is deterministic; 512/1K decode pass and all three prefill rows
+clear the frozen HIP+1% gates. All memory rows and 4K decode remain below their
+frozen cross-engine gates. This is a retained current snapshot, not complete
+cross-engine closure.
 
 BF16 K/V remains the only supported dense-27B cache route. The new native
 24-query/4-KV-head INT8 split-K consumer is CPU-reference gated and traced, but

@@ -189,26 +189,23 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **965.209** | **33.569** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **977.397** | **33.645** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
-F16 producers, bounded pair-produced full-attention Q, and pair-only Q4 gates
-behind the 24 admitted Q6-QKV peers. Decode and MTP retain exact owners. The
-latest independent XTX matrix is **965.209/1003.206/983.082 tok/s** at
-512/1K/4K with unchanged tracked peaks. It leads llama.cpp HIP by
-**0.06%/2.26%/3.84%**; 1K and 4K clear the frozen HIP+1% gates by
-**1.25%/2.81%**, while 512 is only **0.93%** short. Memory, 4K decode, and
-Vulkan MTP remain blocked. Evidence:
-[`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
-The residual prefill lane is now exhausted under the sole-T16, byte-neutral,
-cross-board no-regression constraints. The final 41.024-ms exact-Q4/Q4
-operation passes complete quality and improves XTX **+0.201%/+0.081%** at
-M512/M1024, but W7900 M512 regresses **0.037%** with only **1/7** wins, so the
-exact production owner remains. Raw HIP parity is achieved at all three shapes;
-the frozen HIP+1% gate remains blocked only at 512 by **0.928%**. Evidence:
-[`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
+F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
+behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
+materialized once per K head. Decode and MTP retain exact owners. The fresh
+strictly serial selector-unset XTX matrix is
+**977.397/1012.309/987.809 tok/s** at 512/1K/4K with unchanged tracked peaks;
+it clears llama.cpp HIP by **1.33%/3.19%/4.34%** and the frozen HIP+1%
+prefill gates by **0.32%/2.17%/3.31%**. Versus the preceding independent
+matrix, decode also moves **+0.23%/+0.17%/+0.18%**, every token remains 9707,
+and tracked teardown reaches zero. This closes the prefill target, while
+memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json) and
+[`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

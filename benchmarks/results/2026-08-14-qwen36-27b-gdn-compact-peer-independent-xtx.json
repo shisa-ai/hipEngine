@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "independent_default_path_prefill_target_pass",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B compact peer-GDN independent XTX production matrix",
+  "repo_revision": "663fe06b4570e1a5cce7063e7c3e09dd78281618",
+  "git_dirty": false,
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "hip_visible_device": 1,
+    "arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "software": {
+    "backend": "hip_gfx1100",
+    "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "runtime": "torch-free Python/ctypes HIP with cached kernels and rocBLAS"
+  },
+  "protocol": {
+    "description": "Strict serial selector-unset execution; one discarded warmup plus three persistent-session measured resets per shape; d128 HIP graph; package defaults; no experimental selector mutation.",
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE -u HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS -u HIPENGINE_GGUF_PREFILL_DEVICE_METADATA HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "decode_tokens": 128,
+    "graph_replay_decode": true,
+    "serial_shapes": true,
+    "selector_unset": true
+  },
+  "frozen_llamacpp_hip": {
+    "512": {
+      "prefill_tok_s": 964.606,
+      "prefill_plus_1_percent_gate_tok_s": 974.25206,
+      "decode_tok_s": 33.025,
+      "decode_plus_1_percent_gate_tok_s": 33.35525
+    },
+    "1024": {
+      "prefill_tok_s": 981.04,
+      "prefill_plus_1_percent_gate_tok_s": 990.8504,
+      "decode_tok_s": 32.924,
+      "decode_plus_1_percent_gate_tok_s": 33.25324
+    },
+    "4096": {
+      "prefill_tok_s": 946.733,
+      "prefill_plus_1_percent_gate_tok_s": 956.20033,
+      "decode_tok_s": 32.56,
+      "decode_plus_1_percent_gate_tok_s": 32.8856
+    }
+  },
+  "results": {
+    "512": {
+      "prefill_tok_s_samples": [983.4510804244783, 977.3540968508662, 977.3965250007004],
+      "prefill_tok_s_median": 977.3965250007004,
+      "prefill_stdev_percent": 0.35890359874076516,
+      "decode_tok_s_samples": [33.653230700338575, 33.64496697549742, 33.61492513120854],
+      "decode_tok_s_median": 33.64496697549742,
+      "decode_stdev_percent": 0.05991445940530633,
+      "tracked_peak_gib": 15.605462968349457,
+      "sampled_device_peak_gib": 15.95849609375,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "tracked_bytes_after_close": 0,
+      "prefill_delta_vs_prior_independent_percent": 1.262671660816439,
+      "decode_delta_vs_prior_independent_percent": 0.22723449818164987,
+      "prefill_delta_vs_llamacpp_hip_percent": 1.3259843916272995,
+      "prefill_margin_vs_hip_plus_1_percent_gate_percent": 0.3227568233933553,
+      "decode_margin_vs_hip_plus_1_percent_gate_percent": 0.8685798352505936,
+      "source": "/tmp/qwen36-gdn-compact-peer-independent-xtx-512.json",
+      "source_sha256": "755cfdee2aae9db8132e812a04ec29489c64992500b2b77d764c934907f4a40a"
+    },
+    "1024": {
+      "prefill_tok_s_samples": [1012.308803043644, 1010.2011382138804, 1012.8010203657416],
+      "prefill_tok_s_median": 1012.308803043644,
+      "prefill_stdev_percent": 0.13642648647659913,
+      "decode_tok_s_samples": [34.581634725439194, 34.566610914273326, 34.555273412614035],
+      "decode_tok_s_median": 34.566610914273326,
+      "decode_stdev_percent": 0.038255251019511195,
+      "tracked_peak_gib": 15.720211334526539,
+      "sampled_device_peak_gib": 16.1142578125,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "tracked_bytes_after_close": 0,
+      "prefill_delta_vs_prior_independent_percent": 0.9073995702682636,
+      "decode_delta_vs_prior_independent_percent": 0.1742591726926701,
+      "prefill_delta_vs_llamacpp_hip_percent": 3.187311734857312,
+      "prefill_margin_vs_hip_plus_1_percent_gate_percent": 2.1656551830270265,
+      "decode_margin_vs_hip_plus_1_percent_gate_percent": 3.9496028485444645,
+      "source": "/tmp/qwen36-gdn-compact-peer-independent-xtx-1024.json",
+      "source_sha256": "1628de1597639d842a580dd7a992c919a83c651cb86ac0177b81ac8c1febb9db"
+    },
+    "4096": {
+      "prefill_tok_s_samples": [988.9075636752314, 987.8087017653517, 987.7478686519411],
+      "prefill_tok_s_median": 987.8087017653517,
+      "prefill_stdev_percent": 0.06607537830432433,
+      "decode_tok_s_samples": [31.43521950513445, 31.420819321724117, 31.414539881198678],
+      "decode_tok_s_median": 31.420819321724117,
+      "decode_stdev_percent": 0.0337426864781502,
+      "tracked_peak_gib": 16.367618195712566,
+      "sampled_device_peak_gib": 16.7578125,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "tracked_bytes_after_close": 0,
+      "prefill_delta_vs_prior_independent_percent": 0.48083466469375225,
+      "decode_delta_vs_prior_independent_percent": 0.17566629332044226,
+      "prefill_delta_vs_llamacpp_hip_percent": 4.33867856780652,
+      "prefill_margin_vs_hip_plus_1_percent_gate_percent": 3.3056223443628907,
+      "decode_margin_vs_hip_plus_1_percent_gate_percent": -4.454170452343542,
+      "source": "/tmp/qwen36-gdn-compact-peer-independent-xtx-4096.json",
+      "source_sha256": "516f81275b64095d37355dd866b90fbccecd2b57c68a97677b2847008fd7b48a"
+    }
+  },
+  "prior_independent_matrix": {
+    "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json",
+    "prefill_tok_s": [965.209103187136, 1003.205718663584, 983.0817041495385],
+    "decode_tok_s": [33.56868733728038, 34.506480207338655, 31.36572032345864],
+    "tracked_peak_gib": [15.605462968349457, 15.720211334526539, 16.367618195712566]
+  },
+  "validation": {
+    "all_prefill_hip_plus_1_percent_gates_pass": true,
+    "all_decode_non_regressive_vs_prior_independent": true,
+    "all_tracked_peaks_byte_equal_to_prior_independent": true,
+    "all_final_token_ids_exact": true,
+    "all_final_logits_finite": true,
+    "all_tracked_bytes_after_close_zero": true,
+    "memory_gate_status": "unchanged and still fails the lower Vulkan whole-device peak-delta floor",
+    "decode_gate_status": "512 and 1024 pass; 4096 remains below the frozen HIP+1% cross-engine gate",
+    "mtp_and_dflash_status": "unchanged; compact peer-GDN is prompt-prefill-only and the retained complete/smoke safeguards remain authoritative"
+  },
+  "decision": "Publish as the independent package-default XTX prefill topline. M512 now independently clears llama.cpp HIP by 1.326% and its frozen HIP+1% gate by 0.323%; M1K/M4K pass by 2.166%/3.306%. This closes the requested prefill target without a decode, tracked-memory, token, finite-logit, or lifecycle regression. It does not close the separate memory, 4K decode, or Vulkan MTP blockers."
+}
