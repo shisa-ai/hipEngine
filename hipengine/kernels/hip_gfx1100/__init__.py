@@ -254,6 +254,17 @@ GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (5_120, 10_240): {512: 2_048, 768: 2_048, 1_024: 512, 1_280: 512, 4_096: 256},
     (5_120, 1_024): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
 }
+# Zero-workspace rocBLAS solution indices selected by exact effective GEMM
+# shape. Each preserves every FP16 output bit versus standard dispatch and wins
+# on both gfx1100 boards; absent shapes deliberately keep rocBLAS standard.
+GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX = "5.2.0.dabb6df2b98"
+GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
+    (512, 5_120, 1_024): -1_140_856_081,
+    (512, 5_120, 2_048): -1_140_856_092,
+    (4_096, 5_120, 512): -1_140_855_996,
+    (4_096, 17_408, 512): -1_140_855_997,
+    (4_096, 6_144, 512): -1_140_855_996,
+}
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
@@ -710,6 +721,8 @@ __all__ = [
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+    "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

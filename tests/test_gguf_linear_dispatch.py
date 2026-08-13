@@ -11,6 +11,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -165,6 +166,30 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     )
 
 
+def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -> None:
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+        None,
+    ) == "5.2.0.dabb6df2b98"
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+        None,
+    ) == {
+        (512, 5_120, 1_024): -1_140_856_081,
+        (512, 5_120, 2_048): -1_140_856_092,
+        (4_096, 5_120, 512): -1_140_855_996,
+        (4_096, 17_408, 512): -1_140_855_997,
+        (4_096, 6_144, 512): -1_140_855_996,
+    }
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+        None,
+    ) is None
+
+
 def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None:
     weight = _fake_weight(
         layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
@@ -293,6 +318,7 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "dequant_library": "dequant-library",
         "cast_library": "cast-library",
         "rocblas": "rocblas-handle",
+        "solution_index": None,
         "runtime": "runtime-sentinel",
     }
 
@@ -462,6 +488,10 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
         dequant_library="dequant-library",
         cast_library="cast-library",
         rocblas="rocblas-handle",
+        solution_indices_by_gemm_shape={
+            (512, 5120, 2048): -1_140_856_092,
+            (4096, 5120, 512): -1_140_855_996,
+        },
     )
     assert session.tile_out_features(511, 5120, 10240) is None
     assert session.tile_out_features(513, 5120, 10240) == 2048
@@ -470,6 +500,9 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
     assert session.tile_out_features(1000, 5120, 10240) == 1024
     assert session.tile_out_features(1024, 5120, 10240) == 512
     assert session.tile_out_features(1024, 5120, 1024) is None
+    assert session.solution_index(512, 5120, 2048) == -1_140_856_092
+    assert session.solution_index(4096, 5120, 512) == -1_140_855_996
+    assert session.solution_index(1024, 5120, 512) is None
 
 
 def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() -> None:

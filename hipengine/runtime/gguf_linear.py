@@ -410,6 +410,7 @@ class T16F16RocblasPrefillSession:
     dequant_library: object
     cast_library: object
     rocblas: object
+    solution_indices_by_gemm_shape: Mapping[tuple[int, int, int], int] | None = None
     q4_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
     q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
     x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
@@ -461,6 +462,24 @@ class T16F16RocblasPrefillSession:
 
         normalized = normalize_policy(self.tile_out_features_by_shape, required=True)
         object.__setattr__(self, "tile_out_features_by_shape", normalized)
+        solution_indices: dict[tuple[int, int, int], int] = {}
+        for raw_shape, raw_index in (self.solution_indices_by_gemm_shape or {}).items():
+            if len(raw_shape) != 3:
+                raise ValueError(
+                    "T16 F16/rocBLAS solution policies require (M, K, N) shapes"
+                )
+            shape = tuple(int(value) for value in raw_shape)
+            index = int(raw_index)
+            if any(value <= 0 for value in shape) or shape[1] % 256:
+                raise ValueError("T16 F16/rocBLAS solution shapes must be valid")
+            if not -(1 << 31) <= index < (1 << 31):
+                raise ValueError("T16 F16/rocBLAS solution indices must fit int32")
+            solution_indices[shape] = index
+        object.__setattr__(
+            self,
+            "solution_indices_by_gemm_shape",
+            MappingProxyType(solution_indices),
+        )
         q4_normalized = normalize_policy(
             self.q4_tile_out_features_by_shape or {}, required=False
         )
@@ -523,6 +542,20 @@ class T16F16RocblasPrefillSession:
             and shape[1:] == exact[1:]
         )
         return max(anchored, default=(0, None), key=lambda item: item[0])[1]
+
+    def solution_index(
+        self,
+        rows: int,
+        in_features: int,
+        tile_out_features: int,
+    ) -> int | None:
+        """Return the backend-qualified index for one effective tile GEMM."""
+
+        policies = self.solution_indices_by_gemm_shape
+        assert policies is not None
+        return policies.get(
+            (int(rows), int(in_features), int(tile_out_features))
+        )
 
     def activation_is_inplace(
         self,
@@ -3761,6 +3794,7 @@ def _launch_t16_f16_rocblas(
         dequant_library=session.dequant_library,
         cast_library=session.cast_library,
         rocblas=session.rocblas,
+        solution_index=session.solution_index(rows, in_features, tile),
         runtime=kwargs.get("runtime"),
     )
 
