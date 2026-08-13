@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_cross_board_no_production_change",
+  "title": "Qwen3.6-27B bounded source-F16 two-stream tile pipeline screen",
+  "performance_claim": false,
+  "commit": "6ca12a709",
+  "hardware": [
+    {"device": "AMD Radeon RX 7900 XTX", "selector": "HIP_VISIBLE_DEVICES=1", "arch": "gfx1100"},
+    {"device": "AMD Radeon Pro W7900", "selector": "HIP_VISIBLE_DEVICES=0", "arch": "gfx1100"}
+  ],
+  "candidate": {
+    "description": "Ping-pong two F16 weight and output tiles across a nonblocking producer stream and the retained rocBLAS/cast consumer stream. Producer tile N+1 waits only for prior consumption of its slot; consumer tile N waits for producer-ready. Arithmetic and final output ownership are unchanged.",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "tracked_peak_change": 0,
+    "production_changed": false
+  },
+  "capacity_gate_m512": {
+    "existing_weight_plane_bytes": 35651584,
+    "existing_output_plane_bytes": 3145728,
+    "q5_k6144_n5120_tile1280": {
+      "one_weight_tile_bytes": 15728640,
+      "two_weight_tiles_bytes": 31457280,
+      "one_output_tile_bytes": 1310720,
+      "two_output_tiles_bytes": 2621440,
+      "fits_existing_planes": true
+    },
+    "q4_k6144_n5120_tile1024": {
+      "one_weight_tile_bytes": 12582912,
+      "two_weight_tiles_bytes": 25165824,
+      "one_output_tile_bytes": 1048576,
+      "two_output_tiles_bytes": 2097152,
+      "fits_existing_planes": true
+    }
+  },
+  "screens": {
+    "q5_recurrent_output_xtx_m512": {
+      "producer": "natural-octet Q5T16 source-F16",
+      "tile_out_features": 1280,
+      "tile_launches": 4,
+      "samples": 31,
+      "sequential_ms": 0.5446839928627014,
+      "pipeline_ms": 0.5525239706039429,
+      "speedup": 0.9858106106551868,
+      "delta_percent": 1.4393626109768354,
+      "paired_wins": "6/31",
+      "bf16_mismatches": 0,
+      "source": "/tmp/qwen36-q5-octet-pipeline-xtx-512.json",
+      "source_sha256": "cc30fc58b35cbedaa3ccdf626a4bff82cf6fd574d8d07da9146d456892b0d1e2"
+    },
+    "q4_attention_output_xtx_m512": {
+      "producer": "adjacent-pair Q4T16 source-F16",
+      "tile_out_features": 1024,
+      "tile_launches": 5,
+      "samples": 31,
+      "sequential_ms": 0.6374430060386658,
+      "pipeline_ms": 0.6284040212631226,
+      "speedup": 1.01438403394901,
+      "delta_percent": -1.4180067378439354,
+      "paired_wins": "21/31",
+      "bf16_mismatches": 0,
+      "source": "/tmp/qwen36-q4-pair-pipeline-xtx-512.json",
+      "source_sha256": "32c15dde1844cfa1dadbf3c7914d178ae87b524361d8dd8a7ca0cb71041b0489"
+    },
+    "q4_attention_output_w7900_m512": {
+      "producer": "adjacent-pair Q4T16 source-F16",
+      "tile_out_features": 1024,
+      "tile_launches": 5,
+      "samples": 31,
+      "sequential_ms": 0.6349239945411682,
+      "pipeline_ms": 0.6804019808769226,
+      "speedup": 0.9331601206140803,
+      "delta_percent": 7.162744946915955,
+      "paired_wins": "0/31",
+      "bf16_mismatches": 0,
+      "source": "/tmp/qwen36-q4-pair-pipeline-w7900-512.json",
+      "source_sha256": "cbfff4e2a0bb4df2b261c27fece26f1eb83f101c7b9bb66063bc2771d95fe61e"
+    }
+  },
+  "scripts": [
+    {"path": "/tmp/qwen36_q5_octet_pipeline_screen.py", "sha256": "3e4daf477cebfce12e1c7854a7a8f577b8bb8e8f642890adb5c1dc75038b4fc6"},
+    {"path": "/tmp/qwen36_q4_pair_pipeline_screen.py", "sha256": "df24fd7d9bcc0371cbaabcd54770227167d2b658c2639ab35adbbd279c876fc5"}
+  ],
+  "decision": "Reject and do not add streams, events, workspace partitioning, a runtime selector, or a rollback flag. Q5 loses on XTX, while the heavier Q4 threshold case is only modestly positive on XTX and decisively regresses W7900. Wider Q4/Q6 roles would require changing the independently qualified tile geometry to fit two weight planes and are not justified after the same-geometry cross-board failure."
+}
