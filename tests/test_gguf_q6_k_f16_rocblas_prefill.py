@@ -768,6 +768,59 @@ def test_q6_t16_f16_rocblas_actual_shapes_use_bounded_workspace_and_pass_quality
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+def test_q6_t16_planar_direct_tile_dequant_matches_independent_source_f16_bytes() -> None:
+    """The record-owned direct producer must preserve every source-F16 bit."""
+
+    from hipengine.core.hip import get_hip_runtime
+
+    direct_dequant = getattr(
+        q6_f16,
+        "gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct",
+        None,
+    )
+    assert callable(direct_dequant)
+    in_features = 512
+    out_features = 32
+    col_start = 16
+    col_count = 16
+    raw = _edge_q6_weight(out_features=out_features, in_features=in_features)
+    tiles = repack_gguf_q6_k_tile16_qmicro_planar(raw[None, ...]).tiles[0]
+    expected = _source_q6_f16_cpu(raw, in_features)[
+        col_start : col_start + col_count
+    ]
+    actual = np.empty_like(expected)
+    runtime = get_hip_runtime()
+    library = q6_f16.build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        tiles_dev = _device(tiles, runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        buffers.extend((tiles_dev, out_dev))
+        direct_dequant(
+            tiles_dev.ptr,
+            out_dev.ptr,
+            in_features,
+            out_features,
+            col_start=col_start,
+            col_count=col_count,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(actual), out_dev, actual.nbytes, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    np.testing.assert_array_equal(actual.view(np.uint16), expected.view(np.uint16))
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
 def test_q6_t16_planar_dequant_matches_independent_source_f16_bytes() -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -806,6 +859,26 @@ def test_q6_t16_planar_dequant_matches_independent_source_f16_bytes() -> None:
     np.testing.assert_array_equal(actual.view(np.uint16), expected.view(np.uint16))
     assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
     assert after["active_allocations"] == before["active_allocations"]
+
+
+def test_q6_t16_f16_rocblas_composite_uses_record_owned_direct_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[object, ...]] = []
+
+    def capture(*args, **kwargs) -> None:
+        captured.append(args)
+
+    monkeypatch.setattr(q6_f16, "_launch_t16_f16_rocblas", capture)
+    q6_f16.gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out(
+        1, 2, 3, 4, 5, 6, 512, 5_120, 1_024
+    )
+    assert len(captured) == 1
+    assert captured[0][0] == "bf16"
+    assert (
+        captured[0][1]
+        is q6_f16.gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct
+    )
 
 
 def test_q6_f16_rocblas_rejects_invalid_shapes_before_loading_libraries() -> None:

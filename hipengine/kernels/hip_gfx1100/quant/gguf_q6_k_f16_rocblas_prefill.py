@@ -31,11 +31,15 @@ _Q5_T16_TILE_DEQUANT_SYMBOL = (
 _T16_TILE_DEQUANT_SYMBOL = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile"
 )
+_T16_TILE_DEQUANT_DIRECT_SYMBOL = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct"
+)
 _DEQUANT_VARIANT = "raw_f16_source_local64"
 _FUSED_PRODUCER_VARIANT = "raw_f16_bf16_input_source_local64"
 _Q4_T16_TILE_DEQUANT_VARIANT = "t16_f16_tile_local64"
 _Q5_T16_TILE_DEQUANT_VARIANT = "t16_f16_tile_local64"
 _T16_TILE_DEQUANT_VARIANT = "t16_qmicro_planar_f16_tile_local64"
+_T16_TILE_DEQUANT_DIRECT_VARIANT = "t16_qmicro_planar_f16_tile_record256"
 _LINEAR_VARIANT = "f16_rocblas_source_bf16_{output_dtype}_out"
 _Q4_T16_LINEAR_VARIANT = "f16_rocblas_t16_bf16_bf16_out"
 _Q5_T16_LINEAR_VARIANT = "f16_rocblas_t16_bf16_bf16_out"
@@ -326,6 +330,34 @@ def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile(
     )
 
 
+def gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct(
+    tiles_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    col_start: int,
+    col_count: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expand complete K256xN16 qmicro records to source-exact F16."""
+
+    _launch_t16_dequantize_f16_tile(
+        _T16_TILE_DEQUANT_DIRECT_SYMBOL,
+        tiles_ptr,
+        out_ptr,
+        in_features,
+        out_features,
+        col_start=col_start,
+        col_count=col_count,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_dequantize_bf16_to_f16_source_fused(
     qweight_ptr: int,
     weight_f16_ptr: int,
@@ -563,7 +595,7 @@ def gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out(
 ) -> None:
     _launch_t16_f16_rocblas(
         "bf16",
-        gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile,
+        gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct,
         *args,
         **kwargs,
     )
@@ -615,6 +647,16 @@ def register_gguf_q6_k_f16_rocblas_prefill_kernels(
             _T16_TILE_DEQUANT_VARIANT,
         ),
         gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "dequant",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            _T16_TILE_DEQUANT_DIRECT_VARIANT,
+        ),
+        gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct,
         replace=replace,
     )
     register(
@@ -675,6 +717,7 @@ __all__ = [
     "gguf_q6_k_dequantize_bf16_to_f16_source_fused",
     "gguf_q6_k_dequantize_f16_source",
     "gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile",
+    "gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct",
     "gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out",
     "gguf_q6_k_f16_rocblas_bf16_bf16_out",
     "gguf_q6_k_f16_rocblas_bf16_f32_out",
