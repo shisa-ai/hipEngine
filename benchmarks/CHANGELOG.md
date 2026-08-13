@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-13
 
+- [dense-27B INT8 quality/runtime diagnostic; default unchanged] Qwen3.6-27B / Q4_K_M / gfx1100 complete 512/8 + 4K/16 and bounded mixed 8K/16K/32K: native 24Q/4KV FP32-scale pure INT8 fails 512/8 at **77.78%** minimum-prompt top-1; a selected 9-BF16/7-INT8 map passes measured quality but saves only **0.434 GiB** live while adding **0.448 GiB** peak at 32K, projects **7 GiB** of 256K prefill oracles, remains graph-unsafe, and executes eager decode **10.52%** below BF16 graph, so BF16 stays the sole supported/default route; `benchmarks/results/2026-08-13-qwen36-27b-int8-kv-fp32-mixed-layer-diagnostic.json`.
+
 - [blocked dense-27B native INT8 KV; temporal tail not selected] Qwen3.6-27B / Q4_K_M / W7900 mixed 4K/16 and host-emulated 32K/16: native no-mirror INT8 produces no quality row because the only direct consumer is specialized to 16Q/2KV rather than 27B's 24Q/4KV geometry; pure host-emulated INT8 beats recent 4K/8K BF16 tails on mean KL (`0.0000963` vs `0.001599/0.0009546`) at lower projected 256K K/V, so implement/gate the base consumer before any two-arena temporal policy; `benchmarks/results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json`.
 
 - [final prefill residual exhausted; retained package unchanged] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K: retain **965.209/1003.206/983.082 tok/s** with unchanged decode/peaks, achieving raw llama.cpp HIP parity at all shapes and HIP+1% at 1K/4K while 512 remains **0.928%** short; the fresh-profile-selected 41.024-ms exact-Q4/Q4 operation passes quality and XTX but fails W7900 complete-wall non-regression, so no remaining measured byte-neutral lane justifies reopening; `benchmarks/results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json`.

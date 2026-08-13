@@ -363,12 +363,18 @@ layers. Lower prefixes and pure INT8-only remain diagnostic-only behind
 layer-local BF16 prefill-oracle fix, prefix 8 passes full W7900 `128K/128`
 (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror), prefix 7 fails
 `128K/16` top-1, and pure INT8 fails `4K/1`. Dense Qwen3.6-27B does not inherit
-that result: its 24-query/4-KV-head geometry currently fails closed because the
-native INT8 decode specialization supports only 16/2/256. Add a CPU-reference
-kernel gate for 24/4/256 before running the model-quality ladder. The `4K`
-forced-long gate below is a quick 35B guard; promotion of a 24GB `128K/128` row
-also requires the same gate at `--prompt-lengths 128K`, `--decode-steps 128`, and
-`--max-sequence-length 131202`.
+that result. Its native 24-query/4-KV-head split-K consumer is now CPU-reference
+gated and traced, but pure FP32-scale INT8 fails the complete 512/8 prompt suite
+at `77.78%` minimum-prompt top-1. The measured 9-BF16/7-INT8 diagnostic map
+passes complete 512/8 and 4K/16 suites and bounded mixed 8K/16K/32K rows, but it
+is not a promotion candidate: its layer map was selected on the sole failing
+train prompt, GGUF prefill-oracle peak rises, graph capture is unsafe, and no
+256K capacity gate exists. Any successor must rerun 512/8 before 4K/16, include
+all category/heldout prompts, require no BF16 mirror, audit the exact layer
+partition, then pass graph/eager safety and a 24GB long-context capacity gate.
+The `4K` forced-long gate below is a quick 35B guard; promotion of a 24GB
+`128K/128` row also requires the same gate at `--prompt-lengths 128K`,
+`--decode-steps 128`, and `--max-sequence-length 131202`.
 
 ```bash
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
