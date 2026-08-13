@@ -319,6 +319,7 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "cast_library": "cast-library",
         "rocblas": "rocblas-handle",
         "solution_index": None,
+        "cast_activation": True,
         "runtime": "runtime-sentinel",
     }
 
@@ -418,6 +419,93 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         5_120,
     )
     assert kwargs["tile_out_features"] == 1024
+
+
+def test_q4_q6_t16_f16_rocblas_pair_reuses_one_activation_cast() -> None:
+    q4_weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    q6_weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    q4_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "f16_rocblas_t16_bf16_bf16_out",
+    )
+    q6_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (q4_key, q6_key)
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    session = Q6T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=4096 * 5120 * 2,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=2048 * 5120 * 2,
+        out_f16_ptr=0x50000000,
+        out_f16_nbytes=4096 * 2048 * 2,
+        tile_out_features_by_shape={(512, 5120, 1024): 1024},
+        q4_tile_out_features_by_shape={(512, 5120, 1024): 1024},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+        rocblas="rocblas-handle",
+        solution_indices_by_gemm_shape={
+            (512, 5120, 1024): -1_140_856_081,
+        },
+    )
+    register(q4_key, capture("q4"), replace=True)
+    register(q6_key, capture("q6"), replace=True)
+    try:
+        with q6_t16_f16_rocblas_prefill_session(session):
+            assert launch_gguf_linear_pair(
+                q4_weight,
+                q6_weight,
+                x_ptr=0x10000000,
+                out_a_ptr=0x20000000,
+                out_b_ptr=0x21000000,
+                rows=512,
+                in_features=5120,
+                out_features=1024,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _args, _kwargs in calls] == ["q4", "q6"]
+    assert calls[0][2]["cast_activation"] is True
+    assert calls[1][2]["cast_activation"] is False
+    assert all(
+        kwargs["solution_index"] == -1_140_856_081
+        for _label, _args, kwargs in calls
+    )
 
 
 def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:

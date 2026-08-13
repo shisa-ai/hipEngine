@@ -443,6 +443,7 @@ def _launch_t16_f16_rocblas(
     cast_library: ctypes.CDLL | None = None,
     rocblas: Rocblas | None = None,
     solution_index: int | None = None,
+    cast_activation: bool = True,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Run source-F16 arithmetic from a sole-resident T16 weight layout.
@@ -463,14 +464,15 @@ def _launch_t16_f16_rocblas(
             "out_features and tile_out_features must be tile16 aligned"
         )
     runtime = runtime or get_hip_runtime()
-    bf16_to_fp16(
-        x_ptr,
-        x_f16_ptr,
-        parsed_rows * hidden,
-        stream=stream,
-        library=cast_library,
-        runtime=runtime,
-    )
+    if cast_activation:
+        bf16_to_fp16(
+            x_ptr,
+            x_f16_ptr,
+            parsed_rows * hidden,
+            stream=stream,
+            library=cast_library,
+            runtime=runtime,
+        )
     active_rocblas = rocblas or get_rocblas()
     if output_dtype == "f32":
         # The bounded path currently writes FP16 rocBLAS output directly into
