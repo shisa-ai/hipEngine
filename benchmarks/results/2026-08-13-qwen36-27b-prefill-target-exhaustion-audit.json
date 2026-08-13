@@ -164,6 +164,12 @@
       "evidence": "actual FFN-gate representative is 0.900x at M512 and does not win uniformly across 512/1K/4K"
     },
     {
+      "lane": "bounded Q4T16 FFN-gate source-F16/hipBLASLt",
+      "status": "rejected_no_runtime_change",
+      "evidence": "best of 32 zero-algorithm-workspace heuristics is 0.691x/1.051x/1.183x retained exact T16 at M512/1K/4K; M512 loses 7/7 and the live handle adds 172 MiB of untracked device residency",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json"
+    },
+    {
       "lane": "bounded wider Q4 attention Q/QKV source-F16/rocBLAS",
       "status": "not_admitted_nonuniform",
       "evidence": "Q loses at 4K; QKV has only 2/7 4K wins and a noise-scale 1.008x ratio"
@@ -187,7 +193,7 @@
   "decision": {
     "objective_met": false,
     "finding": "The retained ladder improves conservative 512/1K/4K prefill by 10.08%/9.44%/8.73% with neutral decode, unchanged tracked residency, unchanged MTP dispatch, and passing complete quality. Even the non-topline compounded paired estimate remains 16.36%/11.97%/10.37% below clean llama.cpp HIP and needs 19.57%/13.60%/11.57% more hipEngine throughput merely for parity.",
-    "action": "Close the current optimization objective as exhausted under the no-regression, single-layout, byte-neutral constraints. Do not tune GDN, KV, attention, launch count, or already-rejected MMQ variants as a prefill-parity strategy.",
+    "action": "Close the current optimization objective as exhausted under the no-regression, single-layout, byte-neutral constraints. A post-closure zero-workspace hipBLASLt screen did not reopen it: the only large-row wins are non-uniform and the library handle regresses residency. Do not tune GDN, KV, attention, launch count, or already-rejected MMQ variants as a prefill-parity strategy.",
     "reopen_conditions": [
       "a materially new operation-complete sole-resident Q4 dataflow or representation",
       "a producer-fused transient transform that removes bounded dequant/cast/GEMM traffic without adding tracked workspace",
@@ -202,6 +208,7 @@
     "benchmarks/results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json",
     "benchmarks/results/2026-08-13-qwen36-27b-q4-narrow-attention-f16-prefill-retained.json",
     "benchmarks/results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json",
-    "benchmarks/results/2026-08-13-qwen36-27b-q4-linear-attention-gate-f16-prefill-rejected.json"
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-linear-attention-gate-f16-prefill-rejected.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json"
   ]
 }

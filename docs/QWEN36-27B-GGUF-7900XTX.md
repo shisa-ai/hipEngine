@@ -993,6 +993,15 @@ absolute rows. Compounding their paired ratios gives an explicitly non-topline
 candidate ledger and post-route profile are in
 [`the prefill target exhaustion audit`](../benchmarks/results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
 
+A post-closure attempt to reopen FFN gate/up with the existing zero-workspace
+hipBLASLt surface also fails before runtime work. Best-of-32 inclusive
+FFN-gate source-F16 is **0.691x/1.051x/1.183x** retained exact T16 at
+M512/1K/4K: every M512 tile loses, including **0/7** wins for the best tile.
+The large-row scheduling improvement is real, but non-uniform, and the live
+hipBLASLt handle additionally consumes **172 MiB** outside the tracked arena.
+No dispatch, decode, MTP, or package ownership changes survive
+([artifact](../benchmarks/results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json)).
+
 W7900 safeguard:
 
 | Metric | Fresh duplicated control | Single-layout candidate | Gate |
