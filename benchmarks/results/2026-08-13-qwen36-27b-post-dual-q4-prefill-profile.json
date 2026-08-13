@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_followups_exhausted",
+  "title": "Qwen3.6-27B M512 post-dual prefill profile and follow-up closure",
+  "performance_claim": false,
+  "parent_commit": "6d8da0157",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one prefill-only rocprofv3 kernel trace of cached current production at M512; profiler wall is diagnostic, not a throughput topline",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-dual-retained-prefill-profile-all-6d8da0157 -o qwen36-dual-retained-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-dual-retained-prefill-profile-all-6d8da0157/bench.json",
+    "selected_region_attempt": "The preferred --selected-regions attempt emitted no kernel rows because this libroctx64 lacks roctxProfilerResume/Pause. The retained trace uses a prefill-only child with zero decode tokens, matching the prior valid protocol without filtering."
+  },
+  "profile": {
+    "profiled_wall_ms": 890.5716901645064,
+    "kernel_sum_ms": 579.618862,
+    "kernel_dispatches": 3190,
+    "host_submission_sync_profiler_residual_ms": 310.95282816450645,
+    "generated_token_id": 9707,
+    "families": [
+      {"name": "dual Q4T16 FFN gate/up plus SiLU", "dispatches": 64, "kernel_ms": 206.972683, "kernel_share_percent": 35.708416},
+      {"name": "remaining exact dense Q4T16", "dispatches": 88, "kernel_ms": 89.390389, "kernel_share_percent": 15.422273},
+      {"name": "rocBLAS F16 GEMMs for bounded Q4/Q6", "dispatches": 552, "kernel_ms": 101.593, "kernel_share_percent": 17.527},
+      {"name": "exact dense Q5T16", "dispatches": 48, "kernel_ms": 60.011884, "kernel_share_percent": 10.353683},
+      {"name": "linear-attention recurrent GDN", "dispatches": 48, "kernel_ms": 30.125084, "kernel_share_percent": 5.197027},
+      {"name": "bounded Q6T16 to F16 producers", "dispatches": 288, "kernel_ms": 22.623409, "kernel_share_percent": 3.903158},
+      {"name": "bounded Q4T16 to F16 producers", "dispatches": 264, "kernel_ms": 16.698448, "kernel_share_percent": 2.880926},
+      {"name": "dense F32-weight projections", "dispatches": 96, "kernel_ms": 12.861121, "kernel_share_percent": 2.219589},
+      {"name": "flash attention", "dispatches": 16, "kernel_ms": 7.328245, "kernel_share_percent": 1.264313}
+    ],
+    "dual_q4_resources": {
+      "workgroup_size": 128,
+      "vgpr_count": 256,
+      "sgpr_count": 128,
+      "lds_bytes": 32768,
+      "scratch_bytes": 0,
+      "grid_x": 69632,
+      "grid_y": 2,
+      "mean_dispatch_ms": 3.233948171875
+    }
+  },
+  "comparison_to_pre_dual_profile": {
+    "prior_commit": "c2e2369c9",
+    "prior_profiled_wall_ms": 1062.101675197482,
+    "prior_kernel_sum_ms": 612.422593,
+    "prior_dispatches": 3318,
+    "wall_delta_percent": -16.150053148262124,
+    "kernel_sum_delta_percent": -5.356387,
+    "dispatch_delta": -128,
+    "profiler_residual_delta_percent": -30.850057,
+    "interpretation": "The retained operation-complete owner removes the prior 128 FFN Q4 projection launches and all 64 standalone SiLU launches, replacing them with 64 dual launches. It materially reduces both kernel and host/submission work."
+  },
+  "target_selection": {
+    "remaining_xtx_512_throughput_required_for_llamacpp_hip_parity_percent": 13.127969615900103,
+    "selected_family": "dual Q4T16 FFN gate/up plus SiLU",
+    "selected_family_kernel_share_percent": 35.708416,
+    "reason": "It is the only single family with enough isolated ceiling to close the remaining raw-parity gap. Its VGPR256/32-KiB geometry also exposes a concrete occupancy/dataflow hypothesis. Q5, GDN, attention, and residual families do not individually have enough ceiling.",
+    "followup_outcome": "All mechanism-driven exact follow-ups were rejected or noise. The retained zero-spill 32-column x 256-row kernel remains the local optimum; a future retry requires a fundamentally different dataflow or compiler schedule."
+  },
+  "followup_geometry_screen": {
+    "status": "retained_geometry_confirmed_no_runtime_change",
+    "protocol": "Actual immutable blk.0 FFN gate/up weights, at least three warmups, 9-31 alternating event samples per shape, and BF16-bit comparison to the unfused chain or retained library as applicable.",
+    "retained_32_columns_256_rows_chain_speedup": {"512": 1.1967525748418908, "1024": 1.21163399164832, "4096": 1.1538050252730827},
+    "candidates": {
+      "16_columns_512_rows": {"512": 0.338601698669982, "1024": 0.323601524658709, "4096": 0.27713500197618535, "wins": "0/27", "bf16_exact": true},
+      "16_columns_256_rows": {"512": 0.9501426543256456, "1024": 0.9384598796723737, "4096": 0.8271908260612496, "wins": "0/27", "bf16_exact": true},
+      "32_columns_128_rows": {"512": 1.1157217585293087, "1024": 1.0694665450539211, "4096": 1.0477301596449384, "wins_vs_chain": "27/27", "slower_than_retained": true, "bf16_exact": true},
+      "32_columns_192_rows": {"512": 1.0974347265400703, "1024": 1.0912218195852021, "4096": 1.1017595550413783, "wins_vs_chain": "27/27", "slower_than_retained": true, "bf16_exact": true},
+      "retained_32_columns_256_rows_launch_bound_2": {"direct_speedup_vs_launch_bound_1": {"512": 1.0001447558500565, "1024": 1.0012415669333143, "4096": 1.000730666325669}, "paired_wins": {"512": "7/15", "1024": "10/15", "4096": "10/15"}, "resources_unchanged": "VGPR256, SGPR128, LDS32768, scratch0", "decision": "noise; retain launch bound 1"},
+      "register_direct_exact_bf16_epilogue": {"direct_speedup_vs_retained": {"512": 0.9976801355847236, "1024": 0.9892160617517988, "4096": 1.0157165079694663}, "paired_wins": {"512": "8/15", "1024": "0/15", "4096": "12/15"}, "bf16_exact": true, "decision": "non-uniform; retain LDS epilogue"},
+      "eight_wave_32_columns_512_rows": {"direct_speedup_vs_retained": {"512": 0.8795873421061025, "1024": 0.8520779536113032, "4096": 0.9054829974318243}, "paired_wins": "0/45", "bf16_exact": true, "decision": "rejected; halved weight reread cannot offset local256 scheduling/occupancy loss"},
+      "48_columns_128_rows": {"direct_speedup_vs_retained": {"512": 0.45066939500473274, "1024": 0.4495539841288272, "4096": 0.4922158968335122}, "paired_wins": "0/45", "bf16_exact": true, "decision": "rejected; lower activation replay cannot offset 48-KiB LDS and cooperative-decode cost"},
+      "serialized_gate_up_b_fragments": {"xtx_direct_speedup_vs_retained": {"512": 1.0003104411484192, "768": 1.0006429417336322, "1024": 1.0024658563874387, "1280": 1.001760535327805}, "w7900_direct_speedup_vs_retained": {"512": 0.9958010925537881, "768": 0.9937694138261275, "1024": 0.9967084624940655, "1280": 1.0007863407896913}, "bf16_exact": true, "decision": "rejected cross-board; tiny XTX gain regresses W7900 at production chunk sizes"},
+      "quad_broadcast_q4_metadata": {"xtx_direct_speedup_vs_retained": {"512": 0.9057844643247529, "768": 0.9252230074983462, "1024": 0.9058205036862702, "4096": 0.9470670897620813}, "paired_wins": "0/60", "bf16_exact": true, "decision": "rejected; coalesced metadata loads are cheaper than 36 owner-masked DPP quad broadcasts"},
+      "k128_32_columns_128_rows_forced_two_block": {"xtx_direct_speedup_vs_retained": {"512": 0.32028630660512436, "1024": 0.32677814176899733, "4096": 0.2928254421678215}, "paired_wins": "0/45", "bf16_exact": true, "resources": "VGPR256, 678 VGPR spills, 2300 bytes/thread private segment", "decision": "rejected; forced occupancy contract spills catastrophically"},
+      "k128_32_columns_128_rows_natural_one_block": {"xtx_direct_speedup_vs_retained": {"512": 0.5263449570651388, "1024": 0.5085534214389421, "4096": 0.46773651158243185}, "paired_wins": "0/45", "bf16_exact": true, "resources": "VGPR256, 200 VGPR spills, 804 bytes/thread private segment", "decision": "rejected; natural launch bounds still spill and cannot expose the intended residency gain"}
+    },
+    "interpretation": "Larger row live ranges collapse compiler scheduling; smaller tiles lose weight/activation reuse; local256 loses despite halving weight rereads; and 48 columns loses despite lower activation replay. A two-block launch bound does not change resources and is noise, a direct-register exact epilogue is non-uniform, serial B loading regresses W7900, metadata broadcast serializes decode, and K128 staging spills even without a forced occupancy contract. Retain 32x256/lb1 and do not continue a blind tile, wave-count, launch-bound, epilogue, metadata-transport, or K-stage sweep.",
+    "sources": [
+      "/tmp/qwen36-q4-t16-dual-wmma-silu-16x512-screen.json",
+      "/tmp/qwen36-q4-t16-dual-wmma-silu-16x256-screen.json",
+      "/tmp/qwen36-q4-t16-dual-wmma-silu-32x128-screen.json",
+      "/tmp/qwen36-q4-t16-dual-wmma-silu-32x192-screen.json",
+      "/tmp/qwen36-q4-dual-lb1-vs-lb2-direct-ab.json",
+      "/tmp/qwen36-q4-dual-register-epilogue-direct-ab.json",
+      "/tmp/qwen36-q4-dual-eight-wave-direct-ab.json",
+      "/tmp/qwen36-q4-dual-48x128-corrected-direct-ab.json",
+      "/tmp/qwen36-q4-dual-serialized-b-direct-ab-xtx.json",
+      "/tmp/qwen36-q4-dual-serialized-b-direct-ab-w7900.json",
+      "/tmp/qwen36-q4-dual-quad-metadata-direct-ab-xtx.json",
+      "/tmp/qwen36-q4-dual-k128-32x128-direct-ab-xtx.json",
+      "/tmp/qwen36-q4-dual-k128-32x128-natural-direct-ab-xtx.json"
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-dual-retained-prefill-profile-all-6d8da0157/bench.json",
+    "bench_sha256": "6a03a7b1fec5c2b1d1beffa2cddcbffdb6c672e2028339ddc1eb9d51b3fd4220",
+    "kernel_trace": "/tmp/qwen36-27b-dual-retained-prefill-profile-all-6d8da0157/qwen36-dual-retained-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "537df61849b7c644edaa12201a5ef103d0ae1771a367eab6cd2a7c029972f29d",
+    "summary": "/tmp/qwen36-27b-dual-retained-prefill-profile-all-6d8da0157/summary.json",
+    "summary_sha256": "ac813f0f3fc087a6402473c995a37e7b6174dd9ff772d1561d84b320bce56543"
+  }
+}
