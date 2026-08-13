@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **859.869** | **28.324** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,18 +189,19 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **957.489** | **33.551** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **965.209** | **33.569** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
-F16 producers, and a bounded pair-produced full-attention-Q route. Decode and
-MTP retain exact owners. The latest independent XTX matrix is
-**957.489/995.070/983.483 tok/s** at 512/1K/4K with unchanged tracked peaks.
-It is **0.74% below** llama.cpp HIP at 512, while 1K and 4K lead raw HIP by
-**1.43%/3.88%** and clear the frozen HIP+1% gates by **0.43%/2.85%**. Memory,
-4K decode, and Vulkan MTP remain blocked. Evidence:
-[`retained pair-produced full-attention Q`](results/2026-08-13-qwen36-27b-q4-pair-fullq-engine-retained.json).
+F16 producers, bounded pair-produced full-attention Q, and pair-only Q4 gates
+behind the 24 admitted Q6-QKV peers. Decode and MTP retain exact owners. The
+latest independent XTX matrix is **965.209/1003.206/983.082 tok/s** at
+512/1K/4K with unchanged tracked peaks. It leads llama.cpp HIP by
+**0.06%/2.26%/3.84%**; 1K and 4K clear the frozen HIP+1% gates by
+**1.25%/2.81%**, while 512 is only **0.93%** short. Memory, 4K decode, and
+Vulkan MTP remain blocked. Evidence:
+[`retained pair-only Q6-QKV/Q4-gate route`](results/2026-08-13-qwen36-27b-q6-qkv-q4-gate-pair-only-engine-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
