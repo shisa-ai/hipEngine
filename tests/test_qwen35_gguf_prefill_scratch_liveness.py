@@ -247,6 +247,52 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             )
 
 
+@pytest.mark.parametrize(
+    ("rows", "expected_intervals"),
+    (
+        (768, {(512, 1_023)}),
+        (1_024, {(1_024, 2_047)}),
+        (2_048, set()),
+        (4_096, set()),
+    ),
+)
+def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
+    monkeypatch, rows: int, expected_intervals: set[tuple[int, int]]
+) -> None:
+    runner = _fake_dense_qwen36_runner()
+    runner._cast_library = lambda: "cast-library"
+    scratch = SimpleNamespace(
+        rows=rows,
+        q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
+        q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
+        q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
+    )
+    fake_rocblas = SimpleNamespace(version_string=lambda: "unqualified")
+    session = SimpleNamespace(
+        runner=runner,
+        _bulk_prefill_scratch=scratch,
+        use_q6_f16_rocblas_prefill=None,
+        _q6_f16_rocblas_prefill_library="dequant-library",
+        _q6_f16_rocblas=fake_rocblas,
+        compiler_version=None,
+        require_cached_build=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "q6_t16_f16_rocblas_prefill_session",
+        lambda owner: owner,
+    )
+
+    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+        session
+    )
+
+    pair_only = owner.pair_only_second_operand_policies
+    assert pair_only is not None
+    intervals = next(iter(pair_only.values()), {})
+    assert set(intervals) == expected_intervals
+
+
 def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
     allocations = _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)

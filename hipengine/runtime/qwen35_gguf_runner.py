@@ -13890,7 +13890,24 @@ class Qwen35GGUFResidentSession:
             for rows, tile in row_policy.items()
             if int(rows) <= int(scratch.rows)
         }
-        pair_only_policies = policy.get("pair_only_second_operand_policies", {})
+        raw_pair_only_policies = policy.get(
+            "pair_only_second_operand_policies", {}
+        )
+        request_rows = int(scratch.rows)
+        pair_only_policies = {
+            key: MappingProxyType(
+                {
+                    interval: spec
+                    for interval, spec in intervals.items()
+                    if interval[0] <= request_rows <= interval[1]
+                }
+            )
+            for key, intervals in raw_pair_only_policies.items()
+            if any(
+                interval[0] <= request_rows <= interval[1]
+                for interval in intervals
+            )
+        }
         all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
         if not all_shape_tiles:
             return q6_t16_f16_rocblas_prefill_session(None)
