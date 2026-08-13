@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.ops import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as t16_prefill
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     build_gguf_k_t16_selected_prefill,
     gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
@@ -95,6 +96,25 @@ def _weight(ptr: int, *, in_features: int = 256, out_features: int = 16) -> Qwen
         allocations=MappingProxyType({"tiles": allocation}),
         backend="hip_gfx1100",
     )
+
+
+def test_q4_t16_unequal_dual_prefill_leaf_contract() -> None:
+    wrapper = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        None,
+    )
+    assert callable(wrapper)
+    source = t16_prefill._SOURCE.read_text(encoding="utf-8")
+    assert "torch::Tensor" not in source
+    assert (
+        "hipengine_gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out"
+        in source
+    )
+    with pytest.raises(ValueError, match="out_features_a must be at least out_features_b"):
+        wrapper(1, 2, 3, 4, 5, 512, 5_120, 6_144, 10_240)
+    with pytest.raises(ValueError, match="multiples of 32"):
+        wrapper(1, 2, 3, 4, 5, 512, 5_120, 10_240, 6_160)
 
 
 def test_q4_t16_dense_dispatch_uses_one_tiles_abi_for_decode_and_prefill() -> None:
@@ -353,6 +373,112 @@ def test_q4_t16_dense_wmma_prefill_matches_cpu_reference(rows: int) -> None:
     # differ near zero while BF16-scale outputs remain bounded.
     np.testing.assert_allclose(actual, expected, rtol=0.012, atol=0.5)
     assert np.isfinite(actual).all()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [512, 513, 1_024])
+def test_q4_t16_dense_unequal_dual_wmma_matches_singletons(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    wrapper = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        None,
+    )
+    assert callable(wrapper)
+    runtime = get_hip_runtime()
+    in_features = 256
+    out_features_a = 96
+    out_features_b = 64
+    raw_a = make_q4_k_weight(out_features_a, in_features)
+    raw_b = np.roll(
+        make_q4_k_weight(out_features_b, in_features), shift=1, axis=0
+    ).copy()
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(0x36D00 + rows)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    expected_a = np.zeros((rows, out_features_a), dtype=np.uint16)
+    expected_b = np.zeros((rows, out_features_b), dtype=np.uint16)
+    actual_a = np.zeros_like(expected_a)
+    actual_b = np.zeros_like(expected_b)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        expected_a_dev = malloc(expected_a.nbytes, runtime=runtime)
+        expected_b_dev = malloc(expected_b.nbytes, runtime=runtime)
+        actual_a_dev = malloc(actual_a.nbytes, runtime=runtime)
+        actual_b_dev = malloc(actual_b.nbytes, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                expected_a_dev,
+                expected_b_dev,
+                actual_a_dev,
+                actual_b_dev,
+            )
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(
+            tiles_a_dev, host_array_ptr(tiles_a), runtime=runtime
+        )
+        copy_host_to_device(
+            tiles_b_dev, host_array_ptr(tiles_b), runtime=runtime
+        )
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            expected_a_dev.ptr,
+            rows,
+            in_features,
+            out_features_a,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_b_dev.ptr,
+            expected_b_dev.ptr,
+            rows,
+            in_features,
+            out_features_b,
+            library=library,
+            runtime=runtime,
+        )
+        wrapper(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            actual_a_dev.ptr,
+            actual_b_dev.ptr,
+            rows,
+            in_features,
+            out_features_a,
+            out_features_b,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for host, device in (
+            (expected_a, expected_a_dev),
+            (expected_b, expected_b_dev),
+            (actual_a, actual_a_dev),
+            (actual_b, actual_b_dev),
+        ):
+            copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
