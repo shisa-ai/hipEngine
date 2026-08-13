@@ -13767,6 +13767,31 @@ class Qwen35GGUFResidentSession:
             # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
             # this route remains inside hipEngine's existing tracked arena.
             self._q6_f16_rocblas.set_workspace(0, 0)
+        solution_version_prefix = str(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+                "",
+            )
+        )
+        raw_solution_indices = backend_package_capability(
+            self.runner.backend,
+            "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+            {},
+        )
+        solution_indices = (
+            {
+                tuple(int(value) for value in shape): int(index)
+                for shape, index in raw_solution_indices.items()
+                if isinstance(shape, tuple) and len(shape) == 3
+            }
+            if isinstance(raw_solution_indices, Mapping)
+            and solution_version_prefix
+            and self._q6_f16_rocblas.version_string().startswith(
+                solution_version_prefix
+            )
+            else {}
+        )
         owner = Q6T16F16RocblasPrefillSession(
             min_rows=min(shape[0] for shape in all_shape_tiles),
             max_rows=max(shape[0] for shape in all_shape_tiles),
@@ -13791,6 +13816,7 @@ class Qwen35GGUFResidentSession:
             dequant_library=self._q6_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
             rocblas=self._q6_f16_rocblas,
+            solution_indices_by_gemm_shape=solution_indices,
         )
         return q6_t16_f16_rocblas_prefill_session(owner)
 

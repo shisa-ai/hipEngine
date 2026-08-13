@@ -442,6 +442,7 @@ def _launch_t16_f16_rocblas(
     dequant_library: ctypes.CDLL | None = None,
     cast_library: ctypes.CDLL | None = None,
     rocblas: Rocblas | None = None,
+    solution_index: int | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Run source-F16 arithmetic from a sole-resident T16 weight layout.
@@ -497,6 +498,7 @@ def _launch_t16_f16_rocblas(
             in_features=hidden,
             out_features=col_count,
             stream=stream,
+            solution_index=solution_index,
         )
         fp16_to_bf16_strided_rows(
             out_tile_f16_ptr,

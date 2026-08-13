@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **766.203** | **28.318** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **767.745** | **28.325** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -40,17 +40,17 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **852.668** | **33.513** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **855.960** | **33.499** |
 
 The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
-source-F16 prefill plus an exact operation-complete Q4 gate/up+SiLU owner;
-decode and MTP retain their exact owners. The new sole-T16 dual-output dataflow
-improves XTX 512/1K/4K full prefill by **5.80%/6.21%/6.02%** in seven-pair A/B
-and establishes independent **852.668/914.600/901.068 tok/s** rows with no
-tracked-memory change. It is not yet a cross-engine win: llama.cpp HIP remains
-faster for prefill, Vulkan remains lower-memory, and Vulkan wins selected MTP
-plus 4K AR decode. Evidence:
-[`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json).
+source-F16 prefill, an exact operation-complete Q4 gate/up+SiLU owner, and
+rocBLAS-version/shape-scoped zero-workspace FP16 GEMM solutions. Decode and MTP
+retain their exact owners. The latest independent XTX matrix is
+**855.960/917.774/912.359 tok/s** at 512/1K/4K, with no tracked-memory change.
+It is not yet a cross-engine win: llama.cpp HIP remains faster for prefill,
+Vulkan remains lower-memory, and Vulkan wins selected MTP plus 4K AR decode.
+Evidence: [`rocBLAS solution indices`](results/2026-08-13-qwen36-27b-rocblas-solution-indices-retained.json)
+and [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -147,14 +147,14 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **766.203 tok/s** | **28.318 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
-| 1024/128 | **818.097 tok/s** | **28.873 tok/s** | 15.720 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
-| 4096/128 | **791.953 tok/s** | **26.186 tok/s** | 16.368 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN package snapshot |
+| 512/128 | **767.745 tok/s** | **28.325 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q6-F16 + dual Q4 FFN + selected rocBLAS snapshot |
+| 1024/128 | **816.190 tok/s** | **28.811 tok/s** | 15.720 GiB | Standard rocBLAS control (no selected 1K shape) |
+| 4096/128 | **800.306 tok/s** | **26.177 tok/s** | 16.368 GiB | Current selected rocBLAS shape policy |
 
-These rows use one discarded warmup plus three measured PM4 resets. The latest
-operation-complete sole-T16 Q4 gate/up+SiLU owner improves counterbalanced
-W7900 512/1K/4K full prefill **+5.43%/+5.78%/+5.43%** with 21/21 wins, while
-decode ownership and tracked residency remain unchanged.
+These rows use one discarded warmup plus three measured PM4 resets. Exact,
+zero-workspace selected rocBLAS FP16 GEMMs improve counterbalanced W7900 full
+prefill by **+0.17%/+1.32%** at 512/4K (6/7 and 7/7 wins); no selected 1K
+shape exists, and decode ownership plus tracked residency remain unchanged.
 Against the same-commit diagnostic dual-layout rollback, the earlier shared
 package default improves
 prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
@@ -196,9 +196,9 @@ reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Gate status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **852.668 tok/s** | **33.513 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **914.600 tok/s** | **34.539 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
-| 4096/128 | **901.068 tok/s** | **31.413 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
+| 512/128 | **855.960 tok/s** | **33.499 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **917.774 tok/s** | **34.534 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **912.359 tok/s** | **31.335 tok/s** | **16.368 GiB** | prefill fail / decode fail / memory fail |
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
@@ -228,7 +228,12 @@ is now **852.668/914.600/901.068 tok/s**, still **11.60%/6.77%/4.82% below**
 clean llama.cpp HIP and requiring **+13.13%/+7.26%/+5.07%** more throughput for
 raw parity. The objective therefore remains active; select the next lane from a
 fresh retained-path profile rather than the obsolete exhaustion profile.
-Evidence: [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json)
+A subsequent exact rocBLAS solution-index policy improves counterbalanced XTX
+full prefill **+0.43%/+1.33%** at 512/4K and W7900 **+0.17%/+1.32%**, with
+unqualified shapes and rocBLAS versions falling back to standard dispatch. The
+independent XTX deficit is now **11.26%/6.45%/3.63%** at 512/1K/4K. Evidence:
+[`rocBLAS solution indices`](results/2026-08-13-qwen36-27b-rocblas-solution-indices-retained.json),
+[`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
 and the now-historical
 [`prefill exhaustion audit`](results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
 
