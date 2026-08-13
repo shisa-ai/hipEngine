@@ -46,6 +46,7 @@ _T16_TILE_DEQUANT_VARIANT = "t16_qmicro_planar_f16_tile_local64"
 _T16_TILE_DEQUANT_DIRECT_VARIANT = "t16_qmicro_planar_f16_tile_record256"
 _LINEAR_VARIANT = "f16_rocblas_source_bf16_{output_dtype}_out"
 _Q4_T16_LINEAR_VARIANT = "f16_rocblas_t16_bf16_bf16_out"
+_Q4_T16_PAIR_LINEAR_VARIANT = "f16_rocblas_t16_pair_bf16_bf16_out"
 _Q5_T16_LINEAR_VARIANT = "f16_rocblas_t16_bf16_bf16_out"
 _T16_LINEAR_VARIANT = "f16_rocblas_t16_qmicro_planar_bf16_{output_dtype}_out"
 _QK_K = 256
@@ -616,6 +617,14 @@ def gguf_q4_k_t16_f16_rocblas_bf16_bf16_out(*args, **kwargs) -> None:
     )
 
 
+def gguf_q4_k_t16_f16_rocblas_pair_bf16_bf16_out(*args, **kwargs) -> None:
+    """Run the bounded Q4 chain with its exact adjacent-pair producer."""
+
+    _launch_t16_f16_rocblas(
+        "bf16", gguf_q4_k_t16_dequantize_f16_tile_pair, *args, **kwargs
+    )
+
+
 def gguf_q5_k_t16_f16_rocblas_bf16_bf16_out(*args, **kwargs) -> None:
     _launch_t16_f16_rocblas(
         "bf16", gguf_q5_k_t16_dequantize_f16_tile, *args, **kwargs
@@ -715,6 +724,16 @@ def register_gguf_q6_k_f16_rocblas_prefill_kernels(
         KernelKey(
             "hip_gfx1100",
             "linear",
+            "gguf_q4_k_t16_v1",
+            _Q4_T16_PAIR_LINEAR_VARIANT,
+        ),
+        gguf_q4_k_t16_f16_rocblas_pair_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
             "gguf_q5_k_t16_v1",
             _Q5_T16_LINEAR_VARIANT,
         ),
@@ -755,6 +774,7 @@ __all__ = [
     "gguf_q4_k_t16_dequantize_f16_tile",
     "gguf_q4_k_t16_dequantize_f16_tile_pair",
     "gguf_q4_k_t16_f16_rocblas_bf16_bf16_out",
+    "gguf_q4_k_t16_f16_rocblas_pair_bf16_bf16_out",
     "gguf_q5_k_t16_dequantize_f16_tile",
     "gguf_q5_k_t16_f16_rocblas_bf16_bf16_out",
     "gguf_q6_k_dequantize_bf16_to_f16_source_fused",

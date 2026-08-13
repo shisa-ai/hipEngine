@@ -250,6 +250,24 @@ GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
     (6_144, 5_120): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
 }
+# Registered linear-variant overrides for source-F16 chains. Shape and inclusive
+# row intervals are model-scoped by the runner policy; absent intervals retain
+# each quant's ordinary registered composite. The disjoint K/V M4096 singleton
+# deliberately does not extrapolate through the mixed M1280 boundary.
+GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
+    "gguf_q4_k_t16_v1": {
+        (17_408, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (5_120, 1_024): {
+            (512, 1_024): "f16_rocblas_t16_pair_bf16_bf16_out",
+            (4_096, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (6_144, 5_120): {
+            (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+    },
+}
 # Quality-gated Q5T16 recurrent-output policy. The K6,144 activation is cast in
 # its dead input, preserving the sole resident T16 payload and bounded workspace.
 GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
@@ -733,6 +751,7 @@ __all__ = [
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
     "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+    "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
