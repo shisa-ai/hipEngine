@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B post-record-owned-Q6 retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "5d046e0d7",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached selector-unset prefill-only M512 rocprofv3 kernel trace after exact record-owned Q6 producer promotion; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-post-q6-direct-profile-5d046e0d7 -o qwen36-post-q6-direct-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build"
+  },
+  "profile": {
+    "profiled_wall_ms": 871.3526171632111,
+    "kernel_sum_ms": 525.366,
+    "kernel_dispatches": 3750,
+    "profiler_host_submission_sync_residual_ms": 345.9866171632111,
+    "tracked_peak_gib": 15.605462968349457,
+    "generated_preview_token_id": 9707,
+    "families": [
+      {
+        "name": "dual Q4T16 FFN gate/up plus SiLU",
+        "dispatches": 64,
+        "kernel_ms": 208.1,
+        "kernel_share_percent": 39.610481074146406
+      },
+      {
+        "name": "bounded source-F16 rocBLAS GEMMs",
+        "dispatches": 744,
+        "kernel_ms": 119.592,
+        "kernel_share_percent": 22.763559118785764
+      },
+      {
+        "name": "remaining exact dense Q4T16",
+        "dispatches": 40,
+        "kernel_ms": 42.33,
+        "kernel_share_percent": 8.057240095476297
+      },
+      {
+        "name": "linear-attention prepare/conv/GDN/gate",
+        "dispatches": 240,
+        "kernel_ms": 41.623,
+        "kernel_share_percent": 7.922667245310889
+      },
+      {
+        "name": "unequal Q4T16 QKV/gate pair",
+        "dispatches": 48,
+        "kernel_ms": 36.715,
+        "kernel_share_percent": 6.98846137740166
+      },
+      {
+        "name": "bounded Q4T16 to F16 producers",
+        "dispatches": 264,
+        "kernel_ms": 16.725,
+        "kernel_share_percent": 3.183494934959629
+      },
+      {
+        "name": "other norms, residuals, fills, copies and control",
+        "dispatches": 846,
+        "kernel_ms": 14.2,
+        "kernel_share_percent": 2.7028776129403123
+      },
+      {
+        "name": "dense F32-weight projections",
+        "dispatches": 96,
+        "kernel_ms": 12.755,
+        "kernel_share_percent": 2.427831264299555
+      },
+      {
+        "name": "bounded Q6T16 to F16 producers",
+        "dispatches": 288,
+        "kernel_ms": 9.437,
+        "kernel_share_percent": 1.7962715516420933
+      },
+      {
+        "name": "bounded Q5T16 to F16 producers",
+        "dispatches": 192,
+        "kernel_ms": 8.258,
+        "kernel_share_percent": 1.5718565723704998
+      },
+      {
+        "name": "flash attention",
+        "dispatches": 16,
+        "kernel_ms": 7.407,
+        "kernel_share_percent": 1.4098742590879503
+      },
+      {
+        "name": "BF16 to FP16 activation casts",
+        "dispatches": 168,
+        "kernel_ms": 4.106,
+        "kernel_share_percent": 0.781550385826262
+      },
+      {
+        "name": "FP16 to BF16 output casts",
+        "dispatches": 744,
+        "kernel_ms": 4.101,
+        "kernel_share_percent": 0.7805986683569169
+      }
+    ]
+  },
+  "comparison_to_post_unequal_profile": {
+    "prior_commit": "e397d651d",
+    "kernel_sum_ms": {
+      "prior": 539.971518,
+      "current": 525.366,
+      "delta_ms": -14.605518,
+      "delta_percent": -2.704868222327228
+    },
+    "dispatches": {
+      "prior": 3750,
+      "current": 3750,
+      "delta": 0
+    },
+    "q6_producer": {
+      "prior_ms": 22.962667,
+      "current_ms": 9.437,
+      "saved_ms": 13.525667,
+      "delta_percent": -58.90285740763475,
+      "dispatches": 288
+    },
+    "intended_window_accounts_for_kernel_sum_delta_percent": 92.60655459121683,
+    "major_unrelated_checks_percent": {
+      "dual_q4_ffn": -0.18587395186294708,
+      "bounded_rocblas_gemms": -0.0689779077421071,
+      "gdn_pipeline": -0.2826335580957018,
+      "unequal_q4_pair": -0.6151466306233644,
+      "q4_producer": -0.700175088301136,
+      "f32_projection": -0.7025634230749533,
+      "q5_producer": -0.10167660548934254,
+      "flash_attention": 2.1706891921287497
+    }
+  },
+  "next_lane": {
+    "selected": "record-owned Q4T16-to-F16 bounded tile producer",
+    "reason": "The direct-Q6 mechanism validates producer-side packed-record ownership. The Q4 source-F16 producer is now the largest format-specific transform at 16.725 ms / 3.18% across 264 launches and uses the same scalar per-column ownership pattern. Q4 packed bytes are shared by adjacent columns, so a tile owner can load each packed byte once and emit both columns while preserving d/dmin/scale/min arithmetic and exact F16 bytes. This is new dataflow at the producer boundary, not a reopened projection geometry.",
+    "first_gate": "Add a separate exact Q4 pair-owned F16 producer. Require source-F16 byte exactness at nonzero tile offsets and producer-inclusive complete-chain wins at every existing production Q4 role/tile policy and M512/1K/4K on both boards. Stop or shape-scope if any required cell loses; only then promote the Q4 composite pointer.",
+    "ceiling_note": "Immediate isolated Q4 producer ceiling is 16.725 ms; no claim assumes all of it is removable.",
+    "excluded": [
+      "Do not reopen exact-Q4 singleton source-F16 admissions, dual-Q4 projection geometry, MMQ, GDN, attention, or launch-count-only work; those lanes remain closed by prior evidence.",
+      "Do not change changed-arithmetic scope; this candidate must preserve the exact source-F16 producer bytes feeding already-qualified consumers."
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-post-q6-direct-profile-5d046e0d7/bench.json",
+    "bench_sha256": "aa3ea93896d762501fb519487265f87cdfe901a884a4969e697bd521de7e3561",
+    "kernel_trace": "/tmp/qwen36-27b-post-q6-direct-profile-5d046e0d7/qwen36-post-q6-direct-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "df8bcf32975ce2891d575128566e0bb586e28535343045b952185e42db8938f2",
+    "summary": "/tmp/qwen36-27b-post-q6-direct-profile-5d046e0d7/summary.json",
+    "summary_sha256": "e1c7183ecbd71fa9b211f8c528a034a450808c8bac1ffcd965efc1a477432b82"
+  },
+  "decision": "Retain the exact direct-Q6 default, publish its reconciled 13.526-ms producer saving, and screen an exact Q4 pair-owned F16 producer next. This profiler artifact changes no production path and makes no new throughput claim."
+}
