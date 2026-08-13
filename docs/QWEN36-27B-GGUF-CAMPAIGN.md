@@ -8,11 +8,11 @@ fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on prefill,
 memory, 4K decode, and Vulkan MTP rather than claiming full parity, but the
 prefill lane reopened after materially new byte-neutral Q4 dual-output, exact
 unequal-Q4 and selective packed-column source-F16 owners, bounded pair-produced
-full-attention Q, Q5 source-F16 plus its exact natural-octet producer, the exact
-record-owned Q6 producer, and shape-scoped rocBLAS policies reduced the HIP
-comparator deficit to **0.74% at 512**, reached **1.43% raw-HIP lead at 1K**
-(and cleared HIP+1% by 0.43%), and cleared the frozen HIP+1% 4K gate by
-**2.85%**. See
+full-attention Q, ordered pair-only Q6-QKV/Q4-gate ownership, Q5 source-F16 plus
+its exact natural-octet producer, the exact record-owned Q6 producer, and
+shape-scoped rocBLAS policies reached **0.06% raw-HIP lead at 512**, reached
+**2.26% raw-HIP lead at 1K** (and cleared HIP+1% by 1.25%), and cleared the
+frozen HIP+1% 4K gate by **2.81%**. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 
