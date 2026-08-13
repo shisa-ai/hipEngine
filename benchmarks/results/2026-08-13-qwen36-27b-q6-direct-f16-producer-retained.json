@@ -4,7 +4,7 @@
   "status": "retained_exact_q6_producer_leaf",
   "title": "Qwen3.6-27B planar-Q6 record-owned F16 producer",
   "performance_claim": true,
-  "commit": "pending_this_commit",
+  "implementation_commit": "3ba29b6782f3cefdc6a0bcdd22fc85ae72181951",
   "model": {
     "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
     "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
