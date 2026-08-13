@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B post-Q5 retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "3be57c3e6",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached selector-unset prefill-only M512 rocprofv3 kernel trace after Q5T16 recurrent-output source-F16 promotion; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-post-q5-profile-3be57c3e6 -o qwen36-post-q5-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-post-q5-profile-3be57c3e6/bench.json"
+  },
+  "profile": {
+    "profiled_wall_ms": 892.4690610729158,
+    "kernel_sum_ms": 547.923145,
+    "kernel_dispatches": 3750,
+    "profiler_host_submission_sync_residual_ms": 344.5459160729158,
+    "tracked_peak_gib": 15.605462968349457,
+    "families": [
+      {
+        "name": "dual Q4T16 FFN gate/up plus SiLU",
+        "dispatches": 64,
+        "kernel_ms": 206.898064,
+        "kernel_share_percent": 37.7604169285457
+      },
+      {
+        "name": "bounded source-F16 rocBLAS GEMMs",
+        "dispatches": 744,
+        "kernel_ms": 119.96605,
+        "kernel_share_percent": 21.894685613253298
+      },
+      {
+        "name": "remaining exact dense Q4T16",
+        "dispatches": 88,
+        "kernel_ms": 89.588098,
+        "kernel_share_percent": 16.350486161704303
+      },
+      {
+        "name": "linear-attention prepare/conv/GDN/gate",
+        "dispatches": 240,
+        "kernel_ms": 41.042197,
+        "kernel_share_percent": 7.4905025229405116
+      },
+      {
+        "name": "bounded Q6T16 to F16 producers",
+        "dispatches": 288,
+        "kernel_ms": 22.843849,
+        "kernel_share_percent": 4.1691702948595095
+      },
+      {
+        "name": "bounded Q4T16 to F16 producers",
+        "dispatches": 264,
+        "kernel_ms": 16.733155,
+        "kernel_share_percent": 3.0539237396149783
+      },
+      {
+        "name": "dense F32-weight projections",
+        "dispatches": 96,
+        "kernel_ms": 12.861166,
+        "kernel_share_percent": 2.3472572964589773
+      },
+      {
+        "name": "bounded Q5T16 to F16 producers",
+        "dispatches": 192,
+        "kernel_ms": 8.250755,
+        "kernel_share_percent": 1.5058234125152716
+      },
+      {
+        "name": "flash attention",
+        "dispatches": 16,
+        "kernel_ms": 7.33407,
+        "kernel_share_percent": 1.3385216643841538
+      },
+      {
+        "name": "BF16 to FP16 activation casts",
+        "dispatches": 168,
+        "kernel_ms": 4.1202,
+        "kernel_share_percent": 0.7519667744643275
+      },
+      {
+        "name": "FP16 to BF16 output casts",
+        "dispatches": 744,
+        "kernel_ms": 4.133568,
+        "kernel_share_percent": 0.7544065326899086
+      },
+      {
+        "name": "other norms, residuals, fills, copies and control",
+        "dispatches": 846,
+        "kernel_ms": 14.151973,
+        "kernel_share_percent": 2.5828390585690624
+      }
+    ]
+  },
+  "comparison_to_pre_q5_profile": {
+    "prior_commit": "b387895de",
+    "profiled_wall_ms": {
+      "prior": 917.3804353922606,
+      "current": 892.4690610729158,
+      "delta_percent": -2.71549003644197
+    },
+    "kernel_sum_ms": {
+      "prior": 579.541962,
+      "current": 547.923145,
+      "delta_percent": -5.455828753259462
+    },
+    "dispatches": {
+      "prior": 3174,
+      "current": 3750,
+      "delta": 576
+    },
+    "q5_rewrite": {
+      "prior_exact_q5t16": {
+        "dispatches": 48,
+        "kernel_ms": 60.67951
+      },
+      "current_attributed_source_f16_chain": {
+        "activation_cast_dispatches": 48,
+        "activation_cast_ms": 0.691729,
+        "producer_dispatches": 192,
+        "producer_ms": 8.250755,
+        "rocblas_dispatches": 192,
+        "rocblas_ms": 20.054556,
+        "output_cast_dispatches": 192,
+        "output_cast_ms": 1.084375,
+        "total_dispatches": 624,
+        "total_ms": 30.081415
+      },
+      "kernel_ms_delta_percent": -50.42574503320808,
+      "dispatch_delta": 576
+    },
+    "unrelated_family_checks": {
+      "dual_q4_percent": -0.3272884552035671,
+      "exact_q4_percent": -0.5318257284141592,
+      "gdn_recurrent_percent": -0.4280921114672154,
+      "q6_producer_percent": 0.31950594907734775,
+      "q4_producer_percent": -0.07768346231411038,
+      "f32_projection_percent": 0.2617092292046985,
+      "flash_attention_percent": -0.594704732901985
+    },
+    "interpretation": "The promoted Q5 route removes about half of its former kernel window. Other large families are clock-flat, so the direction agrees with the counterbalanced full-engine win. The higher launch count is the expected bounded tile chain and is not itself a regression signal."
+  },
+  "remaining_exact_q4_role_census": {
+    "method": "The exact Q4 kernel has a 48-column output block. Grid X and immutable model inventory uniquely identify each output width; all rows use two 256-row Y blocks.",
+    "roles": [
+      {
+        "role": "linear-attention attn_gate K5120/N6144",
+        "dispatches": 48,
+        "kernel_ms": 38.531568,
+        "kernel_share_percent": 7.032294282804936
+      },
+      {
+        "role": "linear-attention Q4 attn_qkv K5120/N10240",
+        "dispatches": 24,
+        "kernel_ms": 28.600037,
+        "kernel_share_percent": 5.219716900259798
+      },
+      {
+        "role": "full-attention attn_q K5120/N12288",
+        "dispatches": 16,
+        "kernel_ms": 22.456493,
+        "kernel_share_percent": 4.098474978639568
+      }
+    ],
+    "inventory_note": "Exactly 24 of 48 linear-attention layers have Q4T16 attn_qkv; attn_gate is Q4T16 in all 48 layers. Those 24 same-input Q4/Q4 pairs are the next operation boundary."
+  },
+  "next_lane": {
+    "selected": "exact unequal-output Q4T16 linear-attention attn_qkv plus attn_gate dual-WMMA prefill",
+    "reason": "The 24 same-input Q4/Q4 pairs account for every 28.600-ms Q4 attn_qkv call plus an inferred half of the identical-shape 38.532-ms gate family, a 47.866-ms / 8.74%-of-kernel measured-family ceiling. Unlike the rejected singleton gate source-F16 route, a dual exact owner is a new operation-complete dataflow: it can reuse each BF16 activation fragment while preserving two independent T16 decode/WMMA/BF16 publication boundaries, adds no resident layout or workspace, and directly targets the still-failing 512/1K gates.",
+    "ceiling_note": "The 47.866-ms ceiling assumes the 24 paired gate calls have the mean cost of the 48 identical-shape gate calls; it is an attribution estimate, not a speed claim.",
+    "first_gate": "Implement a temporary unequal-output exact dual Q4T16 leaf for actual Q4/Q4 attn_qkv+attn_gate pairs and compare its complete pair wall against two retained singletons at M512/1024/4096 on both gfx1100 boards. Preserve each output's existing K16 association and BF16 bits. Stop at the leaf if any required row loses; only then wire through linear_pair and run full-engine gates.",
+    "excluded_by_fresh_profile": [
+      "The already rejected singleton Q4 linear-attention gate source-F16 route remains closed by its W7900 M512 confirmation.",
+      "The full-attention Q singleton is only 4.10% of kernel sum and its bounded source-F16 4K leaf already lost.",
+      "GDN remains only 7.49% of kernel sum and lacks a comparator gap; attention, casts, fills and copies remain lower priority."
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-post-q5-profile-3be57c3e6/bench.json",
+    "bench_sha256": "2fb7812a2cf71f0e3ab04276f1943787d03e15bcbf21050126fbb1da73d4c65f",
+    "kernel_trace": "/tmp/qwen36-27b-post-q5-profile-3be57c3e6/qwen36-post-q5-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "97f93c0bd42ce92f1b6b797bb857d66c68133d9e0d719312f1ba09eb9c2bdef7",
+    "summary": "/tmp/qwen36-27b-post-q5-profile-3be57c3e6/summary.json",
+    "summary_sha256": "7dee68193aa9b56db8b4b01c399d8c2d24354dbacfb6fad107f054f37544d52e"
+  },
+  "decision": "Use the fresh post-Q5 role census, not the obsolete pre-Q5 rank, to screen an exact unequal-output Q4T16 QKV+gate dual owner next. This diagnostic profile does not change production or claim profiler throughput."
+}
