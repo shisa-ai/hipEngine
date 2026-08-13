@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B post-selective-Q4-pair retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "f7db8fdb184960e731a0e2caef58d4ecdb8150bc",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached selector-unset prefill-only M512 rocprofv3 kernel trace after full-engine qualification of the exact selective pair-owned Q4T16 source-F16 producer; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-post-q4-pair-profile-f7db8fdb1 -o qwen36-post-q4-pair-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build"
+  },
+  "profile": {
+    "profiled_wall_ms": 875.3734552301466,
+    "kernel_sum_ms": 521.691714,
+    "kernel_dispatches": 3750,
+    "profiler_host_submission_sync_residual_ms": 353.6817412301466,
+    "tracked_peak_gib": 15.605462968349457,
+    "generated_preview_token_id": 9707,
+    "families": [
+      {
+        "name": "dual Q4T16 FFN gate/up plus SiLU",
+        "dispatches": 64,
+        "kernel_ms": 208.655131,
+        "kernel_share_percent": 39.99586832617395
+      },
+      {
+        "name": "bounded source-F16 rocBLAS GEMMs",
+        "dispatches": 744,
+        "kernel_ms": 120.082029,
+        "kernel_share_percent": 23.017814118473805
+      },
+      {
+        "name": "remaining exact dense Q4T16",
+        "dispatches": 40,
+        "kernel_ms": 42.429008,
+        "kernel_share_percent": 8.13296566945282
+      },
+      {
+        "name": "linear-attention prepare/conv/GDN/gate",
+        "dispatches": 240,
+        "kernel_ms": 41.577237,
+        "kernel_share_percent": 7.969694722810951
+      },
+      {
+        "name": "unequal Q4T16 QKV/gate pair",
+        "dispatches": 48,
+        "kernel_ms": 37.00207,
+        "kernel_share_percent": 7.092708012609915
+      },
+      {
+        "name": "other norms, residuals, fills, copies and control",
+        "dispatches": 846,
+        "kernel_ms": 14.338244,
+        "kernel_share_percent": 2.748413213248779
+      },
+      {
+        "name": "dense F32-weight projections",
+        "dispatches": 96,
+        "kernel_ms": 12.839526,
+        "kernel_share_percent": 2.4611328214425114
+      },
+      {
+        "name": "bounded Q4T16 to F16 pair producers",
+        "dispatches": 264,
+        "kernel_ms": 11.500181,
+        "kernel_share_percent": 2.2044016976662197
+      },
+      {
+        "name": "bounded Q6T16 to F16 record producers",
+        "dispatches": 288,
+        "kernel_ms": 9.445682,
+        "kernel_share_percent": 1.810586932189611
+      },
+      {
+        "name": "bounded Q5T16 to F16 scalar producers",
+        "dispatches": 192,
+        "kernel_ms": 8.26776,
+        "kernel_share_percent": 1.5847980288220562
+      },
+      {
+        "name": "flash attention",
+        "dispatches": 16,
+        "kernel_ms": 7.293472,
+        "kernel_share_percent": 1.3980425228682087
+      },
+      {
+        "name": "BF16 to FP16 activation casts",
+        "dispatches": 168,
+        "kernel_ms": 4.136049,
+        "kernel_share_percent": 0.7928147771961735
+      },
+      {
+        "name": "FP16 to BF16 output casts",
+        "dispatches": 744,
+        "kernel_ms": 4.125325,
+        "kernel_share_percent": 0.7907591570449976
+      }
+    ]
+  },
+  "comparison_to_post_q6_direct_profile": {
+    "prior_commit": "5d046e0d765477585d1823809e161c396170d275",
+    "kernel_sum_ms": {
+      "prior": 525.366031,
+      "current": 521.691714,
+      "delta_ms": -3.674317,
+      "delta_percent": -0.6993822940943417
+    },
+    "dispatches": {
+      "prior": 3750,
+      "current": 3750,
+      "delta": 0
+    },
+    "q4_producer": {
+      "prior_scalar_ms": 16.724533,
+      "current_pair_ms": 11.500181,
+      "saved_ms": 5.224352,
+      "delta_percent": -31.23765548490951,
+      "speedup": 1.4542843282205733,
+      "dispatches": 264,
+      "scalar_dispatches_current": 0
+    },
+    "intended_window_over_net_kernel_sum_delta_percent": 142.1856633491262,
+    "interpretation": "The pair producer saves more time than the net kernel-sum reduction because unrelated one-shot profiler families drift upward. The binding wall-clock evidence remains the already-published counterbalanced full-engine A/B, not either profiler wall.",
+    "major_unrelated_checks_percent": {
+      "dual_q4_ffn": 0.266680225521565,
+      "bounded_rocblas_gemms": 0.4052388307455246,
+      "remaining_exact_q4": 0.23472672783089177,
+      "gdn_pipeline": -0.11015281279239675,
+      "unequal_q4_pair": 0.7804519085837347,
+      "f32_projection": 0.6590589441697547,
+      "q6_producer": 0.08877535363904787,
+      "q5_producer": 0.11595769723706795,
+      "flash_attention": -1.5376972274253498,
+      "activation_cast": 0.7359286166777501,
+      "output_cast": 0.6042117774960998
+    }
+  },
+  "next_lane": {
+    "selected": "packed-column-owned Q5T16-to-F16 bounded tile producer",
+    "reason": "The remaining Q5 producer is the only source-F16 format transform that still assigns one workgroup to each scalar output column even though the sole-resident T16 payload shares every low-nibble byte across an adjacent column pair and every high-bit byte across an eight-column group. A pair- or octet-owned producer can traverse each packed byte once, preserve each column's d/dmin/scale/min expression and exact F16 publication, and feed the already-qualified unchanged rocBLAS consumer without a sidecar, new workspace, or arithmetic-policy change.",
+    "first_gate": "Add separate exact Q5 pair- and/or octet-owned F16 producer leaves, freeze source-F16 bytes at nonzero tile offsets, and compare producer-inclusive dequantize + production rocBLAS + BF16 output on the actual K6144/N5120 recurrent-output weight at production M512/1024/4096 on both gfx1100 boards. Stop at the leaf unless every required cell wins; only then select the producer inside the existing model-scoped Q5 composite and repeat changed-arithmetic/full-engine safeguards.",
+    "ceiling_note": "The immediate isolated producer ceiling is 8.268 ms / 1.58% of M512 kernel sum; no claim assumes all of it is removable.",
+    "excluded_by_fresh_profile": [
+      "Do not reopen Q5 integer MMQ, row reuse, or a resident representation change. Those mechanisms are already rejected or superseded; this target changes only packed-byte ownership inside the qualified source-F16 producer.",
+      "Do not reopen dual-Q4 FFN geometry or whole-matrix accumulator serialization without a mechanism that avoids the measured second activation traversal and crosses a concrete occupancy boundary.",
+      "Do not reopen remaining exact-Q4 singleton source-F16, GDN, attention, cast-only, fill/copy, or launch-count-only work; their current ceilings and prior boundary evidence remain non-binding for the prefill gate."
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-post-q4-pair-profile-f7db8fdb1/bench.json",
+    "bench_sha256": "9e9a73909d6cd2da29a8418dd7d62b6a294ebe029e48e9208983d6669ea81775",
+    "kernel_trace": "/tmp/qwen36-27b-post-q4-pair-profile-f7db8fdb1/qwen36-post-q4-pair-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "dee9f40d655046bba00f907e0b76e1cadd8dcd17ebe8c1bd4ef597c8af1f73c0",
+    "summary": "/tmp/qwen36-27b-post-q4-pair-profile-f7db8fdb1/summary.json",
+    "summary_sha256": "fff9d036e342961694ce50f7a72e52b6c2ec3f6b51998c90755724583105f737"
+  },
+  "decision": "Retain the qualified selective Q4 pair producer unchanged, publish its reconciled 5.224-ms producer saving, and screen exact packed-column ownership in the remaining Q5 source-F16 producer next. This profiler artifact changes no production path and makes no new throughput claim."
+}
