@@ -151,10 +151,28 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         512: 2_048,
         1_024: 512,
     }
-    assert source_f16_policy["max_rows_by_quant_shape"] == {
-        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
+    assert source_f16_policy["gguf_q4_k_t16_v1"][(5_120, 10_240)] == {
+        512: 2_048,
+        1_024: 512,
     }
+    assert source_f16_policy["max_rows_by_quant_shape"] == {
+        "gguf_q4_k_t16_v1": {
+            (5_120, 10_240): 2_047,
+            (5_120, 12_288): 2_047,
+        },
+    }
+    pair_variant = "f16_rocblas_t16_pair_bf16_bf16_out"
     assert source_f16_policy["pair_only_second_operand_policies"] == {
+        (
+            "gguf_q4_k_t16_v1",
+            5_120,
+            10_240,
+            "gguf_q4_k_t16_v1",
+            6_144,
+        ): {
+            (512, 1_023): (2_048, pair_variant, False),
+            (1_024, 2_047): (512, pair_variant, False),
+        },
         (
             "gguf_q6_k_t16_qmicro_planar_v1",
             5_120,
@@ -162,16 +180,8 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             "gguf_q4_k_t16_v1",
             6_144,
         ): {
-            (512, 1_023): (
-                2_048,
-                "f16_rocblas_t16_pair_bf16_bf16_out",
-                False,
-            ),
-            (1_024, 2_047): (
-                512,
-                "f16_rocblas_t16_pair_bf16_bf16_out",
-                False,
-            ),
+            (512, 1_023): (2_048, pair_variant, False),
+            (1_024, 2_047): (512, pair_variant, False),
         },
     }
     assert source_f16_policy["linear_variant_intervals_by_quant"] == {
@@ -187,6 +197,9 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
             (5_120, 12_288): {
+                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+            (5_120, 10_240): {
                 (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
         },
@@ -289,8 +302,8 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
 
     pair_only = owner.pair_only_second_operand_policies
     assert pair_only is not None
-    intervals = next(iter(pair_only.values()), {})
-    assert set(intervals) == expected_intervals
+    assert len(pair_only) == (2 if expected_intervals else 0)
+    assert all(set(intervals) == expected_intervals for intervals in pair_only.values())
 
 
 def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:
