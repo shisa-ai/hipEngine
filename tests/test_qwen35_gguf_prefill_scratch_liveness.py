@@ -120,12 +120,23 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    # Q4/Q6 source-F16 prefill shares three liveness-aliased transient planes
-    # while preserving each sole resident T16 weight allocation. FFN down casts
-    # its dead BF16 input in place, so the shared arena does not grow here.
+    source_f16_policy = gguf_runner._gguf_t16_f16_rocblas_prefill_policy(
+        _fake_dense_qwen36_runner()
+    )
+    assert source_f16_policy is not None
+    assert source_f16_policy["gguf_q5_k_t16_v1"][(6_144, 5_120)] == {
+        512: 1_280,
+        1_024: 1_280,
+        4_096: 1_024,
+    }
+    # Q4/Q5/Q6 source-F16 prefill shares three liveness-aliased transient
+    # planes while preserving each sole resident T16 weight allocation. Q5
+    # recurrent output and dense FFN down cast their dead BF16 inputs in place,
+    # so K6,144 admission does not grow the K5,120 activation workspace.
     assert sum(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
     assert max(buffer.nbytes for buffer in scratch.buffers) <= 113 * _MIB
     assert scratch.q6_f16_x.ptr != 0
+    assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
     assert scratch.q6_f16_weight.ptr != 0
     assert scratch.q6_f16_out.ptr != 0
     assert scratch.ffn_gate_up.ptr != 0
@@ -144,10 +155,13 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         intermediate_offset + intermediate_size <= down_offset
         or down_offset + down_size <= intermediate_offset
     )
-    # Attention-output F16 arithmetic owns full-attention stage 5-6. Its
-    # transient planes must be disjoint from every live field in that window.
+    # Attention-output F16 arithmetic owns full-attention stage 5-6. Q5
+    # recurrent-output F16 arithmetic also owns the shared weight/output planes
+    # at linear stage 5-6 while casting its dead K6,144 input in place.
     for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
         assert ("full", 5, 6) in lifetimes[name]
+    for name in ("q6_f16_weight", "q6_f16_out"):
+        assert ("linear", 5, 6) in lifetimes[name]
 
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):

@@ -6,9 +6,10 @@ optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
 both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
 fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on prefill,
 memory, 4K decode, and Vulkan MTP rather than claiming full parity, but the
-prefill lane reopened after a materially new byte-neutral dual-output Q4
-FFN+SiLU owner and exact shape-scoped rocBLAS solution policies reduced the HIP
-comparator deficit to 3.63-11.26%. See
+prefill lane reopened after materially new byte-neutral Q4 dual-output and Q5
+source-F16 owners plus exact shape-scoped rocBLAS policies reduced the HIP
+comparator deficit to **7.51%/1.81% at 512/1K and reversed it to a 1.06% 4K
+lead**. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 

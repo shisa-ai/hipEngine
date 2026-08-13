@@ -50,18 +50,21 @@ should be removed or collapsed.
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they
   have conclusively failed to distinguish the lifecycle fault.
 
-## Qwen3.6 bounded Q4/Q6 source-F16 rollback seam
+## Qwen3.6 bounded Q4/Q5/Q6 source-F16 rollback seam
 
 - Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
-  prefill owner; the retained Q4 FFN-down extension now shares that owner and
-  keeps compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a
-  whole-route exact rollback. The name is stale but the rollback is still useful
-  while changed-arithmetic Q4/Q6 accumulates release evidence.
+  prefill owner; retained Q4 and Q5 extensions now share that owner and keep
+  compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a whole-route
+  exact rollback. The name is stale but the rollback remains useful while
+  changed-arithmetic Q4/Q5/Q6 accumulates release evidence. Q5 is limited to
+  Qwen3.6-27B recurrent-output prefill at measured bulk-row anchors and casts its
+  dead K6,144 input in place; decode, verifier, peer backends, and misses retain
+  exact T16.
 - Removal trigger: after one release window with the complete category gate and
   512/1K/4K XTX/W7900 safeguards stable, rename the private runner fields/method
-  to Q4/Q6-neutral T16-F16 terminology and remove the Q6-named compatibility
-  aliases if no external caller depends on them. Keep the registry-key misses
-  and exact T16 kernels as required numerical/peer-backend fallbacks.
+  to quant-neutral T16-F16 terminology and remove the Q6-named compatibility
+  aliases if no external caller depends on them. Keep registry-key misses and
+  exact T16 kernels as required numerical/peer-backend fallbacks.
 
 ## Dense Qwen3.6 bulk-prefill MTP native-verifier gap
 
