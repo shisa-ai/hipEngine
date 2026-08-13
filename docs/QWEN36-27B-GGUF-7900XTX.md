@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **closed on 2026-08-12 as a retained exact/stable single-layout implementation and an explicit cross-engine blocker.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete same-commit W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is **not met**: every XTX prefill/memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The sole-raw rung cannot close those gaps and is rejected, so reopen only under the materially-new-mechanism rules in section 9.
+Status: **closed on 2026-08-13 as a retained exact/stable single-layout implementation and an explicit cross-engine blocker.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete same-commit W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is **not met**: every XTX prefill/memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. A final bounded source-F16 ladder retained Q6, Q4 FFN-down, narrow full-attention K/V, and attention-output wins, but rejected source-shaped Q4/Q5 integer MMQ and the last linear-attention gate route; even the compounded paired estimate remains 10.37-16.36% below llama.cpp HIP prefill. The current lanes are exhausted, so reopen only under the materially-new-mechanism rules in section 9.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -964,14 +964,14 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **727.961** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.508 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 prefill tok/s | 964.606 | 870.872 | **801.326 conservative** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.523 PM4** | >=33.356 (1% margin) — **pass** |
 | 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.095** | <=15.690 — fail |
-| 1024 prefill tok/s | 981.040 | 836.898 | **785.347** | >=990.850 (1% margin) — fail |
-| 1024 AR transition tok/s | 32.924 | 13.379 | **34.537 PM4** | >=33.254 (1% margin) — **pass** |
+| 1024 prefill tok/s | 981.040 | 836.898 | **859.484 conservative** | >=990.850 (1% margin) — fail |
+| 1024 AR transition tok/s | 32.924 | 13.379 | **34.514 PM4** | >=33.254 (1% margin) — **pass** |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.320** | <=15.700 — fail |
-| 4096 prefill tok/s | 946.733 | 835.765 | **779.243** | >=956.201 (1% margin) — fail |
-| 4096 AR transition tok/s | 32.560 | 13.309 | **31.391 PM4** | >=32.886 (1% margin) — fail |
+| 4096 prefill tok/s | 946.733 | 835.765 | **847.283 conservative** | >=956.201 (1% margin) — fail |
+| 4096 AR transition tok/s | 32.560 | 13.309 | **31.387 PM4** | >=32.886 (1% margin) — fail |
 | 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.119** | <=15.912 — fail |
 | Natural true AR tok/s | 31.576 | 13.386 | **20.782** | disclosed same protocol |
 | Selected MTP budget | B2 | B4 | **B3** | independently selected |
@@ -983,6 +983,15 @@ Populate only from committed artifacts:
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass; 601-s / 408-request soak exact** | **pass** |
+
+The conservative prefill cells chain the independently measured Q6 and Q4
+FFN-down medians. The subsequently retained narrow K/V and attention-output
+routes are sub-percent same-session A/B wins and therefore do not replace those
+absolute rows. Compounding their paired ratios gives an explicitly non-topline
+**806.751/863.593/848.582 tok/s** estimate, still below llama.cpp HIP by
+**16.36%/11.97%/10.37%** and short of the frozen 1% gates. The complete
+candidate ledger and post-route profile are in
+[`the prefill target exhaustion audit`](../benchmarks/results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
 
 W7900 safeguard:
 

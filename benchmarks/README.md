@@ -211,6 +211,19 @@ same counterbalanced XTX rows **+0.350%/+0.306%/+0.074%** and W7900 rows
 not replace the conservative independent-run topline. Evidence:
 [`retained attention-output F16`](results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json).
 
+The requested prefill ladder is now exhausted without reaching the target. The
+conservative Q6+Q4 FFN-down matrix improves the pre-ladder package
+**+10.08%/+9.44%/+8.73%** at 512/1K/4K. Even compounding the later same-session
+K/V and output A/B ratios gives only an explicitly non-topline estimate of
+**806.751/863.593/848.582 tok/s**, still **16.36%/11.97%/10.37% below** clean
+llama.cpp HIP and requiring **+19.57%/+13.60%/+11.57%** more hipEngine
+throughput merely for parity. Source-shaped Q4/Q5 integer MMQ lost, gate/up and
+wide Q/QKV are non-uniform, wider FFN-down tiles add 61-346 MiB, GDN already
+lacks a matched comparator deficit, and smaller residual families lack enough
+ceiling. Reopen only for a materially new byte-neutral/sole-resident Q4 dataflow
+or changed compiler/hardware/source economics. Evidence:
+[`prefill exhaustion audit`](results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
+
 The complete ten-prompt llama-compatible natural suite selects B3:
 
 | Mode | Transition decode | vs true AR | Draft acceptance | Whole-device peak delta |
