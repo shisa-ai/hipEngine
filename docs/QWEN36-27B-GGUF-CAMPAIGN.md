@@ -12,12 +12,18 @@ bounded pair-produced full-attention Q, ordered pair-only Q6-QKV/Q4-gate
 ownership, Q5 source-F16 plus its exact natural-octet producer, the exact
 record-owned Q6 producer, and shape-scoped rocBLAS policies reached **0.06%
 raw-HIP lead at 512**, reached **2.26% raw-HIP lead at 1K** (and cleared HIP+1%
-by 1.25%), and cleared the frozen HIP+1% 4K gate by **2.81%**. That reopen is now
-exhausted: the final exact-Q4/Q4 residual source-F16 route passes quality and
-XTX but regresses canonical W7900 M512, leaving the 512 HIP+1% margin **0.928%**
-short without any retained decode, memory, or MTP regression. See
+by 1.25%), and cleared the frozen HIP+1% 4K gate by **2.81%**. That projection-only reopen was later superseded by a new GDN dataflow:
+normalized Q/K are materialized once per K head rather than per value head while
+preserving peer-wave32 output/state bits. The compact route improves complete
+GDN-chain wall **1.061-1.116x** and full prefill **+0.62% to +1.17%** across
+512/1K/4K on both gfx1100 boards, with all **42/42** engine pairs winning,
+unchanged tracked peaks, and no decode/MTP owner change. Compounded with the
+preceding independent XTX snapshot it closes the remaining 512 HIP+1% margin;
+the compounded topline is explicitly inferred pending a fresh independent
+selector-unset publication. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
-[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
+[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json) and
+[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

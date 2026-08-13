@@ -2546,6 +2546,7 @@ class Qwen35GGUFFullStackRunner:
         use_normalized_chain = mode in {
             "chain_k2",
             "chain_peer_wave32",
+            "chain_compact_peer_wave32",
             "chain_peer_cluster8",
         }
         normalized_prepare = plan.prepare
@@ -2555,6 +2556,10 @@ class Qwen35GGUFFullStackRunner:
             normalized_prepare = plan.prepare_peer_normalized
             normalized_recurrent = plan.recurrent_peer_wave32
             normalized_recurrent_segments = plan.recurrent_segments_peer_wave32
+        elif mode == "chain_compact_peer_wave32":
+            normalized_prepare = plan.prepare_compact_peer_normalized
+            normalized_recurrent = plan.recurrent_compact_peer_wave32
+            normalized_recurrent_segments = None
         elif mode == "chain_peer_cluster8":
             normalized_prepare = plan.prepare_peer_normalized
             normalized_recurrent = plan.recurrent_peer_cluster8
@@ -2611,6 +2616,15 @@ class Qwen35GGUFFullStackRunner:
                 "explicit GGUF GDN prefill mode 'chain_peer_wave32' is unavailable; "
                 "the normalized prepare, peer wave32 recurrent, and RMSNorm-gate "
                 "kernels must all be registered"
+            )
+        if (
+            requested_mode == "chain_compact_peer_wave32"
+            and not plan.has_chain_compact_peer_wave32
+        ):
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_compact_peer_wave32' is "
+                "unavailable; the compact peer-normalized prepare, compact peer "
+                "wave32 recurrent, and RMSNorm-gate kernels must all be registered"
             )
         if requested_mode == "chain_peer_cluster8" and not plan.has_chain_peer_cluster8:
             raise RuntimeError(
@@ -2678,6 +2692,7 @@ class Qwen35GGUFFullStackRunner:
             "chain",
             "chain_k2",
             "chain_peer_wave32",
+            "chain_compact_peer_wave32",
             "chain_peer_cluster8",
             "chain_tile64",
             "chain_tile32",
@@ -2918,6 +2933,11 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
+                recurrent_shape = (
+                    (cfg.ssm_group_count, cfg.ssm_time_step_rank)
+                    if mode == "chain_compact_peer_wave32"
+                    else (cfg.ssm_time_step_rank,)
+                )
                 normalized_recurrent(
                     scratch.prefill_query.ptr,
                     scratch.prefill_key.ptr,
@@ -2927,7 +2947,7 @@ class Qwen35GGUFFullStackRunner:
                     recurrent_state.ptr,
                     scratch.recurrent_out.ptr,
                     rows,
-                    cfg.ssm_time_step_rank,
+                    *recurrent_shape,
                     cfg.ssm_state_size,
                     self.ssm_value_dim,
                     stream=stream,
@@ -21550,7 +21570,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         "chain_lds32_direct_nonvolatile",
     }:
         disabled_fields = _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
-    elif effective_mode == "chain_peer_wave32":
+    elif effective_mode in {"chain_peer_wave32", "chain_compact_peer_wave32"}:
         disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
     else:
         return None
@@ -23229,6 +23249,12 @@ _GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY = KernelKey(
     "gguf_qwen35",
     "f32_peer_normalized_bf16",
 )
+_GDN_PREFILL_PREPARE_COMPACT_PEER_NORMALIZED_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_prefill_prepare",
+    "gguf_qwen35",
+    "f32_compact_peer_normalized_bf16",
+)
 _GDN_PREFILL_RECURRENT_K2_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"
 )
@@ -23367,6 +23393,12 @@ _GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY = KernelKey(
     "gguf_qwen35",
     "f32_normalized_wave32_xor",
 )
+_GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_compact_normalized_wave32_xor",
+)
 _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -23395,6 +23427,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain",
         "chain_k2",
         "chain_peer_wave32",
+        "chain_compact_peer_wave32",
         "chain_peer_cluster8",
         "chain_tile64",
         "chain_tile32",
@@ -23516,6 +23549,7 @@ class _GGUFGDNPrefillPlan:
     rmsnorm_gate: object | None
     fused_decode_order: object | None
     prepare_peer_normalized: object | None = None
+    prepare_compact_peer_normalized: object | None = None
     exact_prepare: object | None = None
     exact_prepare_compact: object | None = None
     exact_recurrent: object | None = None
@@ -23537,6 +23571,7 @@ class _GGUFGDNPrefillPlan:
     recurrent_wave32_tree: object | None = None
     recurrent_segments_wave32_tree: object | None = None
     recurrent_peer_wave32: object | None = None
+    recurrent_compact_peer_wave32: object | None = None
     recurrent_segments_peer_wave32: object | None = None
     recurrent_peer_cluster8: object | None = None
     recurrent_segments_peer_cluster8: object | None = None
@@ -23559,6 +23594,14 @@ class _GGUFGDNPrefillPlan:
         return (
             self.prepare_peer_normalized is not None
             and self.recurrent_peer_wave32 is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_chain_compact_peer_wave32(self) -> bool:
+        return (
+            self.prepare_compact_peer_normalized is not None
+            and self.recurrent_compact_peer_wave32 is not None
             and self.rmsnorm_gate is not None
         )
 
@@ -23655,6 +23698,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
         "chain": plan.has_chain,
         "chain_k2": plan.has_chain_k2,
         "chain_peer_wave32": plan.has_chain_peer_wave32,
+        "chain_compact_peer_wave32": plan.has_chain_compact_peer_wave32,
         "chain_peer_cluster8": plan.has_chain_peer_cluster8,
         "chain_tile64": plan.has_exact_chain_tile64,
         "chain_tile32": plan.has_exact_chain_tile32,
@@ -23954,6 +23998,9 @@ def _resolve_gguf_gdn_prefill_plan(
         rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
         fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
         prepare_peer_normalized=_resolve(_GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY),
+        prepare_compact_peer_normalized=_resolve(
+            _GDN_PREFILL_PREPARE_COMPACT_PEER_NORMALIZED_KEY
+        ),
         exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
         exact_prepare_compact=_resolve(_GDN_PREFILL_EXACT_PREPARE_COMPACT_KEY),
         exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
@@ -23995,6 +24042,9 @@ def _resolve_gguf_gdn_prefill_plan(
             _GDN_PREFILL_RECURRENT_SEGMENTS_WAVE32_TREE_KEY
         ),
         recurrent_peer_wave32=_resolve(_GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY),
+        recurrent_compact_peer_wave32=_resolve(
+            _GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY
+        ),
         recurrent_segments_peer_wave32=_resolve(
             _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY
         ),

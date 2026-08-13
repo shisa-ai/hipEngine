@@ -1686,6 +1686,87 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
   }
 }
 
+// GPF compact-peer screen: materialize normalized Q/K once per K head while
+// retaining per-V-head value/beta/decay.  The Q/K block uses the same 128-thread
+// reduction tree as the admitted peer prepare, so every V head mapped to a K
+// head observes the same normalized bits as the duplicated layout.
+template <typename scalar_t>
+__global__ void qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel(
+    const float* __restrict__ conv_out,
+    const scalar_t* __restrict__ a,
+    const scalar_t* __restrict__ b,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a_log,
+    float* __restrict__ query,
+    float* __restrict__ key,
+    float* __restrict__ value,
+    float* __restrict__ beta,
+    float* __restrict__ decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  extern __shared__ float partial[];
+  float* q_partial = partial;
+  float* k_partial = q_partial + blockDim.x;
+
+  const int64_t token = blockIdx.x;
+  const int64_t head = blockIdx.y;
+  if (token >= tokens) {
+    return;
+  }
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t qkv_width = 2 * key_dim + value_dim;
+  const int64_t conv_base = token * qkv_width;
+
+  if (head < num_k_heads) {
+    const int64_t q_base = conv_base + head * head_k_dim;
+    const int64_t k_base = conv_base + key_dim + head * head_k_dim;
+    float q_sum = 0.0f;
+    float k_sum = 0.0f;
+    for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+      const float q_value = conv_out[q_base + idx];
+      const float k_value = conv_out[k_base + idx];
+      q_sum += q_value * q_value;
+      k_sum += k_value * k_value;
+    }
+    q_partial[threadIdx.x] = q_sum;
+    k_partial[threadIdx.x] = k_sum;
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+        k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    const float q_scale = 1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f);
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
+    const int64_t head_base = (token * num_k_heads + head) * head_k_dim;
+    for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+      query[head_base + idx] = conv_out[q_base + idx] * q_scale;
+      key[head_base + idx] = conv_out[k_base + idx] * k_scale;
+    }
+  }
+
+  if (head < num_v_heads) {
+    const int64_t value_base = (token * num_v_heads + head) * head_v_dim;
+    const int64_t conv_value_base = conv_base + 2 * key_dim + head * head_v_dim;
+    for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+      value[value_base + idx] = conv_out[conv_value_base + idx];
+    }
+    if (threadIdx.x == 0) {
+      const int64_t scalar_idx = token * num_v_heads + head;
+      beta[scalar_idx] = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
+      decay[scalar_idx] = expf(
+          -expf(a_log[head]) *
+          softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[head]));
+    }
+  }
+}
+
 template <typename scalar_t>
 __global__ void qwen35_linear_attn_prefill_prepare_raw_scales_kernel(
     const float* __restrict__ conv_out,
@@ -2989,6 +3070,86 @@ __device__ __forceinline__ void qwen35_gdn_prefill_recurrent_normalized_wave32_x
       kv_shard += __shfl_xor(kv_shard, offset, kWaveWidth);
     }
 
+    const float delta =
+        (value[head_offset * head_v_dim + value_idx] - decay_value * kv_shard) *
+        beta[head_offset];
+    float attn_partial = 0.0f;
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      state_shard[row] =
+          decay_value * state_shard[row] + k_reg[row] * delta;
+      attn_partial += state_shard[row] * q_reg[row];
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      attn_partial += __shfl_xor(attn_partial, offset, kWaveWidth);
+    }
+    if (lane == 0) {
+      constexpr float kOutputScale = 0.08838834764831845f;
+      out[head_offset * head_v_dim + value_idx] = attn_partial * kOutputScale;
+    }
+  }
+
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim] =
+        state_shard[row];
+  }
+}
+
+__global__ void qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  constexpr int kHeadKDim = 128;
+  constexpr int kRowsPerLane = kHeadKDim / kWaveWidth;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.y) * waves_per_block + wave;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
+  const int64_t state_col = v_head * kHeadKDim * head_v_dim + value_idx;
+  float state_shard[kRowsPerLane];
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    state_shard[row] =
+        recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim];
+  }
+
+  for (int64_t token = 0; token < tokens; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t qk_base = (token * num_k_heads + k_head) * kHeadKDim;
+    const float decay_value = decay[head_offset];
+    float q_reg[kRowsPerLane];
+    float k_reg[kRowsPerLane];
+    float kv_shard = 0.0f;
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      const int idx = row * kWaveWidth + lane;
+      k_reg[row] = key[qk_base + idx];
+      q_reg[row] = query[qk_base + idx];
+      kv_shard += state_shard[row] * k_reg[row];
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      kv_shard += __shfl_xor(kv_shard, offset, kWaveWidth);
+    }
     const float delta =
         (value[head_offset * head_v_dim + value_idx] - decay_value * kv_shard) *
         beta[head_offset];
@@ -5646,6 +5807,53 @@ extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_peer_normalized_f32_
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16(
+    const float* conv_out,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    float* query,
+    float* key,
+    float* value,
+    float* beta,
+    float* decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const int64_t grid_heads = num_k_heads > num_v_heads ? num_k_heads : num_v_heads;
+  const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(grid_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_f32_fp16(
     const float* conv_out,
     const half_t* a,
@@ -6611,6 +6819,49 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32(
       recurrent_state,
       out,
       tokens,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_k_heads <= 0 || num_v_heads <= 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 128;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel,
+      dim3(
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      tokens,
+      num_k_heads,
       num_v_heads,
       head_v_dim);
   return static_cast<int>(hipGetLastError());
