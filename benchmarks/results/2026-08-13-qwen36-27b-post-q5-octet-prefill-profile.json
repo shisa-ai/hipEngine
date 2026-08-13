@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B post-natural-octet-Q5 retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "7356ef250e862b8c2a3d9e8ade50cfe13368df34",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached selector-unset prefill-only M512 rocprofv3 kernel trace after full-engine qualification of the exact natural-octet-owned Q5T16 source-F16 producer; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-post-q5-octet-profile-7356ef250 -o qwen36-post-q5-octet-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-post-q5-octet-profile-7356ef250/bench.json"
+  },
+  "profile": {
+    "profiled_wall_ms": 836.4414549432695,
+    "kernel_sum_ms": 516.649173,
+    "kernel_dispatches": 3750,
+    "profiler_host_submission_sync_residual_ms": 319.7922819432695,
+    "tracked_peak_gib": 15.605462968349457,
+    "generated_preview_token_id": 9707,
+    "families": [
+      {
+        "name": "dual Q4T16 FFN gate/up plus SiLU",
+        "dispatches": 64,
+        "kernel_ms": 208.135512,
+        "kernel_share_percent": 40.285656665514495
+      },
+      {
+        "name": "bounded source-F16 rocBLAS GEMMs",
+        "dispatches": 744,
+        "kernel_ms": 119.821975,
+        "kernel_share_percent": 23.192135255774424
+      },
+      {
+        "name": "remaining exact dense Q4T16",
+        "dispatches": 40,
+        "kernel_ms": 42.459476,
+        "kernel_share_percent": 8.21824135582232
+      },
+      {
+        "name": "linear-attention prepare/conv/GDN/gate",
+        "dispatches": 240,
+        "kernel_ms": 41.55715,
+        "kernel_share_percent": 8.04359170047486
+      },
+      {
+        "name": "unequal Q4T16 QKV/gate pair",
+        "dispatches": 48,
+        "kernel_ms": 36.799022,
+        "kernel_share_percent": 7.122632517985275
+      },
+      {
+        "name": "other norms, residuals, fills, copies and control",
+        "dispatches": 846,
+        "kernel_ms": 14.238473,
+        "kernel_share_percent": 2.7559267959962455
+      },
+      {
+        "name": "dense F32-weight projections",
+        "dispatches": 96,
+        "kernel_ms": 13.065804,
+        "kernel_share_percent": 2.5289509173374793
+      },
+      {
+        "name": "bounded Q4T16 to F16 pair producers",
+        "dispatches": 264,
+        "kernel_ms": 11.50154,
+        "kernel_share_percent": 2.2261798917076754
+      },
+      {
+        "name": "bounded Q6T16 to F16 record producers",
+        "dispatches": 288,
+        "kernel_ms": 9.51493,
+        "kernel_share_percent": 1.8416617111279108
+      },
+      {
+        "name": "flash attention",
+        "dispatches": 16,
+        "kernel_ms": 7.390069,
+        "kernel_share_percent": 1.4303843664528617
+      },
+      {
+        "name": "BF16 to FP16 activation casts",
+        "dispatches": 168,
+        "kernel_ms": 4.139163,
+        "kernel_share_percent": 0.8011554486703881
+      },
+      {
+        "name": "FP16 to BF16 output casts",
+        "dispatches": 744,
+        "kernel_ms": 4.120709,
+        "kernel_share_percent": 0.7975835857962361
+      },
+      {
+        "name": "bounded Q5T16 to F16 octet producers",
+        "dispatches": 192,
+        "kernel_ms": 3.90535,
+        "kernel_share_percent": 0.7558997873398318
+      }
+    ]
+  },
+  "comparison_to_post_q4_pair_profile": {
+    "prior_commit": "f7db8fdb184960e731a0e2caef58d4ecdb8150bc",
+    "kernel_sum_ms": {
+      "prior": 521.691714,
+      "current": 516.649173,
+      "delta_ms": -5.042541000000028,
+      "delta_percent": -0.9665748687739395
+    },
+    "dispatches": {
+      "prior": 3750,
+      "current": 3750,
+      "delta": 0
+    },
+    "q5_producer": {
+      "prior_scalar_ms": 8.26776,
+      "current_octet_ms": 3.90535,
+      "saved_ms": 4.362410000000001,
+      "delta_percent": -52.7641102305824,
+      "speedup": 2.117034324708413,
+      "dispatches": 192,
+      "scalar_dispatches_current": 0
+    },
+    "intended_window_accounts_for_kernel_sum_delta_percent": 86.51213743229805,
+    "major_unrelated_checks_percent": {
+      "dual_q4_ffn": -0.2490324572943292,
+      "bounded_rocblas_gemms": -0.2165636291838524,
+      "remaining_exact_q4": 0.07180936212318745,
+      "gdn_pipeline": -0.04831249368494328,
+      "unequal_q4_pair": -0.548747678170447,
+      "f32_projection": 1.7623547785175386,
+      "q4_producer": 0.011817205311825951,
+      "q6_producer": 0.7331180533073134,
+      "flash_attention": 1.3244309431776902,
+      "activation_cast": 0.07528924343014332,
+      "output_cast": -0.11189421439523617
+    },
+    "interpretation": "The exact octet producer accounts for 86.51% of the net kernel-sum reduction. Other major families move by at most 1.76%, consistent with one-shot profiler clock drift. Authoritative wall evidence remains the published counterbalanced full-engine A/B, not either profiler wall."
+  },
+  "cross_engine_snapshot": {
+    "llamacpp_hip_prefill_tok_s": {
+      "512": 964.606,
+      "1024": 981.04,
+      "4096": 946.733
+    },
+    "hipengine_prefill_tok_s": {
+      "512": 952.7587930292602,
+      "1024": 990.4030350787664,
+      "4096": 982.6191977725688
+    },
+    "hipengine_vs_hip_percent": {
+      "512": -1.2281912999442035,
+      "1024": 0.9543989112336337,
+      "4096": 3.7905299353216737
+    },
+    "frozen_hip_plus_1_gate_margin_percent": {
+      "512": -2.2061299999447614,
+      "1024": -0.045149592837989694,
+      "4096": 2.7629009260610404
+    }
+  },
+  "next_lane": {
+    "selected": "direct BF16 rocBLAS output epilogue for the bounded source-F16 composite",
+    "reason": "The remaining source-F16 operation boundary totals 153.003667 ms / 29.62% of M512 kernel sum across activation cast, Q4/Q5/Q6 producers, rocBLAS, and output cast. Every one of its 744 tile GEMMs currently publishes FP16 to an output scratch and then launches a strided FP16-to-BF16 conversion. A rocBLAS GEMM_EX D=BF16 path with FP16 A/B and FP16 compute can potentially publish the same final BF16 bytes directly into the final strided tile, eliminating the separate output cast and output scratch while preserving the sole-resident T16 payload and changed-arithmetic boundary.",
+    "first_gate": "Add a temporary runtime-unwired rocBLAS direct-BF16-output leaf with explicit destination leading dimension. Compare against current FP16-output plus BF16-cast on actual admitted Q4/Q5/Q6 roles at M512/1024/4096 on both gfx1100 boards. Require byte-exact BF16 output, zero rocBLAS errors, complete-chain wins, and no additional workspace. Stop at the leaf on any unsupported or mismatching shape.",
+    "immediate_cast_ceiling": "4.120709 ms / 0.798% of M512 kernel sum across 744 launches; direct destination publication may also remove the 3.0-MiB logical output tile scratch, but no throughput or tracked-memory saving is assumed before measurement.",
+    "why_now": "The fresh 512 raw-HIP gap is only 1.228%, so operation-boundary work can be binding even though the cast-only ceiling was previously insufficient. This is not a cast-only kernel tune: it tests eliminating an entire producer-consumer handoff from the dominant source-F16 chain.",
+    "excluded_by_fresh_profile": [
+      "Do not reopen Q5 MMQ, row reuse, or producer ownership; the octet route is exact and now only 0.76% of kernel sum.",
+      "Do not reopen dual-Q4 geometry, remaining exact-Q4 singleton source-F16, GDN, attention, or launch-count-only work; prior cross-board evidence closes those mechanisms.",
+      "Do not widen FFN-down tiles by allocating extra transient planes; prior candidates need 61-346 MiB and violate the no-memory-regression constraint."
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-post-q5-octet-profile-7356ef250/bench.json",
+    "bench_sha256": "7aba8c7c80cb8cb0bec24df12499323d42a56d344b87ae2e4a437d56842e305a",
+    "kernel_trace": "/tmp/qwen36-27b-post-q5-octet-profile-7356ef250/qwen36-post-q5-octet-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "56ffc05f7363f8cc1adb0fd81be6086586ca31f6202dd74a518fa93886513a45",
+    "summary": "/tmp/qwen36-27b-post-q5-octet-profile-7356ef250/summary.json",
+    "summary_sha256": "0ede59eca3a086499470eceb168fb5a3cdc32cc4aa7108d3204b93c3bfd27876",
+    "rocprof_log": "/tmp/qwen36-27b-post-q5-octet-profile-7356ef250/rocprof.log",
+    "rocprof_log_sha256": "1b3c7e4cceacac5adb6e7a920181e11d00fdd2e818665d1298167428f6a2b3a2"
+  },
+  "decision": "Retain the qualified natural-octet Q5 producer unchanged, publish its reconciled 4.362-ms producer saving, and screen direct byte-exact BF16 destination publication inside the bounded source-F16 rocBLAS chain next. This profile changes no production path and makes no new throughput claim."
+}
