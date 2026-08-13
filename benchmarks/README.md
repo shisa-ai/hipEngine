@@ -205,6 +205,11 @@ and W7900 **+0.123%/+0.203%/+0.315%** at 512/1K/4K; complete quality improves
 to max KL **0.01563**. Because independent-run thermal drift exceeds this small
 increment, the higher FFN-only absolute matrix above remains the conservative
 public rollup. Evidence: [`retained narrow-attention F16`](results/2026-08-13-qwen36-27b-q4-narrow-attention-f16-prefill-retained.json).
+The next byte-neutral extension admits full-attention output and improves the
+same counterbalanced XTX rows **+0.350%/+0.306%/+0.074%** and W7900 rows
+**+0.096%/+0.299%/+0.301%**, with complete max KL **0.01744**. It likewise does
+not replace the conservative independent-run topline. Evidence:
+[`retained attention-output F16`](results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
