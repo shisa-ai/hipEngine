@@ -480,6 +480,72 @@ def test_q5_t16_f16_rocblas_passes_cpu_gate() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+def test_q4_t16_pair_owned_dequant_matches_scalar_source_f16_bytes() -> None:
+    """Pair ownership must preserve the complete scalar producer byte stream."""
+
+    from hipengine.core.hip import get_hip_runtime
+
+    pair_dequant = getattr(q6_f16, "gguf_q4_k_t16_dequantize_f16_tile_pair", None)
+    assert callable(pair_dequant)
+    in_features = 512
+    out_features = 32
+    col_start = 16
+    col_count = 16
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles[0]
+    scalar = np.empty((col_count, in_features), dtype=np.float16)
+    pair_owned = np.empty_like(scalar)
+    runtime = get_hip_runtime()
+    library = q6_f16.build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        tiles_dev = _device(tiles, runtime)
+        scalar_dev = malloc(scalar.nbytes, runtime=runtime)
+        pair_dev = malloc(pair_owned.nbytes, runtime=runtime)
+        buffers.extend((tiles_dev, scalar_dev, pair_dev))
+        q6_f16.gguf_q4_k_t16_dequantize_f16_tile(
+            tiles_dev.ptr,
+            scalar_dev.ptr,
+            in_features,
+            out_features,
+            col_start=col_start,
+            col_count=col_count,
+            library=library,
+            runtime=runtime,
+        )
+        pair_dequant(
+            tiles_dev.ptr,
+            pair_dev.ptr,
+            in_features,
+            out_features,
+            col_start=col_start,
+            col_count=col_count,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(scalar), scalar_dev, scalar.nbytes, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(pair_owned),
+            pair_dev,
+            pair_owned.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    after = memory_stats()
+    np.testing.assert_array_equal(
+        pair_owned.view(np.uint16), scalar.view(np.uint16)
+    )
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
 def test_q4_t16_f16_rocblas_passes_cpu_gate() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.cpu_reference import gguf_q4_k_gemv

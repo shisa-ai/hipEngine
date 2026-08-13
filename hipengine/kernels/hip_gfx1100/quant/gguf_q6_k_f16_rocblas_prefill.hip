@@ -141,6 +141,76 @@ __global__ void gguf_q6_k_dequantize_bf16_to_f16_source_fused_kernel(
                                         (((qh >> 6) & 3u) << 4)) - 32));
 }
 
+__global__ __launch_bounds__(64, 4)
+void gguf_q4_k_t16_dequantize_f16_tile_pair_kernel(
+    const uint8_t* __restrict__ tiles,
+    half_t* __restrict__ out,
+    int64_t blocks_per_row,
+    int64_t col_start) {
+  // One workgroup owns two adjacent output columns for one K256 block.  Each
+  // Q4 payload byte already contains that column pair, so loading it once and
+  // publishing both nibbles halves Q-payload traversal versus two independent
+  // column owners while preserving each column's source-F16 expression.
+  const int64_t task = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t block = task % blocks_per_row;
+  const int64_t local_pair = task / blocks_per_row;
+  const int64_t local_col = local_pair * 2;
+  const int64_t out_col = col_start + local_col;
+  const int64_t col_tile = out_col / Q4_T16_COLS;
+  const int col0 = static_cast<int>(out_col % Q4_T16_COLS);
+  const int col1 = col0 + 1;
+  const uint8_t* tile =
+      tiles + (col_tile * blocks_per_row + block) * Q4_T16_BLOCK_BYTES;
+
+  __shared__ half_t d[2];
+  __shared__ half_t dmin[2];
+  __shared__ uint8_t scales[2 * Q4_T16_SUBBLOCKS];
+  __shared__ uint8_t mins[2 * Q4_T16_SUBBLOCKS];
+  if (tid < 2) {
+    const int col = col0 + tid;
+    d[tid] = *reinterpret_cast<const half_t*>(
+        tile + Q4_T16_D_OFFSET + col * 2);
+    dmin[tid] = *reinterpret_cast<const half_t*>(
+        tile + Q4_T16_DMIN_OFFSET + col * 2);
+  }
+  if (tid < 2 * Q4_T16_SUBBLOCKS) {
+    const int subblock = tid >> 1;
+    const int pair_col = tid & 1;
+    const int col = col0 + pair_col;
+    scales[tid] = tile[
+        Q4_T16_SCALE_OFFSET + subblock * Q4_T16_COLS + col];
+    mins[tid] = tile[
+        Q4_T16_MIN_OFFSET + subblock * Q4_T16_COLS + col];
+  }
+  __syncthreads();
+
+  const int64_t in_features = blocks_per_row * QK_K;
+#pragma unroll
+  for (int k = tid; k < QK_K; k += Q4_K_THREADS) {
+    const int subblock = k >> 5;
+    const int lane32 = k & 31;
+    const uint8_t packed = tile[
+        Q4_T16_Q_OFFSET +
+        (subblock * Q4_T16_SUBBLOCK + lane32) * (Q4_T16_COLS / 2) +
+        (col0 >> 1)];
+    const uint8_t quant0 = packed & 0x0Fu;
+    const uint8_t quant1 = packed >> 4;
+    const int meta = subblock * 2;
+    const float value0 =
+        static_cast<float>(d[0]) * static_cast<float>(scales[meta]) *
+            static_cast<float>(quant0) -
+        static_cast<float>(dmin[0]) * static_cast<float>(mins[meta]);
+    const float value1 =
+        static_cast<float>(d[1]) * static_cast<float>(scales[meta + 1]) *
+            static_cast<float>(quant1) -
+        static_cast<float>(dmin[1]) * static_cast<float>(mins[meta + 1]);
+    const int64_t base = block * QK_K + k;
+    out[local_col * in_features + base] = static_cast<half_t>(value0);
+    out[(local_col + 1) * in_features + base] = static_cast<half_t>(value1);
+  }
+}
+
 __global__ void gguf_q4_k_t16_dequantize_f16_tile_kernel(
     const uint8_t* __restrict__ tiles,
     half_t* __restrict__ out,
@@ -358,6 +428,35 @@ bool valid_shape(int64_t in_features, int64_t out_features) {
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q4_k_t16_dequantize_f16_tile_pair(
+    const uint8_t* tiles,
+    half_t* out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count,
+    hipStream_t stream) {
+  if (!tiles || !out || !valid_shape(in_features, out_features) ||
+      out_features % Q4_T16_COLS != 0 || col_start < 0 || col_count <= 0 ||
+      col_start % Q4_T16_COLS != 0 || col_count % Q4_T16_COLS != 0 ||
+      col_start + col_count > out_features) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t tasks = (col_count / 2) * blocks_per_row;
+  hipLaunchKernelGGL(
+      gguf_q4_k_t16_dequantize_f16_tile_pair_kernel,
+      dim3(static_cast<unsigned int>(tasks)),
+      dim3(Q4_K_THREADS),
+      0,
+      stream,
+      tiles,
+      out,
+      blocks_per_row,
+      col_start);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gguf_q4_k_t16_dequantize_f16_tile(
     const uint8_t* tiles,

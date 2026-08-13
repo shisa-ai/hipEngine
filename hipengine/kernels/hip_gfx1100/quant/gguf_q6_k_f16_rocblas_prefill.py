@@ -25,6 +25,9 @@ _FUSED_PRODUCER_SYMBOL = (
 _Q4_T16_TILE_DEQUANT_SYMBOL = (
     "hipengine_gguf_q4_k_t16_dequantize_f16_tile"
 )
+_Q4_T16_TILE_DEQUANT_PAIR_SYMBOL = (
+    "hipengine_gguf_q4_k_t16_dequantize_f16_tile_pair"
+)
 _Q5_T16_TILE_DEQUANT_SYMBOL = (
     "hipengine_gguf_q5_k_t16_dequantize_f16_tile"
 )
@@ -37,6 +40,7 @@ _T16_TILE_DEQUANT_DIRECT_SYMBOL = (
 _DEQUANT_VARIANT = "raw_f16_source_local64"
 _FUSED_PRODUCER_VARIANT = "raw_f16_bf16_input_source_local64"
 _Q4_T16_TILE_DEQUANT_VARIANT = "t16_f16_tile_local64"
+_Q4_T16_TILE_DEQUANT_PAIR_VARIANT = "t16_f16_tile_pair_local64"
 _Q5_T16_TILE_DEQUANT_VARIANT = "t16_f16_tile_local64"
 _T16_TILE_DEQUANT_VARIANT = "t16_qmicro_planar_f16_tile_local64"
 _T16_TILE_DEQUANT_DIRECT_VARIANT = "t16_qmicro_planar_f16_tile_record256"
@@ -266,6 +270,34 @@ def gguf_q4_k_t16_dequantize_f16_tile(
 ) -> None:
     _launch_t16_dequantize_f16_tile(
         _Q4_T16_TILE_DEQUANT_SYMBOL,
+        tiles_ptr,
+        out_ptr,
+        in_features,
+        out_features,
+        col_start=col_start,
+        col_count=col_count,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_dequantize_f16_tile_pair(
+    tiles_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    col_start: int,
+    col_count: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expand adjacent Q4 columns from each shared packed payload byte."""
+
+    _launch_t16_dequantize_f16_tile(
+        _Q4_T16_TILE_DEQUANT_PAIR_SYMBOL,
         tiles_ptr,
         out_ptr,
         in_features,
@@ -633,6 +665,16 @@ def register_gguf_q6_k_f16_rocblas_prefill_kernels(
         KernelKey(
             "hip_gfx1100",
             "dequant",
+            "gguf_q4_k_t16_v1",
+            _Q4_T16_TILE_DEQUANT_PAIR_VARIANT,
+        ),
+        gguf_q4_k_t16_dequantize_f16_tile_pair,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "dequant",
             "gguf_q5_k_t16_v1",
             _Q5_T16_TILE_DEQUANT_VARIANT,
         ),
@@ -711,6 +753,7 @@ register_gguf_q6_k_f16_rocblas_prefill_kernels()
 __all__ = [
     "build_gguf_q6_k_f16_rocblas_prefill",
     "gguf_q4_k_t16_dequantize_f16_tile",
+    "gguf_q4_k_t16_dequantize_f16_tile_pair",
     "gguf_q4_k_t16_f16_rocblas_bf16_bf16_out",
     "gguf_q5_k_t16_dequantize_f16_tile",
     "gguf_q5_k_t16_f16_rocblas_bf16_bf16_out",
