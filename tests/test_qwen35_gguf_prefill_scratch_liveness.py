@@ -144,6 +144,11 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         intermediate_offset + intermediate_size <= down_offset
         or down_offset + down_size <= intermediate_offset
     )
+    # Attention-output F16 arithmetic owns full-attention stage 5-6. Its
+    # transient planes must be disjoint from every live field in that window.
+    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+        assert ("full", 5, 6) in lifetimes[name]
+
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:

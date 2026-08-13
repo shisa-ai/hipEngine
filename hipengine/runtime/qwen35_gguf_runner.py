@@ -13781,7 +13781,7 @@ class Qwen35GGUFResidentSession:
             q4_x_inplace_shapes=frozenset(
                 shape
                 for shape in q4_shape_tiles
-                if shape[1:] == (17_408, 5_120)
+                if shape[1:] in {(17_408, 5_120), (6_144, 5_120)}
             ),
             x_inplace_shapes=frozenset(
                 shape
@@ -21017,9 +21017,21 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         # initial projections and dense FFN down. Production lifetimes let their
         # three transient planes reuse stage-disjoint scratch instead of
         # growing a persistent weight sidecar.
-        "q6_f16_x": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
-        "q6_f16_weight": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
-        "q6_f16_out": _both_prefill_routes(0, 1) + _both_prefill_routes(12, 13),
+        "q6_f16_x": (
+            _both_prefill_routes(0, 1)
+            + (("full", 5, 6),)
+            + _both_prefill_routes(12, 13)
+        ),
+        "q6_f16_weight": (
+            _both_prefill_routes(0, 1)
+            + (("full", 5, 6),)
+            + _both_prefill_routes(12, 13)
+        ),
+        "q6_f16_out": (
+            _both_prefill_routes(0, 1)
+            + (("full", 5, 6),)
+            + _both_prefill_routes(12, 13)
+        ),
         "prefill_beta": (("linear", 3, 5),),
         "prefill_decay": (("linear", 3, 5),),
         "prefill_query_scale": (("linear", 3, 5),),
