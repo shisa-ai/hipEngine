@@ -9463,6 +9463,34 @@ def _gguf_t16_f16_rocblas_prefill_policy(
         if normalized:
             normalized_by_quant[quant] = MappingProxyType(normalized)
 
+    raw_max_rows = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE", {}
+    )
+    if not isinstance(raw_max_rows, Mapping):
+        return None
+    normalized_max_rows: dict[str, object] = {}
+    for raw_quant, raw_shapes in raw_max_rows.items():
+        quant = str(raw_quant)
+        quant_tiles = normalized_by_quant.get(quant)
+        if not isinstance(quant_tiles, Mapping) or not isinstance(
+            raw_shapes, Mapping
+        ):
+            return None
+        shape_limits: dict[tuple[int, int], int] = {}
+        for raw_shape, raw_maximum in raw_shapes.items():
+            if not isinstance(raw_shape, tuple) or len(raw_shape) != 2:
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            maximum = int(raw_maximum)
+            if shape not in quant_tiles or maximum <= 0:
+                return None
+            shape_limits[shape] = maximum
+        normalized_max_rows[quant] = MappingProxyType(shape_limits)
+    if normalized_max_rows:
+        normalized_by_quant["max_rows_by_quant_shape"] = MappingProxyType(
+            normalized_max_rows
+        )
+
     raw_variants = backend_package_capability(
         backend, "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES", {}
     )
@@ -13880,6 +13908,9 @@ class Qwen35GGUFResidentSession:
                 shape
                 for shape in q6_shape_tiles
                 if shape[1:] == (17_408, 5_120)
+            ),
+            max_rows_by_quant_shape=policy.get(
+                "max_rows_by_quant_shape", {}
             ),
             linear_variant_intervals_by_quant=policy.get(
                 "linear_variant_intervals_by_quant", {}
@@ -21661,7 +21692,11 @@ class _GGUFFullAttentionPrefillScratch:
             tuple(
                 (shape, row_policy)
                 for quant, quant_policy in q6_f16_policy.items()
-                if quant != "linear_variant_intervals_by_quant"
+                if quant
+                not in {
+                    "linear_variant_intervals_by_quant",
+                    "max_rows_by_quant_shape",
+                }
                 for shape, row_policy in quant_policy.items()
             )
             if q6_f16_policy is not None

@@ -193,6 +193,13 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
     }
     assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
+        None,
+    ) == {
+        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
+    }
+    assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
         None,
@@ -217,6 +224,9 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
             },
             (6_144, 5_120): {
                 (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+            (5_120, 12_288): {
+                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
             },
         },
         "gguf_q5_k_t16_v1": {
@@ -566,6 +576,12 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         layout=LAYOUT_GGUF_Q4_K_T16,
         quant_key="gguf_q4_k_t16_v1",
     )
+    exact_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    )
     scalar_key = KernelKey(
         "hip_gfx1100",
         "linear",
@@ -585,7 +601,7 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
             quant=key.quant,
             variant=key.variant,
         )
-        for key in (scalar_key, pair_key)
+        for key in (exact_key, scalar_key, pair_key)
     }
     calls: list[str] = []
     session = Q6T16F16RocblasPrefillSession(
@@ -601,17 +617,24 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         q4_tile_out_features_by_shape={
             (512, 17_408, 5_120): 1_024,
             (512, 6_144, 5_120): 1_024,
+            (512, 5_120, 12_288): 2_048,
+            (1_024, 5_120, 12_288): 512,
+        },
+        max_rows_by_quant_shape={
+            "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
         },
         linear_variant_intervals_by_quant={
             "gguf_q4_k_t16_v1": {
                 (17_408, 5_120): {(512, 4_096): pair_key.variant},
                 (6_144, 5_120): {(512, 768): pair_key.variant},
+                (5_120, 12_288): {(512, 2_047): pair_key.variant},
             },
         },
         dequant_library="dequant-library",
         cast_library="cast-library",
         rocblas="rocblas-handle",
     )
+    register(exact_key, lambda *args, **kwargs: calls.append("exact"), replace=True)
     register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
     register(pair_key, lambda *args, **kwargs: calls.append("pair"), replace=True)
     try:
@@ -621,6 +644,11 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
                 (4_096, 17_408, 5_120),
                 (768, 6_144, 5_120),
                 (769, 6_144, 5_120),
+                (512, 5_120, 12_288),
+                (1_024, 5_120, 12_288),
+                (2_047, 5_120, 12_288),
+                (2_048, 5_120, 12_288),
+                (4_096, 5_120, 12_288),
             ):
                 launch_gguf_linear(
                     weight,
@@ -649,7 +677,18 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
             register(key, original, replace=True)
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
-    assert calls == ["pair", "pair", "pair", "scalar", "scalar"]
+    assert calls == [
+        "pair",
+        "pair",
+        "pair",
+        "scalar",
+        "pair",
+        "pair",
+        "pair",
+        "exact",
+        "exact",
+        "scalar",
+    ]
 
 
 def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
