@@ -1,4 +1,5 @@
-// Source-faithful raw Q6_K to F16 dequantization for the bounded rocBLAS path.
+// Source-faithful Q4T16/Q5T16 and raw/planar-Q6 to F16 dequantization for the
+// bounded rocBLAS path.
 //
 // Source lineage: llama.cpp HIP c0bc8591e, ggml-cuda/dequantize.cuh and
 // convert.cu. One local64 workgroup expands one raw 210-byte K256 block to
@@ -28,6 +29,24 @@ constexpr int Q4_T16_Q_OFFSET =
 constexpr int Q4_T16_BLOCK_BYTES =
     Q4_T16_Q_OFFSET +
     Q4_T16_SUBBLOCKS * Q4_T16_SUBBLOCK * (Q4_T16_COLS / 2);
+constexpr int Q5_T16_COLS = 16;
+constexpr int Q5_T16_SUBBLOCK = 32;
+constexpr int Q5_T16_SUBBLOCKS = 8;
+constexpr int Q5_T16_D_OFFSET = 0;
+constexpr int Q5_T16_DMIN_OFFSET = Q5_T16_D_OFFSET + Q5_T16_COLS * 2;
+constexpr int Q5_T16_SCALE_OFFSET =
+    Q5_T16_DMIN_OFFSET + Q5_T16_COLS * 2;
+constexpr int Q5_T16_MIN_OFFSET =
+    Q5_T16_SCALE_OFFSET + Q5_T16_SUBBLOCKS * Q5_T16_COLS;
+constexpr int Q5_T16_QL_OFFSET =
+    Q5_T16_MIN_OFFSET + Q5_T16_SUBBLOCKS * Q5_T16_COLS;
+constexpr int Q5_T16_QH_OFFSET =
+    Q5_T16_QL_OFFSET +
+    Q5_T16_SUBBLOCKS * Q5_T16_SUBBLOCK * (Q5_T16_COLS / 2);
+constexpr int Q5_T16_BLOCK_BYTES =
+    Q5_T16_QH_OFFSET +
+    Q5_T16_SUBBLOCKS * Q5_T16_SUBBLOCK * (Q5_T16_COLS / 8);
+constexpr int Q5_K_THREADS = 64;
 constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int Q6_K_THREADS = 64;
 constexpr int Q6_T16_COLS = 16;
@@ -168,6 +187,58 @@ __global__ void gguf_q4_k_t16_dequantize_f16_tile_kernel(
   }
 }
 
+__global__ void gguf_q5_k_t16_dequantize_f16_tile_kernel(
+    const uint8_t* __restrict__ tiles,
+    half_t* __restrict__ out,
+    int64_t blocks_per_row,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count) {
+  const int64_t task = static_cast<int64_t>(blockIdx.x);
+  const int tid = static_cast<int>(threadIdx.x);
+  const int64_t block = task % blocks_per_row;
+  const int64_t local_col = task / blocks_per_row;
+  if (local_col >= col_count) {
+    return;
+  }
+  const int64_t out_col = col_start + local_col;
+  const int64_t col_tile = out_col / Q5_T16_COLS;
+  const int col16 = static_cast<int>(out_col % Q5_T16_COLS);
+  const uint8_t* tile =
+      tiles + (col_tile * blocks_per_row + block) * Q5_T16_BLOCK_BYTES;
+  const float d = static_cast<float>(
+      *reinterpret_cast<const half_t*>(tile + Q5_T16_D_OFFSET + col16 * 2));
+  const float dmin = static_cast<float>(
+      *reinterpret_cast<const half_t*>(tile + Q5_T16_DMIN_OFFSET + col16 * 2));
+
+  for (int k = tid; k < QK_K; k += Q5_K_THREADS) {
+    const int subblock = k >> 5;
+    const int lane32 = k & 31;
+    const uint8_t low_packed = tile[
+        Q5_T16_QL_OFFSET +
+        (subblock * Q5_T16_SUBBLOCK + lane32) * (Q5_T16_COLS / 2) +
+        (col16 >> 1)];
+    const uint8_t low =
+        (col16 & 1) ? (low_packed >> 4) : (low_packed & 0x0Fu);
+    const uint8_t high_packed = tile[
+        Q5_T16_QH_OFFSET +
+        (subblock * Q5_T16_SUBBLOCK + lane32) * (Q5_T16_COLS / 8) +
+        (col16 >> 3)];
+    const uint8_t high = (high_packed >> (col16 & 7)) & 0x01u;
+    const uint8_t quant = low | (high << 4);
+    const float value =
+        d * static_cast<float>(
+                tile[Q5_T16_SCALE_OFFSET +
+                     subblock * Q5_T16_COLS + col16]) *
+            static_cast<float>(quant) -
+        dmin * static_cast<float>(
+                   tile[Q5_T16_MIN_OFFSET +
+                        subblock * Q5_T16_COLS + col16]);
+    out[local_col * (blocks_per_row * QK_K) + block * QK_K + k] =
+        static_cast<half_t>(value);
+  }
+}
+
 __global__ void gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_kernel(
     const uint8_t* __restrict__ tiles,
     half_t* __restrict__ out,
@@ -241,6 +312,36 @@ extern "C" int hipengine_gguf_q4_k_t16_dequantize_f16_tile(
       gguf_q4_k_t16_dequantize_f16_tile_kernel,
       dim3(static_cast<unsigned int>(tasks)),
       dim3(Q4_K_THREADS),
+      0,
+      stream,
+      tiles,
+      out,
+      blocks_per_row,
+      out_features,
+      col_start,
+      col_count);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_dequantize_f16_tile(
+    const uint8_t* tiles,
+    half_t* out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t col_start,
+    int64_t col_count,
+    hipStream_t stream) {
+  if (!tiles || !out || !valid_shape(in_features, out_features) ||
+      out_features % Q5_T16_COLS != 0 || col_start < 0 || col_count <= 0 ||
+      col_start % Q5_T16_COLS != 0 || col_start + col_count > out_features) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t tasks = col_count * blocks_per_row;
+  hipLaunchKernelGGL(
+      gguf_q5_k_t16_dequantize_f16_tile_kernel,
+      dim3(static_cast<unsigned int>(tasks)),
+      dim3(Q5_K_THREADS),
       0,
       stream,
       tiles,

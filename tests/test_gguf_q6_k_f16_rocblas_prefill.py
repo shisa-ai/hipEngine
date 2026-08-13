@@ -18,12 +18,15 @@ from hipengine.core.memory import (
     memory_stats,
 )
 from hipengine.core.rocblas import Rocblas
-from hipengine.kernels.cpu_reference import gguf_q6_k_gemv
+from hipengine.kernels.cpu_reference import gguf_q5_k_gemv, gguf_q6_k_gemv
 from hipengine.kernels.hip_gfx1100.convert.cast import build_cast
 from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_f16_rocblas_prefill as q6_f16
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
-from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q5_k_tile16,
+    repack_gguf_q6_k_tile16_qmicro_planar,
+)
 from tests.test_gguf_k_gemv import make_q6_k_weight
 from tests.test_gguf_q4_k_gemv import make_q4_k_weight
 
@@ -221,10 +224,20 @@ def test_q6_f16_rocblas_registry_build_scope_and_workspace_contract() -> None:
     assert "__global__ void gguf_q6_k_dequantize_f16_source_kernel" in source
 
 
-def test_q4_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None:
+def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None:
     q4_dequant = getattr(
         q6_f16,
         "gguf_q4_k_t16_dequantize_f16_tile",
+        None,
+    )
+    q5_dequant = getattr(
+        q6_f16,
+        "gguf_q5_k_t16_dequantize_f16_tile",
+        None,
+    )
+    q5_linear = getattr(
+        q6_f16,
+        "gguf_q5_k_t16_f16_rocblas_bf16_bf16_out",
         None,
     )
     q4_linear = getattr(
@@ -249,6 +262,8 @@ def test_q4_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None
     )
     assert callable(q4_dequant)
     assert callable(q4_linear)
+    assert callable(q5_dequant)
+    assert callable(q5_linear)
     assert callable(dequant)
     assert callable(linear)
     assert callable(workspace_nbytes)
@@ -275,6 +290,22 @@ def test_q4_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None
         KernelKey("hip_gfx1151", q4_key.layer, q4_key.quant, q4_key.variant)
     )
 
+    q5_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "f16_rocblas_t16_bf16_bf16_out",
+    )
+    assert resolve(
+        backend=q5_key.backend,
+        layer=q5_key.layer,
+        quant=q5_key.quant,
+        variant=q5_key.variant,
+    ) is q5_linear
+    assert not is_registered(
+        KernelKey("hip_gfx1151", q5_key.layer, q5_key.quant, q5_key.variant)
+    )
+
     key = KernelKey(
         "hip_gfx1100",
         "linear",
@@ -290,6 +321,162 @@ def test_q4_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None
     assert not is_registered(
         KernelKey("hip_gfx1151", key.layer, key.quant, key.variant)
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+def test_q5_t16_dequantizes_to_source_f16_bytes() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from tests.test_gguf_k_gemv import make_q5_k_weight
+
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles[0]
+    expected = np.empty((out_features, in_features), dtype=np.float16)
+    for row in range(out_features):
+        for block_id in range(in_features // _QK_K):
+            block = raw[row, block_id * 176 : (block_id + 1) * 176]
+            d = np.float32(block[:2].view(np.float16)[0])
+            dmin = np.float32(block[2:4].view(np.float16)[0])
+            scales = block[4:16]
+            qh = block[16:48]
+            qs = block[48:176]
+            for k in range(_QK_K):
+                subblock = k >> 5
+                lane = k & 31
+                if subblock < 4:
+                    scale = int(scales[subblock] & np.uint8(0x3F))
+                    minimum = int(scales[4 + subblock] & np.uint8(0x3F))
+                else:
+                    index = subblock - 4
+                    scale = int(
+                        (scales[8 + index] & np.uint8(0x0F))
+                        | ((scales[index] >> np.uint8(2)) & np.uint8(0x30))
+                    )
+                    minimum = int(
+                        (scales[8 + index] >> np.uint8(4))
+                        | ((scales[4 + index] >> np.uint8(2)) & np.uint8(0x30))
+                    )
+                packed = qs[(subblock >> 1) * 32 + lane]
+                low = int(packed >> np.uint8(4)) if subblock & 1 else int(packed & np.uint8(0x0F))
+                high = int((qh[lane] >> np.uint8(subblock)) & np.uint8(1))
+                value = np.float32(d * np.float32(scale) * np.float32(low | (high << 4)))
+                value = np.float32(value - dmin * np.float32(minimum))
+                expected[row, block_id * _QK_K + k] = np.float16(value)
+    expected[expected == np.float16(0.0)] = np.float16(0.0)
+
+    actual = np.empty_like(expected)
+    runtime = get_hip_runtime()
+    library = q6_f16.build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    before = memory_stats()
+    buffers = []
+    try:
+        tiles_dev = _device(tiles, runtime)
+        actual_dev = malloc(actual.nbytes, runtime=runtime)
+        buffers.extend((tiles_dev, actual_dev))
+        q6_f16.gguf_q5_k_t16_dequantize_f16_tile(
+            tiles_dev.ptr,
+            actual_dev.ptr,
+            in_features,
+            out_features,
+            col_start=0,
+            col_count=out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(actual), actual_dev, actual.nbytes, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    assert np.array_equal(expected.view(np.uint16), actual.view(np.uint16))
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
+def test_q5_t16_f16_rocblas_passes_cpu_gate() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from tests.test_gguf_k_gemv import make_q5_k_weight
+
+    rows = 17
+    in_features = 512
+    out_features = 32
+    tile_out_features = 16
+    rng = np.random.default_rng(0x55F16)
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    raw = make_q5_k_weight(out_features, in_features)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles[0]
+    candidate = np.empty((rows, out_features), dtype=np.uint16)
+    runtime = get_hip_runtime()
+    library = q6_f16.build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    cast_library = build_cast(load=True)
+    rocblas = Rocblas.load()
+    before = memory_stats()
+    buffers = []
+    try:
+        x_dev = _device(x_bits, runtime)
+        tiles_dev = _device(tiles, runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        x_f16_dev = malloc(
+            q6_f16.q6_k_f16_input_nbytes(rows, in_features), runtime=runtime
+        )
+        weight_tile_dev = malloc(
+            q6_f16.q6_k_f16_weight_nbytes(in_features, tile_out_features),
+            runtime=runtime,
+        )
+        out_tile_dev = malloc(
+            q6_f16.q6_k_f16_output_nbytes(rows, tile_out_features),
+            runtime=runtime,
+        )
+        buffers.extend(
+            (
+                x_dev,
+                tiles_dev,
+                candidate_dev,
+                x_f16_dev,
+                weight_tile_dev,
+                out_tile_dev,
+            )
+        )
+        q6_f16.gguf_q5_k_t16_f16_rocblas_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            candidate_dev.ptr,
+            x_f16_dev.ptr,
+            weight_tile_dev.ptr,
+            out_tile_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_out_features=tile_out_features,
+            dequant_library=library,
+            cast_library=cast_library,
+            rocblas=rocblas,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(candidate),
+            candidate_dev,
+            candidate.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+        rocblas.close()
+    expected = gguf_q5_k_gemv(_bf16_to_f32(x_bits), raw)
+    result = evaluate_logits(expected, _bf16_to_f32(candidate))
+    assert result.passed, result
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
+    assert after["active_allocations"] == before["active_allocations"]
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")

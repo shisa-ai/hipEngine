@@ -241,6 +241,13 @@ so no topline number is changed. Evidence:
 [`dual-WMMA SiLU prefill`](results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
 and the now-historical
 [`prefill exhaustion audit`](results/2026-08-13-qwen36-27b-prefill-target-exhaustion-audit.json).
+A newly retained **runtime-unwired diagnostic** extends the same bounded ABI to
+sole-resident Q5T16. On actual K6,144/N5,120 `ssm_out`, its complete
+cast/dequant/rocBLAS/output-cast leaf is **1.56-1.95x** the exact Q5T16 owner at
+512/1K/4K on both gfx1100 boards, with all **90/90** paired cells winning. This
+is changed association and has not yet passed the full model/category gate, so
+it changes no production route or topline. Evidence:
+[`Q5T16 source-F16 leaf`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-leaf-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
