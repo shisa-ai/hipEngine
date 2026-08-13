@@ -354,17 +354,21 @@ same row correctly; a BF16 failure is `reference_unscorable`, not an INT8 pass.
 Exact candidate/reference token equality remains diagnostic because distinct
 valid wording is allowed when both task scores pass.
 
-For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
-expected to pass via the BF16 mirror. Long contexts must pass with
-`--require-no-bf16-mirror`; the safety fallback keeps 8 of 10 full-attention
+For GGUF Qwen3.6-35B-A3B, add the resident BF16-vs-INT8 logit gate. Short
+contexts are expected to pass via the BF16 mirror. Long contexts must pass with
+`--require-no-bf16-mirror`; the 35B safety fallback keeps 8 of 10 full-attention
 layers as BF16 primary storage and uses INT8 only for the final two full-attention
 layers. Lower prefixes and pure INT8-only remain diagnostic-only behind
 `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`: after the 2026-06-24
 layer-local BF16 prefill-oracle fix, prefix 8 passes full W7900 `128K/128`
 (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror), prefix 7 fails
-`128K/16` top-1, and pure INT8 fails `4K/1`. The `4K` forced-long gate below is a
-quick guard; promotion of a 24GB `128K/128` row also requires the same gate at
-`--prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202`.
+`128K/16` top-1, and pure INT8 fails `4K/1`. Dense Qwen3.6-27B does not inherit
+that result: its 24-query/4-KV-head geometry currently fails closed because the
+native INT8 decode specialization supports only 16/2/256. Add a CPU-reference
+kernel gate for 24/4/256 before running the model-quality ladder. The `4K`
+forced-long gate below is a quick 35B guard; promotion of a 24GB `128K/128` row
+also requires the same gate at `--prompt-lengths 128K`, `--decode-steps 128`, and
+`--max-sequence-length 131202`.
 
 ```bash
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \

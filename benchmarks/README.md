@@ -407,6 +407,17 @@ frozen HIP+1% prefill gates. The 512 HIP+1% prefill margin, all memory rows, and
 4K decode remain below their frozen cross-engine gates. This is
 a retained current snapshot, not complete cross-engine closure.
 
+BF16 K/V remains the only supported dense-27B cache route. The generic INT8
+policy and writer can allocate/write 24-query/4-KV-head rows, but the registered
+direct INT8 split-K decode consumer is specialized to the 35B 16-query/2-KV-
+head geometry; a native no-mirror 4K/16 attempt therefore blocks before any
+INT8 quality row. A same-weight 32K/16 host reconstruction screen is not a
+repair signal: pure INT8, recent 4K BF16, and recent 8K BF16 all pass its single
+prompt, but pure INT8 has the lowest mean KL (`0.0000963` versus `0.001599` and
+`0.0009546`). Implement the missing native consumer before considering a
+layer-local BF16 fallback; do not add a two-arena temporal policy first.
+Evidence: [`dense-27B INT8/temporal-tail blocker`](results/2026-08-13-qwen36-27b-int8-kv-temporal-tail-screen-blocked.json).
+
 The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped
 embedding and untied output head are shared exactly once and all tracked
