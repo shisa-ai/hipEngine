@@ -752,6 +752,183 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
   }
 }
 
+// Operation-complete dense Q4T16 gate/up prefill. Four waves own one 32-column
+// x 256-row tile. Each wave loads each activation K16 fragment once, then
+// applies independently decoded gate and up fragments with the retained WMMA
+// K16 association. The two 16-KiB weight slabs share LDS; after the final K
+// block that storage holds independently rounded BF16 gate/up tiles so SiLU
+// observes the exact unfused projection boundary without global intermediates.
+__launch_bounds__(128, 1)
+__global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int MATRICES = 2;
+  constexpr int OUT_TILES_PER_BLOCK = 2;
+  constexpr int ROW_TILES_PER_WAVE = 4;
+  constexpr int WAVES_PER_BLOCK = 4;
+  constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
+  constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
+  constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  union SharedStorage {
+    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
+  };
+  __shared__ SharedStorage shared;
+
+  const int wave = threadIdx.x >> 5;
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = (threadIdx.x & 31) >> 4;
+  const int64_t col_tile_base =
+      static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
+  const int64_t block_row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int64_t row_base = block_row_base + wave * ROWS_PER_WAVE;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+
+  float8_t acc_a[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+  float8_t acc_b[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+      acc_a[tm][tn] = zero_float8();
+      acc_b[tm][tn] = zero_float8();
+    }
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int decode_pair = threadIdx.x >> 2;
+    if (decode_pair < MATRICES * (OUT_COLS_PER_BLOCK / 2)) {
+      const int matrix = decode_pair / (OUT_COLS_PER_BLOCK / 2);
+      const int matrix_pair = decode_pair % (OUT_COLS_PER_BLOCK / 2);
+      const int tm = matrix_pair / (T16_COLS / 2);
+      const int tile_pair = matrix_pair % (T16_COLS / 2);
+      const int tile_col0 = tile_pair * 2;
+      const uint8_t* __restrict__ tiles = matrix == 0 ? tiles_a : tiles_b;
+      const uint8_t* __restrict__ tile = k_t16_tile_ptr(
+          tiles, 0, col_tile_base + tm, blk, out_tiles, blocks_per_row,
+          Q4_T16_BLOCK_BYTES);
+      const float d0 = fp16_bytes_to_float(
+          tile + Q4_T16_D_OFFSET + tile_col0 * 2);
+      const float d1 = fp16_bytes_to_float(
+          tile + Q4_T16_D_OFFSET + (tile_col0 + 1) * 2);
+      const float dmin0 = fp16_bytes_to_float(
+          tile + Q4_T16_DMIN_OFFSET + tile_col0 * 2);
+      const float dmin1 = fp16_bytes_to_float(
+          tile + Q4_T16_DMIN_OFFSET + (tile_col0 + 1) * 2);
+      const int k_segment = (threadIdx.x & 3) * 8;
+#pragma unroll
+      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+        const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(
+            tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + tile_col0);
+        const uint16_t min_pair = *reinterpret_cast<const uint16_t*>(
+            tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + tile_col0);
+        const float scale0 = d0 * static_cast<float>(scale_pair & 0xFFu);
+        const float scale1 = d1 * static_cast<float>(scale_pair >> 8);
+        const float min0 = dmin0 * static_cast<float>(min_pair & 0xFFu);
+        const float min1 = dmin1 * static_cast<float>(min_pair >> 8);
+#pragma unroll
+        for (int kk = 0; kk < 8; ++kk) {
+          const int lane32 = k_segment + kk;
+          const uint8_t packed = tile[
+              Q4_T16_Q_OFFSET +
+              (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
+          const int k = sb * Q4_SUBBLOCK + lane32;
+          const int col0 = tm * T16_COLS + tile_col0;
+          shared.weights[matrix][col0 * QK_K + k] = static_cast<half_t>(
+              scale0 * static_cast<float>(packed & 0x0Fu) - min0);
+          shared.weights[matrix][(col0 + 1) * QK_K + k] =
+              static_cast<half_t>(
+                  scale1 * static_cast<float>(packed >> 4) - min1);
+        }
+      }
+    }
+    __syncthreads();
+
+    const int64_t block_k_base = blk * QK_K;
+#pragma unroll 1
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        half16_t a_reg[ROW_TILES_PER_WAVE];
+#pragma unroll
+        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+          const int64_t input_row = row_base + tn * 16 + lane16;
+          const bool valid_row = input_row < rows;
+          a_reg[tn] = load_compact_row_half16<uint16_t>(
+              x, valid_row ? input_row : 0, in_features,
+              block_k_base + k_off, valid_row);
+        }
+#pragma unroll
+        for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+          half16_t b_a;
+          half16_t b_b;
+#pragma unroll
+          for (int kk = 0; kk < 16; ++kk) {
+            const int index =
+                (tm * T16_COLS + lane16) * QK_K + k_off + kk;
+            b_a[kk] = shared.weights[0][index];
+            b_b[kk] = shared.weights[1][index];
+          }
+#pragma unroll
+          for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+            acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_a, acc_a[tm][tn]);
+            acc_b[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                a_reg[tn], b_b, acc_b[tm][tn]);
+          }
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+    const int local_col = tm * T16_COLS + lane16;
+    const int64_t out_col = col_tile_base * T16_COLS + local_col;
+    if (out_col < out_features) {
+#pragma unroll
+      for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int local_row =
+              wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
+          const int64_t out_row = block_row_base + local_row;
+          if (out_row < rows) {
+            const int index = local_row * OUT_COLS_PER_BLOCK + local_col;
+            shared.rounded[0][index] = float_to_bf16_bits(acc_a[tm][tn][j]);
+            shared.rounded[1][index] = float_to_bf16_bits(acc_b[tm][tn][j]);
+          }
+        }
+      }
+    }
+  }
+  __syncthreads();
+
+  constexpr int RESULT_COUNT = ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK;
+  for (int index = threadIdx.x; index < RESULT_COUNT; index += blockDim.x) {
+    const int local_row = index / OUT_COLS_PER_BLOCK;
+    const int local_col = index - local_row * OUT_COLS_PER_BLOCK;
+    const int64_t out_row = block_row_base + local_row;
+    const int64_t result_col = col_tile_base * T16_COLS + local_col;
+    if (out_row < rows && result_col < out_features) {
+      const float gate = bf16_bits_to_float(shared.rounded[0][index]);
+      const float up = bf16_bits_to_float(shared.rounded[1][index]);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out[out_row * out_features + result_col] =
+          float_to_bf16_bits(gate * sig * up);
+    }
+  }
+}
+
 // Dense one-expert Q5T16 prefill over the same bytes and arithmetic as the
 // selected producer above. One wave owns 32 output columns x 64 input rows,
 // preserving each output's K16 WMMA association while amortizing activation
@@ -1149,6 +1326,45 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
+      out == nullptr || rows <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % (2 * T16_COLS)) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int Q4_DENSE_TILE_COLS = 2 * T16_COLS;
+  constexpr int Q4_DENSE_TILE_ROWS = 4 * 4 * 16;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(
+          (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
+      static_cast<unsigned int>(
+          (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
+  hipLaunchKernelGGL(
+      gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles_a,
+      tiles_b,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_q5_t16_dense_wmma_prefill_bf16(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -1249,6 +1465,19 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
+      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(

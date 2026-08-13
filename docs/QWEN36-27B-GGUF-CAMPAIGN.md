@@ -4,8 +4,10 @@ Status: **superseded for current gfx1100 package ownership by the 2026-08-12
 single-layout campaign.** This W7900 study remains the historical Vulkan-parity
 optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
 both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
-fits the 24-GiB card; its XTX cross-engine campaign closes explicitly blocked on
-prefill, memory, 4K decode, and Vulkan MTP rather than claiming full parity. See
+fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on prefill,
+memory, 4K decode, and Vulkan MTP rather than claiming full parity, but the
+prefill lane reopened after a materially new byte-neutral dual-output Q4
+FFN+SiLU owner reduced the HIP comparator deficit to 4.82-11.60%. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
 

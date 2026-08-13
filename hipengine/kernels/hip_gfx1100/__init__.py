@@ -239,8 +239,9 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus
 # full-attention K/V/output. All win at M512/1K/4K; only FFN-down can consume its
-# dead BF16 activation in place. Gate/up and wider input projections remain
-# exact because their screens lose or do not win consistently at every target.
+# dead BF16 activation in place. Gate/up remain exact at the projection boundary
+# but bulk rows now use the operation-complete dual-WMMA+SiLU owner; wider input
+# projections retain this bounded source-F16 policy and exact fallbacks.
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
     (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
