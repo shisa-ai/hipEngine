@@ -105,6 +105,18 @@ def test_q4_t16_unequal_dual_prefill_leaf_contract() -> None:
         None,
     )
     assert callable(wrapper)
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q4_k_t16_v1",
+        "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+    )
+    assert resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    ) is wrapper
     source = t16_prefill._SOURCE.read_text(encoding="utf-8")
     assert "torch::Tensor" not in source
     assert (

@@ -17,7 +17,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.479** | **28.271** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **818.230** | **28.366** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -40,15 +40,16 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **892.123** | **33.567** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **912.509** | **33.530** |
 
-The 27B row is a current sole-T16 snapshot with model-qualified Q4/Q5/Q6
-source-F16 prefill, exact dual-Q4 gate/up+SiLU, and shape-scoped rocBLAS
-solutions. Decode and MTP retain exact owners. The latest independent XTX
-matrix is **892.123/963.237/956.770 tok/s** at 512/1K/4K with unchanged tracked
-peaks; 4K now clears the frozen llama.cpp HIP+1% prefill gate, while 512/1K,
-memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
-[`retained Q5 recurrent prefill`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-prefill-retained.json).
+The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
+reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
+and shape-scoped rocBLAS solutions. Decode and MTP retain exact owners. The
+latest independent XTX matrix is **912.509/969.550/956.213 tok/s** at 512/1K/4K
+with unchanged tracked peaks. It remains **5.40%/1.17% below** llama.cpp HIP at
+512/1K; 4K is threshold-flat at **1.0013% above** HIP versus the frozen +1%
+gate, while memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`retained unequal Q4 pair prefill`](results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -145,11 +146,14 @@ repeated here.
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **801.479 tok/s** | **28.271 tok/s** | 15.605 GiB | Current sole-T16 + bounded Q4/Q5/Q6-F16 + dual Q4 FFN + selected rocBLAS snapshot |
-| 1024/128 | **853.309 tok/s** | **28.724 tok/s** | 15.720 GiB | Q5 source-F16 recurrent output; standard rocBLAS control for prior shapes |
-| 4096/128 | **835.860 tok/s** | **26.172 tok/s** | 16.368 GiB | Q5 source-F16 recurrent output + selected rocBLAS policy |
+| 512/128 | **818.230 tok/s** | **28.366 tok/s** | 15.605 GiB | Exact unequal Q4 pair + bounded Q4/Q5/Q6-F16 + dual Q4 FFN + selected rocBLAS |
+| 1024/128 | **868.869 tok/s** | **28.899 tok/s** | 15.720 GiB | Exact unequal Q4 pair + Q5 source-F16 recurrent output |
+| 4096/128 | **849.658 tok/s** | **26.259 tok/s** | 16.368 GiB | Exact unequal Q4 pair + Q5 source-F16 + selected rocBLAS |
 
-These rows use one discarded warmup plus three measured PM4 resets. The Q5
+These rows use one discarded warmup plus three measured PM4 resets. The exact
+unequal-output Q4 pair improves counterbalanced W7900 full prefill
+**+1.39%/+1.53%/+1.17%** at 512/1K/4K; the isolated 4K confirmation wins 7/7,
+while tracked residency and decode ownership are unchanged. The Q5
 recurrent-output extension improves counterbalanced W7900 full prefill
 **+4.91%/+5.07%/+4.82%** at 512/1K/4K (21/21 wins) without changing decode
 ownership or tracked residency. Exact zero-workspace selected rocBLAS FP16 GEMMs
@@ -196,9 +200,9 @@ reset/replays per shape):
 
 | Workload | Prefill | Decode | Tracked peak | Gate status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **892.123 tok/s** | **33.567 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
-| 1024/128 | **963.237 tok/s** | **34.508 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
-| 4096/128 | **956.770 tok/s** | **31.388 tok/s** | **16.368 GiB** | **prefill pass** / decode fail / memory fail |
+| 512/128 | **912.509 tok/s** | **33.530 tok/s** | **15.605 GiB** | prefill fail / **decode pass** / memory fail |
+| 1024/128 | **969.550 tok/s** | **34.514 tok/s** | **15.720 GiB** | prefill fail / **decode pass** / memory fail |
+| 4096/128 | **956.213 tok/s** | **31.403 tok/s** | **16.368 GiB** | threshold-flat prefill / decode fail / memory fail |
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
@@ -252,6 +256,18 @@ XTX matrix moves **855.960/917.774/912.359 -> 892.123/963.237/956.770 tok/s**;
 **0.060%**, while 512/1K remain **7.514%/1.815% below** HIP. Decode and natural
 MTP rows remain exact Q5T16 fallbacks. Evidence:
 [`retained Q5 recurrent prefill`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-prefill-retained.json).
+The subsequent exact unequal Q4/Q4 linear-attention owner reuses each BF16 K16
+fragment across QKV and gate for their common 6,144 output columns, then computes
+the QKV-only tail in the retained singleton geometry. The actual-weight leaf is
+BF16-bit exact and improves XTX **1.285x/1.164x/1.128x** and W7900
+**1.296x/1.167x/1.138x** at M512/1K/4K, all 90/90 component pairs winning.
+Counterbalanced full prefill improves XTX **+1.50%/+0.90%/+0.97%** and W7900
+**+1.39%/+1.53%/+1.17%**; complete quality is **330/330 top-1 / KL 0**, tracked
+peaks are byte-identical, and decode/MTP rows retain exact singleton owners.
+The independent XTX matrix becomes **912.509/969.550/956.213 tok/s**. The 4K
+median is only **0.0013% above** the numerical HIP+1% threshold and one sample is
+below it, so it is reported as threshold-flat rather than a robust gate win.
+Evidence: [`retained unequal Q4 pair prefill`](results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
 
@@ -299,13 +315,14 @@ The model-scoped arena cutoff then widens from 16 to the first complete 80-MiB
 inventory crossover: **849** immutable allocations share one owner, only the
 994.6-MiB untied head remains dedicated, physical weight owners fall **370 ->
 2**, and standard process peak delta falls **16.171 -> 16.095 GiB (-77.840
-MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified bounded Q4/Q5/Q6 F16/rocBLAS owners raise the
-current matrix to **892.123/33.567**, **963.237/34.508**, and
-**956.770/31.388 tok/s** at 512/1K/4K while keeping one persistent T16 weight
-layout per tensor and the same 15.605/15.720/16.368-GiB tracked peaks. Every
-shape fits and is deterministic; 512/1K decode and 4K prefill pass, while 512/1K
-prefill, all memory rows, and 4K decode still fail their frozen cross-engine
-gates. This is a retained current snapshot, not complete cross-engine closure.
+MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified
+bounded Q4/Q5/Q6 F16/rocBLAS owners and exact unequal-Q4 pair raise the current
+matrix to **912.509/33.530**, **969.550/34.514**, and **956.213/31.403 tok/s** at
+512/1K/4K while keeping one persistent T16 weight layout per tensor and the same
+15.605/15.720/16.368-GiB tracked peaks. Every shape fits and is deterministic;
+512/1K decode pass and 4K prefill is threshold-flat, while 512/1K prefill, all
+memory rows, and 4K decode still fail their frozen cross-engine gates. This is
+a retained current snapshot, not complete cross-engine closure.
 
 The final live target+NextN census proves **zero duplicate-payload and zero
 alternate-layout bytes** across 870 references / 866 physical ranges; mapped

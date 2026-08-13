@@ -242,6 +242,9 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # dead BF16 activation in place. Gate/up remain exact at the projection boundary
 # but bulk rows now use the operation-complete dual-WMMA+SiLU owner; wider input
 # projections retain this bounded source-F16 policy and exact fallbacks.
+GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES = {
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): True,
+}
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
     (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
@@ -725,6 +728,7 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",

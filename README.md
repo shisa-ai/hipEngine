@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **801.479** | **28.271** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **818.230** | **28.366** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,15 +189,16 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **892.123** | **33.567** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **912.509** | **33.530** |
 
-The 27B row is a current sole-T16 snapshot with model-qualified Q4/Q5/Q6
-source-F16 prefill, exact dual-Q4 gate/up+SiLU, and shape-scoped rocBLAS
-solutions. Decode and MTP retain exact owners. The latest independent XTX
-matrix is **892.123/963.237/956.770 tok/s** at 512/1K/4K with unchanged tracked
-peaks; 4K now clears the frozen llama.cpp HIP+1% prefill gate, while 512/1K,
-memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
-[`retained Q5 recurrent prefill`](results/2026-08-13-qwen36-27b-q5t16-f16-rocblas-prefill-retained.json).
+The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
+reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
+and shape-scoped rocBLAS solutions. Decode and MTP retain exact owners. The
+latest independent XTX matrix is **912.509/969.550/956.213 tok/s** at 512/1K/4K
+with unchanged tracked peaks. It remains **5.40%/1.17% below** llama.cpp HIP at
+512/1K; 4K is threshold-flat at **1.0013% above** HIP versus the frozen +1%
+gate, while memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`retained unequal Q4 pair prefill`](results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

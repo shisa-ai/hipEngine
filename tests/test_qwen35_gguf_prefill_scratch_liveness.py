@@ -105,6 +105,24 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
+def test_unequal_q4_pair_owner_is_model_backend_scoped(monkeypatch) -> None:
+    runner = _fake_dense_qwen36_runner()
+    assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.backend = "hip_gfx1151"
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.backend = "hip_gfx1100"
+    runner.weights.model_name = "other"
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.model_name = "Qwen3.6-27B"
+    runner.weights.config.is_moe = True
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.config.is_moe = False
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", lambda *args: {})
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", lambda *args: True)
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+
+
 def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     monkeypatch,
 ) -> None:

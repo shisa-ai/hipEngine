@@ -1,0 +1,382 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_model_scoped_exact_prefill",
+  "title": "Qwen3.6-27B exact unequal-output Q4T16 linear-attention prefill",
+  "performance_claim": true,
+  "implementation_revision": "23b22fef7b3a9016a25a2a93b93cf506759560d3 plus the scoped runtime wiring committed with this artifact",
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "hip_visible_device": 1,
+      "role": "primary"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "hip_visible_device": 0,
+      "role": "shared-backend safeguard"
+    }
+  ],
+  "software": {
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "rocblas_version_prefix": "5.2.0.dabb6df2b98",
+    "parent_commit": "23b22fef7b3a9016a25a2a93b93cf506759560d3"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_fingerprint": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50"
+  },
+  "change": {
+    "description": "Fuse each Q4/Q4 linear-attention QKV K5120/N10240 plus gate K5120/N6144 pair at bulk rows. One four-wave Q4T16 kernel reuses each BF16 K16 activation fragment across both weights for the common 6144 output columns; a second retained-geometry leaf computes QKV's remaining 4096 columns.",
+    "scope": "Qwen3.6-27B MOSTLY_Q4_K_M on hip_gfx1100; 24 linear-attention QKV/gate pairs at rows >= 512 only",
+    "arithmetic": "exact retained singleton K16 FP16-WMMA accumulation order with direct BF16 publication for both outputs",
+    "persistent_weight_layouts_per_tensor": 1,
+    "resident_weight_change_bytes": 0,
+    "workspace_growth_bytes": 0,
+    "launch_count_change_per_pair": "two singleton launches -> paired-prefix plus QKV-tail; launch count is unchanged while common-prefix activation traversal is shared",
+    "unchanged_owners": [
+      "decode rows",
+      "MTP/verifier small rows",
+      "all non-Q4/Q4 or non-5120/10240+6144 shapes",
+      "peer backends",
+      "model/file-type misses",
+      "registry misses"
+    ],
+    "fallback": "two separately registered exact Q4T16 singleton projections"
+  },
+  "component_leaf": {
+    "protocol": "Actual blk.8 QKV/gate weights; three warmups; 15 alternating HIP-event pairs per row and board; burst one; candidate compared with two retained shared-B singleton projections.",
+    "rx_7900_xtx": {
+      "512": {
+        "control_ms": 1.914497971534729,
+        "candidate_ms": 1.4902880191802979,
+        "speedup": 1.2846496428172045,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "1024": {
+        "control_ms": 3.4671480655670166,
+        "candidate_ms": 2.97790789604187,
+        "speedup": 1.1642898929733279,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "4096": {
+        "control_ms": 13.52355670928955,
+        "candidate_ms": 11.993823051452637,
+        "speedup": 1.1275434572675007,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "source": "/tmp/qwen36-q4-unequal-dual-prefill-xtx-final.json",
+      "source_sha256": "cc9ee7bd6b85b1ee44519c16107e4eb5aa4ae048001188b16e99efacfdd578b5"
+    },
+    "w7900": {
+      "512": {
+        "control_ms": 2.342545986175537,
+        "candidate_ms": 1.8078550100326538,
+        "speedup": 1.295759877410316,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "1024": {
+        "control_ms": 4.292842864990234,
+        "candidate_ms": 3.678596019744873,
+        "speedup": 1.166978608672545,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "4096": {
+        "control_ms": 14.500847816467285,
+        "candidate_ms": 12.739790916442871,
+        "speedup": 1.138232794523454,
+        "paired_wins": "15/15",
+        "bf16_mismatches_a_b": [0, 0]
+      },
+      "source": "/tmp/qwen36-q4-unequal-dual-prefill-w7900-final.json",
+      "source_sha256": "202c2b9dcd79a648081a08e4df1cb1db738b1e247c4d6096ab48c12fc68761df"
+    },
+    "aggregate_paired_wins": "90/90",
+    "all_outputs_bf16_bit_exact": true
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompts": 10,
+    "teacher_forced_transitions": 330,
+    "candidate_dispatches_asserted": 480,
+    "minimum_per_prompt_top1_agreement": 1.0,
+    "maximum_transition_kl": 0.0,
+    "candidate_repeats_byte_exact": true,
+    "free_running_output_ids_equal": true,
+    "gate": "KL <= 0.05 and per-prompt top-1 agreement >= 90%",
+    "passed": true,
+    "source": "/tmp/qwen36-q4-unequal-dual-wmma-quality.json",
+    "source_sha256": "5c0fb3203503224f429563ec3c5ca53a826de352b82379539ba36d385a7405cf"
+  },
+  "counterbalanced_full_engine_ab": {
+    "protocol": "One resident model/session per board and shape; both routes warmed; seven alternating baseline/candidate pairs; baseline disables only the unequal Q4 pair while retaining all preceding Q4/Q5/Q6/dual/rocBLAS work; p512/p1024/p4096 and d128.",
+    "rx_7900_xtx": {
+      "512": {
+        "baseline_prefill_tok_s": 898.2977391916723,
+        "candidate_prefill_tok_s": 911.7972567802766,
+        "median_delta_percent": 1.50278877477212,
+        "paired_ratio_delta_percent": 1.43911444372176,
+        "paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 24,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-dual-engine-ab-xtx-512.json",
+        "source_sha256": "28afeecb543aae8d7cdf5b79acedc06463e1b6193919ab25eb2c5fd2b236974f"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 962.8143554758999,
+        "candidate_prefill_tok_s": 971.4368920143012,
+        "median_delta_percent": 0.89555546085927,
+        "paired_ratio_delta_percent": 0.89555546085927,
+        "paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 24,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-dual-engine-ab-xtx-1024.json",
+        "source_sha256": "583db3fa4d9f4e1cbf85fd6db5678858ecabf919d26e5a73fae6992151e8ac8f"
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 956.3621706012806,
+        "candidate_prefill_tok_s": 965.6096169044451,
+        "median_delta_percent": 0.9669397836335,
+        "paired_ratio_delta_percent": 0.96183718836234,
+        "paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 96,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-dual-engine-ab-xtx-4096.json",
+        "source_sha256": "d9473936542e39d95325a01f2057e207c6fae583c36b2ca711d5b8b7bf1c301d"
+      }
+    },
+    "w7900": {
+      "512": {
+        "baseline_prefill_tok_s": 792.7633660849533,
+        "candidate_prefill_tok_s": 803.7889443822546,
+        "median_delta_percent": 1.39077797599945,
+        "paired_ratio_delta_percent": 1.32624580658913,
+        "paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 24,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-dual-engine-ab-w7900-512.json",
+        "source_sha256": "77c66e12ad36b6f15848278f09fe69b6f7b5903807532464176d3a8b534bb592"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 830.7041041567148,
+        "candidate_prefill_tok_s": 843.3847045651364,
+        "median_delta_percent": 1.52648823389336,
+        "paired_ratio_delta_percent": 1.0381740427428,
+        "paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 24,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-dual-engine-ab-w7900-1024.json",
+        "source_sha256": "ac7a2dc5d635e10e8287263cc0bacf6bf358511c5a05f47cabe84a03d8181623"
+      },
+      "4096": {
+        "initial_baseline_prefill_tok_s": 819.9283870102813,
+        "initial_candidate_prefill_tok_s": 827.7105400976403,
+        "initial_median_delta_percent": 0.94912594936922,
+        "initial_paired_wins": "5/7",
+        "confirmation_baseline_prefill_tok_s": 831.4352207674519,
+        "confirmation_candidate_prefill_tok_s": 841.1750021670857,
+        "confirmation_median_delta_percent": 1.17144200249824,
+        "confirmation_paired_ratio_delta_percent": 0.96445224849604,
+        "confirmation_paired_wins": "7/7",
+        "candidate_dispatches_per_sample": 96,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "initial_source": "/tmp/qwen36-q4-unequal-dual-engine-ab-w7900-4096.json",
+        "initial_source_sha256": "10fe526a3d2ca2931034b9ce646bdc04882ccf9c3e2e6711ceba93b8f6ea111e",
+        "confirmation_source": "/tmp/qwen36-q4-unequal-dual-engine-ab-w7900-4096-prefill-repeat.json",
+        "confirmation_source_sha256": "ea4d496f4c7d142af58f0daeb4871e46cd8a228f7a8ed1ee386eb56a28d03241"
+      }
+    },
+    "initial_prefill_paired_wins": "40/42",
+    "isolated_w7900_4096_confirmation": "7/7",
+    "decode_interpretation": "The candidate is active only inside bulk prefill. Same-session alternating decode medians include clock/ordering noise; the independent selector-unset matrix is the authoritative decode safeguard and remains within 0.11% on XTX and 0.61% on W7900 versus the prior retained snapshot.",
+    "harness": "/tmp/qwen36_q4_unequal_dual_engine_ab.py",
+    "harness_sha256": "82ddc8e4822e75c53b1432d3b793b768e0747ba1a70b8c091f7d51020d7faaf0"
+  },
+  "independent_production_matrix": {
+    "protocol": "Selector unset; one discarded warmup plus three measured persistent-session resets; 128 graph-replay decode transitions; BF16 KV; cached builds.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "rx_7900_xtx": {
+      "512": {
+        "prefill_tok_s_samples": [912.5092865312073, 912.4334389654529, 912.644938219119],
+        "prefill_tok_s_median": 912.5092865312073,
+        "decode_tok_s_samples": [33.5545297226526, 33.530332380580816, 33.51672852801865],
+        "decode_tok_s_median": 33.530332380580816,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-xtx-512.json",
+        "source_sha256": "d57f219e1ce3ff3d80f102ec88b5f14d86e866db640e42e46073431fa81c7491"
+      },
+      "1024": {
+        "prefill_tok_s_samples": [968.6629231604545, 969.5503454624561, 973.7531715692128],
+        "prefill_tok_s_median": 969.5503454624561,
+        "decode_tok_s_samples": [34.51435332180623, 34.508341323352134, 34.51424873674791],
+        "decode_tok_s_median": 34.51424873674791,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-xtx-1024.json",
+        "source_sha256": "3b379e408295ab0699f04a5ec27f0ab066e73354a5180df66b76565ce4451077"
+      },
+      "4096": {
+        "prefill_tok_s_samples": [957.0970419965887, 956.2127680250652, 955.7353490193811],
+        "prefill_tok_s_median": 956.2127680250652,
+        "decode_tok_s_samples": [31.411084530482096, 31.403328421944696, 31.382971846188372],
+        "decode_tok_s_median": 31.403328421944696,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-xtx-4096.json",
+        "source_sha256": "d5d2ec7b5fe70daa65d3c9764f49f0717b8d701abc85d06a96627a0a930cc8a1"
+      }
+    },
+    "w7900": {
+      "512": {
+        "prefill_tok_s_samples": [825.2089415957354, 818.2296584220954, 811.5356045464943],
+        "prefill_tok_s_median": 818.2296584220954,
+        "decode_tok_s_samples": [28.460894897745955, 28.366147662517726, 28.289869353393637],
+        "decode_tok_s_median": 28.366147662517726,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-w7900-512.json",
+        "source_sha256": "95e843fa797a66897a19972afe21e94c8dc1ff36c332a84dea4af9258672def5"
+      },
+      "1024": {
+        "prefill_tok_s_samples": [874.4628494485448, 868.869171466958, 864.6290332192627],
+        "prefill_tok_s_median": 868.869171466958,
+        "decode_tok_s_samples": [29.018989227983663, 28.899490316862654, 28.782062036982726],
+        "decode_tok_s_median": 28.899490316862654,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-w7900-1024.json",
+        "source_sha256": "a203cb366c68ea62f3be697448f6932e6e9e1f9d4ab72b528643f3cb0395ee0e"
+      },
+      "4096": {
+        "prefill_tok_s_samples": [856.5372045138872, 849.6582408746675, 842.385171426624],
+        "prefill_tok_s_median": 849.6582408746675,
+        "decode_tok_s_samples": [26.40241214097296, 26.259108668325297, 26.090616177608986],
+        "decode_tok_s_median": 26.259108668325297,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4-unequal-final-w7900-4096.json",
+        "source_sha256": "ca4e2491a8cf4bbc6e7dd7120f862c1983fa8afc8d42b145093378e7555773cf"
+      }
+    },
+    "all_logits_finite": true,
+    "all_final_ids_exact": true,
+    "tracked_current_bytes_after_close": 0,
+    "tracked_peaks_unchanged_from_prior_matrix": true
+  },
+  "llama_compatible_mtp_fallback_gate": {
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "budgets": [1, 2, 3],
+    "target_verify_mode": "serial-exact",
+    "status": "complete_exact",
+    "true_ar_transition_tok_s": 32.82212516943662,
+    "mtp_transition_tok_s": {
+      "B1": 28.111497982854658,
+      "B2": 26.291660625934373,
+      "B3": 24.708858619637766
+    },
+    "draft_acceptance": {
+      "B1": 0.9126984126984127,
+      "B2": 0.8296703296703297,
+      "B3": 0.771689497716895
+    },
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_current_bytes_after_close": 0,
+    "policy_note": "Natural prompt and verifier rows are below 512 and therefore retain exact singleton Q4T16 owners. This is a correctness/lifecycle safeguard, not a new MTP speed claim.",
+    "source": "/tmp/qwen36-q4-unequal-dual-llama-compat-mtp.json",
+    "source_sha256": "cdf22c2cf20241d1e197521a748f1df1fcbee9f14f342f0f19bda2c0dd9273f4"
+  },
+  "cross_engine_prefill_status": {
+    "llamacpp_hip_prefill_tok_s": {
+      "512": 964.606,
+      "1024": 981.04,
+      "4096": 946.733
+    },
+    "current_hipengine_xtx_prefill_tok_s": {
+      "512": 912.5092865312073,
+      "1024": 969.5503454624561,
+      "4096": 956.2127680250652
+    },
+    "hipengine_vs_llamacpp_hip_percent": {
+      "512": -5.400828262398605,
+      "1024": -1.1711708531297216,
+      "4096": 1.0013137838297936
+    },
+    "hipengine_vs_frozen_hip_plus_1pct_gate_percent": {
+      "512": -6.337453725147135,
+      "1024": -2.149674112009625,
+      "4096": 0.0013007760690797454
+    },
+    "decision": "The fresh 4096 median is 0.0013% above the numerical HIP+1% threshold, but one of three samples is below it, so the result is disclosed as threshold-flat rather than a robust gate win. The 512 and 1024 rows remain open; cross-engine closure also remains blocked by memory, 4096 decode, and Vulkan MTP speed/memory."
+  },
+  "trace": {
+    "workload": "production model M512 prefill selected region on AMD Radeon Pro W7900",
+    "paired_prefix": {
+      "kernel": "gguf_q4_t16_dense_unequal_dual_wmma_prefill_bf16_kernel",
+      "calls": 24,
+      "duration_ms_sum": 28.286156,
+      "workgroup_size": 128,
+      "vgpr": 256,
+      "lds_bytes": 32768,
+      "scratch_bytes": 0
+    },
+    "qkv_tail": {
+      "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_tail_bf16_kernel",
+      "calls": 24,
+      "duration_ms_sum": 12.548616,
+      "workgroup_size": 128,
+      "vgpr": 256,
+      "lds_bytes": 24576,
+      "scratch_bytes": 0
+    },
+    "source": "/tmp/qwen36-q4-unequal-production-rocprof-w7900/production_kernel_trace.csv",
+    "source_sha256": "d595dad9b0e715ef02dafb2becb546bfaa908778b8619874436876a2e786642e"
+  },
+  "validation": {
+    "red": "The registered linear_pair key and model-scoped bulk-prefill dispatch owner were absent before implementation.",
+    "focused_command": "PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_t16_dense.py tests/test_qwen35_gguf_prefill_scratch_liveness.py",
+    "focused_result": "115 passed",
+    "ruff": "passed",
+    "python_compile": "passed",
+    "git_diff_check": "passed",
+    "worklog_check": "passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat; only the four known unrelated external parent drifts"
+  },
+  "sources": {
+    "quality_harness": "/tmp/qwen36_q4_unequal_dual_wmma_quality.py",
+    "quality_harness_sha256": "e51c771051a5b0b1f7333140e8205ceaff3c652eeeb684ad974e68b9d74658f5",
+    "engine_ab_harness": "/tmp/qwen36_q4_unequal_dual_engine_ab.py",
+    "engine_ab_harness_sha256": "82ddc8e4822e75c53b1432d3b793b768e0747ba1a70b8c091f7d51020d7faaf0"
+  },
+  "decision": "Promote as the Qwen3.6-27B gfx1100 linear-attention QKV/gate bulk-prefill default. The route is BF16-bit exact, byte-neutral, wins all 90 component pairs, improves every cross-board full-prefill median with 40/42 initial paired wins plus a 7/7 W7900 4096 confirmation, passes the complete category gate at KL 0/top-1 100%, and leaves decode/MTP/peer/miss scopes on required exact fallbacks."
+}
