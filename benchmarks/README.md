@@ -45,7 +45,11 @@ Each value is the total tokens per second across all active requests:
 The 27B row is a current single-layout snapshot with model-qualified Q4/Q6
 source-F16 prefill; decode and MTP retain their exact owners. It is not a
 cross-engine win: the campaign remains below llama.cpp HIP prefill and Vulkan
-memory at every measured context, plus Vulkan MTP and 4K AR decode.
+memory at every measured context, plus Vulkan MTP and 4K AR decode. A
+post-closure zero-workspace hipBLASLt screen does not reopen prefill: best-of-32
+FFN-gate source-F16 is 0.691x/1.051x/1.183x exact T16 at 512/1K/4K, while the
+live library handle adds 172 MiB outside the tracked arena
+([artifact](results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json)).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

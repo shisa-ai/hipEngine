@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_no_runtime_change",
+  "title": "Qwen3.6-27B sole-Q4T16 FFN-gate zero-workspace hipBLASLt prefill screen",
+  "performance_claim": false,
+  "parent_commit": "94994d3c30ab6ef519740156379cc3c53ee32b67",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "vram_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor": "blk.0.ffn_gate.weight",
+    "shape_out_in": [17408, 5120]
+  },
+  "candidate": {
+    "description": "Consume bounded tiles dequantized from the existing sole-resident Q4T16 payload with hipBLASLt FP16 GEMM instead of rocBLAS, screening every one of 32 returned zero-algorithm-workspace heuristics for each M/tile cell.",
+    "why_nonduplicative": "The prior bounded source-F16 screen used rocBLAS's standard GEMM algorithm. This screen tests a materially different library scheduler while preserving the same immutable weight payload and arithmetic boundary.",
+    "persistent_weight_bytes_added": 0,
+    "hipblaslt_algorithm_workspace_bytes": 0,
+    "runtime_dispatch_changed": false,
+    "decode_changed": false,
+    "mtp_changed": false
+  },
+  "protocol": {
+    "rows": [512, 1024, 4096],
+    "output_tiles": [256, 512, 1024],
+    "heuristics_per_cell": 32,
+    "warmups": 2,
+    "counter_ordered_samples": 7,
+    "timing": "HIP events; inclusive path includes one BF16-to-F16 activation cast, all Q4T16-to-F16 tile producers, GEMMs, and strided FP16-to-BF16 output casts",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_t16_f16_hipblaslt_screen.py --rows 512,1024,4096 --tiles 256,512,1024 --warmups 2 --samples 7 --output /tmp/qwen36-q4-t16-f16-hipblaslt-screen.json"
+  },
+  "best_inclusive_result_by_rows": {
+    "512": {
+      "tile": 1024,
+      "algorithm_index": 0,
+      "exact_t16_ms": 1.7058520317077637,
+      "rocblas_ms": 1.9829740524291992,
+      "hipblaslt_ms": 2.469978094100952,
+      "speedup_vs_exact_t16": 0.6906344780068493,
+      "speedup_vs_rocblas": 0.8028306231399928,
+      "wins_vs_exact": "0/7"
+    },
+    "1024": {
+      "tile": 1024,
+      "algorithm_index": 0,
+      "exact_t16_ms": 3.6072258949279785,
+      "rocblas_ms": 3.7972679138183594,
+      "hipblaslt_ms": 3.433465003967285,
+      "speedup_vs_exact_t16": 1.0506080273892167,
+      "speedup_vs_rocblas": 1.1059579490196372,
+      "wins_vs_exact": "7/7"
+    },
+    "4096": {
+      "tile": 1024,
+      "algorithm_index": 0,
+      "exact_t16_ms": 14.241662979125977,
+      "rocblas_ms": 14.658706665039062,
+      "hipblaslt_ms": 12.039286613464355,
+      "speedup_vs_exact_t16": 1.1829324640546852,
+      "speedup_vs_rocblas": 1.2175726964291416,
+      "wins_vs_exact": "7/7"
+    }
+  },
+  "all_tile_speedup_vs_exact_t16": {
+    "512": {"256": 0.4270711370955132, "512": 0.5540433469030117, "1024": 0.6906344780068493},
+    "1024": {"256": 0.5907232905190686, "512": 0.8006672290837026, "1024": 1.0506080273892167},
+    "4096": {"256": 1.1112841238146465, "512": 1.1678516657304572, "1024": 1.1829324640546852}
+  },
+  "leaf_quality_at_best_tiles_vs_exact_t16": {
+    "512": {"top1_agreement": 0.994140625, "kl_max": 8.762223728808749e-7, "max_abs": 0.00390625},
+    "1024": {"top1_agreement": 0.99609375, "kl_max": 9.791385764401639e-7, "max_abs": 0.0078125},
+    "4096": {"top1_agreement": 0.996337890625, "kl_max": 1.0748693739515147e-6, "max_abs": 0.0078125},
+    "passed_project_gate": true
+  },
+  "memory": {
+    "free_before_hipblaslt_handle_bytes": 25677529088,
+    "free_after_hipblaslt_handle_bytes": 25497174016,
+    "live_handle_delta_bytes": 180355072,
+    "live_handle_delta_mib": 172.0,
+    "free_after_warmed_screens_bytes": 25404899328,
+    "warmed_delta_vs_before_handle_bytes": 272629760,
+    "free_after_handle_close_bytes": 25484591104,
+    "post_close_delta_vs_before_handle_bytes": 192937984,
+    "post_close_delta_mib": 184.0,
+    "interpretation": "Algorithm workspace is zero, but the hipBLASLt handle/library itself introduces an untracked device-residency regression. The production route would need the live handle; post-close process caching also does not return to the pre-handle free-memory level in this screen."
+  },
+  "sources": {
+    "temporary_screen": "/tmp/qwen36_q4_t16_f16_hipblaslt_screen.py",
+    "temporary_screen_sha256": "0f3fcc73be23518833f26a229cedaa76cc4135b1fd635d27686644ac343d9ba3",
+    "raw_result": "/tmp/qwen36-q4-t16-f16-hipblaslt-screen.json",
+    "raw_result_sha256": "d56691c5d7ecb1c94d35ba3f1a148d5c42ea0cca604160b7b8682da935019849"
+  },
+  "decision": "Reject before runtime work or a W7900 gate. Even the best zero-workspace heuristic is 30.94% slower than retained exact Q4T16 at M512 with 0/7 wins, so the route is not uniformly non-regressive across the required 512/1K/4K matrix. The large-row wins are real but insufficient to override that failure, and a live hipBLASLt handle additionally consumes 172 MiB outside hipEngine's tracked arena. Preserve the existing exact-T16 and bounded rocBLAS owners; do not add a hipBLASLt runtime dependency for this path."
+}
