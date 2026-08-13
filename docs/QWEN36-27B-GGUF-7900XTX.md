@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **reopened on 2026-08-13 for the prefill gate after retained materially new sole-T16 dataflows; all other cross-engine blockers remain.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met**: 512 XTX prefill, every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The latest byte-neutral natural-octet Q5 source-F16 producer improves counterbalanced full prefill **0.37-1.01%** on XTX and **0.61-1.49%** on W7900, moving selector-unset XTX to **952.759/990.403/982.619 tok/s** at 512/1K/4K. This leaves 512 **1.23% below** raw HIP, puts 1K **0.95% above** raw HIP and threshold-flat 0.045% below HIP+1%, and clears the frozen HIP+1% 4K gate by **2.76%**; re-profile this retained package before selecting the next 512 lane.
+Status: **reopened on 2026-08-13 for the prefill gate after retained materially new sole-T16 dataflows; all other cross-engine blockers remain.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met**: 512 XTX prefill, every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The latest bounded pair-produced full-attention-Q source-F16 route improves binding M512/M1024 full prefill **0.78%/0.43%** on XTX and **0.78%/0.69%** on W7900, moving selector-unset XTX to **957.489/995.070/983.483 tok/s** at 512/1K/4K. This leaves 512 **0.74% below** raw HIP, while 1K/4K are **1.43%/3.88% above** raw HIP and clear the frozen HIP+1% gates by **0.43%/2.85%**; re-profile this retained package before selecting the next 512 lane.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -966,14 +966,14 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **952.759 current** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.527 current** | >=33.356 (1% margin) — **pass** |
+| 512 prefill tok/s | 964.606 | 870.872 | **957.489 current** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.551 current** | >=33.356 (1% margin) — **pass** |
 | 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.095** | <=15.690 — fail |
-| 1024 prefill tok/s | 981.040 | 836.898 | **990.403 current** | >=990.850 (1% margin) — threshold-flat raw parity |
-| 1024 AR transition tok/s | 32.924 | 13.379 | **34.496 current** | >=33.254 (1% margin) — **pass** |
+| 1024 prefill tok/s | 981.040 | 836.898 | **995.070 current** | >=990.850 (1% margin) — **pass** |
+| 1024 AR transition tok/s | 32.924 | 13.379 | **34.506 current** | >=33.254 (1% margin) — **pass** |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.320** | <=15.700 — fail |
-| 4096 prefill tok/s | 946.733 | 835.765 | **982.619 current** | >=956.201 (1% margin) — **pass** |
-| 4096 AR transition tok/s | 32.560 | 13.309 | **31.358 current** | >=32.886 (1% margin) — fail |
+| 4096 prefill tok/s | 946.733 | 835.765 | **983.483 current** | >=956.201 (1% margin) — **pass** |
+| 4096 AR transition tok/s | 32.560 | 13.309 | **31.390 current** | >=32.886 (1% margin) — fail |
 | 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.119** | <=15.912 — fail |
 | Natural true AR tok/s | 31.576 | 13.386 | **20.782** | disclosed same protocol |
 | Selected MTP budget | B2 | B4 | **B3** | independently selected |
@@ -986,19 +986,20 @@ Populate only from committed artifacts:
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass; 601-s / 408-request soak exact** | **pass** |
 
-The current prefill cells are the selector-unset one-warmup/three-measurement
-production matrix after promoting the exact natural-octet Q5T16 source-F16
-producer on top of the exact Q6 and pair-owned Q4 producers, unequal-Q4 owner,
-and bounded Q4/Q5/Q6 source-F16 routes. Seven-pair full prefill improves XTX
-**+1.01%/+0.42%/+0.37%** and W7900 **+1.49%/+0.78%/+0.61%** at 512/1K/4K,
-with **41/42** wins, exact trajectories, and byte-identical tracked peaks.
-Production tracing observes **192 octet / 0 scalar** Q5 producer launches at
-M512. Current XTX is **1.228% below** llama.cpp HIP at 512 and
-**0.954%/3.791% above** at 1K/4K; relative to the frozen HIP+1% gates, deficits
-are **2.206%/0.045%**, while 4K passes by **2.763%**. Decode, natural
-verifier/MTP, peer backends, and all shape/model misses retain exact prior
-owners. Re-profile before selecting the next 512 lane
-([artifact](../benchmarks/results/2026-08-13-qwen36-27b-q5-octet-producer-engine-retained.json)).
+The current prefill cells are the strictly serial selector-unset
+one-warmup/three-measurement production matrix after promoting the bounded
+pair-produced full-attention-Q route on top of the exact Q4/Q5/Q6 producer and
+consumer package. Binding M512/M1024 full prefill improves XTX
+**+0.780%/+0.429%** and W7900 **+0.777%/+0.688%**, with **26/28** admitted
+pairs winning, exact trajectories, and byte-identical tracked peaks. M2048/4K
+retains the exact T16 owner. Production tracing observes **360 pair / 0 scalar**
+Q4 producer launches at M512, including the expected 96 new full-Q launches.
+Current XTX is **0.738% below** llama.cpp HIP at 512 and **1.430%/3.882% above**
+at 1K/4K; relative to the frozen HIP+1% gates, 512 misses by **1.721%**, while
+1K/4K pass by **0.426%/2.853%**. Decode, natural verifier/MTP, peer backends,
+and all shape/model misses retain exact prior owners. Re-profile before
+selecting the next 512 lane
+([artifact](../benchmarks/results/2026-08-13-qwen36-27b-q4-pair-fullq-engine-retained.json)).
 
 The earlier zero-workspace hipBLASLt route remains rejected: best-of-32
 FFN-gate source-F16 is **0.691x/1.051x/1.183x** retained exact T16 at
