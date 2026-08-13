@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_diagnostic_primitive_runtime_unwired",
+  "title": "Qwen3.6-27B sole-Q5T16 source-F16 bounded rocBLAS leaf",
+  "performance_claim": true,
+  "performance_claim_scope": "actual immutable blk.0.ssm_out K6144/N5120 component leaf on RX 7900 XTX and W7900; no model runtime, prefill throughput, decode, memory, MTP, or default claim",
+  "parent_commit": "d2eabd5bf",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "tensor": "blk.0.ssm_out.weight",
+    "shape_n_k": [5120, 6144],
+    "resident_quant": "gguf_q5_k_t16_v1"
+  },
+  "change": {
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip",
+    "wrapper": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py",
+    "producer": "gguf_q5_k_t16_dequantize_f16_tile_kernel",
+    "registry": [
+      "dequant/gguf_q5_k_t16_v1/t16_f16_tile_local64",
+      "linear/gguf_q5_k_t16_v1/f16_rocblas_t16_bf16_bf16_out"
+    ],
+    "arithmetic": "source-F16 weight expansion, BF16-to-FP16 activation cast, rocBLAS FP16 compute/output, and BF16 output cast; changed association versus exact Q5T16 WMMA",
+    "resident_weight_change_bytes": 0,
+    "runtime_wired": false,
+    "fallback": "existing exact Q5T16 dense WMMA; all runtime behavior remains unchanged"
+  },
+  "protocol": {
+    "input": "one actual immutable model tensor plus deterministic BF16 random activation per M",
+    "timing": "three warmups and 15 counterordered HIP-event pairs per candidate; complete candidate includes activation cast, every bounded Q5T16-to-F16 tile, rocBLAS GEMM, and strided FP16-to-BF16 publication",
+    "control": "exact dense Q5T16 WMMA prefill",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q5_t16_f16_rocblas_screen.py --rows 512,1024,4096 --tiles 1024,1280,2560 --warmups 3 --samples 15 --output <json>"
+  },
+  "measurements": {
+    "rx_7900_xtx": {
+      "512": {"tile": 1280, "exact_ms": 1.1872559785842896, "candidate_ms": 0.6168889999389648, "speedup": 1.9245860741588146, "paired_wins": "15/15", "row_top1": 0.982421875, "max_abs": 0.1875, "workspace_bytes": 23330816},
+      "1024": {"tile": 1280, "exact_ms": 2.107830047607422, "candidate_ms": 1.2097769975662231, "speedup": 1.7423294143035146, "paired_wins": "15/15", "row_top1": 0.98046875, "max_abs": 0.25, "workspace_bytes": 30932992},
+      "4096": {"tile": 1024, "exact_ms": 7.622385025024414, "candidate_ms": 4.9004669189453125, "speedup": 1.5554405633381805, "paired_wins": "15/15", "row_top1": 0.981689453125, "max_abs": 0.25, "workspace_bytes": 71303168}
+    },
+    "w7900": {
+      "512": {"tile": 1280, "exact_ms": 1.2974129915237427, "candidate_ms": 0.6658869981765747, "speedup": 1.9483981442444456, "paired_wins": "15/15", "row_top1": 0.982421875, "max_abs": 0.1875, "workspace_bytes": 23330816},
+      "1024": {"tile": 1280, "exact_ms": 2.299027919769287, "candidate_ms": 1.2063349485397339, "speedup": 1.9057956685680506, "paired_wins": "15/15", "row_top1": 0.98046875, "max_abs": 0.25, "workspace_bytes": 30932992},
+      "4096": {"tile": 1024, "exact_ms": 8.520350456237793, "candidate_ms": 5.313350200653076, "speedup": 1.6035740417017001, "paired_wins": "15/15", "row_top1": 0.981689453125, "max_abs": 0.25, "workspace_bytes": 71303168}
+    }
+  },
+  "correctness": {
+    "source_f16_bytes": "Q5T16 tile producer is FP16-bit exact to an independent raw-Q5 source-F16 CPU oracle on a deterministic K512/N32 fixture",
+    "cpu_gate": "bounded Q5T16 source-F16 composite passes the project KL<=0.05/top1>=90% gate versus cpu_reference gguf_q5_k_gemv",
+    "actual_leaf": "changed association is explicit; actual-weight row top-1 is 98.05-98.29% for selected tiles, not a substitute for the full model/category gate"
+  },
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-q5-f16-rocprof-smoke -o q5-f16-m512 -- /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q5_t16_f16_rocblas_screen.py --rows 512 --tiles 1280 --warmups 0 --samples 1",
+    "producer_calls": 8,
+    "producer_total_ms_under_profiler": 0.567527,
+    "producer_resources": {"vgpr": 16, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0, "workgroup_size": 64},
+    "note": "Profiler timing is perturbative and is used only to prove the expected named kernel executed with plausible duration."
+  },
+  "validation": {
+    "red": "focused registry and source-F16 byte tests failed because the Q5 producer and route did not exist",
+    "green": "tests/test_gguf_q6_k_f16_rocblas_prefill.py: 13 passed on RX 7900 XTX",
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "sources": {
+    "xtx": "/tmp/qwen36-q5-t16-f16-rocblas-screen-xtx.json",
+    "xtx_sha256": "b71774d5373c0039a80cf3a9aca509ab7b5ea4a660ec8695af8d19fbdff8b0fe",
+    "w7900": "/tmp/qwen36-q5-t16-f16-rocblas-screen-w7900.json",
+    "w7900_sha256": "798c2720f94b6e1698c201ecd371576f5168184d75a12dd71c3e5cd7e83e21f7",
+    "screen": "/tmp/qwen36_q5_t16_f16_rocblas_screen.py",
+    "screen_sha256": "4f6d3d2f26a69cf5a3ab17c3064ab6a0c9186c91bd5bac27af90a5250b8ff2e7",
+    "kernel_trace": "/tmp/qwen36-q5-f16-rocprof-smoke/q5-f16-m512_kernel_trace.csv",
+    "kernel_trace_sha256": "30627bbcae2fad74714a525b193435a41bfe966a51391834763f288369c5ba11"
+  },
+  "decision": "Retain the isolated producer/composite registry primitive because it is source-F16-correct, zero-resident-byte, cross-board uniformly faster, and has a required exact fallback. Keep it runtime-unwired until a separate model-scoped changed-arithmetic quality and full-prefill gate passes."
+}
