@@ -12,7 +12,11 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.cpu_reference import attention_decode
+from hipengine.kernels.cpu_reference import (
+    attention_decode,
+    paged_attn_decode_int8_per_token_head,
+    write_paged_kv_int8_per_token_head,
+)
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
@@ -541,13 +545,160 @@ def test_int8_gqa_splitk_producer_grid_is_owned_by_kv_head() -> None:
     assert producer.count("h < q_per_kv") >= 10
     assert "const int64_t q_head = blockIdx.x;" not in producer
 
-    assert "const int64_t q_per_kv = 8;" in launcher
+    assert "const int64_t q_per_kv = num_q_heads / num_kv_heads;" in launcher
     assert "<scale_t, 8, 16, 2>" in launcher
+    assert "<scale_t, 6, 24, 4>" in launcher
     assert (
         "dim3(static_cast<unsigned int>(num_kv_heads), "
         "static_cast<unsigned int>(num_splits))"
     ) in launcher
     assert "dim3(static_cast<unsigned int>(num_q_heads)" not in launcher
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.parametrize(
+    ("num_q_heads", "num_kv_heads"),
+    ((16, 2), (24, 4)),
+    ids=("qwen35-16q-2kv", "qwen36-dense-27b-24q-4kv"),
+)
+def test_int8_gqa_splitk_matches_cpu_with_reversed_pages(
+    num_q_heads: int,
+    num_kv_heads: int,
+) -> None:
+    """Cover both retained Qwen3.5 and dense-27B INT8 decode geometry."""
+
+    runtime = get_hip_runtime()
+    block_size = 256
+    context_len = 515
+    chunk_size = block_size
+    num_splits = (context_len + chunk_size - 1) // chunk_size
+    head_dim = 256
+    scale = head_dim**-0.5
+    rng = np.random.default_rng(20260814 + num_q_heads)
+
+    query = rng.normal(0.0, 0.2, size=(num_q_heads, head_dim)).astype(np.float32)
+    key_rows = rng.normal(
+        0.0,
+        0.25,
+        size=(context_len, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    value_rows = rng.normal(
+        0.0,
+        0.25,
+        size=(context_len, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    key_rows[0, 0] = 0.0
+    value_rows[-1, -1] = 0.0
+    block_table = np.arange(num_splits - 1, -1, -1, dtype=np.int32)
+    int8_cache = write_paged_kv_int8_per_token_head(
+        key_rows,
+        value_rows,
+        np.arange(context_len, dtype=np.int64),
+        block_table,
+        block_size=block_size,
+        scale_dtype=np.float16,
+    )
+    expected = paged_attn_decode_int8_per_token_head(
+        query,
+        *int8_cache,
+        np.asarray([context_len], dtype=np.int64),
+        block_table=block_table,
+        block_size=block_size,
+        scale=scale,
+        output_dtype=np.float32,
+    )
+    out = np.zeros_like(expected)
+    partial_out = np.zeros((num_q_heads, num_splits, head_dim), dtype=np.float32)
+    partial_m = np.zeros((num_q_heads, num_splits), dtype=np.float32)
+    partial_l = np.zeros_like(partial_m)
+    live_counts = np.asarray([context_len], dtype=np.int64)
+    device = Device("hip", 0)
+    buffers = []
+
+    def copy_to_device(array: np.ndarray):
+        host = np.ascontiguousarray(array)
+        buffer = malloc(host.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(host), host.nbytes, runtime=runtime)
+        return buffer
+
+    try:
+        query_b = copy_to_device(query)
+        key_b = copy_to_device(int8_cache[0])
+        value_b = copy_to_device(int8_cache[1])
+        k_scale_b = copy_to_device(int8_cache[2])
+        v_scale_b = copy_to_device(int8_cache[3])
+        table_b = copy_to_device(block_table)
+        live_b = copy_to_device(live_counts)
+        out_b = copy_to_device(out)
+        partial_out_b = copy_to_device(partial_out)
+        partial_m_b = copy_to_device(partial_m)
+        partial_l_b = copy_to_device(partial_l)
+        metadata = KVScaleMetadata(
+            k_scale=Tensor.from_handle(
+                k_scale_b.ptr,
+                int8_cache[2].shape,
+                DType.FP16,
+                device,
+            ),
+            v_scale=Tensor.from_handle(
+                v_scale_b.ptr,
+                int8_cache[3].shape,
+                DType.FP16,
+                device,
+            ),
+            scale_dtype=DType.FP16,
+        )
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                table_b.ptr,
+                block_table.shape,
+                DType.INT32,
+                device,
+            ),
+            live_counts=Tensor.from_handle(
+                live_b.ptr,
+                live_counts.shape,
+                DType.INT64,
+                device,
+            ),
+            max_live_count=context_len,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            scale_metadata=metadata,
+        )
+        qwen35_paged_attn_decode_int8_gqa_splitk_spans(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            k_scale_b.ptr,
+            v_scale_b.ptr,
+            out_b.ptr,
+            partial_out_b.ptr,
+            partial_m_b.ptr,
+            partial_l_b.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(out),
+            out_b,
+            out.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    assert np.all(np.isfinite(out))
+    np.testing.assert_allclose(out, expected, rtol=3e-5, atol=3e-6)
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -684,7 +835,7 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
             0, 0, 0, bad_live.scale_metadata.k_scale.ptr, bad_live.scale_metadata.v_scale.ptr,
             0, 0, 0, 0, bad_live, 256, 1, 256, 16, 2, 256, 1.0
         )
-    with pytest.raises(ValueError, match="Qwen3.5 INT8 GQA"):
+    with pytest.raises(ValueError, match="INT8 GQA split-K"):
         qwen35_paged_attn_decode_int8_gqa_splitk_spans(
             0, 0, 0, int8_spans.scale_metadata.k_scale.ptr, int8_spans.scale_metadata.v_scale.ptr,
             0, 0, 0, 0, int8_spans, 256, 1, 256, 8, 2, 256, 1.0
