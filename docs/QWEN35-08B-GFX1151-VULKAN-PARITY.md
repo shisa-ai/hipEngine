@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1/M3-M7, and accepted D08-P1/P2/P6 completed 2026-08-14; D08-P3 is closed/rejected, D08-P7 residual linear-attention projections are admitted next, and D08-M2 graph/direct census remains open.
+Status: D08-C0, D08-M1/M3-M7, and accepted D08-P1/P2/P6 completed 2026-08-14; D08-P3 is closed/rejected, D08-P7 selected the Q4 gate sub-role for bounded screening, and D08-M2 graph/direct census remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -87,7 +87,7 @@ not a synthetic leaf projection.
 | 6 | **Mandatory post-P2 re-profile** | **completed** | The structural GDN route invalidates the P2-era ranking. | Reconciles 99.61% of wall; dense FFN is exhausted, so remaining linear projections are the largest non-exhausted owner. |
 | 7 | **D08-P6 remaining linear-attention projections** | **accepted: +14.18% graph-scope Q4 pp512 / +0.69% graph tg128; -46.69 MiB** | The audit selected 35.93-ms Q5 SSM-out; sole Q5T16 direct/rowtile/WMMA wins the complete production route and correctness gate. | Closed after exactly three shipped leaves and one full-model A/B; Q8 and 27B remain unchanged. |
 | 8 | **Mandatory post-P6 re-profile** | **completed** | P6 removes 48.96 MB of weights and changes 18 bulk projection owners, invalidating the post-P2 ranking. | M7 reconciles 99.58% of wall, confirms SSM-out at 9.68 ms, and corrects one 1.20-ms Vulkan Q4 role assignment without changing backend totals. |
-| 9 | **D08-P7 residual linear-attention projections** | **high: 10.06% corrected matched-Vulkan Q4 bound; admitted-next** | After accepted SSM-out is removed, QKV/gate, alpha/beta, and conversion remain 37.94 ms versus 14.44 ms Vulkan. | Split the combined group, freeze one semantic sub-role, and test at most three existing/lineage leaves plus one full-model A/B. |
+| 9 | **D08-P7 residual linear-attention projections** | **high package bound; Q4 gate selected at 3.58% request saving** | The per-leaf split assigns gate 11.74 vs 3.38 ms Vulkan, ahead of QKV's 5.86-ms and alpha/beta's 4.49-ms gaps. | Screen sole Q4T16 native first, then at most raw-Q4 and source-F16 lineage routes; require c1/c2/c4/c8 non-regression without a sidecar. |
 | 10 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
 | 11 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
@@ -530,6 +530,33 @@ marker group before selecting a leaf.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-post-p6-rerank.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-post-p6-rerank.json).
 
+### 2.14 D08-P7 residual linear-attention audit (2026-08-14)
+
+Immediate same-stream markers around every shipped target leaf split M7's
+**37.940-ms** residual group into QKV **15.440 ms**, gate **11.741 ms**,
+alpha+beta **5.965 ms**, conversion **1.801 ms**, and **2.992 ms** of group
+boundary/submission gap. The leaf sum covers **92.11%** of the enclosing stage;
+the explicit residual is not assigned to arithmetic.
+
+Exact Vulkan quant/shape rows assign QKV **9.585 ms**, gate **3.379 ms**, and
+alpha+beta **1.476 ms**. Gate therefore has the largest leaf gap at **8.363 ms /
+3.58% of current request wall**, ahead of accepted-P1 QKV at 2.51% and
+alpha/beta at 1.92%. Its 18 weights are source Q4_K `[N2048,K1024]`, currently
+sole pack8 with `pack8_exact_prefill_tile8x8_bf16_bf16_out`; no prior
+exact-role route repair covers them.
+
+Freeze one tuning dimension: sole resident layout plus its existing consumer
+chain. The bounded candidates are native Q4T16, raw-Q4 native, and—only if
+exact T16 operational guards pass but native bulk misses continuation—the
+existing Q4T16 source-F16/rocBLAS lineage. Native T16 screens first with direct
+c1, rowtile c2-c4, independently measured
+direct/WMMA c8, and WMMA bulk. A route continues only with >=1.10x leaf speed,
+>=1% request projection, and non-regressive c1/c2/c4/c8 from one resident
+payload. Only the best qualifier receives the one full-model A/B.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -730,7 +757,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.60% merged Q4 bound; unrealized** | All three frozen sole-resident candidates won pp512 but failed a required c1 or c8 operational guard. | **Closed:** no duplicate layouts, no full-model A/B, and no production change. Reopen only for a new sole-resident family that is non-regressive at every width. | rejected |
 | **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed:** Q4-only quant/shape plugin policy; Q8 exact fallback retained; no new arithmetic variants. | accepted |
 | **D08-P6** | Remaining linear-attention projections after accepted Q5 QKV routing: residual QKV/gate, alpha/beta, and SSM-out. | **realized: +14.18% graph-scope pp512 / +0.69% graph tg128; -46.69 MiB weights** | The split selected 35.93-ms Q5 SSM-out; exact-role sole Q5T16 passes 449/450 top-1, max KL 0.003273, and all graph pairs. | **Closed:** exactly three existing leaves and one combined full-model A/B; M7 confirms SSM-out at 9.68 ms. | accepted |
-| **D08-P7** | Residual linear-attention QKV/gate, alpha/beta, and conversion after accepted Q5T16 SSM-out. | **high: 10.06% corrected matched-Vulkan Q4 bound** | M7 measures **37.94 ms versus 14.44 ms Vulkan**, the largest non-exhausted prefill owner. | Split QKV from gate and alpha/beta from conversion; freeze one role, at most 3 existing/lineage leaves and one full-model A/B. | admitted-next |
+| **D08-P7** | Residual linear-attention QKV/gate, alpha/beta, and conversion after accepted Q5T16 SSM-out. | **gate selected: 8.36-ms gap / 3.58% request bound** | Per-leaf markers select 18 source-Q4_K `[N2048,K1024]` gate projections at **11.74 ms versus 3.38 ms Vulkan**. | Native Q4T16 screens first; at most raw-Q4 and source-F16 lineage follow. Require one resident payload plus c1/c2/c4/c8 non-regression before the sole A/B. | audit complete; screening next |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | **medium: 6.06% corrected matched-Vulkan Q4 bound** | Corrected M7 ownership measures projections+core at **21.62 ms versus 7.47 ms Vulkan**. | One route/layout candidate after P7; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending after P7 |
 | **D08-P5** | Residual/norm/activation/copy launch coalescing. | **low: 0.63% combined M7 bound** | The combined measured package is below the 1% continuation threshold. | Park until a fresh profile makes the package material; retain any independently measured exact non-regressive win. | parked |
 
@@ -806,7 +833,7 @@ potential band, then measured upper bound.
 | Dense FFN projection package / P3 | **rejected** | **29.60% merged Q4 bound; unrealized** | Raw Q4 regresses every operational width, Q4T16 regresses c8, and Q6T16 regresses c1; duplicate residents are disallowed. | A new sole-resident family passes pp512 plus c1/c2/c4/c8 without sacrificing memory or either topline scope. |
 | Q4/16K/16V cluster8 GDN / P2 | **accepted** | **realized: +4.33% paired / +5.83% independent pp512; GDN -36.64%** | Complete Q4 semantic and production-graph decode gates pass; Q8 remains exact because its strict decode guard missed. | Closed; reopen only for a regression in this exact quant/shape key. |
 | Q5T16 SSM-out / P6 | **accepted** | **realized: +14.18% graph pp / +0.69% graph tg; -46.69 MiB** | Exact-role sole Q5T16 replaces 18 dense-BF16 expansions; correctness and all production-graph pairs pass. | Closed; M7 confirms the route at 9.68 ms and selects the residual group instead. |
-| Residual linear-attention projections / P7 | **admitted-next** | **10.06% corrected matched-Vulkan Q4 bound** | QKV/gate, alpha/beta, and conversion remain 37.94 ms versus 14.44 ms after accepted SSM-out is removed. | Split the combined marker group, select one semantic sub-role, and keep the bounded three-leaf/one-A/B budget. |
+| Residual linear-attention projections / P7 | **gate selected; screening next** | **8.36-ms gate gap / 3.58% request bound** | Exact per-leaf markers select 18 Q4_K `[N2048,K1024]` gate projections; the route is sole pack8 today. | Screen native Q4T16 first with all operational widths; preserve the frozen three-family/one-A/B budget. |
 | Graph/submission work | M2 census in-progress | high if production graph residual >=10% | C0 certifies graph throughput, but eager stage gaps cannot be assigned directly to graph GPU work. | One graph/direct API and sync/copy census reports the production residual and preserves exact graph/eager state. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |

@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-P7 residual linear-attention sub-role audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "sha256-sampled-v1:533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "d896d24c3",
+  "method": {
+    "name": "same-stream per-leaf device wall-clock split",
+    "protocol": "one complete warmup, reset, then one measured pp512; wall_clock64 markers immediately bracket each shipped target leaf across all 18 linear-attention layers",
+    "script": "/tmp/d08-p7/split_residual_linear.py",
+    "script_sha256": "79c3717f9e109d2d01f7edc2851421afa197a9f2076ddee6f27f8ddcea64e836",
+    "raw": "/tmp/d08-p7/residual-linear-split.json",
+    "raw_sha256": "b4b56e77a5f7660f0b594d6cbf90615e9f4cdb682ecada3cceddd86bffa04bb8",
+    "route_log": "/tmp/d08-p7/audit-routes.log",
+    "route_log_sha256": "4005cedd063ac816d5b0566faf703e7d774316c27ff55fcd8ad55b1f7f18c25d",
+    "timing_status": "diagnostic, not topline"
+  },
+  "control": {
+    "m7_residual_group_ms": 37.939585,
+    "per_leaf_sum_ms": 34.947200,
+    "per_leaf_coverage": 0.921128,
+    "group_boundary_submission_gap_ms": 2.992385,
+    "note": "The M7 stage interval includes host submission/boundary gaps between target leaves; immediate per-leaf markers intentionally exclude those gaps."
+  },
+  "subroles": [
+    {
+      "rank": 1,
+      "role": "gate",
+      "calls": 18,
+      "hip_ms": 11.741349,
+      "vulkan_ms": 3.378570,
+      "hip_over_vulkan": 3.475242,
+      "gap_ms": 8.362779,
+      "projected_request_saving_percent": 3.579875,
+      "source_quant": "Q4_K",
+      "shape_n_k": [2048, 1024],
+      "resident_layout": "q4_k_pack8",
+      "dispatch": "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+      "disposition": "selected"
+    },
+    {
+      "rank": 2,
+      "role": "qkv",
+      "calls": 18,
+      "hip_ms": 15.440136,
+      "vulkan_ms": 9.584840,
+      "hip_over_vulkan": 1.610892,
+      "gap_ms": 5.855296,
+      "projected_request_saving_percent": 2.506491,
+      "source_quant": "Q5_K",
+      "shape_n_k": [6144, 1024],
+      "resident_layout": "gguf_q5_k_t16_v1",
+      "dispatch": "t16_wmma_prefill_bf16_bf16_out",
+      "disposition": "accepted P1 route; not selected"
+    },
+    {
+      "rank": 3,
+      "role": "alpha_beta",
+      "calls": 36,
+      "hip_ms": 5.964813,
+      "vulkan_ms": 1.475590,
+      "hip_over_vulkan": 4.042324,
+      "gap_ms": 4.489223,
+      "projected_request_saving_percent": 1.921713,
+      "source_quant": "Q8_0",
+      "shape_n_k": [16, 1024],
+      "resident_layout": "gguf_q8_0_t16_v1",
+      "dispatch": "two independent t16_wmma_prefill_bf16_bf16_out calls per layer",
+      "disposition": "future after gate"
+    },
+    {
+      "rank": 4,
+      "role": "group_boundary_submission_gap",
+      "calls": 90,
+      "hip_ms": 2.992385,
+      "vulkan_ms": 0.0,
+      "gap_ms": 2.992385,
+      "projected_request_saving_percent": 1.280958,
+      "disposition": "not arithmetic; retain for P5/M2 submission analysis"
+    },
+    {
+      "rank": 5,
+      "role": "qkv_bf16_to_f32",
+      "calls": 18,
+      "hip_ms": 1.800902,
+      "vulkan_ms": 0.0,
+      "gap_ms": 1.800902,
+      "projected_request_saving_percent": 0.770916,
+      "disposition": "below continuation threshold"
+    }
+  ],
+  "vulkan_component_accounting": {
+    "qkv_ms": 9.584840,
+    "gate_ms": 3.378570,
+    "alpha_beta_ms": 1.475590,
+    "conversion_ms": 0.0,
+    "sum_ms": 14.439000,
+    "source": "/tmp/d08-m3/q4-vulkan-perf.log measured prefill block; quant and matrix shapes disambiguate each role"
+  },
+  "selected_owner": {
+    "role": "18 linear-attention gate projections",
+    "source_tensors": "blk.{linear_attention_layer}.attn_gate.weight",
+    "shape": {"in_features": 1024, "out_features": 2048, "rows": 512},
+    "source_quant": "Q4_K",
+    "control_layout": "q4_k_pack8",
+    "control_residency": "qweight+scales+mins only",
+    "measured_upper_bound_percent": 3.579875,
+    "why": "largest measured leaf gap after splitting the combined residual group; unlike QKV, the route has not already received an exact-role sole-resident repair"
+  },
+  "frozen_candidate_budget": {
+    "tuning_dimension": "sole resident layout plus its existing bulk/small-row consumer chain",
+    "candidates": [
+      {
+        "name": "sole Q4T16 native",
+        "bulk": "t16_wmma_prefill_bf16_bf16_out",
+        "operational": "direct c1, rowtile c2-c4, independently choose direct or WMMA at c8",
+        "arithmetic": "exact T16"
+      },
+      {
+        "name": "sole raw Q4 native",
+        "bulk": "gguf_q4_k_wmma_prefill_bf16_bf16_out",
+        "operational": "raw direct/rowtile c1-c8",
+        "arithmetic": "source-faithful"
+      },
+      {
+        "name": "sole Q4T16 source-F16/rocBLAS",
+        "bulk": "f16_rocblas_t16_bf16_bf16_out with existing exact adjacent-pair producer",
+        "operational": "same exact T16 small-row chain",
+        "arithmetic": "changed association; screen only if exact T16 c1-c8 guards pass but native bulk misses continuation, then require the full category quality gate"
+      }
+    ],
+    "leaf_continue": ">=1.10x selected gate leaf and >=1% projected request saving with finite output and >=90% top-1",
+    "operational_guard": "sole resident must be non-regressive at c1/c2/c4/c8; no pack8 sidecar",
+    "full_model_budget": "best qualifying candidate only; one combined eager+production-graph A/B and complete category/heldout correctness gate",
+    "stop": "reject on any operational regression, correctness failure, duplicate residency, or <1% complete-wall projection"
+  },
+  "correctness": {
+    "finite": true,
+    "warmup_token": 9707,
+    "measured_token": 9707,
+    "math_changed": false
+  },
+  "exact_command": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-p7/split_residual_linear.py",
+  "next": "Screen the actual blk.0.attn_gate.weight with the frozen sole-resident candidates; native Q4T16 receives the first pp512+c1/c2/c4/c8 gate."
+}
