@@ -656,6 +656,41 @@ def test_run_gdn_prefill_explicit_compact_peer_route_uses_compact_abi(
     assert recurrent_args[7:12] == (64, 4, 32, 128, 128)
 
 
+def test_run_gdn_prefill_rejects_peer_route_after_compact_qk_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_peer_wave32")
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_peer_normalized=_recorder(calls, "peer_prepare"),
+        recurrent_peer_wave32=_recorder(calls, "peer_wave32"),
+    )
+    scratch = _make_scratch()
+    scratch.rows = 64
+    compact_qk_bytes = 64 * 4 * 128 * 4
+    scratch.prefill_query.nbytes = compact_qk_bytes
+    scratch.prefill_key.nbytes = compact_qk_bytes
+
+    with pytest.raises(RuntimeError, match="mode changed after session allocation"):
+        runner._run_gdn_prefill(
+            layer=_make_layer(),
+            scratch=scratch,
+            cfg=_make_cfg(),
+            rows=64,
+            recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+
+    assert calls == []
+
+
 @pytest.mark.parametrize(
     ("mode", "expected"),
     [

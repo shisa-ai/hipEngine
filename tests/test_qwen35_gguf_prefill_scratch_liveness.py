@@ -200,12 +200,19 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     # planes while preserving each sole resident T16 weight allocation. Q5
     # recurrent output and dense FFN down cast their dead BF16 inputs in place,
     # so K6,144 admission does not grow the K5,120 activation workspace.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 113 * _MIB
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 104 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 103 * _MIB
     assert scratch.q6_f16_x.ptr != 0
     assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
     assert scratch.q6_f16_weight.ptr != 0
     assert scratch.q6_f16_out.ptr != 0
+    # The package-default compact-peer GDN route stores normalized Q/K once
+    # per K head, while V remains per V head.
+    compact_qk_bytes = 768 * 16 * 128 * 4
+    value_bytes = 768 * 48 * 128 * 4
+    assert scratch.prefill_query.nbytes == compact_qk_bytes
+    assert scratch.prefill_key.nbytes == compact_qk_bytes
+    assert scratch.prefill_value.nbytes == value_bytes
     assert scratch.ffn_gate_up.ptr != 0
     assert scratch.ffn_intermediate.ptr != 0
     assert scratch.ffn_down.ptr != 0
@@ -245,6 +252,25 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
                 f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
                 f"{name_b}={offsets[name_b]}"
             )
+
+
+def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_peer_wave32")
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    full_qkv_bytes = 768 * 48 * 128 * 4
+    assert scratch.prefill_query.nbytes == full_qkv_bytes
+    assert scratch.prefill_key.nbytes == full_qkv_bytes
+    assert scratch.prefill_value.nbytes == full_qkv_bytes
 
 
 @pytest.mark.parametrize(

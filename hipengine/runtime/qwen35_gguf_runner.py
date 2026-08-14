@@ -2887,6 +2887,26 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
                 return
+            required_qk_heads = (
+                int(cfg.ssm_group_count)
+                if mode == "chain_compact_peer_wave32"
+                else int(cfg.ssm_time_step_rank)
+            )
+            q_nbytes = getattr(scratch.prefill_query, "nbytes", None)
+            k_nbytes = getattr(scratch.prefill_key, "nbytes", None)
+            scratch_rows = getattr(scratch, "rows", None)
+            if q_nbytes is not None and k_nbytes is not None and scratch_rows is not None:
+                allocated_qk_heads = min(int(q_nbytes), int(k_nbytes)) // (
+                    int(scratch_rows) * int(cfg.ssm_state_size) * DType.FP32.itemsize
+                )
+                if allocated_qk_heads < required_qk_heads:
+                    raise RuntimeError(
+                        "GGUF GDN prefill mode changed after session allocation: "
+                        f"{mode!r} requires {required_qk_heads} normalized Q/K heads, "
+                        f"but the session owns capacity for {allocated_qk_heads}; "
+                        "construct a new session after setting "
+                        "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+                    )
             normalized_prepare(
                 scratch.conv_out.ptr,
                 scratch.linear_alpha.ptr,
@@ -21502,6 +21522,35 @@ def _allocate_prefill_scratch_liveness_arenas(
     )
 
 
+def _gguf_gdn_prefill_effective_mode(backend: str) -> str:
+    requested_mode = _gguf_gdn_prefill_mode()
+    if requested_mode == "auto":
+        return _gguf_gdn_prefill_backend_auto_mode(backend)
+    if requested_mode == "exact":
+        return _gguf_gdn_prefill_backend_exact_mode(backend)
+    return requested_mode
+
+
+def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
+    """Return the normalized-Q/K head capacity required by this session route."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if cfg is None:
+        raise ValueError("GGUF prefill scratch requires model configuration")
+    value_heads = int(cfg.ssm_time_step_rank)
+    if not isinstance(backend, str):
+        return value_heads
+    try:
+        mode = _gguf_gdn_prefill_effective_mode(backend)
+    except ValueError:
+        return value_heads
+    if mode == "chain_compact_peer_wave32":
+        return int(cfg.ssm_group_count)
+    return value_heads
+
+
 def _gguf_prefill_scratch_liveness_disabled_fields(
     runner: object,
     *,
@@ -21558,13 +21607,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
             return None
     if int(rows) < max(1, min_rows):
         return None
-    requested_mode = _gguf_gdn_prefill_mode()
-    if requested_mode == "auto":
-        effective_mode = _gguf_gdn_prefill_backend_auto_mode(backend)
-    elif requested_mode == "exact":
-        effective_mode = _gguf_gdn_prefill_backend_exact_mode(backend)
-    else:
-        effective_mode = requested_mode
+    effective_mode = _gguf_gdn_prefill_effective_mode(backend)
     if effective_mode in {
         "chain_lds32_direct",
         "chain_lds32_direct_nonvolatile",
@@ -21776,6 +21819,12 @@ class _GGUFFullAttentionPrefillScratch:
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
+        normalized_qk_f32_bytes = (
+            rows
+            * _gguf_prefill_normalized_qk_heads(runner)
+            * cfg.ssm_state_size
+            * DType.FP32.itemsize
+        )
         q6_f16_policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
         q6_f16_x_bytes = (
             rows * runner.hidden_size * DType.FP16.itemsize
@@ -21866,8 +21915,8 @@ class _GGUFFullAttentionPrefillScratch:
             "linear_beta": linear_ab_bytes,
             "linear_beta_f32": linear_ab_f32_bytes,
             "conv_out": linear_qkv_f32_bytes,
-            "prefill_query": recurrent_f32_bytes,
-            "prefill_key": recurrent_f32_bytes,
+            "prefill_query": normalized_qk_f32_bytes,
+            "prefill_key": normalized_qk_f32_bytes,
             "prefill_value": recurrent_f32_bytes,
             "q6_f16_x": q6_f16_x_bytes,
             "q6_f16_weight": q6_f16_weight_bytes,
