@@ -3513,3 +3513,12 @@ should be boring.
   Environment changes remain supported between calls, not during an in-flight
   token. Remove the two snapshots with the corresponding branches when these
   flags are retired.
+
+## gfx1151 Q4 pack8 bulk-prefill WMMA rollback env
+
+- `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0` (default `1`) rolls the gfx1151
+  bulk-prefill pack8 route back to the exact tile8x8 leaf without touching
+  Laguna's `wmma_pack8` mode. Added with the D08-X parity campaign route
+  (2026-08-15): pack8 WMMA measures 1.97x/2.33x tile8x8 on the Qwen3.5-0.8B
+  dense-FFN pp512 shapes. Remove the env branch once the parity campaign closes
+  and no A/B bisection still needs the tile8x8 control.

@@ -1628,6 +1628,101 @@ def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
     ]
 
 
+def test_gfx1151_q4_pack8_bulk_prefill_prefers_wmma_over_exact_tile8x8() -> None:
+    import hipengine.kernels.hip_gfx1151  # noqa: F401  (registers aliases + capability)
+
+    weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k",
+        "pack8_wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=512,
+            in_features=1024,
+            out_features=3584,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (100, 11, 12, 13, 200, 512, 1024, 3584)
+    assert kwargs["runtime"] == "runtime-sentinel"
+
+
+def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
+    weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_kernel(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_kernel, replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=512,
+            in_features=1024,
+            out_features=3584,
+            backend="hip_gfx1100",
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert len(calls) == 1
+    assert calls[0][0] == (100, 11, 12, 13, 200, 512, 1024, 3584)
+
+
+def test_qwen35_dense_pack8_wmma_tile_policy_covers_ffn_shapes() -> None:
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+        _default_q4_pack8_tiles,
+    )
+
+    assert _default_q4_pack8_tiles(512, 1024, 3584) == (16, 32)
+    assert _default_q4_pack8_tiles(512, 3584, 1024) == (64, 16)
+
+
 @pytest.mark.parametrize(
     ("layout", "quant_key"),
     [

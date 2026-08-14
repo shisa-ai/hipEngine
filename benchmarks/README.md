@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-14**
+Last updated: **2026-08-15**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -231,7 +231,15 @@ Q4 core is **0.424x pp / 0.734x tg** and exact public greedy is **0.463x /
 0.942x**, losing all required measures in 0/5 blocks. Q8 public decode reaches
 **1.028x Vulkan**, but Q8 core/prefill still miss. Q4 memory is near equal;
 hipEngine Q8 owned memory is 23.4% below llama's closest declared-device-buffer
-scope. G3 and D08-T1 remain blocked. See the
+scope. G3 and D08-T1 remain blocked. Human approval then reopened the campaign
+for fine-grained cross-engine profiling plus direct llama.cpp source review
+(D08-X): the fresh gap map ranks Q4 prefill dense FFN first (**113.8 vs
+24.5 ms, 89.3 ms matched gap**), and the first retained X2a repair routes the
+registered pack8 WMMA leaf over the exact tile8x8 owner, raising exact-core
+Q4 pp512 **2543 -> 3428 tok/s (+35.3%, 5/5 blocks)** at unchanged decode
+(0.9956x guard) and **447/450 top-1 / max KL 0.003848**; Q8 is untouched. See
+the [`pack8 WMMA prefill route`](results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json),
+[`parity gap map`](results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json),
 [`blocked closure gate`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json),
 [`post-D5 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json),
 [`retained D5 norm/residual route`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),

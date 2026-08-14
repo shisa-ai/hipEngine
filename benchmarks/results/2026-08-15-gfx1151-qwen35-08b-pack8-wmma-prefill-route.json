@@ -1,0 +1,4547 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X2a route gfx1151 Q4 pack8 bulk prefill through the registered pack8 WMMA leaf",
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "source_commit": "7d4177b4e",
+  "rollback_env": "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0 (docs/REFACTOR.md entry added)",
+  "mechanism": {
+    "before": "_pack8_exact_prefill_dispatch selected pack8_exact_prefill_tile8x8 at rows>=512 because use_q4_pack8_wmma defaulted False for the Qwen3.5 runner",
+    "after": "gfx1151 GGUF_Q4_PACK8_WMMA_BULK_PREFILL capability + measured 0.8B tile policy ([3584,1024]->16x32, [1024,3584]->64x16); WMMA overrides tile8x8 for bulk rows; tile8x8 and tile8x8-era fallbacks remain registered",
+    "residency": "unchanged: sole pack8 residents; zero bytes/nodes added"
+  },
+  "leaf_screen": {
+    "protocol": "actual weights rows=512, 5 rotated repeats x 4 calls, device-clock markers, control=tile8x8",
+    "rows": [
+      {
+        "tensor": "blk.0.ffn_gate.weight",
+        "shape": [
+          3584,
+          1024
+        ],
+        "rows": 512,
+        "median_ms": {
+          "control_tile8x8": 0.0010534766055505461,
+          "base_pack8_prefill": 0.0033947600440837594,
+          "pack8_wmma_64x16": 0.0006427462178138463,
+          "pack8_wmma_64x32": 0.0007117823865344154,
+          "pack8_wmma_32x32": 0.0008863866346057509,
+          "pack8_wmma_32x16": 0.000585246969241559,
+          "pack8_wmma_16x32": 0.0006472723174030658,
+          "pack8_wmma_16x16": 0.0006287220719366797,
+          "t16_wmma_prefill": 0.0005125037571385633
+        },
+        "max_abs_diff_vs_control": {
+          "control_tile8x8": 0.0,
+          "base_pack8_prefill": 0.0,
+          "pack8_wmma_64x16": 0.00390625,
+          "pack8_wmma_64x32": 0.00390625,
+          "pack8_wmma_32x32": 0.00390625,
+          "pack8_wmma_32x16": 0.00390625,
+          "pack8_wmma_16x32": 0.00390625,
+          "pack8_wmma_16x16": 0.00390625,
+          "t16_wmma_prefill": 0.00390625
+        },
+        "speedup_vs_control": {
+          "control_tile8x8": 1.0,
+          "base_pack8_prefill": 0.31032432097417295,
+          "pack8_wmma_64x16": 1.6390242001480848,
+          "pack8_wmma_64x32": 1.4800543332911056,
+          "pack8_wmma_32x32": 1.1885068709537954,
+          "pack8_wmma_32x16": 1.800054781856934,
+          "pack8_wmma_16x32": 1.6275632021113164,
+          "pack8_wmma_16x16": 1.675583938552494,
+          "t16_wmma_prefill": 2.0555490391570386
+        }
+      },
+      {
+        "tensor": "blk.3.ffn_down.weight",
+        "shape": [
+          1024,
+          3584
+        ],
+        "rows": 512,
+        "median_ms": {
+          "control_tile8x8": 0.0011188758641418695,
+          "base_pack8_prefill": 0.002437300871656147,
+          "pack8_wmma_64x16": 0.0004796989279631299,
+          "pack8_wmma_64x32": 0.000661875062618976,
+          "pack8_wmma_32x32": 0.000548624887285843,
+          "pack8_wmma_32x16": 0.0005605074641819457,
+          "pack8_wmma_16x32": 0.0009706843001703236,
+          "pack8_wmma_16x16": 0.0007940787496242862,
+          "t16_wmma_prefill": 0.0006882977657549343
+        },
+        "max_abs_diff_vs_control": {
+          "control_tile8x8": 0.0,
+          "base_pack8_prefill": 0.0,
+          "pack8_wmma_64x16": 0.00390625,
+          "pack8_wmma_64x32": 0.00390625,
+          "pack8_wmma_32x32": 0.00390625,
+          "pack8_wmma_32x16": 0.00390625,
+          "pack8_wmma_16x32": 0.00390625,
+          "pack8_wmma_16x16": 0.00390625,
+          "t16_wmma_prefill": 0.00390625
+        },
+        "speedup_vs_control": {
+          "control_tile8x8": 1.0,
+          "base_pack8_prefill": 0.4590634981316824,
+          "pack8_wmma_64x16": 2.332454376941754,
+          "pack8_wmma_64x32": 1.690463846325597,
+          "pack8_wmma_32x32": 2.039418717727466,
+          "pack8_wmma_32x16": 1.9961837007377878,
+          "pack8_wmma_16x32": 1.1526671070558605,
+          "pack8_wmma_16x16": 1.4090238086225821,
+          "t16_wmma_prefill": 1.6255695133844743
+        }
+      }
+    ],
+    "note": "max abs diff vs control 0.00390625 (one BF16 ULP) for every WMMA route"
+  },
+  "binding_ab": {
+    "protocol": "5 counter-rotated serial env-pair blocks per quant, exact-core pp512/tg128, one warmup+one measure per child",
+    "index": "84fa41cc2e4d73929c11dfff582f6bb4f671d5eb67c0fa8fac1a87de24196123",
+    "performance": {
+      "q4": {
+        "prefill_tok_s": {
+          "candidate_median": 3427.888100502894,
+          "control_median": 2543.448837339363,
+          "ratio": 1.3530774276876758,
+          "block_wins": 5
+        },
+        "decode_tok_s": {
+          "candidate_median": 147.1023376988649,
+          "control_median": 146.57230988717166,
+          "ratio": 0.9956440871383638,
+          "block_wins": 2
+        },
+        "public_prefill_tok_s": {
+          "candidate_median": 3418.007139082028,
+          "control_median": 2555.6580009478394,
+          "ratio": 1.349728999640768,
+          "block_wins": 5
+        },
+        "public_decode_tok_s": {
+          "candidate_median": 124.62332162908743,
+          "control_median": 123.29674018050818,
+          "ratio": 0.9941804883258187,
+          "block_wins": 2
+        },
+        "all_finite": true,
+        "top1_repeat_exact": true
+      },
+      "q8": {
+        "prefill_tok_s": {
+          "candidate_median": 4214.497266408752,
+          "control_median": 4210.0760176917265,
+          "ratio": 1.0090566074031908,
+          "block_wins": 2
+        },
+        "decode_tok_s": {
+          "candidate_median": 141.77088531495292,
+          "control_median": 141.57668805421818,
+          "ratio": 1.006751075846532,
+          "block_wins": 3
+        },
+        "public_prefill_tok_s": {
+          "candidate_median": 4150.5948998219465,
+          "control_median": 4194.212381758947,
+          "ratio": 0.9924218013412811,
+          "block_wins": 2
+        },
+        "public_decode_tok_s": {
+          "candidate_median": 117.03527007266476,
+          "control_median": 117.25666268022107,
+          "ratio": 0.9995209523108125,
+          "block_wins": 3
+        },
+        "all_finite": true,
+        "top1_repeat_exact": true
+      }
+    }
+  },
+  "correctness": {
+    "protocol": "18 category+heldout prompts x 24 teacher-forced steps, control trajectory vs candidate logits",
+    "top1_matches": 447,
+    "transitions": 450,
+    "top1_agreement": 0.9933333333333333,
+    "kl_max": 0.003848065345914718,
+    "gate": {
+      "schema": 1,
+      "task": "X2a pack8 WMMA bulk prefill route teacher-forced gate (Q4)",
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "steps": 24,
+      "control_env": "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0 (tile8x8)",
+      "candidate_env": "default (pack8 WMMA)",
+      "results": [
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0006218948351365072,
+          "kl_max": 0.0006218948351365072,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 727,
+              "candidate_token_id": 727,
+              "top1_match": true,
+              "kl_mean": 4.718350555694491e-05,
+              "kl_max": 4.718350555694491e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 10562,
+              "candidate_token_id": 10562,
+              "top1_match": true,
+              "kl_mean": 3.0146775751519062e-06,
+              "kl_max": 3.0146775751519062e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 87682,
+              "candidate_token_id": 87682,
+              "top1_match": true,
+              "kl_mean": 2.79808710057712e-05,
+              "kl_max": 2.79808710057712e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 1494,
+              "candidate_token_id": 1494,
+              "top1_match": true,
+              "kl_mean": 1.2800149507822829e-05,
+              "kl_max": 1.2800149507822829e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 40798,
+              "candidate_token_id": 40798,
+              "top1_match": true,
+              "kl_mean": 6.117259299050445e-08,
+              "kl_max": 6.117259299050445e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 1590,
+              "candidate_token_id": 1590,
+              "top1_match": true,
+              "kl_mean": 4.520201575273889e-06,
+              "kl_max": 4.520201575273889e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 5.8973871059131944e-08,
+              "kl_max": 5.8973871059131944e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 1.7964775624148124e-06,
+              "kl_max": 1.7964775624148124e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 4071,
+              "candidate_token_id": 4071,
+              "top1_match": true,
+              "kl_mean": 0.0003623682409306047,
+              "kl_max": 0.0003623682409306047,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 5.609232563047056e-05,
+              "kl_max": 5.609232563047056e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 1.2675507093434996e-06,
+              "kl_max": 1.2675507093434996e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 380,
+              "candidate_token_id": 380,
+              "top1_match": true,
+              "kl_mean": 0.0004220398821566964,
+              "kl_max": 0.0004220398821566964,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 2298,
+              "candidate_token_id": 2298,
+              "top1_match": true,
+              "kl_mean": 1.2847090037589598e-05,
+              "kl_max": 1.2847090037589598e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 287,
+              "candidate_token_id": 287,
+              "top1_match": true,
+              "kl_mean": 1.0140487822430395e-08,
+              "kl_max": 1.0140487822430395e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 48142,
+              "candidate_token_id": 48142,
+              "top1_match": true,
+              "kl_mean": 0.00014194414447695107,
+              "kl_max": 0.00014194414447695107,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 7629,
+              "candidate_token_id": 7629,
+              "top1_match": true,
+              "kl_mean": 3.2166589159439994e-05,
+              "kl_max": 3.2166589159439994e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 7308,
+              "candidate_token_id": 7308,
+              "top1_match": true,
+              "kl_mean": 4.768396946405179e-06,
+              "kl_max": 4.768396946405179e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 26126,
+              "candidate_token_id": 26126,
+              "top1_match": true,
+              "kl_mean": 8.31996095536307e-08,
+              "kl_max": 8.31996095536307e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 0.0006218948351365072,
+              "kl_max": 0.0006218948351365072,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 2.0800678833521205e-05,
+              "kl_max": 2.0800678833521205e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 1031,
+              "candidate_token_id": 1031,
+              "top1_match": true,
+              "kl_mean": 1.136771422341226e-05,
+              "kl_max": 1.136771422341226e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 4.1999996881856596e-07,
+              "kl_max": 4.1999996881856596e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 17167,
+              "candidate_token_id": 17167,
+              "top1_match": true,
+              "kl_mean": 0.00010596581115706356,
+              "kl_max": 0.00010596581115706356,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 4.769576497981638e-09,
+              "kl_max": 4.769576497981638e-09,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 2.937420036983766e-10,
+              "kl_max": 2.937420036983766e-10,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0013346431301031294,
+          "kl_max": 0.0013346431301031294,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 727,
+              "candidate_token_id": 727,
+              "top1_match": true,
+              "kl_mean": 4.9245592707485326e-05,
+              "kl_max": 4.9245592707485326e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 70058,
+              "candidate_token_id": 70058,
+              "top1_match": true,
+              "kl_mean": 5.671106774431268e-05,
+              "kl_max": 5.671106774431268e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 17885,
+              "candidate_token_id": 17885,
+              "top1_match": true,
+              "kl_mean": 1.082389325539352e-06,
+              "kl_max": 1.082389325539352e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 37423,
+              "candidate_token_id": 37423,
+              "top1_match": true,
+              "kl_mean": 3.3811705618698635e-05,
+              "kl_max": 3.3811705618698635e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 3.1881247077379276e-05,
+              "kl_max": 3.1881247077379276e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 12454,
+              "candidate_token_id": 12454,
+              "top1_match": true,
+              "kl_mean": 9.112154555719024e-08,
+              "kl_max": 9.112154555719024e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 1590,
+              "candidate_token_id": 1590,
+              "top1_match": true,
+              "kl_mean": 2.416016120700925e-06,
+              "kl_max": 2.416016120700925e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 2.1043654659326965e-06,
+              "kl_max": 2.1043654659326965e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 6.61360094794773e-07,
+              "kl_max": 6.61360094794773e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 4071,
+              "candidate_token_id": 4071,
+              "top1_match": true,
+              "kl_mean": 0.00010798856442479088,
+              "kl_max": 0.00010798856442479088,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 3.714067183069541e-06,
+              "kl_max": 3.714067183069541e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 2.0057499855843177e-06,
+              "kl_max": 2.0057499855843177e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 5019,
+              "candidate_token_id": 5019,
+              "top1_match": true,
+              "kl_mean": 0.00023800941353427328,
+              "kl_max": 0.00023800941353427328,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 264,
+              "candidate_token_id": 264,
+              "top1_match": true,
+              "kl_mean": 9.07808639308504e-06,
+              "kl_max": 9.07808639308504e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 2610,
+              "candidate_token_id": 2610,
+              "top1_match": true,
+              "kl_mean": 0.00011972454898941807,
+              "kl_max": 0.00011972454898941807,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 1844,
+              "candidate_token_id": 1844,
+              "top1_match": true,
+              "kl_mean": 4.016353555281272e-07,
+              "kl_max": 4.016353555281272e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 5551,
+              "candidate_token_id": 5551,
+              "top1_match": true,
+              "kl_mean": 7.249496241051929e-07,
+              "kl_max": 7.249496241051929e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 20735,
+              "candidate_token_id": 20735,
+              "top1_match": true,
+              "kl_mean": 1.208976466546727e-05,
+              "kl_max": 1.208976466546727e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 314,
+              "candidate_token_id": 314,
+              "top1_match": true,
+              "kl_mean": 5.7087215477416804e-05,
+              "kl_max": 5.7087215477416804e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 279,
+              "candidate_token_id": 279,
+              "top1_match": true,
+              "kl_mean": 0.00021795192015808615,
+              "kl_max": 0.00021795192015808615,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 7552,
+              "candidate_token_id": 7552,
+              "top1_match": true,
+              "kl_mean": 0.00043725121030883035,
+              "kl_max": 0.00043725121030883035,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 303,
+              "candidate_token_id": 303,
+              "top1_match": true,
+              "kl_mean": 0.0003281955973995602,
+              "kl_max": 0.0003281955973995602,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 279,
+              "candidate_token_id": 279,
+              "top1_match": true,
+              "kl_mean": 0.00033234662284252784,
+              "kl_max": 0.00033234662284252784,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 4618,
+              "candidate_token_id": 4618,
+              "top1_match": true,
+              "kl_mean": 0.00011925349624436448,
+              "kl_max": 0.00011925349624436448,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 4364,
+              "candidate_token_id": 4364,
+              "top1_match": true,
+              "kl_mean": 0.0013346431301031294,
+              "kl_max": 0.0013346431301031294,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0014690178990731293,
+          "kl_max": 0.0014690178990731293,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 1005,
+              "candidate_token_id": 1005,
+              "top1_match": true,
+              "kl_mean": 0.0014690178990731293,
+              "kl_max": 0.0014690178990731293,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 43072,
+              "candidate_token_id": 43072,
+              "top1_match": true,
+              "kl_mean": 7.329056973160924e-06,
+              "kl_max": 7.329056973160924e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 5287,
+              "candidate_token_id": 5287,
+              "top1_match": true,
+              "kl_mean": 9.66784100361565e-07,
+              "kl_max": 9.66784100361565e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 1714,
+              "candidate_token_id": 1714,
+              "top1_match": true,
+              "kl_mean": 4.978616460246187e-06,
+              "kl_max": 4.978616460246187e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 7.528352723938906e-05,
+              "kl_max": 7.528352723938906e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 1.5252929915722295e-05,
+              "kl_max": 1.5252929915722295e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 1.879419146605871e-05,
+              "kl_max": 1.879419146605871e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 687,
+              "candidate_token_id": 687,
+              "top1_match": true,
+              "kl_mean": 0.00031573455854630656,
+              "kl_max": 0.00031573455854630656,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 1259,
+              "candidate_token_id": 1259,
+              "top1_match": true,
+              "kl_mean": 2.9990624513759614e-07,
+              "kl_max": 2.9990624513759614e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 2251,
+              "candidate_token_id": 2251,
+              "top1_match": true,
+              "kl_mean": 8.05233908132253e-08,
+              "kl_max": 8.05233908132253e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 3676,
+              "candidate_token_id": 3676,
+              "top1_match": true,
+              "kl_mean": 5.950441940743071e-07,
+              "kl_max": 5.950441940743071e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 701,
+              "candidate_token_id": 701,
+              "top1_match": true,
+              "kl_mean": 2.773786410725604e-06,
+              "kl_max": 2.773786410725604e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 0.00026987352300625084,
+              "kl_max": 0.00026987352300625084,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 8390,
+              "candidate_token_id": 8390,
+              "top1_match": true,
+              "kl_mean": 0.00034321348402687856,
+              "kl_max": 0.00034321348402687856,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 0.0001631294090021716,
+              "kl_max": 0.0001631294090021716,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 514,
+              "candidate_token_id": 514,
+              "top1_match": true,
+              "kl_mean": 5.612773109091431e-06,
+              "kl_max": 5.612773109091431e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 1590,
+              "candidate_token_id": 1590,
+              "top1_match": true,
+              "kl_mean": 0.0002429822950597167,
+              "kl_max": 0.0002429822950597167,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 9.178963864990973e-08,
+              "kl_max": 9.178963864990973e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 285,
+              "candidate_token_id": 285,
+              "top1_match": true,
+              "kl_mean": 8.545697912089503e-08,
+              "kl_max": 8.545697912089503e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 638,
+              "candidate_token_id": 638,
+              "top1_match": true,
+              "kl_mean": 8.484295664763055e-05,
+              "kl_max": 8.484295664763055e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 19474,
+              "candidate_token_id": 19474,
+              "top1_match": true,
+              "kl_mean": 0.0012185414610998986,
+              "kl_max": 0.0012185414610998986,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 0.00028862594286580494,
+              "kl_max": 0.00028862594286580494,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 6249,
+              "candidate_token_id": 6249,
+              "top1_match": true,
+              "kl_mean": 0.00010919895768914958,
+              "kl_max": 0.00010919895768914958,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 16793,
+              "candidate_token_id": 16793,
+              "top1_match": true,
+              "kl_mean": 0.0006273945284200404,
+              "kl_max": 0.0006273945284200404,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 2.1547810099732133e-07,
+              "kl_max": 2.1547810099732133e-07,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.00034588221008052935,
+          "kl_max": 0.00034588221008052935,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 71093,
+              "candidate_token_id": 71093,
+              "top1_match": true,
+              "kl_mean": 0.0002957938434338717,
+              "kl_max": 0.0002957938434338717,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 12305,
+              "candidate_token_id": 12305,
+              "top1_match": true,
+              "kl_mean": 3.3995331374405563e-06,
+              "kl_max": 3.3995331374405563e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 2.154393571967152e-06,
+              "kl_max": 2.154393571967152e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 727,
+              "candidate_token_id": 727,
+              "top1_match": true,
+              "kl_mean": 9.432450172712469e-06,
+              "kl_max": 9.432450172712469e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 48794,
+              "candidate_token_id": 48794,
+              "top1_match": true,
+              "kl_mean": 1.4657757942019618e-05,
+              "kl_max": 1.4657757942019618e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 5070,
+              "candidate_token_id": 5070,
+              "top1_match": true,
+              "kl_mean": 3.1361143230683457e-06,
+              "kl_max": 3.1361143230683457e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 30863,
+              "candidate_token_id": 30863,
+              "top1_match": true,
+              "kl_mean": 1.1958177161171495e-05,
+              "kl_max": 1.1958177161171495e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 1590,
+              "candidate_token_id": 1590,
+              "top1_match": true,
+              "kl_mean": 3.5160239324255945e-05,
+              "kl_max": 3.5160239324255945e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 1.954383329023712e-07,
+              "kl_max": 1.954383329023712e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 5.961300908889059e-07,
+              "kl_max": 5.961300908889059e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 4071,
+              "candidate_token_id": 4071,
+              "top1_match": true,
+              "kl_mean": 7.019477114084318e-06,
+              "kl_max": 7.019477114084318e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 7.616485371232422e-05,
+              "kl_max": 7.616485371232422e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 5.8201913042906026e-08,
+              "kl_max": 5.8201913042906026e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 6943,
+              "candidate_token_id": 6943,
+              "top1_match": true,
+              "kl_mean": 0.00018603533275776603,
+              "kl_max": 0.00018603533275776603,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 264,
+              "candidate_token_id": 264,
+              "top1_match": true,
+              "kl_mean": 4.280291161328724e-06,
+              "kl_max": 4.280291161328724e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 1103,
+              "candidate_token_id": 1103,
+              "top1_match": true,
+              "kl_mean": 3.292065814259263e-05,
+              "kl_max": 3.292065814259263e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 314,
+              "candidate_token_id": 314,
+              "top1_match": true,
+              "kl_mean": 1.1182742995431968e-07,
+              "kl_max": 1.1182742995431968e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 55588,
+              "candidate_token_id": 55588,
+              "top1_match": true,
+              "kl_mean": 4.174024656025122e-05,
+              "kl_max": 4.174024656025122e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 1083,
+              "candidate_token_id": 1083,
+              "top1_match": true,
+              "kl_mean": 0.00034588221008052935,
+              "kl_max": 0.00034588221008052935,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 264,
+              "candidate_token_id": 264,
+              "top1_match": true,
+              "kl_mean": 2.524187436112343e-06,
+              "kl_max": 2.524187436112343e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 31038,
+              "candidate_token_id": 31038,
+              "top1_match": true,
+              "kl_mean": 3.220293501774017e-05,
+              "kl_max": 3.220293501774017e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 11925,
+              "candidate_token_id": 11925,
+              "top1_match": true,
+              "kl_mean": 4.359375056980599e-05,
+              "kl_max": 4.359375056980599e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 72815,
+              "candidate_token_id": 72815,
+              "top1_match": true,
+              "kl_mean": 6.99670678257551e-08,
+              "kl_max": 6.99670678257551e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 48794,
+              "candidate_token_id": 48794,
+              "top1_match": true,
+              "kl_mean": 0.00016244124452362976,
+              "kl_max": 0.00016244124452362976,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 1898,
+              "candidate_token_id": 1898,
+              "top1_match": true,
+              "kl_mean": 2.257639981784133e-06,
+              "kl_max": 2.257639981784133e-06,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0016579908227296008,
+          "kl_max": 0.0016579908227296008,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 2,
+              "candidate_token_id": 2,
+              "top1_match": true,
+              "kl_mean": 0.0016232379321008898,
+              "kl_max": 0.0016232379321008898,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 20596,
+              "candidate_token_id": 20596,
+              "top1_match": true,
+              "kl_mean": 0.0003227950174398024,
+              "kl_max": 0.0003227950174398024,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 9392,
+              "candidate_token_id": 9392,
+              "top1_match": true,
+              "kl_mean": 2.0692120517097957e-05,
+              "kl_max": 2.0692120517097957e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 5.648599937129718e-07,
+              "kl_max": 5.648599937129718e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 27413,
+              "candidate_token_id": 27413,
+              "top1_match": true,
+              "kl_mean": 0.0010116433023958013,
+              "kl_max": 0.0010116433023958013,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 11069,
+              "candidate_token_id": 11069,
+              "top1_match": true,
+              "kl_mean": 0.0001726614532872728,
+              "kl_max": 0.0001726614532872728,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 71100,
+              "candidate_token_id": 71100,
+              "top1_match": true,
+              "kl_mean": 6.711580399917684e-06,
+              "kl_max": 6.711580399917684e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 318,
+              "candidate_token_id": 318,
+              "top1_match": true,
+              "kl_mean": 0.00024055218224896296,
+              "kl_max": 0.00024055218224896296,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 24504,
+              "candidate_token_id": 24504,
+              "top1_match": true,
+              "kl_mean": 0.00012953932288522552,
+              "kl_max": 0.00012953932288522552,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 27258,
+              "candidate_token_id": 27258,
+              "top1_match": true,
+              "kl_mean": 7.388644605469365e-05,
+              "kl_max": 7.388644605469365e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 1781,
+              "candidate_token_id": 1781,
+              "top1_match": true,
+              "kl_mean": 9.720504752478515e-05,
+              "kl_max": 9.720504752478515e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 8,
+              "candidate_token_id": 8,
+              "top1_match": true,
+              "kl_mean": 2.5638732956703194e-06,
+              "kl_max": 2.5638732956703194e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 271,
+              "candidate_token_id": 271,
+              "top1_match": true,
+              "kl_mean": 1.6980928855454511e-06,
+              "kl_max": 1.6980928855454511e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 550,
+              "candidate_token_id": 550,
+              "top1_match": true,
+              "kl_mean": 0.0016579908227296008,
+              "kl_max": 0.0016579908227296008,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.0007610492615098168,
+              "kl_max": 0.0007610492615098168,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 16,
+              "candidate_token_id": 16,
+              "top1_match": true,
+              "kl_mean": 1.1980514582849327e-06,
+              "kl_max": 1.1980514582849327e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 1.3844521197787904e-07,
+              "kl_max": 1.3844521197787904e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 30260,
+              "candidate_token_id": 30260,
+              "top1_match": true,
+              "kl_mean": 0.00029061425505973214,
+              "kl_max": 0.00029061425505973214,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 35059,
+              "candidate_token_id": 35059,
+              "top1_match": true,
+              "kl_mean": 0.00010571482549923667,
+              "kl_max": 0.00010571482549923667,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.00010094648316358418,
+              "kl_max": 0.00010094648316358418,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 91,
+              "candidate_token_id": 91,
+              "top1_match": true,
+              "kl_mean": 7.461469162410594e-05,
+              "kl_max": 7.461469162410594e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 30260,
+              "candidate_token_id": 30260,
+              "top1_match": true,
+              "kl_mean": 0.00019842519633357292,
+              "kl_max": 0.00019842519633357292,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 735,
+              "candidate_token_id": 735,
+              "top1_match": true,
+              "kl_mean": 0.00018616005948704137,
+              "kl_max": 0.00018616005948704137,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 27647,
+              "candidate_token_id": 27647,
+              "top1_match": true,
+              "kl_mean": 0.00048314117725272376,
+              "kl_max": 0.00048314117725272376,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 735,
+              "candidate_token_id": 735,
+              "top1_match": true,
+              "kl_mean": 4.9839472977483264e-05,
+              "kl_max": 4.9839472977483264e-05,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0019544740430486977,
+          "kl_max": 0.0019544740430486977,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 44812,
+              "candidate_token_id": 44812,
+              "top1_match": true,
+              "kl_mean": 0.0001321291209493539,
+              "kl_max": 0.0001321291209493539,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 42903,
+              "candidate_token_id": 42903,
+              "top1_match": true,
+              "kl_mean": 0.0019544740430486977,
+              "kl_max": 0.0019544740430486977,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 369,
+              "candidate_token_id": 369,
+              "top1_match": true,
+              "kl_mean": 7.539137647274797e-05,
+              "kl_max": 7.539137647274797e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 70263,
+              "candidate_token_id": 70263,
+              "top1_match": true,
+              "kl_mean": 0.000541089924190373,
+              "kl_max": 0.000541089924190373,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 4779,
+              "candidate_token_id": 4779,
+              "top1_match": true,
+              "kl_mean": 0.00015815346367572224,
+              "kl_max": 0.00015815346367572224,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 65393,
+              "candidate_token_id": 65393,
+              "top1_match": true,
+              "kl_mean": 9.314921811140624e-05,
+              "kl_max": 9.314921811140624e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 2998,
+              "candidate_token_id": 2998,
+              "top1_match": true,
+              "kl_mean": 5.3352701407323016e-06,
+              "kl_max": 5.3352701407323016e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 6973,
+              "candidate_token_id": 6973,
+              "top1_match": true,
+              "kl_mean": 6.248892930229987e-05,
+              "kl_max": 6.248892930229987e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 383,
+              "candidate_token_id": 383,
+              "top1_match": true,
+              "kl_mean": 0.0004706499419951801,
+              "kl_max": 0.0004706499419951801,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 2136,
+              "candidate_token_id": 2136,
+              "top1_match": true,
+              "kl_mean": 0.00011414827340368904,
+              "kl_max": 0.00011414827340368904,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 68022,
+              "candidate_token_id": 68022,
+              "top1_match": true,
+              "kl_mean": 0.00012115710670030969,
+              "kl_max": 0.00012115710670030969,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 318,
+              "candidate_token_id": 318,
+              "top1_match": true,
+              "kl_mean": 0.0013996828051151488,
+              "kl_max": 0.0013996828051151488,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 429,
+              "candidate_token_id": 429,
+              "top1_match": true,
+              "kl_mean": 0.0012857607585966195,
+              "kl_max": 0.0012857607585966195,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 1442,
+              "candidate_token_id": 1442,
+              "top1_match": true,
+              "kl_mean": 0.0001621913338889101,
+              "kl_max": 0.0001621913338889101,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 1010,
+              "candidate_token_id": 1010,
+              "top1_match": true,
+              "kl_mean": 0.0003836863083216032,
+              "kl_max": 0.0003836863083216032,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 9158,
+              "candidate_token_id": 9158,
+              "top1_match": true,
+              "kl_mean": 0.0005392068792347277,
+              "kl_max": 0.0005392068792347277,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 68022,
+              "candidate_token_id": 68022,
+              "top1_match": true,
+              "kl_mean": 0.0008098403328368689,
+              "kl_max": 0.0008098403328368689,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 8,
+              "candidate_token_id": 8,
+              "top1_match": true,
+              "kl_mean": 9.403448235004637e-05,
+              "kl_max": 9.403448235004637e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 1521,
+              "candidate_token_id": 1521,
+              "top1_match": true,
+              "kl_mean": 0.0003896156555143628,
+              "kl_max": 0.0003896156555143628,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 279,
+              "candidate_token_id": 279,
+              "top1_match": true,
+              "kl_mean": 0.00046567276865076314,
+              "kl_max": 0.00046567276865076314,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 17120,
+              "candidate_token_id": 17120,
+              "top1_match": true,
+              "kl_mean": 0.0006003072792440065,
+              "kl_max": 0.0006003072792440065,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 32530,
+              "candidate_token_id": 32530,
+              "top1_match": true,
+              "kl_mean": 0.00022314872948011263,
+              "kl_max": 0.00022314872948011263,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 383,
+              "candidate_token_id": 383,
+              "top1_match": true,
+              "kl_mean": 3.282080207134605e-05,
+              "kl_max": 3.282080207134605e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 2972,
+              "candidate_token_id": 2972,
+              "top1_match": true,
+              "kl_mean": 0.00019006908694830472,
+              "kl_max": 0.00019006908694830472,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 258,
+              "candidate_token_id": 258,
+              "top1_match": true,
+              "kl_mean": 0.00033828652221327255,
+              "kl_max": 0.00033828652221327255,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0014904660972516605,
+          "kl_max": 0.0014904660972516605,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 2,
+              "candidate_token_id": 2,
+              "top1_match": true,
+              "kl_mean": 0.0003740541252551439,
+              "kl_max": 0.0003740541252551439,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00038374004649471393,
+              "kl_max": 0.00038374004649471393,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 247818,
+              "candidate_token_id": 247818,
+              "top1_match": true,
+              "kl_mean": 0.0005396760976686486,
+              "kl_max": 0.0005396760976686486,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 12654,
+              "candidate_token_id": 12654,
+              "top1_match": true,
+              "kl_mean": 0.0002848425210629597,
+              "kl_max": 0.0002848425210629597,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 242734,
+              "candidate_token_id": 242734,
+              "top1_match": true,
+              "kl_mean": 3.3910110073762014e-05,
+              "kl_max": 3.3910110073762014e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 148566,
+              "candidate_token_id": 148566,
+              "top1_match": true,
+              "kl_mean": 8.114107285798165e-05,
+              "kl_max": 8.114107285798165e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 114149,
+              "candidate_token_id": 114149,
+              "top1_match": true,
+              "kl_mean": 0.0002472842517547357,
+              "kl_max": 0.0002472842517547357,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 104119,
+              "candidate_token_id": 104119,
+              "top1_match": true,
+              "kl_mean": 7.912524794878269e-05,
+              "kl_max": 7.912524794878269e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 170872,
+              "candidate_token_id": 170872,
+              "top1_match": true,
+              "kl_mean": 0.0002192961422723211,
+              "kl_max": 0.0002192961422723211,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 247864,
+              "candidate_token_id": 247864,
+              "top1_match": true,
+              "kl_mean": 0.0002881603375777461,
+              "kl_max": 0.0002881603375777461,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 247243,
+              "candidate_token_id": 247243,
+              "top1_match": true,
+              "kl_mean": 0.00011513377214241371,
+              "kl_max": 0.00011513377214241371,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 271,
+              "candidate_token_id": 271,
+              "top1_match": true,
+              "kl_mean": 0.00032950572957714594,
+              "kl_max": 0.00032950572957714594,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 550,
+              "candidate_token_id": 550,
+              "top1_match": true,
+              "kl_mean": 0.0014904660972516605,
+              "kl_max": 0.0014904660972516605,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 6.128962080452927e-05,
+              "kl_max": 6.128962080452927e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 16,
+              "candidate_token_id": 16,
+              "top1_match": true,
+              "kl_mean": 9.729477421463332e-05,
+              "kl_max": 9.729477421463332e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 5.007920149423012e-07,
+              "kl_max": 5.007920149423012e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00024109784468580395,
+              "kl_max": 0.00024109784468580395,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 138600,
+              "candidate_token_id": 138600,
+              "top1_match": true,
+              "kl_mean": 0.00040177201329257993,
+              "kl_max": 0.00040177201329257993,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 98462,
+              "candidate_token_id": 98462,
+              "top1_match": true,
+              "kl_mean": 0.00026614481453696333,
+              "kl_max": 0.00026614481453696333,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 18602,
+              "candidate_token_id": 18602,
+              "top1_match": true,
+              "kl_mean": 2.2787873707384487e-05,
+              "kl_max": 2.2787873707384487e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 104769,
+              "candidate_token_id": 104769,
+              "top1_match": true,
+              "kl_mean": 0.00017482229609986613,
+              "kl_max": 0.00017482229609986613,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.0002058722026465237,
+              "kl_max": 0.0002058722026465237,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 95879,
+              "candidate_token_id": 95879,
+              "top1_match": true,
+              "kl_mean": 0.00030794098426601205,
+              "kl_max": 0.00030794098426601205,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 247243,
+              "candidate_token_id": 247243,
+              "top1_match": true,
+              "kl_mean": 0.00017955732949249335,
+              "kl_max": 0.00017955732949249335,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 14876,
+              "candidate_token_id": 14876,
+              "top1_match": true,
+              "kl_mean": 0.0005824011294111421,
+              "kl_max": 0.0005824011294111421,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0011841827796163981,
+          "kl_max": 0.0011841827796163981,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 150110,
+              "candidate_token_id": 150110,
+              "top1_match": true,
+              "kl_mean": 2.2358520322905034e-05,
+              "kl_max": 2.2358520322905034e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 174267,
+              "candidate_token_id": 174267,
+              "top1_match": true,
+              "kl_mean": 8.990728029540642e-05,
+              "kl_max": 8.990728029540642e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 21966,
+              "candidate_token_id": 21966,
+              "top1_match": true,
+              "kl_mean": 0.00025106433000462503,
+              "kl_max": 0.00025106433000462503,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 9616,
+              "candidate_token_id": 9616,
+              "top1_match": true,
+              "kl_mean": 0.0004641172730566641,
+              "kl_max": 0.0004641172730566641,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 159930,
+              "candidate_token_id": 159930,
+              "top1_match": true,
+              "kl_mean": 0.0005031673319663846,
+              "kl_max": 0.0005031673319663846,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 32449,
+              "candidate_token_id": 32449,
+              "top1_match": true,
+              "kl_mean": 0.0003223599813683398,
+              "kl_max": 0.0003223599813683398,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 220497,
+              "candidate_token_id": 220497,
+              "top1_match": true,
+              "kl_mean": 0.0011841827796163981,
+              "kl_max": 0.0011841827796163981,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.0006088407920519512,
+              "kl_max": 0.0006088407920519512,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 98253,
+              "candidate_token_id": 98253,
+              "top1_match": true,
+              "kl_mean": 0.00017425230483401053,
+              "kl_max": 0.00017425230483401053,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 149793,
+              "candidate_token_id": 149793,
+              "top1_match": true,
+              "kl_mean": 0.0001328024660083981,
+              "kl_max": 0.0001328024660083981,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 7313,
+              "candidate_token_id": 7313,
+              "top1_match": true,
+              "kl_mean": 6.331453276553256e-05,
+              "kl_max": 6.331453276553256e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 15685,
+              "candidate_token_id": 15685,
+              "top1_match": true,
+              "kl_mean": 0.00021997695107899787,
+              "kl_max": 0.00021997695107899787,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 436,
+              "candidate_token_id": 436,
+              "top1_match": true,
+              "kl_mean": 0.0003564116174474181,
+              "kl_max": 0.0003564116174474181,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 10673,
+              "candidate_token_id": 10673,
+              "top1_match": true,
+              "kl_mean": 3.40724083831406e-07,
+              "kl_max": 3.40724083831406e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 9616,
+              "candidate_token_id": 9616,
+              "top1_match": true,
+              "kl_mean": 5.893139509178299e-05,
+              "kl_max": 5.893139509178299e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 95779,
+              "candidate_token_id": 95779,
+              "top1_match": true,
+              "kl_mean": 0.00019522195790927163,
+              "kl_max": 0.00019522195790927163,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 113652,
+              "candidate_token_id": 113652,
+              "top1_match": true,
+              "kl_mean": 0.0004569283027234623,
+              "kl_max": 0.0004569283027234623,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 247443,
+              "candidate_token_id": 247443,
+              "top1_match": true,
+              "kl_mean": 6.580965907446114e-05,
+              "kl_max": 6.580965907446114e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 174635,
+              "candidate_token_id": 174635,
+              "top1_match": true,
+              "kl_mean": 2.6176217533498405e-06,
+              "kl_max": 2.6176217533498405e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 7313,
+              "candidate_token_id": 7313,
+              "top1_match": true,
+              "kl_mean": 4.278932712877038e-06,
+              "kl_max": 4.278932712877038e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 15303,
+              "candidate_token_id": 15303,
+              "top1_match": true,
+              "kl_mean": 6.396582384011096e-05,
+              "kl_max": 6.396582384011096e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 96307,
+              "candidate_token_id": 96307,
+              "top1_match": true,
+              "kl_mean": 6.177429999818071e-05,
+              "kl_max": 6.177429999818071e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 98096,
+              "candidate_token_id": 98096,
+              "top1_match": true,
+              "kl_mean": 6.306997779850617e-05,
+              "kl_max": 6.306997779850617e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 98630,
+              "candidate_token_id": 98630,
+              "top1_match": true,
+              "kl_mean": 7.124924268878086e-05,
+              "kl_max": 7.124924268878086e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 27279,
+              "candidate_token_id": 27279,
+              "top1_match": true,
+              "kl_mean": 0.00026132195195971105,
+              "kl_max": 0.00026132195195971105,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0009049459208940549,
+          "kl_max": 0.0009049459208940549,
+          "top1_threshold": 0.9,
+          "top1_matches": 24,
+          "top1_agreement": 0.96,
+          "transitions_total": 25,
+          "first_top1_divergence": 23,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 332,
+              "candidate_token_id": 332,
+              "top1_match": true,
+              "kl_mean": 0.0008217758773823059,
+              "kl_max": 0.0008217758773823059,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 18656,
+              "candidate_token_id": 18656,
+              "top1_match": true,
+              "kl_mean": 0.0005850273916838975,
+              "kl_max": 0.0005850273916838975,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 64700,
+              "candidate_token_id": 64700,
+              "top1_match": true,
+              "kl_mean": 0.0004359535327132437,
+              "kl_max": 0.0004359535327132437,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.00022274867489450388,
+              "kl_max": 0.00022274867489450388,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 760,
+              "candidate_token_id": 760,
+              "top1_match": true,
+              "kl_mean": 0.00038939920417624906,
+              "kl_max": 0.00038939920417624906,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 4722,
+              "candidate_token_id": 4722,
+              "top1_match": true,
+              "kl_mean": 0.00031617163333069124,
+              "kl_max": 0.00031617163333069124,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 1727,
+              "candidate_token_id": 1727,
+              "top1_match": true,
+              "kl_mean": 0.0005139514920780024,
+              "kl_max": 0.0005139514920780024,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 1936,
+              "candidate_token_id": 1936,
+              "top1_match": true,
+              "kl_mean": 2.3288366701109038e-05,
+              "kl_max": 2.3288366701109038e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 668,
+              "candidate_token_id": 668,
+              "top1_match": true,
+              "kl_mean": 0.0003674869332183822,
+              "kl_max": 0.0003674869332183822,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 35456,
+              "candidate_token_id": 35456,
+              "top1_match": true,
+              "kl_mean": 0.0008695150717122743,
+              "kl_max": 0.0008695150717122743,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 3679,
+              "candidate_token_id": 3679,
+              "top1_match": true,
+              "kl_mean": 0.00036730536830159604,
+              "kl_max": 0.00036730536830159604,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 4203,
+              "candidate_token_id": 4203,
+              "top1_match": true,
+              "kl_mean": 0.0002886000275529693,
+              "kl_max": 0.0002886000275529693,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 4.0647762070996916e-05,
+              "kl_max": 4.0647762070996916e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 1433,
+              "candidate_token_id": 1433,
+              "top1_match": true,
+              "kl_mean": 0.0009049459208940549,
+              "kl_max": 0.0009049459208940549,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 2468,
+              "candidate_token_id": 2468,
+              "top1_match": true,
+              "kl_mean": 9.158068077173198e-06,
+              "kl_max": 9.158068077173198e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 3443,
+              "candidate_token_id": 3443,
+              "top1_match": true,
+              "kl_mean": 0.00044309969238225734,
+              "kl_max": 0.00044309969238225734,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 0.0007747946032618463,
+              "kl_max": 0.0007747946032618463,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 6297,
+              "candidate_token_id": 6297,
+              "top1_match": true,
+              "kl_mean": 0.0005633303853265409,
+              "kl_max": 0.0005633303853265409,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 8060,
+              "candidate_token_id": 8060,
+              "top1_match": true,
+              "kl_mean": 0.00032826164152658445,
+              "kl_max": 0.00032826164152658445,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 362,
+              "candidate_token_id": 362,
+              "top1_match": true,
+              "kl_mean": 2.119849270106677e-06,
+              "kl_max": 2.119849270106677e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 2519,
+              "candidate_token_id": 2519,
+              "top1_match": true,
+              "kl_mean": 0.00045772143532368977,
+              "kl_max": 0.00045772143532368977,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 5.428909038177406e-05,
+              "kl_max": 5.428909038177406e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 321,
+              "candidate_token_id": 321,
+              "top1_match": true,
+              "kl_mean": 1.2780277988695393e-05,
+              "kl_max": 1.2780277988695393e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 5077,
+              "candidate_token_id": 668,
+              "top1_match": false,
+              "kl_mean": 0.0008945479522651713,
+              "kl_max": 0.0008945479522651713,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 383,
+              "candidate_token_id": 383,
+              "top1_match": true,
+              "kl_mean": 0.0002001627058183316,
+              "kl_max": 0.0002001627058183316,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.003848065345914718,
+          "kl_max": 0.003848065345914718,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 12,
+              "candidate_token_id": 12,
+              "top1_match": true,
+              "kl_mean": 0.000655993869809745,
+              "kl_max": 0.000655993869809745,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 2972,
+              "candidate_token_id": 2972,
+              "top1_match": true,
+              "kl_mean": 0.003848065345914718,
+              "kl_max": 0.003848065345914718,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 3446,
+              "candidate_token_id": 3446,
+              "top1_match": true,
+              "kl_mean": 0.0007566831879375199,
+              "kl_max": 0.0007566831879375199,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 733,
+              "candidate_token_id": 733,
+              "top1_match": true,
+              "kl_mean": 0.0002331309786794264,
+              "kl_max": 0.0002331309786794264,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 2133,
+              "candidate_token_id": 2133,
+              "top1_match": true,
+              "kl_mean": 2.755768994568919e-05,
+              "kl_max": 2.755768994568919e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 14143,
+              "candidate_token_id": 14143,
+              "top1_match": true,
+              "kl_mean": 2.3308672806787633e-05,
+              "kl_max": 2.3308672806787633e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 92217,
+              "candidate_token_id": 92217,
+              "top1_match": true,
+              "kl_mean": 0.00044177492998035995,
+              "kl_max": 0.00044177492998035995,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 2831,
+              "candidate_token_id": 2831,
+              "top1_match": true,
+              "kl_mean": 0.0003067742137978618,
+              "kl_max": 0.0003067742137978618,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 18203,
+              "candidate_token_id": 18203,
+              "top1_match": true,
+              "kl_mean": 4.9012122266141724e-06,
+              "kl_max": 4.9012122266141724e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 380,
+              "candidate_token_id": 380,
+              "top1_match": true,
+              "kl_mean": 0.0002583508089081845,
+              "kl_max": 0.0002583508089081845,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 4100,
+              "candidate_token_id": 4100,
+              "top1_match": true,
+              "kl_mean": 1.8638107263590801e-06,
+              "kl_max": 1.8638107263590801e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 33793,
+              "candidate_token_id": 33793,
+              "top1_match": true,
+              "kl_mean": 0.00011664211677858048,
+              "kl_max": 0.00011664211677858048,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 9191,
+              "candidate_token_id": 9191,
+              "top1_match": true,
+              "kl_mean": 0.00013263301761397837,
+              "kl_max": 0.00013263301761397837,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 4478,
+              "candidate_token_id": 4478,
+              "top1_match": true,
+              "kl_mean": 7.385413836118682e-05,
+              "kl_max": 7.385413836118682e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 0.00014596828399297685,
+              "kl_max": 0.00014596828399297685,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.0010498406355548173,
+              "kl_max": 0.0010498406355548173,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 12,
+              "candidate_token_id": 12,
+              "top1_match": true,
+              "kl_mean": 2.34898968106159e-05,
+              "kl_max": 2.34898968106159e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 2972,
+              "candidate_token_id": 2972,
+              "top1_match": true,
+              "kl_mean": 2.744893317917058e-05,
+              "kl_max": 2.744893317917058e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 10327,
+              "candidate_token_id": 10327,
+              "top1_match": true,
+              "kl_mean": 0.0016469584933900359,
+              "kl_max": 0.0016469584933900359,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 25997,
+              "candidate_token_id": 25997,
+              "top1_match": true,
+              "kl_mean": 0.0006036920618075864,
+              "kl_max": 0.0006036920618075864,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 92217,
+              "candidate_token_id": 92217,
+              "top1_match": true,
+              "kl_mean": 0.0001835993153589275,
+              "kl_max": 0.0001835993153589275,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 5546,
+              "candidate_token_id": 5546,
+              "top1_match": true,
+              "kl_mean": 0.0006744750074473003,
+              "kl_max": 0.0006744750074473003,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 2193,
+              "candidate_token_id": 2193,
+              "top1_match": true,
+              "kl_mean": 0.00024859675287311104,
+              "kl_max": 0.00024859675287311104,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 1189,
+              "candidate_token_id": 1189,
+              "top1_match": true,
+              "kl_mean": 0.0002962838706978649,
+              "kl_max": 0.0002962838706978649,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 5096,
+              "candidate_token_id": 5096,
+              "top1_match": true,
+              "kl_mean": 0.00023480568934278306,
+              "kl_max": 0.00023480568934278306,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.003073017056332284,
+          "kl_max": 0.003073017056332284,
+          "top1_threshold": 0.9,
+          "top1_matches": 24,
+          "top1_agreement": 0.96,
+          "transitions_total": 25,
+          "first_top1_divergence": 6,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 71093,
+              "candidate_token_id": 71093,
+              "top1_match": true,
+              "kl_mean": 0.0025847697079322295,
+              "kl_max": 0.0025847697079322295,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 12305,
+              "candidate_token_id": 12305,
+              "top1_match": true,
+              "kl_mean": 2.765365221021622e-07,
+              "kl_max": 2.765365221021622e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 2.3580570847804435e-06,
+              "kl_max": 2.3580570847804435e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 1445,
+              "candidate_token_id": 1445,
+              "top1_match": true,
+              "kl_mean": 0.0002549720383703639,
+              "kl_max": 0.0002549720383703639,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 18904,
+              "candidate_token_id": 18904,
+              "top1_match": true,
+              "kl_mean": 0.0003299185510194429,
+              "kl_max": 0.0003299185510194429,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 1120,
+              "candidate_token_id": 1120,
+              "top1_match": true,
+              "kl_mean": 8.818376087738649e-08,
+              "kl_max": 8.818376087738649e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 51338,
+              "candidate_token_id": 11906,
+              "top1_match": false,
+              "kl_mean": 0.003073017056332284,
+              "kl_max": 0.003073017056332284,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 7.645216160106879e-06,
+              "kl_max": 7.645216160106879e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 28173,
+              "candidate_token_id": 28173,
+              "top1_match": true,
+              "kl_mean": 0.00021814898916172753,
+              "kl_max": 0.00021814898916172753,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 2.0759731437514935e-05,
+              "kl_max": 2.0759731437514935e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 1697,
+              "candidate_token_id": 1697,
+              "top1_match": true,
+              "kl_mean": 0.0005560492808425031,
+              "kl_max": 0.0005560492808425031,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 0.00028373266125317415,
+              "kl_max": 0.00028373266125317415,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 11906,
+              "candidate_token_id": 11906,
+              "top1_match": true,
+              "kl_mean": 0.00017507282684658458,
+              "kl_max": 0.00017507282684658458,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 11,
+              "candidate_token_id": 11,
+              "top1_match": true,
+              "kl_mean": 0.00024934338864222627,
+              "kl_max": 0.00024934338864222627,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 23846,
+              "candidate_token_id": 23846,
+              "top1_match": true,
+              "kl_mean": 0.0002442954909546724,
+              "kl_max": 0.0002442954909546724,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.0008638908560611988,
+              "kl_max": 0.0008638908560611988,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 1445,
+              "candidate_token_id": 1445,
+              "top1_match": true,
+              "kl_mean": 5.739237995744112e-05,
+              "kl_max": 5.739237995744112e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 795,
+              "candidate_token_id": 795,
+              "top1_match": true,
+              "kl_mean": 0.0013201892231144885,
+              "kl_max": 0.0013201892231144885,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 8588,
+              "candidate_token_id": 8588,
+              "top1_match": true,
+              "kl_mean": 1.067551263735486e-06,
+              "kl_max": 1.067551263735486e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 1120,
+              "candidate_token_id": 1120,
+              "top1_match": true,
+              "kl_mean": 3.7193906458852404e-05,
+              "kl_max": 3.7193906458852404e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 795,
+              "candidate_token_id": 795,
+              "top1_match": true,
+              "kl_mean": 0.00015684900742993612,
+              "kl_max": 0.00015684900742993612,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 1005,
+              "candidate_token_id": 1005,
+              "top1_match": true,
+              "kl_mean": 1.3350368111479398e-06,
+              "kl_max": 1.3350368111479398e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 5.617574125128471e-05,
+              "kl_max": 5.617574125128471e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 1445,
+              "candidate_token_id": 1445,
+              "top1_match": true,
+              "kl_mean": 3.2271191858883805e-05,
+              "kl_max": 3.2271191858883805e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 8606,
+              "candidate_token_id": 8606,
+              "top1_match": true,
+              "kl_mean": 0.0006364426619490614,
+              "kl_max": 0.0006364426619490614,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0002934418222961042,
+          "kl_max": 0.0002934418222961042,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 727,
+              "candidate_token_id": 727,
+              "top1_match": true,
+              "kl_mean": 9.680365347747108e-05,
+              "kl_max": 9.680365347747108e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 1866,
+              "candidate_token_id": 1866,
+              "top1_match": true,
+              "kl_mean": 5.044989233635885e-06,
+              "kl_max": 5.044989233635885e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 20974,
+              "candidate_token_id": 20974,
+              "top1_match": true,
+              "kl_mean": 1.7802180885574841e-06,
+              "kl_max": 1.7802180885574841e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 14980,
+              "candidate_token_id": 14980,
+              "top1_match": true,
+              "kl_mean": 2.842703598735961e-07,
+              "kl_max": 2.842703598735961e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 87502,
+              "candidate_token_id": 87502,
+              "top1_match": true,
+              "kl_mean": 4.935602716743237e-08,
+              "kl_max": 4.935602716743237e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 1494,
+              "candidate_token_id": 1494,
+              "top1_match": true,
+              "kl_mean": 1.3885934775452822e-05,
+              "kl_max": 1.3885934775452822e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 40798,
+              "candidate_token_id": 40798,
+              "top1_match": true,
+              "kl_mean": 9.155039116377603e-07,
+              "kl_max": 9.155039116377603e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 1590,
+              "candidate_token_id": 1590,
+              "top1_match": true,
+              "kl_mean": 4.773939050992817e-05,
+              "kl_max": 4.773939050992817e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 1.8667346420692447e-07,
+              "kl_max": 1.8667346420692447e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 7.16001987175061e-06,
+              "kl_max": 7.16001987175061e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 4071,
+              "candidate_token_id": 4071,
+              "top1_match": true,
+              "kl_mean": 2.9816871790595565e-06,
+              "kl_max": 2.9816871790595565e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 1.5137405378464237e-05,
+              "kl_max": 1.5137405378464237e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 262,
+              "candidate_token_id": 262,
+              "top1_match": true,
+              "kl_mean": 1.8000155954112972e-06,
+              "kl_max": 1.8000155954112972e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 5019,
+              "candidate_token_id": 5019,
+              "top1_match": true,
+              "kl_mean": 0.0002934418222961042,
+              "kl_max": 0.0002934418222961042,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 264,
+              "candidate_token_id": 264,
+              "top1_match": true,
+              "kl_mean": 4.2709554954022454e-05,
+              "kl_max": 4.2709554954022454e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 6966,
+              "candidate_token_id": 6966,
+              "top1_match": true,
+              "kl_mean": 0.0001410268454821765,
+              "kl_max": 0.0001410268454821765,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 6948,
+              "candidate_token_id": 6948,
+              "top1_match": true,
+              "kl_mean": 2.1381086483078915e-05,
+              "kl_max": 2.1381086483078915e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 25162,
+              "candidate_token_id": 25162,
+              "top1_match": true,
+              "kl_mean": 2.3874276717395277e-05,
+              "kl_max": 2.3874276717395277e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 314,
+              "candidate_token_id": 314,
+              "top1_match": true,
+              "kl_mean": 3.829358797145208e-07,
+              "kl_max": 3.829358797145208e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 4139,
+              "candidate_token_id": 4139,
+              "top1_match": true,
+              "kl_mean": 0.00015438462077036928,
+              "kl_max": 0.00015438462077036928,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 24868,
+              "candidate_token_id": 24868,
+              "top1_match": true,
+              "kl_mean": 2.701472536330025e-07,
+              "kl_max": 2.701472536330025e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 26126,
+              "candidate_token_id": 26126,
+              "top1_match": true,
+              "kl_mean": 1.4341763095909457e-05,
+              "kl_max": 1.4341763095909457e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 0.00020511601558845783,
+              "kl_max": 0.00020511601558845783,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 6.32882561195279e-05,
+              "kl_max": 6.32882561195279e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 1031,
+              "candidate_token_id": 1031,
+              "top1_match": true,
+              "kl_mean": 0.00014302497150870473,
+              "kl_max": 0.00014302497150870473,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0015041213766599877,
+          "kl_max": 0.0015041213766599877,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 13962,
+              "candidate_token_id": 13962,
+              "top1_match": true,
+              "kl_mean": 0.001063308133537793,
+              "kl_max": 0.001063308133537793,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 66413,
+              "candidate_token_id": 66413,
+              "top1_match": true,
+              "kl_mean": 0.0002318244067108636,
+              "kl_max": 0.0002318244067108636,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 5764,
+              "candidate_token_id": 5764,
+              "top1_match": true,
+              "kl_mean": 0.00012786484678046004,
+              "kl_max": 0.00012786484678046004,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 91690,
+              "candidate_token_id": 91690,
+              "top1_match": true,
+              "kl_mean": 8.432934653467032e-06,
+              "kl_max": 8.432934653467032e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 25,
+              "candidate_token_id": 25,
+              "top1_match": true,
+              "kl_mean": 7.495961475773139e-05,
+              "kl_max": 7.495961475773139e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 23288,
+              "candidate_token_id": 23288,
+              "top1_match": true,
+              "kl_mean": 0.00036723375916370283,
+              "kl_max": 0.00036723375916370283,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 5165,
+              "candidate_token_id": 5165,
+              "top1_match": true,
+              "kl_mean": 2.546853823154395e-05,
+              "kl_max": 2.546853823154395e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 9632,
+              "candidate_token_id": 9632,
+              "top1_match": true,
+              "kl_mean": 0.00010449867694763207,
+              "kl_max": 0.00010449867694763207,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 2179,
+              "candidate_token_id": 2179,
+              "top1_match": true,
+              "kl_mean": 5.409608373515038e-08,
+              "kl_max": 5.409608373515038e-08,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 58219,
+              "candidate_token_id": 58219,
+              "top1_match": true,
+              "kl_mean": 0.00025362041305298534,
+              "kl_max": 0.00025362041305298534,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 318,
+              "candidate_token_id": 318,
+              "top1_match": true,
+              "kl_mean": 7.960719068263102e-05,
+              "kl_max": 7.960719068263102e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 47,
+              "candidate_token_id": 47,
+              "top1_match": true,
+              "kl_mean": 0.00032690544430619053,
+              "kl_max": 0.00032690544430619053,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 24,
+              "candidate_token_id": 24,
+              "top1_match": true,
+              "kl_mean": 1.1045656978650508e-06,
+              "kl_max": 1.1045656978650508e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 24,
+              "candidate_token_id": 24,
+              "top1_match": true,
+              "kl_mean": 7.833878839226098e-07,
+              "kl_max": 7.833878839226098e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 53019,
+              "candidate_token_id": 53019,
+              "top1_match": true,
+              "kl_mean": 0.0007926267637797958,
+              "kl_max": 0.0007926267637797958,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 806,
+              "candidate_token_id": 806,
+              "top1_match": true,
+              "kl_mean": 2.4519161252623656e-06,
+              "kl_max": 2.4519161252623656e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 8,
+              "candidate_token_id": 8,
+              "top1_match": true,
+              "kl_mean": 6.287578339216948e-06,
+              "kl_max": 6.287578339216948e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 271,
+              "candidate_token_id": 271,
+              "top1_match": true,
+              "kl_mean": 1.4660934259053668e-05,
+              "kl_max": 1.4660934259053668e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 332,
+              "candidate_token_id": 332,
+              "top1_match": true,
+              "kl_mean": 0.0002535864282800423,
+              "kl_max": 0.0002535864282800423,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 16,
+              "candidate_token_id": 16,
+              "top1_match": true,
+              "kl_mean": 0.0015041213766599877,
+              "kl_max": 0.0015041213766599877,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 2.6870854004590487e-07,
+              "kl_max": 2.6870854004590487e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 2025,
+              "candidate_token_id": 2025,
+              "top1_match": true,
+              "kl_mean": 0.00035149924251716685,
+              "kl_max": 0.00035149924251716685,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 70147,
+              "candidate_token_id": 70147,
+              "top1_match": true,
+              "kl_mean": 5.02237252035837e-06,
+              "kl_max": 5.02237252035837e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 594,
+              "candidate_token_id": 594,
+              "top1_match": true,
+              "kl_mean": 0.0002901584558234983,
+              "kl_max": 0.0002901584558234983,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 2091,
+              "candidate_token_id": 2091,
+              "top1_match": true,
+              "kl_mean": 0.0006690922482274224,
+              "kl_max": 0.0006690922482274224,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0018105897122670065,
+          "kl_max": 0.0018105897122670065,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 1860,
+              "candidate_token_id": 1860,
+              "top1_match": true,
+              "kl_mean": 0.0006000683433776604,
+              "kl_max": 0.0006000683433776604,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 264,
+              "candidate_token_id": 264,
+              "top1_match": true,
+              "kl_mean": 3.1182321340978194e-05,
+              "kl_max": 3.1182321340978194e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 11171,
+              "candidate_token_id": 11171,
+              "top1_match": true,
+              "kl_mean": 0.000544327070623235,
+              "kl_max": 0.000544327070623235,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 21966,
+              "candidate_token_id": 21966,
+              "top1_match": true,
+              "kl_mean": 0.00014043824406787352,
+              "kl_max": 0.00014043824406787352,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 318,
+              "candidate_token_id": 318,
+              "top1_match": true,
+              "kl_mean": 3.898401397969356e-05,
+              "kl_max": 3.898401397969356e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 83113,
+              "candidate_token_id": 83113,
+              "top1_match": true,
+              "kl_mean": 0.0004836074930007723,
+              "kl_max": 0.0004836074930007723,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 32449,
+              "candidate_token_id": 32449,
+              "top1_match": true,
+              "kl_mean": 0.0008050257460371179,
+              "kl_max": 0.0008050257460371179,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 220497,
+              "candidate_token_id": 220497,
+              "top1_match": true,
+              "kl_mean": 0.0010009619451000953,
+              "kl_max": 0.0010009619451000953,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00018014652037557564,
+              "kl_max": 0.00018014652037557564,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 18,
+              "candidate_token_id": 18,
+              "top1_match": true,
+              "kl_mean": 6.63321797092995e-05,
+              "kl_max": 6.63321797092995e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 15,
+              "candidate_token_id": 15,
+              "top1_match": true,
+              "kl_mean": 9.389733087019269e-06,
+              "kl_max": 9.389733087019269e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 21,
+              "candidate_token_id": 21,
+              "top1_match": true,
+              "kl_mean": 0.0006446095279126238,
+              "kl_max": 0.0006446095279126238,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 15,
+              "candidate_token_id": 15,
+              "top1_match": true,
+              "kl_mean": 8.555792372458255e-07,
+              "kl_max": 8.555792372458255e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 14,
+              "candidate_token_id": 14,
+              "top1_match": true,
+              "kl_mean": 0.0001213278354247341,
+              "kl_max": 0.0001213278354247341,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 19,
+              "candidate_token_id": 19,
+              "top1_match": true,
+              "kl_mean": 0.00029056370513690566,
+              "kl_max": 0.00029056370513690566,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 15,
+              "candidate_token_id": 15,
+              "top1_match": true,
+              "kl_mean": 4.2523380711293474e-07,
+              "kl_max": 4.2523380711293474e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 21,
+              "candidate_token_id": 21,
+              "top1_match": true,
+              "kl_mean": 4.607923218591546e-05,
+              "kl_max": 4.607923218591546e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 15,
+              "candidate_token_id": 15,
+              "top1_match": true,
+              "kl_mean": 3.6428076570411523e-09,
+              "kl_max": 3.6428076570411523e-09,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 466,
+              "candidate_token_id": 466,
+              "top1_match": true,
+              "kl_mean": 0.0002292089886673423,
+              "kl_max": 0.0002292089886673423,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 23547,
+              "candidate_token_id": 23547,
+              "top1_match": true,
+              "kl_mean": 0.0006533759951152893,
+              "kl_max": 0.0006533759951152893,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 27255,
+              "candidate_token_id": 27255,
+              "top1_match": true,
+              "kl_mean": 0.00023798664799409055,
+              "kl_max": 0.00023798664799409055,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 2.108430999923806e-05,
+              "kl_max": 2.108430999923806e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 21,
+              "candidate_token_id": 21,
+              "top1_match": true,
+              "kl_mean": 2.414342304121352e-05,
+              "kl_max": 2.414342304121352e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 21,
+              "candidate_token_id": 21,
+              "top1_match": true,
+              "kl_mean": 0.0018105897122670065,
+              "kl_max": 0.0018105897122670065,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 15,
+              "candidate_token_id": 15,
+              "top1_match": true,
+              "kl_mean": 0.0003803216841730122,
+              "kl_max": 0.0003803216841730122,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0023416891169426197,
+          "kl_max": 0.0023416891169426197,
+          "top1_threshold": 0.9,
+          "top1_matches": 24,
+          "top1_agreement": 0.96,
+          "transitions_total": 25,
+          "first_top1_divergence": 11,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 2,
+              "candidate_token_id": 2,
+              "top1_match": true,
+              "kl_mean": 0.0023416891169426197,
+              "kl_max": 0.0023416891169426197,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 24609,
+              "candidate_token_id": 24609,
+              "top1_match": true,
+              "kl_mean": 0.00031667690449083,
+              "kl_max": 0.00031667690449083,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 5165,
+              "candidate_token_id": 5165,
+              "top1_match": true,
+              "kl_mean": 1.0401001429947954e-05,
+              "kl_max": 1.0401001429947954e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00025969608323646125,
+              "kl_max": 0.00025969608323646125,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 99681,
+              "candidate_token_id": 99681,
+              "top1_match": true,
+              "kl_mean": 0.00024407670649474224,
+              "kl_max": 0.00024407670649474224,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 247264,
+              "candidate_token_id": 247264,
+              "top1_match": true,
+              "kl_mean": 0.000658020379076538,
+              "kl_max": 0.000658020379076538,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 52122,
+              "candidate_token_id": 52122,
+              "top1_match": true,
+              "kl_mean": 0.00034913478192679726,
+              "kl_max": 0.00034913478192679726,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 96365,
+              "candidate_token_id": 96365,
+              "top1_match": true,
+              "kl_mean": 6.657470657866739e-05,
+              "kl_max": 6.657470657866739e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 99681,
+              "candidate_token_id": 99681,
+              "top1_match": true,
+              "kl_mean": 1.9627104909733938e-07,
+              "kl_max": 1.9627104909733938e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 175517,
+              "candidate_token_id": 175517,
+              "top1_match": true,
+              "kl_mean": 3.977782127147461e-05,
+              "kl_max": 3.977782127147461e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 50040,
+              "candidate_token_id": 50040,
+              "top1_match": true,
+              "kl_mean": 8.945771932591697e-07,
+              "kl_max": 8.945771932591697e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 153059,
+              "candidate_token_id": 96760,
+              "top1_match": false,
+              "kl_mean": 0.00014229853573515666,
+              "kl_max": 0.00014229853573515666,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 247864,
+              "candidate_token_id": 247864,
+              "top1_match": true,
+              "kl_mean": 3.0131844643941242e-05,
+              "kl_max": 3.0131844643941242e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 247243,
+              "candidate_token_id": 247243,
+              "top1_match": true,
+              "kl_mean": 0.0010080851470515365,
+              "kl_max": 0.0010080851470515365,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 271,
+              "candidate_token_id": 271,
+              "top1_match": true,
+              "kl_mean": 0.0003713415525043039,
+              "kl_max": 0.0003713415525043039,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 550,
+              "candidate_token_id": 550,
+              "top1_match": true,
+              "kl_mean": 0.00045302556253720054,
+              "kl_max": 0.00045302556253720054,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00010325348675560174,
+              "kl_max": 0.00010325348675560174,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 16,
+              "candidate_token_id": 16,
+              "top1_match": true,
+              "kl_mean": 0.00013738804709939687,
+              "kl_max": 0.00013738804709939687,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 13,
+              "candidate_token_id": 13,
+              "top1_match": true,
+              "kl_mean": 4.924896722066115e-07,
+              "kl_max": 4.924896722066115e-07,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 8.738442019168985e-05,
+              "kl_max": 8.738442019168985e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 247864,
+              "candidate_token_id": 247864,
+              "top1_match": true,
+              "kl_mean": 0.0004430419265017329,
+              "kl_max": 0.0004430419265017329,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 247561,
+              "candidate_token_id": 247561,
+              "top1_match": true,
+              "kl_mean": 0.0004317538488339519,
+              "kl_max": 0.0004317538488339519,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 198,
+              "candidate_token_id": 198,
+              "top1_match": true,
+              "kl_mean": 0.00030113616015718685,
+              "kl_max": 0.00030113616015718685,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 12,
+              "candidate_token_id": 12,
+              "top1_match": true,
+              "kl_mean": 0.0004341245460867892,
+              "kl_max": 0.0004341245460867892,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 2972,
+              "candidate_token_id": 2972,
+              "top1_match": true,
+              "kl_mean": 3.811215557421634e-05,
+              "kl_max": 3.811215557421634e-05,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.00231148200569259,
+          "kl_max": 0.00231148200569259,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 96259,
+              "candidate_token_id": 96259,
+              "top1_match": true,
+              "kl_mean": 0.0003262662608980707,
+              "kl_max": 0.0003262662608980707,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 133437,
+              "candidate_token_id": 133437,
+              "top1_match": true,
+              "kl_mean": 6.941578407251457e-06,
+              "kl_max": 6.941578407251457e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 65037,
+              "candidate_token_id": 65037,
+              "top1_match": true,
+              "kl_mean": 0.00023944779707923232,
+              "kl_max": 0.00023944779707923232,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 178498,
+              "candidate_token_id": 178498,
+              "top1_match": true,
+              "kl_mean": 5.59253813599721e-05,
+              "kl_max": 5.59253813599721e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 9616,
+              "candidate_token_id": 9616,
+              "top1_match": true,
+              "kl_mean": 0.00012735780862127832,
+              "kl_max": 0.00012735780862127832,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 96646,
+              "candidate_token_id": 96646,
+              "top1_match": true,
+              "kl_mean": 0.0005324655779704732,
+              "kl_max": 0.0005324655779704732,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 41004,
+              "candidate_token_id": 41004,
+              "top1_match": true,
+              "kl_mean": 0.0018451178669824184,
+              "kl_max": 0.0018451178669824184,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 5205,
+              "candidate_token_id": 5205,
+              "top1_match": true,
+              "kl_mean": 8.74286865709679e-05,
+              "kl_max": 8.74286865709679e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 153585,
+              "candidate_token_id": 153585,
+              "top1_match": true,
+              "kl_mean": 0.00031774048656196124,
+              "kl_max": 0.00031774048656196124,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 19054,
+              "candidate_token_id": 19054,
+              "top1_match": true,
+              "kl_mean": 0.000706666574292766,
+              "kl_max": 0.000706666574292766,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 97530,
+              "candidate_token_id": 97530,
+              "top1_match": true,
+              "kl_mean": 0.0003936787588962561,
+              "kl_max": 0.0003936787588962561,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 96389,
+              "candidate_token_id": 96389,
+              "top1_match": true,
+              "kl_mean": 0.0016094570620811231,
+              "kl_max": 0.0016094570620811231,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 95909,
+              "candidate_token_id": 95909,
+              "top1_match": true,
+              "kl_mean": 0.00231148200569259,
+              "kl_max": 0.00231148200569259,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 170521,
+              "candidate_token_id": 170521,
+              "top1_match": true,
+              "kl_mean": 0.00042007963207613564,
+              "kl_max": 0.00042007963207613564,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 96621,
+              "candidate_token_id": 96621,
+              "top1_match": true,
+              "kl_mean": 0.0004227564003212959,
+              "kl_max": 0.0004227564003212959,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 235416,
+              "candidate_token_id": 235416,
+              "top1_match": true,
+              "kl_mean": 0.0003709839309468301,
+              "kl_max": 0.0003709839309468301,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 211220,
+              "candidate_token_id": 211220,
+              "top1_match": true,
+              "kl_mean": 0.0015996654764871645,
+              "kl_max": 0.0015996654764871645,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 7313,
+              "candidate_token_id": 7313,
+              "top1_match": true,
+              "kl_mean": 0.0004993793247793331,
+              "kl_max": 0.0004993793247793331,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 27279,
+              "candidate_token_id": 27279,
+              "top1_match": true,
+              "kl_mean": 0.00017570323715413068,
+              "kl_max": 0.00017570323715413068,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 172510,
+              "candidate_token_id": 172510,
+              "top1_match": true,
+              "kl_mean": 0.0002761293620923582,
+              "kl_max": 0.0002761293620923582,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 99158,
+              "candidate_token_id": 99158,
+              "top1_match": true,
+              "kl_mean": 0.00014752137341767088,
+              "kl_max": 0.00014752137341767088,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 95909,
+              "candidate_token_id": 95909,
+              "top1_match": true,
+              "kl_mean": 6.614046265653799e-05,
+              "kl_max": 6.614046265653799e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 244403,
+              "candidate_token_id": 244403,
+              "top1_match": true,
+              "kl_mean": 0.001116279546689795,
+              "kl_max": 0.001116279546689795,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 211293,
+              "candidate_token_id": 211293,
+              "top1_match": true,
+              "kl_mean": 0.0002335596274814244,
+              "kl_max": 0.0002335596274814244,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 203830,
+              "candidate_token_id": 203830,
+              "top1_match": true,
+              "kl_mean": 0.00013205091750628003,
+              "kl_max": 0.00013205091750628003,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.0018565290807270197,
+          "kl_max": 0.0018565290807270197,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 239228,
+              "candidate_token_id": 239228,
+              "top1_match": true,
+              "kl_mean": 0.00035744056187025875,
+              "kl_max": 0.00035744056187025875,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 220373,
+              "candidate_token_id": 220373,
+              "top1_match": true,
+              "kl_mean": 4.425967783495044e-05,
+              "kl_max": 4.425967783495044e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 96397,
+              "candidate_token_id": 96397,
+              "top1_match": true,
+              "kl_mean": 0.00039442020999272843,
+              "kl_max": 0.00039442020999272843,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 27279,
+              "candidate_token_id": 27279,
+              "top1_match": true,
+              "kl_mean": 0.0003557675600955514,
+              "kl_max": 0.0003557675600955514,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 105880,
+              "candidate_token_id": 105880,
+              "top1_match": true,
+              "kl_mean": 0.00017155660891977963,
+              "kl_max": 0.00017155660891977963,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 14259,
+              "candidate_token_id": 14259,
+              "top1_match": true,
+              "kl_mean": 0.00030379122288190594,
+              "kl_max": 0.00030379122288190594,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 5205,
+              "candidate_token_id": 5205,
+              "top1_match": true,
+              "kl_mean": 1.2505923363578079e-05,
+              "kl_max": 1.2505923363578079e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 159656,
+              "candidate_token_id": 159656,
+              "top1_match": true,
+              "kl_mean": 0.0018565290807270197,
+              "kl_max": 0.0018565290807270197,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 15303,
+              "candidate_token_id": 15303,
+              "top1_match": true,
+              "kl_mean": 0.0002307210390445043,
+              "kl_max": 0.0002307210390445043,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 110128,
+              "candidate_token_id": 110128,
+              "top1_match": true,
+              "kl_mean": 0.000706648370587243,
+              "kl_max": 0.000706648370587243,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 148771,
+              "candidate_token_id": 148771,
+              "top1_match": true,
+              "kl_mean": 0.0005356796067131878,
+              "kl_max": 0.0005356796067131878,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 149512,
+              "candidate_token_id": 149512,
+              "top1_match": true,
+              "kl_mean": 0.0009744751208051582,
+              "kl_max": 0.0009744751208051582,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 95909,
+              "candidate_token_id": 95909,
+              "top1_match": true,
+              "kl_mean": 0.0002972060348631726,
+              "kl_max": 0.0002972060348631726,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 171462,
+              "candidate_token_id": 171462,
+              "top1_match": true,
+              "kl_mean": 0.0006878494312235793,
+              "kl_max": 0.0006878494312235793,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 5205,
+              "candidate_token_id": 5205,
+              "top1_match": true,
+              "kl_mean": 0.0017029212710926878,
+              "kl_max": 0.0017029212710926878,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 223217,
+              "candidate_token_id": 223217,
+              "top1_match": true,
+              "kl_mean": 9.898573728899743e-05,
+              "kl_max": 9.898573728899743e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 15303,
+              "candidate_token_id": 15303,
+              "top1_match": true,
+              "kl_mean": 0.0003343233371610908,
+              "kl_max": 0.0003343233371610908,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 99388,
+              "candidate_token_id": 99388,
+              "top1_match": true,
+              "kl_mean": 8.599023568252112e-05,
+              "kl_max": 8.599023568252112e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 97971,
+              "candidate_token_id": 97971,
+              "top1_match": true,
+              "kl_mean": 2.0242049003912526e-06,
+              "kl_max": 2.0242049003912526e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 18602,
+              "candidate_token_id": 18602,
+              "top1_match": true,
+              "kl_mean": 0.00020215673947173883,
+              "kl_max": 0.00020215673947173883,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 178012,
+              "candidate_token_id": 178012,
+              "top1_match": true,
+              "kl_mean": 0.00022441292112528608,
+              "kl_max": 0.00022441292112528608,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 178462,
+              "candidate_token_id": 178462,
+              "top1_match": true,
+              "kl_mean": 1.5078491722471382e-05,
+              "kl_max": 1.5078491722471382e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 244702,
+              "candidate_token_id": 244702,
+              "top1_match": true,
+              "kl_mean": 1.1882556991128593e-05,
+              "kl_max": 1.1882556991128593e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 162141,
+              "candidate_token_id": 162141,
+              "top1_match": true,
+              "kl_mean": 0.00043742122592017353,
+              "kl_max": 0.00043742122592017353,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 95984,
+              "candidate_token_id": 95984,
+              "top1_match": true,
+              "kl_mean": 8.799583531219821e-05,
+              "kl_max": 8.799583531219821e-05,
+              "kl_passed": true
+            }
+          ]
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+          "passed": true,
+          "kl_passed": true,
+          "kl_threshold": 0.05,
+          "kl_mean_max": 0.001994512464879356,
+          "kl_max": 0.001994512464879356,
+          "top1_threshold": 0.9,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25,
+          "first_top1_divergence": null,
+          "transitions": [
+            {
+              "transition": 0,
+              "baseline_token_id": 6458,
+              "candidate_token_id": 6458,
+              "top1_match": true,
+              "kl_mean": 0.0006444191103968602,
+              "kl_max": 0.0006444191103968602,
+              "kl_passed": true
+            },
+            {
+              "transition": 1,
+              "baseline_token_id": 174029,
+              "candidate_token_id": 174029,
+              "top1_match": true,
+              "kl_mean": 0.00046646001580792976,
+              "kl_max": 0.00046646001580792976,
+              "kl_passed": true
+            },
+            {
+              "transition": 2,
+              "baseline_token_id": 11373,
+              "candidate_token_id": 11373,
+              "top1_match": true,
+              "kl_mean": 0.0010117910512481224,
+              "kl_max": 0.0010117910512481224,
+              "kl_passed": true
+            },
+            {
+              "transition": 3,
+              "baseline_token_id": 149261,
+              "candidate_token_id": 149261,
+              "top1_match": true,
+              "kl_mean": 0.0012773983849719136,
+              "kl_max": 0.0012773983849719136,
+              "kl_passed": true
+            },
+            {
+              "transition": 4,
+              "baseline_token_id": 156098,
+              "candidate_token_id": 156098,
+              "top1_match": true,
+              "kl_mean": 0.001994512464879356,
+              "kl_max": 0.001994512464879356,
+              "kl_passed": true
+            },
+            {
+              "transition": 5,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.000560869664298994,
+              "kl_max": 0.000560869664298994,
+              "kl_passed": true
+            },
+            {
+              "transition": 6,
+              "baseline_token_id": 24,
+              "candidate_token_id": 24,
+              "top1_match": true,
+              "kl_mean": 0.00017808311753245588,
+              "kl_max": 0.00017808311753245588,
+              "kl_passed": true
+            },
+            {
+              "transition": 7,
+              "baseline_token_id": 24,
+              "candidate_token_id": 24,
+              "top1_match": true,
+              "kl_mean": 9.041852487882047e-06,
+              "kl_max": 9.041852487882047e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 8,
+              "baseline_token_id": 4,
+              "candidate_token_id": 4,
+              "top1_match": true,
+              "kl_mean": 0.0003694230244229678,
+              "kl_max": 0.0003694230244229678,
+              "kl_passed": true
+            },
+            {
+              "transition": 9,
+              "baseline_token_id": 220,
+              "candidate_token_id": 220,
+              "top1_match": true,
+              "kl_mean": 0.00015323711840448378,
+              "kl_max": 0.00015323711840448378,
+              "kl_passed": true
+            },
+            {
+              "transition": 10,
+              "baseline_token_id": 96688,
+              "candidate_token_id": 96688,
+              "top1_match": true,
+              "kl_mean": 0.00031102922510320343,
+              "kl_max": 0.00031102922510320343,
+              "kl_passed": true
+            },
+            {
+              "transition": 11,
+              "baseline_token_id": 97009,
+              "candidate_token_id": 97009,
+              "top1_match": true,
+              "kl_mean": 0.000225784344682277,
+              "kl_max": 0.000225784344682277,
+              "kl_passed": true
+            },
+            {
+              "transition": 12,
+              "baseline_token_id": 27279,
+              "candidate_token_id": 27279,
+              "top1_match": true,
+              "kl_mean": 0.00010263113860563196,
+              "kl_max": 0.00010263113860563196,
+              "kl_passed": true
+            },
+            {
+              "transition": 13,
+              "baseline_token_id": 96485,
+              "candidate_token_id": 96485,
+              "top1_match": true,
+              "kl_mean": 6.76018423377283e-05,
+              "kl_max": 6.76018423377283e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 14,
+              "baseline_token_id": 122,
+              "candidate_token_id": 122,
+              "top1_match": true,
+              "kl_mean": 2.1809948384291165e-05,
+              "kl_max": 2.1809948384291165e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 15,
+              "baseline_token_id": 246826,
+              "candidate_token_id": 246826,
+              "top1_match": true,
+              "kl_mean": 5.220961281363762e-06,
+              "kl_max": 5.220961281363762e-06,
+              "kl_passed": true
+            },
+            {
+              "transition": 16,
+              "baseline_token_id": 163400,
+              "candidate_token_id": 163400,
+              "top1_match": true,
+              "kl_mean": 0.0002946059560289538,
+              "kl_max": 0.0002946059560289538,
+              "kl_passed": true
+            },
+            {
+              "transition": 17,
+              "baseline_token_id": 55902,
+              "candidate_token_id": 55902,
+              "top1_match": true,
+              "kl_mean": 0.001069066275500831,
+              "kl_max": 0.001069066275500831,
+              "kl_passed": true
+            },
+            {
+              "transition": 18,
+              "baseline_token_id": 5205,
+              "candidate_token_id": 5205,
+              "top1_match": true,
+              "kl_mean": 3.068726253291896e-05,
+              "kl_max": 3.068726253291896e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 19,
+              "baseline_token_id": 244702,
+              "candidate_token_id": 244702,
+              "top1_match": true,
+              "kl_mean": 0.00010323476055754295,
+              "kl_max": 0.00010323476055754295,
+              "kl_passed": true
+            },
+            {
+              "transition": 20,
+              "baseline_token_id": 96397,
+              "candidate_token_id": 96397,
+              "top1_match": true,
+              "kl_mean": 0.00011792611956233916,
+              "kl_max": 0.00011792611956233916,
+              "kl_passed": true
+            },
+            {
+              "transition": 21,
+              "baseline_token_id": 30831,
+              "candidate_token_id": 30831,
+              "top1_match": true,
+              "kl_mean": 6.273274654761422e-05,
+              "kl_max": 6.273274654761422e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 22,
+              "baseline_token_id": 247499,
+              "candidate_token_id": 247499,
+              "top1_match": true,
+              "kl_mean": 6.096449560192652e-05,
+              "kl_max": 6.096449560192652e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 23,
+              "baseline_token_id": 155085,
+              "candidate_token_id": 155085,
+              "top1_match": true,
+              "kl_mean": 6.417552984186589e-05,
+              "kl_max": 6.417552984186589e-05,
+              "kl_passed": true
+            },
+            {
+              "transition": 24,
+              "baseline_token_id": 1710,
+              "candidate_token_id": 1710,
+              "top1_match": true,
+              "kl_mean": 5.170508763164328e-05,
+              "kl_max": 5.170508763164328e-05,
+              "kl_passed": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "rocprof_smoke": {
+    "tool": "rocprofv3 --kernel-trace (sqlite)",
+    "result": "gguf_q4_k_pack8_prefill_wmma_kernel<16,32> x288 and <64,16> x264 dispatches; tile8x8 kernel absent",
+    "note": "gfx1151/TheRock zero-duration tool blocker still applies; names/geometries are the evidence"
+  },
+  "decision": "Retained as gfx1151 default. Q8 unaffected (no pack8 weights); decode within 1% guard. X2-K1 (LDS large-tile WMMA GEMM) is the follow-up toward the remaining 1.5-1.7x per-mat gap."
+}

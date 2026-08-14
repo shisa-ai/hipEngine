@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-15
+
+- [gfx1151 X2a pack8 WMMA bulk prefill route retained] Qwen3.5-0.8B / Q4_K_M / pp512: exact-core prefill **2543.4 -> 3427.9 tok/s (+35.31%, 5/5)**, public **+34.97%**, decode **0.9956x** guard, **447/450 top-1, max KL 0.003848**, sole pack8 residency unchanged, rollback env documented; llama source review shows the remaining per-mat gap is LDS/large-tile structure; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`.
+- [gfx1151 X1 cross-engine fine-grained gap map; diagnostic] Fresh stage-marker + Vulkan logger join at 4e69152f4: Q4 prefill dense FFN **113.8 vs 24.5 ms (89.3 ms gap)**, Q8 GDN **50.5 vs 16.8**, Q4 linear **47.7 vs 17.8**, Q4 GDN **40.0 vs 12.6**; decode gaps linear/dense/full-attn-core 0.98/0.97/0.96 ms per token; llama dispatches 693/663 ops (pp/tok) vs our 491/286 so launch count is not the gap; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`.
+
 ## 2026-08-14
 
 - [gfx1151 Qwen3.5-0.8B Vulkan-parity closure blocked] Exact shared-token five-block C1/C2/G1-G2 gate passes **645/645 cross-engine top-1 per quant** but Q4 reaches only **0.424x/0.734x core pp/tg** and **0.463x/0.942x public pp/tg** (0/5 wins); Q8 public tg reaches **1.028x** and owned memory is 23.4% lower, but prefill/core and the milestone suite remain blocked, so G3/T1 do not close; `benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json`.
