@@ -109,7 +109,7 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
-| RMSNorm | `norm/rmsnorm.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. |
+| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus fixed c1/hidden-1024 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
 | Rotary/prelude | `rotary/paro_rotate.{hip,py}`, `rotary/qwen35_rotary.{hip,py}` | `paro_rotate1/2/3`, `paro_rmsnorm_rotate2`, `partial_rotary`, `head_rmsnorm+partial_rotary`, `split_qgate` | BF16/FP16 PARO rotation and Qwen partial-RoPE/head-normalization families. |
 | Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. Includes an exact rounded-BF16 residual sibling; the unfused projection+add chain remains registered. |
 | PARO AWQ projection | `quant/paro_awq_gemv.{hip,py}` | `pack8_gemv`, `dual_pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm`, rotate/SiLU composites (`w4_paro`) | Strided/transposed, BF16/FP16, selected-expert, fused-W4 prefill, and small-row routes. |
@@ -206,6 +206,18 @@ It adds no layout, persistent bytes, or hot scratch; Q8, rows >1, other models,
 and peer backends retain the primitive projection+add or their prior registered
 small-row composites. Evidence:
 [`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
+
+The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
+registry candidates:
+`rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and
+`add_rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256`. Each caches four
+values per local256 thread, reduces within wave32 using HIP shuffles, and uses
+eight shared wave sums plus two block barriers. The add form preserves the
+existing unrounded-F32 normalization and rounded-BF16 residual contract. Generic
+t256 primitives remain registered fallbacks; no layout, persistent bytes, hot
+scratch, or node count is added. These keys are diagnostic until the exact
+model/backend capability and full gate are retained. Evidence:
+[`0.8B norm/residual screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
