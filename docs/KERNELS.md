@@ -127,7 +127,7 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. The direct compact-peer BF16 output primitive keeps the split compact prepare → wave32 recurrence → RMSNorm/gate chain registered as fallback. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state | Device-side graph/verify bookkeeping, indexed row state, and token publication. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
@@ -410,6 +410,7 @@ A `+` in a registry layer name denotes a composite boundary. Every fused composi
 | `linear+residual` | HIP GGUF | linear projection → rounded residual add |
 | `linear+add+rmsnorm` | HIP Laguna | source-F16 projection → add/residual → RMSNorm |
 | Linear-attention snapshot composites | HIP GGUF/DFlash | Conv or GDN primitive → cast if named → state snapshot |
+| Direct compact-peer GDN BF16 output | HIP GGUF/Qwen | compact peer-normalized prepare → compact normalized wave32-XOR recurrence → RMSNorm+gate |
 | `laguna_attention_decode+attention_gate` | HIP Laguna | attention decode → softplus/sigmoid gate publication |
 | `moonshine_partial_rope+moonshine_self_cache` | HIP and CUDA Moonshine | partial RoPE → fixed self-cache append |
 | `moonshine_residual+moonshine_layernorm` | HIP and CUDA Moonshine | rounded residual add → LayerNorm |

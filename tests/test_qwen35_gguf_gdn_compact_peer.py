@@ -21,6 +21,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
+    qwen35_gdn_prefill_direct_compact_peer_output_bf16,
     qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
     qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
@@ -75,6 +76,8 @@ def test_compact_peer_source_has_k_head_qk_abi() -> None:
     source = _SOURCE.read_text(encoding="utf-8")
     assert "qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel" in source
     assert "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel" in source
+    assert "qwen35_gdn_prefill_direct_compact_peer_output_bf16" in source
+    assert "qwen35_gdn_prefill_recurrent_compact_raw_wave32_xor_inplace_kernel" in source
     assert "token * num_k_heads + k_head" in source
 
 
@@ -92,8 +95,15 @@ def test_compact_peer_kernels_are_registry_resolved_without_replacing_default() 
         quant="gguf_qwen35",
         variant="f32_compact_normalized_wave32_xor",
     )
+    direct = resolve(
+        backend="hip_gfx1100",
+        layer="gdn_prefill_output",
+        quant="gguf_qwen35",
+        variant="f32_direct_compact_peer_bf16",
+    )
     assert prepare is qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16
     assert recurrent is qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32
+    assert direct is qwen35_gdn_prefill_direct_compact_peer_output_bf16
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -134,6 +144,8 @@ def test_compact_peer_matches_peer_wave32_output_and_state_bits() -> None:
         norm_dev = _upload(norm, buffers)
         control_state = _upload(initial_state, buffers)
         candidate_state = _upload(initial_state, buffers)
+        direct_state = _upload(initial_state, buffers)
+        direct_conv = _upload(conv, buffers)
 
         f32_bytes = np.dtype(np.float32).itemsize
         control_q = _allocate(tokens * num_v_heads * head_k_dim * f32_bytes, buffers)
@@ -153,6 +165,12 @@ def test_compact_peer_matches_peer_wave32_output_and_state_bits() -> None:
         out_bytes = tokens * value_dim * np.dtype(np.uint16).itemsize
         control_out = _allocate(out_bytes, buffers)
         candidate_out = _allocate(out_bytes, buffers)
+        direct_out = _allocate(out_bytes, buffers)
+        direct_beta = _allocate(scalar_bytes, buffers)
+        direct_decay = _allocate(scalar_bytes, buffers)
+        compact_scale_bytes = tokens * num_k_heads * f32_bytes
+        direct_query_scale = _allocate(compact_scale_bytes, buffers)
+        direct_key_scale = _allocate(compact_scale_bytes, buffers)
 
         qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16(
             conv_dev.ptr,
@@ -248,6 +266,29 @@ def test_compact_peer_matches_peer_wave32_output_and_state_bits() -> None:
             library=library,
             runtime=runtime,
         )
+        qwen35_gdn_prefill_direct_compact_peer_output_bf16(
+            direct_conv.ptr,
+            alpha_dev.ptr,
+            beta_lowp_dev.ptr,
+            dt_bias_dev.ptr,
+            a_log_dev.ptr,
+            gate_dev.ptr,
+            norm_dev.ptr,
+            direct_state.ptr,
+            direct_out.ptr,
+            direct_beta.ptr,
+            direct_decay.ptr,
+            direct_query_scale.ptr,
+            direct_key_scale.ptr,
+            1.0e-6,
+            tokens,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
 
         out_shape = (tokens, num_v_heads, head_v_dim)
@@ -258,6 +299,14 @@ def test_compact_peer_matches_peer_wave32_output_and_state_bits() -> None:
         )
         np.testing.assert_array_equal(
             _download(candidate_state, state_shape, np.float32).view(np.uint32),
+            _download(control_state, state_shape, np.float32).view(np.uint32),
+        )
+        np.testing.assert_array_equal(
+            _download(direct_out, out_shape, np.uint16),
+            _download(control_out, out_shape, np.uint16),
+        )
+        np.testing.assert_array_equal(
+            _download(direct_state, state_shape, np.float32).view(np.uint32),
             _download(control_state, state_shape, np.float32).view(np.uint32),
         )
     finally:
