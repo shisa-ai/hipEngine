@@ -221,7 +221,13 @@ wrapper checks behind a cached prevalidated registry partial, eager **69.59 ->
 69.73 (+0.207%)**. The full Q4+Q8 category/heldout gate passes **900/900 top-1**
 at max KL **0.001745**; Q8 selects no fixed leaves and remains within 1%, as do
 all prefill guards. Graph inventory replaces exactly **24+24** Q4 owners at
-**287 -> 287 nodes**, zero bytes, and zero scratch. See the
+**287 -> 287 nodes**, zero bytes, and zero scratch. Mandatory M12 then measures
+current graph snapshots at **119.88/117.18 tok/s Q4/Q8** and **286/288 nodes**,
+with exact trajectories, zero KL, 97.23%/97.31% coverage, and zero tracked graph
+bytes. Q4 joined norm owners move **0.67405 -> 0.56181 ms (-0.11224 ms)** while
+Q8 moves only +0.00394 ms. Current decode remains **0.596x/0.709x** frozen
+Vulkan, so the fresh G2 parity gate remains binding. See the
+[`post-D5 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json),
 [`retained D5 norm/residual route`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
 [`D5 norm/residual screen`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json),
 [`D5 norm/residual audit`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json),

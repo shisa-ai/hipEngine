@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1-M11 and accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5 completed 2026-08-14; mandatory post-D5 production graph rerank M12 is next.
+Status: D08-C0, D08-M1-M12 and accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5 completed 2026-08-14; D08-G1-G2 final correctness/fresh parity gate is next.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -98,7 +98,7 @@ not a synthetic leaf projection.
 | 17 | **D08-D3B dense FFN down projections** | **accepted: +4.13% eager / +1.31% graph tg128; 311 -> 287 recording nodes** | Exact same-resident Q4/dense residual siblings pass 900/900 Q4+Q8 transitions with zero KL; Q4 wins 5/5 crossed-session blocks in both decode scopes, while Q8 selects no fused leaves and stays within 1%. | Closed for exact gfx1151 0.8B Q4_K_M c1 down owners; mandatory post-D3B graph rerank next. |
 | 18 | **Mandatory post-D3B graph rerank / M11** | **completed: current graph 120.21/117.80 tok/s Q4/Q8; 286/288 nodes** | Exact trajectory/zero KL and 97.35%/97.32% coverage assign D3B's Q4 dense movement at -0.102 ms; Q8 graph ownership is unchanged. | Larger arithmetic packages are exhausted; admit only D5's exact 24 RMSNorm + 24 add-RMSNorm owner audit at a 0.402-ms / 4.84% joined bound. |
 | 19 | **D08-D5 RMSNorm/residual boundary** | **accepted: Q4 graph +2.884% / eager +0.207%; zero bytes/nodes** | Fixed-1024 C wins 5/5 crossed-session graph blocks, passes 900/900 Q4+Q8 transitions at max KL 0.001745, replaces exact 24+24 graph owners, and leaves Q8/prefill neutral. | Closed for exact gfx1151 0.8B Q4_K_M c1 attention/post-attention norm owners. |
-| 20 | **Mandatory post-D5 graph rerank / M12** | current-production snapshot | D5 moves 24+24 owner durations without changing nodes; final closure needs one exact Q4/Q8 current ownership map and residual accounting. | Re-run the M11 protocol on the retained default, then admit no sub-1% work absent a fresh complete-package bound. |
+| 20 | **Mandatory post-D5 graph rerank / M12** | **completed: current graph 119.88/117.18 tok/s Q4/Q8; 286/288 nodes** | Exact trajectories/zero KL, complete assignment, and 97.23%/97.31% coverage reconcile Q4 norm owners 0.67405 -> 0.56181 ms (-0.11224 ms); Q8 norm movement is +0.00394 ms noise. | All bounded packages are accepted/exhausted or rejected; run G1-G2. Current decode is only 0.596x/0.709x frozen Vulkan, so G2 cannot close without fresh parity. |
 | 21 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
 | 22 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
@@ -1220,6 +1220,39 @@ for its exact scope. Mandatory post-D5 rerank M12 precedes campaign closure.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json).
 
+### 2.35 Mandatory post-D5 graph rerank / M12 (2026-08-14)
+
+M12 repeats M11's current-production protocol on retained commit `2cad5f2c2`:
+128 eager samples, 128 one-token production graph replays, a separate 128-step
+recording graph, and a separately instrumented graph with same-stream device
+markers. Q4/Q8 trajectories are exact; recorded, production, and instrumented
+final logits have KL zero and exact top-1. All **286/288** graph nodes are
+assigned, marker-adjusted coverage is **97.23%/97.31%**, replay copies are zero,
+and tracked graph bytes remain zero.
+
+Current mean graph throughput is **119.88 tok/s Q4 / 117.18 Q8**. Relative to
+M11's independent snapshot this is **-0.28%/-0.53%**, within the same-stack
+snapshot variation and not a route A/B result. D5's intended owner movement is
+clear: Q4 attention norm falls **0.33243 -> 0.27925 ms (-0.05318)** and residual
+norm/glue falls **0.34162 -> 0.28256 ms (-0.05906)**. The joined package moves
+**0.67405 -> 0.56181 ms (-0.11224 ms / -16.65%)**. Graph inventory is exactly
+24 fixed standalone plus 24 fixed add norms and one generic final output norm.
+Q8 retains 25+24 generic leaves and its joined norm movement is only **+0.00394
+ms**.
+
+The direct API census remains device-critical: launch plus Python residual is
+well below 1%, with the synchronization span carrying graph wall. The largest
+current Q4 Vulkan-joined gaps are linear-attention projections **0.985 ms**,
+dense FFN projections **0.977 ms**, and full-attention core/KV **0.962 ms**;
+each named package is already accepted/exhausted or rejected under its bounded
+contract. No sub-1% experiment is reopened. However, current decode is only
+**0.596x Q4 / 0.709x Q8** of the frozen Vulkan rows. D08-G1-G2 must therefore
+run the final full correctness and fresh serial same-session parity gate; G3
+cannot close if fresh Q4 still misses Vulkan.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -1436,7 +1469,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | **realized: +8.29% graph tg128 / +2.28% eager; zero bytes** | Fused-SiLU t128 removes 24 graph nodes, wins all decode pairs, passes 446/450 top-1/max KL 0.002843, and keeps exact trajectories. | **Accepted for Q4 gate/up c1.** M10 now admits the distinct dense-down owner audit as D3B. | accepted |
 | **D08-D3B** | Dense FFN down projection plus residual, split across 12 Q4-pack8 and 12 Q6-dense owners. | **realized: +4.13% eager / +1.31% graph tg128; zero bytes** | Exact same-resident C wins 5/5 crossed-session blocks, passes 900/900 transitions at KL 0, and removes 24 nodes. M11 confirms dense FFN 2.159 -> 2.057 ms and down+residual at 1.011 ms. | **Accepted/exhausted for exact gfx1151 0.8B Q4_K_M c1 down owners.** | accepted/exhausted |
 | **D08-D4** | GDN decode/conv and short-context full attention. | **realized: Q4 +5.97% / Q8 +5.95% graph tg128; zero bytes/nodes** | Exact-shape existing generic split-K3+fused-gate wins 5/5 graph pairs per quant, passes 897/900 combined top-1 with max KL 0.001944, and preserves exact trajectories and pp512. | **Accepted for gfx1151 0.8B rows1/8Q/2KV/D256 at cap514-641.** M10 confirms -0.512/-0.492 ms; fixed256 and unsupported routes remain fallbacks. | accepted |
-| **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | **realized: Q4 graph +2.884% / eager +0.207%; zero bytes/nodes** | Exact fixed-1024 C wins 5/5 graph blocks, replaces 24+24 owners, passes 900/900 transitions at max KL 0.001745, and preserves Q8/prefill guards. | **Accepted/exhausted for exact gfx1151 0.8B Q4_K_M c1 attention/post-attention norm owners.** M12 current-production rerank next. | accepted/exhausted |
+| **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | **realized: Q4 graph +2.884% / eager +0.207%; zero bytes/nodes** | Exact fixed-1024 C wins 5/5 graph blocks, replaces 24+24 owners, passes 900/900 transitions at max KL 0.001745, and preserves Q8/prefill guards. M12 confirms joined norm **0.67405 -> 0.56181 ms**. | **Accepted/exhausted for exact gfx1151 0.8B Q4_K_M c1 attention/post-attention norm owners.** | accepted/exhausted |
 
 ### G lane — promotion and closure
 
