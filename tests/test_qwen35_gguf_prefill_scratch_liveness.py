@@ -272,6 +272,22 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             )
 
 
+def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:
+    runner = _fake_dense_qwen36_runner()
+
+    assert (
+        gguf_runner._gguf_prefill_scratch_priority_min_live_stages(
+            runner,
+            rows=64,
+        )
+        is None
+    )
+    assert gguf_runner._gguf_prefill_scratch_priority_min_live_stages(
+        runner,
+        rows=4_096,
+    ) == 5
+
+
 def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
     monkeypatch,
 ) -> None:
@@ -301,8 +317,12 @@ def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
         conv_offset + conv_bytes,
         recurrent_offset + recurrent_bytes,
     )
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 409 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) == 401 * _MIB + 64 * 1_024
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 380 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 372 * _MIB + 384 * 1_024
+    assert scratch.allocation_offsets["attn_out"] == (
+        48 * _MIB + 64 * 1_024,
+        40 * _MIB,
+    )
 
 
 def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -> None:

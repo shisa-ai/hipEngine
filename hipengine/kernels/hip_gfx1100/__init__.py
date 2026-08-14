@@ -704,7 +704,15 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 # Dense Qwen3.6 has no MoE/shared-expert route, so those fields are omitted and
 # the remaining linear/full-attention/FFN phases reuse the proven arena plan.
 GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"min_rows": 1},
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+        "min_rows": 1,
+        # Short verifier/NextN arenas retain size-first coloring: moving the
+        # long-row priority fields there corrupts the second target-logit row.
+        "priority_min_rows": 4_096,
+        # Prefix-8 production oracle: duration>=5 reaches 372.375 MiB while
+        # preserving root+128 IDs. Moving the next field (attn_out) diverges.
+        "priority_min_live_stages": 5,
+    },
 }
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.

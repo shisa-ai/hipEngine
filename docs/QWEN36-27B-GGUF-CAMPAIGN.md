@@ -9,14 +9,18 @@ and fits the 24-GiB card. The compact peer-GDN route closes all frozen
 than per value head while preserving peer-wave32 output/state bits. Persistent
 scratch follows that ABI instead of reserving V-head-sized Q/K planes, dense
 SiLU overwrites its dead BF16 gate plane, split GDN reuses dead `conv_out` pages
-for its later recurrent output, and one physical owner exposes all 188 private-c1
-decode-scratch ranges. Tracked peak is **15.587/15.668/16.178/16.436 GiB** and
-whole-device peak is **16.030/16.183/16.844/17.099 GiB** at 512/1K/4K/8K. The
-latest lifetime correction shrinks the 4K-row arena **467.5625 -> 401.0625 MiB**
-and saves **0.5/13.391/66.5/66.5 MiB** tracked with all throughput movement
-within **0.228%**, but does not claim cross-engine closure: Vulkan's lower
-memory floors still lead by **0.341/0.483/0.932/0.933 GiB**, 4K decode
-remains below HIP, and Vulkan MTP still wins. See
+for its later recurrent output, one physical owner exposes all 188 private-c1
+decode-scratch ranges, and a constrained rows>=4096 placement order reuses the
+remaining long-row holes without moving `attn_out`. Tracked peak is
+**15.587/15.668/16.150/16.408 GiB** and whole-device peak is
+**16.029/16.182/16.813/17.068 GiB** at 512/1K/4K/8K. The latest step shrinks
+the 4K-row arena **401.0625 -> 372.375 MiB (-28.6875 MiB)** and saves exactly
+**28.6875 MiB** tracked plus about **31.47 MiB** whole-device at 4K/8K with all
+throughput movement within **0.172%**. Rows below 4096 deliberately retain the
+size-first order after RED coverage caught a short-row NextN NaN. This does not
+claim cross-engine closure: Vulkan's lower memory floors still lead by
+**0.340/0.482/0.901/0.902 GiB**, 4K decode remains below HIP, and Vulkan MTP
+still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
 [`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json),
@@ -24,7 +28,8 @@ remains below HIP, and Vulkan MTP still wins. See
 [`right-sized compact Q/K scratch`](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
 [`dense SiLU gate-plane alias`](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json), and
 [`single-owner decode-scratch arena`](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json), and
-[`split-GDN lifetime reuse`](../benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json).
+[`split-GDN lifetime reuse`](../benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json), and
+[`constrained long-row recoloring`](../benchmarks/results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
