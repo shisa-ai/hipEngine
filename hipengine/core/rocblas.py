@@ -15,6 +15,7 @@ ROCBLAS_OPERATION_TRANSPOSE = 112
 ROCBLAS_DATATYPE_F16_R = 150
 ROCBLAS_DATATYPE_F32_R = 151
 ROCBLAS_GEMM_ALGO_STANDARD = 0
+ROCBLAS_GEMM_ALGO_SOLUTION_INDEX = 1
 DEFAULT_ROCBLAS_LIBRARY = "librocblas.so"
 
 
@@ -44,10 +45,48 @@ class Rocblas:
             _check(self.library.rocblas_destroy_handle(ctypes.c_void_p(self.handle)), "rocblas_destroy_handle")
             self.handle = 0
 
+    def version_string(self) -> str:
+        """Return the loaded rocBLAS build identity."""
+
+        size = ctypes.c_size_t()
+        _check(
+            self.library.rocblas_get_version_string_size(ctypes.byref(size)),
+            "rocblas_get_version_string_size",
+        )
+        if size.value <= 1:
+            raise RocblasError(-1, "rocBLAS returned an empty version string")
+        buffer = ctypes.create_string_buffer(size.value)
+        _check(
+            self.library.rocblas_get_version_string(buffer, size),
+            "rocblas_get_version_string",
+        )
+        return buffer.value.decode("utf-8")
+
     def set_stream(self, stream: int) -> None:
         _check(
             self.library.rocblas_set_stream(ctypes.c_void_p(self.handle), ctypes.c_void_p(stream)),
             "rocblas_set_stream",
+        )
+
+    def set_workspace(self, workspace_ptr: int, workspace_nbytes: int) -> None:
+        """Use caller-owned workspace and release rocBLAS-managed residency.
+
+        A null, zero-sized workspace is valid for GEMM algorithms that require
+        no auxiliary storage. This also prevents the handle from retaining its
+        default device allocation outside hipEngine's tracked ownership.
+        """
+
+        ptr = int(workspace_ptr)
+        nbytes = int(workspace_nbytes)
+        if ptr < 0 or nbytes < 0 or (nbytes > 0 and ptr == 0):
+            raise ValueError("rocBLAS workspace pointer/size must be valid")
+        _check(
+            self.library.rocblas_set_workspace(
+                ctypes.c_void_p(self.handle),
+                ctypes.c_void_p(ptr),
+                ctypes.c_size_t(nbytes),
+            ),
+            "rocblas_set_workspace",
         )
 
     def hgemm_rowmajor_nt(
@@ -141,8 +180,14 @@ class Rocblas:
         in_features: int,
         out_features: int,
         stream: int = 0,
+        solution_index: int | None = None,
     ) -> None:
-        """FP16 row-major NT GEMM with FP16 accumulation and output."""
+        """FP16 row-major NT GEMM with FP16 accumulation and output.
+
+        ``solution_index=None`` preserves rocBLAS's standard shape dispatch.
+        Callers may pass a backend-qualified zero-workspace solution selected
+        through ``rocblas_gemm_ex_get_solutions`` for an exact GEMM shape.
+        """
 
         self._gemm_ex_rowmajor_nt_fp16(
             x_ptr,
@@ -154,6 +199,7 @@ class Rocblas:
             output_datatype=ROCBLAS_DATATYPE_F16_R,
             compute_datatype=ROCBLAS_DATATYPE_F16_R,
             stream=stream,
+            solution_index=solution_index,
         )
 
     def gemm_ex_rowmajor_nt_fp16_compute_f32(
@@ -218,6 +264,7 @@ class Rocblas:
         output_datatype: int,
         compute_datatype: int,
         stream: int,
+        solution_index: int | None = None,
     ) -> None:
         _check_shape(rows=rows, in_features=in_features, out_features=out_features)
         if output_datatype not in {ROCBLAS_DATATYPE_F16_R, ROCBLAS_DATATYPE_F32_R}:
@@ -225,6 +272,14 @@ class Rocblas:
         if compute_datatype not in {ROCBLAS_DATATYPE_F16_R, ROCBLAS_DATATYPE_F32_R}:
             raise ValueError("rocBLAS FP16 GEMM compute must be FP16 or FP32")
         self.set_stream(stream)
+        if solution_index is not None and not -(1 << 31) <= int(solution_index) < (1 << 31):
+            raise ValueError("rocBLAS solution_index must fit int32")
+        algorithm = (
+            ROCBLAS_GEMM_ALGO_STANDARD
+            if solution_index is None
+            else ROCBLAS_GEMM_ALGO_SOLUTION_INDEX
+        )
+        selected_solution = 0 if solution_index is None else int(solution_index)
         if compute_datatype == ROCBLAS_DATATYPE_F16_R:
             alpha: ctypes.c_uint16 | ctypes.c_float = ctypes.c_uint16(0x3C00)
             beta: ctypes.c_uint16 | ctypes.c_float = ctypes.c_uint16(0x0000)
@@ -254,8 +309,8 @@ class Rocblas:
                 ctypes.c_int(output_datatype),
                 ctypes.c_int(out_features),
                 ctypes.c_int(compute_datatype),
-                ctypes.c_int(ROCBLAS_GEMM_ALGO_STANDARD),
-                ctypes.c_int32(0),
+                ctypes.c_int(algorithm),
+                ctypes.c_int32(selected_solution),
                 ctypes.c_uint32(0),
             ),
             "rocblas_gemm_ex",
@@ -399,8 +454,20 @@ def _configure(library: ctypes.CDLL) -> None:
     library.rocblas_create_handle.restype = ctypes.c_int
     library.rocblas_destroy_handle.argtypes = [ctypes.c_void_p]
     library.rocblas_destroy_handle.restype = ctypes.c_int
+    library.rocblas_get_version_string_size.argtypes = [
+        ctypes.POINTER(ctypes.c_size_t)
+    ]
+    library.rocblas_get_version_string_size.restype = ctypes.c_int
+    library.rocblas_get_version_string.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+    library.rocblas_get_version_string.restype = ctypes.c_int
     library.rocblas_set_stream.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     library.rocblas_set_stream.restype = ctypes.c_int
+    library.rocblas_set_workspace.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    library.rocblas_set_workspace.restype = ctypes.c_int
     library.rocblas_hgemm.argtypes = [
         ctypes.c_void_p,
         ctypes.c_int,

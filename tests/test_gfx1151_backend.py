@@ -1000,7 +1000,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q6_LM_HEAD_MAX_CHUNK == 5
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
-    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_compact_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
@@ -1264,7 +1264,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_GDN_PREFILL_AUTO_MODE",
         )
-        == "chain_peer_wave32"
+        == "chain_compact_peer_wave32"
     )
     assert (
         backend_package_capability(
@@ -1647,7 +1647,7 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert len(resolved) == 30
+    assert len(resolved) == 32
     assert set(resolved) == {"hip_gfx1151"}
 
 

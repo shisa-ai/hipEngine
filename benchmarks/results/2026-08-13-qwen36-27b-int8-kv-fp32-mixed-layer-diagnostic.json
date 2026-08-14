@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_quality_frontier_runtime_rejected",
+  "title": "Qwen3.6-27B FP32-scale INT8 and mixed-layer KV outcome",
+  "performance_claim": false,
+  "support_decision": "BF16 KV remains the only supported/default dense-27B route. Pure FP32-scale INT8 fails the complete 512/8 quality suite. A selected 9-BF16/7-INT8 layer partition passes the measured quality gates through a bounded 32K prompt, but it is diagnostic-only because its chunk-outer prefill oracles raise peak memory, uniform mixed-INT8 graph capture is unsafe, the executable eager route loses to BF16 graph decode, and no 256K capacity gate exists.",
+  "implementation": {
+    "native_24q_4kv_splitk_commit": "9113d29b574e0bd0d2135585ac1cc6c856d13697",
+    "source_f16_long_request_fallback_commit": "984515f3647da7cc824f79cfdd5bb4a77c951c67",
+    "diagnostic_controls_commit": "60a0ed4b10a9dca97c5c8486d8e0fb7353f89caf",
+    "kernel": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16,6,24,4>",
+    "kernel_trace_duration_ns": 73321,
+    "kernel_trace_workgroup": [256, 1, 1],
+    "kernel_trace_grid": [1024, 3, 1],
+    "kernel_trace_vgpr": 64,
+    "kernel_trace_scratch_bytes": 0,
+    "fallback": "registered BF16 paged-attention path"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m",
+    "layers": 64,
+    "full_attention_layers": 16,
+    "query_heads": 24,
+    "kv_heads": 4,
+    "head_dim": 256,
+    "context_length": 262144
+  },
+  "hardware": {
+    "quality_512_and_bounded_long": {
+      "gpu": "AMD Radeon Pro W7900",
+      "hip_visible_devices": "0",
+      "pci_bdf": "0000:0D:00.0",
+      "arch": "gfx1100"
+    },
+    "quality_4k_and_runtime": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "hip_visible_devices": "1",
+      "pci_bdf": "0000:10:00.0",
+      "arch": "gfx1100"
+    },
+    "compiler_version_first_line": "HIP version: 7.15.0-0000000"
+  },
+  "quality_protocol": {
+    "teacher": "same-model BF16 KV with reference-token teacher forcing",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl plus mixed_v1",
+    "prompt_count": 11,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en", "mixed_synthetic"],
+    "heldout_prompt_count": 4,
+    "thresholds": {
+      "mean_kl_max": 0.05,
+      "minimum_prompt_top1_agreement_min": 0.9
+    },
+    "layout_requirements": {
+      "bf16_mirror_bytes": 0,
+      "complete_layer_partition": true,
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head"
+    }
+  },
+  "pure_int8": {
+    "bf16_full_attention_indices": [],
+    "int8_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "rows": [
+      {
+        "workload": "512/8",
+        "hardware": "AMD Radeon Pro W7900",
+        "prompt_count": 11,
+        "positions": 99,
+        "mean_kl": 0.00009146429957390535,
+        "max_kl": 0.0011211873967048272,
+        "aggregate_top1_agreement": 0.9797979797979798,
+        "minimum_prompt_top1_agreement": 0.7777777777777778,
+        "failing_prompt_ids": ["mixed_ja_en_translate"],
+        "passed": false
+      },
+      {
+        "workload": "4K/16",
+        "hardware": "AMD Radeon RX 7900 XTX",
+        "prompt_count": 11,
+        "positions": 187,
+        "mean_kl": 0.0025028744240778744,
+        "max_kl": 0.28625144353919446,
+        "aggregate_top1_agreement": 0.9893048128342246,
+        "minimum_prompt_top1_agreement": 0.9411764705882353,
+        "failing_prompt_ids": [],
+        "passed": true
+      }
+    ],
+    "verdict": "rejected because promotion requires every measured prompt-suite gate; the 512/8 mixed_ja_en_translate prompt reaches only 77.78% top-1 agreement"
+  },
+  "mixed_layer_candidate": {
+    "selection_method": "deterministic reverse greedy screen on the sole pure-INT8 failing train prompt; admit an INT8 layer only while the prompt remains above the gate",
+    "selection_caveat": "The layer map was selected using mixed_ja_en_translate and therefore is not an independent quality proof. It was subsequently checked on the complete suite, including the remaining train/category prompts, four heldouts, and mixed_v1. It remains diagnostic and must not become prompt-conditioned runtime behavior.",
+    "bf16_full_attention_indices": [0, 1, 3, 4, 5, 6, 8, 12, 13],
+    "int8_full_attention_indices": [2, 7, 9, 10, 11, 14, 15],
+    "rows": [
+      {
+        "workload": "512/8 complete suite",
+        "hardware": "AMD Radeon Pro W7900",
+        "prompt_count": 11,
+        "positions": 99,
+        "mean_kl": 0.00008028071375410413,
+        "max_kl": 0.0022062487602122296,
+        "aggregate_top1_agreement": 1.0,
+        "minimum_prompt_top1_agreement": 1.0,
+        "passed": true
+      },
+      {
+        "workload": "4K/16 complete suite",
+        "hardware": "AMD Radeon RX 7900 XTX",
+        "prompt_count": 11,
+        "positions": 187,
+        "mean_kl": 0.0025260599350596176,
+        "max_kl": 0.3577548854650976,
+        "aggregate_top1_agreement": 0.9946524064171123,
+        "minimum_prompt_top1_agreement": 0.9411764705882353,
+        "passed": true
+      },
+      {
+        "workload": "8K/16 mixed_v1 bounded prompt",
+        "hardware": "AMD Radeon Pro W7900",
+        "mean_kl": 0.010970584344515035,
+        "max_kl": 0.10462226308222762,
+        "top1_agreement": 1.0,
+        "passed": true
+      },
+      {
+        "workload": "16K/16 mixed_v1 bounded prompt",
+        "hardware": "AMD Radeon Pro W7900",
+        "mean_kl": 0.0033327746270010858,
+        "max_kl": 0.045032712772902564,
+        "top1_agreement": 1.0,
+        "passed": true
+      },
+      {
+        "workload": "32K/16 mixed_v1 bounded prompt",
+        "hardware": "AMD Radeon Pro W7900",
+        "mean_kl": 0.0015354533029727647,
+        "max_kl": 0.02605718214778014,
+        "top1_agreement": 1.0,
+        "passed": true
+      }
+    ]
+  },
+  "memory": {
+    "measured_context_capacity_tokens": 32786,
+    "rounded_scratch_max_positions": 33024,
+    "bf16_tracked_current_and_peak_gib": 18.176919035613537,
+    "mixed_tracked_current_gib": 17.742890410125256,
+    "mixed_tracked_peak_gib": 18.624726347625256,
+    "mixed_persistent_saving_vs_bf16_gib": 0.434028625488281,
+    "mixed_peak_increase_vs_bf16_gib": 0.447807312011719,
+    "mixed_prefill_oracle_transient_gib": 0.8818359375,
+    "projected_256k_retained_kv": {
+      "bf16_gib": 16.0,
+      "pure_fp32_scale_int8_gib": 8.125,
+      "mixed_9bf16_7int8_gib": 12.5546875,
+      "mixed_saving_vs_bf16_gib": 3.4453125
+    },
+    "projected_256k_mixed_prefill_oracles_gib": 7.0,
+    "interpretation": "The 9/7 map saves retained KV, but GGUF chunk-outer prefill keeps one full-length BF16 K/V oracle pair per INT8 layer. At 32K that transient more than reverses the persistent saving; at 256K the seven oracle pairs alone project to 7 GiB."
+  },
+  "runtime_screen": {
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "workload": "4K prompt / 128 decode / 32786 requested capacity / one discarded warmup / five measured runs",
+    "rows": [
+      {
+        "route": "BF16 KV graph",
+        "prefill_tok_s_median": 973.6565082074006,
+        "decode_tok_s_median": 31.430394525362434,
+        "tracked_peak_gib": 18.176919035613537
+      },
+      {
+        "route": "BF16 KV eager",
+        "prefill_tok_s_median": 972.6473741087407,
+        "decode_tok_s_median": 27.85545197490282,
+        "tracked_peak_gib": 18.176919035613537
+      },
+      {
+        "route": "9-BF16/7-INT8 FP32-scale KV eager",
+        "prefill_tok_s_median": 971.5787014389684,
+        "decode_tok_s_median": 28.123998312837827,
+        "tracked_current_gib": 17.742890410125256,
+        "tracked_peak_gib": 18.624726347625256
+      }
+    ],
+    "mixed_eager_decode_change_vs_bf16_graph_percent": -10.519741360091884,
+    "mixed_eager_decode_change_vs_bf16_eager_percent": 0.9640710126583537,
+    "interpretation": "The executable mixed route is eager-only. It is slightly faster than BF16 eager in this diagnostic, but the supported same-capacity BF16 route uses graph decode, so the product comparison is a 10.52% regression. These dirty-commit diagnostics do not update a performance topline."
+  },
+  "runtime_blockers": [
+    {
+      "blocker": "uniform per-token/head mixed INT8 is not admitted by decode graph capture",
+      "evidence": "A disposable admission experiment produced a GPU page fault and was reverted; production remains fail-closed to eager for this layout."
+    },
+    {
+      "blocker": "full 32K prompt-suite execution is not stable",
+      "evidence": "The complete-suite 32K attempt hung the GPU after reaching INT8 execution. A separately bounded mixed_v1 32K/16 driver completed and passed, so the quality row is only a bounded single-prompt diagnostic."
+    },
+    {
+      "blocker": "256K capacity is unproven and projected transient memory is incompatible with the 24 GiB target",
+      "evidence": "Seven per-layer BF16 prefill oracle pairs project to 7 GiB before other session ownership."
+    }
+  ],
+  "commands": {
+    "pure_512_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 512 --decode-steps 8 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --json /tmp/qwen36-27b-native-int8-fp32scale-suite-512x8.json",
+    "pure_4k_suite": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 4096 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --json /tmp/qwen36-27b-native-int8-fp32scale-suite-4kx16.json",
+    "mixed_4k_suite": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=0,1,3,4,5,6,8,12,13 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 4096 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers 0,1,3,4,5,6,8,12,13 --expected-int8-full-layers 2,7,9,10,11,14,15 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-suite-4kx16.json",
+    "mixed_runtime": "HIP_VISIBLE_DEVICES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=0,1,3,4,5,6,8,12,13 HIPENGINE_HIP_ARCH=gfx1100 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --max-sequence-length 32786 --warmup-runs 1 --measured-runs 5 --persistent-session --no-graph-replay-decode --kv-storage int8_per_token_head --kv-scale-dtype fp32 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-xtx-mixed-kv-fp32scale-eager-cap32k-4kx128-r5.json"
+  },
+  "source_artifacts": [
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-suite-512x8.json", "sha256": "1f9888119b3d6546e7fc87a28bac12d9353e3e2f05fc843090756a91cda2b0bc"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-suite-4kx16.json", "sha256": "a88a48e35db6cbb673e7f3ccb80a1a849ba6e7f9ab09a74f5d3f9c6d2818ada7"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-suite-512x8.json", "sha256": "465d48ca5189579a32ce149a6dd5b40a37e92888b287f1c86dede9d7bb339f00"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-suite-4kx16.json", "sha256": "4dae997597da0aa152e4ff1bdae26600ac142cb6bece590ca0dff3bfa9a3a9c5"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-mixed-8kx16.json", "sha256": "84bca1fe9c29fb049c5fe15aa42e9728689a7fe078c71569822b8f60282dafdd"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-mixed-16kx16.json", "sha256": "0820b8b728fcc018a38fdce91b036f041d1800a1fe159c2a316473ad2c2feb29"},
+    {"path": "/tmp/qwen36-27b-native-int8-fp32scale-greedy-reverse-mixed-32kx16.json", "sha256": "86d7aab562d1053a57bf16737e2dcbae896ae32f1dfc56f40d74c935315055d2"},
+    {"path": "/tmp/qwen36-27b-xtx-bf16-kv-cap32k-4kx128-r5.json", "sha256": "b58cbf23a596713668acbc7f6d1e4b8a509910b453fee6acb45d63785e80f2da"},
+    {"path": "/tmp/qwen36-27b-xtx-bf16-kv-eager-cap32k-4kx128-r5.json", "sha256": "5986978842ef0794e46f9c514c9162f6da396ad537d9770f24fb6c57f198e65f"},
+    {"path": "/tmp/qwen36-27b-xtx-mixed-kv-fp32scale-eager-cap32k-4kx128-r5.json", "sha256": "3101d24fd7ce2511df6bcbb69c4c0ac0cda002a4dfc821c513f5d03abe5c633f"},
+    {"path": "/tmp/hipengine-qwen36-27b-int8-attn-trace-cached/epyc/2579948_kernel_trace.csv", "sha256": "73bfe16e0447c807181ec60a7ee2a1c2a35ae079aad81d009f9a58bd4128d698"}
+  ]
+}

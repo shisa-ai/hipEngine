@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_exact_shared_activation_cast",
+  "title": "Qwen3.6-27B full-attention K/V shared source-F16 activation cast",
+  "performance_claim": true,
+  "parent_commit": "be5dba38620a42bdb227a6e8c44c0f3128166f30",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50"
+  },
+  "change": {
+    "backend": "hip_gfx1100",
+    "operation": "full-attention K/V projection pair",
+    "scope": "both operands already admitted to bounded sole-T16 source-F16 rocBLAS and matching activation in-place policy",
+    "dataflow": "Cast the common BF16 norm input to the existing FP16 activation plane once, then execute the two prior sequential dequantize/GEMM/output-cast chains unchanged.",
+    "workspace_change_bytes": 0,
+    "resident_weight_change_bytes": 0,
+    "fallback": "Unmatched candidate/exact pairs, differing in-place policies, unsupported shapes, rows below 512, peer backends, decode and MTP keep prior singleton/pair owners."
+  },
+  "profile_gate": {
+    "hardware": "AMD Radeon RX 7900 XTX, gfx1100",
+    "protocol": "Two separate cached M512 prefill-only rocprofv3 kernel traces; control disables only the shared-activation pair route.",
+    "control": {
+      "dispatches": 3190,
+      "kernel_sum_ms": 579.815269,
+      "bf16_to_fp16_dispatches": 136,
+      "bf16_to_fp16_kernel_ms": 3.638709,
+      "t16_dequant_dispatches": 552,
+      "rocblas_gemm_dispatches": 552,
+      "fp16_to_bf16_output_dispatches": 552
+    },
+    "candidate": {
+      "dispatches": 3174,
+      "kernel_sum_ms": 578.389973,
+      "bf16_to_fp16_dispatches": 120,
+      "bf16_to_fp16_kernel_ms": 3.442917,
+      "t16_dequant_dispatches": 552,
+      "rocblas_gemm_dispatches": 552,
+      "fp16_to_bf16_output_dispatches": 552
+    },
+    "delta": {
+      "dispatches": -16,
+      "kernel_sum_ms": -1.425296,
+      "kernel_sum_percent": -0.24581898342520558,
+      "bf16_to_fp16_dispatches": -16,
+      "bf16_to_fp16_kernel_ms": -0.195792,
+      "bf16_to_fp16_kernel_percent": -5.380809512384744
+    },
+    "sources": {
+      "control": "/tmp/qwen36-rocblas-shared-cast-profile-control-xtx/qwen36-shared-cast-control-prefill512_kernel_trace.csv",
+      "control_sha256": "4b5c4b72f9f114793a5c2a432fe8ce6ace48262ee194677f0cf07fbc6d23ad5e",
+      "candidate": "/tmp/qwen36-rocblas-shared-cast-profile-xtx/qwen36-shared-cast-prefill512_kernel_trace.csv",
+      "candidate_sha256": "219d42429a4a87dbd34bc1b9760ce1b4d16fd199e0d8ec38b67522f05ebf3ab1"
+    }
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "One resident model/session per board, warm control/candidate, seven alternating pairs at 512/1K/4K; control disables only the new pair-kind route.",
+    "rx_7900_xtx": {
+      "512": {"baseline_tok_s": 860.7305924060516, "candidate_tok_s": 860.7624706583993, "delta_percent": 0.003703627200990489, "paired_wins": "3/7"},
+      "1024": {"baseline_tok_s": 919.1361293940591, "candidate_tok_s": 919.3458891450813, "delta_percent": 0.02282140200065008, "paired_wins": "4/7"},
+      "4096": {"baseline_tok_s": 912.3630319715562, "candidate_tok_s": 913.2853325850149, "delta_percent": 0.10108921351905664, "paired_wins": "7/7"}
+    },
+    "w7900": {
+      "512": {"baseline_tok_s": 778.1846203153143, "candidate_tok_s": 778.7014923541898, "delta_percent": 0.06642023311460576, "paired_wins": "5/7"},
+      "1024": {"baseline_tok_s": 819.64546610376, "candidate_tok_s": 819.3482900829698, "delta_percent": -0.036256654014421574, "paired_wins": "3/7"},
+      "4096": {"baseline_tok_s": 792.5523452044176, "candidate_tok_s": 793.5566672287775, "delta_percent": 0.12671996120343643, "paired_wins": "3/7"}
+    },
+    "interpretation": "Aggregate changes are inside same-session thermal noise; retention is based on the exact physical launch/traffic and verified kernel-sum reduction, not an aggregate throughput claim.",
+    "tokens_exact": true,
+    "tracked_peak_bytes_unchanged": 17574596216,
+    "sources": {
+      "xtx": "/tmp/qwen36-rocblas-shared-cast-engine-ab-xtx.json",
+      "xtx_sha256": "4c0650e60b53f0616f5a38883c1bcd1c9738261c7265c28c30c86b8880632977",
+      "w7900": "/tmp/qwen36-rocblas-shared-cast-engine-ab-w7900.json",
+      "w7900_sha256": "e782aa175bcb37a792b91270e6204fa7c5f1b78c77e974744db3956770160270"
+    }
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "expanded_prompt_rows": "513-520",
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 1.0,
+    "max_transition_kl": 0.0,
+    "candidate_repeats_exact": true,
+    "free_running_ids_equal": true,
+    "passed": true,
+    "source": "/tmp/qwen36-rocblas-shared-cast-quality.json",
+    "source_sha256": "4aa92f0a4695957955664ddf4e3e6ddc3b51312550c973de5d5a310d77b83ba3",
+    "script": "/tmp/qwen36_rocblas_shared_cast_quality.py",
+    "script_sha256": "de09985d7e330a1b66b5cc8b1f2e7c9616e62e8a5c2b3a28c21c47749565c2ca"
+  },
+  "decode_and_mtp_scope": {
+    "decode": "unchanged because the bounded owner starts at rows 512",
+    "mtp": "unchanged because the natural llama-compatible suite uses 39-71 prompt rows and verifier rows <=4; the immediately preceding current-code B1-B3 gate is complete exact with clean teardown"
+  },
+  "validation": {
+    "focused_tests": "tests/test_gguf_linear_dispatch.py tests/test_gguf_q6_k_f16_rocblas_prefill.py",
+    "focused_result": "93 passed",
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "decision": "Retain based on exact operation boundaries, 16 fewer launches, 5.38% less activation-cast kernel time, 0.246% lower total M512 kernel sum, unchanged projection-family counts, no new memory, and complete KL/top-1 exactness. Aggregate full-prefill movement is disclosed as noise rather than promoted as a topline speedup."
+}

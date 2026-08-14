@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_pair_produced_full_attention_q_full_engine_qualified",
+  "title": "Qwen3.6-27B pair-produced full-attention Q source-F16 full-engine qualification",
+  "performance_claim": true,
+  "implementation_commits": {
+    "leaf": "299292aa3",
+    "runtime": "ec288d731"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "hip_visible_device": 1,
+      "arch": "gfx1100"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "hip_visible_device": 0,
+      "arch": "gfx1100"
+    }
+  ],
+  "change": {
+    "description": "Extend the bounded Q4T16 source-F16/rocBLAS path to the 16 K5,120/N12,288 full-attention query projections at rows 512-2,047, using the exact adjacent-pair packed-column producer.",
+    "admitted_interval": {
+      "quant": "gguf_q4_k_t16_v1",
+      "shape": [
+        5120,
+        12288
+      ],
+      "rows_inclusive": [
+        512,
+        2047
+      ],
+      "anchors": {
+        "512": 2048,
+        "1024": 512
+      }
+    },
+    "arithmetic": "pair-produced source-F16 followed by rocBLAS FP16 compute and final BF16 publication; changed association is quality-gated",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "decode_mtp_changed": false,
+    "fallback": "registered exact Q4T16 dense WMMA owner at M2048/4K, decode, verifier, policy/registry miss, peer backend, and other model/shape scopes"
+  },
+  "counterbalanced_full_engine_ab": {
+    "protocol": "One resident session per board/shape; prior policy and candidate warmed; seven alternating pairs; each synthetic policy flip clears the dispatch cache; baseline removes only the K5120/N12288 full-Q source-F16 policy while retaining all other Q4/Q5/Q6 policies; p512/p1024/p4096 plus d128.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_pair_fullq_engine_ab.py --device <xtx|w7900> --rows <512|1024|4096> --samples 7 --decode-tokens 128 --output /tmp/qwen36-q4-pair-fullq-engine-ab-corrected-<board>-<rows>.json",
+    "rx_7900_xtx": {
+      "512": {
+        "baseline_prefill_tok_s": 952.893806553541,
+        "candidate_prefill_tok_s": 960.3237447041915,
+        "median_delta_percent": 0.7797236270769003,
+        "paired_ratio_delta_percent": 0.7797236270769003,
+        "paired_wins": "7/7",
+        "baseline_decode_tok_s": 31.113669689832815,
+        "candidate_decode_tok_s": 31.711050030699358,
+        "pair_dispatches_baseline_candidate": [
+          264,
+          360
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-xtx-512.json",
+        "source_sha256": "d61dee0cb709b25b5c8948d987e1a1dc51354ac1bc8186467639d868361d1aa1"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 993.6918373366728,
+        "candidate_prefill_tok_s": 997.9529856994654,
+        "median_delta_percent": 0.42881990197418673,
+        "paired_ratio_delta_percent": 0.366114400287465,
+        "paired_wins": "7/7",
+        "baseline_decode_tok_s": 31.43866532485525,
+        "candidate_decode_tok_s": 30.12236419220393,
+        "pair_dispatches_baseline_candidate": [
+          368,
+          752
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-xtx-1024.json",
+        "source_sha256": "7678537312244442c643596c19992f8a8d8ec251bdac393cec52022e4923d2cc"
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 983.1756635437597,
+        "candidate_prefill_tok_s": 983.1189273203753,
+        "median_delta_percent": -0.005770710717134531,
+        "paired_ratio_delta_percent": 8.829646791497225e-07,
+        "paired_wins": "4/7",
+        "baseline_decode_tok_s": 29.85321243891697,
+        "candidate_decode_tok_s": 29.92689234296847,
+        "pair_dispatches_baseline_candidate": [
+          1136,
+          1136
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-xtx-4096.json",
+        "source_sha256": "4f03676444cbeede551006fcab9a148e1d70b148026c361b7574dc19b42166b7"
+      }
+    },
+    "w7900": {
+      "512": {
+        "baseline_prefill_tok_s": 835.4814067239593,
+        "candidate_prefill_tok_s": 841.9762734483653,
+        "median_delta_percent": 0.7773801633567556,
+        "paired_ratio_delta_percent": 0.5275991603149288,
+        "paired_wins": "6/7",
+        "baseline_decode_tok_s": 26.886932236467157,
+        "candidate_decode_tok_s": 26.65067900322547,
+        "pair_dispatches_baseline_candidate": [
+          264,
+          360
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-w7900-512.json",
+        "source_sha256": "fcd0350b43eaf285ae74a9c6e8d7e407ef9bb339b649b24ee9cb787225713a3f"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 856.4221740639806,
+        "candidate_prefill_tok_s": 862.3180398339327,
+        "median_delta_percent": 0.6884298361840013,
+        "paired_ratio_delta_percent": 0.3701203385457541,
+        "paired_wins": "6/7",
+        "baseline_decode_tok_s": 27.0095298407136,
+        "candidate_decode_tok_s": 27.160783557253563,
+        "pair_dispatches_baseline_candidate": [
+          368,
+          752
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-w7900-1024.json",
+        "source_sha256": "75287c84f756001ce6167b29db459c0c70a5842159b24c70ca12d2d21e00a01f"
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 844.365225242519,
+        "candidate_prefill_tok_s": 845.4811417531422,
+        "median_delta_percent": 0.13216040609709268,
+        "paired_ratio_delta_percent": -0.11829216319815261,
+        "paired_wins": "3/7",
+        "baseline_decode_tok_s": 25.227757460904147,
+        "candidate_decode_tok_s": 25.215545741120586,
+        "pair_dispatches_baseline_candidate": [
+          1136,
+          1136
+        ],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-w7900-4096.json",
+        "source_sha256": "e3dbaa405b1d8b7a1e3243f8debb8825082fd7312af94f55410e617c424e1e1e"
+      }
+    },
+    "admitted_prefill_paired_wins": "26/28",
+    "all_shape_prefill_paired_wins": "33/42",
+    "all_token_trajectories_exact": true,
+    "all_tracked_peaks_byte_equal": true,
+    "decode_confirmation": {
+      "scope": "XTX M1024, nine focused alternating pairs after a system-noisy initial decode row",
+      "baseline_prefill_tok_s": 991.6288298966593,
+      "candidate_prefill_tok_s": 997.34297513627,
+      "prefill_delta_percent": 0.5762383128983917,
+      "prefill_paired_ratio_delta_percent": 0.5565716997368186,
+      "prefill_paired_wins": "9/9",
+      "baseline_decode_tok_s": 33.59215704621842,
+      "candidate_decode_tok_s": 33.540353735402114,
+      "decode_delta_percent": -0.15421251676404069,
+      "token_ids_exact": true,
+      "tracked_peak_bytes_equal": true,
+      "source": "/tmp/qwen36-q4-pair-fullq-engine-ab-corrected-xtx-1024-decode-confirm.json",
+      "source_sha256": "34b0ea16a10909cb7e1e3ca3d3de16d0fc246146c73c9d309e0e15dfdc95d2ec"
+    },
+    "interpretation": "M512/M1024 are the binding changed-route rows. M4096 resolves the exact same owner under both labels and is a neutrality/fallback control, not a candidate speed claim. Decode also resolves identical exact owners; the focused XTX confirmation is -0.154% and rejects the noisy initial label split."
+  },
+  "independent_production_matrix": {
+    "protocol": "Selector unset; strict serial execution (no cross-board overlap); one discarded warmup plus three persistent-session measured resets; d128 HIP graph.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "rx_7900_xtx": {
+      "512": {
+        "prefill_tok_s_samples": [
+          965.5518504246787,
+          954.5461476119485,
+          957.4891135954047
+        ],
+        "prefill_tok_s_median": 957.4891135954047,
+        "decode_tok_s_samples": [
+          33.55085534039067,
+          33.54318864827852,
+          33.5578650326777
+        ],
+        "decode_tok_s_median": 33.55085534039067,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-xtx-512.json",
+        "source_sha256": "b317c04cadfd6d4c0698dc5fbe841837b35706ce1639ba1f2452be941214dc7a",
+        "comparison_to_prior_q5_octet_percent": 0.49648668695090326
+      },
+      "1024": {
+        "prefill_tok_s_samples": [
+          995.0701679711677,
+          991.7772628245662,
+          997.3846549338289
+        ],
+        "prefill_tok_s_median": 995.0701679711677,
+        "decode_tok_s_samples": [
+          34.55609416823139,
+          34.506172964719646,
+          34.496274376195025
+        ],
+        "decode_tok_s_median": 34.506172964719646,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-xtx-1024.json",
+        "source_sha256": "df60bc3286d67656aa95fe173ae78964084e70acc57ad2e618d46a3e26ff1a56",
+        "comparison_to_prior_q5_octet_percent": 0.4712357219331498
+      },
+      "4096": {
+        "prefill_tok_s_samples": [
+          984.5916737885831,
+          983.0666443622872,
+          983.4825581925655
+        ],
+        "prefill_tok_s_median": 983.4825581925655,
+        "decode_tok_s_samples": [
+          31.401443448297833,
+          31.389676614204358,
+          31.376988242404156
+        ],
+        "decode_tok_s_median": 31.389676614204358,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-xtx-4096.json",
+        "source_sha256": "1f83f4c890714a00fd6893d27912a9454ffdca4cc5e23f4c013cde49d5732063",
+        "comparison_to_prior_q5_octet_percent": 0.08786317445801384
+      }
+    },
+    "w7900": {
+      "512": {
+        "prefill_tok_s_samples": [
+          865.2258384122241,
+          859.8691311134887,
+          854.4843977706731
+        ],
+        "prefill_tok_s_median": 859.8691311134887,
+        "decode_tok_s_samples": [
+          28.393541191559365,
+          28.324169379007756,
+          28.24722752455455
+        ],
+        "decode_tok_s_median": 28.324169379007756,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-w7900-512.json",
+        "source_sha256": "2cc6853bfddb0b99da358cab2679bb43e8a49d6f7c4e645bfae350445fe93f6b",
+        "comparison_to_prior_q5_octet_percent": 1.3900844597307005
+      },
+      "1024": {
+        "prefill_tok_s_samples": [
+          898.0680118033492,
+          893.6000569573596,
+          891.0440166234882
+        ],
+        "prefill_tok_s_median": 893.6000569573596,
+        "decode_tok_s_samples": [
+          29.088285904765943,
+          28.96253813581266,
+          28.871607036181217
+        ],
+        "decode_tok_s_median": 28.96253813581266,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-w7900-1024.json",
+        "source_sha256": "a63e985dbaf3311abbab6163e3bc29c0315d490ab84020e5c4d0272a60762f9a",
+        "comparison_to_prior_q5_octet_percent": 1.4761155777242685
+      },
+      "4096": {
+        "prefill_tok_s_samples": [
+          873.5698861600304,
+          868.2649346216053,
+          862.5008801792135
+        ],
+        "prefill_tok_s_median": 868.2649346216053,
+        "decode_tok_s_samples": [
+          26.414437224639222,
+          26.300473945459263,
+          26.160044470312886
+        ],
+        "decode_tok_s_median": 26.300473945459263,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-fullq-isolated-final-w7900-4096.json",
+        "source_sha256": "9c76111ad7a870e20b83b6c9e4bd6a6a101a6dc24a1960268a0a6d82c8299062",
+        "comparison_to_prior_q5_octet_percent": 0.7981797150423464
+      }
+    },
+    "failed_concurrent_attempt_note": "Two attempted cross-board-overlapped publication matrices were discarded after simultaneous ROCm GPU faults during later cells. HIP recovered with zero live KFD owners; the strict serial matrix completed all six cells and is the only publication source."
+  },
+  "cross_engine_prefill": {
+    "llamacpp_hip_prefill_tok_s": {
+      "512": 964.606,
+      "1024": 981.04,
+      "4096": 946.733
+    },
+    "hipengine_xtx_vs_llamacpp_hip_percent": {
+      "512": -0.737802419287803,
+      "1024": 1.4301321017662572,
+      "4096": 3.881723589709618
+    },
+    "hipengine_xtx_vs_llamacpp_hip_plus_1_percent_gate_margin_percent": {
+      "512": -1.7205964547404085,
+      "1024": 0.42587336808541654,
+      "4096": 2.8531916729798157
+    }
+  },
+  "complete_category_quality": {
+    "scope": "ten prompts, four categories, 330 forced-prefix transitions, prior exact full-Q owner versus pair-produced bounded source-F16/rocBLAS policy",
+    "status": "passed",
+    "minimum_prompt_top1_agreement": 1.0,
+    "maximum_prompt_kl": 0.007550780089379832,
+    "all_candidate_repeats_byte_exact": true,
+    "asserted_fullq_pair_launches": 960,
+    "source": "/tmp/qwen36-q4-pair-fullq-quality.json",
+    "source_sha256": "6f3b4770db4baeef08cb3df783da33147cec1fa08ddaedfa6300b2862ee9ccb2"
+  },
+  "llama_compatible_mtp_safeguard": {
+    "scope": "full committed ten-prompt suite, all four categories, B1/B2/B3, serial-exact target verifier; rows are below the M512 selector",
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 1,2,3 --target-verify-mode serial-exact --runs 1 --limit 10 --warmup --max-new-tokens 25 --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen36-fullq-llama-compat-mtp-isolated.json",
+    "status": "complete_exact",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_current_bytes_after_close": 0,
+    "active_allocations_after_close": 0,
+    "source": "/tmp/qwen36-fullq-llama-compat-mtp-isolated.json",
+    "source_sha256": "65471d400d1ec2b16089cb302e489b53a413ba905fc4533651aa4dea42cf0255"
+  },
+  "production_kernel_trace": {
+    "board": "W7900",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-fullq-production-rocprof-w7900 -o production -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-fullq-production-rocprof-w7900/bench.json",
+    "kernel_name": "(anonymous namespace)::gguf_q4_k_t16_dequantize_f16_tile_pair_kernel(unsigned char const*, _Float16*, long, long)",
+    "pair_launches": 360,
+    "new_fullq_pair_launches": 96,
+    "pair_kernel_sum_ms": 19.765536,
+    "pair_duration_ns_median": 48161.0,
+    "scalar_q4_producer_launches": 0,
+    "trace_sha256": "46981883cf0b0c7a4d542dc750b49e551ff4e780e64df860e3a45b7ae57bdd0c",
+    "bench_sha256": "95137e7014807ab3ce712bc327f2090bcdf68edead1628e18d4be89f1795619b",
+    "summary_sha256": "d0fcc3859c50add045e81a3292cf8abd7deb35e2dd654e82161fe39e3ff7d37a",
+    "cache_only": true,
+    "note": "The prefill-only trace validates named production ownership. Its profiler-perturbed wall and null preview token are not correctness or throughput evidence; the complete category and engine matrices are the correctness/topline authorities."
+  },
+  "validation": {
+    "runtime_unit": "Committed in ec288d731 after 128 passed and 9 skipped across affected kernel, registry, dispatch, scratch-liveness, and runner coverage.",
+    "full_engine": "Binding M512/M1024 rows improve on both boards with 26/28 paired wins, exact trajectories, byte-identical tracked peaks, and strict extra pair-owner counts; M4096 is exact fallback.",
+    "quality": "Ten prompts/four categories pass 330/330 top-1, max KL 0.007551, deterministic repeats, and 960 asserted full-Q pair launches.",
+    "decode_memory": "Focused XTX decode is -0.154% under identical owners; selector-unset decode and tracked peaks remain stable at all six cells.",
+    "mtp_dflash": "Full llama-compatible B1-B3 output/acceptance safeguard is exact and tears down to zero. DFlash is a different model/plugin scope and cannot enter this Qwen3.6-27B-only M512+ policy; peer/model misses are unit-gated exact fallbacks."
+  },
+  "decision": "Retain the row-bounded pair-produced full-attention-Q source-F16 route as the Qwen3.6-27B gfx1100 default for M512-M2047. It improves both admitted engine rows on both boards, advances XTX 1K and 4K beyond the frozen HIP+1% prefill gates, preserves decode/memory/MTP ownership, and keeps M2048/4K exact. Re-profile the retained XTX M512 package before selecting the next materially distinct lane."
+}

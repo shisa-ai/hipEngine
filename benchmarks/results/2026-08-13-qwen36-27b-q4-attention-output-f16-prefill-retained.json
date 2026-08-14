@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_model_scoped_changed_arithmetic_prefill",
+  "title": "Qwen3.6-27B sole-T16 Q4 attention-output F16 prefill",
+  "performance_claim": true,
+  "parent_commit": "71b789acfce5c7992479aab3687d9c3588b40192",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "shape_k_n": [6144, 5120],
+    "role": "Q4_K full-attention output projection",
+    "persistent_weight_layouts_per_tensor": 1,
+    "additional_tracked_workspace_bytes": 0,
+    "activation_inplace": true,
+    "lifetime": "full-attention stage 5-6; gated attention activation dies at projection handoff"
+  },
+  "component_speedup": {
+    "w7900_m512_m768_m1024_m1280_m4096": [1.4391779068783046, 1.42895238039645, 1.2880453631488404, 1.235199853172355, 1.1080482110081875],
+    "rx7900xtx_m512_m768_m1024_m1280_m4096": [1.2704646425691146, 1.2499558341400965, 1.2547951217823579, 1.091613986138446, 1.0256517158434586],
+    "wins_each": "15/15",
+    "sources": ["/tmp/qwen36-q4-attn-output-f16-production-screen-w7900.json", "/tmp/qwen36-q4-attn-output-f16-production-screen-xtx.json"]
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "max_transition_kl": 0.017444265163107264,
+    "candidate_repeats_exact": true,
+    "passed": true,
+    "source": "/tmp/qwen36-q4q6-t16-f16-rocblas-quality-attn-output.json"
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "one resident model/session per board/shape, warm baseline and candidate, seven alternating pairs",
+    "rx_7900_xtx": {
+      "512": {"delta_percent": 0.3497192964232454, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-output-ab-xtx-r2-512.json"},
+      "1024": {"delta_percent": 0.3058065290540979, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-output-ab-xtx-r2-1024.json"},
+      "4096": {"delta_percent": 0.07447036331342805, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-output-ab-xtx-r2-4096.json"}
+    },
+    "w7900": {
+      "512": {"delta_percent": 0.09636859216068938, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-output-ab-w7900-r2-512.json"},
+      "1024": {"delta_percent": 0.29872579075165273, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-output-ab-w7900-r2-1024.json"},
+      "4096": {"delta_percent": 0.3010514699681055, "paired_wins": "5/7", "source": "/tmp/qwen36-q4-output-ab-w7900-r2-4096.json"}
+    }
+  },
+  "correctness_fix": "Initial admission failed overlap validation because attention-output was not in the transient lifetime map. Added full stage 5-6 lifetime and in-place input ownership; public 512-token smoke then returned finite token 9707.",
+  "validation": {
+    "focused": "pytest tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_prefill_scratch_liveness.py plus public 512 smoke",
+    "lint": "ruff passed",
+    "tracked_residency": "unchanged; existing liveness-aliased scratch only"
+  },
+  "decision": "Retain as a byte-neutral, model/shape/row-scoped prefill default. Every component and counterbalanced full-prefill context improves on both gfx1100 boards, quality passes, and exact decode/MTP/fallback owners remain unchanged."
+}

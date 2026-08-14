@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import sys
 from pathlib import Path
 
 from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo
@@ -43,6 +44,31 @@ def _model_info(*tensors: GGUFTensorInfo) -> GGUFModelInfo:
         tensors=tuple(tensors),
         tensor_data_offset=4096,
     )
+
+
+def test_main_rejects_undersized_explicit_sequence_capacity(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qwen35_gguf_bench.py",
+            "--prompt-length",
+            "512",
+            "--decode-tokens",
+            "8",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-sequence-length",
+            "520",
+        ],
+    )
+
+    try:
+        bench.main()
+    except ValueError as exc:
+        assert "below required 522" in str(exc)
+    else:
+        raise AssertionError("expected undersized explicit sequence capacity to fail")
 
 
 def test_exact_command_payload_preserves_argv_and_shell_command() -> None:

@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_exact_q5_octet_producer_full_engine_qualified",
+  "title": "Qwen3.6-27B natural-octet-owned Q5T16 source-F16 producer full-engine qualification",
+  "performance_claim": true,
+  "implementation_commits": {
+    "leaf": "c63679d38",
+    "runtime": "66b2293a2"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {"device": "AMD Radeon RX 7900 XTX", "hip_visible_device": 1, "arch": "gfx1100"},
+    {"device": "AMD Radeon Pro W7900", "hip_visible_device": 0, "arch": "gfx1100"}
+  ],
+  "change": {
+    "description": "For the already-qualified Qwen3.6-27B recurrent-output Q5T16 source-F16 path, assign one K256 workgroup to each natural eight-column packed group instead of one workgroup per scalar output column.",
+    "admitted_interval": {"quant": "gguf_q5_k_t16_v1", "shape": [6144, 5120], "rows_inclusive": [512, 4096]},
+    "arithmetic": "source-F16 and final BF16 bytes are byte-identical to the scalar producer",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "decode_mtp_changed": false,
+    "fallback": "registered scalar column-owned Q5T16 source-F16 producer"
+  },
+  "counterbalanced_full_engine_ab": {
+    "protocol": "One resident session per board/shape; scalar and octet policies warmed; seven alternating pairs; each synthetic policy flip clears the dispatch cache; baseline removes only the Q5 variant policy while retaining all Q4/Q6 and consumer policies; p512/p1024/p4096 plus d128.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q5_octet_engine_ab.py --device <xtx|w7900> --rows <512|1024|4096> --samples 7 --decode-tokens 128 --output /tmp/qwen36-q5-octet-engine-ab-<board>-<rows>.json",
+    "rx_7900_xtx": {
+      "512": {"baseline_prefill_tok_s": 948.477801939509, "candidate_prefill_tok_s": 958.0617765798975, "median_delta_percent": 1.010458507388412, "paired_ratio_delta_percent": 0.7639652912727168, "paired_wins": "7/7", "octet_dispatches_candidate": 192, "scalar_dispatches_baseline": 192, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-xtx-512.json", "source_sha256": "50acbca7eeb004a1533f35feafe08946f2ba42987ebe202549560c9745fe6329"},
+      "1024": {"baseline_prefill_tok_s": 988.2388935707354, "candidate_prefill_tok_s": 992.3803265476103, "median_delta_percent": 0.4190720486532351, "paired_ratio_delta_percent": 0.44678541406284467, "paired_wins": "7/7", "octet_dispatches_candidate": 192, "scalar_dispatches_baseline": 192, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-xtx-1024.json", "source_sha256": "a301eb4e65825a26412198596aeda204422686ec497f11ec67985132f6480989"},
+      "4096": {"baseline_prefill_tok_s": 979.1966450511081, "candidate_prefill_tok_s": 982.8209732253205, "median_delta_percent": 0.37013282189330976, "paired_ratio_delta_percent": 0.3932027754963263, "paired_wins": "7/7", "octet_dispatches_candidate": 768, "scalar_dispatches_baseline": 768, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-xtx-4096.json", "source_sha256": "2b83c4df157636ebc3f60f7508d45c120bf4bc634ac877d28453eae74a507d33"}
+    },
+    "w7900": {
+      "512": {"baseline_prefill_tok_s": 833.610045050843, "candidate_prefill_tok_s": 846.0703369669525, "median_delta_percent": 1.4947386958790165, "paired_ratio_delta_percent": 1.1442205199463817, "paired_wins": "7/7", "octet_dispatches_candidate": 192, "scalar_dispatches_baseline": 192, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-w7900-512.json", "source_sha256": "284a2e386938066e7c7428e2d4d2faada85da6d80f0b2568d2bcb435cd650530"},
+      "1024": {"baseline_prefill_tok_s": 856.5914152569112, "candidate_prefill_tok_s": 863.2557087269648, "median_delta_percent": 0.7780014311788097, "paired_ratio_delta_percent": 0.3657099975384437, "paired_wins": "7/7", "octet_dispatches_candidate": 192, "scalar_dispatches_baseline": 192, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-w7900-1024.json", "source_sha256": "4aca8b5315d98b6695550c1fcbe2e5553915b4c924bc80b93090c62778787a5a"},
+      "4096": {"baseline_prefill_tok_s": 840.0213362253822, "candidate_prefill_tok_s": 845.144818159632, "median_delta_percent": 0.609922833302301, "paired_ratio_delta_percent": 0.4509065688653724, "paired_wins": "6/7", "octet_dispatches_candidate": 768, "scalar_dispatches_baseline": 768, "token_ids_exact": true, "tracked_peak_bytes_equal": true, "source": "/tmp/qwen36-q5-octet-engine-ab-w7900-4096.json", "source_sha256": "1d2410608ad84c61b07ea0d8fdbaa81695efdb8f9a3d3f85f1da41311585236f"}
+    },
+    "aggregate_prefill_paired_wins": "41/42",
+    "all_token_trajectories_exact": true,
+    "all_tracked_peaks_byte_equal": true,
+    "decode_confirmation": {"scope": "XTX M512, nine additional alternating pairs after a noisy first decode row", "baseline_decode_tok_s": 31.47664950564028, "candidate_decode_tok_s": 32.73352366740148, "baseline_prefill_tok_s": 946.6730159608372, "candidate_prefill_tok_s": 954.2495053344817, "prefill_paired_wins": "9/9", "source": "/tmp/qwen36-q5-octet-engine-ab-xtx-512-decode-confirm.json", "source_sha256": "c0710c02217830d77522666a4337fb32b6d4e789f03fb43ffbefaff516172e44"},
+    "decode_interpretation": "Both labels execute identical exact decode owners. The focused confirmation rejects the initial noisy M512 timing dip; no decode implementation or performance claim changes."
+  },
+  "independent_production_matrix": {
+    "protocol": "Selector unset; one discarded warmup plus three persistent-session measured resets; d128 HIP graph; boards run concurrently on separate physical devices.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "rx_7900_xtx": {
+      "512": {"prefill_tok_s_samples": [954.8548471421434, 950.1166295587469, 952.7587930292602], "prefill_tok_s_median": 952.7587930292602, "decode_tok_s_samples": [33.526946280390696, 33.52839846327529, 33.51387404719194], "decode_tok_s_median": 33.526946280390696, "tracked_peak_gib": 15.605462968349457, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-xtx-512.json", "source_sha256": "f723b99796f7e803e93fa58f557e48b5657e2541b64ecd29902e8ae5ebeaa858"},
+      "1024": {"prefill_tok_s_samples": [990.4030350787664, 989.9189460787017, 994.425870328179], "prefill_tok_s_median": 990.4030350787664, "decode_tok_s_samples": [34.499969631248305, 34.477061822641765, 34.49588697185976], "decode_tok_s_median": 34.49588697185976, "tracked_peak_gib": 15.720211334526539, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-xtx-1024.json", "source_sha256": "33c85ffefe6c56dd08c7133c3fc320a11cdd7a5016f7c22e914750cc57c4bf89"},
+      "4096": {"prefill_tok_s_samples": [983.0697411463511, 982.6191977725688, 982.5386844579072], "prefill_tok_s_median": 982.6191977725688, "decode_tok_s_samples": [31.383454144971104, 31.33764719890662, 31.35835231864839], "decode_tok_s_median": 31.35835231864839, "tracked_peak_gib": 16.367618195712566, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-xtx-4096.json", "source_sha256": "0ec10374b6e7639c9e8bca4ec188e640696372679f5f8853eef010d223ef9f64"}
+    },
+    "w7900": {
+      "512": {"prefill_tok_s_samples": [858.408490028154, 848.0801014176142, 845.0240601405941], "prefill_tok_s_median": 848.0801014176142, "decode_tok_s_samples": [28.331422254410935, 28.227428003333877, 28.12709104006433], "decode_tok_s_median": 28.227428003333877, "tracked_peak_gib": 15.605462968349457, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-w7900-512.json", "source_sha256": "1a19e41f53c674c12b993138f8255ee0b1b335efc12741d4b240d6c30a4a1396"},
+      "1024": {"prefill_tok_s_samples": [888.2800783666248, 880.6013630595847, 878.4640777676217], "prefill_tok_s_median": 880.6013630595847, "decode_tok_s_samples": [28.86210754148957, 28.738444769186255, 28.641423577999873], "decode_tok_s_median": 28.738444769186255, "tracked_peak_gib": 15.720211334526539, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-w7900-1024.json", "source_sha256": "8aee337e849aea2ed8e3d1b85617b7c006484b222fbd095952dcaae95368c012"},
+      "4096": {"prefill_tok_s_samples": [869.279304964144, 861.3894983780468, 855.3970216136777], "prefill_tok_s_median": 861.3894983780468, "decode_tok_s_samples": [26.347247003185423, 26.139407556469028, 26.004190094963935], "decode_tok_s_median": 26.139407556469028, "tracked_peak_gib": 16.367618195712566, "final_token_ids": [9707, 9707, 9707], "source": "/tmp/qwen36-q5-octet-final-w7900-4096.json", "source_sha256": "40db9ab9a3cfe8d3870466a8ec7fb433489f76c98caa5af053c99ba56b3997ee"}
+    },
+    "comparison_to_prior_q4_pair_publication_percent": {"rx_7900_xtx_prefill": [0.7362199988657503, 0.32765027841217265, 0.5259062527820824], "w7900_prefill": [-0.4679735184941025, -0.14747069635734356, 0.09363376201814155]},
+    "w7900_note": "Independent 512/1K absolute rows are 0.468%/0.147% below the prior publication under run-to-run spread, while binding same-session candidate A/B improves every row, wins 20/21 W7900 pairs, and is byte-exact."
+  },
+  "cross_engine_prefill": {
+    "llamacpp_hip_prefill_tok_s": {"512": 964.606, "1024": 981.04, "4096": 946.733},
+    "hipengine_xtx_vs_llamacpp_hip_percent": {"512": -1.2281912999442035, "1024": 0.9543989112336337, "4096": 3.7905299353216737},
+    "hipengine_xtx_vs_llamacpp_hip_plus_1_percent_gate_margin_percent": {"512": -2.2061299999447614, "1024": -0.045149592837989694, "4096": 2.7629009260610404},
+    "status": {"512": "raw HIP parity still below by 1.23%; frozen HIP+1% gate misses by 2.21%", "1024": "raw HIP parity achieved by 0.95%; frozen HIP+1% gate is threshold-flat, short by 0.045%", "4096": "raw HIP lead is 3.79%; frozen HIP+1% gate passes by 2.76%"}
+  },
+  "complete_category_quality": {
+    "scope": "ten prompts, four categories, 330 forced-prefix transitions, scalar Q5 source-F16 policy versus production octet policy",
+    "status": "passed",
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "maximum_prompt_kl": 0.009339137989946624,
+    "all_candidate_repeats_byte_exact": true,
+    "candidate_composite_launches": 480,
+    "asserted_octet_producer_launches": 1920,
+    "source": "/tmp/qwen36-q5-octet-quality.json",
+    "source_sha256": "523598c2013f8bddb7bfa682bf2f47b1abfd806cb8bb8d21b983be902cf35d88"
+  },
+  "llama_compatible_mtp_safeguard": {
+    "scope": "full committed ten-prompt suite, all four categories, B1/B2/B3, serial-exact target verifier; safeguard only because verifier rows are below the M512 selector",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 1,2,3 --target-verify-mode serial-exact --runs 1 --limit 10 --warmup --max-new-tokens 25 --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q5-octet-llama-compat-mtp.json",
+    "status": "complete_exact",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_current_bytes_after_close": 0,
+    "active_allocations_after_close": 0,
+    "source": "/tmp/qwen36-q5-octet-llama-compat-mtp.json",
+    "source_sha256": "77bafa55130bc031e9f2e0ca3126fee049b6e54af7eea50e36405c5429699999"
+  },
+  "production_kernel_trace": {
+    "board": "W7900",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-q5-octet-production-full-rocprof-w7900 -o production -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-q5-octet-production-full-rocprof-w7900/bench.json",
+    "kernel_name": "(anonymous namespace)::gguf_q5_k_t16_dequantize_f16_tile_octet_kernel(unsigned char const*, _Float16*, long, long)",
+    "octet_launches": 192,
+    "octet_kernel_sum_ms": 4.947717,
+    "octet_duration_ns_median": 25201,
+    "scalar_q5_producer_launches": 0,
+    "trace_sha256": "df045e5ce9988e8ff7bfe3a872e5f9c850f32e2bba795b8f6a1069bcbe7d5009",
+    "bench_sha256": "ea0259b0c9193bbbaf7994842df8ce149580082db3aa9fd03fb8e02aaf5b5435",
+    "cache_only": true
+  },
+  "validation": {
+    "runtime_unit": "Committed in 66b2293a2 after 119/119 affected kernel, registry, dispatch, and scratch-liveness tests passed.",
+    "full_engine": "41/42 paired prefill wins, exact output trajectories, byte-identical tracked peaks, and strict scalar-baseline/octet-production ownership.",
+    "quality": "Ten prompts/four categories pass at minimum top-1 96.97% and max KL 0.009339 with 1,920 asserted octet launches.",
+    "mtp": "Full ten-prompt/four-category B1-B3 serial-exact safeguard passes all greedy and GPU/CPU acceptance checks and closes tracked allocations to zero."
+  },
+  "decision": "Retain the exact natural-octet-owned Q5 source-F16 producer as the Qwen3.6-27B K6144/N5120 M512-M4096 default. It improves every binding full-engine cell with no arithmetic, memory, decode, or MTP ownership change; keep scalar and pair leaves as registered fallbacks/diagnostics. Publish the fresh selector-unset matrix and re-profile M512 before selecting another lane."
+}

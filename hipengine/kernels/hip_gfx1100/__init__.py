@@ -174,9 +174,11 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     },
 }
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
-# the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.
+# the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.  The
+# compact producer/consumer retains those bits while materializing shared Q/K
+# once per K head; cross-board M512/M1024 complete-chain gates admit it.
 # Scalar-exact direct LDS32 remains available through the explicit selector.
-GGUF_GDN_PREFILL_AUTO_MODE = "chain_peer_wave32"
+GGUF_GDN_PREFILL_AUTO_MODE = "chain_compact_peer_wave32"
 # Strict-exact rollback/oracle stays architecture-scoped and does not replace
 # the quality-admitted peer-wave production default.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -237,6 +239,91 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Production-shape Q4 changed-arithmetic screen admits FFN-down plus
+# full-attention K/V/output. All win at M512/1K/4K; only FFN-down can consume its
+# dead BF16 activation in place. Gate/up remain exact at the projection boundary
+# but bulk rows now use the operation-complete dual-WMMA+SiLU owner; wider input
+# projections retain this bounded source-F16 policy and exact fallbacks.
+GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES = {
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): True,
+}
+GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
+    (5_120, 1_024): {512: 1_024, 768: 512, 1_024: 512, 1_280: 512, 4_096: 256},
+    (6_144, 5_120): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
+    (5_120, 12_288): {512: 2_048, 1_024: 512},
+}
+# Row ceilings prevent nearest-anchor extrapolation through known losing shape
+# boundaries. Full-attention Q wins with the pair producer at 512/1K but keeps
+# exact Q4T16 at 2K/4K and above.
+GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE = {
+    "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
+}
+# Ordered pair-only admission lets one otherwise-exact second operand reuse an
+# already-admitted first operand's FP16 activation without exposing the second
+# shape to singleton or unrelated pair dispatch. Values are inclusive row
+# intervals -> (second-operand tile, registered variant, activation-in-place).
+GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES = {
+    (
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        5_120,
+        10_240,
+        "gguf_q4_k_t16_v1",
+        6_144,
+    ): {
+        (512, 1_023): (2_048, "f16_rocblas_t16_pair_bf16_bf16_out", False),
+        (1_024, 2_047): (512, "f16_rocblas_t16_pair_bf16_bf16_out", False),
+    },
+}
+# Registered linear-variant overrides for source-F16 chains. Shape and inclusive
+# row intervals are model-scoped by the runner policy; absent intervals retain
+# each quant's ordinary registered composite. The disjoint K/V M4096 singleton
+# deliberately does not extrapolate through the mixed M1280 boundary.
+GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
+    "gguf_q4_k_t16_v1": {
+        (17_408, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (5_120, 1_024): {
+            (512, 1_024): "f16_rocblas_t16_pair_bf16_bf16_out",
+            (4_096, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (6_144, 5_120): {
+            (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+        (5_120, 12_288): {
+            (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
+        },
+    },
+    "gguf_q5_k_t16_v1": {
+        (6_144, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+        },
+    },
+}
+# Quality-gated Q5T16 recurrent-output policy. The K6,144 activation is cast in
+# its dead input, preserving the sole resident T16 payload and bounded workspace.
+GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+}
+# Full-category changed-arithmetic admission for sole-planar Q6 dense prefill.
+# Rows below 512 (decode/MTP) and the Q6 lm-head remain on exact owners.
+GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (17_408, 5_120): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
+    (5_120, 10_240): {512: 2_048, 768: 2_048, 1_024: 512, 1_280: 512, 4_096: 256},
+    (5_120, 1_024): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
+}
+# Zero-workspace rocBLAS solution indices selected by exact effective GEMM
+# shape. Each preserves every FP16 output bit versus standard dispatch and wins
+# on both gfx1100 boards; absent shapes deliberately keep rocBLAS standard.
+GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX = "5.2.0.dabb6df2b98"
+GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
+    (512, 5_120, 1_024): -1_140_856_081,
+    (512, 5_120, 2_048): -1_140_856_092,
+    (4_096, 5_120, 512): -1_140_855_996,
+    (4_096, 17_408, 512): -1_140_855_997,
+    (4_096, 6_144, 512): -1_140_855_996,
+}
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
@@ -691,6 +778,15 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
+    "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
+    "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
+    "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+    "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+    "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

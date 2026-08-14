@@ -87,6 +87,8 @@ def _parse_layer_indices(value: str | None) -> list[int] | None:
     text = str(value).strip()
     if not text:
         raise ValueError("layer-index expression must not be empty")
+    if text.lower() in {"none", "empty", "-"}:
+        return []
     indices: list[int] = []
     for part in text.split(","):
         token = part.strip()
@@ -522,6 +524,7 @@ def _command(args: argparse.Namespace) -> str:
         f" --prompt-length {args.prompt_length}"
         f" --decode-steps {args.decode_steps}"
         f" --candidate-kv-storage {args.candidate_kv_storage}"
+        f" --kv-scale-dtype {args.kv_scale_dtype}"
         f" --kl-threshold {args.kl_threshold}"
         f" --top1-threshold {args.top1_threshold}"
     )
@@ -573,7 +576,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     reference_policy = resolve_kv_policy("bf16")
     candidate_policy = resolve_kv_policy(
         args.candidate_kv_storage,
-        scale_dtype="fp16",
+        scale_dtype=args.kv_scale_dtype,
     )
     engines: dict[str, Any] = {}
     started = time.perf_counter()
@@ -740,6 +743,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--candidate-kv-storage",
         choices=("int8_per_token_head", "tail4_hadamard_group32"),
         default="tail4_hadamard_group32",
+    )
+    parser.add_argument(
+        "--kv-scale-dtype",
+        choices=("fp16", "fp32"),
+        default="fp16",
+        help="INT8 K/V scale metadata dtype for the candidate policy.",
     )
     parser.add_argument("--kl-threshold", type=float, default=0.05)
     parser.add_argument("--top1-threshold", type=float, default=0.90)

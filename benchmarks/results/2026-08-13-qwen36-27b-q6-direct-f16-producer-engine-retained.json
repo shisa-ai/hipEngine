@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_exact_producer_full_engine_qualified",
+  "title": "Qwen3.6-27B exact record-owned planar-Q6 F16 producer full-engine qualification",
+  "performance_claim": true,
+  "implementation_commit": "3ba29b6782f3cefdc6a0bcdd22fc85ae72181951",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "hip_visible_device": 1,
+      "arch": "gfx1100"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "hip_visible_device": 0,
+      "arch": "gfx1100"
+    }
+  ],
+  "change": {
+    "description": "Inside the already quality-qualified planar-Q6 source-F16 composite, one 256-thread group owns K256xN16 and reads each contiguous 12-byte qmicro record once to emit K4xN4 F16 values.",
+    "arithmetic": "F16 producer bytes and final BF16 outputs are exact to the prior producer",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "decode_mtp_changed": false,
+    "fallback": "prior scalar column-owned producer remains registered"
+  },
+  "counterbalanced_full_engine_ab": {
+    "protocol": "One resident session per board/shape; both producers warmed; seven alternating pairs; baseline swaps only the producer callable while retaining all policies and consumers; p512/p1024/p4096 plus d128; decode ratios are diagnostic because labels execute the same decode owner.",
+    "rx_7900_xtx": {
+      "512": {
+        "baseline_prefill_tok_s": 915.1633104399766,
+        "candidate_prefill_tok_s": 938.4451846333948,
+        "median_delta_percent": 2.5440130660641325,
+        "paired_ratio_delta_percent": 2.56145392880498,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 288,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-xtx-512.json",
+        "source_sha256": "dd42d410751cc767b0903bbd39f080c6edd1e4243bf4c4259845204d7a59fb7e"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 971.2047345100306,
+        "candidate_prefill_tok_s": 983.7674321759979,
+        "median_delta_percent": 1.2935169300122062,
+        "paired_ratio_delta_percent": 1.3589968215926618,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 816,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-xtx-1024.json",
+        "source_sha256": "e3197ae0015a6cc3ce7e7e633c919fd63b5cf167ede7f570ed59be3954ee8d7c"
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 965.8130445038261,
+        "candidate_prefill_tok_s": 975.4185911312538,
+        "median_delta_percent": 0.9945554869123185,
+        "paired_ratio_delta_percent": 1.0319293363525661,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 2976,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-xtx-4096.json",
+        "source_sha256": "198a3a83412a28185c553f46c0e1aef82fcdf320601ea4bc96b982f2ff02eefb"
+      }
+    },
+    "w7900": {
+      "512": {
+        "baseline_prefill_tok_s": 801.8180743239194,
+        "candidate_prefill_tok_s": 828.32641822764,
+        "median_delta_percent": 3.3060297282612394,
+        "paired_ratio_delta_percent": 2.5382404195870123,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 288,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-w7900-512.json",
+        "source_sha256": "06c65ba145f2b162f313695113a379974246b5ec750e2f901616a9cafcc3d6e4"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 841.3055335441137,
+        "candidate_prefill_tok_s": 855.6641212435424,
+        "median_delta_percent": 1.7067031092665275,
+        "paired_ratio_delta_percent": 1.3773617077861955,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 816,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-w7900-1024.json",
+        "source_sha256": "99420bef01ad45c77eb11b8b63e1a54b5b1074024ff79c03087d5d79e9f6d5a8"
+      },
+      "4096": {
+        "baseline_prefill_tok_s": 827.8400881925048,
+        "candidate_prefill_tok_s": 838.5625379266189,
+        "median_delta_percent": 1.295232000364388,
+        "paired_ratio_delta_percent": 1.0128137494069378,
+        "paired_wins": "7/7",
+        "producer_dispatches_per_sample": 2976,
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q6-direct-engine-ab-w7900-4096.json",
+        "source_sha256": "2c31f8f45d96aa32eac37b678127fc0e8c1ec5f73e9ab7fca784c986f9d5825f"
+      }
+    },
+    "aggregate_prefill_paired_wins": "42/42",
+    "all_token_trajectories_exact": true,
+    "all_tracked_peaks_byte_equal": true
+  },
+  "independent_production_matrix": {
+    "protocol": "Selector unset; one discarded warmup plus three persistent-session measured resets; d128 HIP graph; boards serialized to avoid contention.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "rx_7900_xtx": {
+      "512": {
+        "prefill_tok_s_samples": [
+          939.53499297733,
+          939.7272357307165,
+          937.9325944104669
+        ],
+        "prefill_tok_s_median": 939.53499297733,
+        "decode_tok_s_samples": [
+          33.615743270761094,
+          33.59598826486763,
+          33.58326972249777
+        ],
+        "decode_tok_s_median": 33.59598826486763,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-xtx-512.json",
+        "source_sha256": "f2be5a700bd96ad58d1f4d68c75bb93c94b98d187f6248fa529f2278018c528b"
+      },
+      "1024": {
+        "prefill_tok_s_samples": [
+          985.4193029518705,
+          982.9851700017257,
+          985.3866807657953
+        ],
+        "prefill_tok_s_median": 985.3866807657953,
+        "decode_tok_s_samples": [
+          34.56770058867506,
+          34.539990511068076,
+          34.51594173355723
+        ],
+        "decode_tok_s_median": 34.539990511068076,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-xtx-1024.json",
+        "source_sha256": "e65e9a1f01a35bd291ec892cc1d656b10afd1c7e0d920f0cd44d890ffa2ab05f"
+      },
+      "4096": {
+        "prefill_tok_s_samples": [
+          975.4097403904003,
+          975.8618770884121,
+          976.1801513346895
+        ],
+        "prefill_tok_s_median": 975.8618770884121,
+        "decode_tok_s_samples": [
+          31.382521661482713,
+          31.36473823120936,
+          31.379659880028022
+        ],
+        "decode_tok_s_median": 31.379659880028022,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-xtx-4096.json",
+        "source_sha256": "872942c014ed17eed66301deb7fcea56867d97e2e8d0de59a9991e38c7435fd8"
+      }
+    },
+    "w7900": {
+      "512": {
+        "prefill_tok_s_samples": [
+          849.1079723739314,
+          842.117007392221,
+          838.193201803892
+        ],
+        "prefill_tok_s_median": 842.117007392221,
+        "decode_tok_s_samples": [
+          28.498426766418234,
+          28.411732172773704,
+          28.34733144844144
+        ],
+        "decode_tok_s_median": 28.411732172773704,
+        "tracked_peak_gib": 15.605462968349457,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-w7900-512.json",
+        "source_sha256": "2433597b28035cb9d1aa86e271043b2d3492c1a08abfabb1134e22a008752995"
+      },
+      "1024": {
+        "prefill_tok_s_samples": [
+          884.2682022382297,
+          881.7740059097064,
+          879.4877731931198
+        ],
+        "prefill_tok_s_median": 881.7740059097064,
+        "decode_tok_s_samples": [
+          29.098090338721615,
+          29.007661307876393,
+          28.88863266259034
+        ],
+        "decode_tok_s_median": 29.007661307876393,
+        "tracked_peak_gib": 15.720211334526539,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-w7900-1024.json",
+        "source_sha256": "09f73e022486d0dbe47bb2448d2c3eb4535568797b7bdaaa6947ce06a8a47aa5"
+      },
+      "4096": {
+        "prefill_tok_s_samples": [
+          868.5341320002002,
+          863.2769387104413,
+          855.8824086388014
+        ],
+        "prefill_tok_s_median": 863.2769387104413,
+        "decode_tok_s_samples": [
+          26.500980318186855,
+          26.397102393973462,
+          26.234861328382777
+        ],
+        "decode_tok_s_median": 26.397102393973462,
+        "tracked_peak_gib": 16.367618195712566,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "finite": true,
+        "source": "/tmp/qwen36-q6-direct-final-w7900-4096.json",
+        "source_sha256": "05a3465d6adc543f5ac6cf7cd48b4224929ea4440932ccc059a92afef79a721e"
+      }
+    }
+  },
+  "cross_engine_prefill": {
+    "llamacpp_hip_prefill_tok_s": {
+      "512": 964.606,
+      "1024": 981.04,
+      "4096": 946.733
+    },
+    "hipengine_vs_llamacpp_hip_percent": {
+      "512": -2.599092999905661,
+      "1024": 0.4430686583416943,
+      "4096": 3.0767784674678333
+    },
+    "hipengine_vs_llamacpp_hip_plus_1_percent_gate_margin_percent": {
+      "512": -3.5634584157481775,
+      "1024": -0.5514171699587123,
+      "4096": 2.056216304423586
+    },
+    "status": {
+      "512": "raw HIP parity still below by 2.60%",
+      "1024": "raw HIP parity achieved by 0.44%; frozen HIP+1% gate still misses by 0.55%",
+      "4096": "frozen HIP+1% gate passed by 2.06%"
+    }
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-q6-direct-trace-smoke -o q6-direct -- python /tmp/qwen36_q6_direct_trace_smoke.py",
+    "trace": "/tmp/qwen36-q6-direct-trace-smoke/q6-direct_kernel_trace.csv",
+    "trace_sha256": "679d69d98ab9e0b17cea43d7a2197a9a3bb3da31f0bb2a77ddadeca4f0220d7f",
+    "kernel_name": "(anonymous namespace)::gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct_kernel(unsigned char const*, _Float16*, long, long)",
+    "duration_ns": 6113,
+    "grid": [
+      1024,
+      1,
+      1
+    ],
+    "workgroup": [
+      256,
+      1,
+      1
+    ],
+    "vgpr": 48,
+    "sgpr": 128,
+    "lds_block_bytes_reported": 512,
+    "scratch_bytes": 0
+  },
+  "correctness_validation": {
+    "source_f16_exact": true,
+    "complete_chain_bf16_exact": true,
+    "changed_file_and_runtime_safeguards": "118 passed, 9 skipped",
+    "quality_note": "No arithmetic changes relative to the already full-category-qualified Q6 F16 composite; exact producer/final bytes make the prior quality gate transitive."
+  },
+  "decision": "Retain the record-owned producer as the default inside the existing model-qualified Q6 source-F16 route. Publish the independent selector-unset matrix; decode/MTP, residency, policies, and exact fallback are unchanged."
+}

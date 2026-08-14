@@ -105,6 +105,24 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
+def test_unequal_q4_pair_owner_is_model_backend_scoped(monkeypatch) -> None:
+    runner = _fake_dense_qwen36_runner()
+    assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.backend = "hip_gfx1151"
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.backend = "hip_gfx1100"
+    runner.weights.model_name = "other"
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.model_name = "Qwen3.6-27B"
+    runner.weights.config.is_moe = True
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.config.is_moe = False
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", lambda *args: {})
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", lambda *args: True)
+    assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+
+
 def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     monkeypatch,
 ) -> None:
@@ -120,8 +138,74 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 120 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
+    source_f16_policy = gguf_runner._gguf_t16_f16_rocblas_prefill_policy(
+        _fake_dense_qwen36_runner()
+    )
+    assert source_f16_policy is not None
+    assert source_f16_policy["gguf_q5_k_t16_v1"][(6_144, 5_120)] == {
+        512: 1_280,
+        1_024: 1_280,
+        4_096: 1_024,
+    }
+    assert source_f16_policy["gguf_q4_k_t16_v1"][(5_120, 12_288)] == {
+        512: 2_048,
+        1_024: 512,
+    }
+    assert source_f16_policy["max_rows_by_quant_shape"] == {
+        "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
+    }
+    assert source_f16_policy["pair_only_second_operand_policies"] == {
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            5_120,
+            10_240,
+            "gguf_q4_k_t16_v1",
+            6_144,
+        ): {
+            (512, 1_023): (
+                2_048,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+            (1_024, 2_047): (
+                512,
+                "f16_rocblas_t16_pair_bf16_bf16_out",
+                False,
+            ),
+        },
+    }
+    assert source_f16_policy["linear_variant_intervals_by_quant"] == {
+        "gguf_q4_k_t16_v1": {
+            (17_408, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+            (5_120, 1_024): {
+                (512, 1_024): "f16_rocblas_t16_pair_bf16_bf16_out",
+                (4_096, 4_096): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+            (6_144, 5_120): {
+                (512, 768): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+            (5_120, 12_288): {
+                (512, 2_047): "f16_rocblas_t16_pair_bf16_bf16_out",
+            },
+        },
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+            },
+        },
+    }
+    # Q4/Q5/Q6 source-F16 prefill shares three liveness-aliased transient
+    # planes while preserving each sole resident T16 weight allocation. Q5
+    # recurrent output and dense FFN down cast their dead BF16 inputs in place,
+    # so K6,144 admission does not grow the K5,120 activation workspace.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 113 * _MIB
+    assert scratch.q6_f16_x.ptr != 0
+    assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
+    assert scratch.q6_f16_weight.ptr != 0
+    assert scratch.q6_f16_out.ptr != 0
     assert scratch.ffn_gate_up.ptr != 0
     assert scratch.ffn_intermediate.ptr != 0
     assert scratch.ffn_down.ptr != 0
@@ -138,6 +222,14 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         intermediate_offset + intermediate_size <= down_offset
         or down_offset + down_size <= intermediate_offset
     )
+    # Attention-output F16 arithmetic owns full-attention stage 5-6. Q5
+    # recurrent-output F16 arithmetic also owns the shared weight/output planes
+    # at linear stage 5-6 while casting its dead K6,144 input in place.
+    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+        assert ("full", 5, 6) in lifetimes[name]
+    for name in ("q6_f16_weight", "q6_f16_out"):
+        assert ("linear", 5, 6) in lifetimes[name]
+
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
@@ -153,6 +245,96 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
                 f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
                 f"{name_b}={offsets[name_b]}"
             )
+
+
+@pytest.mark.parametrize(
+    ("scratch_rows", "request_rows", "expected_intervals"),
+    (
+        (768, None, {(512, 1_023)}),
+        (1_024, None, {(1_024, 2_047)}),
+        (2_048, None, set()),
+        (4_096, None, set()),
+        (836, 517, {(512, 1_023)}),
+        (2_176, 1_024, {(1_024, 2_047)}),
+        (4_224, 2_048, set()),
+        (4_224, 4_096, set()),
+    ),
+)
+def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
+    monkeypatch,
+    scratch_rows: int,
+    request_rows: int | None,
+    expected_intervals: set[tuple[int, int]],
+) -> None:
+    runner = _fake_dense_qwen36_runner()
+    runner._cast_library = lambda: "cast-library"
+    scratch = SimpleNamespace(
+        rows=scratch_rows,
+        q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
+        q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
+        q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
+    )
+    fake_rocblas = SimpleNamespace(version_string=lambda: "unqualified")
+    session = SimpleNamespace(
+        runner=runner,
+        _bulk_prefill_scratch=scratch,
+        use_q6_f16_rocblas_prefill=None,
+        _q6_f16_rocblas_prefill_library="dequant-library",
+        _q6_f16_rocblas=fake_rocblas,
+        compiler_version=None,
+        require_cached_build=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "q6_t16_f16_rocblas_prefill_session",
+        lambda owner: owner,
+    )
+
+    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+        session, request_rows=request_rows
+    )
+
+    pair_only = owner.pair_only_second_operand_policies
+    assert pair_only is not None
+    intervals = next(iter(pair_only.values()), {})
+    assert set(intervals) == expected_intervals
+
+
+def test_gfx1100_source_f16_owner_keeps_exact_fallback_beyond_scratch_rows(
+    monkeypatch,
+) -> None:
+    runner = _fake_dense_qwen36_runner()
+    scratch = SimpleNamespace(rows=768)
+    session = SimpleNamespace(
+        runner=runner,
+        _bulk_prefill_scratch=scratch,
+        use_q6_f16_rocblas_prefill=None,
+    )
+    fallback = object()
+    monkeypatch.setattr(
+        gguf_runner,
+        "q6_t16_f16_rocblas_prefill_session",
+        lambda owner: fallback if owner is None else owner,
+    )
+
+    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+        session, request_rows=769
+    )
+
+    assert owner is fallback
+
+
+def test_gfx1100_source_f16_owner_rejects_nonpositive_request_rows() -> None:
+    session = SimpleNamespace(
+        runner=_fake_dense_qwen36_runner(),
+        _bulk_prefill_scratch=SimpleNamespace(rows=768),
+        use_q6_f16_rocblas_prefill=None,
+    )
+
+    with pytest.raises(ValueError, match="request rows must be positive"):
+        gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+            session, request_rows=0
+        )
 
 
 def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -> None:

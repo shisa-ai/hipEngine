@@ -56,6 +56,15 @@ def main() -> int:
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-tokens", type=int, default=128)
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
+    parser.add_argument(
+        "--max-sequence-length",
+        type=int,
+        default=0,
+        help=(
+            "Resident context capacity; 0 uses prompt + warmup + decode + 1. "
+            "A larger value enables no-short-mirror KV diagnostics."
+        ),
+    )
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
     parser.add_argument(
@@ -196,6 +205,13 @@ def main() -> int:
         raise ValueError("--prompt-length must be positive")
     if args.decode_tokens < 0 or args.warmup_decode_tokens < 0:
         raise ValueError("decode token counts must be non-negative")
+    minimum_sequence_length = int(args.prompt_length) + int(args.warmup_decode_tokens) + int(args.decode_tokens) + 1
+    if int(args.max_sequence_length) < 0:
+        raise ValueError("--max-sequence-length must be non-negative")
+    if int(args.max_sequence_length) and int(args.max_sequence_length) < minimum_sequence_length:
+        raise ValueError(
+            f"--max-sequence-length {int(args.max_sequence_length)} is below required {minimum_sequence_length}"
+        )
     if args.warmup_runs < 0 or args.measured_runs <= 0:
         raise ValueError("--warmup-runs must be >=0 and --measured-runs must be positive")
     if args.graph_steps_per_replay <= 0:
@@ -235,7 +251,7 @@ def main() -> int:
     else:
         use_bulk_prefill = None
     prompt_tokens = [int(args.token_id)] * int(args.prompt_length)
-    max_sequence_length = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
+    max_sequence_length = int(args.max_sequence_length or minimum_sequence_length)
     default_aotriton_threshold = PrefillConfig().attn_aotriton_min_tokens
     aotriton_threshold = (
         _QUANT_ATTN_AOTRITON_MIN_TOKENS.get(args.quant, default_aotriton_threshold)

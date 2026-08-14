@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_exact_q4_pair_producer_leaf_runtime_unwired",
+  "title": "Qwen3.6-27B Q4T16 pair-owned source-F16 producer",
+  "performance_claim": true,
+  "commit": "pending_this_commit",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "board": "xtx",
+      "device": "AMD Radeon RX 7900 XTX",
+      "selector": 1,
+      "arch": "gfx1100"
+    },
+    {
+      "board": "w7900",
+      "device": "AMD Radeon Pro W7900",
+      "selector": 0,
+      "arch": "gfx1100"
+    }
+  ],
+  "change": {
+    "mechanism": "One local64 workgroup owns an adjacent Q4T16 column pair for one K256 block, loads each packed Q4 payload byte once, and emits both source-F16 columns.",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "runtime_default_changed": false,
+    "decode_mtp_changed": false,
+    "fallback_changed": false,
+    "fallback": "registered scalar column-owned Q4T16 source-F16 producer"
+  },
+  "leaf_actual_weights": [
+    {
+      "board": "xtx",
+      "role": "ffn_down",
+      "shape": [5120, 17408],
+      "old_ms_median": 0.07436010241508484,
+      "pair_ms_median": 0.03960410058498383,
+      "speedup": 1.87758593975693,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    },
+    {
+      "board": "xtx",
+      "role": "attention_v",
+      "shape": [1024, 5120],
+      "old_ms_median": 0.04187619984149933,
+      "pair_ms_median": 0.027540099620819092,
+      "speedup": 1.5205536805626798,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    },
+    {
+      "board": "xtx",
+      "role": "attention_output",
+      "shape": [5120, 6144],
+      "old_ms_median": 0.040020298957824704,
+      "pair_ms_median": 0.026060199737548827,
+      "speedup": 1.5356865780334552,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    },
+    {
+      "board": "w7900",
+      "role": "ffn_down",
+      "shape": [5120, 17408],
+      "old_ms_median": 0.0863959014415741,
+      "pair_ms_median": 0.046428000926971434,
+      "speedup": 1.8608576659906133,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    },
+    {
+      "board": "w7900",
+      "role": "attention_v",
+      "shape": [1024, 5120],
+      "old_ms_median": 0.02125609964132309,
+      "pair_ms_median": 0.01496410071849823,
+      "speedup": 1.4204729065373674,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    },
+    {
+      "board": "w7900",
+      "role": "attention_output",
+      "shape": [5120, 6144],
+      "old_ms_median": 0.02570819854736328,
+      "pair_ms_median": 0.018936100602149963,
+      "speedup": 1.3576289589655237,
+      "paired_wins": 11,
+      "pairs": 11,
+      "source_f16_byte_exact": true
+    }
+  ],
+  "producer_inclusive_chain_summary": {
+    "all_final_bf16_byte_exact": true,
+    "ffn_down": {
+      "policy": "candidate wins at every measured M512/M768/M1024/M1280/M4096 boundary on both boards",
+      "speedup_range": [1.0113636353221298, 1.1016624797938754]
+    },
+    "attention_v": {
+      "policy": "candidate wins the M512/M768/M1024/M4096 anchors on both boards; mixed M1280 evidence requires a conservative interval boundary",
+      "confirmed_speedup_range": [1.0101426302143053, 1.0557811909907706]
+    },
+    "attention_output": {
+      "policy": "candidate wins M512/M768 but loses at M1024 and is not cross-board positive at M1280/M4096; retain scalar ownership from M1024 upward",
+      "retained_interval_speedup_range": [1.0405632423325395, 1.0808162732621105],
+      "rejected_m1024_speedups": {
+        "xtx": 0.9895278789034107,
+        "w7900": 0.9814992951465764
+      }
+    }
+  },
+  "summary": {
+    "leaf_cells": 6,
+    "leaf_paired_wins": 66,
+    "leaf_pairs": 66,
+    "leaf_speedup_min": 1.3576289589655237,
+    "leaf_speedup_max": 1.87758593975693,
+    "source_f16_byte_exact": true,
+    "runtime_global_switch_rejected": true
+  },
+  "rocprof": {
+    "board": "w7900",
+    "command": "PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file q4-pair-leaf --output-directory /tmp/qwen36-q4-pair-leaf-rocprof-w7900 -- /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_pair_trace.py",
+    "kernel": "(anonymous namespace)::gguf_q4_k_t16_dequantize_f16_tile_pair_kernel(unsigned char const*, _Float16*, long, long)",
+    "duration_ns": 4480,
+    "cache_only": true
+  },
+  "validation": {
+    "red": "pair-owned producer symbol and callable were absent before implementation",
+    "focused_cross_board": "test_q4_t16_pair_owned_dequant_matches_scalar_source_f16_bytes passes on HIP_VISIBLE_DEVICES=0 and 1",
+    "changed_file": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -m pytest -q tests/test_gguf_q6_k_f16_rocblas_prefill.py",
+    "result": "16 passed",
+    "correctness": "pair-owned output is byte-identical to the existing scalar source-F16 producer; all actual-weight complete-chain BF16 comparisons are byte exact"
+  },
+  "sources": [
+    {"path": "/tmp/qwen36-q4-pair-producer-xtx-full.json", "sha256": "4958f07574d2625b4de9cf36dff90f01216e3fec4647c7000b30ecea1f74e76a"},
+    {"path": "/tmp/qwen36-q4-pair-producer-w7900-full.json", "sha256": "6d1d8cd27ef3d8589a178d3d208181b1e9a70cbb8a653921bcf414b3b6f9afd9"},
+    {"path": "/tmp/qwen36-q4-pair-chain-xtx.json", "sha256": "ec0271a18df74b9fed43fc9e218c814103ed318386e07721506f8d76b97f338c"},
+    {"path": "/tmp/qwen36-q4-pair-chain-w7900.json", "sha256": "dbe17f16052ba59a09f1062cca8f64c80fa9381fbe48f2312ef416f7c16eccda"},
+    {"path": "/tmp/qwen36-q4-pair-chain-boundary-xtx-v.json", "sha256": "480579e18231a0e5ce5c500bece0f4bd045ce8bf2bf01073f632575eeb94adcd"},
+    {"path": "/tmp/qwen36-q4-pair-chain-boundary-w7900-v.json", "sha256": "455496d853fbe1c0c3bb5ad444dccaeca0ef590cb6eb68c57777c0c9c5e5f3d4"},
+    {"path": "/tmp/qwen36-q4-pair-chain-boundary-xtx-o.json", "sha256": "05028f1e965c799b31e298f73c1633873724e235e01cb6ed75108f24b392b668"},
+    {"path": "/tmp/qwen36-q4-pair-chain-boundary-w7900-o.json", "sha256": "d9d1ae1740c81c082601baebf3b80209cb3dc540fec5840985401aa35d459316"},
+    {"path": "/tmp/qwen36-q4-pair-chain-anchor768-xtx.json", "sha256": "1e5f287779e7b83d3493ced9d585b5ec069c0244ed44c1a05e69df67bd8ef30c"},
+    {"path": "/tmp/qwen36-q4-pair-chain-anchor768-w7900.json", "sha256": "e50e2f9e1b0d333af13268a45e30b512bcc6a3279888906e91880936d38dc04f"},
+    {"path": "/tmp/qwen36-q4-pair-chain-anchor1280-xtx.json", "sha256": "99afac7d9ad9927d33e15c65592ff6f1ccfec9953c1c835336de74a9c3224f3b"},
+    {"path": "/tmp/qwen36-q4-pair-chain-anchor1280-w7900.json", "sha256": "3fb8ad607afab40aa64f3ff5ced4d2b4dc7252b688e727cdc182dde77f3a9055"}
+  ],
+  "decision": "Retain the exact pair-owned producer as a registered diagnostic primitive. Do not globally replace scalar ownership; route only independently proven role/row intervals in a separate runtime unit."
+}

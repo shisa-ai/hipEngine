@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_model_scoped_changed_arithmetic_prefill",
+  "title": "Qwen3.6-27B sole-T16 Q4 narrow full-attention K/V F16 prefill",
+  "performance_claim": true,
+  "parent_commit": "d2979dd8c48c92f58167f7de399c7708faa2d8da",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "shape_k_n": [5120, 1024],
+    "roles": "all Q4_K full-attention K and V tensors",
+    "persistent_weight_layouts_per_tensor": 1,
+    "additional_tracked_workspace_bytes": 0,
+    "activation_inplace": false,
+    "unchanged": "FFN-down remains in-place; wider attention, gate/up, rows<512, decode, MTP, and peer backends remain exact"
+  },
+  "component": {
+    "attn_k_speedup_m512_m768_m1024_m1280_m4096": [2.2699, 2.0295, 1.5615, 1.7666, 1.2433],
+    "attn_v_speedup_m512_m768_m1024_m1280_m4096": [2.1487, 2.0322, 1.5152, 1.6412, 1.2213],
+    "sources": [
+      "/tmp/qwen36-q4-attn-k-f16-production-screen-w7900.json",
+      "/tmp/qwen36-q4-attn-v-f16-production-screen-xtx.json"
+    ]
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "max_transition_kl": 0.01563300469934242,
+    "candidate_repeats_exact": true,
+    "q4_candidate_dispatches": 1120,
+    "q6_candidate_dispatches": 1280,
+    "passed": true,
+    "source": "/tmp/qwen36-q4q6-t16-f16-rocblas-quality-attn-kv.json"
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "one resident model/session per board and shape; warm baseline/candidate; seven alternating baseline/candidate pairs; synchronized public prefill call",
+    "rx_7900_xtx": {
+      "512": {"baseline_tok_s": 804.2435568017615, "candidate_tok_s": 806.8663355188686, "delta_percent": 0.3261174671435496, "paired_wins": "6/7", "source": "/tmp/qwen36-q4-narrow-ab-xtx-512.json"},
+      "1024": {"baseline_tok_s": 861.4367789194498, "candidate_tok_s": 862.9159664212317, "delta_percent": 0.1717116726357215, "paired_wins": "7/7", "source": "/tmp/qwen36-q4-narrow-ab-xtx-1024.json"},
+      "4096": {"baseline_tok_s": 847.0153694333272, "candidate_tok_s": 847.6823044108064, "delta_percent": 0.07873941861591405, "paired_wins": "6/7", "source": "/tmp/qwen36-q4-narrow-ab-xtx-4096.json"}
+    },
+    "w7900": {
+      "512": {"baseline_tok_s": 729.009258541124, "candidate_tok_s": 729.9090989225867, "delta_percent": 0.1234333269324317, "paired_wins": "6/7", "source": "/tmp/qwen36-q4-narrow-ab-w7900-512.json"},
+      "1024": {"baseline_tok_s": 779.1742174583277, "candidate_tok_s": 780.7547855143947, "delta_percent": 0.20285168844815793, "paired_wins": "5/7", "source": "/tmp/qwen36-q4-narrow-ab-w7900-1024.json"},
+      "4096": {"baseline_tok_s": 741.1126922951848, "candidate_tok_s": 743.4448132475848, "delta_percent": 0.31467831770326526, "paired_wins": "4/7", "source": "/tmp/qwen36-q4-narrow-ab-w7900-4096.json"}
+    }
+  },
+  "absolute_safeguard": {
+    "rx_7900_xtx_512_128": {
+      "prefill_tok_s_samples": [805.9368264461077, 801.5241699524983, 803.3879583649555],
+      "prefill_tok_s_median": 803.3879583649555,
+      "decode_tok_s_median": 33.51148491715707,
+      "tracked_peak_gib": 15.605462968349457,
+      "final_token_ids": [9707, 9707, 9707],
+      "source": "/tmp/qwen36-q4f16-attn-k-candidate-512x128-r3.json"
+    },
+    "note": "Do not replace the rollup's higher FFN-only absolute median with this sub-percent increment; same-session A/B is the retained component evidence because independent load/thermal drift is larger."
+  },
+  "rejected_adjacent_lanes": {
+    "q4_ffn_gate": "loses at M512; only positive from M768",
+    "wider_ffn_down_tiles": "leaf-positive but require 61-346 MiB transient workspace, violating no-memory-regression"
+  },
+  "validation": {
+    "focused": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q6_k_f16_rocblas_prefill.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_gguf_runner.py",
+    "result": "100 passed, 9 skipped",
+    "lint": "ruff passed",
+    "finite_smoke": "512-token public bulk prefill token=9707 and finite logits after shape-scoped in-place fix"
+  },
+  "decision": "Retain as a byte-neutral model-scoped prefill default. The exact component win survives counterbalanced full-prefill A/B at all three contexts on both gfx1100 boards, quality passes, and decode/MTP/residency are unchanged."
+}

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_version_and_shape_scoped_rocblas_solutions",
+  "title": "Qwen3.6-27B bounded source-F16 rocBLAS solution indices",
+  "performance_claim": true,
+  "parent_commit": "30570a4fad3f6b6790f9f40b94e4fd137f4e81ad",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50"
+  },
+  "change": {
+    "backend": "hip_gfx1100",
+    "rocblas_version_prefix": "5.2.0.dabb6df2b98",
+    "workspace_bytes": 0,
+    "resident_weight_change_bytes": 0,
+    "arithmetic": "existing source-F16 dequantization, FP16 accumulation and FP16 output",
+    "policy": {
+      "512x5120x1024": -1140856081,
+      "512x5120x2048": -1140856092,
+      "4096x5120x512": -1140855996,
+      "4096x17408x512": -1140855997,
+      "4096x6144x512": -1140855996
+    },
+    "fallback": "rocBLAS standard algorithm for every unlisted effective GEMM shape, backend, or rocBLAS version; decode and MTP rows are unlisted"
+  },
+  "selected_leaf_confirmation": {
+    "protocol": "Five warmups then 31 counterbalanced HIP-event pairs per effective GEMM with immutable random FP16 input/weight buffers; candidate output compared bitwise with rocBLAS standard output.",
+    "rx_7900_xtx": {
+      "512x5120x1024": {"solution_index": -1140856081, "baseline_ms": 0.1547199934720993, "candidate_ms": 0.14212000370025635, "speedup": 1.0886573982816483, "paired_wins": "29/31", "fp16_bit_mismatches": 0},
+      "512x5120x2048": {"solution_index": -1140856092, "baseline_ms": 0.21320100128650665, "candidate_ms": 0.19384099543094635, "speedup": 1.099875703859853, "paired_wins": "30/31", "fp16_bit_mismatches": 0},
+      "4096x5120x512": {"solution_index": -1140855996, "baseline_ms": 0.4553239941596985, "candidate_ms": 0.31824299693107605, "speedup": 1.430743169686499, "paired_wins": "31/31", "fp16_bit_mismatches": 0},
+      "4096x17408x512": {"solution_index": -1140855997, "baseline_ms": 1.0904090404510498, "candidate_ms": 0.8048059940338135, "speedup": 1.3548719176229655, "paired_wins": "31/31", "fp16_bit_mismatches": 0},
+      "4096x6144x512": {"solution_index": -1140855996, "baseline_ms": 0.4505639970302582, "candidate_ms": 0.3412030041217804, "speedup": 1.3205159145358674, "paired_wins": "31/31", "fp16_bit_mismatches": 0}
+    },
+    "w7900": {
+      "512x5120x1024": {"solution_index": -1140856081, "baseline_ms": 0.09211999922990799, "candidate_ms": 0.09120000153779984, "speedup": 1.010087693822317, "paired_wins": "21/31", "fp16_bit_mismatches": 0},
+      "512x5120x2048": {"solution_index": -1140856092, "baseline_ms": 0.1770009994506836, "candidate_ms": 0.15956099331378937, "speedup": 1.109299934618714, "paired_wins": "23/31", "fp16_bit_mismatches": 0},
+      "4096x5120x512": {"solution_index": -1140855996, "baseline_ms": 0.4141629934310913, "candidate_ms": 0.2820020020008087, "speedup": 1.468652670876796, "paired_wins": "31/31", "fp16_bit_mismatches": 0},
+      "4096x17408x512": {"solution_index": -1140855997, "baseline_ms": 1.1927310228347778, "candidate_ms": 0.9188879728317261, "speedup": 1.2980157082251853, "paired_wins": "31/31", "fp16_bit_mismatches": 0},
+      "4096x6144x512": {"solution_index": -1140855996, "baseline_ms": 0.4371640086174011, "candidate_ms": 0.3138430118560791, "speedup": 1.3929384823067976, "paired_wins": "31/31", "fp16_bit_mismatches": 0}
+    },
+    "rejected_effective_shape": "4096x5120x256 solution -1140856019 repeated at 0.9342x XTX and 1.0002x W7900, so it remains standard",
+    "sources": {
+      "xtx": "/tmp/rocblas-solutions-selected-confirm-xtx.json",
+      "xtx_sha256": "e2fdaf85e0c46615cb9fb68a81b392eed3ac26383c3dc2caa491570cb41cdc91",
+      "w7900": "/tmp/rocblas-solutions-selected-confirm-w7900.json",
+      "w7900_sha256": "769416b5a6a349938ffb31b632ca03aef577c530018501facf7a5561e0b887f3",
+      "script": "/tmp/confirm_selected_rocblas.py",
+      "script_sha256": "5678891586af7f9cb3d611ee9a412ca5580fff099f86fe47cdb7e4a11ecfdf0f"
+    }
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "One resident model/session per board, warm standard/candidate, seven alternating pairs at 512/1K/4K; baseline disables only the new solution-index map.",
+    "rx_7900_xtx": {
+      "512": {"baseline_tok_s": 857.1912019739179, "candidate_tok_s": 860.88365638244, "delta_percent": 0.43076205168919546, "paired_wins": "6/7"},
+      "1024": {"baseline_tok_s": 918.940515745702, "candidate_tok_s": 918.4157001352379, "delta_percent": -0.05711094477516032, "paired_ratio_delta_percent": 0.0016504252794875554, "paired_wins": "4/7", "policy": "no selected 1K shape; standard control"},
+      "4096": {"baseline_tok_s": 900.4015176811348, "candidate_tok_s": 912.40478614976, "delta_percent": 1.3331017588173262, "paired_wins": "7/7"}
+    },
+    "w7900": {
+      "512": {"baseline_tok_s": 774.6844593146715, "candidate_tok_s": 776.017332985015, "delta_percent": 0.17205375095850095, "paired_wins": "6/7"},
+      "1024": {"baseline_tok_s": 819.1855190548114, "candidate_tok_s": 819.4606080871289, "delta_percent": 0.03358079774589018, "paired_wins": "4/7", "policy": "no selected 1K shape; standard control"},
+      "4096": {"baseline_tok_s": 782.0089805441675, "candidate_tok_s": 792.3459211784811, "delta_percent": 1.3218442359985148, "paired_wins": "7/7"}
+    },
+    "tokens_exact": true,
+    "tracked_peak_bytes_unchanged": 17574596216,
+    "sources": {
+      "xtx": "/tmp/qwen36-rocblas-solution-engine-ab-xtx.json",
+      "xtx_sha256": "a9b8b95b834e361e97903d56edc47f06b16ff228b2b836da34cdd4103a105fdc",
+      "w7900": "/tmp/qwen36-rocblas-solution-engine-ab-w7900.json",
+      "w7900_sha256": "f80ebfc73ac27fc5465489cc45854e694853e3111a138bf21ebebfdab55e2984"
+    }
+  },
+  "independent_production_matrix": {
+    "protocol": "One discarded warmup plus three measured persistent-session resets; 128 graph-replay decode transitions; BF16 KV; cached builds.",
+    "rx_7900_xtx": {
+      "512": {"prefill_tok_s": 855.9598592188476, "decode_tok_s": 33.49874078916101, "tracked_peak_gib": 15.605462968349457},
+      "1024": {"prefill_tok_s": 917.7736208803175, "decode_tok_s": 34.53353878357343, "tracked_peak_gib": 15.720211334526539},
+      "4096": {"prefill_tok_s": 912.3587451824312, "decode_tok_s": 31.33463910637061, "tracked_peak_gib": 16.367618195712566}
+    },
+    "w7900": {
+      "512": {"prefill_tok_s": 767.7450582572999, "decode_tok_s": 28.325371493244518, "tracked_peak_gib": 15.605462968349457},
+      "1024": {"prefill_tok_s": 816.1898476376549, "decode_tok_s": 28.811259843041405, "tracked_peak_gib": 15.720211334526539},
+      "4096": {"prefill_tok_s": 800.3064650583636, "decode_tok_s": 26.176560304416014, "tracked_peak_gib": 16.367618195712566}
+    },
+    "all_final_ids": 9707,
+    "all_logits_finite": true,
+    "command_template": "HIP_VISIBLE_DEVICES=<0|1> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>"
+  },
+  "llama_compatible_mtp_gate": {
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "budgets": [1, 2, 3],
+    "target_verify_mode": "serial-exact",
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_current_bytes_after_close": 0,
+    "note": "This separate compatibility diagnostic is not a performance claim; its prompt rows are below all selected prefill shape policies.",
+    "source": "/tmp/qwen36-rocblas-solutions-llama-compat-mtp.json",
+    "source_sha256": "75864a98846192ee3fd9f43f9cece0ca2f21bde623867bcc56fb37b7c6d6525b"
+  },
+  "cross_engine_status": {
+    "llamacpp_hip_prefill_tok_s": {"512": 964.606, "1024": 981.04, "4096": 946.733},
+    "current_xtx_deficit_percent": {"512": 11.26326611913594, "1024": 6.448909230987776, "4096": 3.6308288416658896},
+    "additional_throughput_required_for_parity_percent": {"512": 12.692901379780054, "1024": 6.893462361556879, "4096": 3.7676248514169064},
+    "additional_throughput_required_for_frozen_1pct_gate_percent": {"512": 13.81983039357786, "1024": 7.9623969851724485, "4096": 4.805301099931092},
+    "decision": "Retain the exact zero-workspace shape policies, but the prefill parity objective remains open at every context."
+  },
+  "validation": {
+    "focused_tests": "tests/test_rocblas.py tests/test_gguf_linear_dispatch.py tests/test_gguf_q6_k_f16_rocblas_prefill.py",
+    "focused_result": "100 passed",
+    "ruff": "passed",
+    "git_diff_check": "passed"
+  },
+  "decision": "Retain as a rocBLAS-version- and effective-GEMM-shape-scoped gfx1100 default. Selected leaves are FP16-bit exact, zero-workspace, faster on both boards, improve full prefill without decode/memory/MTP changes, and fail closed to rocBLAS standard for every unqualified scope."
+}

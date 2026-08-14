@@ -39,6 +39,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
     q5_k_f32_ordered_workspace_nbytes,
     register_gguf_q5_k_f32_rocblas_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+    q6_k_f16_input_nbytes,
+    q6_k_f16_output_nbytes,
+    q6_k_f16_weight_nbytes,
+    register_gguf_q6_k_f16_rocblas_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     register_gguf_q6_k_pack8_gemv_kernels,
 )
@@ -146,6 +152,9 @@ _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
+_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
+_Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
+_Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
@@ -380,6 +389,500 @@ class Q5F32OrderedPrefillSession:
 _q5_f32_ordered_prefill_session: ContextVar[
     Q5F32OrderedPrefillSession | None
 ] = ContextVar("q5_f32_ordered_prefill_session", default=None)
+
+
+@dataclass(frozen=True)
+class T16F16RocblasPrefillSession:
+    """Caller-owned transient planes for changed-arithmetic T16 prefill.
+
+    This context never changes resident weight ownership: admitted candidates
+    read canonical Q4T16/Q5T16 or planar Q6T16 allocations and dequantize one
+    bounded output tile immediately before rocBLAS consumes it.
+    """
+
+    min_rows: int
+    max_rows: int
+    x_f16_ptr: int
+    x_f16_nbytes: int
+    weight_f16_ptr: int
+    weight_f16_nbytes: int
+    out_f16_ptr: int
+    out_f16_nbytes: int
+    tile_out_features_by_shape: Mapping[tuple[int, ...], int]
+    dequant_library: object
+    cast_library: object
+    rocblas: object
+    solution_indices_by_gemm_shape: Mapping[tuple[int, int, int], int] | None = None
+    q4_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
+    q5_tile_out_features_by_shape: Mapping[tuple[int, ...], int] | None = None
+    q4_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    q5_x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    x_inplace_shapes: frozenset[tuple[int, ...]] = frozenset()
+    max_rows_by_quant_shape: Mapping[
+        str, Mapping[tuple[int, int], int]
+    ] | None = None
+    linear_variant_intervals_by_quant: Mapping[
+        str, Mapping[tuple[int, int], Mapping[tuple[int, int], str]]
+    ] | None = None
+    pair_only_second_operand_policies: Mapping[
+        tuple[str, int, int, str, int],
+        Mapping[tuple[int, int], tuple[int, str, bool]],
+    ] | None = None
+
+    def __post_init__(self) -> None:
+        if not 1 < int(self.min_rows) <= int(self.max_rows):
+            raise ValueError(
+                "T16 F16/rocBLAS min_rows must exceed one and fit max_rows"
+            )
+        for label, ptr, nbytes in (
+            ("activation", self.x_f16_ptr, self.x_f16_nbytes),
+            ("weight", self.weight_f16_ptr, self.weight_f16_nbytes),
+            ("output", self.out_f16_ptr, self.out_f16_nbytes),
+        ):
+            if int(ptr) <= 0 or int(nbytes) <= 0:
+                raise ValueError(f"T16 F16/rocBLAS {label} plane must be non-empty")
+
+        def normalize_policy(
+            raw_policy: Mapping[tuple[int, ...], int], *, required: bool
+        ) -> Mapping[tuple[int, ...], int]:
+            normalized: dict[tuple[int, ...], int] = {}
+            for raw_shape, raw_tile in raw_policy.items():
+                if len(raw_shape) not in {2, 3}:
+                    raise ValueError(
+                        "T16 F16/rocBLAS policies require (K, N) or (M, K, N) shapes"
+                    )
+                shape = tuple(int(value) for value in raw_shape)
+                rows, hidden, outputs = (
+                    (None, shape[0], shape[1])
+                    if len(shape) == 2
+                    else (shape[0], shape[1], shape[2])
+                )
+                tile = int(raw_tile)
+                if (
+                    (rows is not None and rows <= 0)
+                    or hidden <= 0
+                    or hidden % 256
+                    or outputs <= 0
+                ):
+                    raise ValueError("T16 F16/rocBLAS policy shapes must be valid")
+                if tile <= 0 or tile % 16 or tile > outputs or outputs % tile:
+                    raise ValueError(
+                        "T16 F16/rocBLAS output tiles must positively divide N"
+                    )
+                normalized[shape] = tile
+            if required and not normalized:
+                raise ValueError("T16 F16/rocBLAS requires at least one shape policy")
+            return MappingProxyType(normalized)
+
+        normalized = normalize_policy(self.tile_out_features_by_shape, required=True)
+        object.__setattr__(self, "tile_out_features_by_shape", normalized)
+        solution_indices: dict[tuple[int, int, int], int] = {}
+        for raw_shape, raw_index in (self.solution_indices_by_gemm_shape or {}).items():
+            if len(raw_shape) != 3:
+                raise ValueError(
+                    "T16 F16/rocBLAS solution policies require (M, K, N) shapes"
+                )
+            shape = tuple(int(value) for value in raw_shape)
+            index = int(raw_index)
+            if any(value <= 0 for value in shape) or shape[1] % 256:
+                raise ValueError("T16 F16/rocBLAS solution shapes must be valid")
+            if not -(1 << 31) <= index < (1 << 31):
+                raise ValueError("T16 F16/rocBLAS solution indices must fit int32")
+            solution_indices[shape] = index
+        object.__setattr__(
+            self,
+            "solution_indices_by_gemm_shape",
+            MappingProxyType(solution_indices),
+        )
+        q4_normalized = normalize_policy(
+            self.q4_tile_out_features_by_shape or {}, required=False
+        )
+        q5_normalized = normalize_policy(
+            self.q5_tile_out_features_by_shape or {}, required=False
+        )
+        object.__setattr__(self, "q4_tile_out_features_by_shape", q4_normalized)
+        object.__setattr__(self, "q5_tile_out_features_by_shape", q5_normalized)
+
+        def normalize_inplace(
+            raw_shapes: frozenset[tuple[int, ...]],
+            policy: Mapping[tuple[int, ...], int],
+        ) -> frozenset[tuple[int, ...]]:
+            inplace = frozenset(
+                tuple(int(value) for value in shape) for shape in raw_shapes
+            )
+            if any(len(shape) not in {2, 3} for shape in inplace):
+                raise ValueError(
+                    "T16 F16/rocBLAS in-place policies require "
+                    "(K, N) or (M, K, N) shapes"
+                )
+            if not inplace.issubset(policy):
+                raise ValueError(
+                    "T16 F16/rocBLAS in-place shapes must have tile policies"
+                )
+            return inplace
+
+        object.__setattr__(
+            self,
+            "x_inplace_shapes",
+            normalize_inplace(self.x_inplace_shapes, normalized),
+        )
+        object.__setattr__(
+            self,
+            "q4_x_inplace_shapes",
+            normalize_inplace(self.q4_x_inplace_shapes, q4_normalized),
+        )
+        object.__setattr__(
+            self,
+            "q5_x_inplace_shapes",
+            normalize_inplace(self.q5_x_inplace_shapes, q5_normalized),
+        )
+
+        quant_policies = {
+            "gguf_q4_k_t16_v1": q4_normalized,
+            "gguf_q5_k_t16_v1": q5_normalized,
+            "gguf_q6_k_t16_qmicro_planar_v1": normalized,
+        }
+        normalized_max_rows: dict[str, Mapping[tuple[int, int], int]] = {}
+        for raw_quant, raw_shapes in (self.max_rows_by_quant_shape or {}).items():
+            quant = str(raw_quant)
+            quant_policy = quant_policies.get(quant)
+            if quant_policy is None or not isinstance(raw_shapes, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS max-row policies require a known quant"
+                )
+            shape_limits: dict[tuple[int, int], int] = {}
+            for raw_shape, raw_maximum in raw_shapes.items():
+                if len(raw_shape) != 2:
+                    raise ValueError(
+                        "T16 F16/rocBLAS max-row policies require (K, N) shapes"
+                    )
+                shape = (int(raw_shape[0]), int(raw_shape[1]))
+                maximum = int(raw_maximum)
+                matching_anchors = tuple(
+                    policy_shape[0]
+                    for policy_shape in quant_policy
+                    if len(policy_shape) == 3 and policy_shape[1:] == shape
+                )
+                if not any(
+                    policy_shape[-2:] == shape for policy_shape in quant_policy
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS max-row shapes require a tile policy"
+                    )
+                if maximum <= 0 or (
+                    matching_anchors and max(matching_anchors) > maximum
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS max rows must include every row anchor"
+                    )
+                shape_limits[shape] = maximum
+            normalized_max_rows[quant] = MappingProxyType(shape_limits)
+        object.__setattr__(
+            self,
+            "max_rows_by_quant_shape",
+            MappingProxyType(normalized_max_rows),
+        )
+
+        normalized_variants: dict[
+            str,
+            Mapping[tuple[int, int], Mapping[tuple[int, int], str]],
+        ] = {}
+        for raw_quant, raw_shapes in (
+            self.linear_variant_intervals_by_quant or {}
+        ).items():
+            quant = str(raw_quant)
+            quant_policy = quant_policies.get(quant)
+            if quant_policy is None or not isinstance(raw_shapes, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS variant policies require a known quant"
+                )
+            shape_variants: dict[
+                tuple[int, int], Mapping[tuple[int, int], str]
+            ] = {}
+            for raw_shape, raw_intervals in raw_shapes.items():
+                if len(raw_shape) != 2 or not isinstance(raw_intervals, Mapping):
+                    raise ValueError(
+                        "T16 F16/rocBLAS variant policies require (K, N) shapes"
+                    )
+                shape = (int(raw_shape[0]), int(raw_shape[1]))
+                if not any(
+                    policy_shape[-2:] == shape for policy_shape in quant_policy
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS variant shapes require a tile policy"
+                    )
+                intervals: dict[tuple[int, int], str] = {}
+                for raw_interval, raw_variant in raw_intervals.items():
+                    if len(raw_interval) != 2:
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals require "
+                            "inclusive (min_rows, max_rows) bounds"
+                        )
+                    interval = (int(raw_interval[0]), int(raw_interval[1]))
+                    variant = str(raw_variant).strip()
+                    if interval[0] <= 0 or interval[1] < interval[0] or not variant:
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals must be valid"
+                        )
+                    if any(
+                        max(interval[0], prior[0])
+                        <= min(interval[1], prior[1])
+                        for prior in intervals
+                    ):
+                        raise ValueError(
+                            "T16 F16/rocBLAS variant intervals must not overlap"
+                        )
+                    intervals[interval] = variant
+                shape_variants[shape] = MappingProxyType(intervals)
+            normalized_variants[quant] = MappingProxyType(shape_variants)
+        object.__setattr__(
+            self,
+            "linear_variant_intervals_by_quant",
+            MappingProxyType(normalized_variants),
+        )
+
+        normalized_pair_only: dict[
+            tuple[str, int, int, str, int],
+            Mapping[tuple[int, int], tuple[int, str, bool]],
+        ] = {}
+        for raw_key, raw_intervals in (
+            self.pair_only_second_operand_policies or {}
+        ).items():
+            if len(raw_key) != 5 or not isinstance(raw_intervals, Mapping):
+                raise ValueError(
+                    "T16 F16/rocBLAS pair-only policies require "
+                    "(first_quant, K, first_N, second_quant, second_N) keys"
+                )
+            key = (
+                str(raw_key[0]),
+                int(raw_key[1]),
+                int(raw_key[2]),
+                str(raw_key[3]),
+                int(raw_key[4]),
+            )
+            first_policy = quant_policies.get(key[0])
+            if (
+                first_policy is None
+                or key[3] not in quant_policies
+                or key[1] <= 0
+                or key[1] % 256
+                or key[2] <= 0
+                or key[4] <= 0
+                or not any(
+                    shape[-2:] == (key[1], key[2]) for shape in first_policy
+                )
+            ):
+                raise ValueError(
+                    "T16 F16/rocBLAS pair-only policies require an admitted "
+                    "first operand and known quant/shape axes"
+                )
+            intervals: dict[tuple[int, int], tuple[int, str, bool]] = {}
+            for raw_interval, raw_spec in raw_intervals.items():
+                if len(raw_interval) != 2 or len(raw_spec) != 3:
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only entries require inclusive "
+                        "row bounds and (tile, variant, in_place) values"
+                    )
+                interval = (int(raw_interval[0]), int(raw_interval[1]))
+                tile = int(raw_spec[0])
+                variant = str(raw_spec[1]).strip()
+                in_place = raw_spec[2]
+                if (
+                    interval[0] <= 0
+                    or interval[1] < interval[0]
+                    or tile <= 0
+                    or tile % 16
+                    or tile > key[4]
+                    or key[4] % tile
+                    or not variant
+                    or not isinstance(in_place, bool)
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only entries must be valid"
+                    )
+                if any(
+                    max(interval[0], prior[0]) <= min(interval[1], prior[1])
+                    for prior in intervals
+                ):
+                    raise ValueError(
+                        "T16 F16/rocBLAS pair-only intervals must not overlap"
+                    )
+                intervals[interval] = (tile, variant, in_place)
+            normalized_pair_only[key] = MappingProxyType(intervals)
+        object.__setattr__(
+            self,
+            "pair_only_second_operand_policies",
+            MappingProxyType(normalized_pair_only),
+        )
+
+    def linear_variant(
+        self,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        quant: str,
+        default: str,
+    ) -> str:
+        """Resolve an admitted registered composite variant or its fallback."""
+
+        by_quant = self.linear_variant_intervals_by_quant
+        assert by_quant is not None
+        intervals = by_quant.get(str(quant), {}).get(
+            (int(in_features), int(out_features)), {}
+        )
+        row_count = int(rows)
+        return next(
+            (
+                variant
+                for (minimum, maximum), variant in intervals.items()
+                if minimum <= row_count <= maximum
+            ),
+            str(default),
+        )
+
+    def pair_only_second_operand(
+        self,
+        rows: int,
+        in_features: int,
+        first_out_features: int,
+        second_out_features: int,
+        *,
+        first_quant: str,
+        second_quant: str,
+    ) -> tuple[int, str, bool] | None:
+        """Resolve an ordered pair-only second operand or fail closed."""
+
+        policies = self.pair_only_second_operand_policies
+        assert policies is not None
+        intervals = policies.get(
+            (
+                str(first_quant),
+                int(in_features),
+                int(first_out_features),
+                str(second_quant),
+                int(second_out_features),
+            ),
+            {},
+        )
+        row_count = int(rows)
+        return next(
+            (
+                spec
+                for (minimum, maximum), spec in intervals.items()
+                if minimum <= row_count <= maximum
+            ),
+            None,
+        )
+
+    def tile_out_features(
+        self,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        quant: str = "gguf_q6_k_t16_qmicro_planar_v1",
+    ) -> int | None:
+        exact = (int(rows), int(in_features), int(out_features))
+        policy = {
+            "gguf_q4_k_t16_v1": self.q4_tile_out_features_by_shape,
+            "gguf_q5_k_t16_v1": self.q5_tile_out_features_by_shape,
+            "gguf_q6_k_t16_qmicro_planar_v1": self.tile_out_features_by_shape,
+        }.get(quant, {})
+        assert policy is not None
+        max_rows = self.max_rows_by_quant_shape
+        assert max_rows is not None
+        shape_maximum = max_rows.get(quant, {}).get(exact[1:])
+        if shape_maximum is not None and exact[0] > shape_maximum:
+            return None
+        direct = policy.get(exact, policy.get(exact[1:]))
+        if direct is not None:
+            return direct
+        # Three-axis policy rows are measured lower-bound anchors. Use the
+        # nearest admitted anchor so ordinary prompt lengths between benchmark
+        # powers of two do not silently fall back to a different arithmetic
+        # path. ``max_rows`` remains the hard upper admission bound.
+        anchored = (
+            (shape[0], tile)
+            for shape, tile in policy.items()
+            if len(shape) == 3
+            and shape[0] <= exact[0]
+            and shape[1:] == exact[1:]
+        )
+        return max(anchored, default=(0, None), key=lambda item: item[0])[1]
+
+    def solution_index(
+        self,
+        rows: int,
+        in_features: int,
+        tile_out_features: int,
+    ) -> int | None:
+        """Return the backend-qualified index for one effective tile GEMM."""
+
+        policies = self.solution_indices_by_gemm_shape
+        assert policies is not None
+        return policies.get(
+            (int(rows), int(in_features), int(tile_out_features))
+        )
+
+    def activation_is_inplace(
+        self,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        quant: str = "gguf_q6_k_t16_qmicro_planar_v1",
+    ) -> bool:
+        exact = (int(rows), int(in_features), int(out_features))
+        policy = {
+            "gguf_q4_k_t16_v1": self.q4_x_inplace_shapes,
+            "gguf_q5_k_t16_v1": self.q5_x_inplace_shapes,
+            "gguf_q6_k_t16_qmicro_planar_v1": self.x_inplace_shapes,
+        }.get(quant, ())
+        assert policy is not None
+        return exact in policy or exact[1:] in policy or any(
+            len(shape) == 3
+            and shape[0] <= exact[0]
+            and shape[1:] == exact[1:]
+            for shape in policy
+        )
+
+
+_t16_f16_rocblas_prefill_session: ContextVar[
+    T16F16RocblasPrefillSession | None
+] = ContextVar("t16_f16_rocblas_prefill_session", default=None)
+_q4_t16_unequal_pair_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q4_t16_unequal_pair_prefill_enabled", default=False
+)
+
+
+@contextlib.contextmanager
+def q4_t16_unequal_pair_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified unequal Q4T16 bulk pair for one request."""
+
+    token = _q4_t16_unequal_pair_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q4_t16_unequal_pair_prefill_enabled.reset(token)
+
+
+@contextlib.contextmanager
+def t16_f16_rocblas_prefill_session(
+    session: T16F16RocblasPrefillSession | None,
+) -> Iterator[None]:
+    """Expose bounded Q4/Q5/Q6 source-F16 planes for one owner-controlled pass."""
+
+    token = _t16_f16_rocblas_prefill_session.set(session)
+    try:
+        yield
+    finally:
+        _t16_f16_rocblas_prefill_session.reset(token)
+
+
+# Compatibility names for callers written when this owner covered only Q6.
+Q6T16F16RocblasPrefillSession = T16F16RocblasPrefillSession
+q6_t16_f16_rocblas_prefill_session = t16_f16_rocblas_prefill_session
 
 
 @contextlib.contextmanager
@@ -1063,6 +1566,36 @@ def _pack8_dual_rowtile_silu_dispatch(
     return candidate if is_registered(candidate) else None
 
 
+def _q4_t16_dual_wmma_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> KernelKey | None:
+    """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
+
+    if (
+        rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS
+        or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
+        or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
+        or dispatch_a.abi != "t16"
+        or dispatch_b.abi != "t16"
+        or dispatch_a.key.quant != "gguf_q4_k_t16_v1"
+        or dispatch_b.key.quant != "gguf_q4_k_t16_v1"
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_wmma_prefill_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(candidate)
+    return candidate if is_registered(candidate) else None
+
+
 def _q4_t16_dual_rowtile_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -1508,6 +2041,12 @@ def launch_gguf_linear(
             if q5_f32_ordered_session is None
             else id(q5_f32_ordered_session)
         ),
+        (
+            None
+            if (q6_f16_session := _t16_f16_rocblas_prefill_session.get())
+            is None
+            else id(q6_f16_session)
+        ),
         raw_weight_ptr,
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
@@ -1541,6 +2080,12 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_wmma=use_wmma,
+        )
+        dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _pack8_exact_prefill_dispatch(
             dispatch,
@@ -2426,6 +2971,13 @@ def launch_gguf_linear_pair(
         resolved_backend,
         use_wmma,
         use_gemv,
+        _q4_t16_unequal_pair_prefill_enabled.get(),
+        (
+            None
+            if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
+            is None
+            else id(source_f16_session)
+        ),
         bool(registered_decode_only),
         registered_decode_variant,
     )
@@ -2447,6 +2999,115 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q4_t16_unequal_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
+
+    if pair_kind in {
+        "t16_f16_rocblas_shared_activation",
+        "t16_f16_rocblas_pair_only_second",
+    }:
+        session = _t16_f16_rocblas_prefill_session.get()
+        assert session is not None
+        pair_only_spec = (
+            session.pair_only_second_operand(
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                first_quant=weight_a.spec.quant_key,
+                second_quant=weight_b.spec.quant_key,
+            )
+            if pair_kind == "t16_f16_rocblas_pair_only_second"
+            else None
+        )
+        for index, (weight, out_ptr, outputs) in enumerate(
+            (
+                (weight_a, out_a_ptr, out_features),
+                (weight_b, out_b_ptr, out_features_b),
+            )
+        ):
+            dispatch = _pack8_decode_dispatch(
+                resolve_gguf_linear_dispatch(
+                    weight,
+                    activation_dtype=activation_dtype,
+                    output_dtype=output_dtype,
+                    backend=resolved_backend,
+                    rows=rows,
+                ),
+                rows=rows,
+                out_features=outputs,
+            )
+            tile_override = None
+            activation_inplace_override = None
+            if index == 1 and pair_only_spec is not None:
+                tile_override, variant, activation_inplace_override = pair_only_spec
+                dispatch = GGUFLinearDispatch(
+                    KernelKey(
+                        dispatch.key.backend,
+                        "linear",
+                        dispatch.key.quant,
+                        variant,
+                    ),
+                    _T16_F16_ROCBLAS_ROUTE_BY_QUANT[dispatch.key.quant][1],
+                )
+            else:
+                dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+                    dispatch,
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=outputs,
+                )
+            _ensure_linear_kernel_registered(dispatch.key)
+            fn = resolve(
+                backend=dispatch.key.backend,
+                layer=dispatch.key.layer,
+                quant=dispatch.key.quant,
+                variant=dispatch.key.variant,
+            )
+            _launch_t16_f16_rocblas(
+                dispatch.key.quant,
+                fn,
+                weight,
+                x_ptr,
+                out_ptr,
+                rows,
+                in_features,
+                outputs,
+                {"stream": stream, "runtime": runtime},
+                cast_activation=index == 0,
+                tile_override=tile_override,
+                activation_inplace_override=activation_inplace_override,
+            )
+        return True
 
     if pair_kind == "q4_raw_dual_wmma":
         gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
@@ -2686,6 +3347,37 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        t16_wmma_key = _q4_t16_dual_wmma_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if t16_wmma_key is not None:
+            fn = resolve(
+                backend=t16_wmma_key.backend,
+                layer=t16_wmma_key.layer,
+                quant=t16_wmma_key.quant,
+                variant=t16_wmma_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None if libraries is None else libraries.get(t16_wmma_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         t16_rowtile_key = _q4_t16_dual_rowtile_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -2991,7 +3683,97 @@ def _resolve_gguf_linear_pair_kind(
         rows=rows,
         out_features=out_features_b,
     )
+    if _t16_f16_rocblas_prefill_session.get() is not None:
+        rewritten = tuple(
+            _q6_t16_f16_rocblas_prefill_dispatch(
+                dispatch,
+                rows=rows,
+                in_features=in_features,
+                out_features=outputs,
+            )
+            for dispatch, outputs in (
+                (dispatch_a, out_features),
+                (dispatch_b, out_features_b),
+            )
+        )
+        rewritten_count = sum(
+            candidate is not original
+            for candidate, original in zip(rewritten, (dispatch_a, dispatch_b))
+        )
+        if rewritten_count == 2:
+            session = _t16_f16_rocblas_prefill_session.get()
+            assert session is not None
+            inplace = tuple(
+                session.activation_is_inplace(
+                    rows,
+                    in_features,
+                    outputs,
+                    quant=dispatch.key.quant,
+                )
+                for dispatch, outputs in (
+                    (dispatch_a, out_features),
+                    (dispatch_b, out_features_b),
+                )
+            )
+            if inplace[0] == inplace[1]:
+                return "t16_f16_rocblas_shared_activation"
+            return "none"
+        if (
+            rewritten_count == 1
+            and rewritten[0] is not dispatch_a
+            and rewritten[1] is dispatch_b
+        ):
+            session = _t16_f16_rocblas_prefill_session.get()
+            assert session is not None
+            pair_only_spec = session.pair_only_second_operand(
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                first_quant=dispatch_a.key.quant,
+                second_quant=dispatch_b.key.quant,
+            )
+            if pair_only_spec is not None:
+                _tile, variant, second_inplace = pair_only_spec
+                first_inplace = session.activation_is_inplace(
+                    rows,
+                    in_features,
+                    out_features,
+                    quant=dispatch_a.key.quant,
+                )
+                pair_key = KernelKey(
+                    dispatch_b.key.backend,
+                    "linear",
+                    dispatch_b.key.quant,
+                    variant,
+                )
+                if first_inplace == second_inplace and is_registered(pair_key):
+                    return "t16_f16_rocblas_pair_only_second"
+        if rewritten_count:
+            # A mixed candidate/exact pair has no ordinary shared-activation
+            # ABI. Decline unless an explicit ordered pair-only policy matched.
+            return "none"
     if use_wmma and rows > 1:
+        q4_t16_unequal_dual = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        )
+        if (
+            _q4_t16_unequal_pair_prefill_enabled.get()
+            and rows >= _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS
+            and (in_features, out_features, out_features_b)
+            == _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE
+            and dispatch_a.abi == "t16"
+            and dispatch_b.abi == "t16"
+            and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
+            and dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+        ):
+            _ensure_linear_kernel_registered(q4_t16_unequal_dual)
+            if is_registered(q4_t16_unequal_dual):
+                return "q4_t16_unequal_dual_wmma"
+
         # A populated resident-pack8 pair has no exact fused tile owner. Decline
         # only when the registered singleton rewrite is available; callers then
         # issue two tile8x8 leaves. Missing keys retain the legacy dual owner.
@@ -3375,6 +4157,134 @@ def _launch_t16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
     )
 
 
+def _device_ranges_overlap(
+    left_ptr: int,
+    left_nbytes: int,
+    right_ptr: int,
+    right_nbytes: int,
+) -> bool:
+    return int(left_ptr) < int(right_ptr) + int(right_nbytes) and int(
+        right_ptr
+    ) < int(left_ptr) + int(left_nbytes)
+
+
+def _launch_t16_f16_rocblas(
+    quant,
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+    *,
+    cast_activation: bool = True,
+    tile_override: int | None = None,
+    activation_inplace_override: bool | None = None,
+) -> None:
+    session = _t16_f16_rocblas_prefill_session.get()
+    if session is None:
+        raise RuntimeError("T16 F16/rocBLAS launch escaped its owner session")
+    tile = (
+        int(tile_override)
+        if tile_override is not None
+        else session.tile_out_features(rows, in_features, out_features, quant=quant)
+    )
+    if tile is None:
+        raise RuntimeError("T16 F16/rocBLAS dispatch escaped its shape policy")
+    activation_inplace = (
+        bool(activation_inplace_override)
+        if activation_inplace_override is not None
+        else session.activation_is_inplace(
+            rows, in_features, out_features, quant=quant
+        )
+    )
+    required = {
+        "activation": q6_k_f16_input_nbytes(rows, in_features),
+        "weight": q6_k_f16_weight_nbytes(in_features, tile),
+        "output": q6_k_f16_output_nbytes(rows, tile),
+    }
+    available = {
+        "activation": (
+            int(rows) * int(in_features) * 2
+            if activation_inplace
+            else int(session.x_f16_nbytes)
+        ),
+        "weight": int(session.weight_f16_nbytes),
+        "output": int(session.out_f16_nbytes),
+    }
+    for name, nbytes in required.items():
+        if nbytes > available[name]:
+            raise ValueError(
+                f"T16 F16/rocBLAS {name} plane is too small: "
+                f"required={nbytes}, available={available[name]}"
+            )
+    tiles_ptr = int(weight.allocation("tiles").tensor.ptr)
+    block_bytes_per_output = {
+        "gguf_q4_k_t16_v1": 148,
+        "gguf_q5_k_t16_v1": 180,
+        "gguf_q6_k_t16_qmicro_planar_v1": 210,
+    }[quant]
+    live_regions = {
+        "activation input": (int(x_ptr), int(rows) * int(in_features) * 2),
+        "resident tiles": (
+            tiles_ptr,
+            int(out_features)
+            * (int(in_features) // 256)
+            * block_bytes_per_output,
+        ),
+        "output": (int(out_ptr), int(rows) * int(out_features) * 2),
+        "weight workspace": (
+            int(session.weight_f16_ptr),
+            required["weight"],
+        ),
+        "output workspace": (
+            int(session.out_f16_ptr),
+            required["output"],
+        ),
+    }
+    if not activation_inplace:
+        live_regions["activation workspace"] = (
+            int(session.x_f16_ptr),
+            required["activation"],
+        )
+    names = tuple(live_regions)
+    for index, left_name in enumerate(names):
+        left_ptr, left_nbytes = live_regions[left_name]
+        for right_name in names[index + 1 :]:
+            right_ptr, right_nbytes = live_regions[right_name]
+            if _device_ranges_overlap(
+                left_ptr,
+                left_nbytes,
+                right_ptr,
+                right_nbytes,
+            ):
+                raise ValueError(
+                    "T16 F16/rocBLAS live regions overlap: "
+                    f"{left_name} and {right_name}"
+                )
+    fn(
+        int(x_ptr),
+        tiles_ptr,
+        int(out_ptr),
+        int(x_ptr) if activation_inplace else int(session.x_f16_ptr),
+        int(session.weight_f16_ptr),
+        int(session.out_f16_ptr),
+        int(rows),
+        int(in_features),
+        int(out_features),
+        tile_out_features=tile,
+        stream=int(kwargs.get("stream", 0)),
+        dequant_library=session.dequant_library,
+        cast_library=session.cast_library,
+        rocblas=session.rocblas,
+        solution_index=session.solution_index(rows, in_features, tile),
+        cast_activation=cast_activation,
+        runtime=kwargs.get("runtime"),
+    )
+
+
 def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     session = _q8_mmq_prefill_session.get()
     if session is None:
@@ -3699,6 +4609,76 @@ def _native_batch_decode_dispatch(
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
 
 
+_T16_F16_ROCBLAS_ROUTE_BY_QUANT = MappingProxyType(
+    {
+        "gguf_q4_k_t16_v1": (
+            "f16_rocblas_t16_bf16_bf16_out",
+            "t16_q4_f16_rocblas",
+        ),
+        "gguf_q5_k_t16_v1": (
+            "f16_rocblas_t16_bf16_bf16_out",
+            "t16_q5_f16_rocblas",
+        ),
+        "gguf_q6_k_t16_qmicro_planar_v1": (
+            "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+            "t16_q6_f16_rocblas",
+        ),
+    }
+)
+
+
+def _q6_t16_f16_rocblas_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select source-F16 arithmetic only inside its bounded owner context."""
+
+    session = _t16_f16_rocblas_prefill_session.get()
+    route = _T16_F16_ROCBLAS_ROUTE_BY_QUANT.get(dispatch.key.quant)
+    if (
+        session is None
+        or int(rows) < int(session.min_rows)
+        or int(rows) > int(session.max_rows)
+        or dispatch.abi != "t16"
+        or route is None
+        or not dispatch.key.variant.endswith("_bf16_bf16_out")
+        or session.tile_out_features(
+            rows,
+            in_features,
+            out_features,
+            quant=dispatch.key.quant,
+        )
+        is None
+    ):
+        return dispatch
+    assert route is not None
+    default_variant, launch_abi = route
+    variant = session.linear_variant(
+        rows,
+        in_features,
+        out_features,
+        quant=dispatch.key.quant,
+        default=default_variant,
+    )
+    key = KernelKey(
+        dispatch.key.backend,
+        "linear",
+        dispatch.key.quant,
+        variant,
+    )
+    if not is_registered(key) and variant != default_variant:
+        key = KernelKey(
+            dispatch.key.backend,
+            "linear",
+            dispatch.key.quant,
+            default_variant,
+        )
+    return GGUFLinearDispatch(key, launch_abi) if is_registered(key) else dispatch
+
+
 def _wmma_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -3980,6 +4960,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q4_k_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q5_k_f32_rocblas_prefill_kernels()
+    register_gguf_q6_k_f16_rocblas_prefill_kernels()
     register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()
@@ -4005,6 +4986,15 @@ _LAUNCH_ABI = {
         _launch_raw_k_f32_resident_activation_tile_k_row
     ),
     "t16": _launch_t16,
+    "t16_q4_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
+        "gguf_q4_k_t16_v1", *args
+    ),
+    "t16_q5_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
+        "gguf_q5_k_t16_v1", *args
+    ),
+    "t16_q6_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
+        "gguf_q6_k_t16_qmicro_planar_v1", *args
+    ),
     "wmma_raw": _launch_wmma_raw,
 }
 
@@ -4019,6 +5009,8 @@ __all__ = [
     "GGUFLinearDispatch",
     "Q5F32OrderedPrefillSession",
     "Q5F32ResidentPlane",
+    "Q6T16F16RocblasPrefillSession",
+    "T16F16RocblasPrefillSession",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
     "launch_gguf_linear_q8_1",
@@ -4030,7 +5022,10 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
+    "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
+    "q6_t16_f16_rocblas_prefill_session",
+    "t16_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",

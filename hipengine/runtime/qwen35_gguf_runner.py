@@ -31,6 +31,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from hipengine.runtime.moe_graph import MoeGraphCache
@@ -285,6 +286,9 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+    build_gguf_q6_k_f16_rocblas_prefill,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     q8_t16_two_wave_prefill_session,
 )
@@ -293,6 +297,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
+    Q6T16F16RocblasPrefillSession,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
     gguf_wmma_prefill_enabled,
@@ -304,6 +309,8 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_t16_unequal_pair_prefill_session,
+    q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
@@ -2629,6 +2636,7 @@ class Qwen35GGUFFullStackRunner:
         use_normalized_chain = mode in {
             "chain_k2",
             "chain_peer_wave32",
+            "chain_compact_peer_wave32",
             "chain_peer_cluster8",
         }
         normalized_prepare = plan.prepare
@@ -2638,6 +2646,10 @@ class Qwen35GGUFFullStackRunner:
             normalized_prepare = plan.prepare_peer_normalized
             normalized_recurrent = plan.recurrent_peer_wave32
             normalized_recurrent_segments = plan.recurrent_segments_peer_wave32
+        elif mode == "chain_compact_peer_wave32":
+            normalized_prepare = plan.prepare_compact_peer_normalized
+            normalized_recurrent = plan.recurrent_compact_peer_wave32
+            normalized_recurrent_segments = None
         elif mode == "chain_peer_cluster8":
             normalized_prepare = plan.prepare_peer_normalized
             normalized_recurrent = plan.recurrent_peer_cluster8
@@ -2694,6 +2706,15 @@ class Qwen35GGUFFullStackRunner:
                 "explicit GGUF GDN prefill mode 'chain_peer_wave32' is unavailable; "
                 "the normalized prepare, peer wave32 recurrent, and RMSNorm-gate "
                 "kernels must all be registered"
+            )
+        if (
+            requested_mode == "chain_compact_peer_wave32"
+            and not plan.has_chain_compact_peer_wave32
+        ):
+            raise RuntimeError(
+                "explicit GGUF GDN prefill mode 'chain_compact_peer_wave32' is "
+                "unavailable; the compact peer-normalized prepare, compact peer "
+                "wave32 recurrent, and RMSNorm-gate kernels must all be registered"
             )
         if requested_mode == "chain_peer_cluster8" and not plan.has_chain_peer_cluster8:
             raise RuntimeError(
@@ -2761,6 +2782,7 @@ class Qwen35GGUFFullStackRunner:
             "chain",
             "chain_k2",
             "chain_peer_wave32",
+            "chain_compact_peer_wave32",
             "chain_peer_cluster8",
             "chain_tile64",
             "chain_tile32",
@@ -3001,6 +3023,11 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
+                recurrent_shape = (
+                    (cfg.ssm_group_count, cfg.ssm_time_step_rank)
+                    if mode == "chain_compact_peer_wave32"
+                    else (cfg.ssm_time_step_rank,)
+                )
                 normalized_recurrent(
                     scratch.prefill_query.ptr,
                     scratch.prefill_key.ptr,
@@ -3010,7 +3037,7 @@ class Qwen35GGUFFullStackRunner:
                     recurrent_state.ptr,
                     scratch.recurrent_out.ptr,
                     rows,
-                    cfg.ssm_time_step_rank,
+                    *recurrent_shape,
                     cfg.ssm_state_size,
                     self.ssm_value_dim,
                     stream=stream,
@@ -9534,6 +9561,190 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
+    """Return whether this request owner is the qualified dense-27B model."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return False
+    policies = backend_package_capability(
+        backend, "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES", {}
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = (
+        getattr(weights, "model_name", None),
+        getattr(weights, "file_type_name", None),
+    )
+    return bool(policies.get(identity, False))
+
+
+def _gguf_t16_f16_rocblas_prefill_policy(
+    runner: object,
+) -> Mapping[str, object] | None:
+    """Resolve model/backend-qualified Q4/Q5/Q6 source-F16 prefill policies."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+        or getattr(weights, "model_name", None) != "Qwen3.6-27B"
+        or getattr(weights, "file_type_name", None) != "MOSTLY_Q4_K_M"
+    ):
+        return None
+    normalized_by_quant: dict[str, object] = {}
+    for quant, capability in (
+        ("gguf_q4_k_t16_v1", "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES"),
+        ("gguf_q5_k_t16_v1", "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES"),
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+        ),
+    ):
+        raw = backend_package_capability(backend, capability, {})
+        if not isinstance(raw, Mapping):
+            return None
+        normalized: dict[tuple[int, int], Mapping[int, int]] = {}
+        for raw_shape, raw_rows in raw.items():
+            if (
+                not isinstance(raw_shape, tuple)
+                or len(raw_shape) != 2
+                or not isinstance(raw_rows, Mapping)
+            ):
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            rows = {int(count): int(tile) for count, tile in raw_rows.items()}
+            if shape[0] <= 0 or shape[1] <= 0 or not rows:
+                return None
+            normalized[shape] = MappingProxyType(rows)
+        if normalized:
+            normalized_by_quant[quant] = MappingProxyType(normalized)
+
+    raw_max_rows = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE", {}
+    )
+    if not isinstance(raw_max_rows, Mapping):
+        return None
+    normalized_max_rows: dict[str, object] = {}
+    for raw_quant, raw_shapes in raw_max_rows.items():
+        quant = str(raw_quant)
+        quant_tiles = normalized_by_quant.get(quant)
+        if not isinstance(quant_tiles, Mapping) or not isinstance(
+            raw_shapes, Mapping
+        ):
+            return None
+        shape_limits: dict[tuple[int, int], int] = {}
+        for raw_shape, raw_maximum in raw_shapes.items():
+            if not isinstance(raw_shape, tuple) or len(raw_shape) != 2:
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            maximum = int(raw_maximum)
+            if shape not in quant_tiles or maximum <= 0:
+                return None
+            shape_limits[shape] = maximum
+        normalized_max_rows[quant] = MappingProxyType(shape_limits)
+    if normalized_max_rows:
+        normalized_by_quant["max_rows_by_quant_shape"] = MappingProxyType(
+            normalized_max_rows
+        )
+
+    raw_variants = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES", {}
+    )
+    if not isinstance(raw_variants, Mapping):
+        return None
+    normalized_variants: dict[str, object] = {}
+    for raw_quant, raw_shapes in raw_variants.items():
+        quant = str(raw_quant)
+        quant_tiles = normalized_by_quant.get(quant)
+        if not isinstance(quant_tiles, Mapping) or not isinstance(
+            raw_shapes, Mapping
+        ):
+            return None
+        shape_variants: dict[tuple[int, int], object] = {}
+        for raw_shape, raw_intervals in raw_shapes.items():
+            if (
+                not isinstance(raw_shape, tuple)
+                or len(raw_shape) != 2
+                or not isinstance(raw_intervals, Mapping)
+            ):
+                return None
+            shape = (int(raw_shape[0]), int(raw_shape[1]))
+            if shape not in quant_tiles:
+                return None
+            intervals: dict[tuple[int, int], str] = {}
+            for raw_interval, raw_variant in raw_intervals.items():
+                if not isinstance(raw_interval, tuple) or len(raw_interval) != 2:
+                    return None
+                interval = (int(raw_interval[0]), int(raw_interval[1]))
+                variant = str(raw_variant).strip()
+                if interval[0] <= 0 or interval[1] < interval[0] or not variant:
+                    return None
+                intervals[interval] = variant
+            shape_variants[shape] = MappingProxyType(intervals)
+        normalized_variants[quant] = MappingProxyType(shape_variants)
+    if normalized_variants:
+        normalized_by_quant["linear_variant_intervals_by_quant"] = (
+            MappingProxyType(normalized_variants)
+        )
+
+    raw_pair_only = backend_package_capability(
+        backend, "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES", {}
+    )
+    if not isinstance(raw_pair_only, Mapping):
+        return None
+    normalized_pair_only: dict[tuple[object, ...], object] = {}
+    for raw_key, raw_intervals in raw_pair_only.items():
+        if (
+            not isinstance(raw_key, tuple)
+            or len(raw_key) != 5
+            or not isinstance(raw_intervals, Mapping)
+        ):
+            return None
+        key = (
+            str(raw_key[0]),
+            int(raw_key[1]),
+            int(raw_key[2]),
+            str(raw_key[3]),
+            int(raw_key[4]),
+        )
+        intervals: dict[tuple[int, int], tuple[int, str, bool]] = {}
+        for raw_interval, raw_spec in raw_intervals.items():
+            if (
+                not isinstance(raw_interval, tuple)
+                or len(raw_interval) != 2
+                or not isinstance(raw_spec, tuple)
+                or len(raw_spec) != 3
+                or not isinstance(raw_spec[2], bool)
+            ):
+                return None
+            interval = (int(raw_interval[0]), int(raw_interval[1]))
+            spec = (int(raw_spec[0]), str(raw_spec[1]).strip(), raw_spec[2])
+            if (
+                interval[0] <= 0
+                or interval[1] < interval[0]
+                or spec[0] <= 0
+                or not spec[1]
+            ):
+                return None
+            intervals[interval] = spec
+        normalized_pair_only[key] = MappingProxyType(intervals)
+    if normalized_pair_only:
+        normalized_by_quant["pair_only_second_operand_policies"] = (
+            MappingProxyType(normalized_pair_only)
+        )
+    return MappingProxyType(normalized_by_quant) if normalized_by_quant else None
+
+
 def _gguf_aotriton_isolated_prefill_stream_applies(backend: str, query_rows: int) -> bool:
     if int(query_rows) < _GGUF_AOTRITON_ISOLATED_PREFILL_MIN_QUERY_ROWS:
         return False
@@ -11644,6 +11855,7 @@ class Qwen35GGUFResidentSession:
     preload_expert_sidecars: bool = True
     use_wmma_prefill: bool | None = None
     use_gemv_decode: bool | None = None
+    use_q6_f16_rocblas_prefill: bool | None = None
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
@@ -11722,6 +11934,8 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
+    _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
     _q8_mmq_risk_count: object | None = field(default=None, init=False)
     _q8_mmq_risk_indices: object | None = field(default=None, init=False)
@@ -13811,6 +14025,145 @@ class Qwen35GGUFResidentSession:
             free(key_cache, runtime=runtime)
         self._int8_prefill_oracle_buffers.clear()
 
+    def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
+        """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
+
+        if self.runner is None or self.runner.weights is None or self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        if self.use_q6_f16_rocblas_prefill is False:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
+        if policy is None:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        scratch = self._bulk_prefill_scratch
+        q6_shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.get(
+                "gguf_q6_k_t16_qmicro_planar_v1", {}
+            ).items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        q4_shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.get(
+                "gguf_q4_k_t16_v1", {}
+            ).items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        q5_shape_tiles = {
+            (int(rows), int(shape[0]), int(shape[1])): int(tile)
+            for shape, row_policy in policy.get("gguf_q5_k_t16_v1", {}).items()
+            for rows, tile in row_policy.items()
+            if int(rows) <= int(scratch.rows)
+        }
+        raw_pair_only_policies = policy.get(
+            "pair_only_second_operand_policies", {}
+        )
+        current_request_rows = (
+            int(scratch.rows) if request_rows is None else int(request_rows)
+        )
+        if current_request_rows <= 0:
+            raise ValueError("source-F16 request rows must be positive")
+        if current_request_rows > int(scratch.rows):
+            # Source-F16 arithmetic is admitted by complete request shape, not
+            # by an implementation chunk that happens to fit this scratch.
+            # Long chunked requests therefore retain the exact T16 owner.
+            return q6_t16_f16_rocblas_prefill_session(None)
+        pair_only_policies = {
+            key: MappingProxyType(
+                {
+                    interval: spec
+                    for interval, spec in intervals.items()
+                    if interval[0] <= current_request_rows <= interval[1]
+                }
+            )
+            for key, intervals in raw_pair_only_policies.items()
+            if any(
+                interval[0] <= current_request_rows <= interval[1]
+                for interval in intervals
+            )
+        }
+        all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
+        if not all_shape_tiles:
+            return q6_t16_f16_rocblas_prefill_session(None)
+        if self._q6_f16_rocblas_prefill_library is None:
+            self._q6_f16_rocblas_prefill_library = (
+                build_gguf_q6_k_f16_rocblas_prefill(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
+            )
+        if self._q6_f16_rocblas is None:
+            self._q6_f16_rocblas = Rocblas.load()
+            # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
+            # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
+            # this route remains inside hipEngine's existing tracked arena.
+            self._q6_f16_rocblas.set_workspace(0, 0)
+        solution_version_prefix = str(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+                "",
+            )
+        )
+        raw_solution_indices = backend_package_capability(
+            self.runner.backend,
+            "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+            {},
+        )
+        solution_indices = (
+            {
+                tuple(int(value) for value in shape): int(index)
+                for shape, index in raw_solution_indices.items()
+                if isinstance(shape, tuple) and len(shape) == 3
+            }
+            if isinstance(raw_solution_indices, Mapping)
+            and solution_version_prefix
+            and self._q6_f16_rocblas.version_string().startswith(
+                solution_version_prefix
+            )
+            else {}
+        )
+        owner = Q6T16F16RocblasPrefillSession(
+            min_rows=min(shape[0] for shape in all_shape_tiles),
+            max_rows=max(shape[0] for shape in all_shape_tiles),
+            x_f16_ptr=int(scratch.q6_f16_x.ptr),
+            x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
+            weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
+            weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
+            out_f16_ptr=int(scratch.q6_f16_out.ptr),
+            out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
+            tile_out_features_by_shape=q6_shape_tiles,
+            q4_tile_out_features_by_shape=q4_shape_tiles,
+            q5_tile_out_features_by_shape=q5_shape_tiles,
+            q4_x_inplace_shapes=frozenset(
+                shape
+                for shape in q4_shape_tiles
+                if shape[1:] in {(17_408, 5_120), (6_144, 5_120)}
+            ),
+            q5_x_inplace_shapes=frozenset(q5_shape_tiles),
+            x_inplace_shapes=frozenset(
+                shape
+                for shape in q6_shape_tiles
+                if shape[1:] == (17_408, 5_120)
+            ),
+            max_rows_by_quant_shape=policy.get(
+                "max_rows_by_quant_shape", {}
+            ),
+            linear_variant_intervals_by_quant=policy.get(
+                "linear_variant_intervals_by_quant", {}
+            ),
+            pair_only_second_operand_policies=pair_only_policies,
+            dequant_library=self._q6_f16_rocblas_prefill_library,
+            cast_library=self.runner._cast_library(),
+            rocblas=self._q6_f16_rocblas,
+            solution_indices_by_gemm_shape=solution_indices,
+        )
+        return q6_t16_f16_rocblas_prefill_session(owner)
+
     def _q8_mmq_prefill_context(self):
         """Return the bounded Q8 MMQ context selected by the generator plugin."""
 
@@ -13919,7 +14272,11 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_t16_unequal_pair_prefill_session(
+                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+                ),
                 self._q8_mmq_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
                 bulk_kwargs: dict[str, object] = {}
                 if capture_hidden_seed_fp32:
@@ -14007,7 +14364,11 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_t16_unequal_pair_prefill_session(
+                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+                ),
                 self._q8_mmq_prefill_context(),
+                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
                 self._run_bulk_prefill_and_sample(
                     token_ids,
@@ -20940,6 +21301,11 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
+        if self._q6_f16_rocblas is not None:
+            runtime.device_synchronize()
+            self._q6_f16_rocblas.close()
+            self._q6_f16_rocblas = None
+        self._q6_f16_rocblas_prefill_library = None
         for graph in tuple(self._decode_graphs):
             graph.close()
         self._decode_graphs.clear()
@@ -21022,6 +21388,8 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_a = None
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
+        self._q6_f16_rocblas_prefill_library = None
+        self._q6_f16_rocblas = None
         self._q8_mmq_risk_count = None
         self._q8_mmq_risk_indices = None
         self._logits_host = None
@@ -21088,6 +21456,25 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "prefill_query": (("linear", 3, 5),),
         "prefill_key": (("linear", 3, 5),),
         "prefill_value": (("linear", 3, 5),),
+        # Optional changed-arithmetic Q4/Q5/Q6 routes consume these during
+        # initial projections, recurrent output, and dense FFN down. Production
+        # lifetimes let their transient planes reuse stage-disjoint scratch
+        # instead of growing a persistent weight sidecar.
+        "q6_f16_x": (
+            _both_prefill_routes(0, 1)
+            + (("full", 5, 6),)
+            + _both_prefill_routes(12, 13)
+        ),
+        "q6_f16_weight": (
+            _both_prefill_routes(0, 1)
+            + _both_prefill_routes(5, 6)
+            + _both_prefill_routes(12, 13)
+        ),
+        "q6_f16_out": (
+            _both_prefill_routes(0, 1)
+            + _both_prefill_routes(5, 6)
+            + _both_prefill_routes(12, 13)
+        ),
         "prefill_beta": (("linear", 3, 5),),
         "prefill_decay": (("linear", 3, 5),),
         "prefill_query_scale": (("linear", 3, 5),),
@@ -21143,9 +21530,9 @@ _GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS = frozenset(
 _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES = MappingProxyType(
     {
         **_GGUF_PREFILL_SCRATCH_LIFETIMES,
-        # Dense down reads all intermediate columns while writing hidden-width
-        # output; unlike the admitted MoE owner plan, these buffers must not
-        # alias at the stage-12 handoff.
+        # Dense gate/up is dead after SiLU. Dense down reads all intermediate
+        # columns through stage 13, so only intermediate/output stay disjoint.
+        "ffn_gate_up": _both_prefill_routes(9, 12),
         "ffn_intermediate": _both_prefill_routes(10, 13),
     }
 )
@@ -21398,7 +21785,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         "chain_lds32_direct_nonvolatile",
     }:
         disabled_fields = _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
-    elif effective_mode == "chain_peer_wave32":
+    elif effective_mode in {"chain_peer_wave32", "chain_compact_peer_wave32"}:
         disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
     else:
         return None
@@ -21437,6 +21824,9 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_query: object
     prefill_key: object
     prefill_value: object
+    q6_f16_x: object
+    q6_f16_weight: object
+    q6_f16_out: object
     prefill_beta: object
     prefill_decay: object
     prefill_query_scale: object
@@ -21601,6 +21991,48 @@ class _GGUFFullAttentionPrefillScratch:
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
+        q6_f16_policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
+        q6_f16_x_bytes = (
+            rows * runner.hidden_size * DType.FP16.itemsize
+            if q6_f16_policy is not None
+            else 0
+        )
+        all_f16_shape_policies = (
+            tuple(
+                (shape, row_policy)
+                for quant, quant_policy in q6_f16_policy.items()
+                if quant
+                not in {
+                    "linear_variant_intervals_by_quant",
+                    "max_rows_by_quant_shape",
+                    "pair_only_second_operand_policies",
+                }
+                for shape, row_policy in quant_policy.items()
+            )
+            if q6_f16_policy is not None
+            else ()
+        )
+        q6_f16_weight_bytes = (
+            max(
+                int(tile) * int(shape[0])
+                for shape, row_policy in all_f16_shape_policies
+                for tile in row_policy.values()
+            )
+            * DType.FP16.itemsize
+            if all_f16_shape_policies
+            else 0
+        )
+        q6_f16_out_bytes = (
+            rows
+            * max(
+                int(tile)
+                for _shape, row_policy in all_f16_shape_policies
+                for tile in row_policy.values()
+            )
+            * DType.FP16.itemsize
+            if all_f16_shape_policies
+            else 0
+        )
         conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
         recurrent_state_bytes = (
             cfg.ssm_time_step_rank
@@ -21652,6 +22084,9 @@ class _GGUFFullAttentionPrefillScratch:
             "prefill_query": recurrent_f32_bytes,
             "prefill_key": recurrent_f32_bytes,
             "prefill_value": recurrent_f32_bytes,
+            "q6_f16_x": q6_f16_x_bytes,
+            "q6_f16_weight": q6_f16_weight_bytes,
+            "q6_f16_out": q6_f16_out_bytes,
             "prefill_beta": prefill_scalar_bytes,
             "prefill_decay": prefill_scalar_bytes,
             "prefill_query_scale": prefill_scalar_bytes,
@@ -21701,6 +22136,11 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_shared_out": hidden_bytes,
             "moe_shared_out_f32": hidden_f32_bytes,
         }
+        inactive_fields = frozenset(
+            name
+            for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out")
+            if int(field_sizes[name]) == 0
+        )
         allocation_mode = "dedicated"
         allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
         allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
@@ -21719,7 +22159,7 @@ class _GGUFFullAttentionPrefillScratch:
             active_sizes = {
                 name: int(nbytes)
                 for name, nbytes in field_sizes.items()
-                if name not in liveness_disabled_fields
+                if name not in liveness_disabled_fields and name not in inactive_fields
             }
             arenas, active_fields, allocation_offsets, allocation_groups = (
                 _allocate_prefill_scratch_liveness_arenas(
@@ -21732,7 +22172,7 @@ class _GGUFFullAttentionPrefillScratch:
             fields = {
                 name: (
                     _GGUF_PREFILL_SCRATCH_EMPTY
-                    if name in liveness_disabled_fields
+                    if name in liveness_disabled_fields or name in inactive_fields
                     else active_fields[name]
                 )
                 for name in field_sizes
@@ -21743,8 +22183,13 @@ class _GGUFFullAttentionPrefillScratch:
                 {name: scratch_lifetimes[name] for name in active_sizes}
             )
         else:
-            fields = {name: buf(nbytes) for name, nbytes in field_sizes.items()}
-            owners.extend(fields.values())
+            fields = {
+                name: (_GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes))
+                for name, nbytes in field_sizes.items()
+            }
+            owners.extend(
+                value for name, value in fields.items() if name not in inactive_fields
+            )
 
         dedicated_fields = {
             "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),
@@ -23019,6 +23464,12 @@ _GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY = KernelKey(
     "gguf_qwen35",
     "f32_peer_normalized_bf16",
 )
+_GDN_PREFILL_PREPARE_COMPACT_PEER_NORMALIZED_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_prefill_prepare",
+    "gguf_qwen35",
+    "f32_compact_peer_normalized_bf16",
+)
 _GDN_PREFILL_RECURRENT_K2_KEY = KernelKey(
     "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"
 )
@@ -23157,6 +23608,12 @@ _GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY = KernelKey(
     "gguf_qwen35",
     "f32_normalized_wave32_xor",
 )
+_GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_compact_normalized_wave32_xor",
+)
 _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -23185,6 +23642,7 @@ _GGUF_GDN_PREFILL_MODES = frozenset(
         "chain",
         "chain_k2",
         "chain_peer_wave32",
+        "chain_compact_peer_wave32",
         "chain_peer_cluster8",
         "chain_tile64",
         "chain_tile32",
@@ -23306,6 +23764,7 @@ class _GGUFGDNPrefillPlan:
     rmsnorm_gate: object | None
     fused_decode_order: object | None
     prepare_peer_normalized: object | None = None
+    prepare_compact_peer_normalized: object | None = None
     exact_prepare: object | None = None
     exact_prepare_compact: object | None = None
     exact_recurrent: object | None = None
@@ -23327,6 +23786,7 @@ class _GGUFGDNPrefillPlan:
     recurrent_wave32_tree: object | None = None
     recurrent_segments_wave32_tree: object | None = None
     recurrent_peer_wave32: object | None = None
+    recurrent_compact_peer_wave32: object | None = None
     recurrent_segments_peer_wave32: object | None = None
     recurrent_peer_cluster8: object | None = None
     recurrent_segments_peer_cluster8: object | None = None
@@ -23349,6 +23809,14 @@ class _GGUFGDNPrefillPlan:
         return (
             self.prepare_peer_normalized is not None
             and self.recurrent_peer_wave32 is not None
+            and self.rmsnorm_gate is not None
+        )
+
+    @property
+    def has_chain_compact_peer_wave32(self) -> bool:
+        return (
+            self.prepare_compact_peer_normalized is not None
+            and self.recurrent_compact_peer_wave32 is not None
             and self.rmsnorm_gate is not None
         )
 
@@ -23445,6 +23913,7 @@ def _gguf_gdn_prefill_plan_has_mode(plan: _GGUFGDNPrefillPlan, mode: str) -> boo
         "chain": plan.has_chain,
         "chain_k2": plan.has_chain_k2,
         "chain_peer_wave32": plan.has_chain_peer_wave32,
+        "chain_compact_peer_wave32": plan.has_chain_compact_peer_wave32,
         "chain_peer_cluster8": plan.has_chain_peer_cluster8,
         "chain_tile64": plan.has_exact_chain_tile64,
         "chain_tile32": plan.has_exact_chain_tile32,
@@ -23744,6 +24213,9 @@ def _resolve_gguf_gdn_prefill_plan(
         rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
         fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
         prepare_peer_normalized=_resolve(_GDN_PREFILL_PREPARE_PEER_NORMALIZED_KEY),
+        prepare_compact_peer_normalized=_resolve(
+            _GDN_PREFILL_PREPARE_COMPACT_PEER_NORMALIZED_KEY
+        ),
         exact_prepare=_resolve(_GDN_PREFILL_EXACT_PREPARE_KEY),
         exact_prepare_compact=_resolve(_GDN_PREFILL_EXACT_PREPARE_COMPACT_KEY),
         exact_recurrent=_resolve(_GDN_PREFILL_EXACT_RECURRENT_KEY),
@@ -23785,6 +24257,9 @@ def _resolve_gguf_gdn_prefill_plan(
             _GDN_PREFILL_RECURRENT_SEGMENTS_WAVE32_TREE_KEY
         ),
         recurrent_peer_wave32=_resolve(_GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY),
+        recurrent_compact_peer_wave32=_resolve(
+            _GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY
+        ),
         recurrent_segments_peer_wave32=_resolve(
             _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY
         ),
