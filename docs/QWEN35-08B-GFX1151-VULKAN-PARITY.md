@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1/M3-M6, and accepted D08-P1 completed 2026-08-14; D08-P3 is in-progress under a three-route resident-layout bound, while D08-M2 graph/direct census remains open.
+Status: D08-C0, D08-M1/M3-M6, and accepted D08-P1 completed 2026-08-14; D08-P3 is closed/rejected after its bounded resident-layout screen, D08-P2 GDN is admitted next, and D08-M2 graph/direct census remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -82,9 +82,10 @@ not a synthetic leaf projection.
 | 1 | **D08-M1-M5 full module ledger** | **completed** | Both backends and quants now map every operation to a semantic role; submission residual is explicit and `other=0`. | Q4 linear projections and Q8 GDN are the measured prefill leaders; eager decode is projection-heavy but remains graph-scope-caveated. |
 | 2 | **D08-P1 route/default correction** | **accepted; +33.68% pp / +42.19% eager tg** | The existing Q5T16 family replaces 18 expanded BF16 QKV residents for the exact 0.8B role/shape. | Promoted by default after one route repair; no kernel variants were tested. |
 | 3 | **Mandatory post-P1 re-profile** | **completed** | P1 invalidated every prior Q4 Amdahl percentage. | M6 reconciles 99.60% of post-P1 prefill wall and supersedes the old ranking. |
-| 4 | **D08-P3 dense FFN projections** | **high: 29.42% projected Q4 request saving; in-progress** | The replacement ledger measures 107.22 ms versus 26.07 ms Vulkan; GDN is second at 19.39%. | Audit the active gate/up/down routes, then test at most three predeclared existing/lineage variants and one tuning dimension. |
-| 5 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
-| 6 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
+| 4 | **D08-P3 dense FFN projections** | **closed/rejected** | All three sole-resident layouts won at pp512, but raw Q4 regressed c1-c8, Q4T16 regressed c8, and Q6T16 regressed c1. | Preserve the evidence; do not duplicate resident weights or trade decode for prefill. |
+| 5 | **D08-P2 GDN recurrence** | **high: 19.45% projected Q4 request saving; admitted-next** | The merged ledger measures 67.60 ms versus 13.39 ms Vulkan after P3 exhausted the larger dense-FFN bound. | Audit the retained compact/GPF schedules before any arithmetic work; test at most three shape-qualified variants. |
+| 6 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
+| 7 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
 ### 1.2 Bounded task contract
 
@@ -379,6 +380,42 @@ A/B. External lineage checks are currently blocked because the manifest's
 are absent on this machine. Therefore P3 may reuse only cataloged in-tree
 families; any external port remains blocked until those references are restored.
 
+### 2.10 Origin merge reprofile and D08-P3 closure (2026-08-14)
+
+Merge `41c29b30b` joins local campaign parent `fa46c9d56` with upstream parent
+`841f639c6`. After rebuilding changed JIT hashes outside measurement, the exact
+1+5 canonical row measured **1938.00 tok/s pp512**, **69.02 tok/s eager tg128**,
+and **1.043 GiB** tracked peak. Relative to the pre-merge P1 publication row,
+that is **+1.56% prefill**, **-1.03% decode** (inside the five-run spread), and
+unchanged memory, with finite logits and identical final IDs.
+
+The warmed merged marker capture reconciles **277.50 / 278.70 ms (99.57%)** of
+prefill. Dense FFN remains first at **108.56 ms (39.12%)**, followed by linear
+projections at **70.01 ms (25.23%)** and GDN at **67.60 ms (24.36%)**. The
+upstream 27B-oriented source-F16/compact routes therefore do not structurally
+change this gfx1151 0.8B path.
+
+P3 then consumed its frozen existing-layout budget. All pp512 leaves passed
+correctness and continuation: Q6T16 down was **2.87x**, Q4T16 gate/down were
+**2.23x/1.23x**, and raw-Q4 WMMA gate/down were **2.57x/1.45x** versus their
+production controls. Mandatory sole-resident operational guards rejected each
+candidate before a full-model A/B:
+
+- raw Q4 was only **0.22-0.49x** current pack8 at c1-c8;
+- Q4T16 won c1-c4 but fell to **0.34x gate / 0.10x down** at c8;
+- Q6T16 won c2-c8 but was **0.90x** dense BF16 at c1.
+
+All operational outputs were finite with 100% top-1 agreement and maximum
+absolute error <=0.00390625. Duplicate resident layouts would violate the P3
+memory contract, while accepting Q6T16 would explicitly sacrifice decode.
+P3 is therefore closed without a production change. The same merged ledger
+admits P2 next: GDN's matched-Vulkan bound is **54.21 ms / 19.45%** of current
+request wall. No P2 implementation may begin before its retained-schedule route
+and resource audit.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -575,8 +612,8 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | ID | Candidate class | Potential if admitted | Admission signal | Hard bound / stop rule | Status |
 | --- | --- | --- | --- | --- | --- |
 | **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair, no kernel variants, and M6 re-profile complete. | accepted |
-| **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.42% post-P1 Q4 projected saving; Q8 already faster than Vulkan** | M6 ranks dense FFN projections first at 107.22 ms versus 26.07 ms Vulkan. | **Frozen:** sole Q6T16, sole Q4T16, or sole raw-Q4; one resident-layout dimension, then only the best full-model A/B. | in-progress |
-| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **19.39% post-P1 Q4 projected saving** | M6 ranks GDN second at 66.87 ms versus 13.39 ms Vulkan. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | future after P3 |
+| **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.60% merged Q4 bound; unrealized** | All three frozen sole-resident candidates won pp512 but failed a required c1 or c8 operational guard. | **Closed:** no duplicate layouts, no full-model A/B, and no production change. Reopen only for a new sole-resident family that is non-regressive at every width. | rejected |
+| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **19.45% merged Q4 projected saving** | After P3 closes, the merged ledger ranks GDN next at 67.60 ms versus 13.39 ms Vulkan. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | admitted-next |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | profile-dependent medium/high | Full-attention role is material in M5 or the intended flash route is absent. | One route/layout candidate; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending |
 | **D08-P5** | Residual/norm/activation/copy launch coalescing. | medium/low | Glue is >=5% of prefill GPU time or launch count is the measured wall owner. | One fusion boundary at a time, at most 2 variants. Retain unfused fallbacks; reject spills/occupancy loss or complete-wall regression. | pending |
 
@@ -649,8 +686,8 @@ potential band, then measured upper bound.
 | --- | --- | --- | --- | --- |
 | Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
 | P1 Q5T16 QKV route | **accepted** | **realized: +33.68% pp / +42.19% eager tg; -11.59% tracked peak** | One exact-role sole-resident policy reused the shipped direct/rowtile/WMMA family; no arithmetic variants or duplicate weights. | Closed; reopen only if a future correctness regression identifies this exact role. |
-| Dense FFN projection package / P3 | **in-progress** | **29.42% post-P1 Q4 projected saving** | M6 measures 107.22 ms versus 26.07 ms Vulkan, the largest remaining matched owner. | Screen only the three frozen resident layouts; promote only the best admitted route, or close below the continuation gate. |
-| New GDN prefill schedule | future after P3 | **19.39% post-P1 Q4 projected saving** | M6 ranks GDN second; multiple exact/reassociated GPF schedules already exist. | P3 closes and a fresh ledger still ranks GDN first with an active 0.8B resource mismatch versus the retained winner. |
+| Dense FFN projection package / P3 | **rejected** | **29.60% merged Q4 bound; unrealized** | Raw Q4 regresses every operational width, Q4T16 regresses c8, and Q6T16 regresses c1; duplicate residents are disallowed. | A new sole-resident family passes pp512 plus c1/c2/c4/c8 without sacrificing memory or either topline scope. |
+| New GDN prefill schedule | **admitted-next** | **19.45% merged Q4 projected saving** | The merged ledger ranks GDN next after P3 closes; multiple exact/reassociated GPF schedules already exist. | Audit the active retained schedule/resources, then screen at most three shape-qualified existing variants. |
 | Graph/submission work | M2 census in-progress | high if production graph residual >=10% | C0 certifies graph throughput, but eager stage gaps cannot be assigned directly to graph GPU work. | One graph/direct API and sync/copy census reports the production residual and preserves exact graph/eager state. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
