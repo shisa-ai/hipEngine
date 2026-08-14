@@ -40,22 +40,24 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **977.397** | **33.645** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.814** | **33.522** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
 F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
 behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
-materialized once per K head. Decode and MTP retain exact owners. The fresh
-strictly serial selector-unset XTX matrix is
-**977.397/1012.309/987.809 tok/s** at 512/1K/4K with unchanged tracked peaks;
-it clears llama.cpp HIP by **1.33%/3.19%/4.34%** and the frozen HIP+1%
-prefill gates by **0.32%/2.17%/3.31%**. Versus the preceding independent
-matrix, decode also moves **+0.23%/+0.17%/+0.18%**, every token remains 9707,
-and tracked teardown reaches zero. This closes the prefill target, while
-memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
-[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json) and
+materialized once per K head. Its persistent scratch now also allocates those
+Q/K planes at K-head rather than V-head capacity. The fresh strictly serial
+selector-unset XTX matrix is **974.814/1009.979/988.405 tok/s** at 512/1K/4K;
+it clears llama.cpp HIP by **1.06%/2.95%/4.40%** and the frozen HIP+1%
+prefill gates by **0.06%/1.93%/3.37%**. Tracked peaks fall to
+**15.596/15.699/16.263 GiB**, all throughput changes are within **0.37%**, every
+token remains 9707, dense NextN transactions pass, and teardown reaches zero.
+This closes the prefill target while reducing memory; the lower Vulkan memory
+floors, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`right-sized compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
 [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
@@ -202,34 +204,50 @@ The superseded dual-layout publication remains in the
 The pre-campaign dual-layout hipEngine path could not admit this model on the
 23.984-GiB XTX. The package-default sole-T16 route now fits and is stable; its
 model-qualified prefill-only Q4/Q5/Q6 source-F16 arithmetic passes the complete
-category quality gate and same-commit W7900 safeguard. It does **not** meet the
-campaign's complete cross-engine acceptance policy: the 512 llama.cpp HIP+1%
-prefill margin remains open, Vulkan remains lower-memory, and Vulkan wins
-selected MTP plus 4K AR decode. The selector-unset 512/128, 1024/128, and 4096/128
-hipEngine matrix is retained as a current partial result. Clean same-commit llama.cpp `c8e03ce81`
-HIP and Vulkan establish the frozen speed and whole-device VRAM targets:
+category quality gate and same-commit W7900 safeguard. The compact peer-GDN
+route closes all three frozen prefill targets, and its Q/K scratch is now sized
+to the compact 16-K-head ABI rather than the 48-V-head fallback ABI. The
+campaign still does **not** meet complete cross-engine acceptance: Vulkan sets
+the lower memory floor at every shape, 4K AR decode remains below HIP, and
+Vulkan wins selected MTP. The selector-unset 512/128, 1024/128, 4096/128, and
+8192/128 hipEngine matrix is retained as the current partial result. Clean
+same-commit llama.cpp `c8e03ce81` HIP and Vulkan establish the frozen speed and
+whole-device VRAM targets:
 
-| Workload | HIP prefill | Vulkan prefill | HIP context AR | Vulkan context AR | Lower peak delta |
+| Workload | HIP prefill | Vulkan prefill | HIP decode | Vulkan decode | Lower peak delta |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 512/128 | **964.606** | 870.872 | **33.025** | 13.391 | **15.690 GiB** (Vulkan) |
 | 1024/128 | **981.040** | 836.898 | **32.924** | 13.379 | **15.700 GiB** (Vulkan) |
 | 4096/128 | **946.733** | 835.765 | **32.560** | 13.309 | **15.912 GiB** (Vulkan) |
+| 8192/128 diagnostic | **906.648** | 829.630 | 32.779 | **37.669** | **16.166 GiB** (Vulkan) |
 
 Prefill is llama-bench `avg_ts` over five internal repetitions after one
-warmup; context AR is 128 timed server transitions. On the complete ten-prompt
+warmup; 512-4K decode is 128 context-matched server transitions. The fresh 8K
+decode row is standardized `llama-bench`, not a context-matched server result.
+On the complete ten-prompt
 natural suite, HIP selects B2 at **46.863 tok/s / 1.4841x AR / 16.940 GiB**
 peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-Current compact peer-GDN hipEngine matrix (one warmup plus three strictly
-serial, selector-unset persistent-session reset/replays per shape):
+Current right-sized compact peer-GDN hipEngine matrix (one warmup plus three
+strictly serial, selector-unset persistent-session reset/replays per shape;
+5-ms whole-device sampling around each clean process):
 
-| Workload | Prefill | Decode | Tracked peak | Gate status |
-| --- | ---: | ---: | ---: | --- |
-| 512/128 | **977.397 tok/s** | **33.645 tok/s** | **15.605 GiB** | **prefill pass** / **decode pass** / memory fail |
-| 1024/128 | **1012.309 tok/s** | **34.567 tok/s** | **15.720 GiB** | **prefill pass** / **decode pass** / memory fail |
-| 4096/128 | **987.809 tok/s** | **31.421 tok/s** | **16.368 GiB** | **prefill pass** / decode fail / memory fail |
+| Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 512/128 | **974.814 tok/s** | **33.522 tok/s** | **15.596 GiB** | **16.094 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 1024/128 | **1009.979 tok/s** | **34.530 tok/s** | **15.699 GiB** | **16.305 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 4096/128 | **988.405 tok/s** | **31.401 tok/s** | **16.263 GiB** | **17.022 GiB** | **prefill pass** / decode fail / memory fail |
+| 8192/128 diagnostic | **820.061 tok/s** | **29.381 tok/s** | **16.521 GiB** | **17.277 GiB** | standardized speed below llama.cpp / memory fail |
+
+The right-sized Q/K owner removes **9.8125/21.25/107.375/107.375 MiB** tracked
+and **1.395/16.297/98.805/108.254 MiB** whole-device peak at 512/1K/4K/8K.
+Throughput changes versus the prior current matrix are within **0.37%**; exact
+IDs, finite logits, dense NextN transactions, W7900 behavior, and teardown all
+pass. The remaining gaps to the lower Vulkan memory floors are
+**0.405/0.605/1.110/1.111 GiB**. Evidence: [`retained compact Q/K
+scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json).
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
@@ -346,11 +364,13 @@ HIP+1% 512 gate still **0.928%** short. Evidence:
 [`final residual rejection`](results/2026-08-13-qwen36-27b-q4-unequal-pair-source-f16-engine-rejected.json)
 and [`final residual audit`](results/2026-08-13-qwen36-27b-prefill-residual-exhaustion-audit.json).
 The later compact peer-GDN route supersedes that projection-only exhaustion:
-it is bit-exact at the complete chain, wins all **42/42** cross-board engine
-pairs, and its fresh selector-unset XTX matrix reaches
-**977.397/1012.309/987.809 tok/s**. All three prefill rows now pass the frozen
-HIP+1% gates by **0.323%/2.166%/3.306%** with unchanged tracked peaks and
-non-regressive decode versus the prior independent matrix. Evidence:
+it is bit-exact at the complete chain and wins all **42/42** cross-board engine
+pairs. Its first fresh selector-unset XTX matrix reached
+**977.397/1012.309/987.809 tok/s**. The subsequent route-shaped scratch keep
+preserves all prefill gates at **974.814/1009.979/988.405 tok/s** while reducing
+tracked peaks by **9.8125/21.25/107.375 MiB** at 512/1K/4K; 8K saves
+**107.375 MiB** too. Evidence:
+[`right-sized compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json) and
 [`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json).
 
 The complete ten-prompt llama-compatible natural suite selects B3:
@@ -402,13 +422,14 @@ inventory crossover: **849** immutable allocations share one owner, only the
 MiB)** with neutral exact 512/128 behavior. The subsequent model-qualified
 bounded Q4/Q5/Q6 F16/rocBLAS owners, exact unequal-Q4 pair, exact record-owned planar-Q6 and pair-owned Q4 producers,
 plus the natural-octet-owned Q5 producer, bounded pair-produced full-Q route,
-ordered pair-only Q6-QKV/Q4-gate route, and compact peer-GDN route raise the
-current matrix to **977.397/33.645**, **1012.309/34.567**, and
-**987.809/31.421 tok/s** at 512/1K/4K while keeping one persistent T16 weight
-layout per tensor and the same 15.605/15.720/16.368-GiB tracked peaks. Every
-shape fits and is deterministic; 512/1K decode pass and all three prefill rows
-clear the frozen HIP+1% gates. All memory rows and 4K decode remain below their
-frozen cross-engine gates. This is a retained current snapshot, not complete
+ordered pair-only Q6-QKV/Q4-gate route, compact peer-GDN route, and its
+right-sized Q/K scratch produce the current **974.814/33.522**,
+**1009.979/34.530**, **988.405/31.401**, and **820.061/29.381 tok/s** matrix at
+512/1K/4K/8K while keeping one persistent T16 weight layout per tensor. Tracked
+peaks are **15.596/15.699/16.263/16.521 GiB**. Every shape fits and is
+deterministic; 512/1K decode pass and all three frozen prefill rows clear their
+HIP+1% gates. All memory rows and 4K decode remain below their frozen
+cross-engine gates. This is a retained current snapshot, not complete
 cross-engine closure.
 
 BF16 K/V remains the only supported dense-27B cache route. The new native
