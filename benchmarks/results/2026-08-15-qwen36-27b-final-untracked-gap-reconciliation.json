@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "status": "diagnostic_growth_attributed_no_new_candidate",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B final cap8 untracked-memory growth reconciliation",
+  "repo_revision": "27e1c2dcc",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "protocol": {
+    "memory_matrix": "Retained 8-MiB reserve qualification: token 9707, one discarded warmup plus three measured persistent resets, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, cached builds, and 5-ms whole-device sampling.",
+    "scratch_traces": "HSA_SCRATCH_SINGLE_LIMIT=8388608 applied before rocprofv3 initialization; cached prefill-only persistent session; no warmup; one measured run; rocprofv3 kernel and scratch-memory traces.",
+    "reconciliation": "whole-device process-delta peak minus tracked hipEngine peak minus the largest traced live monolithic AOTriton scratch allocation for the shape. 8K uses two 4K chunks, so only one 300-MiB allocation is live at a time."
+  },
+  "shape_matrix": [
+    {
+      "prompt_length": 512,
+      "tracked_peak_gib": 15.586668975651264,
+      "whole_device_peak_delta_gib": 15.901283264160156,
+      "whole_device_minus_tracked_mib": 322.16503143310547,
+      "aotriton_scratch_allocation_mib": 70.5,
+      "remainder_after_aotriton_mib": 251.66503143310547,
+      "untracked_growth_vs_512_mib": 0.0,
+      "scratch_growth_vs_512_mib": 0.0,
+      "unexplained_growth_vs_512_mib": 0.0
+    },
+    {
+      "prompt_length": 1024,
+      "tracked_peak_gib": 15.668076522648335,
+      "whole_device_peak_delta_gib": 16.054096221923828,
+      "whole_device_minus_tracked_mib": 395.28417205810547,
+      "aotriton_scratch_allocation_mib": 141.0,
+      "remainder_after_aotriton_mib": 254.28417205810547,
+      "untracked_growth_vs_512_mib": 73.119140625,
+      "scratch_growth_vs_512_mib": 70.5,
+      "unexplained_growth_vs_512_mib": 2.619140625
+    },
+    {
+      "prompt_length": 4096,
+      "tracked_peak_gib": 16.11060381680727,
+      "whole_device_peak_delta_gib": 16.64883041381836,
+      "whole_device_minus_tracked_mib": 551.1440353393555,
+      "aotriton_scratch_allocation_mib": 300.0,
+      "remainder_after_aotriton_mib": 251.14403533935547,
+      "untracked_growth_vs_512_mib": 228.97900390625,
+      "scratch_growth_vs_512_mib": 229.5,
+      "unexplained_growth_vs_512_mib": -0.52099609375
+    },
+    {
+      "prompt_length": 8192,
+      "tracked_peak_gib": 16.369075305759907,
+      "whole_device_peak_delta_gib": 16.90353012084961,
+      "whole_device_minus_tracked_mib": 547.2817306518555,
+      "aotriton_scratch_allocation_mib": 300.0,
+      "remainder_after_aotriton_mib": 247.28173065185547,
+      "untracked_growth_vs_512_mib": 225.11669921875,
+      "scratch_growth_vs_512_mib": 229.5,
+      "unexplained_growth_vs_512_mib": -4.38330078125
+    }
+  ],
+  "scratch_trace_evidence": {
+    "prompt_512": {
+      "kernel": "attn_fwd",
+      "launches": 16,
+      "scratch_size_metadata_bytes": 1504,
+      "workgroup_size_x": 128,
+      "grid": [2048, 24, 1],
+      "allocation_pairs": 16,
+      "allocation_bytes_each": 73924608,
+      "allocation_mib_each": 70.5,
+      "kernel_sum_ms": 7.398428,
+      "kernel_median_ms": 0.464964
+    },
+    "prompt_1024": {
+      "kernel": "attn_fwd",
+      "launches": 16,
+      "scratch_size_metadata_bytes": 1504,
+      "workgroup_size_x": 128,
+      "grid": [4096, 24, 1],
+      "allocation_pairs": 16,
+      "allocation_bytes_each": 147849216,
+      "allocation_mib_each": 141.0,
+      "kernel_sum_ms": 21.673972,
+      "kernel_median_ms": 1.360774
+    },
+    "prompt_4096": {
+      "kernel": "attn_fwd",
+      "launches": 16,
+      "scratch_size_metadata_bytes": 3200,
+      "workgroup_size_x": 128,
+      "grid": [8192, 24, 1],
+      "allocation_pairs": 16,
+      "allocation_bytes_each": 314572800,
+      "allocation_mib_each": 300.0,
+      "threshold_crosscheck": "The same records were measured under selector-applied and explicit 32-MiB thresholds; ROCr semantics and the retained 8-MiB full-engine qualification leave this use-once path unchanged."
+    },
+    "prompt_8192": {
+      "bulk_prefill_scratch_rows": 4096,
+      "live_scratch_allocation_mib": 300.0,
+      "timeline_crosscheck": "The 8K stage timeline records two 4K chunks. The first layer-3 full-attention window raises sampled VRAM 300.754 MiB, from 16.795914 to 17.089619 GiB, matching the traced 300-MiB allocation plus sampling/page granularity."
+    }
+  },
+  "reconciliation": {
+    "remainder_min_mib": 247.28173065185547,
+    "remainder_max_mib": 254.28417205810547,
+    "remainder_span_mib": 7.00244140625,
+    "long_row_untracked_growth_vs_512_mib": [228.97900390625, 225.11669921875],
+    "long_row_scratch_growth_vs_512_mib": 229.5,
+    "conclusion": "After subtracting traced AOTriton scratch, the remainder is shape-invariant within 7.003 MiB. The apparent extra long-row owner is not a second allocation family: it is the monolithic attention scratch growing from 70.5 MiB at 512 to 300 MiB at the 4K chunk cap."
+  },
+  "candidate_exhaustion": {
+    "monolithic_v2": "Memory-neutral versus retained v3: 16.53998 versus 16.53823 GiB sampled process peak.",
+    "per_kv_group_v2": "Halves the 4K live allocation to 150 MiB but raises traced attention time 17.55% and regresses profiled full prefill 0.623%.",
+    "per_q_head_v2": "Lowers each allocation to 25.78125 MiB but raises traced attention time 137.28% and regresses profiled full prefill 6.241%.",
+    "decision": "Do not change production. The only shape-growing untracked owner is already proven performance-bearing under both bounded split alternatives. The remaining 247.3-254.3 MiB residual is approximately shape-invariant and is not a memory-growth target."
+  },
+  "sources": {
+    "retained_cap8_artifact": {"path": "benchmarks/results/2026-08-15-gfx1100-rocr-scratch-reserve-retained.json", "sha256": "997023ad56987ab1cdc3c5c1f4f0363d16d03d439f55293f3f7c2fd0bdf4ee9f"},
+    "cap8_512_kernel_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-512/cap8-scratch-512_kernel_trace.csv", "sha256": "a578d26fb0e8e0cd9bd920d437698e877edfad24012fb3a1e41f77680f7f13eb"},
+    "cap8_512_scratch_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-512/cap8-scratch-512_scratch_memory_trace.csv", "sha256": "abb8fd1f48004a5b3943dea47a264413102b68daebe2802e405e99981c5c13f8"},
+    "cap8_512_bench": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-512-bench.json", "sha256": "c1568808bc69507dea852b7ebd8a381940e961caa189f1bd7ea927f104d20b52"},
+    "cap8_1024_kernel_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-1024/cap8-scratch-1024_kernel_trace.csv", "sha256": "e0afe676a4459d77b386feeb772095d84d232a2b761e562596dc435f1930f112"},
+    "cap8_1024_scratch_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-1024/cap8-scratch-1024_scratch_memory_trace.csv", "sha256": "6cffc466fa5032f525d9997da618dec79b8a069b93c8d912190f455910bd96e1"},
+    "cap8_1024_bench": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-cap8-scratch-1024-bench.json", "sha256": "875f275f6c5bd3e94087fe3f288a0b1eb7c82e3499bd555d62453d9636562b34"},
+    "cap32_4096_kernel_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-default-scratch-cap32-4096/default-scratch-cap32_kernel_trace.csv", "sha256": "1308ded8d650763819a5a81446041d412b9015ac01d39dd792342eb5ff41116e"},
+    "cap32_4096_scratch_trace": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-default-scratch-cap32-4096/default-scratch-cap32_scratch_memory_trace.csv", "sha256": "81a6f1d56f6652a9815ff33a6496d7ebd0b3ee6ca883a85e2396827a46c9a56d"},
+    "cap32_4096_bench": {"path": "/tmp/qwen36-27b-memory-goal/rocprof-default-scratch-cap32-4096-bench.json", "sha256": "dbd52dd0062c07b21a65c500ecf5c786d6e15875cfa03519a64ef2fd63e1085c"},
+    "stage_8192_events": {"path": "/tmp/qwen36-27b-memory-goal/stage-memory-8192-events.jsonl", "sha256": "8ff812890e2e316d26b6a81014cdadd35ba3b4fbe7b4468465ad3f6318622c5b"},
+    "stage_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/stage-memory-8192-vram.json", "sha256": "3714aa8728818b16254c87624dfcc33e7d0294380a15186def498c3c08192d0d"}
+  },
+  "decision": "The memory-growth issue is mechanically attributed and the tested owner is exhausted under the no-regression gate. Keep commit 27e1c2dcc unchanged; do not reopen monolithic-v2, per-KV-group, or per-Q-head AOTriton routes."
+}
