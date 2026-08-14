@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-14
 
+- [gfx1151 cross-model compatibility/speed diagnostic; no topline claim] dense Qwen3.6-27B -> Qwen3.8-27B / Q4_K_M / 512/128: prefill **84.774 -> 84.820 tok/s (+0.0537%)**, decode **7.0687 -> 7.0663 tok/s (-0.0348%)**, and complete measured wall **24.3112 -> 24.3117 s (+0.0021%)** with identical **31.659-GiB** tracked peak, finite stable outputs, clean HIP graph replay, and zero teardown ownership; the prebuild also exposed and fixed unsupported Q4_K auto-placement into the Q8_0-only gfx1151 host-token route; `benchmarks/results/2026-08-14-gfx1151-qwen36-qwen38-27b-speed-equivalence-diagnostic.json`.
+
 - [retained/default dense SiLU gate-plane alias] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: overwrite the dead BF16 gate plane with the unchanged SiLU output, lowering tracked peak **15.596/15.699/16.263/16.521 -> 15.587/15.681/16.243/16.501 GiB (-8.9375/-18.75/-20.625/-20.625 MiB)** and whole-device peak by **11.160/17.965/21.750/21.547 MiB**; prefill/decode movement is within **0.171%**, exact IDs/NextN/W7900/lifecycle pass, and Vulkan's lower memory floors still lead by **0.394/0.587/1.089/1.090 GiB**; `benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json`.
 
 - [provenance correction] Qwen3.6-27B compact GDN Q/K scratch: correct the malformed 62-character 4K eager-profile digest to the independently recomputed SHA-256 `b1a764c4fe684cd82a4430d4cac6ef7888c6203d929cbdbc877c6c7c7aa45e70`; benchmark metrics and decisions are unchanged; `benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json`.
