@@ -13,17 +13,18 @@ for its later recurrent output, one physical owner exposes all 188 private-c1
 decode-scratch ranges, a constrained rows>=4096 placement order reuses the
 remaining long-row holes without moving `attn_out`, and one physical 40-MiB
 hidden plane serves both long-row ping-pong roles. gfx1100 process metadata also
-lowers ROCr's reserved single-dispatch scratch threshold from 140 to 32 MiB
-without changing the traced 300-MiB use-once AOTriton allocations. Tracked peak
-is **15.587/15.668/16.111/16.369 GiB** and whole-device peak is
-**15.923/16.076/16.671/16.925 GiB** at 512/1K/4K/8K. The latest step saves
-**106.3-108.9 MiB** whole-device process-delta VRAM with no tracked-byte
-change, XTX/W7900 throughput movement within **0.104%**, and stable finite
-outputs/token IDs. Explicit `HSA_SCRATCH_SINGLE_LIMIT` values remain user-owned.
-Rows below 4096 deliberately retain two hidden owners and the size-first arena
-order after RED coverage caught a short-row NextN NaN in the independent
-recoloring experiment. This does not claim cross-engine closure: Vulkan's lower
-memory floors still lead by **0.233/0.376/0.758/0.759 GiB**, 4K decode remains
+lowers ROCr's reserved single-dispatch scratch threshold from 140 to 8 MiB
+without changing the 300-MiB use-once AOTriton path traced at 32 MiB. Tracked
+peak is **15.587/15.668/16.111/16.369 GiB** and whole-device process-delta peak
+is **15.901/16.054/16.649/16.904 GiB** at 512/1K/4K/8K. The latest threshold
+saves **128.6-131.1 MiB** versus the upstream-default controls with no
+tracked-byte change, XTX/W7900 throughput movement within **0.235%**, and
+stable finite outputs/token IDs. Explicit `HSA_SCRATCH_SINGLE_LIMIT` values
+remain user-owned. Rows below 4096 deliberately retain two hidden owners and
+the size-first arena order after RED coverage caught a short-row NextN NaN in
+the independent recoloring experiment. This does not claim cross-engine
+closure: Vulkan's lower memory floors still lead by
+**0.212/0.354/0.737/0.737 GiB**, 4K decode remains
 below HIP, and Vulkan MTP still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
