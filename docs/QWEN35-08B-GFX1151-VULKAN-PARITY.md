@@ -1,0 +1,482 @@
+# Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
+
+Status: opened 2026-08-14. No optimization is accepted yet.
+
+Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
+512-token prompt processing (`pp512`) and 128-step autoregressive decode
+(`tg128`). `Q4_K_M` is the primary target and `Q8_0` is the quant-coverage
+guard. The external comparator is llama.cpp Vulkan build `1d2869c6e` (build
+10415) on RADV STRIX_HALO with flash attention enabled.
+
+This campaign is the 0.8B prerequisite for the later Qwen3.x 27B dense
+optimization campaign. Do not transfer a candidate to 27B merely because it
+wins a microbenchmark here. The 0.8B route must first complete the semantic
+module census, correctness gate, and same-session parity gate defined below.
+
+Related documents:
+
+- [`HIP-vs-VULKAN.md`](HIP-vs-VULKAN.md) — timing-contract and cross-backend
+  attribution rules.
+- [`STRIX-HALO-LLAMACPP-REVIEW.md`](STRIX-HALO-LLAMACPP-REVIEW.md) — prior
+  gfx1151 llama.cpp source review and the rule to select production owners from
+  profiles rather than porting every upstream patch.
+- [`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md) — retained and
+  rejected GGUF GDN/prefill schedules. This campaign must not reopen a closed
+  schedule without a new 0.8B profile signal.
+- [`TUNING-gguf.md`](TUNING-gguf.md) — generic GGUF measurement and tuning
+  lanes.
+- [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) — dense-campaign lane format and
+  audit-first precedent.
+- [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md) — 40-CU, ~221 GB/s practical
+  read roof, WMMA, cache, and occupancy model.
+- [`KERNELS.md`](KERNELS.md), [`TESTING.md`](TESTING.md), and
+  [`BENCHMARK.md`](BENCHMARK.md) — kernel catalog, correctness contract, and
+  evidence policy.
+
+## 1. Executive objective
+
+Close the current Qwen3.5-0.8B gap to llama.cpp Vulkan in this order:
+
+1. **Certify the actual routes.** The first hipEngine rows used auto bulk
+   prefill, eager decode, and explicitly recorded both WMMA prefill and GEMV
+   decode as disabled. They are fallback diagnostics, not the fastest
+   hipEngine baseline. Measure fallback, forced bulk+WMMA+GEMV, and production
+   graph routes before changing a kernel.
+2. **Account for every module.** Produce prefill and decode GPU-time ledgers for
+   both engines. Assign every kernel/node to a semantic model role and account
+   separately for host submission, synchronization, copies, and sampling.
+3. **Fix the largest shipped owner first.** A 7-10x prefill gap cannot be
+   approached as a tile-width sweep until route selection and the complete
+   module ledger rule out a scalar/row-serial fallback. Decode work follows its
+   measured Amdahl order, not a generic GEMV checklist.
+4. **Match or beat llama.cpp on 0.8B.** Close Q4_K_M `pp512` and `tg128` with
+   Q8_0 non-regression and the normal correctness gates.
+5. **Only then transfer to 27B.** Re-profile 27B from zero; retain only ideas
+   whose 27B owner, shape, and bottleneck reproduce.
+
+The target is not “make one kernel faster than a Vulkan shader.” It is matched
+or better end-to-end prompt processing and text generation with a complete
+explanation of the remaining wall time.
+
+### 1.1 Impact-ranked active board
+
+Only one implementation owner may be active at a time. After every accepted or
+rejected package, recompute the semantic ledger and select the remaining package
+with the largest projected whole-request saving.
+
+Potential bands refer to projected end-to-end wall, not isolated leaf speed:
+
+- **critical:** structural route correction or >25% projected request saving;
+- **high:** 10-25%;
+- **medium:** 3-10%;
+- **low:** <3%.
+
+For a leaf speedup `S` on a role owning `role_ms`, calculate the candidate's
+upper bound as `role_ms * (1 - 1/S) - added_boundary_ms`. Divide by current
+request wall for the impact band. Route changes use measured complete wall,
+not a synthetic leaf projection.
+
+| Rank | Package | Current potential | Why it is ordered here | Completion decision |
+| ---: | --- | --- | --- | --- |
+| 0 | **D08-C0 route matrix** | **critical diagnostic** | Both opening hipEngine rows disabled WMMA prefill, GEMV decode, and graph replay; changing route may invalidate the apparent 7-10x/2-3x gaps. | Certify one intended fallback/eager/graph route per quant, or open a narrowly named route blocker. |
+| 1 | **D08-M1-M5 full module ledger** | **critical enabler** | No kernel package has a defensible Amdahl bound until both engines account for every module. | Publish a <=1% residual ledger and rank semantic owners by projected whole-request saving. |
+| 2 | **D08-P1 route/default correction** | **critical if admitted** | A scalar/per-row projection fallback can dominate the entire prefill gap and must be removed before kernel tuning. | Accept the exact non-regressive intended fast route, or reject the route hypothesis and move to the top profiled owner. |
+| 3 | **Top owner from M5** | profile-ranked | Choose exactly one of P2/P3/P4/P5 or D1-D5 using measured role time and an explicit candidate speed bound. | Accept, reject, park, or block that package; then re-profile before choosing another structural owner. |
+| 4 | **Next remaining high-impact owner** | high | Start only after rank 3 closes and its Amdahl table is refreshed. | Same bounded decision packet; no inherited projection from the prior route. |
+| 5 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
+| 6 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
+
+### 1.2 Bounded task contract
+
+Every task records before work starts: semantic owner, baseline time/share,
+maximum plausible whole-request saving, exact experiment budget, correctness
+gate, accept threshold, reject condition, and revisit trigger. A task cannot
+remain indefinitely `in-progress`.
+
+| Task class | Hard experiment bound | Accept rule | Reject / park rule |
+| --- | --- | --- | --- |
+| Route certification (`C0`) | At most 3 hipEngine routes x 2 quants, 2 supported embedding-placement controls, and 2 fresh llama rows. Each topline row is 1 warmup + 5 measures. No source edit. | Effective route matches the request, correctness passes, and the fastest intended route becomes the certified baseline. | One failed route receives one focused diagnosis. If unresolved, open a named blocker; do not start kernel tuning on an unknown route. |
+| Profile (`M1-M5`) | One clean capture per backend/quant/phase; one replacement capture only for incomplete/corrupt output. | 100% node assignment and <=1% timing residual, with API/launch gap separate. | If the tool cannot expose a complete ledger after one repair, record the missing surface and add the smallest instrumentation needed; do not infer owners from names alone. |
+| Kernel/algorithm leaf | Audit current lineage first; test at most 3 predeclared variants and one tuning dimension on the actual hot shape. | Any exact, reproducible, non-regressive production win is retained per project policy. Continue to full-model routing only with >=1.10x leaf speed or >=1% projected request saving (or >=0.5 ms/token decode). | Stop after the budget misses continuation, correctness fails, or measured Amdahl falls below 1%. Preserve the result and revisit trigger; remove rejected transient code. |
+| Full-model A/B | Only the best admitted leaf; one counterbalanced control/candidate sequence with 1 warmup + 5 measured samples, then the named correctness gate. | Correctness and all guards pass; request wall improves reproducibly. Promote the exact route by default unless a concrete blocker is recorded. | Reject on correctness, route mismatch, or a reproducible guard regression. Do not rescue it with an unplanned compound. |
+| Small exact win | No further variant ladder in the same package after the win is measured and retained. | Keep and publish the exact non-regressive improvement even when below the continuation threshold. | Close the package; only a fresh profile may reopen the semantic owner. |
+| Expensive follow-up | Obey the repository approval rule before any repeated run expected to exceed five minutes. | User-approved run answers a named unresolved gate. | Park with projected impact and revisit trigger rather than consuming an open-ended benchmark budget. |
+
+The continuation threshold limits exploration; it does not override the project
+rule that a measured exact non-regressive win is retained.
+
+### 1.3 Decision states
+
+| State | Meaning |
+| --- | --- |
+| `accepted` | Correctness and guards pass; a reproducible production win is retained and promoted or has a concrete recorded promotion blocker. |
+| `rejected` | The bounded candidate failed correctness/performance/guard gates; transient implementation is removed and evidence remains durable. |
+| `parked` | The measured upper bound is too small or a precondition is absent. The ledger names the evidence and exact revisit trigger. |
+| `blocked` | External/tool/hardware dependency prevents the declared gate; no unrelated tuning proceeds under that task ID. |
+| `superseded` | A later structural route invalidated the old Amdahl premise; old evidence remains historical and is not reused as current projection. |
+
+## 2. Workload and provisional baselines
+
+### 2.1 Model shape
+
+Both GGUFs contain 320 tensors and the same dense architecture:
+
+| Field | Value |
+| --- | ---: |
+| Layers | 24 |
+| Linear-attention / GDN layers | 18 |
+| Full-attention layers | 6 (`full_attention_interval=4`) |
+| Hidden size | 1024 |
+| Dense FFN size | 3584 |
+| Query heads / KV heads | 8 / 2 |
+| Key length / value length | 256 / 256 |
+| Linear-attention inner size | 2048 |
+| GDN state size / groups | 128 / 16 |
+| Vocabulary | 248,320 |
+
+Tensor inventory:
+
+| File | Tensor types | Encoded tensor bytes |
+| --- | --- | ---: |
+| `Qwen3.5-0.8B-Q4_K_M.gguf` | F32 133, Q4_K 98, Q5_K 36, Q6_K 17, Q8_0 36 | 521,555,200 |
+| `Qwen3.5-0.8B-Q8_0.gguf` | F32 133, Q8_0 187 | 800,881,920 |
+
+The Q4_K_M token embedding is Q6_K. The Q8_0 token embedding is Q8_0.
+Embedding placement is therefore part of the route and must be recorded; it
+must not be hidden in an environment variable.
+
+### 2.2 External llama.cpp Vulkan reference supplied at campaign opening
+
+Hardware: AMD Radeon 8060S Graphics, RADV STRIX_HALO, UMA, Vulkan flash
+attention enabled. Command family:
+
+```bash
+cd ~/llama.cpp/llama.cpp-vulkan
+build/bin/llama-bench -fa 1 -m <model.gguf>
+```
+
+| Quant | llama.cpp pp512 | llama.cpp tg128 |
+| --- | ---: | ---: |
+| Q4_K_M | **6565.11 ± 540.27 tok/s** | **202.41 ± 2.01 tok/s** |
+| Q8_0 | **6586.65 ± 182.93 tok/s** | **165.73 ± 0.48 tok/s** |
+
+These are opening targets, not the closing comparator. The final gate uses a
+fresh same-session, interleaved comparison and records clocks, kernel, Mesa,
+ROCm, source revisions, and model hashes.
+
+### 2.3 Initial hipEngine diagnostics
+
+| Quant/file | hipEngine pp512 | hipEngine tg128 | Fraction of llama pp / tg | Recorded route |
+| --- | ---: | ---: | ---: | --- |
+| Q4_K_M | **906.1 tok/s** | **69.8 tok/s** | 13.8% / 34.5% | auto bulk, WMMA off, GEMV off, eager decode; device embedding was reported externally |
+| Q8_0 | **660.0 tok/s** | **73.9 tok/s** | 10.0% / 44.6% | auto bulk, WMMA off, GEMV off, eager decode; saved row reports host embedding disabled |
+
+The apparent speedup required from these fallback diagnostics is 7.25x/2.90x
+for Q4_K_M prefill/decode and 9.98x/2.24x for Q8_0. Do **not** use those ratios
+as an Amdahl plan yet.
+
+The initial rows are explicitly non-canonical:
+
+- `effective_use_wmma_prefill=false`;
+- `effective_use_gemv_decode=false`;
+- `effective_graph_replay_decode=false`;
+- the Q8_0 command omitted `--quant gguf_q8_0`, so its JSON labels the route
+  `gguf_q4_k_m` even though the actual file contains only F32/Q8_0 tensors;
+- the opening Q4 embedding override and the claimed Q8 host-placement path are
+  not consistently represented by the saved temporary JSON.
+
+Campaign step `D08-C0` must rerun both files with exact quant keys and route
+provenance before any baseline is retained or published.
+
+## 3. Comparison contracts
+
+### 3.1 Two timing scopes, not one misleading ratio
+
+llama-bench `tg128` measures model evaluation on a generated-token shape. The
+hipEngine resident benchmark also performs its native sampler/token transport.
+Keep two explicit scopes:
+
+1. **Core model timing:** teacher-forced token input, no sampler ownership in
+   either total. This is the strict module-to-module comparison.
+2. **Public greedy generation:** embedding through sampled token and required
+   device/host transport. This is the user-visible engine result.
+
+Never subtract sampler or host costs from one engine but not the other. The
+campaign closes only when both scopes are reported; the primary llama-bench
+parity number is the core scope, while public generation is a non-regression
+and usability gate.
+
+### 3.2 Shared inputs
+
+Opening throughput used shape-equivalent but not proven identical token
+inventories: hipEngine repeated token 9707, while llama-bench controls its own
+synthetic tokens. `D08-C0` creates a shared 512-token fixture and a deterministic
+128-token teacher-forced continuation accepted by both engines. Record token
+IDs and hashes in both artifacts.
+
+For changes to hipEngine math, the repository CPU-reference gate remains
+binding even if llama.cpp emits the same token:
+
+- KL <= 0.05;
+- top-1 agreement >= 90%;
+- deterministic repeats;
+- full state/trajectory checks required by the touched module;
+- exact unfused fallback for a fused composite.
+
+### 3.3 Same hardware and configuration
+
+Every retained comparison records:
+
+- Radeon 8060S / `gfx1151` identity and CU/cache snapshot;
+- kernel, firmware, power profile, IOMMU state, and sampled clocks;
+- TheRock ROCm/HIP and compiler revision;
+- Mesa/RADV and Vulkan loader revision;
+- exact engine commits and dirty-tree state;
+- exact GGUF hash, tensor inventory hash, quant key, embedding placement, KV
+  type, flash-attention mode, graph/submission class, and prompt/decode shape.
+
+Profiler results are attribution evidence, not topline throughput. Both
+`rocprofv3` and Vulkan timestamp logging may serialize or perturb execution.
+
+## 4. Complete semantic module ledger
+
+Kernel names and fusion boundaries differ across backends. Join profiles by
+semantic role, then retain raw per-kernel/per-node rows underneath each role.
+
+| Semantic role | hipEngine evidence | llama.cpp Vulkan perf-logger evidence |
+| --- | --- | --- |
+| Token embedding | GGUF Q6_K/Q8_0 embedding kernels, placement/copy metadata | `GET_ROWS`, transfer nodes |
+| Attention RMSNorm | RMSNorm and fused norm/projection kernels | `RMS_NORM` / `RMS_NORM_MUL` |
+| Linear-attention projections | Q4/Q5/Q8 prefill or c1 GEMV kernels for QKV/gate/output/decay/beta | `MUL_MAT*` grouped by shape and tensor role |
+| Linear-attention conv | Conv, SiLU, state preparation kernels | `SSM_CONV_SILU`, `SILU`, copies |
+| GDN recurrence | Exact/reassociated GDN prefill or decode kernels | `GATED_DELTA_NET`, `L2_NORM`, `SOFTPLUS`, `SIGMOID`, related nodes |
+| Full-attention projections | QKV/gate/output projection kernels | `MUL_MAT*` joined by full-attention layer/shape |
+| RoPE + KV write | RoPE, append/scatter, `KVLiveSpans` consumers | `ROPE`, `SET_ROWS`, `CPY` |
+| Full-attention core | AOTriton/native prefill; grouped-GQA decode producer/reducer | `FLASH_ATTN_EXT` |
+| Post-attention RMSNorm | RMSNorm or fused residual+norm boundary | `RMS_NORM_MUL` |
+| Dense FFN gate/up | dual/single Q4/Q8 prefill or GEMV kernels | gate/up `MUL_MAT*` |
+| Dense FFN activation | SiLU/multiply/fused activation kernels | `GLU`, `SILU`, `MUL` |
+| Dense FFN down | Q5/Q6/Q8 prefill or GEMV kernels | down `MUL_MAT*` |
+| Residual/common glue | add/combine/concat/copy/cast kernels | `ADD`, `MUL`, `CONCAT`, `CONT`, `CPY` |
+| Final RMSNorm | final norm kernel | final `RMS_NORM_MUL` |
+| LM head | Q6_K or Q8_0 vocab projection/top-1 kernels | `MUL_MAT_VEC` with `m=248320` |
+| Sampler/token transport | top-1/sampler, required H2D/D2H, sync/API wall | excluded from core logger total; separately measured for public generation |
+| Submission/unattributed | graph replay/eager API gaps, queue idle, profiler residual | Vulkan graph wall minus timestamped node total |
+
+Completeness gates for each prefill and decode profile:
+
+- 100% of timed kernels/nodes assigned to a role;
+- semantic-role GPU totals sum within 1% of the backend-reported GPU total, or
+  the exact timestamp-boundary difference is documented;
+- all copies, synchronizations, and device-wide drains appear in a separate
+  HIP/Vulkan API ledger;
+- kernel/node dispatch count is recorded per token and per request;
+- the top 95% of GPU time includes launch geometry and, where available,
+  VGPR/SGPR/LDS/scratch data;
+- no `other` bucket above 1% without an explicit owner and follow-up.
+
+## 5. Profiling protocol
+
+### 5.1 hipEngine
+
+Use the existing selected-region support in
+`scripts/qwen35_gguf_bench.py`. Build and warm every required library outside
+rocprofv3, save `hipcc --version`, and require cached builds in the profiled
+child.
+
+Canonical fast-route command shape (C0 must confirm rather than assume it is
+accepted for both files):
+
+```bash
+python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --token-id 9707 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 \
+  --persistent-session --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode --graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/d08-q4-fast.json
+```
+
+For profiling, use one short cached child per selected region:
+
+```bash
+rocprofv3 --kernel-trace --hip-trace --selected-regions \
+  --output-format csv --output-directory /tmp/d08-hip-prefill -- \
+  python3 scripts/qwen35_gguf_bench.py <same route> \
+    --warmup-runs 0 --measured-runs 1 --decode-tokens 0 \
+    --rocprof-selected-region prefill --require-cached-build
+
+rocprofv3 --kernel-trace --hip-trace --selected-regions \
+  --output-format csv --output-directory /tmp/d08-hip-decode -- \
+  python3 scripts/qwen35_gguf_bench.py <same route> \
+    --warmup-runs 0 --measured-runs 1 \
+    --rocprof-selected-region measured_decode_graph --require-cached-build
+```
+
+If graph tracing is unstable, use `measured_decode` eager attribution and a
+separate graph/direct API trace. Never profile a child that can spawn `hipcc`.
+Extend `scripts/qwen35_gguf_rocprof_summary.py` only as needed to map the 0.8B
+dense kernel families; do not discard raw names to make the buckets look clean.
+
+### 5.2 llama.cpp Vulkan
+
+The current Vulkan backend contains a timestamp-query logger:
+
+```bash
+cd ~/llama.cpp/llama.cpp-vulkan
+GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 \
+  build/bin/llama-bench -fa 1 \
+  -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf \
+  -p 512 -n 128 -r 1
+```
+
+It emits per-graph `Vulkan Timings` with operation, quant, matrix shape,
+dispatch count, mean duration, total duration, and GFLOP/s where applicable.
+Capture Q4_K_M and Q8_0 separately and parse each pp/decode graph into the
+semantic ledger. Use normal logger-off `-r 5` runs for topline; logger-on rows
+are diagnostic only.
+
+### 5.3 Cross-engine join
+
+For each semantic role report:
+
+- calls/request and calls/token;
+- GPU ms/request for prefill or GPU ms/token for decode;
+- share of each backend's profiled GPU total;
+- matched projection shapes and encoded bytes where meaningful;
+- hipEngine/Vulkan ratio only when math, shape, and timing scope are actually
+  comparable;
+- launch/API wall outside timestamped GPU work.
+
+Do not infer a compiler problem from a semantic role that differs in fusion,
+layout, activation reuse, or submission class.
+
+## 6. Campaign lanes
+
+### C lane — certification and controls
+
+| ID | Work | Exit gate | Status |
+| --- | --- | --- | --- |
+| **D08-C0** | Rerun Q4_K_M and Q8_0 route matrix: fallback; forced bulk+WMMA+GEMV eager; forced fast route + production graph. Test host/device embedding only where supported. | Correct quant key and file hash; effective route fields agree with request; finite/correct outputs; 1 warmup + 5 measured samples; same-session llama refresh. | pending |
+| **D08-C1** | Build shared 512-token and 128 teacher-forced token fixtures for both engines. Separate core model and public greedy timing. | Exact token inventory hashes match; sampler ownership is explicit. | pending |
+| **D08-C2** | Freeze hardware/software snapshot and interleaved comparison script. | Reproducible command bundle with clocks and clean provenance. | pending |
+
+### M lane — full module attribution
+
+| ID | Work | Exit gate | Status |
+| --- | --- | --- | --- |
+| **D08-M1** | hipEngine Q4 prefill selected-region kernel/API profile. | All GPU time assigned; dispatch/resource table complete; no profiled builds. | pending |
+| **D08-M2** | hipEngine Q4 eager and graph decode profiles. | Per-token role table plus graph/direct submission gap and sampler/transport ledger. | pending |
+| **D08-M3** | llama.cpp Vulkan Q4 pp512/tg128 perf-logger profiles. | All nodes assigned to semantic roles; logger total reconciled. | pending |
+| **D08-M4** | Repeat M1-M3 for Q8_0. | Q8 route/embedding differences explicit; no mislabeled quant row. | pending |
+| **D08-M5** | Produce joined semantic-role Amdahl table. | Every module appears for both engines or is marked backend-specific; `other` <=1%. | pending |
+
+No implementation lane starts before `D08-C0` and the relevant M lane identify
+a shipped owner. A trivial route correction from C0 may be retained immediately
+if it passes the same correctness and benchmark gates; it is not “kernel work.”
+
+### P lane — prefill, ordered by likely leverage but profile-gated
+
+| ID | Candidate class | Potential if admitted | Admission signal | Hard bound / stop rule | Status |
+| --- | --- | --- | --- | --- | --- |
+| **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **critical** | C0 shows fallback or per-row projection work in the current route. | One policy/route repair, then re-run C0. Stop after all projection shapes use the intended rows>1 kernel and route fields prove it; do not tune kernels here. | pending |
+| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | high if role >=20%; otherwise park | GDN/conv is the largest remaining prefill role. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | pending |
+| **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | high if role >=20% | Dense projection role dominates after P1/P2. | At most 3 leaf variants/one tuning dimension. Continue only at >=1.10x leaf or >=1% projected request saving; include repack/copy wall. | pending |
+| **D08-P4** | Full attention and RoPE/KV boundaries. | profile-dependent medium/high | Full-attention role is material in M5 or the intended flash route is absent. | One route/layout candidate; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending |
+| **D08-P5** | Residual/norm/activation/copy launch coalescing. | medium/low | Glue is >=5% of prefill GPU time or launch count is the measured wall owner. | One fusion boundary at a time, at most 2 variants. Retain unfused fallbacks; reject spills/occupancy loss or complete-wall regression. | pending |
+
+### D lane — decode, ordered by the measured per-token ledger
+
+| ID | Candidate class | Potential if admitted | Admission signal | Hard bound / stop rule | Status |
+| --- | --- | --- | --- | --- | --- |
+| **D08-D1** | Production graph replay, persistent buffers, and redundant sync/copy removal. | high if host/API gap >=10% | Host/API gap or launch count is material after C0. | One graph-vs-eager control and one sync/copy census. Graph/eager state must match; charge capture/instantiate/lifecycle honestly. | pending |
+| **D08-D2** | LM-head/top-1. Q4_K_M uses the tied Q6_K table; Q8_0 uses Q8_0. | high if largest role | Vocab projection is the largest single role or materially worse than Vulkan's `m=248320` node. | At most 3 leaf variants. Preserve full vocabulary and top-1/KL; no candidate-ID reranking or prompt-conditioned shortcuts. | pending |
+| **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | high if roles >=25% combined | Projection bytes dominate decode after D1/D2. | At most 3 variants on a >2x-MALL cycling pool. No duplicate resident weights; hot kernel scratch-free; continue only on measured Amdahl. | pending |
+| **D08-D4** | GDN decode/conv and short-context full attention. | medium unless M5 says high | Either role is >=5% or has a clear Vulkan ratio. | One semantic owner at a time, at most 2 variants. Preserve recurrence/KV state, not only sampled token. | pending |
+| **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | medium/low | Combined tail is material after D1-D4. | One boundary/census package at a time. Keep exact measured wins, but stop if complete-wall projection is <1%. | pending |
+
+### G lane — promotion and closure
+
+| ID | Work | Exit gate | Status |
+| --- | --- | --- | --- |
+| **D08-G1** | Full correctness and regression packet. | CPU-reference KL/top-1, deterministic repeats, touched-state checks, focused tests, and Q8 guard all pass. | pending |
+| **D08-G2** | Same-session interleaved Q4/Q8 final comparison. | Q4_K_M hipEngine median pp512 and tg128 match or exceed fresh llama.cpp medians; Q8_0 does not regress from its accepted route; both timing scopes reported. | pending |
+| **D08-G3** | Publish retained artifact/scoreboard/changelog and close campaign. | Exact commands and module ledger committed; no open required 0.8B work. | pending |
+| **D08-T1** | Open 27B transfer campaign and re-profile from zero. | D08-G3 complete; no 0.8B ratio is copied as 27B evidence. | blocked by D08-G3 |
+
+## 7. First-pass decision tree
+
+After C0/M5, choose exactly one first implementation owner:
+
+1. **Fast flags disabled or fallback kernels present?** Fix route selection and
+   defaults first. Re-profile; the Amdahl table is invalid after a structural
+   route change.
+2. **Prefill dominated by GDN recurrence?** Verify which retained GPF schedule
+   runs on the 0.8B shape and why; port or retune only if the current route is
+   absent or resource-mismatched.
+3. **Prefill dominated by quant projections?** Compare same semantic shapes to
+   Vulkan MMQ/coopmat. Check row count, WMMA admission, repack/layout, weight
+   rereads, and grid coverage before source-level instruction tuning.
+4. **Decode dominated by LM head?** Treat it as its own vocab-scale bandwidth
+   and reduction problem; do not hide it inside a generic “GEMV” bucket.
+5. **Decode dominated by many short kernels/API gaps?** Reduce launches,
+   synchronization, and graph overhead before rewriting arithmetic.
+6. **Decode dominated by weight streaming?** Compare effective bytes and
+   sustained bandwidth with a >64 MiB cycling pool; inspect occupancy and
+   coalescing. Do not repeat the rejected blanket non-temporal-load experiment.
+
+## 8. Anti-rabbit-hole rules
+
+- Do not optimize the opening fallback route unless C0 proves it is the intended
+  production route.
+- Do not use `llama-bench -v` metadata output as module timing; use
+  `GGML_VK_PERF_LOGGER` or an external GPU trace.
+- Do not compare profiler-perturbed totals as topline throughput.
+- Do not call a Vulkan/HIP module ratio a compiler result when layouts, fusion,
+  math, or submission differ.
+- Do not repeat broad wave64, non-temporal-load, generic reduction, or tile
+  sweeps already closed in `HIP-vs-VULKAN.md` and
+  `GGUF-PREFILL-OPTIMIZATION.md` without new production evidence.
+- Do not tune to token 9707, a fixed prompt, or candidate IDs. All retained
+  math changes pass category/heldout correctness and deterministic-state gates.
+- Do not sacrifice prefill to win decode or vice versa without an explicitly
+  accepted tradeoff. The declared objective is to match or beat both pp512 and
+  tg128.
+- Do not begin the 27B campaign before D08-G3.
+
+## 9. Parked, rejected, and future-impact ledger
+
+A rejected idea is not silently retried. A parked idea retains its maximum
+plausible impact and the evidence required to reopen it. Sort new entries by
+potential band, then measured upper bound.
+
+| Candidate / family | Current disposition | Potential | Why not active now | Exact revisit trigger |
+| --- | --- | --- | --- | --- |
+| Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
+| P1 fast-route/default repair | pending rank 2 | **critical** | Requires the bounded route matrix and effective-route proof first. | C0 shows an intended fast path missing, disabled, or falling back per row. |
+| New GDN prefill schedule | parked behind P2 admission | high if GDN >=20% | Multiple exact/reassociated GPF schedules already exist with accepted and rejected evidence. | M5 ranks GDN first and the active 0.8B route/resource shape differs from the retained winner. |
+| Broad quant projection tile sweep | parked behind P3/D3 admission | high only if projections dominate | Generic sweeps are low-information before exact shape, route, bytes, and occupancy are known. | M5 assigns >=20% prefill or >=25% decode wall to a matched projection family and identifies one bounded tuning dimension. |
+| Graph/submission work | pending D1 | high if API gap >=10% | Opening numbers used eager decode, but graph effectiveness has not been certified. | C0/M2 show a reproducible host/API or launch residual >=10%. |
+| LM-head specialization | pending D2 | high if top role | Vulkan's 248,320-row node is visible, but hipEngine's matched role time is not yet measured. | M2/M5 rank lm-head first or show >=1% request saving from a bounded candidate. |
+| Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
+| Generic wave64/reduction sweep | rejected/parked prior family | low | Cross-backend and GGUF campaigns already found no broad recovery; wave32 is the production contract. | A minimized hot kernel shows a specific wave32 occupancy/reduction bottleneck and a wave64-correct oracle. |
+| Hand ISA or production Vulkan backend | parked | unknown/high cost | Current production-shaped combined HIP kernels often match or beat Vulkan micros; engine gap is not yet attributed. | A matched production semantic slice wins after route/layout/submission controls and projects >=10% request saving. |
+| 27B dense transfer | blocked by D08-G3 | **critical future** | 0.8B must first establish route, module tools, and parity without copying shape-specific conclusions. | D08-G3 closes; begin with a fresh 27B C0/M ledger. |
+
+## 10. Update protocol
+
+Update this file when a lane moves from `pending` to `in-progress` and when it
+closes as accepted, rejected, blocked, or superseded. Each retained performance
+unit also updates:
+
+- a unique immutable entry under `worklog/entries/`;
+- a compact JSON artifact under `benchmarks/results/`;
+- `benchmarks/README.md` and its `Last updated` date;
+- `benchmarks/CHANGELOG.md` with old -> new metric, percentage delta, reason,
+  and artifact/source;
+- `docs/REFACTOR.md` for any retained temporary flag or duplicate route.
+
+Every logical unit is validated and committed before the next lane begins.
