@@ -341,6 +341,56 @@ def _launch_pack8(
         runtime.check(int(err))
 
 
+def _launch_pack8_wmma64(
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_shape(rows, in_features, out_features)
+    if in_features % 256:
+        raise ValueError("pack8 wmma64 in_features must be divisible by 256")
+    if out_features % 128:
+        raise ValueError("pack8 wmma64 out_features must be divisible by 128")
+    library = library or build_gguf_q4_k_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_void_p(mins_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _make_wrapper(variant: str):
     sym = _symbol(variant)
 
@@ -478,6 +528,47 @@ gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out = _make_pack8_wrapper(
 gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out = (
     _make_pack8_gfx1151_wrapper("pack8_wmma_prefill_bf16_bf16_out")
 )
+
+
+def _pack8_wmma64_prefill(
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_pack8_wmma64(
+        _symbol("pack8_wmma64_prefill_bf16_bf16_out"),
+        x_ptr,
+        qweight_ptr,
+        scales_ptr,
+        mins_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+_pack8_wmma64_prefill.__name__ = "gguf_q4_k_pack8_wmma64_prefill_bf16_bf16_out"
+_pack8_wmma64_prefill.__qualname__ = _pack8_wmma64_prefill.__name__
+_pack8_wmma64_prefill.__doc__ = (
+    "Launch the LDS-staged 128x64 large-tile pack8 Q4_K WMMA bulk prefill "
+    "(C symbol: hipengine_gguf_q4_k_pack8_wmma64_prefill_bf16_bf16_out). "
+    "Signature: (x_ptr, qweight_ptr, scales_ptr, mins_ptr, out_ptr, rows, "
+    "in_features, out_features, stream=0)."
+)
+gguf_q4_k_pack8_wmma64_prefill_bf16_bf16_out = _pack8_wmma64_prefill
 gguf_q6_k_wmma_prefill_bf16_bf16_out = _make_q6_wrapper(
     "wmma_prefill_bf16_bf16_out"
 )
@@ -504,6 +595,9 @@ _WRAPPERS = {
     "wmma_prefill_f32_f32_out": gguf_q4_k_wmma_prefill_f32_f32_out,
     "pack8_wmma_prefill_bf16_bf16_out": (
         gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out
+    ),
+    "pack8_wmma64_prefill_bf16_bf16_out": (
+        gguf_q4_k_pack8_wmma64_prefill_bf16_bf16_out
     ),
 }
 
