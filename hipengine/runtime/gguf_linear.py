@@ -2071,7 +2071,12 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
-        dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
+        dispatch = _native_batch_decode_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         # The small-B row-tile path is the weight-amortized replacement for the
         # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
         # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
@@ -2653,7 +2658,12 @@ def launch_gguf_linear_residual(
         in_features=in_features,
         out_features=out_features,
     )
-    dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
+    dispatch = _native_batch_decode_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
     allocation_name = {"t16": "tiles"}.get(dispatch.abi)
     if allocation_name is None:
         return False
@@ -4549,6 +4559,8 @@ def _native_batch_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
+    in_features: int,
+    out_features: int,
 ) -> GGUFLinearDispatch:
     """Select registered compact c=2..8 native projection families."""
 
@@ -4583,9 +4595,28 @@ def _native_batch_decode_dispatch(
             )
             if is_registered(rewritten_key):
                 return GGUFLinearDispatch(rewritten_key, dispatch.abi)
-        # Direct T16 decoders are c1-only. Native widths above a backend's
-        # measured rowtile bound must use the same-ABI WMMA sibling rather
-        # than launching the direct leaf with an invalid row count.
+        direct_shapes = backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
+            {},
+        )
+        quant_direct_shapes = (
+            direct_shapes.get(dispatch.key.quant, ())
+            if isinstance(direct_shapes, Mapping)
+            else ()
+        )
+        try:
+            use_direct = (
+                int(in_features),
+                int(out_features),
+            ) in quant_direct_shapes
+        except TypeError:
+            use_direct = False
+        if use_direct:
+            return dispatch
+        # Native widths above a backend's measured rowtile bound normally use
+        # the same-ABI WMMA sibling. Backends can retain the direct leaf for
+        # independently measured exact shapes through the policy above.
         rewritten_key = KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,

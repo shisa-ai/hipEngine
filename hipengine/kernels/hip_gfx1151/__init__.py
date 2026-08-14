@@ -689,11 +689,19 @@ GGUF_DENSE_Q4_T16 = False
 # Dense Qwen3.6 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
+# D08-P6 admits the same sole-resident family independently for the exact
+# Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
+GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": 4,
+}
+# The narrow 0.8B SSM-out shape wins with the direct leaf at c5-c8; QKV and
+# bulk rows retain the independently measured WMMA route.
+GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
+    "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
 # Dense Qwen3.6 planar-qmicro projection/root ownership is W7900-only until
 # gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
@@ -1766,8 +1774,10 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
+    "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",

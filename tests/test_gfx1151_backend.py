@@ -415,7 +415,7 @@ def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> 
     ) is None
 
 
-def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_qkv() -> None:
+def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
     register_gfx1151_kernels()
 
     assert backend_package_capability(
@@ -438,6 +438,21 @@ def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_qkv() -> None:
         "GGUF_DENSE_Q5_T16_QKV",
         False,
     )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
+        {},
+    ) == {"gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)})}
     for variant in (
         "t16_gemv_decode_bf16_bf16_out",
         "t16_gemv_rowtile_bf16_bf16_out",
