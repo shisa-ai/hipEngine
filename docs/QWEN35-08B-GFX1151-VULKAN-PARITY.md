@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1-M12 and accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5 completed 2026-08-14; D08-G1-G2 final correctness/fresh parity gate is next.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -100,7 +100,7 @@ not a synthetic leaf projection.
 | 19 | **D08-D5 RMSNorm/residual boundary** | **accepted: Q4 graph +2.884% / eager +0.207%; zero bytes/nodes** | Fixed-1024 C wins 5/5 crossed-session graph blocks, passes 900/900 Q4+Q8 transitions at max KL 0.001745, replaces exact 24+24 graph owners, and leaves Q8/prefill neutral. | Closed for exact gfx1151 0.8B Q4_K_M c1 attention/post-attention norm owners. |
 | 20 | **Mandatory post-D5 graph rerank / M12** | **completed: current graph 119.88/117.18 tok/s Q4/Q8; 286/288 nodes** | Exact trajectories/zero KL, complete assignment, and 97.23%/97.31% coverage reconcile Q4 norm owners 0.67405 -> 0.56181 ms (-0.11224 ms); Q8 norm movement is +0.00394 ms noise. | All bounded packages are accepted/exhausted or rejected; run G1-G2. Current decode is only 0.596x/0.709x frozen Vulkan, so G2 cannot close without fresh parity. |
 | 21 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
-| 22 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
+| 22 | **D08-G1-G3 closure** | **blocked: G2 exact Q4 is 0.424x/0.734x core and 0.463x/0.942x public pp/tg** | C1/C2 pass; exact cross-engine top-1 is 645/645 per quant, and Q8 public tg is 1.028x, but Q4 loses every required scope and all 5 blocks. The milestone suite also has unrelated open failures. | Do not close G3 or open D08-T1. Any architectural extension beyond the exhausted bounded packages requires human approval and a new complete-package contract. |
 
 ### 1.2 Bounded task contract
 
@@ -1253,6 +1253,61 @@ cannot close if fresh Q4 still misses Vulkan.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json).
 
+### 2.36 D08-C1/C2 and G1-G3 closure gate (2026-08-14)
+
+C1 commits one shared fixture: text `.Q` repeated 512 times tokenizes to exactly
+**9707 x512** in hipEngine and the pinned llama.cpp Vulkan tokenizer for both
+Q4_K_M and Q8_0. The teacher-forced continuation is **9707 x128**; its compact
+RLE and little-endian int64 hashes are retained. C2 adds two reproducible core
+harnesses. The hipEngine harness suppresses LM head/sampler only while capturing
+its normal one-step graph; the pinned llama helper calls `llama_decode`
+directly. Both also report a public greedy scope with LM head, top-1, and token
+feedback included.
+
+The final gate uses **five counter-rotated serial engine blocks per quant** on an
+otherwise-idle GPU. Each child performs one internal warmup and one measured
+exact-fixture row. All **645/645 forced-context and 645/645 public-equivalent
+top-1 rows per quant** agree across engines; repeated traces are exact and all
+logits are finite. D5's full category/heldout packet remains **900/900 top-1** at
+max KL 0.001745, its CPU reference passes, and M12's recording/state checks are
+exact with KL zero.
+
+G2 nevertheless fails:
+
+| Quant/scope | hipEngine pp512 | Vulkan pp512 | Ratio | hipEngine tg128 | Vulkan tg128 | Ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4 exact core | 2,527.69 | 5,957.10 | **0.424x** | 140.47 | 191.39 | **0.734x** |
+| Q4 exact public | 2,530.58 | 5,466.92 | **0.463x** | 118.40 | 125.74 | **0.942x** |
+| Q8 exact core | 4,152.27 | 6,257.62 | **0.664x** | 137.82 | 158.11 | **0.872x** |
+| Q8 exact public | 4,074.10 | 5,591.25 | **0.729x** | **113.95** | 110.89 | **1.028x** |
+
+Q4 loses all four measures in **0/5 blocks**. Q8 public decode wins 5/5, but its
+prefill and core scopes fail. Fresh canonical shape-only rows independently give
+Q4 **0.377x pp / 0.595x tg** and Q8 **0.690x / 0.697x**; they are supplemental
+because llama-bench controls its own token inventory. An accidentally requested
+nonexistent ICD path produced a CPU-labeled row; it is explicitly invalid and
+was replaced by `radeon_icd.json` Vulkan rows.
+
+Memory remains controlled: hipEngine Q4 owns **1,017.6 MiB** versus llama's
+**1,015.4 MiB** declared device buffers (near equal). hipEngine Q8 owns **981.8
+MiB** versus llama's **1,281.8 MiB** (23.4% lower). These are tracked-owned versus
+declared-buffer scopes, not identical whole-card peaks.
+
+D08-scoped G1 correctness/focused tests pass. The required milestone-wide test
+attempt was stopped at 16% after concurrent closure timing invalidated it; before
+stop it exposed existing scoreboard compactness/link failures and a local 27B
+MTP-fixture assumption. Focused build, scheduler, D5, and closure-fixture bundles
+pass, but no all-green milestone suite is claimed or automatically repeated.
+
+G3 is **blocked**, not complete. Q4 does not match Vulkan in any required scope,
+and all bounded D08 packages are already accepted/exhausted or rejected. Do not
+open D08-T1. A production Vulkan backend, hand ISA, or reopened arithmetic family
+would be an architectural campaign extension and requires human approval plus a
+new non-gamed complete-package contract.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -1426,8 +1481,8 @@ layout, activation reuse, or submission class.
 | ID | Work | Exit gate | Status |
 | --- | --- | --- | --- |
 | **D08-C0** | Rerun Q4_K_M and Q8_0 route matrix: fallback; forced bulk+WMMA+GEMV eager; forced fast route + production graph. Test host/device embedding only where supported. | **Complete:** exact quant/file hashes, effective routes, finite logits, 1+5 samples, serial fresh llama rows, and memory captured in the C0 artifact. | completed |
-| **D08-C1** | Build shared 512-token and 128 teacher-forced token fixtures for both engines. Separate core model and public greedy timing. | Exact token inventory hashes match; sampler ownership is explicit. | pending |
-| **D08-C2** | Freeze hardware/software snapshot and interleaved comparison script. | Reproducible command bundle with clocks and clean provenance. | pending |
+| **D08-C1** | Build shared 512-token and 128 teacher-forced token fixtures for both engines. Separate core model and public greedy timing. | **Complete:** `.Q` x512 is exactly token 9707 x512 in both engines/quants; continuation is 9707 x128 with committed RLE/int64 hashes. | completed |
+| **D08-C2** | Freeze hardware/software snapshot and interleaved comparison script. | **Complete:** pinned HIP/llama harnesses, five counter-rotated blocks, hardware/software/clocks, exact commands, and raw hashes are retained. | completed |
 
 ### M lane — full module attribution
 
@@ -1443,6 +1498,8 @@ layout, activation reuse, or submission class.
 | **D08-M8** | Mandatory post-P4 Q4 semantic replacement capture and rerank. | **Complete:** 99.46% prefill reconciliation; Q direct markers fall 64.05%, every >=1% prefill package is exhausted, and P5 remains parked at 0.82%. | completed |
 | **D08-M9** | Mandatory post-D3 production graph/direct rerank. | **Complete:** current Q4 graph is 111.93 tok/s / 310 nodes at 97.60% stage coverage; full-attention core/KV leads at 1.431 ms / 16.02%, ahead of dense 12.32% and linear projections 10.60%. | completed |
 | **D08-M10** | Mandatory post-D4 production graph/direct rerank. | **Complete:** current Q4/Q8 graphs are 120.62/119.14 tok/s at 310/288 nodes; D4 core/KV falls 0.512/0.492 ms, and Q4 dense projections lead at 1.063 ms / 12.82%. | completed |
+| **D08-M11** | Mandatory post-D3B production graph/direct rerank. | **Complete:** current graph is 120.21/117.80 tok/s at 286/288 nodes; D3B Q4 dense movement is -0.102 ms and D5 is admitted. | completed |
+| **D08-M12** | Mandatory post-D5 production graph/direct rerank. | **Complete:** current graph is 119.88/117.18 tok/s at 286/288 nodes; Q4 joined norm moves -0.11224 ms with exact trajectories and >97% coverage. | completed |
 
 No implementation lane starts before `D08-C0` and the relevant M lane identify
 a shipped owner. A trivial route correction from C0 may be retained immediately
@@ -1475,9 +1532,9 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 
 | ID | Work | Exit gate | Status |
 | --- | --- | --- | --- |
-| **D08-G1** | Full correctness and regression packet. | CPU-reference KL/top-1, deterministic repeats, touched-state checks, focused tests, and Q8 guard all pass. | pending |
-| **D08-G2** | Same-session interleaved Q4/Q8 final comparison. | Q4_K_M hipEngine median pp512 and tg128 match or exceed fresh llama.cpp medians; Q8_0 does not regress from its accepted route; both timing scopes reported. | pending |
-| **D08-G3** | Publish retained artifact/scoreboard/changelog and close campaign. | Exact commands and module ledger committed; no open required 0.8B work. | pending |
+| **D08-G1** | Full correctness and regression packet. | **D08-scoped pass:** CPU/D5 category/state/determinism/Q8/focused gates pass. **Milestone-wide block:** broad suite attempt exposed unrelated existing failures and was not completed. | scoped pass / broad blocked |
+| **D08-G2** | Same-session interleaved Q4/Q8 final comparison. | **Failed:** exact Q4 core is 0.424x pp / 0.734x tg and public is 0.463x / 0.942x; every required Q4 measure loses 0/5 blocks. | blocked-parity |
+| **D08-G3** | Publish retained artifact/scoreboard/changelog and close campaign. | Blocked by G2 and the missing all-green milestone suite; exact commands/module ledger are published without claiming closure. | blocked |
 | **D08-T1** | Open 27B transfer campaign and re-profile from zero. | D08-G3 complete; no 0.8B ratio is copied as 27B evidence. | blocked by D08-G3 |
 
 ## 7. First-pass decision tree
