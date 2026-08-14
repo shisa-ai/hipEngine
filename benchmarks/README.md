@@ -152,9 +152,13 @@ operational width, so P7 closes without a production change. P4 then retains
 sole Q4T16 for six Q4_K `[N4096,K1024]` full-attention Q projections, improving
 paired graph pp512 **2380.52 -> 2494.52 tok/s (+4.79%, 5/5)** and production
 graph tg128 **100.58 -> 102.00 tok/s (+1.41%, 4/5)** at **447/450 top-1 / max
-KL 0.003574**, exact trajectories, and **-4.13 MiB**. Mandatory M8 re-profile is
-next; decode arithmetic remains blocked behind the graph/direct census. This
-campaign row is not yet a final cross-engine topline; see the [`Q4T16 attention-Q route`](results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json),
+KL 0.003574**, exact trajectories, and **-4.13 MiB**. Mandatory M8 then
+reconciles **222.08/223.29 ms (99.46%)** of pp512 wall, confirms Q
+**7.54 -> 2.71 ms (-64.05%)**, and closes every >=1% prefill package as
+accepted/exhausted or rejected; P5 remains parked at **0.82%**. D08-M2
+graph/direct census is next for decode ownership. This campaign row is not yet
+a final cross-engine topline; see the [`post-P4 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-p4-rerank.json),
+[`Q4T16 attention-Q route`](results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json),
 [`P4 full-attention audit`](results/2026-08-14-gfx1151-qwen35-08b-p4-full-attention-audit.json),
 [`P7 gate closure`](results/2026-08-14-gfx1151-qwen35-08b-q4-gate-routes-rejected.json),
 [`P7 residual audit`](results/2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json),
