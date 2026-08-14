@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "diagnostic_profile_complete_next_lane_selected",
+  "title": "Qwen3.6-27B post-pair-full-Q retained-package M512 prefill profile",
+  "performance_claim": false,
+  "commit": "2762ef71b",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "scope": "one cached selector-unset prefill-only M512 rocprofv3 kernel trace after full-engine qualification of bounded pair-produced full-attention Q; profiler wall is diagnostic only",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b -o qwen36-post-pair-fullq-prefill512 -- /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b/bench.json"
+  },
+  "profile": {
+    "profiled_wall_ms": 874.5910581201315,
+    "kernel_sum_ms": 513.201633,
+    "kernel_dispatches": 4038,
+    "profiler_host_submission_sync_residual_ms": 361.3894251201315,
+    "tracked_peak_gib": 15.605462968349457,
+    "generated_preview_token_id": 9707,
+    "families": [
+      {
+        "name": "dual Q4T16 FFN gate/up plus SiLU",
+        "dispatches": 64,
+        "kernel_ms": 209.395491,
+        "kernel_share_percent": 40.8017974876553
+      },
+      {
+        "name": "bounded source-F16 rocBLAS GEMMs",
+        "dispatches": 840,
+        "kernel_ms": 133.10374,
+        "kernel_share_percent": 25.935954104806985
+      },
+      {
+        "name": "linear-attention prepare/conv/GDN/gate",
+        "dispatches": 240,
+        "kernel_ms": 42.07423,
+        "kernel_share_percent": 8.19838194084624
+      },
+      {
+        "name": "remaining exact dense Q4T16",
+        "dispatches": 48,
+        "kernel_ms": 31.111126,
+        "kernel_share_percent": 6.062164264391575
+      },
+      {
+        "name": "unequal Q4T16 QKV/gate pair",
+        "dispatches": 24,
+        "kernel_ms": 25.858931,
+        "kernel_share_percent": 5.038746827214402
+      },
+      {
+        "name": "other norms, residuals, fills, copies and control",
+        "dispatches": 846,
+        "kernel_ms": 14.299611,
+        "kernel_share_percent": 2.786353370781265
+      },
+      {
+        "name": "bounded Q4T16 to F16 pair producers",
+        "dispatches": 360,
+        "kernel_ms": 14.782395,
+        "kernel_share_percent": 2.880426337224847
+      },
+      {
+        "name": "dense F32-weight projections",
+        "dispatches": 96,
+        "kernel_ms": 12.840529,
+        "kernel_share_percent": 2.502043675297502
+      },
+      {
+        "name": "bounded Q6T16 to F16 record producers",
+        "dispatches": 288,
+        "kernel_ms": 9.394761,
+        "kernel_share_percent": 1.830617908419633
+      },
+      {
+        "name": "flash attention",
+        "dispatches": 16,
+        "kernel_ms": 7.267534,
+        "kernel_share_percent": 1.416116694235071
+      },
+      {
+        "name": "FP16 to BF16 output casts",
+        "dispatches": 840,
+        "kernel_ms": 4.846352,
+        "kernel_share_percent": 0.944336823651534
+      },
+      {
+        "name": "BF16 to FP16 activation casts",
+        "dispatches": 184,
+        "kernel_ms": 4.343056,
+        "kernel_share_percent": 0.84626698761888
+      },
+      {
+        "name": "bounded Q5T16 to F16 octet producers",
+        "dispatches": 192,
+        "kernel_ms": 3.883877,
+        "kernel_share_percent": 0.756793577856756
+      }
+    ]
+  },
+  "comparison_to_post_q5_octet_profile": {
+    "prior_commit": "7356ef250",
+    "kernel_sum_ms": {
+      "prior": 516.649173,
+      "current": 513.201633,
+      "delta_ms": -3.4475400000000036,
+      "delta_percent": -0.6672883999758183
+    },
+    "dispatches": {
+      "prior": 3750,
+      "current": 4038,
+      "delta": 288,
+      "reason": "Each of 16 full-Q projections replaces one exact launch with six source-F16 tiles: 96 producer, 96 GEMM, 96 output-cast launches plus 16 activation casts."
+    },
+    "full_q_operation_complete": {
+      "prior_exact_q4_ms": 22.459476,
+      "current_producer_ms": 3.331244,
+      "current_gemm_ms": 12.780393,
+      "current_activation_cast_ms": 0.205401,
+      "current_output_cast_ms": 0.714983,
+      "current_total_ms": 17.032021,
+      "saved_ms": 5.427454999999998,
+      "delta_percent": -24.165545981571423,
+      "interpretation": "The intended full-Q operation boundary improves materially. Net kernel-sum saving is smaller because unrelated one-shot families drift. Authoritative wall evidence remains the published counterbalanced full-engine A/B."
+    },
+    "ownership": {
+      "q4_pair_producer_launches": 360,
+      "q4_scalar_producer_launches": 0,
+      "new_full_q_pair_launches": 96
+    }
+  },
+  "cross_engine_snapshot": {
+    "llamacpp_hip_prefill_tok_s": {
+      "512": 964.606,
+      "1024": 981.04,
+      "4096": 946.733
+    },
+    "hipengine_prefill_tok_s": {
+      "512": 957.4891135954047,
+      "1024": 995.0701679711677,
+      "4096": 983.4825581925655
+    },
+    "hipengine_vs_hip_percent": {
+      "512": -0.737802419287803,
+      "1024": 1.4301321017662572,
+      "4096": 3.881723589709618
+    },
+    "frozen_hip_plus_1_gate_margin_percent": {
+      "512": -1.7205964547404085,
+      "1024": 0.42587336808541654,
+      "4096": 2.8531916729798157
+    }
+  },
+  "next_lane": {
+    "selected": "adjacent-pair-produced Q4T16 linear-attention gate source-F16 sharing the admitted Q6-QKV activation cast",
+    "reason": "After full-Q leaves the exact family, all remaining exact Q4T16 work is 24 unpaired K5,120/N6,144 linear-attention gates costing 31.111 ms / 6.06% of M512 kernel sum. The prior gate rejection used the now-superseded scalar Q4 producer and missed W7900 M512 by only 0.047%. Each gate shares a BF16 norm input with an already-qualified Q6 K5,120/N10,240 QKV source-F16 projection. Replacing only the Q4 scalar producer with the exact adjacent-pair producer and using the existing pair ABI removes the second activation cast, a materially new byte-neutral operation boundary.",
+    "first_gate": "Compare actual Q6-QKV plus Q4-gate pairs against the retained Q6 candidate plus exact Q4 singleton at M512 and M1024 on both gfx1100 boards. Candidate must use the existing shared-activation pair ABI and exact adjacent-pair Q4 producer, fit current scratch, preserve Q6 and final BF16 bytes, and win every binding cell before any runtime policy change. Keep 4K and all decode/MTP/model/backend misses exact unless independently admitted.",
+    "ceiling_note": "The 31.111-ms exact gate family is the immediate operation-boundary ceiling. A prior scalar-producer component screen estimated only 3.702 ms M512 saving; pair ownership and shared activation are the new mechanism, not a guarantee of full-family removal.",
+    "excluded_by_fresh_profile": [
+      "Do not reopen blind dual-Q4 FFN geometry, GDN, attention, direct-BF16 output, source-F16 ping-pong, or small residual launch work; all are closed by prior cross-board or leaf evidence.",
+      "Do not change the full-Q M2048/4K ceiling; the fresh trace validates only retained M512 ownership.",
+      "Do not add raw-Q sidecars, persistent planes, or wider tile workspace."
+    ]
+  },
+  "sources": {
+    "bench": "/tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b/bench.json",
+    "bench_sha256": "39599f9d5e011f270eb970a8d89bff276b755db14b3627e5f15f388cb2765986",
+    "kernel_trace": "/tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b/qwen36-post-pair-fullq-prefill512_kernel_trace.csv",
+    "kernel_trace_sha256": "19ddbbbc462448fe9d0e573978714db3d4866e4a22c35c0bee0a9c02cfe5caaf",
+    "summary": "/tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b/summary.json",
+    "summary_sha256": "40f3bef80f50280c3d979e24c4c54fc88d72c0b95636b989edebb9eecd4145b1",
+    "rocprof_log": "/tmp/qwen36-27b-post-pair-fullq-profile-2762ef71b/rocprof.log",
+    "rocprof_log_sha256": "050152d88a50d97a7e2b4bcfad2f4580520eec1f5eeda99065fabfbd0ba4ce6a"
+  },
+  "decision": "Retain the qualified pair-produced full-Q route unchanged, publish its operation-complete 5.427-ms profile saving, and reopen only the Q6-QKV/Q4-gate pair with the later exact pair producer plus shared activation. This diagnostic profile changes no production path and makes no new throughput claim."
+}

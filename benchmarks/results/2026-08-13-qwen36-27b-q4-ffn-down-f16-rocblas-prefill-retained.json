@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_model_scoped_changed_arithmetic_prefill",
+  "title": "Qwen3.6-27B sole-T16 bounded Q4 FFN-down F16 rocBLAS prefill",
+  "performance_claim": true,
+  "implementation_revision": "uncommitted child of adb2b72b717490f74d258bf30b8cb35d68a5d690; committed with this artifact",
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "arch": "gfx1100",
+      "hip_visible_device": 1
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "hip_visible_device": 0,
+      "role": "safeguard"
+    }
+  ],
+  "software": {
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "parent_commit": "adb2b72b717490f74d258bf30b8cb35d68a5d690"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_fingerprint": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7"
+  },
+  "change": {
+    "description": "Dequantize sole-resident Q4T16 FFN-down weights one bounded F16 output tile at a time, cast the dead BF16 FFN intermediate in place, execute FP16 rocBLAS GEMM, and cast output tiles to BF16.",
+    "persistent_weight_layouts_per_tensor": 1,
+    "raw_q4_sidecar": false,
+    "f16_weight_sidecar": false,
+    "workspace": "existing three liveness-aliased Q6 prefill scratch views; Q4 FFN-down activation cast in place",
+    "dispatch_scope": "Qwen3.6-27B MOSTLY_Q4_K_M, dense FFN-down shape K=17408/N=5120, rows 512-4096; exact fallback otherwise",
+    "unchanged_owners": [
+      "Q4 gate/up",
+      "Q4 attention projections",
+      "all rows below 512",
+      "decode",
+      "MTP",
+      "peer backends"
+    ]
+  },
+  "component_actual_weight_screen": {
+    "tensor": "blk.8.ffn_down.weight",
+    "shape_n_k": [5120, 17408],
+    "best_tile_by_rows": {
+      "512": 1024,
+      "1024": 512,
+      "4096": 512
+    },
+    "speedup_by_rows": {
+      "512": 1.4027816431666191,
+      "1024": 1.340961974966817,
+      "4096": 1.2232460005164036
+    },
+    "sources": [
+      "/tmp/qwen36-q4-t16-f16-rocblas-screen.json",
+      "/tmp/qwen36-q4-t16-f16-rocblas-screen-1k-4k.json"
+    ],
+    "rejected_scope": "Q4 FFN gate/up lose or are noise-flat; attention shapes were not admitted because they are smaller/variable wins and require a different scratch lifetime."
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompts": 10,
+    "teacher_forced_transitions": 330,
+    "candidate_dispatches_asserted": {
+      "q4": 640,
+      "q6": 1280
+    },
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "max_transition_kl": 0.03175830896233544,
+    "candidate_repeats_exact": true,
+    "gate": "KL <= 0.05 and top1 >= 90%",
+    "passed": true,
+    "source": "/tmp/qwen36-q4q6-t16-f16-rocblas-quality-production-interval.json"
+  },
+  "xtx_engine": {
+    "protocol": "one warmup plus three measured persistent-session PM4 resets; p512/p1024/p4096 and d128",
+    "command_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "rows": [
+      {
+        "workload": "512/128",
+        "prefill_tok_s_before": 780.8486439320783,
+        "prefill_tok_s_samples_after": [797.8250329416259, 801.3264331512296, 802.6775244443255],
+        "prefill_tok_s_median_after": 801.3264331512296,
+        "prefill_delta_percent": 2.622504294306305,
+        "decode_tok_s_before": 33.592447529666366,
+        "decode_tok_s_median_after": 33.52255516004547,
+        "decode_delta_percent": -0.20805977164709555,
+        "tracked_peak_gib_before": 15.605462968349457,
+        "tracked_peak_gib_after": 15.605462968349457,
+        "hip_used_peak_sampled_gib_after": 15.95849609375,
+        "finite": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4f16-candidate-512x128-r3.json"
+      },
+      {
+        "workload": "1024/128",
+        "prefill_tok_s_before": 839.3360092105248,
+        "prefill_tok_s_samples_after": [859.4844363268907, 860.2469061490488, 855.5102775107298],
+        "prefill_tok_s_median_after": 859.4844363268907,
+        "prefill_delta_percent": 2.4005198031855413,
+        "decode_tok_s_before": 34.52365113115563,
+        "decode_tok_s_median_after": 34.51370216412796,
+        "decode_delta_percent": -0.02881782981143388,
+        "tracked_peak_gib_before": 15.720211334526539,
+        "tracked_peak_gib_after": 15.720211334526539,
+        "hip_used_peak_sampled_gib_after": 16.1142578125,
+        "finite": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4f16-candidate-1024x128-r3.json"
+      },
+      {
+        "workload": "4096/128",
+        "prefill_tok_s_before": 827.208541243452,
+        "prefill_tok_s_samples_after": [847.2834371328755, 847.7981861255469, 846.6918054134924],
+        "prefill_tok_s_median_after": 847.2834371328755,
+        "prefill_delta_percent": 2.4268240580842093,
+        "decode_tok_s_before": 31.39221756218619,
+        "decode_tok_s_median_after": 31.386630277364382,
+        "decode_delta_percent": -0.017798311988437288,
+        "tracked_peak_gib_before": 16.367618195712566,
+        "tracked_peak_gib_after": 16.367618195712566,
+        "hip_used_peak_sampled_gib_after": 16.7578125,
+        "finite": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "source": "/tmp/qwen36-q4f16-candidate-4096x128-r3.json"
+      }
+    ]
+  },
+  "w7900_safeguard": {
+    "command_template": "same engine command with HIP_VISIBLE_DEVICES=0",
+    "rows": [
+      {
+        "workload": "512/128",
+        "prefill_tok_s_before": 709.1707765453075,
+        "prefill_tok_s_after": 725.8486514370455,
+        "prefill_delta_percent": 2.351743112284388,
+        "decode_tok_s_after": 28.420196479026085,
+        "tracked_peak_gib": 15.605462968349457,
+        "source": "/tmp/qwen36-q4f16-candidate-w7900-512x128-r3.json"
+      },
+      {
+        "workload": "1024/128",
+        "prefill_tok_s_before": 759.1036778593307,
+        "prefill_tok_s_after": 777.50822849117,
+        "prefill_delta_percent": 2.4245107972260316,
+        "decode_tok_s_after": 29.006830558162605,
+        "tracked_peak_gib": 15.720211334526539,
+        "source": "/tmp/qwen36-q4f16-candidate-w7900-1024x128-r3.json"
+      },
+      {
+        "workload": "4096/128",
+        "prefill_tok_s_before": 737.8279998817662,
+        "prefill_tok_s_after": 751.9819880326097,
+        "prefill_delta_percent": 1.9183316644409754,
+        "decode_tok_s_after": 26.27021363903669,
+        "tracked_peak_gib": 16.367618195712566,
+        "source": "/tmp/qwen36-q4f16-candidate-w7900-4096x128-r3.json"
+      }
+    ]
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 ... rocprofv3 --kernel-trace ... -- python /tmp/qwen36_q4_t16_f16_rocblas_production_profile.py --rows 512 --tiles 1024 --warmups 0 --samples 1",
+    "trace": "/tmp/qwen36-q4-f16-rocprof/q4-f16-production_kernel_trace.csv",
+    "named_producer_calls": 10,
+    "named_producer_sum_ms": 1.450896,
+    "named_rocblas_gemm_calls": 10,
+    "named_rocblas_gemm_sum_ms": 4.251006,
+    "named_cast_calls": 12,
+    "named_cast_sum_ms": 0.224163,
+    "compiler_invocations_in_profiled_process": 0,
+    "note": "Profiler overhead makes its wall timing diagnostic only; named kernel execution and plausible durations satisfy the kernel trace gate."
+  },
+  "validation": {
+    "focused": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q6_k_f16_rocblas_prefill.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_gguf_runner.py",
+    "result": "99 passed, 9 skipped",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat; known unrelated nano-vllm-amd drift only"
+  },
+  "llamacpp_gap_after": {
+    "hip_prefill_tok_s": [964.606, 981.04, 946.733],
+    "hipengine_prefill_tok_s": [801.3264331512296, 859.4844363268907, 847.2834371328755],
+    "hipengine_percent_below": [16.927073525228998, 12.390479865561987, 10.504499459417216]
+  },
+  "decision": "Retain as the Qwen3.6-27B dense FFN-down prefill default. It improves every measured full-engine prefill row by 2.40-2.62% on XTX and 1.92-2.42% on W7900, keeps decode neutral, preserves tracked residency and one persistent T16 weight layout, passes the complete category quality gate, and leaves exact gate/up/attention/decode/MTP/fallback owners unchanged."
+}

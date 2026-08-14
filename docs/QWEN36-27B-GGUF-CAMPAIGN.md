@@ -4,10 +4,29 @@ Status: **superseded for current gfx1100 package ownership by the 2026-08-12
 single-layout campaign.** This W7900 study remains the historical Vulkan-parity
 optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
 both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
-fits the 24-GiB card; its XTX cross-engine campaign closes explicitly blocked on
-prefill, memory, 4K decode, and Vulkan MTP rather than claiming full parity. See
-[`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) and
-[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
+fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on the 512
+HIP+1% prefill margin, memory, 4K decode, and Vulkan MTP rather than claiming
+full parity. The prefill lane reopened after materially new byte-neutral Q4
+dual-output, exact unequal-Q4 and selective packed-column source-F16 owners,
+bounded pair-produced full-attention Q, ordered pair-only Q6-QKV/Q4-gate
+ownership, Q5 source-F16 plus its exact natural-octet producer, the exact
+record-owned Q6 producer, and shape-scoped rocBLAS policies reached **0.06%
+raw-HIP lead at 512**, reached **2.26% raw-HIP lead at 1K** (and cleared HIP+1%
+by 1.25%), and cleared the frozen HIP+1% 4K gate by **2.81%**. That projection-only reopen was later superseded by a new GDN dataflow:
+normalized Q/K are materialized once per K head rather than per value head while
+preserving peer-wave32 output/state bits. The compact route improves complete
+GDN-chain wall **1.061-1.116x** and full prefill **+0.62% to +1.17%** across
+512/1K/4K on both gfx1100 boards, with all **42/42** engine pairs winning,
+unchanged tracked peaks, and no decode/MTP owner change. A fresh independent
+selector-unset XTX matrix now measures **977.397/1012.309/987.809 tok/s** at
+512/1K/4K, passing the frozen HIP+1% gates by **0.323%/2.166%/3.306%** with
+non-regressive decode, exact IDs, unchanged tracked peaks, and clean teardown.
+The prefill objective is closed; memory, 4K decode, and Vulkan MTP remain
+separate blockers. See
+[`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
+[`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
+[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json), and
+[`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -2124,6 +2143,20 @@ reranking. Artifact:
 | 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | complete; submission residual **41.346 -> 20.467 ms** and parent/child is rejected; latest Q5/wide-Q6 ladders remain exhausted; exact compact K plus sole-resident planar-Q6 V reduce K/V **4.958 -> 3.762 ms**, then source Q6/Q4 K/V routes lose at binding economics and are removed; final Vulkan-source root rows win in isolation but required matching c1 makes MTP root **72.611 -> 74.099 ms (+2.05%)**, so all temporary code is removed and every ranked module is either retained-improved or source-audited exhausted |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning, or close by measured exhaustion. | complete by exhaustion; clean populated controls beat Vulkan, post-module B3 is **61.147** and retained canonical is **61.394** versus selected Vulkan B4 **69.798 tok/s**; no current mechanism closes the 12.04-12.39% gap |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | complete as a below-parity publication; rejected source routes are removed and no Qwen3.6-specific refactor debt remains |
+
+### Post-campaign dense-KV diagnostic
+
+The 24Q/4KV/head-256 direct INT8 split-K consumer is now implemented,
+CPU-reference gated, and traced at `73,321 ns`. This closes the former missing-
+kernel blocker but does **not** promote compressed K/V. Pure per-token/head INT8
+with FP32 scales fails the complete 512/8 suite at **77.78%** minimum-prompt
+top-1. A deterministic 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16
+quality plus bounded mixed 8K/16K/32K rows, but at 32K its chunk-outer BF16
+prefill oracles raise tracked peak `18.177 -> 18.625 GiB`; graph admission is
+unsafe, eager 4K/128 decode is `10.52%` below BF16 graph, and the seven oracle
+pairs project to `7 GiB` at 256K. BF16 remains the sole supported/default 27B
+cache route; no temporal-tail or prompt-conditioned policy is admitted. Artifact:
+`benchmarks/results/2026-08-13-qwen36-27b-int8-kv-fp32-mixed-layer-diagnostic.json`.
 
 ### Historical first pass
 

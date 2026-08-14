@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "objective_not_met_candidate_ladder_exhausted",
+  "title": "Qwen3.6-27B single-layout prefill target exhaustion audit",
+  "performance_claim": false,
+  "parent_commit": "f8d75de67",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "primary": "AMD Radeon RX 7900 XTX",
+    "safeguard": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "engine_workloads": ["512/128", "1024/128", "4096/128"],
+    "prompt": "token 9707 repeated to the requested prompt length",
+    "external_comparator": "clean same-commit llama.cpp c8e03ce8122b HIP llama-bench",
+    "external_speed_policy": "hipEngine must exceed the faster comparator by 1%",
+    "quality_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "quality_scope": "10 prompts, all code/general_en/general_ja/mixed_ja_en categories, 330 teacher-forced transitions",
+    "memory_policy": "one persistent payload per immutable weight and no added tracked workspace"
+  },
+  "cumulative_engine_result": {
+    "interpretation": "The conservative public row chains the independently measured Q6 and Q4 FFN-down medians. The later narrow K/V and attention-output defaults are retained from sequential same-session A/B because their sub-percent increments are smaller than independent load/thermal drift; their compounded estimate is disclosed but is not a new topline measurement.",
+    "rows": [
+      {
+        "workload": "512/128",
+        "prefill_tok_s_before_ladder": 727.9607094992731,
+        "conservative_prefill_tok_s_after": 801.3264331512296,
+        "conservative_cumulative_delta_percent": 10.078253220894439,
+        "retained_narrow_kv_paired_delta_percent": 0.3261174671435496,
+        "retained_attention_output_paired_delta_percent": 0.3497192964232454,
+        "paired_compounded_prefill_tok_s_estimate_not_topline": 806.7512308762501,
+        "paired_compounded_cumulative_delta_percent": 10.823457962610794,
+        "llamacpp_hip_prefill_tok_s": 964.60567,
+        "conservative_percent_below_llamacpp": 16.92704510525741,
+        "conservative_throughput_increase_required_for_parity_percent": 20.376120154513334,
+        "paired_estimate_percent_below_llamacpp": 16.364660092009398,
+        "paired_estimate_throughput_increase_required_for_parity_percent": 19.5666809150445,
+        "paired_estimate_throughput_increase_required_for_frozen_1pct_gate_percent": 20.7623816008089
+      },
+      {
+        "workload": "1024/128",
+        "prefill_tok_s_before_ladder": 785.3466054220361,
+        "conservative_prefill_tok_s_after": 859.4844363268907,
+        "conservative_cumulative_delta_percent": 9.440141511150202,
+        "retained_narrow_kv_paired_delta_percent": 0.1717116726357215,
+        "retained_attention_output_paired_delta_percent": 0.3058065290540979,
+        "paired_compounded_prefill_tok_s_estimate_not_topline": 863.5931441511416,
+        "paired_compounded_cumulative_delta_percent": 9.963312783029954,
+        "llamacpp_hip_prefill_tok_s": 981.039726,
+        "conservative_percent_below_llamacpp": 12.39045539661554,
+        "conservative_throughput_increase_required_for_parity_percent": 14.142814521760316,
+        "paired_estimate_percent_below_llamacpp": 11.971643832174273,
+        "paired_estimate_throughput_increase_required_for_parity_percent": 13.599758479359059,
+        "paired_estimate_throughput_increase_required_for_frozen_1pct_gate_percent": 14.735741791227852
+      },
+      {
+        "workload": "4096/128",
+        "prefill_tok_s_before_ladder": 779.2426591460635,
+        "conservative_prefill_tok_s_after": 847.2834371328755,
+        "conservative_cumulative_delta_percent": 8.731654663436261,
+        "retained_narrow_kv_paired_delta_percent": 0.07873941861591405,
+        "retained_attention_output_paired_delta_percent": 0.07447036331342805,
+        "paired_compounded_prefill_tok_s_estimate_not_topline": 848.5820550653193,
+        "paired_compounded_cumulative_delta_percent": 8.898305951992125,
+        "llamacpp_hip_prefill_tok_s": 946.733397,
+        "conservative_percent_below_llamacpp": 10.504536988159552,
+        "conservative_throughput_increase_required_for_parity_percent": 11.737507840782712,
+        "paired_estimate_percent_below_llamacpp": 10.367368706512492,
+        "paired_estimate_throughput_increase_required_for_parity_percent": 11.566511611788144,
+        "paired_estimate_throughput_increase_required_for_frozen_1pct_gate_percent": 12.682208431381081
+      }
+    ],
+    "decode_tok_s_before_ladder": [33.50844458851885, 34.53699587727266, 31.391086180916275],
+    "decode_tok_s_after_conservative_matrix": [33.52255516004547, 34.51370216412796, 31.386630277364382],
+    "decode_cumulative_delta_percent": [0.04211049393636479, -0.06744568412223595, -0.014194805258449517],
+    "tracked_peak_gib_unchanged": [15.605462968349457, 15.720211334526539, 16.367618195712566],
+    "mtp_dispatch_changed": false,
+    "weight_residency_changed": false
+  },
+  "final_quality": {
+    "source": "/tmp/qwen36-q4q6-t16-f16-rocblas-quality-attn-output.json",
+    "prompts": 10,
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "max_transition_kl": 0.017444265163107264,
+    "candidate_repeats_exact": true,
+    "passed": true
+  },
+  "post_route_512_profile": {
+    "scope": "one rocprofv3 kernel-trace run of cached current production prefill at commit c2e2369c9; profiler-perturbed wall is diagnostic and not a throughput topline",
+    "child_command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-27b-current-final-prefill-profile/bench.json",
+    "profiled_wall_ms": 1062.101675197482,
+    "kernel_dispatches": 3318,
+    "kernel_sum_ms": 612.422593,
+    "host_submission_sync_profiler_residual_ms": 449.679082197482,
+    "families": [
+      {"name": "remaining exact dense Q4T16", "dispatches": 216, "kernel_ms": 327.801609, "kernel_share_percent": 53.52539451463378},
+      {"name": "bounded Q4T16 to F16 producers", "dispatches": 264, "kernel_ms": 16.620601, "kernel_share_percent": 2.7139104908887646},
+      {"name": "bounded Q6T16 to F16 producers", "dispatches": 288, "kernel_ms": 22.483456, "kernel_share_percent": 3.671232292372336},
+      {"name": "rocBLAS F16 GEMMs for bounded Q4/Q6", "dispatches": 552, "kernel_ms": 100.622441, "kernel_share_percent": 16.430230065010026},
+      {"name": "exact dense Q5T16", "dispatches": 48, "kernel_ms": 59.859813, "kernel_share_percent": 9.774265953640283},
+      {"name": "linear-attention prepare/conv/GDN/gate", "dispatches": 240, "kernel_ms": 41.104525, "kernel_share_percent": 6.7117910850816696},
+      {"name": "dense F32-weight projections", "dispatches": 96, "kernel_ms": 12.717726, "kernel_share_percent": 2.076625870006073},
+      {"name": "flash attention", "dispatches": 16, "kernel_ms": 7.187668, "kernel_share_percent": 1.1736451401622279},
+      {"name": "BF16/F16/F32 conversions", "dispatches": 768, "kernel_ms": 7.784745, "kernel_share_percent": 1.2711394205536763},
+      {"name": "runtime fills and copies", "dispatches": 503, "kernel_ms": 4.78349, "kernel_share_percent": 0.7810766706968957},
+      {"name": "other norms, residuals, activation and control kernels", "dispatches": 327, "kernel_ms": 11.456519, "kernel_share_percent": 1.8706884969542592}
+    ],
+    "raw_bench_sha256": "95e3bc0921221025bef4b23bd251210acba21f71e43d6325fb1b4d408c68a7f5",
+    "raw_kernel_trace_sha256": "f56e41292b319550bbb0a246e4510349621ebd627a1ee4bcbe92fc31a1006689"
+  },
+  "candidate_ledger": [
+    {
+      "lane": "dense Q4T16 x Q8_1 source-shaped integer MMQ",
+      "status": "rejected_removed",
+      "evidence": "spill-free I128/J128 consumer reached only 0.473x retained FP16-WMMA speed; I64/J64 also lost",
+      "artifact": "benchmarks/results/2026-08-12-qwen36-27b-q4t16-source-shaped-dense-mmq-rejected.json"
+    },
+    {
+      "lane": "bounded Q6T16 source-F16/rocBLAS",
+      "status": "retained_default",
+      "evidence": "full-engine prefill +7.27%/+6.87%/+6.16% at 512/1K/4K, quality/decode/residency gates pass",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json"
+    },
+    {
+      "lane": "dense Q5T16 x Q8_1 source-shaped integer MMQ",
+      "status": "rejected_removed",
+      "evidence": "integer consumer is 3.04% slower and pack-inclusive path is 4.40% slower than retained FP16-WMMA",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q5t16-source-shaped-dense-mmq-rejected.json"
+    },
+    {
+      "lane": "bounded Q4T16 FFN-down source-F16/rocBLAS",
+      "status": "retained_default",
+      "evidence": "full-engine prefill +2.62%/+2.40%/+2.43% at 512/1K/4K, quality/decode/residency gates pass",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json"
+    },
+    {
+      "lane": "bounded Q4T16 full-attention K/V source-F16/rocBLAS",
+      "status": "retained_default",
+      "evidence": "counterbalanced XTX +0.326%/+0.172%/+0.079% and W7900 +0.123%/+0.203%/+0.315%",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-narrow-attention-f16-prefill-retained.json"
+    },
+    {
+      "lane": "bounded Q4T16 full-attention output source-F16/rocBLAS",
+      "status": "retained_default",
+      "evidence": "counterbalanced XTX +0.350%/+0.306%/+0.074% and W7900 +0.096%/+0.299%/+0.301%",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json"
+    },
+    {
+      "lane": "bounded Q4T16 linear-attention gate source-F16/rocBLAS",
+      "status": "rejected_removed",
+      "evidence": "XTX and W7900 1K/4K improve, but the 15-pair W7900 512 confirmation is -0.047% with 7/15 wins",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-linear-attention-gate-f16-prefill-rejected.json"
+    },
+    {
+      "lane": "bounded Q4T16 FFN gate/up source-F16/rocBLAS",
+      "status": "not_admitted_nonuniform",
+      "evidence": "actual FFN-gate representative is 0.900x at M512 and does not win uniformly across 512/1K/4K"
+    },
+    {
+      "lane": "bounded Q4T16 FFN-gate source-F16/hipBLASLt",
+      "status": "rejected_no_runtime_change",
+      "evidence": "best of 32 zero-algorithm-workspace heuristics is 0.691x/1.051x/1.183x retained exact T16 at M512/1K/4K; M512 loses 7/7 and the live handle adds 172 MiB of untracked device residency",
+      "artifact": "benchmarks/results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json"
+    },
+    {
+      "lane": "bounded wider Q4 attention Q/QKV source-F16/rocBLAS",
+      "status": "not_admitted_nonuniform",
+      "evidence": "Q loses at 4K; QKV has only 2/7 4K wins and a noise-scale 1.008x ratio"
+    },
+    {
+      "lane": "wider Q4 FFN-down F16 tiles",
+      "status": "rejected_memory",
+      "evidence": "leaf-positive candidates require approximately 61-346 MiB more transient workspace, violating the no-memory-regression objective"
+    },
+    {
+      "lane": "GDN pipeline fusion",
+      "status": "not_admitted_no_comparator_gap",
+      "evidence": "current 512 GDN pipeline is only 6.71% of kernel sum and prior matched module evidence already has the peer-wave GDN core ahead of its comparator; no new prefill-specific gap supports another implementation"
+    },
+    {
+      "lane": "flash attention, dense F32, casts, fills and copies",
+      "status": "not_admitted_insufficient_ceiling",
+      "evidence": "each family is 2.08% or less of current kernel sum, far below the remaining 11.57-19.57% throughput requirement even under the optimistic paired estimate"
+    }
+  ],
+  "decision": {
+    "objective_met": false,
+    "finding": "The retained ladder improves conservative 512/1K/4K prefill by 10.08%/9.44%/8.73% with neutral decode, unchanged tracked residency, unchanged MTP dispatch, and passing complete quality. Even the non-topline compounded paired estimate remains 16.36%/11.97%/10.37% below clean llama.cpp HIP and needs 19.57%/13.60%/11.57% more hipEngine throughput merely for parity.",
+    "action": "Close the current optimization objective as exhausted under the no-regression, single-layout, byte-neutral constraints. A post-closure zero-workspace hipBLASLt screen did not reopen it: the only large-row wins are non-uniform and the library handle regresses residency. Do not tune GDN, KV, attention, launch count, or already-rejected MMQ variants as a prefill-parity strategy.",
+    "reopen_conditions": [
+      "a materially new operation-complete sole-resident Q4 dataflow or representation",
+      "a producer-fused transient transform that removes bounded dequant/cast/GEMM traffic without adding tracked workspace",
+      "a compiler, driver, RDNA3 primitive, or upstream source change that materially changes the measured Q4/Q5 integer-MMQ economics",
+      "a new reconciled profile proving a different byte-neutral family has enough complete-wall ceiling and is uniformly non-regressive on both gfx1100 boards"
+    ]
+  },
+  "source_artifacts": [
+    "benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json",
+    "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q6-f16-rocblas-prefill-retained.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-ffn-down-f16-rocblas-prefill-retained.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-narrow-attention-f16-prefill-retained.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-attention-output-f16-prefill-retained.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-linear-attention-gate-f16-prefill-rejected.json",
+    "benchmarks/results/2026-08-13-qwen36-27b-q4-f16-hipblaslt-prefill-rejected.json"
+  ]
+}

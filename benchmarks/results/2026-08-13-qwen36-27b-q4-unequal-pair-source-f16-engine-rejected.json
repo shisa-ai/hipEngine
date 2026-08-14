@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_removed_q4_qkv_q4_gate_source_f16_runtime_owner",
+  "title": "Qwen3.6-27B Q4/Q4 unequal-pair source-F16 full-engine rejection",
+  "performance_claim": true,
+  "implementation_commits": {
+    "temporary_runtime_policy": "692f56dd9",
+    "request_row_correctness_fix_retained": "d43c769e1"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "selector": "HIP_VISIBLE_DEVICES=1",
+      "arch": "gfx1100"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "selector": "HIP_VISIBLE_DEVICES=0",
+      "arch": "gfx1100"
+    }
+  ],
+  "candidate": {
+    "scope": "24 Q4T16 K5,120/N10,240 QKV plus Q4T16 K5,120/N6,144 gate pairs at rows 512-2047",
+    "baseline": "retained exact unequal-output dual-WMMA shared-prefix plus QKV-tail owner",
+    "candidate": "one shared BF16-to-FP16 activation cast, exact adjacent-pair source-F16 producers for both projections, rocBLAS FP16 GEMMs, and BF16 output casts",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "fallback": "After rejection, all Q4/Q4 unequal pairs retain the exact dual-WMMA owner. The generic ordered pair machinery and independent request-row correctness fix remain for the retained mixed Q6/Q4 route."
+  },
+  "complete_category_quality": {
+    "status": "passed",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/qwen36_q4_unequal_pair_source_f16_quality.py",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "forced_prefix_transitions": 330,
+    "top1_matches": 320,
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "maximum_prompt_kl": 0.00564463002053749,
+    "all_candidate_repeats_byte_exact": true,
+    "asserted_added_pair_producer_launches": 1920,
+    "ownership_interpretation": "Each candidate prompt adds 24 Q4/Q4 layers x 8 pair-produced output tiles at M512 = 192 launches; ten prompts total 1,920. Mixed Q6/Q4 pairs remain unchanged.",
+    "source": "/tmp/qwen36-q4-unequal-pair-source-f16-quality.json",
+    "source_sha256": "ea0b606d32250358f0a0bd7e845f839b0d3c03fbd30e57c527a40fb6083759c7"
+  },
+  "counterbalanced_full_engine_ab": {
+    "protocol": "One resident session per board/shape; baseline removes only the Q4 K5,120/N10,240 source-F16 tile/variant/ceiling and ordered Q4/Q4 pair entry; candidate restores them; seven alternating pairs; p512 or p1024 plus d128; strict producer-count, token-trajectory, and tracked-peak checks.",
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/qwen36_q4_unequal_pair_source_f16_engine_ab.py --device <xtx|w7900> --rows <512|1024> --samples 7 --decode-tokens 128 --output <output>",
+    "rx_7900_xtx": {
+      "512": {
+        "baseline_prefill_tok_s": 967.5124619641721,
+        "candidate_prefill_tok_s": 969.4562660216715,
+        "median_delta_percent": 0.2009073922989182,
+        "paired_ratio_delta_percent": 0.1837387984339851,
+        "paired_wins": "7/7",
+        "baseline_decode_tok_s": 32.705714745879185,
+        "candidate_decode_tok_s": 32.7227871382851,
+        "pair_dispatches_baseline_candidate": [432, 624],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-pair-source-f16-engine-ab-xtx-512.json",
+        "source_sha256": "2e10e01183e77514ce3236f1c4219f071de0b123af7590a228f008a13cc53233"
+      },
+      "1024": {
+        "baseline_prefill_tok_s": 1002.5428972032348,
+        "candidate_prefill_tok_s": 1003.359862826872,
+        "median_delta_percent": 0.08148934334044622,
+        "paired_ratio_delta_percent": 0.10696440240784955,
+        "paired_wins": "6/7",
+        "baseline_decode_tok_s": 33.710388214178124,
+        "candidate_decode_tok_s": 33.69226666810798,
+        "pair_dispatches_baseline_candidate": [1040, 1808],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-pair-source-f16-engine-ab-xtx-1024.json",
+        "source_sha256": "a4e209e5ccc6576ad66d105f38dc392e590294f71c03803a334eb9d88f795af6"
+      }
+    },
+    "w7900": {
+      "512": {
+        "baseline_prefill_tok_s": 847.6843591182676,
+        "candidate_prefill_tok_s": 847.3704226941306,
+        "median_delta_percent": -0.03703458967480189,
+        "paired_ratio_delta_percent": -0.36174798649603646,
+        "paired_wins": "1/7",
+        "baseline_decode_tok_s": 27.21046968251058,
+        "candidate_decode_tok_s": 27.242233694843243,
+        "pair_dispatches_baseline_candidate": [432, 624],
+        "token_ids_exact": true,
+        "tracked_peak_bytes_equal": true,
+        "source": "/tmp/qwen36-q4-unequal-pair-source-f16-engine-ab-w7900-512.json",
+        "source_sha256": "081872dcabe7e8b541b95cf65360e774df0166fcdc721faea716081c6a05c5e8"
+      }
+    },
+    "all_token_trajectories_exact": true,
+    "all_tracked_peaks_byte_equal": true,
+    "decision": "Reject and remove runtime ownership because canonical W7900 M512 is negative with only 1/7 paired wins. Stop the remaining W7900 M1024 and exact M2048/4K/MTP/trace publication matrix because the mandatory binding gate already failed."
+  },
+  "correctness_fix_discovered": {
+    "description": "The prior pair-only owner context filtered intervals by scratch allocation capacity rather than actual prompt rows. A M517 prompt in a 1024-row arena selected the wrong interval and declined pair ownership. Passing actual request rows fixes all generic ordered pair routes and is retained independently.",
+    "before_added_launches": 120,
+    "expected_and_after_added_launches": 192,
+    "after_first_prompt_top1": "33/33",
+    "after_first_prompt_max_kl": 0.0013325018365777587
+  },
+  "sources": [
+    {
+      "path": "/tmp/qwen36_q4_unequal_pair_source_f16_quality.py",
+      "sha256": "917a2f2bdedc33bf5a777ab44e6dc44d8dae2eb67e48899082b3f7dfdf6f3a9c"
+    },
+    {
+      "path": "/tmp/qwen36_q4_unequal_pair_source_f16_engine_ab.py",
+      "sha256": "7499ef626530bf9465962393bd499c7f6b913ac5bd9d09b30e74ce0c1602e23b"
+    }
+  ],
+  "decision": "Remove only the temporary Q4 K5,120/N10,240 tile/variant/row-ceiling and ordered Q4/Q4 pair policy. Retain the quality-passing runtime-unwired leaf, generic machinery, exact producer primitives, exact dual-WMMA production owner, and actual-request-row context fix."
+}

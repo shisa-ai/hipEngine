@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_no_runtime_change",
+  "title": "Qwen3.6-27B sole-Q5T16 source-shaped dense integer MMQ screen",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1
+  },
+  "software": {
+    "hipengine_base_commit": "918bc70e1d2c395ba89aff0ff8eeedfb43355175",
+    "compiler": "HIP 7.2.53211-3d9ef42 / AMD clang 22.0.0git f58b06dce1f9"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "tensor": "blk.0.ssm_out.weight",
+    "shape_m_k_n": [512, 6144, 5120],
+    "production_tensor_count": 48,
+    "resident_layout": "gguf_q5_k_t16_v1",
+    "resident_weight_bytes_per_tensor": 22118400
+  },
+  "candidate": {
+    "description": "Adapt the in-tree llama.cpp-shaped I128/J128/K256 Q5_K x K-major Q8_1 DS4 integer-WMMA consumer to decode the existing sole-resident Q5T16 bytes. Metadata and quant planes are expanded into the same bounded 57,856-byte LDS class; no raw-Q5 or alternate persistent sidecar is added.",
+    "source_lineage": "llama.cpp HIP 1ebf790cda38 ggml-cuda quantize.cu/mmq.cuh/vecdotq.cuh through hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.hip",
+    "persistent_weight_bytes_added": 0,
+    "transient_q8_1_workspace_bytes": 3538944,
+    "runtime_dispatch_changed": false,
+    "decode_changed": false,
+    "mtp_changed": false
+  },
+  "audit": {
+    "why_nonduplicative": "Prior Qwen3.6-27B Q5 integer screens covered rows 2-4 raw-Q5 and Q5T16 sudot4/DP4A row reuse. The source-shaped I128/J128/K256 integer-WMMA route had only been implemented for raw Q5_K and had not consumed the production sole-resident Q5T16 format.",
+    "binding_prior_artifacts": [
+      "benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json",
+      "benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json",
+      "benchmarks/results/2026-08-06-qwen36-27b-latest-q5-source-audit-exhausted.json"
+    ]
+  },
+  "correctness": {
+    "focused_candidate_gate": "5 passed during implementation for rows 17/128/129 plus registry, gfx1151 exclusion, shape validation, lifecycle, finiteness, and project KL/top-1 thresholds",
+    "production_shape_kl_mean_vs_retained_wmma": 0.00022459341377467165,
+    "production_shape_kl_max_vs_retained_wmma": 0.015461038981293182,
+    "production_shape_top1_agreement_vs_retained_wmma": 0.98828125,
+    "production_shape_max_abs": 0.375,
+    "production_shape_mean_abs": 0.003924924414604902,
+    "finite": true,
+    "repeat_exact": true,
+    "passed": true,
+    "allocation_teardown_zero": true
+  },
+  "measurements": {
+    "protocol": "Actual immutable Qwen3.6-27B Q5T16 tensor, deterministic BF16 M512 activation, three warmups, nine counter-ordered HIP-event samples, five launches per event timing.",
+    "q8_1_quantize_median_ms": 0.016728000342845918,
+    "integer_mmq_consumer_median_ms": 1.2746509552001952,
+    "candidate_pack_plus_mmq_median_ms": 1.2914749547839164,
+    "retained_fp16_wmma_median_ms": 1.2370905876159668,
+    "consumer_regression_percent": 3.03618570541484,
+    "candidate_total_regression_percent": 4.396150751801886,
+    "candidate_speedup_vs_retained": 0.9578897237097029
+  },
+  "validation": {
+    "post_removal_original_q5_source_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_mmq_wmma_prefill.py --tb=short -> 8 passed",
+    "worklog_check": "python3 scripts/worklog.py check",
+    "diff_check": "git diff --check"
+  },
+  "sources": {
+    "temporary_screen": "/tmp/q5_t16_source_mmq_screen.py",
+    "temporary_screen_sha256": "aba363115ad128c1ff82c9391aa028cb0629ad999e235b15b938d87d5a18ec2d",
+    "raw_result": "/tmp/q5-t16-source-mmq-screen.json",
+    "raw_result_sha256": "5145ccd91c2a1f58cf84e3c2f0087ccf23e0d1c7b4b6e7e40df47661de491a77"
+  },
+  "decision": "Reject and remove the T16 consumer, wrapper, tests, and gfx1151 exclusion. The integer consumer alone is already 3.04% slower than retained FP16 WMMA, and Q8_1 packing raises the production projection regression to 4.40%. No runtime/default, decode, MTP, resident layout, or tracked memory changes survive. Dense Q5 integer MMQ is exhausted absent a materially different weight-consumer dataflow or hardware/compiler change."
+}

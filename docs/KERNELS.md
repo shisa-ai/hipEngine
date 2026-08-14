@@ -151,7 +151,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Raw-K activation MMQ | `quant/gguf_k_mmq_prefill.{hip,py}` | `activation_quant`, `linear` | Q8_1 producer layouts plus Q5/Q6 MMQ consumers; retained diagnostics may not be runtime defaults. |
 | Raw-IQ source MMQ | `quant/gguf_iq_source_mmq_prefill.{hip,py}` | `moe_linear` | Source-faithful IQ MMQ diagnostic/alternative consumers. |
 | Exact expanded F32 planes | `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}` | `linear` and raw-quant composites | Raw Q5/Q6 producers plus ordered exact consumers; library SGEMM variants are distinct diagnostic paths. |
-| Source-F16 Q6 library route | `quant/gguf_q6_k_f16_rocblas_prefill.{hip,py}` | dequant/cast/`linear` composites | Explicit dequant+cast fallback and F16 rocBLAS route; not equivalent to exact raw association. |
+| Source-F16 Q4/Q5/Q6 library route | `quant/gguf_q6_k_f16_rocblas_prefill.{hip,py}` | dequant/cast/`linear` composites | Sole Q4T16/Q5T16 and raw/sole-planar-Q6T16 bounded tile producers feeding F16 rocBLAS; Q4T16 includes scalar column-owned and exact adjacent-pair-owned producers, while Q5T16 includes scalar plus exact pair- and natural-octet-owned producer leaves. Changed arithmetic is model/shape gated, while exact T16 remains the small-row and miss fallback. Qwen3.6-27B admits Q5T16 recurrent output with its natural-octet producer at M512-M4096, bounded Q4T16 full-attention Q with its adjacent-pair producer at M512-M2047, and Q4T16 linear-attention gate only as the second operand behind the already-admitted Q6T16 QKV peer at M512-M2047 after complete category and cross-board full-engine qualification. A generic ordered-pair policy prevents that gate shape from claiming standalone or Q4/Q4 pair dispatch, while request-row filtering and a per-shape ceiling keep M2048/4K exact. Scalar producer and exact T16 kernels remain registered policy-miss fallbacks; decode, verifier, peer backends, and every unqualified shape remain exact. |
 | Embedding | `quant/gguf_q6_k_embedding.{hip,py}` | `embedding` (`gguf_q4_k/q5_k/q6_k/q8_0`) | Raw GGUF row lookup for root/token tables. |
 | X8 sidecars/replacements | `quant/gguf_x8_selected_gemv.{hip,py}` and pack8 modules | selected `moe_linear` / top-1 helpers | GGML-style packed selected-expert and head diagnostics/qualified lanes. |
 | Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. |
@@ -161,10 +161,19 @@ For dense Qwen3.6-27B on gfx1100, the package-default rank-2 Q4 map is one
 `gguf_q4_k_t16_v1/tiles` payload across all 288 tensors. Its c1/rows-2-4 owners
 live in `gguf_t16_selected_gemv.{hip,py}` and its M16-through-M4096/tail
 shared-B owner lives in `gguf_k_t16_selected_prefill.{hip,py}`; the output-major
-K256 LDS slab is the retained implementation. Raw/pack8 Q4 bodies remain
-registered for other layouts and diagnostics, not as dense-27B sidecars.
-Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
+K256 LDS slab is the retained implementation. For the model's dense
+K=5,120/N=17,408 FFN gate/up pair at M>=512, the same prefill family also owns
+an operation-complete dual-output WMMA+SiLU variant: one four-wave block reuses
+each activation fragment across independent gate/up weights, rounds both
+projection outputs to BF16 in LDS, then applies the existing SiLU boundary.
+The model's Q4/Q4 linear-attention K=5,120/N=10,240+6,144 pair has a separate
+exact unequal-output owner at M>=512: a dual-WMMA shared 6,144-column prefix plus
+a singleton-geometry QKV tail, with two direct BF16 outputs and no new storage.
+Raw/pack8 Q4 bodies remain registered for other layouts and diagnostics, not as
+dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`output-major LDS keep`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
+[`dual-WMMA SiLU keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
+[`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.

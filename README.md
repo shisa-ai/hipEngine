@@ -166,7 +166,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **670.227** | **28.444** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -189,11 +189,23 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **727.961** | **33.508** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **977.397** | **33.645** |
 
-The 27B row is an exact current single-layout snapshot, not a cross-engine win.
-The campaign is explicitly blocked below llama.cpp HIP prefill and Vulkan memory
-at every measured context, plus Vulkan MTP and 4K AR decode.
+The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
+reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
+shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
+F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
+behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
+materialized once per K head. Decode and MTP retain exact owners. The fresh
+strictly serial selector-unset XTX matrix is
+**977.397/1012.309/987.809 tok/s** at 512/1K/4K with unchanged tracked peaks;
+it clears llama.cpp HIP by **1.33%/3.19%/4.34%** and the frozen HIP+1%
+prefill gates by **0.32%/2.17%/3.31%**. Versus the preceding independent
+matrix, decode also moves **+0.23%/+0.17%/+0.18%**, every token remains 9707,
+and tracked teardown reaches zero. This closes the prefill target, while
+memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json) and
+[`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

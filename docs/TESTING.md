@@ -354,17 +354,27 @@ same row correctly; a BF16 failure is `reference_unscorable`, not an INT8 pass.
 Exact candidate/reference token equality remains diagnostic because distinct
 valid wording is allowed when both task scores pass.
 
-For GGUF Qwen3.6, add the resident BF16-vs-INT8 logit gate. Short contexts are
-expected to pass via the BF16 mirror. Long contexts must pass with
-`--require-no-bf16-mirror`; the safety fallback keeps 8 of 10 full-attention
+For GGUF Qwen3.6-35B-A3B, add the resident BF16-vs-INT8 logit gate. Short
+contexts are expected to pass via the BF16 mirror. Long contexts must pass with
+`--require-no-bf16-mirror`; the 35B safety fallback keeps 8 of 10 full-attention
 layers as BF16 primary storage and uses INT8 only for the final two full-attention
 layers. Lower prefixes and pure INT8-only remain diagnostic-only behind
 `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`: after the 2026-06-24
 layer-local BF16 prefill-oracle fix, prefix 8 passes full W7900 `128K/128`
 (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror), prefix 7 fails
-`128K/16` top-1, and pure INT8 fails `4K/1`. The `4K` forced-long gate below is a
-quick guard; promotion of a 24GB `128K/128` row also requires the same gate at
-`--prompt-lengths 128K --decode-steps 128 --max-sequence-length 131202`.
+`128K/16` top-1, and pure INT8 fails `4K/1`. Dense Qwen3.6-27B does not inherit
+that result. Its native 24-query/4-KV-head split-K consumer is now CPU-reference
+gated and traced, but pure FP32-scale INT8 fails the complete 512/8 prompt suite
+at `77.78%` minimum-prompt top-1. The measured 9-BF16/7-INT8 diagnostic map
+passes complete 512/8 and 4K/16 suites and bounded mixed 8K/16K/32K rows, but it
+is not a promotion candidate: its layer map was selected on the sole failing
+train prompt, GGUF prefill-oracle peak rises, graph capture is unsafe, and no
+256K capacity gate exists. Any successor must rerun 512/8 before 4K/16, include
+all category/heldout prompts, require no BF16 mirror, audit the exact layer
+partition, then pass graph/eager safety and a 24GB long-context capacity gate.
+The `4K` forced-long gate below is a quick 35B guard; promotion of a 24GB
+`128K/128` row also requires the same gate at `--prompt-lengths 128K`,
+`--decode-steps 128`, and `--max-sequence-length 131202`.
 
 ```bash
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \

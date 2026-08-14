@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_api_not_implemented_no_production_change",
+  "title": "Qwen3.6-27B bounded source-F16 direct rocBLAS BF16 output screen",
+  "performance_claim": false,
+  "commit": "deb1400b3",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "rocblas_version_prefix": "5.2.0.dabb6df2b98",
+    "header": "/opt/rocm/include/rocblas/internal/rocblas-functions.h",
+    "header_contract": "rocblas_gemm_ex lists homogeneous F16 with F16/F32 compute, F16 inputs with F32 C/D and F32 compute, homogeneous BF16 with F32 compute, and BF16 inputs with F32 C/D and F32 compute; it does not list F16 A/B with BF16 C/D."
+  },
+  "candidate": {
+    "description": "Call rocblas_gemm_ex with FP16 A/B, BF16 C/D, FP16 compute, and an explicit destination leading dimension larger than the tile width so the GEMM would publish directly into the final strided BF16 output.",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "intended_removed_work": "one strided FP16-to-BF16 cast after each bounded source-F16 tile GEMM"
+  },
+  "tiny_api_screen": {
+    "shape": {
+      "rows": 17,
+      "in_features": 256,
+      "tile_out_features": 64,
+      "destination_leading_dimension": 80,
+      "destination_col_start": 16
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/screen_rocblas_f16_bf16_output.py",
+    "rocblas_status": 2,
+    "rocblas_status_name": "rocblas_status_not_implemented",
+    "device_sync_error": null,
+    "destination_tile_unchanged": true,
+    "destination_outside_tile_unchanged": true,
+    "reference_tile_elements": 1088,
+    "candidate_mismatches": 1088,
+    "script": "/tmp/screen_rocblas_f16_bf16_output.py",
+    "script_sha256": "8901c7ee2ceb3f80352ce5bed6f2fcb5677abdf0e28d43ad3bc49cd40721e6bf"
+  },
+  "predeclared_stop_gate": "Stop at the leaf on any unsupported or mismatching shape; do not load actual 27B weights or run the second board when the library rejects the datatype tuple before launch.",
+  "decision": "Reject and do not add a Rocblas API wrapper, kernel composite, runtime policy, test surface, or fallback flag. The installed rocBLAS does not implement the required FP16-input/FP16-compute/BF16-output GEMM_EX tuple. Retain FP16 output plus the exact strided BF16 cast."
+}

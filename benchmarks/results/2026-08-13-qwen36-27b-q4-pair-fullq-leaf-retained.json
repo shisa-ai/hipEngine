@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_runtime_unwired_pair_produced_full_attention_q_leaf",
+  "title": "Qwen3.6-27B pair-produced Q4T16 full-attention Q source-F16 leaf",
+  "performance_claim": true,
+  "commit": "3032eb5bb",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {"device": "AMD Radeon RX 7900 XTX", "selector": "HIP_VISIBLE_DEVICES=1", "arch": "gfx1100"},
+    {"device": "AMD Radeon Pro W7900", "selector": "HIP_VISIBLE_DEVICES=0", "arch": "gfx1100"}
+  ],
+  "candidate": {
+    "tensor": "blk.3.attn_q.weight",
+    "role": "all 16 full-attention Q projections",
+    "shape_n_k": [12288, 5120],
+    "baseline": "retained exact Q4T16 shared-B FP16-WMMA with direct BF16 publication",
+    "candidate": "exact adjacent-pair-owned Q4T16 source-F16 producer plus bounded FP16 rocBLAS plus strided BF16 cast",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "admission_scope_if_qualified": "rows 512-1023 use tile2048; rows 1024-2047 use tile512; rows >=2048, decode, MTP, peer backends, and policy misses retain exact Q4T16",
+    "changed_arithmetic": true
+  },
+  "protocol": {
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_pair_fullq_screen.py --device <xtx|w7900> --rows 512,1024 --warmups 3 --samples 15 --output <output>",
+    "actual_weight": true,
+    "counterbalanced_pairs_per_cell": 15,
+    "tile_sweep": [512, 1024, 2048, 3072],
+    "constraint": "only tiles fitting existing 34.0-MiB weight and row-capacity output scratch planes"
+  },
+  "selected_results": {
+    "rx_7900_xtx": {
+      "512": {"tile": 2048, "exact_ms": 1.3308449983596802, "candidate_ms": 1.015123963356018, "speedup": 1.3110172219360114, "delta_percent": -23.723351358933677, "paired_wins": "15/15", "top1": 0.95703125, "max_abs": 0.02734375, "mean_abs": 0.0012134062126278877},
+      "1024": {"tile": 512, "exact_ms": 2.364290952682495, "candidate_ms": 2.021569013595581, "speedup": 1.169532643596147, "delta_percent": -14.49575986822037, "paired_wins": "15/15", "top1": 0.9599609375, "max_abs": 0.03515625, "mean_abs": 0.0012120112078264356}
+    },
+    "w7900": {
+      "512": {"tile": 2048, "exact_ms": 1.5182859897613525, "candidate_ms": 1.1315239667892456, "speedup": 1.3418063022293403, "delta_percent": -25.47359493404131, "paired_wins": "15/15", "top1": 0.95703125, "max_abs": 0.02734375, "mean_abs": 0.0012134062126278877},
+      "1024": {"tile": 512, "exact_ms": 2.6753320693969727, "candidate_ms": 2.373131036758423, "speedup": 1.1273427501295257, "delta_percent": -11.295832621879597, "paired_wins": "15/15", "top1": 0.9599609375, "max_abs": 0.03515625, "mean_abs": 0.0012120112078264356}
+    }
+  },
+  "boundary_reconciliation": {
+    "why_prior_rejection_is_not_repeated": "The old full-Q source-F16 screen used the scalar column-owned producer and rejected the role because its 4K leaf lost. This candidate uses the later exact adjacent-pair producer and intentionally leaves 4K exact.",
+    "m512_tile2048_solution_index": -1140856092,
+    "m1024_tile512_solution_index": null,
+    "m512_existing_plane_fit": {"weight_tile_bytes": 20971520, "weight_capacity_bytes": 35651584, "output_tile_bytes": 2097152, "output_capacity_bytes": 3145728},
+    "m1024_existing_plane_fit": {"weight_tile_bytes": 5242880, "weight_capacity_bytes": 35651584, "output_tile_bytes": 1048576, "output_capacity_bytes": 5242880}
+  },
+  "sources": [
+    {"path": "/tmp/qwen36-q4-pair-fullq-xtx.json", "sha256": "b4738e8d2f15a803447e01acaa0712bd5f4f67b256a5fb609f439e45c7b5e872"},
+    {"path": "/tmp/qwen36-q4-pair-fullq-w7900.json", "sha256": "ce5c6f3f666408b5ad3a6fc519ce1220dd192d6647580f1bd99fbc34000de0d7"},
+    {"path": "/tmp/qwen36_q4_pair_fullq_screen.py", "sha256": "1c5501efd7564a9c67ad768e1eadae8f88d59a0289ae4179ef83c1bf4fcdd854"}
+  ],
+  "decision": "Retain the actual-weight leaf as a runtime-unwired candidate. Add a fail-closed Qwen3.6-27B Q4 policy at row anchors 512:2048 and 1024:512 with no anchor at 2048/4096, select the pair producer for inclusive rows 512-2047, and require the complete category gate plus counterbalanced full-engine qualification before publication."
+}

@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_tile64_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
     qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
@@ -57,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
+    qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16,
     qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
     qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
@@ -240,6 +242,16 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     )
     assert plan.has_chain_peer_wave32
     assert (
+        plan.prepare_compact_peer_normalized
+        is qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16
+    )
+    assert (
+        plan.recurrent_compact_peer_wave32
+        is qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32
+    )
+    assert plan.has_chain_compact_peer_wave32
+    assert plan.auto_mode == "chain_compact_peer_wave32"
+    assert (
         plan.recurrent_peer_cluster8
         is qwen35_gdn_prefill_recurrent_normalized_cluster8_f32
     )
@@ -248,7 +260,6 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
         is qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32
     )
     assert plan.has_chain_peer_cluster8
-    assert plan.auto_mode == "chain_peer_wave32"
 
 
 def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
@@ -602,6 +613,47 @@ def test_run_gdn_prefill_explicit_chain_k2_bypasses_exact_split(
         "recurrent_k2",
         "rmsnorm_gate",
     ]
+
+
+def test_run_gdn_prefill_explicit_compact_peer_route_uses_compact_abi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_compact_peer_wave32"
+    )
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_peer_normalized=_recorder(calls, "peer_prepare"),
+        prepare_compact_peer_normalized=_recorder(calls, "compact_peer_prepare"),
+        recurrent_peer_wave32=_recorder(calls, "peer_wave32"),
+        recurrent_compact_peer_wave32=_recorder(calls, "compact_peer_wave32"),
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=64,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "compact_peer_prepare",
+        "compact_peer_wave32",
+        "rmsnorm_gate",
+    ]
+    prepare_args = calls[0][1]
+    recurrent_args = calls[1][1]
+    assert prepare_args[5:10] == (0xD0, 0xD1, 0xD2, 0xD3, 0xD4)
+    assert recurrent_args[7:12] == (64, 4, 32, 128, 128)
 
 
 @pytest.mark.parametrize(

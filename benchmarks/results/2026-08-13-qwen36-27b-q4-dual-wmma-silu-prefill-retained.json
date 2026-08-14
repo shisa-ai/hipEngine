@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_default_byte_neutral_operation_complete_q4_prefill",
+  "title": "Qwen3.6-27B sole-T16 Q4 dual-WMMA SiLU prefill",
+  "performance_claim": true,
+  "parent_commit": "65ca57b7e22c71aa82ed344e70be11eba3897641",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50"
+  },
+  "change": {
+    "shape_k_n": [5120, 17408],
+    "roles": ["dense FFN gate", "dense FFN up", "SiLU multiply"],
+    "rows": "M >= 512",
+    "backend": "hip_gfx1100",
+    "persistent_weight_layouts_per_tensor": 1,
+    "additional_tracked_workspace_bytes": 0,
+    "intermediate_global_bytes": 0,
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "dataflow": "One 128-thread/four-wave block decodes independent gate/up sole-T16 slabs, loads each BF16 activation K16 fragment once per wave, applies both FP16-WMMA projections, rounds both projection results to BF16 in LDS, and applies SiLU at the same BF16 operation boundary before one global output write.",
+    "fallback": "The existing unfused pair remains registered and owns rows below 512, unsupported shapes/layouts, registry misses, decode, and verifier/MTP small rows."
+  },
+  "actual_weight_leaf": {
+    "hardware": "AMD Radeon RX 7900 XTX, gfx1100, HIP_VISIBLE_DEVICES=1",
+    "tensors": ["blk.0.ffn_gate.weight", "blk.0.ffn_up.weight"],
+    "protocol": "Three warmups, nine counterbalanced HIP-event samples per shape, retained two shared-B projections plus separate BF16 SiLU versus candidate dual projection plus SiLU.",
+    "rows": {
+      "512": {"baseline_ms": 3.8524699211120605, "candidate_ms": 3.2191030979156494, "speedup": 1.1967525748418908, "paired_wins": "9/9", "bf16_mismatches": 0},
+      "1024": {"baseline_ms": 7.311971187591553, "candidate_ms": 6.034801959991455, "speedup": 1.21163399164832, "paired_wins": "9/9", "bf16_mismatches": 0},
+      "4096": {"baseline_ms": 29.639326095581055, "candidate_ms": 25.688331604003906, "speedup": 1.1538050252730827, "paired_wins": "9/9", "bf16_mismatches": 0}
+    },
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_t16_dual_wmma_silu_screen.py --rows 512,1024,4096 --warmups 3 --samples 9 --output /tmp/qwen36-q4-t16-dual-wmma-silu-screen.json",
+    "source": "/tmp/qwen36-q4-t16-dual-wmma-silu-screen.json",
+    "source_sha256": "831136877bae42cf13e6f2c761affd440421f21f7d07cb40a731a13c103ce25b",
+    "script_sha256": "9b64411ee246e10b14738995d99144f252e1c103bb0091e31689d5def9bc99e9"
+  },
+  "counterbalanced_full_prefill_ab": {
+    "protocol": "One resident model/session per board/shape, warm baseline and candidate, seven alternating pairs; baseline disables only the new linear_pair_silu owner.",
+    "w7900": {
+      "512": {"baseline_median_tok_s": 734.2757354148506, "candidate_median_tok_s": 774.1273749554257, "delta_percent": 5.42733984230865, "paired_ratio_delta_percent": 5.466500486734049, "paired_wins": "7/7", "tracked_peak_bytes_both": 16756238272},
+      "1024": {"baseline_median_tok_s": 780.0759788635913, "candidate_median_tok_s": 825.1510706465258, "delta_percent": 5.77829506410381, "paired_ratio_delta_percent": 5.703560183913782, "paired_wins": "7/7", "tracked_peak_bytes_both": 16879448392},
+      "4096": {"baseline_median_tok_s": 749.9244265136091, "candidate_median_tok_s": 790.6384265147437, "delta_percent": 5.4290803928622, "paired_ratio_delta_percent": 5.411315950493128, "paired_wins": "7/7", "tracked_peak_bytes_both": 17574596216}
+    },
+    "rx_7900_xtx": {
+      "512": {"baseline_median_tok_s": 809.9923582953927, "candidate_median_tok_s": 856.9440627452187, "delta_percent": 5.79656140813904, "paired_ratio_delta_percent": 5.66997075467326, "paired_wins": "7/7", "tracked_peak_bytes_both": 16756238272},
+      "1024": {"baseline_median_tok_s": 865.5597220423884, "candidate_median_tok_s": 919.2797144257627, "delta_percent": 6.20638772985136, "paired_ratio_delta_percent": 6.27661824332761, "paired_wins": "7/7", "tracked_peak_bytes_both": 16879448392},
+      "4096": {"baseline_median_tok_s": 849.6371785046339, "candidate_median_tok_s": 900.7664049052942, "delta_percent": 6.01777178473382, "paired_ratio_delta_percent": 6.01576949517593, "paired_wins": "7/7", "tracked_peak_bytes_both": 17574596216}
+    },
+    "tokens_exact": true,
+    "command_template": "HIP_VISIBLE_DEVICES=<0|1> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_dual_wmma_silu_engine_ab.py --rows <512|1024|4096> --samples 7 --output /tmp/qwen36-q4-dual-wmma-silu-ab-<board>-<rows>.json",
+    "sources": [
+      "/tmp/qwen36-q4-dual-wmma-silu-ab-w7900-{512,1024,4096}.json",
+      "/tmp/qwen36-q4-dual-wmma-silu-ab-xtx-{512,1024,4096}.json"
+    ]
+  },
+  "independent_production_matrix": {
+    "protocol": "One discarded warmup plus three measured persistent-session resets, repeated-token prompt, 128 graph-replay decode transitions, BF16 KV, cached HIP builds.",
+    "w7900": {
+      "512": {"prefill_tok_s": 766.2033756969308, "decode_tok_s": 28.31839956075372, "tracked_peak_gib": 15.605462968349457},
+      "1024": {"prefill_tok_s": 818.0965740247547, "decode_tok_s": 28.872608690417767, "tracked_peak_gib": 15.720211334526539},
+      "4096": {"prefill_tok_s": 791.9525022473942, "decode_tok_s": 26.185523798358478, "tracked_peak_gib": 16.367618195712566}
+    },
+    "rx_7900_xtx": {
+      "512": {"prefill_tok_s": 852.6680035671964, "decode_tok_s": 33.51302110283325, "tracked_peak_gib": 15.605462968349457},
+      "1024": {"prefill_tok_s": 914.6001261626582, "decode_tok_s": 34.53893643400221, "tracked_peak_gib": 15.720211334526539},
+      "4096": {"prefill_tok_s": 901.0681444782186, "decode_tok_s": 31.41327089950009, "tracked_peak_gib": 16.367618195712566}
+    },
+    "all_final_ids": 9707,
+    "all_logits_finite": true,
+    "command_template": "HIP_VISIBLE_DEVICES=<0|1> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>",
+    "sources": [
+      "/tmp/qwen36-q4-dual-wmma-silu-final-w7900-{512,1024,4096}.json",
+      "/tmp/qwen36-q4-dual-wmma-silu-final-xtx-{512,1024,4096}.json"
+    ]
+  },
+  "quality": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "transitions": 330,
+    "minimum_prompt_top1_agreement": 1.0,
+    "max_transition_kl": 0.0,
+    "candidate_repeats_exact": true,
+    "free_running_ids_equal": true,
+    "passed": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_dual_wmma_silu_quality.py",
+    "source": "/tmp/qwen36-q4-dual-wmma-silu-quality.json",
+    "source_sha256": "3b9a6432a1c96a462763daf8c950205941e7fd49db22d4ebefc18d4d868921fe"
+  },
+  "kernel_trace": {
+    "hardware": "AMD Radeon RX 7900 XTX, gfx1100",
+    "named_kernel_calls": 3,
+    "median_duration_ms": 3.331305,
+    "workgroup_size": 128,
+    "vgpr_count": 256,
+    "sgpr_count": 128,
+    "lds_bytes": 32768,
+    "scratch_bytes": 0,
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-q4-dual-rocprof -- /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_t16_dual_wmma_silu_screen.py --rows 512 --warmups 1 --samples 1 --output /tmp/qwen36-q4-t16-dual-wmma-silu-rocprof-smoke.json",
+    "source": "/tmp/qwen36-q4-dual-rocprof/epyc/1289884_kernel_trace.csv",
+    "source_sha256": "c963d9582d4a96745c7b71b0813850e0198bdb3282def9685ac641f2adbf9b83"
+  },
+  "decode_and_mtp_scope": {
+    "decode_dispatch": "unchanged because the candidate requires rows >= 512",
+    "production_decode": "Both boards complete 512/1K/4K graph-decode matrices with finite exact repeated-token IDs; XTX medians remain 33.513/34.539/31.413 tok/s and W7900 28.318/28.873/26.186 tok/s.",
+    "llama_compatible_mtp": "A separate full ten-prompt serial-exact B1-B3 diagnostic completes with all greedy outputs and GPU/CPU acceptance exact and tracked close zero. Its speed rows are not promoted because serial-exact is diagnostic rather than the retained native verifier protocol.",
+    "mtp_source": "/tmp/qwen36-q4-dual-wmma-silu-llama-compat-mtp.json",
+    "mtp_source_sha256": "182dce0fbb0ebb983f97cb6d0fc9f88ec53b8f12e46e3653dd180996956df296"
+  },
+  "cross_engine_status": {
+    "llamacpp_hip_prefill_tok_s": {"512": 964.606, "1024": 981.04, "4096": 946.733},
+    "current_xtx_deficit_percent": {"512": 11.604530391973888, "1024": 6.772391934818334, "4096": 4.823414365167511},
+    "additional_throughput_required_for_parity_percent": {"512": 13.127969615900103, "1024": 7.264363073740232, "4096": 5.067858163848915},
+    "additional_throughput_required_for_frozen_1pct_gate_percent": {"512": 14.259249312059108, "1024": 8.337006704477634, "4096": 6.118536745487413},
+    "decision": "This materially reopens and reduces the prefill blocker but does not close llama.cpp HIP parity or the campaign's 1% margin. Re-profile the retained path before selecting another optimization."
+  },
+  "validation": {
+    "focused_tests": "HIP_VISIBLE_DEVICES=1 ... python -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_t16_dense.py -> 96 passed",
+    "leaf_exactness": "Rows 512/1K/4K actual-weight output is BF16-bit exact to two retained projections plus separate SiLU; focused HIP fixture additionally covers the non-tile-aligned row tail M513.",
+    "lint": "ruff, git diff --check, and worklog schema pass"
+  },
+  "decision": "Retain as the gfx1100 model/shape/row-scoped default. It is operation-complete, sole-resident, byte-neutral, exact at the unfused BF16 boundary, uniformly faster on both gfx1100 boards, and leaves registered unfused fallbacks plus decode/MTP small-row owners unchanged."
+}

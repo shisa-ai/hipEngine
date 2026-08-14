@@ -3553,8 +3553,18 @@ bool valid_qwen35_gqa_split_shape(
     int64_t num_q_heads,
     int64_t num_kv_heads,
     int64_t head_dim) {
-  return valid_paged_attn_shape(chunk_size * num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim) &&
-      chunk_size > 0 && num_splits > 0 && block_size == 256 && num_q_heads == 16 && num_kv_heads == 2 && head_dim == 256;
+  const bool supported_gqa =
+      (num_q_heads == 16 && num_kv_heads == 2) ||
+      (num_q_heads == 24 && num_kv_heads == 4);
+  return valid_paged_attn_shape(
+             chunk_size * num_splits,
+             block_size,
+             block_table_len,
+             num_q_heads,
+             num_kv_heads,
+             head_dim) &&
+      chunk_size > 0 && num_splits > 0 && block_size == 256 &&
+      supported_gqa && head_dim == 256;
 }
 
 template <typename scale_t>
@@ -3582,29 +3592,51 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8(
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
       static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t, 8, 16, 2>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      k_scale,
-      v_scale,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      chunk_size,
-      num_splits,
-      scale);
+  if (num_q_heads == 16) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t, 8, 16, 2>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  } else {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<scale_t, 6, 24, 4>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  }
   return static_cast<int>(hipGetLastError());
 }
 
@@ -3633,29 +3665,51 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_block16(
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
       static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 16, false>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      k_scale,
-      v_scale,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      chunk_size,
-      num_splits,
-      scale);
+  if (num_q_heads == 16) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 16, false>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  } else {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 6, 24, 4, 16, false>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  }
   return static_cast<int>(hipGetLastError());
 }
 
@@ -3691,29 +3745,51 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_hadamard_group
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
       static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 32, true>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      k_scale,
-      v_scale,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      chunk_size,
-      num_splits,
-      scale);
+  if (num_q_heads == 16) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 8, 16, 2, 32, true>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  } else {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<scale_t, 6, 24, 4, 32, true>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        v_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  }
   return static_cast<int>(hipGetLastError());
 }
 
@@ -3741,28 +3817,49 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
       static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * threads + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<scale_t, 8, 16, 2>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      k_scale,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      chunk_size,
-      num_splits,
-      scale);
+  if (num_q_heads == 16) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<scale_t, 8, 16, 2>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  } else {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<scale_t, 6, 24, 4>),
+        dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
+        dim3(threads),
+        shared_bytes,
+        stream,
+        query,
+        key_cache,
+        value_cache,
+        k_scale,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        chunk_size,
+        num_splits,
+        scale);
+  }
   return static_cast<int>(hipGetLastError());
 }
 

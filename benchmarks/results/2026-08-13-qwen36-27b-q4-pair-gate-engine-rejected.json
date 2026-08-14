@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "rejected_runtime_policy_removed",
+  "title": "Qwen3.6-27B pair-produced Q4 gate shared-activation engine decision",
+  "performance_claim": false,
+  "runtime_commit_reverted_by": {
+    "admission": "dfc60d128",
+    "removal": "this rejection unit"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100"
+  },
+  "candidate": {
+    "description": "Route all 48 Q4T16 K5,120/N6,144 linear-attention gates through the exact adjacent-pair source-F16 producer at rows 512-2047. In the 24 Q6-QKV layers, the existing pair ABI also shares the FP16 activation cast.",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "decode_mtp_changed": false,
+    "proposed_fallback": "exact Q4T16 gate at M2048/4K, decode, verifier/MTP, model/backend/registry misses"
+  },
+  "complete_category_quality": {
+    "scope": "ten committed prompts, four categories, 330 forced-prefix transitions, exact Q4 gate owner versus pair-produced bounded source-F16 policy",
+    "status": "passed",
+    "minimum_prompt_top1_agreement": 0.9696969696969697,
+    "maximum_prompt_kl": 0.016595336790233565,
+    "all_candidate_repeats_byte_exact": true,
+    "asserted_new_gate_pair_launches": 1440,
+    "note": "The initial assertion expected only 24 Q6-QKV peers. Runtime correctly applies the shape policy to all 48 Q4 gates, so the corrected expected delta is 48 layers x 3 M512 tiles = 144 launches per candidate prompt.",
+    "source": "/tmp/qwen36-q4-pair-gate-quality.json",
+    "source_sha256": "8b2bd65d8fb0a5c1f132a53639170a0f60b284687f49bc2698a9110df831e229"
+  },
+  "counterbalanced_full_engine": {
+    "protocol": "One resident XTX session per shape; complete prior package retained; baseline removes only Q4 K5,120/N6,144 tile/variant/max-row policies; candidate restores them; seven alternating pairs; d128 exact ownership.",
+    "command_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q4_pair_gate_engine_ab.py --device xtx --rows <512|1024> --samples 7 --decode-tokens 128 --output <output>",
+    "512": {
+      "baseline_prefill_tok_s": 958.4146308853489,
+      "candidate_prefill_tok_s": 956.9595786280769,
+      "median_delta_percent": -0.15181866077396644,
+      "paired_ratio_delta_percent": -0.18146675044892202,
+      "paired_wins": "1/7",
+      "baseline_decode_tok_s": 32.74443976452909,
+      "candidate_decode_tok_s": 32.75204637262583,
+      "decode_delta_percent": 0.023230228250778923,
+      "pair_dispatches_baseline_candidate": [360, 504],
+      "token_ids_exact": true,
+      "tracked_peak_bytes_equal": true,
+      "source": "/tmp/qwen36-q4-pair-gate-engine-ab-xtx-512.json",
+      "source_sha256": "69c34e2be5c7c909d7c169d9a68c06a6c469ba5e719ad701f6655586e783640c"
+    },
+    "1024": {
+      "baseline_prefill_tok_s": 996.3847558537922,
+      "candidate_prefill_tok_s": 997.2676785168586,
+      "median_delta_percent": 0.08861262257166813,
+      "paired_ratio_delta_percent": 0.09304415751840711,
+      "paired_wins": "6/7",
+      "baseline_decode_tok_s": 33.711930906628176,
+      "candidate_decode_tok_s": 33.68316965417006,
+      "decode_delta_percent": -0.0853147585576618,
+      "pair_dispatches_baseline_candidate": [752, 1328],
+      "token_ids_exact": true,
+      "tracked_peak_bytes_equal": true,
+      "source": "/tmp/qwen36-q4-pair-gate-engine-ab-xtx-1024.json",
+      "source_sha256": "c373a124c7ff77651ddb84de0ce0e51711149aaecea10e6d52953a1b85e8afb5"
+    },
+    "binding_decision": "Reject on XTX M512: -0.181% paired median with only 1/7 wins. The 1K +0.093% result does not compensate because the objective is the remaining M512 gap and policies are retained only when same-suite non-regressive.",
+    "w7900_skipped": "The binding XTX M512 row already failed decisively, so no additional W7900 GPU time was spent.",
+    "safeguards_skipped": "Decode is identical-owner and stable in the completed A/B rows, but full MTP/DFlash/trace/publication safeguards were not run after the performance rejection."
+  },
+  "invalid_4k_attempt": {
+    "status": "discarded_harness_control_error",
+    "symptom": "The baseline label reported a nonzero pair delta at M4096 and the harness stopped before measurement.",
+    "cause": "The harness mutated backend package policy maps after the resident session had already frozen its normalized row-ceiling policy, so removing the package shape did not remove the active session owner.",
+    "impact": "No 4K timing or correctness evidence was published from this attempt. Runtime removal makes the production 4K owner the unchanged exact Q4T16 fallback."
+  },
+  "reconciliation_with_leaf": {
+    "leaf": "The isolated actual-weight Q6-QKV/Q4-gate pair improved 1.106x-1.169x across M512/M1024 and both boards with 58/60 wins.",
+    "engine": "Applying the shape policy to all 48 gates adds 144 producer/GEMM/cast tile dispatches at M512 and does not improve complete engine wall. The isolated pair did not model all gates or the full scheduling/launch-pressure cost.",
+    "retained_evidence": "Keep the runtime-unwired leaf artifact as diagnostic mechanism evidence; remove package ownership and production tests/docs immediately."
+  },
+  "sources": {
+    "quality_script": {
+      "path": "/tmp/qwen36_q4_pair_gate_quality.py",
+      "sha256": "51c75ddad73cedc79c6bbe5c81d2eaeeab10545decf9f1501a9eebbdf90d05ea"
+    },
+    "engine_script": {
+      "path": "/tmp/qwen36_q4_pair_gate_engine_ab.py",
+      "sha256": "6d3ac2a32a7d3643a4c4606bea0f33fa13f9c29ed338d0d5edfad7fe1b743019"
+    }
+  },
+  "decision": "Reject and remove the K5,120/N6,144 runtime policy. The complete quality gate passes, but binding XTX M512 regresses with 1/7 wins and 1K is only marginally positive. Restore the exact Q4T16 gate owner everywhere, keep the later pair-produced shared-activation leaf as runtime-unwired diagnostic evidence, and do not claim throughput, W7900, 4K, MTP, DFlash, or production-trace qualification."
+}

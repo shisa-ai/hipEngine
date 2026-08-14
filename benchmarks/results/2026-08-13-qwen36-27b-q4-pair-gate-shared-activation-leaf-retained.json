@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_runtime_unwired_q6_qkv_q4_gate_shared_activation_leaf",
+  "title": "Qwen3.6-27B pair-produced Q4 gate with shared Q6-QKV activation leaf",
+  "performance_claim": true,
+  "commit": "ada9b6b8d",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "selector": "HIP_VISIBLE_DEVICES=1",
+      "arch": "gfx1100"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "selector": "HIP_VISIBLE_DEVICES=0",
+      "arch": "gfx1100"
+    }
+  ],
+  "candidate": {
+    "tensors": [
+      "blk.0.attn_qkv.weight",
+      "blk.0.attn_gate.weight"
+    ],
+    "roles": "24 linear-attention layers whose QKV is Q6T16 and gate is Q4T16",
+    "shapes_n_k": [
+      [10240, 5120],
+      [6144, 5120]
+    ],
+    "baseline": "retained Q6 source-F16/rocBLAS chain followed by exact Q4T16 gate",
+    "candidate": "unchanged Q6 chain followed by adjacent-pair-produced Q4 source-F16/rocBLAS gate, reusing Q6's FP16 activation",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "arithmetic": "Q6 unchanged; Q4 uses the already-quality-gated source-F16 boundary and exact pair producer",
+    "admission_scope_if_qualified": "Qwen3.6-27B gfx1100 rows 512-2047 only; rows >=2048, decode, verifier/MTP, peer backends, registry misses, and other model/shape scopes retain exact Q4T16 gate"
+  },
+  "protocol": {
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_q6qkv_q4gate_pair_screen.py --device <xtx|w7900> --rows 512,1024 --warmups 3 --samples 15 --output <output>",
+    "actual_weights": true,
+    "counterbalanced_pairs_per_cell": 15,
+    "tiles": {
+      "512": 2048,
+      "1024": 512
+    },
+    "constraint": "reuse only the current activation, weight-tile, and output-tile scratch planes; add no allocation or payload"
+  },
+  "selected_results": {
+    "rx_7900_xtx": {
+      "512": {
+        "baseline_ms": 1.6233750581741333,
+        "candidate_ms": 1.4408129453659058,
+        "speedup": 1.126707712750224,
+        "candidate_wall_reduction_percent": 11.245836991826252,
+        "paired_wins": "15/15",
+        "q6_final_byte_exact": true,
+        "q4_pair_matches_scalar_source_f16": true,
+        "q4_top1_vs_exact": 0.951171875,
+        "q4_max_abs_vs_exact": 0.01953125,
+        "q4_mean_abs_vs_exact": 0.0011514542857185006
+      },
+      "1024": {
+        "baseline_ms": 3.152190923690796,
+        "candidate_ms": 2.7872259616851807,
+        "speedup": 1.1309420072224623,
+        "candidate_wall_reduction_percent": 11.578136313465738,
+        "paired_wins": "13/15",
+        "q6_final_byte_exact": true,
+        "q4_pair_matches_scalar_source_f16": true,
+        "q4_top1_vs_exact": 0.9521484375,
+        "q4_max_abs_vs_exact": 0.0234375,
+        "q4_mean_abs_vs_exact": 0.0011533478973433375
+      }
+    },
+    "w7900": {
+      "512": {
+        "baseline_ms": 1.8645349740982056,
+        "candidate_ms": 1.5953329801559448,
+        "speedup": 1.168743451862912,
+        "candidate_wall_reduction_percent": 14.438023297066982,
+        "paired_wins": "15/15",
+        "q6_final_byte_exact": true,
+        "q4_pair_matches_scalar_source_f16": true,
+        "q4_top1_vs_exact": 0.951171875,
+        "q4_max_abs_vs_exact": 0.01953125,
+        "q4_mean_abs_vs_exact": 0.0011514542857185006
+      },
+      "1024": {
+        "baseline_ms": 3.5670700073242188,
+        "candidate_ms": 3.2242279052734375,
+        "speedup": 1.1063330856637152,
+        "candidate_wall_reduction_percent": 9.61130847857844,
+        "paired_wins": "15/15",
+        "q6_final_byte_exact": true,
+        "q4_pair_matches_scalar_source_f16": true,
+        "q4_top1_vs_exact": 0.9521484375,
+        "q4_max_abs_vs_exact": 0.0234375,
+        "q4_mean_abs_vs_exact": 0.0011533478973433375
+      }
+    }
+  },
+  "aggregate": {
+    "paired_wins": "58/60",
+    "minimum_speedup": 1.1063330856637152,
+    "maximum_speedup": 1.168743451862912,
+    "all_q6_final_bytes_exact": true,
+    "all_q4_pair_source_f16_bytes_exact": true,
+    "minimum_q4_projection_top1_vs_exact": 0.951171875,
+    "maximum_q4_projection_abs_error_vs_exact": 0.0234375,
+    "finite": true
+  },
+  "reconciliation": {
+    "prior_gate_result": "The earlier scalar-producer Q4 gate route improved XTX M512 but missed W7900 M512 by 0.047% with 7/15 wins and was removed.",
+    "material_difference": "This leaf uses the later exact adjacent-pair Q4 producer and consumes the complete Q6-QKV plus Q4-gate operation boundary so the FP16 activation is produced only once. It is not a repeat of the scalar singleton route.",
+    "why_no_4k_screen": "The optimization objective is the remaining M512 gap, and the previous gate source-F16 route already passed 4K while full-Q has a known exact M2048/4K ceiling. Initial runtime admission must therefore fail closed at rows 2048 and keep the current exact gate there."
+  },
+  "sources": [
+    {
+      "path": "/tmp/qwen36-q6qkv-q4gate-pair-xtx.json",
+      "sha256": "3c8d834f800f08f76b09e71fbbd7b7d38c904eb550f6986df06b6e4aa0751ac8"
+    },
+    {
+      "path": "/tmp/qwen36-q6qkv-q4gate-pair-w7900.json",
+      "sha256": "e0d7277bb27f645f3bdc36f33ff9f2b72260aa5b9aedd5aff8ad2774092f22cb"
+    },
+    {
+      "path": "/tmp/qwen36_q6qkv_q4gate_pair_screen.py",
+      "sha256": "86c96c04611809cd764804d85a9cb46916c239b08c8b8340bb8055c663d64f13"
+    }
+  ],
+  "decision": "Retain as a runtime-unwired leaf. Add a row-bounded Q4 K5,120/N6,144 policy only at anchors 512:2048 and 1024:512 with a generic maximum row of 2047, select the exact adjacent-pair producer, and rely on the existing source-F16 pair ABI to share activation with the already-admitted Q6 QKV peer. Require focused route tests, complete category quality, full-engine cross-board qualification, decode/memory/MTP safeguards, and named production tracing before publication."
+}

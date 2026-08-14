@@ -1,0 +1,226 @@
+{
+  "change": {
+    "candidate": "normalized Q/K materialized once as [token, key_head, 128] and consumed by the same wave32/XOR arithmetic",
+    "control": "normalized Q/K materialized as [token, value_head, 128] and consumed by chain_peer_wave32",
+    "default_policy": "gfx1100 chain_compact_peer_wave32; gfx1151 unchanged chain_lds32_direct_nonvolatile",
+    "per_v_head_fields_preserved": [
+      "value",
+      "beta",
+      "decay"
+    ],
+    "persistent_bytes_added": 0,
+    "rollback": "HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_peer_wave32"
+  },
+  "correctness": {
+    "engine_token_ids_exact": true,
+    "leaf_output_bf16_bits_exact": true,
+    "leaf_state_f32_bits_exact": true,
+    "tracked_peak_equal": true
+  },
+  "created_at": "2026-08-14",
+  "decision": "Retain and promote. Every required leaf/engine row is exact and wins; decode/MTP use separate small-row/verify routes and remain unchanged by this prompt-prefill-only selection.",
+  "decode_guard": {
+    "baseline_median_decode_tok_s": 29.61533233492128,
+    "candidate_median_decode_tok_s": 31.56921533522438,
+    "hardware": "RX 7900 XTX / gfx1100",
+    "interpretation": "decode kernels are unchanged; noisy short guard is non-regressive and exact",
+    "protocol": "same-session seven-pair M512 prefill plus 16 serial decode steps; prefill route toggled only before reset",
+    "source_sha256": "080150da27809b4893f0e250ed2687b33484a9363f28678ca03448d10226723e",
+    "token_ids_exact": true,
+    "tracked_peak_equal": true
+  },
+  "engine": {
+    "w7900": {
+      "1024": {
+        "baseline_median_prefill_tok_s": 900.6846839795213,
+        "candidate_launches_per_sample": 48,
+        "candidate_median_prefill_tok_s": 909.4932179175181,
+        "median_speedup": 1.009779819835592,
+        "pair_count": 7,
+        "paired_ratio_median": 1.0092598288075774,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      },
+      "4096": {
+        "baseline_median_prefill_tok_s": 855.7548952467288,
+        "candidate_launches_per_sample": 192,
+        "candidate_median_prefill_tok_s": 865.8069575757195,
+        "median_speedup": 1.0117464269089487,
+        "pair_count": 7,
+        "paired_ratio_median": 1.0085590640669895,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      },
+      "512": {
+        "baseline_median_prefill_tok_s": 869.2273323232099,
+        "candidate_launches_per_sample": 48,
+        "candidate_median_prefill_tok_s": 874.6529121612346,
+        "median_speedup": 1.006241842192794,
+        "pair_count": 7,
+        "paired_ratio_median": 1.0062622164328174,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      }
+    },
+    "xtx": {
+      "1024": {
+        "baseline_median_prefill_tok_s": 1002.1060864310613,
+        "candidate_launches_per_sample": 48,
+        "candidate_median_prefill_tok_s": 1009.4827982075859,
+        "median_speedup": 1.0073612084353227,
+        "pair_count": 7,
+        "paired_ratio_median": 1.00716069835425,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      },
+      "4096": {
+        "baseline_median_prefill_tok_s": 981.8586620792348,
+        "candidate_launches_per_sample": 192,
+        "candidate_median_prefill_tok_s": 988.7209220912897,
+        "median_speedup": 1.006989050743335,
+        "pair_count": 7,
+        "paired_ratio_median": 1.006549836199223,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      },
+      "512": {
+        "baseline_median_prefill_tok_s": 966.4164617697193,
+        "candidate_launches_per_sample": 48,
+        "candidate_median_prefill_tok_s": 972.6472501005773,
+        "median_speedup": 1.0064473118757187,
+        "pair_count": 7,
+        "paired_ratio_median": 1.0060381363029094,
+        "paired_wins": 7,
+        "token_ids_exact": true,
+        "tracked_peak_equal": true
+      }
+    }
+  },
+  "hardware": {
+    "w7900": "AMD Radeon Pro W7900 / gfx1100 / HIP_VISIBLE_DEVICES=0",
+    "xtx": "AMD Radeon RX 7900 XTX / gfx1100 / HIP_VISIBLE_DEVICES=1"
+  },
+  "leaf": {
+    "w7900": {
+      "1024": {
+        "candidate_wins": 15,
+        "median_ms": {
+          "candidate": 1.307803988456726,
+          "control": 1.459723949432373
+        },
+        "output_bf16_exact": true,
+        "pair_count": 15,
+        "speedup": 1.1161641670438092,
+        "state_f32_bits_exact": true,
+        "workspace_bytes": {
+          "candidate_qk": 4194304,
+          "candidate_qk_saved": 29360128,
+          "control_qk": 33554432,
+          "persistent_added": 0
+        }
+      },
+      "512": {
+        "candidate_wins": 15,
+        "median_ms": {
+          "candidate": 0.6631150245666504,
+          "control": 0.7038339972496033
+        },
+        "output_bf16_exact": true,
+        "pair_count": 15,
+        "speedup": 1.0614055950693666,
+        "state_f32_bits_exact": true,
+        "workspace_bytes": {
+          "candidate_qk": 2097152,
+          "candidate_qk_saved": 14680064,
+          "control_qk": 16777216,
+          "persistent_added": 0
+        }
+      }
+    },
+    "xtx": {
+      "1024": {
+        "candidate_wins": 15,
+        "median_ms": {
+          "candidate": 1.3262449502944946,
+          "control": 1.4562480449676514
+        },
+        "output_bf16_exact": true,
+        "pair_count": 15,
+        "speedup": 1.0980234417814667,
+        "state_f32_bits_exact": true,
+        "workspace_bytes": {
+          "candidate_qk": 4194304,
+          "candidate_qk_saved": 29360128,
+          "control_qk": 33554432,
+          "persistent_added": 0
+        }
+      },
+      "512": {
+        "candidate_wins": 15,
+        "median_ms": {
+          "candidate": 0.6690809726715088,
+          "control": 0.71288001537323
+        },
+        "output_bf16_exact": true,
+        "pair_count": 15,
+        "speedup": 1.0654614979213057,
+        "state_f32_bits_exact": true,
+        "workspace_bytes": {
+          "candidate_qk": 2097152,
+          "candidate_qk_saved": 14680064,
+          "control_qk": 16777216,
+          "persistent_added": 0
+        }
+      }
+    }
+  },
+  "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+  "mtp_guard": {
+    "accepted": {
+      "1": 12,
+      "2": 16,
+      "3": 17
+    },
+    "b1_tok_s": 43.55355556586254,
+    "b2_tok_s": 47.48464166669509,
+    "b3_tok_s": 58.3356619411376,
+    "exact": true,
+    "hardware": "W7900 / gfx1100",
+    "protocol": "one code prompt, natural25, no warmup, native B1/B2/B3, exact stream requirement",
+    "scope": "smoke only; default prompt prefill change does not replace native verifier GDN ownership",
+    "source_sha256": "0a51af970c96d4db2ced5505a182696a5b8538b58ccb82ad490fd1bbafe222a5",
+    "status": "complete_exact",
+    "true_ar_tok_s": 24.76225304381323
+  },
+  "performance_claim": true,
+  "protocol": {
+    "engine": "one resident session per shape; warm both routes; seven counterbalanced reset+bulk-prefill pairs; token 9707 repeated; tracked allocator peak sampled each run",
+    "engine_command_template": "HIP_VISIBLE_DEVICES=<board> HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python /tmp/qwen36_gdn_compact_peer_engine_ab.py --rows <512|1024|4096> --samples 7 --output <artifact>",
+    "leaf": "counterbalanced HIP events; complete prepare+recurrent+RMSNorm/gate; 5 warmups, 15 pairs per shape",
+    "leaf_commands": {
+      "w7900": "same command with HIP_VISIBLE_DEVICES=0 and /tmp/qwen36-27b-gdn-compact-peer-w7900.json",
+      "xtx": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt PYTHONPATH=. uv run python scripts/gguf_gdn_compact_peer_bench.py --rows 512 1024 --warmups 5 --samples 15 --json /tmp/qwen36-27b-gdn-compact-peer-xtx.json"
+    }
+  },
+  "quant": "gguf_q4_k_m sole-resident T16",
+  "repo_revision": "working-tree-precommit",
+  "schema_version": 1,
+  "status": "retained_default",
+  "trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 ... rocprofv3 --kernel-trace ... scripts/gguf_gdn_compact_peer_bench.py --rows 8 --warmups 0 --samples 1",
+    "expected_names_observed": true,
+    "prepare_duration_ns_examples": [
+      7666,
+      7905
+    ],
+    "recurrent_duration_ns_examples": [
+      55922,
+      53652
+    ]
+  }
+}

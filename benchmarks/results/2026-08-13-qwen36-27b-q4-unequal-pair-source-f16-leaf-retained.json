@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-13",
+  "status": "retained_runtime_unwired_q4_qkv_q4_gate_source_f16_leaf",
+  "title": "Qwen3.6-27B pair-produced source-F16 Q4/Q4 unequal projection leaf",
+  "performance_claim": true,
+  "commit": "8b42ae971",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": [
+    {
+      "device": "AMD Radeon RX 7900 XTX",
+      "selector": "HIP_VISIBLE_DEVICES=1",
+      "arch": "gfx1100"
+    },
+    {
+      "device": "AMD Radeon Pro W7900",
+      "selector": "HIP_VISIBLE_DEVICES=0",
+      "arch": "gfx1100"
+    }
+  ],
+  "candidate": {
+    "tensors": [
+      "blk.8.attn_qkv.weight",
+      "blk.8.attn_gate.weight"
+    ],
+    "roles": "24 linear-attention layers whose QKV and gate are both Q4T16",
+    "shapes_n_k": [
+      [10240, 5120],
+      [6144, 5120]
+    ],
+    "baseline": "retained exact unequal-output dual-WMMA Q4T16 shared-prefix plus QKV-tail owner",
+    "candidate": "one BF16-to-FP16 activation cast, adjacent-pair-owned exact source-F16 production, rocBLAS FP16 GEMM, and BF16 output cast for both operands",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "resident_layout_changed": false,
+    "maximum_existing_scratch_bytes": 28311552,
+    "admission_scope_if_qualified": "Qwen3.6-27B gfx1100 rows 512-2047 only; rows >=2048, decode, verifier/MTP, peer backends, standalone projections, unrelated pairs, registry misses, and other model/shape scopes retain exact Q4T16 owners"
+  },
+  "protocol": {
+    "command_template": "HIP_VISIBLE_DEVICES=<1 XTX|0 W7900> HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/qwen36_q4_unequal_pair_source_f16_screen.py --rows 512,1024 --warmups 3 --samples 15 --output <output>",
+    "timing": "counterbalanced HIP events",
+    "actual_weights": true,
+    "tiles": {
+      "512": 2048,
+      "1024": 512
+    },
+    "confidence_repeat": "XTX rows 512/1024 repeated at 31 pairs; M512 repeated again with 15 warmups and 31 pairs after early transient losses"
+  },
+  "selected_results": {
+    "rx_7900_xtx": {
+      "512": {
+        "control_ms": 1.5541729927062988,
+        "candidate_ms": 1.4458940029144287,
+        "speedup": 1.0748872251863668,
+        "candidate_wall_reduction_percent": 6.9669843897700705,
+        "paired_wins": "31/31",
+        "top1_qkv": 0.953125,
+        "top1_gate": 0.94921875,
+        "maximum_abs_error": 0.0234375
+      },
+      "1024": {
+        "control_ms": 3.014633893966675,
+        "candidate_ms": 2.8669919967651367,
+        "speedup": 1.0514971431270559,
+        "candidate_wall_reduction_percent": 4.897506708758915,
+        "paired_wins": "30/31",
+        "top1_qkv": 0.955078125,
+        "top1_gate": 0.9599609375,
+        "maximum_abs_error": 0.02734375
+      }
+    },
+    "w7900": {
+      "512": {
+        "control_ms": 1.787297010421753,
+        "candidate_ms": 1.5964109897613525,
+        "speedup": 1.119571978572345,
+        "candidate_wall_reduction_percent": 10.680151063160814,
+        "paired_wins": "15/15",
+        "top1_qkv": 0.953125,
+        "top1_gate": 0.94921875,
+        "maximum_abs_error": 0.0234375
+      },
+      "1024": {
+        "control_ms": 3.360352039337158,
+        "candidate_ms": 3.2784690856933594,
+        "speedup": 1.0249759724748118,
+        "candidate_wall_reduction_percent": 2.436737362194663,
+        "paired_wins": "15/15",
+        "top1_qkv": 0.955078125,
+        "top1_gate": 0.9599609375,
+        "maximum_abs_error": 0.02734375
+      }
+    }
+  },
+  "aggregate": {
+    "paired_wins": "91/92 selected confidence pairs",
+    "all_screened_pairs_including_initial_xtx": "120/124",
+    "minimum_speedup": 1.0249759724748118,
+    "maximum_speedup": 1.119571978572345,
+    "minimum_projection_top1": 0.94921875,
+    "maximum_projection_top1": 0.9599609375,
+    "maximum_abs_error": 0.02734375,
+    "maximum_mean_abs_error": 0.0011525439790607689,
+    "finite": true,
+    "quality_gate_pass": true
+  },
+  "sources": [
+    {
+      "path": "/tmp/qwen36-q4-unequal-pair-source-f16-xtx.json",
+      "sha256": "d6ba8401e3968a65d166b5536190b8f3cab3076279a9ca401d9d4515f448ae11"
+    },
+    {
+      "path": "/tmp/qwen36-q4-unequal-pair-source-f16-xtx-confirm.json",
+      "sha256": "bca8b0c0418e1594f147c92f023b6268ff37cfe3c4f13d8f1c8c744706e61e3e"
+    },
+    {
+      "path": "/tmp/qwen36-q4-unequal-pair-source-f16-xtx-m512-warm-confirm.json",
+      "sha256": "aeb78ff8f227b095ac71ca1bde77e757388cd704293c38d44ad8654c94ca50b2"
+    },
+    {
+      "path": "/tmp/qwen36-q4-unequal-pair-source-f16-w7900.json",
+      "sha256": "a9396d8f5899af5db7b6688d22cd0be7f859d2d05c11d332cb4945adb17d7f8e"
+    },
+    {
+      "path": "/tmp/qwen36_q4_unequal_pair_source_f16_screen.py",
+      "sha256": "1e77667c638c42718d160f745b3fd481c822b15aaebb8758a5bd0aea9ecc38d1"
+    }
+  ],
+  "decision": "Retain as a runtime-unwired leaf and route only through the existing generic ordered pair-only source-F16 policy at M512-M2047. Require complete four-category quality, binding XTX/W7900 engine qualification, exact M2048/4K/decode/MTP safeguards, unchanged tracked memory, and named production tracing before publication."
+}
