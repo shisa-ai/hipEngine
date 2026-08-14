@@ -1436,6 +1436,37 @@ Artifact:
 [`/tmp/d08-x/pack8-v2-screen.json` retained via the X2 worklog entry; in-tree
 evidence is the test file plus this section].
 
+### 2.40 D08-X2-K2 retained Q8_0 GDN cluster8 route (2026-08-15)
+
+X2-K2 first re-measured the GDN owner family at the exact production geometry
+(16 K heads / 16 V heads / 128x128, tokens=512). The registered recurrent
+variants already include llama's two schedules: `wave32_xor` (their 2048-wave
+d32 form, 0.954 ms/layer) and `cluster8` (their eight-lane clustered form,
+0.511 ms/layer); both agree to 1.1e-8 on L2-normalized inputs. The exact
+`lds32_direct` route used by Q8_0 launches only **64 one-wave blocks**, and
+the isolated full production composition (prepare + segments-cluster8 +
+gate, two 256-token chunks) is **0.836 ms/layer** versus the instrumented
+stage's 2.2 ms/layer - the stage markers are heavily perturbed, so binding
+evidence comes from the exact-core A/B, not markers.
+
+Routing Q8_0 to `chain_peer_cluster8` (the candidate P2 rejected when a
+strict graph-decode guard missed by 0.0108% under its bounded contract):
+
+- Exact-core pp512 **4230.6 -> 4949.4 tok/s (+16.70%, 5/5 blocks)**; public
+  **+19.38% (5/5)**; core tg128 **1.0092x (3/5)** and public tg128
+  **0.9909x**, both inside the 1% guard; all rows finite and deterministic.
+- Correctness over the 18 category/heldout prompts: **448/450 top-1
+  (99.56%), max KL 0.003260**.
+- Q4_K_M keeps its existing cluster8 route; rollback is
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile`.
+
+Q8_0 exact-core prefill is now **0.79x** Vulkan. The remaining GDN gap for
+both quants is the cluster8 kernel's 1.8x per-layer distance to Vulkan's
+0.284 ms; the stage-marker inflation documented above also stands.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio

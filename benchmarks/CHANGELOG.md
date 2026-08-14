@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-15
 
+- [gfx1151 X2-K2 Q8_0 GDN cluster8 route retained] Qwen3.5-0.8B / Q8_0 / pp512: exact-core prefill **4230.6 -> 4949.4 tok/s (+16.70%, 5/5)**, public **+19.38% (5/5)**, core/public tg128 **1.0092x/0.9909x** guards, **448/450 top-1, max KL 0.003260**; supersedes P2's 0.0108%-miss rejection with fresh graph-decode evidence; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json`.
+
 - [gfx1151 X2a pack8 WMMA bulk prefill route retained] Qwen3.5-0.8B / Q4_K_M / pp512: exact-core prefill **2543.4 -> 3427.9 tok/s (+35.31%, 5/5)**, public **+34.97%**, decode **0.9956x** guard, **447/450 top-1, max KL 0.003848**, sole pack8 residency unchanged, rollback env documented; llama source review shows the remaining per-mat gap is LDS/large-tile structure; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`.
 - [gfx1151 X1 cross-engine fine-grained gap map; diagnostic] Fresh stage-marker + Vulkan logger join at 4e69152f4: Q4 prefill dense FFN **113.8 vs 24.5 ms (89.3 ms gap)**, Q8 GDN **50.5 vs 16.8**, Q4 linear **47.7 vs 17.8**, Q4 GDN **40.0 vs 12.6**; decode gaps linear/dense/full-attn-core 0.98/0.97/0.96 ms per token; llama dispatches 693/663 ops (pp/tok) vs our 491/286 so launch count is not the gap; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`.
 

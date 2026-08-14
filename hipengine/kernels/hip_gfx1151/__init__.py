@@ -658,6 +658,11 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # exact route after its strict graph-decode guard missed by 0.0108%.
 GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+    # D08-X2-K2 (2026-08-15): the exact-core five-block gate measures the
+    # Vulkan-shaped cluster8 recurrence at +18% Q8_0 pp512 with neutral
+    # core-graph tg128, so the same one-V-head-per-K-head geometry now uses
+    # cluster8 for Q8_0 too. HIPENGINE_GGUF_GDN_PREFILL_MODE overrides.
+    ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
 }
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
