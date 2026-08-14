@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1-M11, accepted D08-P1/P2/P4/P6/D3/D4/D3B, and D08-D5 owner audit completed 2026-08-14; one fixed-1024 register+DPP boundary screen is next.
+Status: D08-C0, D08-M1-M11, accepted D08-P1/P2/P4/P6/D3/D4/D3B, and D08-D5 audit/screen completed 2026-08-14; combined fixed-1024 wave-shuffle C enters one full-model gate.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -97,7 +97,7 @@ not a synthetic leaf projection.
 | 16 | **Mandatory post-D4 graph rerank / M10** | **completed: Q4/Q8 120.62/119.14 tok/s; 310/288 nodes** | Exact trajectories/zero KL, complete node assignment, and 97.27%/97.34% marker coverage reconcile D4's owner movement at -0.512/-0.492 ms. | Q4 dense FFN projections now lead at 1.063 ms / 12.82%; separately marked unworked down+residual is 1.126 ms, so admit only its owner audit. |
 | 17 | **D08-D3B dense FFN down projections** | **accepted: +4.13% eager / +1.31% graph tg128; 311 -> 287 recording nodes** | Exact same-resident Q4/dense residual siblings pass 900/900 Q4+Q8 transitions with zero KL; Q4 wins 5/5 crossed-session blocks in both decode scopes, while Q8 selects no fused leaves and stays within 1%. | Closed for exact gfx1151 0.8B Q4_K_M c1 down owners; mandatory post-D3B graph rerank next. |
 | 18 | **Mandatory post-D3B graph rerank / M11** | **completed: current graph 120.21/117.80 tok/s Q4/Q8; 286/288 nodes** | Exact trajectory/zero KL and 97.35%/97.32% coverage assign D3B's Q4 dense movement at -0.102 ms; Q8 graph ownership is unchanged. | Larger arithmetic packages are exhausted; admit only D5's exact 24 RMSNorm + 24 add-RMSNorm owner audit at a 0.402-ms / 4.84% joined bound. |
-| 19 | **D08-D5 RMSNorm/residual boundary** | **audit complete: one fixed-1024 register+DPP screen** | Existing t512/staged routes project only 0.200% combined. The sole new family can remove 336 barriers and 147,456 read bytes/token across all 48 exact owners. | Screen A standalone, B add+norm, C combined; require >=12.34% package reduction / >=1% graph wall or close D5. |
+| 19 | **D08-D5 RMSNorm/residual boundary** | **screen qualified: combined 1.229x; projects 0.1257 ms / 1.511% graph saving** | Fixed-1024 wave-shuffle C is actual-weight bit-exact, CPU max KL 2.84e-5/top-1 100%, wins 5/5 blocks, and stays LDS512/scratch0. | Bind C only for exact gfx1151 0.8B Q4_K_M c1 attention/post-attention norm owners, preserve generic/Q8/peer fallbacks, then spend one gate. |
 | 20 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
 | 21 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
@@ -1130,7 +1130,7 @@ ported.
 One new in-tree same-resident family is frozen for the bounded screen because
 it has a concrete complete-package mechanism unavailable to the old schedules:
 exact hidden-1,024 t256 caches four values per thread in registers, uses wave32
-DPP plus a shared wave-leader final reduction, and covers standalone and
+HIP shuffles plus a shared wave-leader final reduction, and covers standalone and
 unrounded-add forms. Combined C removes **336 dynamic barriers/token** and
 **147,456 bytes/token** of second-pass global reads with zero layout, persistent
 bytes, hot scratch, or node change. It must reduce the current **0.67405-ms**
@@ -1141,6 +1141,41 @@ the unfused fallback; Q8, rows>1, other shapes/models/backends remain unchanged.
 
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json).
+
+### 2.33 D08-D5 fixed-1024 wave-shuffle screen (2026-08-14)
+
+RED first requires separate four-axis standalone/add+norm keys, exact c1 and
+hidden-1,024 pre-load validation, all non-null pointers, fixed local256, current-
+t256 GPU comparisons on random and finite BF16-edge inputs, and an independent
+CPU oracle. GREEN adds one templated in-tree body. Each thread caches four
+values; eight wave32 shuffle reductions publish wave sums, wave 0 computes the
+final sum, and two block barriers publish `inv_rms`. The add form caches the
+unrounded FP32 sums and emits the unchanged rounded BF16 residual. Generic t256
+primitives remain registered fallbacks.
+
+The complete actual-weight screen executes all 24 standalone and 24 add+norm
+owners per route. All **24 standalone norms, 24 add norms, and 24 residuals are
+bit-exact**, finite, and vector top-1 exact. The independent 48-row CPU gate has
+max KL **2.84e-5** and top-1 **100%**. Five blocks of four counter-rotated orders
+provide 20 marker-subtracted device-clock observations per route.
+
+Standalone A improves the package **1.118x** and projects **0.07115 ms / 0.855%
+wall**, but wins only 4/5 blocks and cannot proceed. Add+norm B improves
+**1.133x**, projects **0.07923 ms / 0.952%**, and wins 5/5, but remains below the
+1% package gate. Combined C alone qualifies at **1.229x**, normalized **0.67405
+-> 0.54834 ms**, saving **0.12570 ms / 1.511%** with **17/20 samples and 5/5
+balanced blocks**. It adds zero persistent bytes, hot scratch, and graph nodes.
+
+A cached-build `rocprofv3 --kernel-trace` smoke records the expected `<false>`
+and `<true>` names at grid/local **256/256**, **LDS512**, **scratch0**,
+VGPR **16/24**, and SGPR128. The profiler again emits zero durations on this
+stack; the device-clock screen supplies plausible timing. The audit's provisional
+“DPP” label is concretized as portable HIP `__shfl_down` wave reductions; the
+measured two-barrier/read-saving mechanism is unchanged. Only combined C enters
+exact capability/runtime RED/GREEN and one Q4+Q8 full-model gate.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
 
 ## 3. Comparison contracts
 
@@ -1358,7 +1393,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | **realized: +8.29% graph tg128 / +2.28% eager; zero bytes** | Fused-SiLU t128 removes 24 graph nodes, wins all decode pairs, passes 446/450 top-1/max KL 0.002843, and keeps exact trajectories. | **Accepted for Q4 gate/up c1.** M10 now admits the distinct dense-down owner audit as D3B. | accepted |
 | **D08-D3B** | Dense FFN down projection plus residual, split across 12 Q4-pack8 and 12 Q6-dense owners. | **realized: +4.13% eager / +1.31% graph tg128; zero bytes** | Exact same-resident C wins 5/5 crossed-session blocks, passes 900/900 transitions at KL 0, and removes 24 nodes. M11 confirms dense FFN 2.159 -> 2.057 ms and down+residual at 1.011 ms. | **Accepted/exhausted for exact gfx1151 0.8B Q4_K_M c1 down owners.** | accepted/exhausted |
 | **D08-D4** | GDN decode/conv and short-context full attention. | **realized: Q4 +5.97% / Q8 +5.95% graph tg128; zero bytes/nodes** | Exact-shape existing generic split-K3+fused-gate wins 5/5 graph pairs per quant, passes 897/900 combined top-1 with max KL 0.001944, and preserves exact trajectories and pp512. | **Accepted for gfx1151 0.8B rows1/8Q/2KV/D256 at cap514-641.** M10 confirms -0.512/-0.492 ms; fixed256 and unsupported routes remain fallbacks. | accepted |
-| **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | **screen admitted: fixed-1024 register+DPP A/B/C only** | Existing t512 + staged routes are exact but project just 0.200% combined and stop. One new same-resident family can remove 336 barriers and 147,456 read bytes/token; it must save >=12.34% of the 0.674-ms package. | RED/GREEN A standalone, B add+norm, C combined; reject below 1% graph wall or on any block/correctness/spill/Q8 guard failure. | screen-next |
+| **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | **qualified C: 1.229x package; 0.1257-ms / 1.511% projected graph saving** | A misses all-block and 1% gates; B wins 5/5 but is 0.952%. C is actual-weight bit-exact, CPU-gated, 5/5, LDS512/scratch0, and zero bytes/nodes. | Bind only exact gfx1151 0.8B Q4_K_M c1 norm owners, preserve all fallbacks, then run one Q4+Q8 gate. | gate-next |
 
 ### G lane — promotion and closure
 

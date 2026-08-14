@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "qualified-screen",
+  "task": "D08-D5 fixed-hidden1024 wave-shuffle RMSNorm/residual screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "base_commit": "844f7e9b8",
+  "source_state": "base plus transient in-tree fixed1024 wave candidates and RED/GREEN tests retained with this screen",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "protocol": {
+    "weights": "all 24 attention norm + 24 post-attention norm F32 residents",
+    "timing": "one warmup then five blocks of four counter-rotated orders = 20 same-stream device-clock observations/route; marker baseline subtracted",
+    "threshold": "combined C >=1% current 8.318507-ms graph wall, 5/5 blocks, actual-weight and CPU gates",
+    "exact_command": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib:$LD_LIBRARY_PATH HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-d5/screen_fixed1024_wave_norm.py"
+  },
+  "registry": {
+    "keys": [
+      [
+        "hip_gfx1151",
+        "rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out_fixed1024_wave256"
+      ],
+      [
+        "hip_gfx1151",
+        "add_rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out_fixed1024_wave256"
+      ]
+    ],
+    "all_registered": true
+  },
+  "correctness": {
+    "standalone": {
+      "bit_exact_rows": 24,
+      "rows": 24,
+      "bit_exact": true,
+      "max_abs": 0.0,
+      "top1_agreement": 1.0,
+      "all_finite": true
+    },
+    "add_norm": {
+      "bit_exact_rows": 24,
+      "rows": 24,
+      "bit_exact": true,
+      "max_abs": 0.0,
+      "top1_agreement": 1.0,
+      "all_finite": true
+    },
+    "add_residual": {
+      "bit_exact_rows": 24,
+      "rows": 24,
+      "bit_exact": true,
+      "max_abs": 0.0,
+      "top1_agreement": 1.0,
+      "all_finite": true
+    },
+    "cpu": {
+      "kl_max": 2.8449512243836214e-05,
+      "top1_min": 1.0,
+      "rows": 48,
+      "passed": true
+    }
+  },
+  "timing_ms": {
+    "control": {
+      "median": 0.25166973499649337,
+      "mean": 0.257884887536319,
+      "min": 0.16351067027351968,
+      "max": 0.7240181344554655
+    },
+    "A_standalone": {
+      "median": 0.22510551297465184,
+      "mean": 0.23005050220418796,
+      "min": 0.14880648231640117,
+      "max": 0.5327346959222523
+    },
+    "B_add_rmsnorm": {
+      "median": 0.22208853070834583,
+      "mean": 0.21758932596934175,
+      "min": 0.13529706442240255,
+      "max": 0.3479736499348763
+    },
+    "C_combined": {
+      "median": 0.20473524696924156,
+      "mean": 0.19758982692115018,
+      "min": 0.12255535517483218,
+      "max": 0.25752179140366693
+    }
+  },
+  "balanced_block_means_ms": {
+    "control": [
+      0.34913350991884584,
+      0.2514552650035067,
+      0.19177155345155797,
+      0.23668172653040775,
+      0.2603823827772768
+    ],
+    "A_standalone": [
+      0.2969293219617273,
+      0.2324892295361186,
+      0.2115967212704138,
+      0.18369354899308687,
+      0.22554368925959323
+    ],
+    "B_add_rmsnorm": [
+      0.23138979686404168,
+      0.23846307985171825,
+      0.18303495391243363,
+      0.2078043595331129,
+      0.22725443968540227
+    ],
+    "C_combined": [
+      0.1809314259593227,
+      0.21844003606853019,
+      0.18341317252780281,
+      0.19438887010319608,
+      0.2107756299468991
+    ]
+  },
+  "comparisons": {
+    "A_standalone": {
+      "speedup": 1.1180078696021665,
+      "normalized_stage_ms": 0.6029009440155857,
+      "projected_saving_ms": 0.07114705598441429,
+      "projected_graph_saving_percent": 0.8552863630987421,
+      "sample_wins": 17,
+      "block_wins": 4
+    },
+    "B_add_rmsnorm": {
+      "speedup": 1.133195551313699,
+      "normalized_stage_ms": 0.5948205490381467,
+      "projected_saving_ms": 0.07922745096185324,
+      "projected_graph_saving_percent": 0.9524239260945894,
+      "sample_wins": 15,
+      "block_wins": 5
+    },
+    "C_combined": {
+      "speedup": 1.2292447867284084,
+      "normalized_stage_ms": 0.548343183780307,
+      "projected_saving_ms": 0.12570481621969298,
+      "projected_graph_saving_percent": 1.5111463658045003,
+      "sample_wins": 17,
+      "block_wins": 5
+    }
+  },
+  "mechanical": {
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0,
+    "node_delta": 0,
+    "global_read_saving_bytes": {
+      "A": 49152,
+      "B": 98304,
+      "C": 147456
+    },
+    "dynamic_barriers_removed": {
+      "A": 168,
+      "B": 168,
+      "C": 336
+    }
+  },
+  "candidate_implementation": {
+    "source": "hipengine/kernels/hip_gfx1100/fused/gguf_ops.{hip,py}",
+    "schedule": "fixed rows1/hidden1024/local256; four values cached per thread; two wave32 __shfl_down reductions with eight shared wave sums and two block barriers",
+    "variants": {
+      "A_standalone": [
+        "hip_gfx1151",
+        "rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out_fixed1024_wave256"
+      ],
+      "B_add_rmsnorm": [
+        "hip_gfx1151",
+        "add_rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out_fixed1024_wave256"
+      ],
+      "C_combined": "A+B"
+    },
+    "generic_fallbacks": [
+      "bf16_out t256 for standalone",
+      "bf16_out t256 for add+RMSNorm"
+    ],
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0,
+    "node_delta": 0,
+    "note": "The audit used DPP as a provisional schedule label. The admitted implementation uses portable HIP wave shuffles; the measured two-barrier/read-saving mechanism is unchanged."
+  },
+  "validation": {
+    "red": "new fixed1024 test failed because both wrappers and registry keys were absent",
+    "green": "2 focused registry/pre-load/GPU/CPU tests pass; 17-test affected gguf_ops and prior staged-rejection bundle passes",
+    "rocprof": {
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/d08-d5/rocprof-fixed -- python3 /tmp/d08-d5/trace_fixed1024_wave_norm.py",
+      "trace": "/tmp/d08-d5/rocprof-fixed/zbook/1299347_kernel_trace.csv",
+      "trace_sha256": "95c065354e1fa5ebb342d9650e9c09137ca104dbe235226cb4287a25d897dead",
+      "targets": [
+        {
+          "kernel_name": "void gguf_norm_fixed1024_wave256_kernel<false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "grid": [
+            256,
+            1,
+            1
+          ],
+          "lds_block_bytes": 512,
+          "scratch_bytes": 0,
+          "vgpr_count": 16,
+          "sgpr_count": 128,
+          "duration_ns": 0
+        },
+        {
+          "kernel_name": "void gguf_norm_fixed1024_wave256_kernel<true>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "grid": [
+            256,
+            1,
+            1
+          ],
+          "lds_block_bytes": 512,
+          "scratch_bytes": 0,
+          "vgpr_count": 24,
+          "sgpr_count": 128,
+          "duration_ns": 0
+        }
+      ],
+      "caveat": "This gfx1151/TheRock rocprof build reports equal timestamps (known M2 blocker); device-clock screen supplies plausible timings. Both candidates are local256, LDS512, scratch0; standalone/add use VGPR16/24."
+    }
+  },
+  "raw": {
+    "screen": "/tmp/d08-d5/fixed1024-wave-norm-screen.json",
+    "screen_sha256": "731ee533f5f0e7f2584a37334eb17702043ac8e43cc2d83050fc3ce23fb9ca13",
+    "screen_script": "/tmp/d08-d5/screen_fixed1024_wave_norm.py",
+    "screen_script_sha256": "8844720a863052f17e5c792dd8c60c402114918e0d79c1033d86e490195049b7",
+    "trace_script": "/tmp/d08-d5/trace_fixed1024_wave_norm.py",
+    "trace_script_sha256": "9da6d7a066111856b4572068f51639d3b1ba0fff1ae61044e6c52244d7730a4d",
+    "audit": "/home/lhl/hipEngine/benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json",
+    "audit_sha256": "d47cc18bd24ffbd65c802114b0552493b9a9bd67cbbb9ee7c020383166d07312"
+  },
+  "passed": true,
+  "decision": {
+    "status": "qualified-full-model-gate",
+    "selected": "C_combined",
+    "reason": "C is actual-weight bit exact, passes independent CPU KL/top1, improves 1.229x, projects 0.12570 ms / 1.511% graph saving, and wins 5/5 blocks with zero bytes/nodes/scratch. A misses the all-block gate and A/B remain sub-1% alone.",
+    "next": "Bind C only for exact gfx1151 Qwen3.5-0.8B Q4_K_M c1 hidden1024 attention/post-attention norm owners; preserve Q8/rows>1/other model/backend and generic t256 fallbacks, then spend one Q4+Q8 full-model gate."
+  }
+}
