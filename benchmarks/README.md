@@ -168,9 +168,12 @@ separate SiLU owner. The bounded screen selects t128 at **1.7891 -> 0.9955 ms
 The retained model/shape-qualified route realizes production graph tg128
 **101.86 -> 110.31 tok/s (+8.29%, 5/5)** and eager **65.26 -> 66.75 (+2.28%,
 5/5)**, removes **24 graph nodes**, preserves exact trajectories, passes
-**446/450 top-1 / max KL 0.002843**, and adds zero bytes. Mandatory current
-graph rerank M9 is next. This campaign row is not yet a final cross-engine
-topline; see the [`retained dense decode route`](results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json),
+**446/450 top-1 / max KL 0.002843**, and adds zero bytes. Mandatory M9 then
+measures the current graph at **111.93 tok/s / 310 nodes** with **97.60%** stage
+coverage and reranks full-attention core/KV first at a **1.431-ms / 16.02%**
+request bound; bounded D4 audit is next. This campaign row is not yet a final
+cross-engine topline; see the [`post-D3 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3-graph-rerank.json),
+[`retained dense decode route`](results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json),
 [`dense decode screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json),
 [`dense decode audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-audit.json),
 [`graph/direct census`](results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json),

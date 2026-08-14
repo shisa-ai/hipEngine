@@ -1,0 +1,220 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-M9 post-D3 production graph/direct Q4 rerank",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "base_commit": "c3047f209",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "method": {
+    "raw": "/tmp/d08-m9/current-graph-rerank.json",
+    "raw_sha256": "59cd3f7e17bcfcf0efbc7f5fcb95b374557db440154f7b1b1eef5a159aca8675",
+    "script": "/tmp/d08-m9/current_graph_rerank.py",
+    "script_sha256": "6d548f6c341f751fba1526e4d82f7c877ecbcfc7ed7765ec952786fe4fbb7ead",
+    "builder": "/tmp/d08-m9/build_current_graph_rerank.py",
+    "builder_sha256": "0288f09f05363e613585dac067e2f9c69a47afa443cf0de1ce6d1b7451278b41",
+    "prompt": "token 9707 repeated 512 times; one warmup decode then 128 measured transitions",
+    "samples": "128 eager, production graph, and separately instrumented graph observations; separate recording graph trajectory",
+    "q8_reuse": "Q8 unchanged mechanically by exact Q4 model/file/quant/shape registry policy; reuse M2 Q8 row",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-m9/current_graph_rerank.py"
+  },
+  "correctness": {
+    "trajectory_exact": true,
+    "recorded": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0
+    },
+    "production": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0
+    },
+    "instrumented": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0
+    }
+  },
+  "timing": {
+    "eager_host_mean_ms_per_token": 15.288205,
+    "eager_tok_s": 65.409903,
+    "graph_host_mean_ms_per_token": 8.934396,
+    "graph_tok_s": 111.926983,
+    "pre_d3_graph_ms_per_token": 9.645806,
+    "pre_d3_graph_tok_s": 103.672002,
+    "post_over_pre_d3": 1.079626,
+    "vulkan_tok_s": 201.17,
+    "vulkan_over_current": 1.797332,
+    "remaining_wall_gap_ms": 3.963476
+  },
+  "api_census": {
+    "graph_launch_mean_ms": 0.016966,
+    "stream_synchronize_mean_ms": 8.912284,
+    "python_residual_mean_ms": 0.005146,
+    "launch_plus_python_share_percent": 0.247492,
+    "copies_inside_replay": 0
+  },
+  "graph_inventory": {
+    "nodes": 310,
+    "kernel_nodes": 310,
+    "edges": 309,
+    "node_types": {
+      "0": 310
+    },
+    "target_kernel_name_counts": {
+      "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb0EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 2,
+      "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb1EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 24
+    },
+    "pre_d3_nodes": 334,
+    "node_delta": -24
+  },
+  "instrumentation": {
+    "host_mean_ms": 9.995329,
+    "marker_baseline_mean_ms": 0.007725,
+    "adjusted_stage_mean_sum_ms": 9.755453,
+    "stage_coverage": 0.976001175,
+    "sync_normalization_scale": 0.9135695,
+    "prefix_nodes": [],
+    "suffix_nodes": [],
+    "caveat": "Role times are marker-subtracted stage shares normalized to the directly measured production sync span; total/API wall and graph nodes are direct."
+  },
+  "joined_roles": [
+    {
+      "role": "full_attention_core_kv",
+      "current_sync_share_normalized_ms": 1.589618,
+      "pre_d3_ms": 1.594572,
+      "change_ms": -0.004954,
+      "vulkan_gpu_ms": 0.158398,
+      "matched_gap_ms": 1.43122,
+      "potential_request_saving_percent": 16.019218
+    },
+    {
+      "role": "dense_ffn_projections",
+      "current_sync_share_normalized_ms": 2.197316,
+      "pre_d3_ms": 2.771911,
+      "change_ms": -0.574595,
+      "vulkan_gpu_ms": 1.096217,
+      "matched_gap_ms": 1.101099,
+      "potential_request_saving_percent": 12.32427
+    },
+    {
+      "role": "linear_attention_projections",
+      "current_sync_share_normalized_ms": 1.997367,
+      "pre_d3_ms": 1.986431,
+      "change_ms": 0.010936,
+      "vulkan_gpu_ms": 1.050735,
+      "matched_gap_ms": 0.946632,
+      "potential_request_saving_percent": 10.595366
+    },
+    {
+      "role": "full_attention_projections_rope",
+      "current_sync_share_normalized_ms": 0.570282,
+      "pre_d3_ms": 0.575875,
+      "change_ms": -0.005593,
+      "vulkan_gpu_ms": 0.253003,
+      "matched_gap_ms": 0.317279,
+      "potential_request_saving_percent": 3.551207
+    },
+    {
+      "role": "attention_norm",
+      "current_sync_share_normalized_ms": 0.317097,
+      "pre_d3_ms": 0.322506,
+      "change_ms": -0.005409,
+      "vulkan_gpu_ms": 0.108623,
+      "matched_gap_ms": 0.208474,
+      "potential_request_saving_percent": 2.333389
+    },
+    {
+      "role": "residual_norm_glue",
+      "current_sync_share_normalized_ms": 0.337991,
+      "pre_d3_ms": 0.341275,
+      "change_ms": -0.003284,
+      "vulkan_gpu_ms": 0.163005,
+      "matched_gap_ms": 0.174986,
+      "potential_request_saving_percent": 1.958564
+    },
+    {
+      "role": "linear_attention_conv",
+      "current_sync_share_normalized_ms": 0.23527,
+      "pre_d3_ms": 0.235835,
+      "change_ms": -0.000565,
+      "vulkan_gpu_ms": 0.115152,
+      "matched_gap_ms": 0.120118,
+      "potential_request_saving_percent": 1.344448
+    },
+    {
+      "role": "final_norm",
+      "current_sync_share_normalized_ms": 0.007305,
+      "pre_d3_ms": 0.006427,
+      "change_ms": 0.000878,
+      "vulkan_gpu_ms": 0.004526,
+      "matched_gap_ms": 0.002779,
+      "potential_request_saving_percent": 0.031105
+    },
+    {
+      "role": "lm_head_sampler_transport",
+      "current_sync_share_normalized_ms": 0.919056,
+      "pre_d3_ms": 0.899807,
+      "change_ms": 0.019249,
+      "vulkan_gpu_ms": 0.928033,
+      "matched_gap_ms": -0.008977,
+      "potential_request_saving_percent": 0.0
+    },
+    {
+      "role": "dense_ffn_activation",
+      "current_sync_share_normalized_ms": 0.051961,
+      "pre_d3_ms": 0.219512,
+      "change_ms": -0.167551,
+      "vulkan_gpu_ms": 0.069472,
+      "matched_gap_ms": -0.017511,
+      "potential_request_saving_percent": 0.0
+    },
+    {
+      "role": "gdn_recurrence",
+      "current_sync_share_normalized_ms": 0.674131,
+      "pre_d3_ms": 0.658452,
+      "change_ms": 0.015679,
+      "vulkan_gpu_ms": 0.716228,
+      "matched_gap_ms": -0.042097,
+      "potential_request_saving_percent": 0.0
+    },
+    {
+      "role": "input_setup",
+      "current_sync_share_normalized_ms": 0.009936,
+      "pre_d3_ms": 0.008872,
+      "change_ms": 0.001064,
+      "vulkan_gpu_ms": 0.221467,
+      "matched_gap_ms": -0.211531,
+      "potential_request_saving_percent": 0.0
+    }
+  ],
+  "memory": {
+    "owned_session_bytes": 1067067204,
+    "tracked_current_bytes": 1067067204,
+    "tracked_graph_delta_bytes": 0,
+    "hip_used_graph_delta_bytes": 212992
+  },
+  "q8_reused": {
+    "source": "/home/lhl/hipEngine/benchmarks/results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json",
+    "graph_tok_s": 112.299535,
+    "nodes": 288,
+    "top_role": {
+      "role": "full_attention_core_kv",
+      "hip_sync_share_normalized_ms": 1.584038,
+      "vulkan_gpu_ms": 0.163071,
+      "matched_gap_ms": 1.420967,
+      "share_of_hip_graph_wall_percent": 17.788672,
+      "potential_request_saving_percent": 15.957393
+    },
+    "isolation": "D3 requires Qwen3.5-0.8B/MOSTLY_Q4_K_M plus gguf_q4_k K1024/N3584; Q8 is MOSTLY_Q8_0 with gguf_q8_0_t16_v1 and cannot match."
+  },
+  "decision": {
+    "next": "D08-D4 full-attention core/KV audit",
+    "reason": "current full-attention core/KV is the largest matched gap at 1.431 ms / 16.02% of Q4 graph wall",
+    "second": "residual dense FFN projection role at 1.101 ms / 12.32%",
+    "third": "linear-attention projections at 0.947 ms / 10.60%",
+    "bound": "audit six current paged-attention plus gate owners as one semantic package; freeze at most two variants and preserve complete KVLiveSpans state/trajectory"
+  }
+}
