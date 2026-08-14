@@ -1332,6 +1332,8 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     return {
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
+        "allocation_mode": str(getattr(scratch, "allocation_mode", "dedicated")),
+        "physical_owner_count": len(buffers),
         "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
