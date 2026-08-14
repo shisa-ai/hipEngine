@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "rejected",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci_id": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "name": "Qwen3.6-27B",
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M"
+  },
+  "workload": {
+    "prompt_tokens": 4096,
+    "decode_tokens": 128,
+    "token_id": 9707,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "persistent_session": true,
+    "decode": "HIP graph replay",
+    "memory_poll_interval_seconds": 0.005,
+    "changed_surface": "full-attention prefill query chunk only; linear/MoE/post/RoPE remain 1024"
+  },
+  "baseline": {
+    "full_attention_query_chunk_rows": 4096,
+    "prefill_tok_s": 988.4052604231937,
+    "decode_tok_s": 31.401328847167777,
+    "tracked_peak_gib": 16.262759797275066,
+    "bulk_prefill_scratch_mib": 495.31546783447266,
+    "whole_device_peak_delta_gib": 17.02214813232422,
+    "source": "/tmp/qwen36-27b-memory-goal/compact-qk-final-4096.json",
+    "source_sha256": "1094321f8dffd0084aa5759f5281b426246fba69fd412e8b112af701b64fbff4",
+    "vram_source": "/tmp/qwen36-27b-memory-goal/compact-qk-final-4096-vram.json",
+    "vram_source_sha256": "9813cf605d83a5d0f40030d979aa9b52209590251310b1be7a29b8d3495192a5"
+  },
+  "candidates": [
+    {
+      "full_attention_query_chunk_rows": 1024,
+      "prefill_tok_s": 817.4047461880323,
+      "prefill_delta_percent": -17.300654798927674,
+      "decode_tok_s": 31.504999832833573,
+      "decode_delta_percent": 0.33016521595510273,
+      "tracked_peak_gib": 15.860000245273113,
+      "tracked_saved_mib": 412.42578125,
+      "bulk_prefill_scratch_mib": 142.91312408447266,
+      "whole_device_peak_delta_gib": 16.459491729736328,
+      "whole_device_saved_mib": 576.16015625,
+      "gap_vs_llamacpp_hip_gib": -0.10250827026367304,
+      "gap_vs_llamacpp_vulkan_gib": 0.547332763671875,
+      "finite_final_logits": true,
+      "final_token_ids": [9707, 9707, 9707],
+      "tracked_bytes_after_close": 0,
+      "source": "/tmp/qwen36-27b-memory-goal/reopen-allchunk1024-4096.json",
+      "source_sha256": "a351338146f3afe2a4814f6e611d843a1512f9f14390cf93bbb4177ec4816d23",
+      "vram_source": "/tmp/qwen36-27b-memory-goal/reopen-allchunk1024-4096-vram.json",
+      "vram_source_sha256": "083a6053388dbaacdab845f42b8cbf15b6f584ea9fae2eca9abc724857ae8b6e"
+    },
+    {
+      "full_attention_query_chunk_rows": 2048,
+      "prefill_tok_s": 832.6730651477495,
+      "prefill_delta_percent": -15.755912140925933,
+      "decode_tok_s": 31.449481113178987,
+      "decode_delta_percent": 0.15336145956472702,
+      "tracked_peak_gib": 15.985057465732098,
+      "tracked_saved_mib": 284.3671875,
+      "bulk_prefill_scratch_mib": 250.96390533447266,
+      "whole_device_peak_delta_gib": 16.741233825683594,
+      "whole_device_saved_mib": 287.65625,
+      "gap_vs_llamacpp_hip_gib": 0.17923382568359258,
+      "gap_vs_llamacpp_vulkan_gib": 0.8290748596191406,
+      "finite_final_logits": true,
+      "final_token_ids": [9707, 9707, 9707],
+      "tracked_bytes_after_close": 0,
+      "source": "/tmp/qwen36-27b-memory-goal/reopen-qchunk2048-4096.json",
+      "source_sha256": "567b8724f6ebe8f61e2a9eece225cd0aeaa6d6dbdb92d4ba627b41db91a7006a",
+      "vram_source": "/tmp/qwen36-27b-memory-goal/reopen-qchunk2048-4096-vram.json",
+      "vram_source_sha256": "f20fecafc8b39770971b332080651a28e0029067897dfb17f54d363112dd607d"
+    }
+  ],
+  "external_memory_floors_gib": {
+    "llamacpp_hip": 16.562,
+    "llamacpp_vulkan": 15.912158966064453
+  },
+  "gate": {
+    "correctness": "finite logits, exact repeated final IDs, graph reuse after capture, and zero tracked bytes after close",
+    "throughput": "no meaningful prefill or decode regression",
+    "memory": "whole-device peak <= 15.912158966064453 GiB"
+  },
+  "decision": {
+    "retain": false,
+    "reason": "Chunking does recover real memory, and the 1024-row point beats llama.cpp HIP memory, but both candidates lose 15.76-17.30% prefill and still exceed Vulkan. No policy or default was changed.",
+    "next": "Keep the 4096-row query geometry and reduce simultaneous same-row ownership; do not trade the retained prefill lead for allocator headroom."
+  }
+}
