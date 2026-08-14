@@ -127,6 +127,8 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     record_i64_scalar_indexed,
     set_decode_position_i64,
     set_i64_scalar,
+    wall_clock_mark_u64,
+    wall_clock_rate_khz,
 )
 from hipengine.kvcache import (
     DeviceChunkedKVPool,
@@ -398,6 +400,94 @@ class _HipEventStageRecorder:
         event = self.runtime.event_create()
         self._events.append(event)
         return event
+
+
+class _HipWallClockStageRecorder:
+    """Record same-stream stage boundaries with the device steady wall clock."""
+
+    def __init__(
+        self,
+        runtime: HipRuntime,
+        *,
+        enabled: bool,
+        stream: int = 0,
+        library: object | None = None,
+        capacity: int = 4096,
+    ) -> None:
+        if capacity < 2:
+            raise ValueError("wall-clock stage recorder capacity must be at least two")
+        self.runtime = runtime
+        self.enabled = bool(enabled)
+        self.stream = int(stream)
+        self.library = library
+        self.capacity = int(capacity)
+        self._buffer: DeviceBuffer | None = None
+        self._intervals: list[tuple[tuple[str, ...], int, int]] = []
+        self._count = 0
+        self._closed = False
+        if self.enabled:
+            self._buffer = malloc(self.capacity * np.dtype(np.uint64).itemsize, runtime=runtime)
+
+    def _record_boundary(self) -> int:
+        if self._buffer is None:
+            raise RuntimeError("wall-clock stage recorder buffer is unavailable")
+        if self._count >= self.capacity:
+            raise RuntimeError(f"wall-clock stage recorder exceeded capacity {self.capacity}")
+        index = self._count
+        wall_clock_mark_u64(
+            self._buffer.ptr,
+            index,
+            stream=self.stream,
+            library=self.library,
+            runtime=self.runtime,
+        )
+        self._count += 1
+        return index
+
+    def start(self) -> None:
+        if self.enabled:
+            self._record_boundary()
+
+    def mark(self, name: str, *aliases: str) -> None:
+        if not self.enabled:
+            return
+        if self._count == 0:
+            raise RuntimeError("stage recorder must be started before marking")
+        start_index = self._count - 1
+        stop_index = self._record_boundary()
+        names = (str(name), *(str(alias) for alias in aliases))
+        self._intervals.append((names, start_index, stop_index))
+
+    def resolve_into(self, timings: dict[str, float]) -> None:
+        if not self.enabled or self._buffer is None:
+            return
+        ticks = np.empty(self._count, dtype=np.uint64)
+        copy_device_to_host(
+            host_array_ptr(ticks),
+            self._buffer,
+            nbytes=int(ticks.nbytes),
+            runtime=self.runtime,
+        )
+        rate_khz = wall_clock_rate_khz(library=self.library, runtime=self.runtime)
+        for names, start_index, stop_index in self._intervals:
+            elapsed_ticks = int(ticks[stop_index]) - int(ticks[start_index])
+            if elapsed_ticks < 0:
+                raise RuntimeError(
+                    "device wall clock moved backwards between stage markers "
+                    f"{start_index} and {stop_index}"
+                )
+            elapsed_ms = float(elapsed_ticks) / float(rate_khz)
+            for name in names:
+                timings[name] = timings.get(name, 0.0) + elapsed_ms
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        if self._buffer is not None:
+            free(self._buffer, runtime=self.runtime)
+            self._buffer = None
+        self._intervals.clear()
+        self._closed = True
 
 
 @dataclass(frozen=True)
@@ -3234,6 +3324,8 @@ class Qwen35GGUFFullStackRunner:
         allow_aotriton: bool = True,
         aotriton_min_tokens: int | None = None,
         paged_max_context_len: int | None = None,
+        stage_prefix: str = "prefill_full_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> bool:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -3252,6 +3344,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_attn_norm")
         if not launch_gguf_linear_triple(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
@@ -3348,6 +3442,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
         if scratch.key_cache is None or scratch.value_cache is None:
             raise RuntimeError(
                 "GGUF full-attention prefill requires cache-backed key/value buffers; "
@@ -3453,6 +3549,8 @@ class Qwen35GGUFFullStackRunner:
                         library=kv_write_library,
                         runtime=runtime,
                     )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_kv_write")
         threshold = int(
             PrefillConfig().attn_aotriton_min_tokens
             if aotriton_min_tokens is None
@@ -3662,6 +3760,8 @@ class Qwen35GGUFFullStackRunner:
                 library=paged_attn_library,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_core_gate")
         used_aotriton = use_aotriton
         if not _try_launch_dense_q8_single_dp4a(
             layer.weight("attn_output"),
@@ -3684,6 +3784,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_output")
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -3693,6 +3795,8 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             expert_sidecar=expert_sidecar,
+            stage_prefix=f"{stage_prefix}_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
         )
         return used_aotriton
 
@@ -4349,6 +4453,8 @@ class Qwen35GGUFFullStackRunner:
         next_norm_weight_ptr: int | None = None,
         next_norm_out_ptr: int | None = None,
         stream: int = 0,
+        stage_prefix: str = "decode_linear_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         self._run_linear_attention_attn_only(
             layer_id,
@@ -4357,6 +4463,8 @@ class Qwen35GGUFFullStackRunner:
             scratch,
             input_norm_ptr=input_norm_ptr,
             stream=stream,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
         )
         self._run_post_attention_ffn(
             layer_id,
@@ -4367,6 +4475,8 @@ class Qwen35GGUFFullStackRunner:
             next_norm_weight_ptr=next_norm_weight_ptr,
             next_norm_out_ptr=next_norm_out_ptr,
             stream=stream,
+            stage_prefix="decode_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
         )
 
     def _run_linear_attention_attn_only(
@@ -4379,6 +4489,8 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
         stream: int = 0,
+        stage_prefix: str = "decode_linear_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -4404,6 +4516,8 @@ class Qwen35GGUFFullStackRunner:
             if int(input_norm_ptr) != int(scratch.norm.ptr):
                 raise ValueError("prefused linear-attention input norm must use scratch.norm")
             attn_norm_f32_ptr = None
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_norm")
         pair_fused = launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
@@ -4438,6 +4552,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_gate")
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
         self._run_linear_attention_alpha_beta_rows(
@@ -4449,6 +4565,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_alpha_beta")
         qwen35_linear_attn_conv_decode_bf16(
             scratch.linear_qkv.ptr,
             conv_state.ptr,
@@ -4459,6 +4577,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_conv")
         ssm_out_weight = layer.weight("ssm_out")
         gdn_output_fusion = self._gdn_decode_output_fusion_for_weight(
             ssm_out_weight
@@ -4514,6 +4634,8 @@ class Qwen35GGUFFullStackRunner:
             )
             ssm_out_input_ptr = scratch.recurrent_bf16.ptr
             ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_gdn")
         launch_gguf_linear(
             ssm_out_weight,
             ssm_out_input_ptr,
@@ -4525,6 +4647,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
 
     def _deferred_linear_state_snapshot_producers_available(self) -> bool:
         """Require every producer needed before omitting the initial copy."""
@@ -7053,6 +7177,8 @@ class Qwen35GGUFFullStackRunner:
         next_norm_out_ptr: int | None = None,
         stream: int = 0,
         attention_max_context_len: int | None = None,
+        stage_prefix: str = "decode_full_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         if max_context_len is None:
             max_context_len = attention_max_context_len
@@ -7067,6 +7193,8 @@ class Qwen35GGUFFullStackRunner:
             input_norm_ptr=input_norm_ptr,
             stream=stream,
             attention_max_context_len=max_context_len,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
         )
         self._run_post_attention_ffn(
             layer_id,
@@ -7077,6 +7205,8 @@ class Qwen35GGUFFullStackRunner:
             next_norm_weight_ptr=next_norm_weight_ptr,
             next_norm_out_ptr=next_norm_out_ptr,
             stream=stream,
+            stage_prefix="decode_ffn",
+            gpu_stage_recorder=gpu_stage_recorder,
         )
 
     def _run_full_attention_attn_only(
@@ -7091,6 +7221,8 @@ class Qwen35GGUFFullStackRunner:
         input_norm_ptr: int | None = None,
         stream: int = 0,
         attention_max_context_len: int | None = None,
+        stage_prefix: str = "decode_full_attn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -7113,6 +7245,8 @@ class Qwen35GGUFFullStackRunner:
             )
         elif int(input_norm_ptr) != int(scratch.norm.ptr):
             raise ValueError("prefused full-attention input norm must use scratch.norm")
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_norm")
         if not launch_gguf_linear_triple(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
@@ -7208,6 +7342,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
         key_cache, value_cache = scratch.full_cache(layer_id)
         append_spans = scratch.append_spans_for_layer(layer_id)
         decode_spans = scratch.decode_spans_for_layer(layer_id)
@@ -7288,6 +7424,8 @@ class Qwen35GGUFFullStackRunner:
                 library=kv_write_library,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_kv_write")
         active_context = int(position) + 1
         attention_context_cap = active_context if attention_max_context_len is None else int(attention_max_context_len)
         if attention_context_cap < active_context:
@@ -7450,6 +7588,8 @@ class Qwen35GGUFFullStackRunner:
                     library=paged_attn_library,
                     runtime=runtime,
                 )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_core_gate")
         launch_gguf_linear(
             layer.weight("attn_output"),
             scratch.full_gated.ptr,
@@ -7460,6 +7600,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_output")
 
     def _run_full_attention_output_rows(
         self,
@@ -7525,6 +7667,8 @@ class Qwen35GGUFFullStackRunner:
         next_norm_weight_ptr: int | None = None,
         next_norm_out_ptr: int | None = None,
         stream: int = 0,
+        stage_prefix: str = "decode_ffn",
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         self._run_post_attention_ffn_rows(
             layer_id,
@@ -7536,6 +7680,8 @@ class Qwen35GGUFFullStackRunner:
             next_norm_weight_ptr=next_norm_weight_ptr,
             next_norm_out_ptr=next_norm_out_ptr,
             stream=stream,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
         )
 
     def _run_post_attention_ffn_rows(
@@ -11624,6 +11770,8 @@ class Qwen35GGUFResidentSession:
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     last_packed_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_prefill_gpu_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_decode_gpu_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     last_native_spec_target_submitted: bool = field(default=False, init=False)
     last_native_spec_target_fallback_reason: str | None = field(default=None, init=False)
     last_native_spec_target_capture_ms: float = field(default=0.0, init=False)
@@ -13728,6 +13876,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
@@ -13779,6 +13928,8 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
                 if capture_target_hidden_rows is not None:
                     bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
+                if record_gpu_stage_timings:
+                    bulk_kwargs["record_gpu_stage_timings"] = True
                 return self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
@@ -13786,6 +13937,8 @@ class Qwen35GGUFResidentSession:
                     **bulk_kwargs,
                 )
 
+        if record_gpu_stage_timings:
+            raise ValueError("GPU stage timing currently requires bulk GGUF prefill")
         target_hidden_row_nbytes = 0
         if capture_target_hidden_rows is not None:
             target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
@@ -13891,6 +14044,7 @@ class Qwen35GGUFResidentSession:
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
         enqueue_sample_only: bool = False,
+        record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -13913,6 +14067,15 @@ class Qwen35GGUFResidentSession:
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
         runtime = self.runtime or get_hip_runtime()
+        gpu_stage_timings: dict[str, float] = {}
+        self.last_prefill_gpu_stage_timings_ms = gpu_stage_timings
+        gpu_stage_recorder = _HipWallClockStageRecorder(
+            runtime,
+            enabled=record_gpu_stage_timings,
+            stream=stream,
+            library=self._runtime_state_library,
+        )
+        gpu_stage_recorder.start()
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )
@@ -13943,6 +14106,7 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
         self.reset(stream=stream)
+        gpu_stage_recorder.mark("prefill_reset")
         if recorder is not None:
             recorder.complete(reset_sequence, stream=stream)
         alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
@@ -13990,6 +14154,7 @@ class Qwen35GGUFResidentSession:
                         token_ids_device_ptr=self._prefill_token_buf.ptr,
                         stream=stream,
                     )
+                    gpu_stage_recorder.mark("prefill_embedding")
                     if recorder is not None and recorder.should_complete_layers:
                         recorder.complete(embedding_sequence, stream=stream)
                     src = self._prefill_hidden_a
@@ -14005,6 +14170,7 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                         stream=stream,
                     )
+                    gpu_stage_recorder.mark("prefill_chunk_metadata")
                     for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                         layer_sequence = 0
                         if recorder is not None:
@@ -14043,6 +14209,8 @@ class Qwen35GGUFResidentSession:
                                 stream=stream,
                                 decode_scratch=self.scratch,
                                 expert_sidecar=None,
+                                stage_prefix="prefill_linear_attn",
+                                gpu_stage_recorder=gpu_stage_recorder,
                             )
                         elif layer_type == FULL_ATTENTION:
                             layer_scratch = self._full_attention_prefill_scratch_for_layer(bulk_scratch, layer_id)
@@ -14057,6 +14225,8 @@ class Qwen35GGUFResidentSession:
                                 stream=stream,
                                 aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                 expert_sidecar=None,
+                                stage_prefix="prefill_full_attn",
+                                gpu_stage_recorder=gpu_stage_recorder,
                             )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -14132,6 +14302,7 @@ class Qwen35GGUFResidentSession:
                     token_ids_device_ptr=self._prefill_token_buf.ptr,
                     stream=stream,
                 )
+                gpu_stage_recorder.mark("prefill_embedding")
                 if recorder is not None and recorder.should_complete_layers:
                     recorder.complete(embedding_sequence, stream=stream)
                 src = self._prefill_hidden_a
@@ -14184,6 +14355,7 @@ class Qwen35GGUFResidentSession:
                                     runtime=runtime,
                                     stream=stream,
                                 )
+                                gpu_stage_recorder.mark("prefill_chunk_metadata")
                                 active_chunk_key = chunk_key
                             if active_bulk_scratch is None:
                                 raise RuntimeError("GGUF bulk prefill chunk metadata was not prepared")
@@ -14210,6 +14382,8 @@ class Qwen35GGUFResidentSession:
                                     stream=stream,
                                     decode_scratch=self.scratch,
                                     expert_sidecar=expert_sidecar,
+                                    stage_prefix="prefill_linear_attn",
+                                    gpu_stage_recorder=gpu_stage_recorder,
                                 )
                             elif layer_type == FULL_ATTENTION:
                                 layer_scratch = self._full_attention_prefill_scratch_for_layer(bulk_scratch, layer_id)
@@ -14224,6 +14398,8 @@ class Qwen35GGUFResidentSession:
                                     stream=stream,
                                     aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                     expert_sidecar=expert_sidecar,
+                                    stage_prefix="prefill_full_attn",
+                                    gpu_stage_recorder=gpu_stage_recorder,
                                 )
                             else:
                                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -14338,6 +14514,7 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     capture_hidden_seed_fp32=False,
                 )
+            gpu_stage_recorder.mark("prefill_output_norm")
             self._last_target_hidden_ptr = int(last_src_ptr)
             self._position = rows
             self.scratch.position_host[0] = rows
@@ -14350,6 +14527,7 @@ class Qwen35GGUFResidentSession:
                 library=self._runtime_state_library,
                 runtime=runtime,
             )
+            gpu_stage_recorder.mark("prefill_state_finalize")
             if recorder is not None:
                 recorder.complete(finalize_sequence, stream=stream)
                 sample_sequence = recorder.submit(
@@ -14365,14 +14543,19 @@ class Qwen35GGUFResidentSession:
                 sample_sequence = 0
             if enqueue_sample_only:
                 self._sample_device_from_hidden(last_hidden_ptr, stream=stream)
+                gpu_stage_recorder.mark("prefill_lm_head_sample")
+                gpu_stage_recorder.resolve_into(gpu_stage_timings)
                 if recorder is not None:
                     recorder.complete(sample_sequence, stream=stream)
                 return None
             result = self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits, stream=stream)
+            gpu_stage_recorder.mark("prefill_lm_head_sample")
+            gpu_stage_recorder.resolve_into(gpu_stage_timings)
             if recorder is not None:
                 recorder.complete(sample_sequence, stream=stream)
             return result
         finally:
+            gpu_stage_recorder.close()
             self._release_int8_prefill_oracle_buffers()
 
     def _verify_token_embedding_reader_cached(self) -> GGUFReader:
@@ -16274,6 +16457,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
 
@@ -16287,17 +16471,34 @@ class Qwen35GGUFResidentSession:
 
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
-        with gemv_decode_session(self.use_gemv_decode):
-            hidden_ptr = self._run_token_to_final_hidden(
-                int(token_id),
-                position=self._position,
-                span_role=span_role,
-                capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
-                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
-                capture_layer_output_hidden=capture_layer_output_hidden,
-            )
-            self._position += 1
-            return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
+        runtime = self.runtime or get_hip_runtime()
+        gpu_stage_timings: dict[str, float] = {}
+        self.last_decode_gpu_stage_timings_ms = gpu_stage_timings
+        gpu_stage_recorder = _HipWallClockStageRecorder(
+            runtime,
+            enabled=record_gpu_stage_timings,
+            stream=0,
+            library=self._runtime_state_library,
+        )
+        gpu_stage_recorder.start()
+        try:
+            with gemv_decode_session(self.use_gemv_decode):
+                hidden_ptr = self._run_token_to_final_hidden(
+                    int(token_id),
+                    position=self._position,
+                    span_role=span_role,
+                    capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
+                    capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+                    capture_layer_output_hidden=capture_layer_output_hidden,
+                    gpu_stage_recorder=gpu_stage_recorder,
+                )
+                self._position += 1
+                result = self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
+                gpu_stage_recorder.mark("decode_lm_head_sample")
+                gpu_stage_recorder.resolve_into(gpu_stage_timings)
+                return result
+        finally:
+            gpu_stage_recorder.close()
 
     def step_async_top1(
         self,
@@ -17540,12 +17741,15 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> int:
         if self._token_buf is None or self.scratch is None:
             raise RuntimeError("GGUF resident session buffers are closed")
         scratch = self.scratch.for_slot(0, span_role=span_role)
         self._set_full_attention_position_device(position, stream=stream, scratch=scratch)
         self._set_token_id_device(int(token_id), stream=stream)
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark("decode_input_setup")
         return self._run_current_hidden_to_final_hidden(
             position=position,
             stream=stream,
@@ -17553,6 +17757,7 @@ class Qwen35GGUFResidentSession:
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             capture_layer_output_hidden=capture_layer_output_hidden,
+            gpu_stage_recorder=gpu_stage_recorder,
         )
 
     def capture_linear_attention_boundary(
@@ -18001,6 +18206,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> int:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -18042,6 +18248,8 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     attention_max_context_len=max_context_len,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"decode_{layer_type}_graph_layer")
             elif layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_layer(
                     layer_id,
@@ -18052,6 +18260,8 @@ class Qwen35GGUFResidentSession:
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
                     stream=stream,
+                    stage_prefix="decode_linear_attn",
+                    gpu_stage_recorder=gpu_stage_recorder,
                 )
             elif layer_type == FULL_ATTENTION:
                 self.runner._run_full_attention_layer(
@@ -18065,6 +18275,8 @@ class Qwen35GGUFResidentSession:
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
                     stream=stream,
+                    stage_prefix="decode_full_attn",
+                    gpu_stage_recorder=gpu_stage_recorder,
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -18087,12 +18299,15 @@ class Qwen35GGUFResidentSession:
             )
         else:
             self._last_pre_output_norm_hidden = None
-        return self._run_output_norm_hidden(
+        output_norm_ptr = self._run_output_norm_hidden(
             src.ptr,
             scratch.norm.ptr,
             stream=stream,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
         )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark("decode_output_norm")
+        return output_norm_ptr
 
     def _moe_graph_for_decode(self) -> MoeGraphCache | None:
         """Return the rows==1 MoE FFN graph cache, lazily created when enabled.

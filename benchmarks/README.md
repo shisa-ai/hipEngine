@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-14**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -113,6 +113,13 @@ git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md
 A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
+
+Current blocker diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` now has a
+98.8-99.5%-reconciled prefill and 96.6-97.6%-reconciled eager-decode semantic
+ledger for Q4_K_M and Q8_0. Q4 prefill is led by fallback linear-attention
+projections; projection GEMVs lead decode in both quants. These instrumented
+rows are not topline throughput; see
+[`2026-08-14-gfx1151-qwen35-08b-stage-attribution.json`](results/2026-08-14-gfx1151-qwen35-08b-stage-attribution.json).
 
 ## Current single-request scoreboards
 

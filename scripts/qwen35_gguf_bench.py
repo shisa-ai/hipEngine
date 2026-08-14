@@ -132,6 +132,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--gpu-stage-timings",
+        action="store_true",
+        help=(
+            "Record profiling-only same-stream device wall-clock stage timings. Requires "
+            "--persistent-session and eager decode; throughput from this mode is diagnostic."
+        ),
+    )
+    parser.add_argument(
         "--compiler-version-file",
         type=Path,
         default=None,
@@ -194,6 +202,10 @@ def main() -> int:
         raise ValueError("--graph-steps-per-replay must be positive")
     if args.graph_replay_decode and args.decode_tokens % args.graph_steps_per_replay != 0:
         raise ValueError("--decode-tokens must be divisible by --graph-steps-per-replay")
+    if args.gpu_stage_timings and not args.persistent_session:
+        raise ValueError("--gpu-stage-timings requires --persistent-session")
+    if args.gpu_stage_timings and args.graph_replay_decode and args.decode_tokens:
+        raise ValueError("--gpu-stage-timings requires eager decode")
     for name in (
         "prefill_chunk_size",
         "prefill_linear_chunk_size",
@@ -270,6 +282,7 @@ def main() -> int:
             measured_runs=args.measured_runs,
             roctx=roctx,
             rocprof_selected_region=args.rocprof_selected_region,
+            gpu_stage_timings=args.gpu_stage_timings,
         )
         session_mode = "persistent"
     else:
@@ -384,6 +397,7 @@ def main() -> int:
         "graph_replay_decode": bool(args.graph_replay_decode),
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
         "rocprof_selected_region": args.rocprof_selected_region,
+        "gpu_stage_timings": bool(args.gpu_stage_timings),
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
         "requested_prefill_chunk_size": int(args.prefill_chunk_size),
@@ -620,6 +634,7 @@ def _run_persistent_session(
     measured_runs: int,
     roctx: "_RoctxProfilerControl",
     rocprof_selected_region: str,
+    gpu_stage_timings: bool = False,
 ) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
     """Run warmup/measured iterations inside one resident GGUF session.
 
@@ -690,6 +705,7 @@ def _run_persistent_session(
                 graph_holder=graph_holder,
                 roctx=roctx,
                 rocprof_selected_region=rocprof_selected_region,
+                gpu_stage_timings=bool(gpu_stage_timings and measured),
             )
             runs.append(run)
     finally:
@@ -731,6 +747,7 @@ def _run_existing_session_once(
     graph_holder: dict[str, Any] | None = None,
     roctx: "_RoctxProfilerControl",
     rocprof_selected_region: str,
+    gpu_stage_timings: bool = False,
 ) -> dict[str, Any]:
     """Run one prefill/decode iteration on an existing resident session."""
 
@@ -748,6 +765,8 @@ def _run_existing_session_once(
     prefill_seconds = 0.0
     warmup_decode_seconds = 0.0
     decode_seconds = 0.0
+    prefill_gpu_stage_timings_ms: dict[str, float] = {}
+    decode_gpu_stage_timings_ms: dict[str, float] = {}
     decode_graph_transport_provenance = None
     decode_graph_disabled_reason = _decode_graph_disabled_reason(session, graph_replay_decode)
     effective_graph_replay_decode = bool(graph_replay_decode and decode_graph_disabled_reason is None)
@@ -759,8 +778,11 @@ def _run_existing_session_once(
                 use_bulk=use_bulk_prefill,
                 bulk_attention_mode=bulk_attention_mode,
                 return_logits=False,
+                record_gpu_stage_timings=gpu_stage_timings,
             )
         prefill_seconds = time.perf_counter() - prefill_start
+        if gpu_stage_timings:
+            prefill_gpu_stage_timings_ms = dict(session.last_prefill_gpu_stage_timings_ms)
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
         memory_snapshots["after_prefill"] = _memory_snapshot("after_prefill", runtime, session)
@@ -820,7 +842,16 @@ def _run_existing_session_once(
             decode_start = time.perf_counter()
             with roctx.region("measured_decode", selected=rocprof_selected_region):
                 for step_index in range(decode_tokens):
-                    final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                    final = session.step(
+                        next_token,
+                        return_logits=(step_index == decode_tokens - 1),
+                        record_gpu_stage_timings=gpu_stage_timings,
+                    )
+                    if gpu_stage_timings:
+                        for name, ms in session.last_decode_gpu_stage_timings_ms.items():
+                            decode_gpu_stage_timings_ms[name] = (
+                                decode_gpu_stage_timings_ms.get(name, 0.0) + float(ms)
+                            )
                     next_token = final.token_id
                     generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start
@@ -865,6 +896,13 @@ def _run_existing_session_once(
         "host_token_embedding_mapped": _mapped_host_embedding_audit(session),
         "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
+        "gpu_stage_timings_ms": {
+            "enabled": bool(gpu_stage_timings),
+            "method": "device_wall_clock_marker" if gpu_stage_timings else None,
+            "prefill": prefill_gpu_stage_timings_ms,
+            "decode": decode_gpu_stage_timings_ms,
+            "decode_tokens": int(decode_tokens),
+        },
         "timings": {
             "load_seconds": load_seconds,
             "load_seconds_is_shared_session": bool(persistent_session),
