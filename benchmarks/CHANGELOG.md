@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-15
 
+- [gfx1151 X2-K5 dense-BF16 WMMA bulk prefill retained] Qwen3.5-0.8B / Q4_K_M / pp512: exact-core prefill **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)**, public **+24.63% (5/5)**, decode guards **1.0018x/1.0100x**, Q8_0 guard neutral at **1.0062x**, **446/450 top-1, max KL 0.004215**; leaf 5.2x the naive dense tile; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`.
+
 - [gfx1151 X2-K2 Q8_0 GDN cluster8 route retained] Qwen3.5-0.8B / Q8_0 / pp512: exact-core prefill **4230.6 -> 4949.4 tok/s (+16.70%, 5/5)**, public **+19.38% (5/5)**, core/public tg128 **1.0092x/0.9909x** guards, **448/450 top-1, max KL 0.003260**; supersedes P2's 0.0108%-miss rejection with fresh graph-decode evidence; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json`.
 
 - [gfx1151 X2a pack8 WMMA bulk prefill route retained] Qwen3.5-0.8B / Q4_K_M / pp512: exact-core prefill **2543.4 -> 3427.9 tok/s (+35.31%, 5/5)**, public **+34.97%**, decode **0.9956x** guard, **447/450 top-1, max KL 0.003848**, sole pack8 residency unchanged, rollback env documented; llama source review shows the remaining per-mat gap is LDS/large-tile structure; `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`.

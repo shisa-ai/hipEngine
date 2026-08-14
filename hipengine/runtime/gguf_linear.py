@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
@@ -1407,6 +1408,36 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
         _raw_k_prefill_variant.reset(token)
 
 
+def _dense_bf16_wmma_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    enabled: bool,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Prefer the D08-X2-K5 LDS-staged WMMA dense-BF16 bulk consumer."""
+
+    if (
+        not enabled
+        or rows < 16
+        or out_features <= 0
+        or out_features % 128
+        or dispatch.abi != "dense_bf16"
+        or dispatch.key.variant != "prefill_out"
+        or dispatch.key.layer != "dense_gemv"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "prefill_wmma_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
 def _dense_bf16_rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -2174,6 +2205,22 @@ def launch_gguf_linear(
             out_features=out_features,
             enabled=not use_wmma,
             native_batch=_native_batch_decode_session_enabled,
+        )
+        dispatch = _dense_bf16_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            out_features=out_features,
+            enabled=(
+                use_wmma
+                and os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and bool(
+                    backend_package_capability(
+                        resolved_backend,
+                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+                        False,
+                    )
+                )
+            ),
         )
         dispatch = _pack8_rowtile_dispatch(
             dispatch,
@@ -3410,6 +3457,49 @@ def launch_gguf_linear_pair(
                 out_features,
                 **common_kwargs,
             )
+            return True
+        # D08-X2-K5a: bulk rows prefer the routed pack8 WMMA leaf per side
+        # over the per-row base dual kernel (same registry route the single
+        # projection path takes; the base dual stays the fallback).
+        if (
+            use_wmma
+            and rows >= 16
+            and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
+            and backend_package_capability(
+                _weight_backend(weight_a, backend=backend),
+                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
+                False,
+            )
+            and is_registered(
+                KernelKey(
+                    _weight_backend(weight_a, backend=backend),
+                    "linear",
+                    "gguf_q4_k",
+                    "pack8_wmma_prefill_bf16_bf16_out",
+                )
+            )
+        ):
+            pair_library = None if libraries is None else libraries.get(
+                "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out",
+                libraries.get("gguf_q4_k"),
+            )
+            common_kwargs = {
+                "stream": stream,
+                "runtime": runtime,
+                "library": pair_library,
+            }
+            for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+                gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out(
+                    x_ptr,
+                    weight.allocation("qweight").tensor.ptr,
+                    weight.allocation("scales").tensor.ptr,
+                    weight.allocation("mins").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **common_kwargs,
+                )
             return True
         gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
             x_ptr,

@@ -977,6 +977,124 @@ bool valid_wmma_shape(int64_t rows, int64_t in_features, int64_t out_features) {
   return rows > 0 && in_features > 0 && out_features > 0 && (in_features % kDenseWmmaTileK) == 0;
 }
 
+// -------------------------------------------------------------------------
+// D08-X2-K5: LDS-staged wave32 WMMA bulk GEMM for dense BF16 weights.
+// 256-thread workgroups compute a 128x64 output tile from BK=32 shared f16
+// tiles (4x2 warps, 32x32 warp tiles, two 16x16x16 WMMA fragments per warp,
+// F32 accumulators). The naive scalar-tile kernel above remains the
+// registered fallback for small rows and unaligned shapes.
+// -------------------------------------------------------------------------
+template <int BM, int BN, int BK>
+__launch_bounds__(256, 2)
+__global__ void dense_prefill_wmma_out_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int S_STRIDE = BK + 8;
+  constexpr int WARPS_M = 4;
+  constexpr int WARPS_N = 2;
+  constexpr int WARP_TILE_M = BM / WARPS_M;
+  constexpr int WARP_TILE_N = BN / WARPS_N;
+  constexpr int WM = WARP_TILE_M / 16;
+  constexpr int WN = WARP_TILE_N / 16;
+  constexpr int A_ELEMS = BM * BK;
+  constexpr int B_ELEMS = BN * BK;
+  __shared__ half_t sA[BM][S_STRIDE];  // weights: output columns x k
+  __shared__ half_t sB[BN][S_STRIDE];  // activations: rows x k
+
+  const int tid = threadIdx.x;
+  const int col0 = static_cast<int>(blockIdx.x) * BM;
+  const int row0 = static_cast<int>(blockIdx.y) * BN;
+  if (col0 >= out_features || row0 >= rows) return;
+
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int warp_m = warp & 3;
+  const int warp_n = warp >> 2;
+
+  float8_t acc[WM][WN];
+  #pragma unroll
+  for (int fm = 0; fm < WM; ++fm) {
+    #pragma unroll
+    for (int fn = 0; fn < WN; ++fn) {
+      acc[fm][fn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+  }
+
+  for (int k0 = 0; k0 < in_features; k0 += BK) {
+    __syncthreads();
+    for (int idx = tid; idx < A_ELEMS; idx += 256) {
+      const int c = idx / BK;
+      const int k = idx - c * BK;
+      const int64_t col = col0 + c;
+      sA[c][k] =
+          col < out_features
+              ? static_cast<half_t>(bf16_bits_to_float(
+                    weight[col * in_features + k0 + k]))
+              : static_cast<half_t>(0.0f);
+    }
+    for (int idx = tid; idx < B_ELEMS; idx += 256) {
+      const int r = idx / BK;
+      const int k = idx - r * BK;
+      const int64_t row = row0 + r;
+      sB[r][k] =
+          row < rows
+              ? static_cast<half_t>(bf16_bits_to_float(
+                    x[row * in_features + k0 + k]))
+              : static_cast<half_t>(0.0f);
+    }
+    __syncthreads();
+
+    #pragma unroll
+    for (int kk = 0; kk < BK / 16; ++kk) {
+      halfx16_t b_frag[WN];
+      #pragma unroll
+      for (int fn = 0; fn < WN; ++fn) {
+        const int r = warp_n * WARP_TILE_N + fn * 16 + (lane & 15);
+        #pragma unroll
+        for (int i = 0; i < 16; ++i) {
+          b_frag[fn][i] = sB[r][kk * 16 + i];
+        }
+      }
+      #pragma unroll
+      for (int fm = 0; fm < WM; ++fm) {
+        const int c = warp_m * WARP_TILE_M + fm * 16 + (lane & 15);
+        halfx16_t a_frag;
+        #pragma unroll
+        for (int i = 0; i < 16; ++i) {
+          a_frag[i] = sA[c][kk * 16 + i];
+        }
+        #pragma unroll
+        for (int fn = 0; fn < WN; ++fn) {
+          acc[fm][fn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a_frag, b_frag[fn], acc[fm][fn]);
+        }
+      }
+    }
+  }
+
+  #pragma unroll
+  for (int fn = 0; fn < WN; ++fn) {
+    const int64_t out_row = row0 + warp_n * WARP_TILE_N + fn * 16 + (lane & 15);
+    if (out_row >= rows) continue;
+    #pragma unroll
+    for (int fm = 0; fm < WM; ++fm) {
+      #pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int64_t col =
+            col0 + warp_m * WARP_TILE_M + fm * 16 + 2 * j + (lane >> 4);
+        if (col < out_features) {
+          out[out_row * out_features + col] =
+              float_to_bf16_bits(static_cast<float>(acc[fm][fn][j]));
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_dense_gemv_out_bf16(
@@ -1202,6 +1320,38 @@ extern "C" int hipengine_dense_pair_gemv_bf16_f32w_bf16_out_rowtile2(
       weight_b,
       out_a,
       out_b,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_prefill_wmma_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int BM = 128;
+  constexpr int BN = 64;
+  constexpr int BK = 32;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (out_features % BM) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_prefill_wmma_out_kernel<BM, BN, BK>),
+      dim3(
+          static_cast<unsigned int>(out_features / BM),
+          static_cast<unsigned int>((rows + BN - 1) / BN)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      out,
       rows,
       in_features,
       out_features);

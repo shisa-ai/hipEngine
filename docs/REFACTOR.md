@@ -3541,3 +3541,10 @@ should be boring.
   2026-08-15). Rollback: `HIPENGINE_GGUF_GDN_PREFILL_MODE=
   chain_lds32_direct_nonvolatile`. Remove the rollback note after the parity
   campaign closes and no A/B still needs the exact route.
+
+## gfx1151 dense-BF16 WMMA bulk prefill
+
+- `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16
+  bulk prefill back to the naive 32x8 scalar tile (D08-X2-K5, 2026-08-15).
+  Remove the env branch when the parity campaign closes and no A/B still
+  needs the naive control.

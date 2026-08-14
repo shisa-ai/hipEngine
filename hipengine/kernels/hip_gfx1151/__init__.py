@@ -359,6 +359,10 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # ([1024,3584], 64x16) versus the exact tile8x8 leaf at rows=512, within one
 # BF16 ULP. Bulk prefill sessions on this backend therefore prefer it.
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
+# D08-X2-K5 (2026-08-15): dense-BF16 bulk prefill (expanded Q6_K down owners)
+# prefers the registered LDS-staged 128x64 WMMA consumer over the naive
+# 32x8 scalar tile; rows 1-15 and unaligned shapes keep the exact fallback.
+GGUF_DENSE_BF16_WMMA_BULK_PREFILL = True
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
