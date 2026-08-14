@@ -448,6 +448,21 @@ def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
         "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
         False,
     )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
+        {},
+    ) == {"gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4}}
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",

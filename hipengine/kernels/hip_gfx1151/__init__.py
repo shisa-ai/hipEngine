@@ -692,6 +692,13 @@ GGUF_DENSE_Q5_T16_SSM_OUT = False
 # D08-P6 admits the same sole-resident family independently for the exact
 # Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
 GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
+# D08-P4 admits sole compact Q4T16 only for the six Qwen3.5-0.8B full-attention
+# K1,024/N4,096 Q projections; other Q4 roles and 27B keep their prior owners.
+GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
+# The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
+GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
+    "gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4},
+}
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
@@ -1773,12 +1780,14 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
+    "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",

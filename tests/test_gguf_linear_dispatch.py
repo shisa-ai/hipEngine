@@ -1893,6 +1893,110 @@ def test_gfx1151_q5_t16_ssm_out_uses_direct_through_c8_and_wmma_for_bulk() -> No
     ]
 
 
+def test_gfx1151_q4_t16_attn_q_splits_c8_into_exact_c4_rowtiles() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    quant_key = "gguf_q4_k_t16_v1"
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q4_K_T16, quant_key=quant_key)
+    keys = {
+        "direct": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            quant_key,
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        "rowtile": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            quant_key,
+            "dense_rowtile_bf16_bf16_out",
+        ),
+        "wmma": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            quant_key,
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        label: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for label, key in keys.items()
+    }
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **_kwargs):
+            calls.append((label, args))
+
+        return fake_kernel
+
+    for label, key in keys.items():
+        register(key, capture(label), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            100,
+            200,
+            rows=1,
+            in_features=1_024,
+            out_features=4_096,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+        )
+        with native_batch_decode_session(True):
+            launch_gguf_linear(
+                weight,
+                101,
+                201,
+                rows=4,
+                in_features=1_024,
+                out_features=4_096,
+                backend="hip_gfx1151",
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+            launch_gguf_linear(
+                weight,
+                102,
+                202,
+                rows=8,
+                in_features=1_024,
+                out_features=4_096,
+                backend="hip_gfx1151",
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+        launch_gguf_linear(
+            weight,
+            103,
+            203,
+            rows=512,
+            in_features=1_024,
+            out_features=4_096,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+    finally:
+        for label, key in keys.items():
+            register(key, originals[label], replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        ("direct", (100, 14, 200, 1, 1_024, 4_096)),
+        ("rowtile", (101, 14, 201, 4, 1_024, 4_096)),
+        ("rowtile", (102, 14, 202, 4, 1_024, 4_096)),
+        ("rowtile", (8_294, 14, 32_970, 4, 1_024, 4_096)),
+        ("wmma", (103, 14, 203, 512, 1_024, 4_096)),
+    ]
+
+
 def test_launch_q6_raw_wmma_prefill_uses_resident_raw_abi() -> None:
     weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
     key = KernelKey(
