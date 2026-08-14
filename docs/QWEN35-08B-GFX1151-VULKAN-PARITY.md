@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: opened 2026-08-14. No optimization is accepted yet.
+Status: D08-C0 completed 2026-08-14; D08-M1/M2 module attribution in progress. No optimization is accepted yet.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -78,7 +78,7 @@ not a synthetic leaf projection.
 
 | Rank | Package | Current potential | Why it is ordered here | Completion decision |
 | ---: | --- | --- | --- | --- |
-| 0 | **D08-C0 route matrix** | **critical diagnostic** | Both opening hipEngine rows disabled WMMA prefill, GEMV decode, and graph replay; changing route may invalidate the apparent 7-10x/2-3x gaps. | Certify one intended fallback/eager/graph route per quant, or open a narrowly named route blocker. |
+| 0 | **D08-C0 route matrix** | **completed** | Both opening hipEngine rows disabled WMMA prefill, GEMV decode, and graph replay; changing route invalidated the opening gap magnitudes. | Forced bulk+WMMA+GEMV and graph decode are certified; Q4 remains 4.55x/2.31x and Q8 1.48x/1.45x behind fresh Vulkan. |
 | 1 | **D08-M1-M5 full module ledger** | **critical enabler** | No kernel package has a defensible Amdahl bound until both engines account for every module. | Publish a <=1% residual ledger and rank semantic owners by projected whole-request saving. |
 | 2 | **D08-P1 route/default correction** | **critical if admitted** | A scalar/per-row projection fallback can dominate the entire prefill gap and must be removed before kernel tuning. | Accept the exact non-regressive intended fast route, or reject the route hypothesis and move to the top profiled owner. |
 | 3 | **Top owner from M5** | profile-ranked | Choose exactly one of P2/P3/P4/P5 or D1-D5 using measured role time and an explicit candidate speed bound. | Accept, reject, park, or block that package; then re-profile before choosing another structural owner. |
@@ -185,8 +185,47 @@ The initial rows are explicitly non-canonical:
 - the opening Q4 embedding override and the claimed Q8 host-placement path are
   not consistently represented by the saved temporary JSON.
 
-Campaign step `D08-C0` must rerun both files with exact quant keys and route
-provenance before any baseline is retained or published.
+Campaign step `D08-C0` below reruns both files with exact quant keys and route
+provenance; the opening rows remain historical diagnostics only.
+
+### 2.4 D08-C0 route certification (2026-08-14)
+
+C0 ran the bounded fallback / forced-fast-eager / forced-fast-graph matrix with
+one warmup and five measurements per hipEngine row. Fresh llama.cpp rows were
+run serially on the same GPU; an accidentally concurrent Q4/Q8 pair was
+explicitly discarded as contaminated and is not used below.
+
+| Quant | hipEngine fallback pp/tg | Fast eager pp/tg | Fast graph pp/tg | Fresh llama.cpp pp/tg | Remaining llama/hip gap | hip tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4_K_M | 914.79 / 49.64 | **1427.45** / 49.05 | 1370.39 / **87.12** | 6492.02 / 201.17 | **4.55x / 2.31x** | **1.180 GiB** |
+| Q8_0 | 631.85 / 59.65 | **4144.52** / 60.06 | 4137.91 / **114.31** | 6123.47 / 165.32 | **1.48x / 1.45x** | **1.210 GiB graph** |
+
+Rates are tok/s. Q4 uses explicit device embedding because its tied table is
+Q6_K. Q8 host/device eager is throughput-neutral within run variance and has
+the same 0.959-GiB tracked high-water. Graph capture requires Q8 device
+materialization and raises tracked peak by about 0.252 GiB.
+
+Decisions:
+
+- certify forced bulk+WMMA+GEMV for prefill and production graph replay for
+  decode;
+- admit P1 as a route/default package, but do not implement it before the
+  semantic ledger identifies all remaining owners;
+- proceed to Q4/Q8 module attribution because every certified row still misses
+  the matching Vulkan row materially;
+- treat C0 token/finite-logit checks as route sanity, not the final D08-G1
+  correctness packet.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-vulkan-parity-c0.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-c0.json).
+
+The ROCm 7.15 selected-region control functions live in
+`librocprofiler-sdk-roctx.so`, not the legacy `libroctx64.so`; the bench harness
+now supports both. Dispatch/resource traces are valid (491 Q4 prefill
+dispatches and 334 graph-decode dispatches/token), but rocprofv3 1.3.5 emits
+zero kernel durations on this gfx1151 stack even without selected regions.
+M1/M2 therefore keep rocprof for names/resources and use HIP-event semantic
+stage timing for Amdahl ownership.
 
 ## 3. Comparison contracts
 
@@ -360,7 +399,7 @@ layout, activation reuse, or submission class.
 
 | ID | Work | Exit gate | Status |
 | --- | --- | --- | --- |
-| **D08-C0** | Rerun Q4_K_M and Q8_0 route matrix: fallback; forced bulk+WMMA+GEMV eager; forced fast route + production graph. Test host/device embedding only where supported. | Correct quant key and file hash; effective route fields agree with request; finite/correct outputs; 1 warmup + 5 measured samples; same-session llama refresh. | pending |
+| **D08-C0** | Rerun Q4_K_M and Q8_0 route matrix: fallback; forced bulk+WMMA+GEMV eager; forced fast route + production graph. Test host/device embedding only where supported. | **Complete:** exact quant/file hashes, effective routes, finite logits, 1+5 samples, serial fresh llama rows, and memory captured in the C0 artifact. | completed |
 | **D08-C1** | Build shared 512-token and 128 teacher-forced token fixtures for both engines. Separate core model and public greedy timing. | Exact token inventory hashes match; sampler ownership is explicit. | pending |
 | **D08-C2** | Freeze hardware/software snapshot and interleaved comparison script. | Reproducible command bundle with clocks and clean provenance. | pending |
 
@@ -368,8 +407,8 @@ layout, activation reuse, or submission class.
 
 | ID | Work | Exit gate | Status |
 | --- | --- | --- | --- |
-| **D08-M1** | hipEngine Q4 prefill selected-region kernel/API profile. | All GPU time assigned; dispatch/resource table complete; no profiled builds. | pending |
-| **D08-M2** | hipEngine Q4 eager and graph decode profiles. | Per-token role table plus graph/direct submission gap and sampler/transport ledger. | pending |
+| **D08-M1** | hipEngine Q4 prefill selected-region kernel/API profile. | Dispatch/resources captured; HIP-event semantic timing and <=1% ledger residual still required because rocprof durations are zero. | in-progress |
+| **D08-M2** | hipEngine Q4 eager and graph decode profiles. | Graph dispatch count captured; eager HIP-event role table plus graph/direct submission gap and sampler/transport ledger remain. | in-progress |
 | **D08-M3** | llama.cpp Vulkan Q4 pp512/tg128 perf-logger profiles. | All nodes assigned to semantic roles; logger total reconciled. | pending |
 | **D08-M4** | Repeat M1-M3 for Q8_0. | Q8 route/embedding differences explicit; no mislabeled quant row. | pending |
 | **D08-M5** | Produce joined semantic-role Amdahl table. | Every module appears for both engines or is marked backend-specific; `other` <=1%. | pending |
@@ -382,7 +421,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 
 | ID | Candidate class | Potential if admitted | Admission signal | Hard bound / stop rule | Status |
 | --- | --- | --- | --- | --- | --- |
-| **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **critical** | C0 shows fallback or per-row projection work in the current route. | One policy/route repair, then re-run C0. Stop after all projection shapes use the intended rows>1 kernel and route fields prove it; do not tune kernels here. | pending |
+| **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **critical** | C0 shows fallback or per-row projection work in the current route. | One policy/route repair, then re-run C0. Stop after all projection shapes use the intended rows>1 kernel and route fields prove it; do not tune kernels here. | admitted behind M5 |
 | **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | high if role >=20%; otherwise park | GDN/conv is the largest remaining prefill role. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | pending |
 | **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | high if role >=20% | Dense projection role dominates after P1/P2. | At most 3 leaf variants/one tuning dimension. Continue only at >=1.10x leaf or >=1% projected request saving; include repack/copy wall. | pending |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | profile-dependent medium/high | Full-attention role is material in M5 or the intended flash route is absent. | One route/layout candidate; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending |
@@ -456,7 +495,7 @@ potential band, then measured upper bound.
 | Candidate / family | Current disposition | Potential | Why not active now | Exact revisit trigger |
 | --- | --- | --- | --- | --- |
 | Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
-| P1 fast-route/default repair | pending rank 2 | **critical** | Requires the bounded route matrix and effective-route proof first. | C0 shows an intended fast path missing, disabled, or falling back per row. |
+| P1 fast-route/default repair | admitted behind M5 | **critical** | C0 proves explicit WMMA and graph routes are much faster than the opening defaults, but remaining owners still need attribution. | M5 completes; implement one bounded default/policy repair and rerun C0. |
 | New GDN prefill schedule | parked behind P2 admission | high if GDN >=20% | Multiple exact/reassociated GPF schedules already exist with accepted and rejected evidence. | M5 ranks GDN first and the active 0.8B route/resource shape differs from the retained winner. |
 | Broad quant projection tile sweep | parked behind P3/D3 admission | high only if projections dominate | Generic sweeps are low-information before exact shape, route, bytes, and occupancy are known. | M5 assigns >=20% prefill or >=25% decode wall to a matched projection family and identifies one bounded tuning dimension. |
 | Graph/submission work | pending D1 | high if API gap >=10% | Opening numbers used eager decode, but graph effectiveness has not been certified. | C0/M2 show a reproducible host/API or launch residual >=10%. |

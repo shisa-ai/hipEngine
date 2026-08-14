@@ -503,30 +503,41 @@ class _RoctxProfilerControl:
     """Open one timed phase for ``rocprofv3 --selected-regions``."""
 
     def __init__(self, *, enabled: bool) -> None:
+        self._library = None
         self._resume = None
         self._pause = None
         if not enabled:
             return
-        try:
-            library = ctypes.CDLL("libroctx64.so")
-        except OSError as exc:
-            print(f"warning: selected-region profiling could not load libroctx64.so: {exc}", file=sys.stderr)
-            return
-        self._resume = getattr(library, "roctxProfilerResume", None)
-        self._pause = getattr(library, "roctxProfilerPause", None)
+
+        errors: list[str] = []
+        for library_name in ("librocprofiler-sdk-roctx.so", "libroctx64.so"):
+            try:
+                library = ctypes.CDLL(library_name)
+            except OSError as exc:
+                errors.append(f"{library_name}: {exc}")
+                continue
+            resume = getattr(library, "roctxProfilerResume", None)
+            pause = getattr(library, "roctxProfilerPause", None)
+            if resume is None or pause is None:
+                errors.append(f"{library_name}: missing roctxProfilerResume/Pause")
+                continue
+            self._library = library
+            self._resume = resume
+            self._pause = pause
+            break
+
         if self._resume is None or self._pause is None:
             print(
-                "warning: libroctx64.so lacks roctxProfilerResume/Pause; "
-                "rocprofv3 --selected-regions will emit no kernel rows",
+                "warning: selected-region profiling controls are unavailable "
+                f"({'; '.join(errors)}); rocprofv3 --selected-regions will emit no kernel rows",
                 file=sys.stderr,
             )
-            self._resume = None
-            self._pause = None
             return
-        self._resume.argtypes = [ctypes.c_int]
-        self._resume.restype = None
-        self._pause.argtypes = [ctypes.c_int]
-        self._pause.restype = None
+
+        self._resume.argtypes = [ctypes.c_uint64]
+        self._resume.restype = ctypes.c_int
+        self._pause.argtypes = [ctypes.c_uint64]
+        self._pause.restype = ctypes.c_int
 
     def region(self, name: str, *, selected: str) -> "_RoctxProfilerRegion":
         return _RoctxProfilerRegion(self, enabled=(selected == name))
