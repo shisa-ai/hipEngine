@@ -9759,6 +9759,16 @@ def _resolve_gguf_token_embedding_placement(
             False,
         )
     ):
+        supported_types = tuple(
+            str(value)
+            for value in backend_package_capability(
+                backend,
+                "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+                ("Q8_0",),
+            )
+        )
+        if str(token_embedding_type_name) not in supported_types:
+            return "device", "host_type_device_fallback"
         return "host", "gfx1151_private_c1_auto"
     if bool(
         backend_package_capability(
@@ -11897,6 +11907,13 @@ class Qwen35GGUFResidentSession:
         )
         self.runtime = self.runtime or get_hip_runtime()
         resolved_backend = resolve_backend(self.backend)
+        host_embedding = bool(
+            backend_package_capability(
+                resolved_backend,
+                "GGUF_HOST_TOKEN_EMBEDDING_C1",
+                False,
+            )
+        )
         mapped_host_embedding = bool(
             backend_package_capability(
                 resolved_backend,
@@ -11912,13 +11929,13 @@ class Qwen35GGUFResidentSession:
             "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
             {},
         )
-        if mapped_host_embedding or (
+        if host_embedding or mapped_host_embedding or (
             isinstance(small_weight_policies, Mapping) and small_weight_policies
         ):
             model_info = GGUFReader(self.model_path).info
             small_weight_model_name = str(model_info.metadata.get("general.name", ""))
             small_weight_file_type_name = str(model_info.file_type_name)
-            if mapped_host_embedding:
+            if host_embedding or mapped_host_embedding:
                 token_embedding_type_name = next(
                     (
                         str(tensor.ggml_type_name)
