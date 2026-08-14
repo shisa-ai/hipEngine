@@ -202,8 +202,14 @@ Q8 transitions at KL 0**. Under crossed physical-session performance isolation,
 Q4 eager tg128 improves **68.38 -> 71.20 tok/s (+4.13%, 5/5 blocks)** and
 production graph tg128 improves **116.21 -> 117.73 (+1.31%, 5/5)**, with
 **311 -> 287 recording nodes**, neutral pp512, and zero bytes. Q8 selects no
-fused leaves and remains within 1% in eager/graph decode and prefill. A mandatory
-post-D3B current-graph rerank is still required before another package; see the
+fused leaves and remains within 1% in eager/graph decode and prefill. Mandatory
+M11 then measures exact current graph snapshots at **120.21 tok/s Q4 / 117.80
+Q8** and **286/288 nodes**, with KL 0, exact trajectories, **97.35%/97.32%**
+stage coverage, and zero tracked graph bytes. Q4 dense FFN falls **2.159 ->
+2.057 ms**, including down+residual at **1.011 ms**; larger arithmetic budgets
+remain closed. M11 admits only D5's exact 24 RMSNorm + 24 add-RMSNorm owner
+audit at a **0.402-ms / 4.84%** joined bound; see the
+[`post-D3B graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3b-graph-rerank.json),
 [`retained D3B residual route`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json),
 [`D3B fused-residual screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-screen.json),
 [`D3B dense-down audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-audit.json),
