@@ -171,8 +171,12 @@ The retained model/shape-qualified route realizes production graph tg128
 **446/450 top-1 / max KL 0.002843**, and adds zero bytes. Mandatory M9 then
 measures the current graph at **111.93 tok/s / 310 nodes** with **97.60%** stage
 coverage and reranks full-attention core/KV first at a **1.431-ms / 16.02%**
-request bound; bounded D4 audit is next. This campaign row is not yet a final
-cross-engine topline; see the [`post-D3 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3-graph-rerank.json),
+request bound. The D4 device-clock audit then measures the actual six-layer
+package at **1.659 ms**, assigns **1.553 ms / 93.60%** to fixed256 attention,
+and freezes only generic-context-1024+gate and generic split-K3+fused-gate;
+standalone KV write/gate are only **0.67%/0.52%** of request wall. This campaign
+row is not yet a final cross-engine topline; see the [`D4 core/KV audit`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json),
+[`post-D3 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3-graph-rerank.json),
 [`retained dense decode route`](results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json),
 [`dense decode screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json),
 [`dense decode audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-audit.json),
