@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "qualified-for-one-full-model-gate",
+  "task": "D08-D4 bounded existing-variant full-attention core/KV screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "source_commit": "f8b0b2d9f",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "backend": "hip_gfx1151",
+  "method": {
+    "shape": "six full-attention layers, rows1, 8Q/2KV/D256, block256, graph cap641/live514-641",
+    "performance": "three counterbalanced production-graph runs/route, each 128 transitions",
+    "package": "five rotated device-clock marker graph runs/route with six empty marker edges removed per leaf family",
+    "correctness": "one 128-step recording/state graph/route plus independent BF16 primitive CPU oracle at contexts 514/576/641",
+    "candidate_budget": 2
+  },
+  "control": {
+    "name": "fixed256 attention plus separate BF16 gate",
+    "graph_ms_per_token": {
+      "mean": 9.008554,
+      "median": 8.998769,
+      "min": 8.975435,
+      "max": 9.051458,
+      "p95": 9.046189
+    },
+    "graph_median_tok_s": 111.126309,
+    "graph_nodes": 310,
+    "package_ms": {
+      "mean": 1.776366,
+      "median": 1.777239,
+      "min": 1.75887,
+      "max": 1.796584,
+      "p95": 1.795232
+    },
+    "endpoint_package_ms": {
+      "514": 1.0499549143372406,
+      "576": 1.9610459873760144,
+      "641": 2.1704839194469487
+    }
+  },
+  "candidates": {
+    "generic_context_1024_plus_gate": {
+      "route": "8x1024 generic context-batch plus 8x256 separate gate",
+      "graph_ms_per_token": {
+        "mean": 9.206935,
+        "median": 9.101373,
+        "min": 9.022351,
+        "max": 9.497081,
+        "p95": 9.45751
+      },
+      "graph_median_tok_s": 109.873532,
+      "graph_delta_ms": -0.102604,
+      "graph_delta_percent": -1.140199,
+      "paired_candidate_minus_control_ms": [
+        0.4456226562500003,
+        0.046916054687500264,
+        0.10260388281249888
+      ],
+      "wins": "0/3",
+      "package_ms": {
+        "mean": 2.240836,
+        "median": 2.244418,
+        "min": 2.217399,
+        "max": 2.262488,
+        "p95": 2.259908
+      },
+      "package_speedup": 0.791849,
+      "endpoint_package_ms": {
+        "514": 1.0381324516581505,
+        "576": 2.433463580803527,
+        "641": 2.218455064622783
+      },
+      "endpoint_nonregressive": false,
+      "trajectory_exact": true,
+      "final_quality": {
+        "kl_max": 4.946198926654169e-07,
+        "top1_agreement": 1.0
+      },
+      "spans_metadata_exact": true,
+      "state_finite": true,
+      "decision": "rejected: graph regresses 1.14%, package is 1.262x slower, and 576/641 guards regress"
+    },
+    "generic_split_k3_fused_gate": {
+      "route": "24x256 generic split-K producer plus 8x256 fused BF16 gated reducer",
+      "graph_ms_per_token": {
+        "mean": 8.488086,
+        "median": 8.483209,
+        "min": 8.456942,
+        "max": 8.524105,
+        "p95": 8.520015
+      },
+      "graph_median_tok_s": 117.879917,
+      "graph_delta_ms": 0.51556,
+      "graph_delta_percent": 5.729227,
+      "paired_control_minus_candidate_ms": [
+        0.5273529218749999,
+        0.4922257343749994,
+        0.5418267031250004
+      ],
+      "wins": "3/3",
+      "package_ms": {
+        "mean": 1.204775,
+        "median": 1.207087,
+        "min": 1.186272,
+        "max": 1.225431,
+        "p95": 1.223191
+      },
+      "package_speedup": 1.472337,
+      "package_delta_ms": 0.570152,
+      "endpoint_package_ms": {
+        "514": 0.9729686404167919,
+        "576": 1.2853221120128242,
+        "641": 1.26303977557359
+      },
+      "endpoint_nonregressive": true,
+      "endpoint_deltas_percent": {
+        "514": 7.332341,
+        "576": 34.457319,
+        "641": 41.808379
+      },
+      "trajectory_exact": true,
+      "final_quality": {
+        "kl_max": 4.3332070158538375e-07,
+        "top1_agreement": 1.0
+      },
+      "spans_metadata_exact": true,
+      "state_finite": true,
+      "state_hash_note": "Alternate valid reduction order propagates BF16/F32 hash differences after the first full-attention layer; all 48 KV/linear components are finite, spans metadata is exact, final KL is 4.33e-7, and the independent CPU oracle passes.",
+      "graph_nodes": 310,
+      "persistent_bytes_delta": 0,
+      "hot_scratch_delta": 0,
+      "existing_split_scratch_bytes": 24768,
+      "decision": "selected for RED/GREEN and one Q4+Q8 full-model gate"
+    }
+  },
+  "primitive_cpu_reference": {
+    "contexts": [
+      514,
+      576,
+      641
+    ],
+    "all_finite": true,
+    "head_top1_min": 1.0,
+    "max_abs_max": 7.609138265252113e-06,
+    "nmse_max": 2.7562585955598566e-06,
+    "split_vs_current_max_abs_max": 9.5367431640625e-07,
+    "rows": [
+      {
+        "context": 514,
+        "current_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.594935595989227e-06,
+          "mean_abs": 1.1983745480392827e-06,
+          "nmse": 2.6311638043388664e-06,
+          "head_top1": 1.0
+        },
+        "split_k3_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.594935595989227e-06,
+          "mean_abs": 1.1983745480392827e-06,
+          "nmse": 2.6311638043388664e-06,
+          "head_top1": 1.0
+        },
+        "split_vs_current_max_abs": 0.0,
+        "split_vs_current_head_top1": 1.0
+      },
+      {
+        "context": 576,
+        "current_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.609138265252113e-06,
+          "mean_abs": 1.1592214832489844e-06,
+          "nmse": 2.756258401798227e-06,
+          "head_top1": 1.0
+        },
+        "split_k3_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.609138265252113e-06,
+          "mean_abs": 1.1592217106226599e-06,
+          "nmse": 2.7562585955598566e-06,
+          "head_top1": 1.0
+        },
+        "split_vs_current_max_abs": 9.5367431640625e-07,
+        "split_vs_current_head_top1": 1.0
+      },
+      {
+        "context": 641,
+        "current_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.531372830271721e-06,
+          "mean_abs": 1.0742156746346154e-06,
+          "nmse": 2.7108398470077226e-06,
+          "head_top1": 1.0
+        },
+        "split_k3_vs_cpu": {
+          "finite": true,
+          "max_abs": 7.531372830271721e-06,
+          "mean_abs": 1.0742156746346154e-06,
+          "nmse": 2.7108398470077226e-06,
+          "head_top1": 1.0
+        },
+        "split_vs_current_max_abs": 0.0,
+        "split_vs_current_head_top1": 1.0
+      }
+    ]
+  },
+  "gate": {
+    "threshold_ms": 0.089988,
+    "selected_graph_saving_ms": 0.51556,
+    "selected_clears_threshold": true,
+    "correctness_passed": true,
+    "context_guards_passed": true,
+    "selected_candidate_count": 1,
+    "next": "RED/GREEN an exact gfx1151 Qwen3.5 0.8B 8Q/2KV/D256 short-context split-K3 policy with current fixed256 fallback, then run the sole combined Q4+Q8 full-model gate."
+  },
+  "provenance": {
+    "screen_script": "/tmp/d08-d4/bounded_variant_screen.py",
+    "screen_script_sha256": "20acb742259d47c33e1c93237ed91e343a00ddc9357f48187a6e431c33433204",
+    "raw": "/tmp/d08-d4/bounded-variant-screen.json",
+    "raw_sha256": "7fd084210dba5ddd91686a7b229f9eb230bd583b1b65b480352cc6526c5fdf72",
+    "oracle_script": "/tmp/d08-d4/split_k3_cpu_oracle.py",
+    "oracle_script_sha256": "6e1f6054c542f2540bd65258ebfb3d7c17d1d76f9f18c9668cf5b8644f84d69f",
+    "oracle_raw": "/tmp/d08-d4/split-k3-cpu-oracle.json",
+    "oracle_raw_sha256": "9224196b4d61c0ccc82e0a00add97380cc0495f0e4ebb854a56440abd5570a00",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d4/bounded_variant_screen.py"
+  }
+}
