@@ -119,13 +119,14 @@ complete Q4_K_M/Q8_0 HIP/Vulkan semantic join with explicit submission
 residual and `other=0`. The first bounded repair replaces 18 expanded BF16 QKV
 weights with sole Q5T16 residents and improves canonical Q4_K_M 512/128 eager
 throughput from **1427.45/49.05 to 1908.17/69.75 tok/s (+33.68%/+42.19%)** while
-tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. A replacement semantic
-capture is required before selecting the next owner; decode arithmetic remains
-blocked behind the graph/direct census. This in-progress campaign row is not
-yet a final cross-engine topline; see
-[`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json)
-and the
-[`joined ledger`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
+tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. The required replacement
+semantic capture now ranks dense FFN projections first at **107.22 ms / 39.03%**
+and a **29.42%** matched-Vulkan request bound, admitting one bounded P3 route/
+leaf audit; GDN is second at 19.39%. Decode arithmetic remains blocked behind
+the graph/direct census. This in-progress campaign row is not yet a final
+cross-engine topline; see the [`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json),
+[`post-P1 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-q5t16-rerank.json),
+and [`joined ledger`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
 
 ## Current single-request scoreboards
 

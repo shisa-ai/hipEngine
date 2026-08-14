@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1/M3-M5, and accepted D08-P1 completed 2026-08-14; the mandatory post-P1 semantic re-profile is next, while D08-M2 graph/direct census remains open.
+Status: D08-C0, D08-M1/M3-M6, and accepted D08-P1 completed 2026-08-14; the post-P1 rerank admits D08-P3 next, while D08-M2 graph/direct census remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -81,8 +81,8 @@ not a synthetic leaf projection.
 | 0 | **D08-C0 route matrix** | **completed** | Both opening hipEngine rows disabled WMMA prefill, GEMV decode, and graph replay; changing route invalidated the opening gap magnitudes. | Forced bulk+WMMA+GEMV and graph decode are certified; Q4 remains 4.55x/2.31x and Q8 1.48x/1.45x behind fresh Vulkan. |
 | 1 | **D08-M1-M5 full module ledger** | **completed** | Both backends and quants now map every operation to a semantic role; submission residual is explicit and `other=0`. | Q4 linear projections and Q8 GDN are the measured prefill leaders; eager decode is projection-heavy but remains graph-scope-caveated. |
 | 2 | **D08-P1 route/default correction** | **accepted; +33.68% pp / +42.19% eager tg** | The existing Q5T16 family replaces 18 expanded BF16 QKV residents for the exact 0.8B role/shape. | Promoted by default after one route repair; no kernel variants were tested. |
-| 3 | **Mandatory post-P1 re-profile** | **structural gate; active next** | P1 invalidates every prior Q4 Amdahl percentage. | Rebuild M1/M5 before admitting arithmetic work; do not inherit the prior P3/P2 projection. |
-| 4 | **D08-P3 or D08-P2** | high if reproduced | Current upper bounds are Q4 dense projections 20.77% and GDN 15.02% Q4 / 26.76% Q8. | Select only the larger reproduced owner after P1; keep the other in the future ledger. |
+| 3 | **Mandatory post-P1 re-profile** | **completed** | P1 invalidated every prior Q4 Amdahl percentage. | M6 reconciles 99.60% of post-P1 prefill wall and supersedes the old ranking. |
+| 4 | **D08-P3 dense FFN projections** | **high: 29.42% projected Q4 request saving; active next** | The replacement ledger measures 107.22 ms versus 26.07 ms Vulkan; GDN is second at 19.39%. | Audit the active gate/up/down routes, then test at most three predeclared existing/lineage variants and one tuning dimension. |
 | 5 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
 | 6 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
@@ -96,7 +96,7 @@ remain indefinitely `in-progress`.
 | Task class | Hard experiment bound | Accept rule | Reject / park rule |
 | --- | --- | --- | --- |
 | Route certification (`C0`) | At most 3 hipEngine routes x 2 quants, 2 supported embedding-placement controls, and 2 fresh llama rows. Each topline row is 1 warmup + 5 measures. No source edit. | Effective route matches the request, correctness passes, and the fastest intended route becomes the certified baseline. | One failed route receives one focused diagnosis. If unresolved, open a named blocker; do not start kernel tuning on an unknown route. |
-| Profile (`M1-M5`) | One clean capture per backend/quant/phase; one replacement capture only for incomplete/corrupt output. | 100% node assignment and <=1% timing residual, with API/launch gap separate. | If the tool cannot expose a complete ledger after one repair, record the missing surface and add the smallest instrumentation needed; do not infer owners from names alone. |
+| Profile (`M1-M6`) | One clean capture per backend/quant/phase; one replacement capture only for incomplete/corrupt output. | 100% node assignment and <=1% timing residual, with API/launch gap separate. | If the tool cannot expose a complete ledger after one repair, record the missing surface and add the smallest instrumentation needed; do not infer owners from names alone. |
 | Kernel/algorithm leaf | Audit current lineage first; test at most 3 predeclared variants and one tuning dimension on the actual hot shape. | Any exact, reproducible, non-regressive production win is retained per project policy. Continue to full-model routing only with >=1.10x leaf speed or >=1% projected request saving (or >=0.5 ms/token decode). | Stop after the budget misses continuation, correctness fails, or measured Amdahl falls below 1%. Preserve the result and revisit trigger; remove rejected transient code. |
 | Full-model A/B | Only the best admitted leaf; one counterbalanced control/candidate sequence with 1 warmup + 5 measured samples, then the named correctness gate. | Correctness and all guards pass; request wall improves reproducibly. Promote the exact route by default unless a concrete blocker is recorded. | Reject on correctness, route mismatch, or a reproducible guard regression. Do not rescue it with an unplanned compound. |
 | Small exact win | No further variant ladder in the same package after the win is measured and retained. | Keep and publish the exact non-regressive improvement even when below the continuation threshold. | Close the package; only a fresh profile may reopen the semantic owner. |
@@ -279,8 +279,8 @@ Logger-on rates are diagnostic and regress fresh logger-off C0 by 2.59%/17.35%
 | Rank | Package | Measured upper bound versus Vulkan | Disposition / hard bound |
 | ---: | --- | --- | --- |
 | 1 | **D08-P1** | Q4 linear-attention projections: **8.16x**, **38.42%** projected stage saving | **accepted:** sole-resident Q5T16 QKV raises canonical Q4 pp512/tg128 by **33.68%/42.19%**; full re-profile is now mandatory before another owner |
-| 2 | **D08-P3** | Q4 dense FFN projections: **3.87x**, **20.77%**; Q8 is already faster | future after P1 re-profile; at most three leaf variants if >=20% reproduces |
-| 3 | **D08-P2** | GDN: Q4 **5.04x / 15.02%**, Q8 **3.24x / 26.76%** | future after P1 re-profile; audit retained schedule before at most three variants |
+| 2 | **D08-P3** | Q4 dense FFN projections: **3.87x**, **20.77%**; Q8 is already faster | **pre-P1 bound superseded:** M6 admits P3 at a 29.42% projected saving |
+| 3 | **D08-P2** | GDN: Q4 **5.04x / 15.02%**, Q8 **3.24x / 26.76%** | **pre-P1 bound superseded:** M6 ranks P2 second at 19.39% |
 | 4 | **D08-D3** | eager projection deltas: **47.70% Q4 / 34.75% Q8** | blocked by M2 graph/direct census; eager marker gaps are not production-graph GPU time |
 | 5 | **D08-P4/D4** | full-attention roles are material but below ranks 1-3 | future; one route/layout or semantic owner after structural re-profile |
 | 6 | **D08-D2** | LM head: only **1.86% Q4 / 1.31% Q8** eager saving | parked; reopen only if graph census changes ownership |
@@ -325,6 +325,31 @@ starts before one replacement semantic capture.
 
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json).
+
+### 2.8 Post-P1 semantic rerank (2026-08-14)
+
+The first post-P1 marker capture was rejected under the one-repair rule because
+a 47.83-ms first-use/power-ramp interval was charged to the normally ~1-ms
+embedding owner. Its single replacement uses one untimed warmup followed by
+one measured capture. The accepted stage sum is **274.75 / 275.84 ms (99.60%)**
+for prefill and **17.83 / 18.52 ms/token (96.24%)** for eager decode.
+
+| Post-P1 prefill rank | hipEngine time/share | Matched Vulkan time | Ratio | Projected request saving | Disposition |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| Dense FFN projections / **P3** | **107.22 ms / 39.03%** | 26.07 ms | **4.11x** | **29.42%** | **admitted-next** |
+| GDN / **P2** | **66.87 ms / 24.34%** | 13.39 ms | **4.99x** | **19.39%** | future after P3 |
+| Remaining linear projections | **68.98 ms / 25.11%** | 19.35 ms | **3.56x** | **17.99%** | future role-specific audit |
+
+P1 reduced the QKV/gate group from **118.59 to 28.68 ms (-75.82%)** and the
+full linear-projection role from **157.79 to 68.98 ms (-56.29%)**. Dense FFN
+projection time is now the largest owner and has the largest matched-Vulkan
+request bound, so P3 is the sole active implementation package. P2 remains
+second; do not compound the two. Decode projections still account for 57.21%
+of the measured eager stage sum, but D3 remains blocked until M2 resolves the
+production graph/direct scope.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-post-q5t16-rerank.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-post-q5t16-rerank.json).
 
 ## 3. Comparison contracts
 
@@ -511,6 +536,7 @@ layout, activation reuse, or submission class.
 | **D08-M3** | llama.cpp Vulkan Q4 pp512/tg128 perf-logger profiles. | **Complete:** all measured prefill and 128 decode graphs assigned; operation totals reconcile within logger rounding and submission residual is explicit. | completed |
 | **D08-M4** | Repeat M1-M3 for Q8_0. | **Complete:** explicit host-embedding HIP route plus complete Q8 Vulkan operation map; no mislabeled quant row. | completed |
 | **D08-M5** | Produce joined semantic-role Amdahl table. | **Complete:** every module was joined or represented by named submission residual; `other=0`; the resulting P1 admission is now accepted and this pre-P1 ranking is superseded. | completed |
+| **D08-M6** | Mandatory post-P1 Q4 semantic replacement capture and rerank. | **Complete:** 99.60% prefill and 96.24% eager-decode reconciliation; P3 is first at 29.42% projected request saving, P2 second at 19.39%. | completed |
 
 No implementation lane starts before `D08-C0` and the relevant M lane identify
 a shipped owner. A trivial route correction from C0 may be retained immediately
@@ -520,9 +546,9 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 
 | ID | Candidate class | Potential if admitted | Admission signal | Hard bound / stop rule | Status |
 | --- | --- | --- | --- | --- | --- |
-| **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair; no kernel variants. Re-profile before selecting another owner. | accepted |
-| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **15.02% Q4 / 26.76% Q8 current upper bound** | Re-profiled GDN is the largest remaining prefill role after P1. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | future after P1 re-profile |
-| **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **20.77% Q4; Q8 already faster than Vulkan** | Re-profiled dense projection role remains >=20% after P1. | At most 3 leaf variants/one tuning dimension. Continue only at >=1.10x leaf or >=1% projected request saving; include repack/copy wall. | future after P1 re-profile |
+| **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair, no kernel variants, and M6 re-profile complete. | accepted |
+| **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.42% post-P1 Q4 projected saving; Q8 already faster than Vulkan** | M6 ranks dense FFN projections first at 107.22 ms versus 26.07 ms Vulkan. | Audit active routes first; at most 3 predeclared leaf variants/one tuning dimension. Continue only at >=1.10x leaf or >=1% projected request saving; include repack/copy wall. | admitted-next |
+| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **19.39% post-P1 Q4 projected saving** | M6 ranks GDN second at 66.87 ms versus 13.39 ms Vulkan. | Audit the active retained schedule; at most 3 shape-specific variants. Do not reopen rejected GPF schedules without a new 0.8B resource reason. | future after P3 |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | profile-dependent medium/high | Full-attention role is material in M5 or the intended flash route is absent. | One route/layout candidate; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending |
 | **D08-P5** | Residual/norm/activation/copy launch coalescing. | medium/low | Glue is >=5% of prefill GPU time or launch count is the measured wall owner. | One fusion boundary at a time, at most 2 variants. Retain unfused fallbacks; reject spills/occupancy loss or complete-wall regression. | pending |
 
@@ -547,7 +573,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 
 ## 7. First-pass decision tree
 
-After C0/M5, choose exactly one first implementation owner:
+After each current ledger (M6 now), choose exactly one implementation owner:
 
 1. **Fast flags disabled or fallback kernels present?** Fix route selection and
    defaults first. Re-profile; the Amdahl table is invalid after a structural
@@ -595,8 +621,8 @@ potential band, then measured upper bound.
 | --- | --- | --- | --- | --- |
 | Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
 | P1 Q5T16 QKV route | **accepted** | **realized: +33.68% pp / +42.19% eager tg; -11.59% tracked peak** | One exact-role sole-resident policy reused the shipped direct/rowtile/WMMA family; no arithmetic variants or duplicate weights. | Closed; reopen only if a future correctness regression identifies this exact role. |
-| New GDN prefill schedule | future behind P1 re-profile | **15.02% Q4 / 26.76% Q8 current upper bound** | Multiple exact/reassociated GPF schedules already exist, and P1 invalidates the current ranking. | Post-P1 M1/M5 still ranks GDN first and the active 0.8B resource shape differs from the retained winner. |
-| Broad quant projection tile sweep | future behind P1 re-profile | **20.77% Q4 dense; 47.70% eager Q4 decode projection upper bound** | Generic sweeps remain low-information until P1 and the graph/direct census establish the shipped owners. | Post-P1 prefill remains >=20%, or M2 proves >=25% production-graph decode ownership, with one bounded tuning dimension. |
+| Dense FFN projection package / P3 | **admitted-next** | **29.42% post-P1 Q4 projected saving** | M6 measures 107.22 ms versus 26.07 ms Vulkan, the largest remaining matched owner. | Audit routes, then test at most three predeclared variants and one tuning dimension; stop below the continuation gate. |
+| New GDN prefill schedule | future after P3 | **19.39% post-P1 Q4 projected saving** | M6 ranks GDN second; multiple exact/reassociated GPF schedules already exist. | P3 closes and a fresh ledger still ranks GDN first with an active 0.8B resource mismatch versus the retained winner. |
 | Graph/submission work | M2 census in-progress | high if production graph residual >=10% | C0 certifies graph throughput, but eager stage gaps cannot be assigned directly to graph GPU work. | One graph/direct API and sync/copy census reports the production residual and preserves exact graph/eager state. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
