@@ -215,9 +215,14 @@ values per local256 thread, reduces within wave32 using HIP shuffles, and uses
 eight shared wave sums plus two block barriers. The add form preserves the
 existing unrounded-F32 normalization and rounded-BF16 residual contract. Generic
 t256 primitives remain registered fallbacks; no layout, persistent bytes, hot
-scratch, or node count is added. These keys are diagnostic until the exact
-model/backend capability and full gate are retained. Evidence:
-[`0.8B norm/residual screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
+scratch, or node count is added. The production capability selects both keys as
+one C route only for gfx1151 Qwen3.5-0.8B Q4_K_M c1/hidden-1,024
+attention/post-attention owners. Resident dispatch caches a prevalidated
+registry partial after exact capability resolution; public wrappers and HIP
+entry points retain their full validation contract. Q8, output norm, verifier
+F32, rows>1, other shapes/models, and peer backends stay generic. Evidence:
+[`0.8B retained norm/residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
+[`screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 

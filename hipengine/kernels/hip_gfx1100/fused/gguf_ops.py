@@ -93,15 +93,17 @@ def gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
 ) -> None:
     """Run the fixed c1/hidden-1024 register-cached wave reduction."""
 
-    _check_fixed1024_wave256(
-        ((x_ptr, "x_ptr"), (weight_ptr, "weight_ptr"), (out_ptr, "out_ptr")),
-        rows=rows,
-        hidden_size=hidden_size,
-        threads=threads,
-    )
+    if not _prevalidated:
+        _check_fixed1024_wave256(
+            ((x_ptr, "x_ptr"), (weight_ptr, "weight_ptr"), (out_ptr, "out_ptr")),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+        )
     _launch_rmsnorm(
         "hipengine_gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256",
         (x_ptr, weight_ptr, out_ptr),
@@ -278,25 +280,33 @@ def gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
 ) -> None:
     """Run fixed c1/hidden-1024 unrounded add plus wave RMS reduction."""
 
-    pointers = (
-        (x_ptr, "x_ptr"),
-        (add_ptr, "add_ptr"),
-        (weight_ptr, "weight_ptr"),
-        (norm_out_ptr, "norm_out_ptr"),
-        (residual_out_ptr, "residual_out_ptr"),
-    )
-    _check_fixed1024_wave256(
-        pointers,
-        rows=rows,
-        hidden_size=hidden_size,
-        threads=threads,
-    )
+    ptrs = (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr)
+    if not _prevalidated:
+        _check_fixed1024_wave256(
+            tuple(
+                zip(
+                    ptrs,
+                    (
+                        "x_ptr",
+                        "add_ptr",
+                        "weight_ptr",
+                        "norm_out_ptr",
+                        "residual_out_ptr",
+                    ),
+                    strict=True,
+                )
+            ),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+        )
     _launch_add_rmsnorm(
         "hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
-        tuple(pointer for pointer, _name in pointers),
+        ptrs,
         rows,
         hidden_size,
         eps,
