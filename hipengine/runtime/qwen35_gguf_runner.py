@@ -21324,8 +21324,8 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] 
         "linear_z": (("linear", 0, 5),),
         "linear_alpha": (("linear", 0, 4),),
         "linear_beta": (("linear", 0, 4),),
-        # The exact recurrence reads the full convolution sequence while
-        # writing recurrent_out, so those ranges must remain disjoint.
+        # The fused route reads conv_out through stage 5. Split routes override
+        # this below after prepare materializes their recurrence inputs.
         "conv_out": (("linear", 2, 5),),
         # Normalized peer GDN materializes Q/K/V after convolution and keeps
         # them live only through the recurrent output handoff.
@@ -22176,6 +22176,17 @@ class _GGUFFullAttentionPrefillScratch:
             else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
         )
         if liveness_disabled_fields is not None:
+            if _gguf_gdn_prefill_effective_mode(runner.backend) != "fused":
+                # Split GDN prepare consumes conv_out completely before
+                # recurrent_out begins. End stage 4 is exclusive, so both
+                # full-row planes may share physical arena pages while keeping
+                # the admitted kernels and raw-pointer ABI unchanged.
+                scratch_lifetimes = MappingProxyType(
+                    {
+                        **scratch_lifetimes,
+                        "conv_out": (("linear", 2, 4),),
+                    }
+                )
             arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
             # Dense SiLU consumes gate/up elementwise and may replace the dead
             # gate plane in place.  Keep this intentional source/output alias
