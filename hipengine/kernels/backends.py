@@ -23,6 +23,7 @@ CPU_BACKEND = "cpu_reference"
 _ENV_BACKEND = "HIPENGINE_BACKEND"
 _ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
 _ENV_GPU_MAX_HW_QUEUES = "GPU_MAX_HW_QUEUES"
+_ENV_HSA_SCRATCH_SINGLE_LIMIT = "HSA_SCRATCH_SINGLE_LIMIT"
 
 HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
     "hip_gfx1100": "gfx1100",
@@ -38,12 +39,13 @@ CUDA_TARGET_ARCH_BACKEND: dict[str, str] = {
     arch: backend for backend, arch in CUDA_BACKEND_TARGET_ARCH.items()
 }
 # Process-start HIP runtime defaults are backend metadata, not dispatch logic.
+# On gfx1100, rocprof identifies repeated 300-MiB use-once allocations for the
+# 3,200-byte/thread AOTriton prefill kernel; 32 MiB preserves measured launch
+# geometry and kernel timing while materially reducing whole-device peak.
 # ROCm's documented default is four hardware queues. Clean Laguna branch-
-# concurrency evidence admits two on gfx1151: it preserves complete state,
-# wins all seven matched pp512 pairs, and completes repeated load/reset/close
-# cycles without reproducing the earlier multi-queue wait. An explicit user
-# value always wins.
+# concurrency evidence admits two on gfx1151. Explicit user values always win.
 HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
+    "hip_gfx1100": {_ENV_HSA_SCRATCH_SINGLE_LIMIT: "33554432"},
     "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "2"},
 }
 
@@ -134,11 +136,12 @@ def configure_hip_process_environment(
 ) -> dict[str, str]:
     """Apply hardware-local HIP defaults before ``libamdhip64`` is loaded.
 
-    gfx1151 uses two hardware queues for the admitted Laguna shared/routed MoE
-    overlap while remaining below ROCm's documented default of four. The
-    policy is applied only when all recognized visible HIP architectures map
-    to the same backend. Existing environment values are never overwritten,
-    so ``GPU_MAX_HW_QUEUES=1`` restores the prior single-queue fallback.
+    gfx1100 caps reclaimable single-dispatch scratch at 32 MiB instead of
+    ROCr's much larger default threshold; gfx1151 uses two hardware queues for
+    the admitted Laguna shared/routed MoE overlap while remaining below ROCm's
+    documented default of four. The policy is applied only when all recognized
+    visible HIP architectures map to the same backend. Existing environment
+    values are never overwritten, so users retain explicit rollback/control.
     """
 
     env_map = os.environ if env is None else env

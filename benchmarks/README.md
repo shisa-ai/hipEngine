@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-14**
+Last updated: **2026-08-15**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -40,7 +40,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.481** | **33.516** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **972.069** | **33.525** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
@@ -53,17 +53,20 @@ split-GDN `conv_out` pages for the later recurrent output, exposes 188
 private-c1 decode ranges through one physical owner, uses a constrained
 long-row placement order that leaves `attn_out` at its exact-safe address, and
 reuses one physical 40-MiB hidden plane for both long-row ping-pong roles. The
-strictly serial selector-unset XTX matrix is
-**974.481/1006.756/987.812/819.432 tok/s** prefill and
-**33.516/34.494/31.389/29.357 tok/s** decode at 512/1K/4K/8K. Tracked peaks are
+gfx1100 process default also lowers ROCr's reserved single-dispatch scratch
+threshold from 140 to 32 MiB while preserving the traced 300-MiB use-once
+AOTriton allocations. The strictly serial selector-unset XTX matrix is
+**972.069/1005.877/987.316/820.285 tok/s** prefill and
+**33.525/34.522/31.374/29.362 tok/s** decode at 512/1K/4K/8K. Tracked peaks are
 **15.587/15.668/16.111/16.369 GiB**, while whole-device peaks are
-**16.029/16.182/16.777/17.029 GiB**. The latest step removes exactly **40 MiB**
-tracked at 4K/8K and about **37.3/39.9 MiB** process-delta whole-device VRAM;
-all XTX and W7900 throughput movement is within **0.114%**, every token remains
-9707, forced-alias dense NextN transactions pass, and teardown reaches zero.
-This closes the prefill target while reducing memory; Vulkan's lower memory
-floors still lead by **0.340/0.482/0.865/0.863 GiB**, while 4K decode and Vulkan
-MTP remain blocked. Evidence:
+**15.923/16.076/16.671/16.925 GiB**. The scratch-reserve step removes
+**106.3-108.9 MiB** process-delta whole-device VRAM with no tracked-byte
+change; all XTX and W7900 throughput movement is within **0.104%**, every token
+remains 9707, forced-alias dense NextN transactions pass, and teardown reaches
+zero. This closes the prefill target while reducing memory; Vulkan's lower
+memory floors still lead by **0.233/0.376/0.758/0.759 GiB**, while 4K decode and
+Vulkan MTP remain blocked. Evidence:
+[`gfx1100 ROCr scratch reserve`](results/2026-08-15-gfx1100-rocr-scratch-reserve-retained.json),
 [`long-row hidden-owner reuse`](results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json),
 [`constrained long-row recoloring`](results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json),
 [`split-GDN lifetime reuse`](results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json),
