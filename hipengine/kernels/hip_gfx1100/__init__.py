@@ -179,6 +179,11 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
 # once per K head; cross-board M512/M1024 complete-chain gates admit it.
 # Scalar-exact direct LDS32 remains available through the explicit selector.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_compact_peer_wave32"
+# No narrower GDN shape overrides are admitted on gfx1100; model families use
+# the cross-board compact peer default above.
+GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE: dict[
+    tuple[str, int, int, int, int], str
+] = {}
 # Strict-exact rollback/oracle stays architecture-scoped and does not replace
 # the quality-admitted peer-wave production default.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -748,6 +753,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",

@@ -2610,7 +2610,16 @@ class Qwen35GGUFFullStackRunner:
         plan = self._gdn_prefill_plan()
         requested_mode = _gguf_gdn_prefill_mode()
         if requested_mode == "auto":
-            mode = plan.auto_mode
+            quant_shape = (
+                str(getattr(self.weights, "file_type_name", "")).strip().lower(),
+                int(cfg.ssm_group_count),
+                int(cfg.ssm_time_step_rank),
+                int(cfg.ssm_state_size),
+                int(self.ssm_value_dim),
+            )
+            mode = (plan.auto_modes_by_quant_shape or {}).get(
+                quant_shape, plan.auto_mode
+            )
         elif requested_mode == "exact":
             mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
         else:
@@ -21775,7 +21784,18 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         return None
     requested_mode = _gguf_gdn_prefill_mode()
     if requested_mode == "auto":
-        effective_mode = _gguf_gdn_prefill_backend_auto_mode(backend)
+        default_mode = _gguf_gdn_prefill_backend_auto_mode(backend)
+        quant_shape_modes = _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
+            backend
+        )
+        quant_shape = (
+            str(getattr(weights, "file_type_name", "")).strip().lower(),
+            int(cfg.ssm_group_count),
+            int(cfg.ssm_time_step_rank),
+            int(cfg.ssm_state_size),
+            int(cfg.ssm_inner_size) // int(cfg.ssm_time_step_rank),
+        )
+        effective_mode = quant_shape_modes.get(quant_shape, default_mode)
     elif requested_mode == "exact":
         effective_mode = _gguf_gdn_prefill_backend_exact_mode(backend)
     else:
@@ -21785,7 +21805,11 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         "chain_lds32_direct_nonvolatile",
     }:
         disabled_fields = _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
-    elif effective_mode in {"chain_peer_wave32", "chain_compact_peer_wave32"}:
+    elif effective_mode in {
+        "chain_peer_wave32",
+        "chain_compact_peer_wave32",
+        "chain_peer_cluster8",
+    }:
         disabled_fields = _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS
     else:
         return None
@@ -23791,6 +23815,9 @@ class _GGUFGDNPrefillPlan:
     recurrent_peer_cluster8: object | None = None
     recurrent_segments_peer_cluster8: object | None = None
     auto_mode: str = "fused"
+    auto_modes_by_quant_shape: Mapping[
+        tuple[str, int, int, int, int], str
+    ] | None = None
 
     @property
     def has_chain(self) -> bool:
@@ -23942,6 +23969,53 @@ def _gguf_gdn_prefill_backend_auto_mode(backend: str) -> str:
             f"{choices}, got {mode!r} for {backend!r}"
         )
     return mode
+
+
+def _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
+    backend: str,
+) -> Mapping[tuple[str, int, int, int, int], str]:
+    """Resolve validated quant/shape overrides for one backend GDN policy."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
+        {},
+    )
+    if not isinstance(raw, Mapping):
+        raise RuntimeError(
+            "backend GGUF GDN prefill quant/shape policy must be a mapping"
+        )
+    normalized: dict[tuple[str, int, int, int, int], str] = {}
+    for raw_key, raw_mode in raw.items():
+        if not isinstance(raw_key, tuple) or len(raw_key) != 5:
+            raise RuntimeError(
+                "backend GGUF GDN prefill policy keys must be "
+                "(quant, num_k_heads, num_v_heads, head_k_dim, head_v_dim) tuples"
+            )
+        quant = str(raw_key[0]).strip().lower()
+        if not quant:
+            raise RuntimeError(
+                "backend GGUF GDN prefill policy quant keys must be non-empty"
+            )
+        try:
+            shape = tuple(int(value) for value in raw_key[1:])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "backend GGUF GDN prefill policy shape keys must contain integers"
+            ) from exc
+        if any(value <= 0 for value in shape):
+            raise RuntimeError(
+                "backend GGUF GDN prefill policy shape dimensions must be positive"
+            )
+        mode = str(raw_mode).strip().lower()
+        if mode in {"auto", "exact"} or mode not in _GGUF_GDN_PREFILL_MODES:
+            choices = "|".join(sorted(_GGUF_GDN_PREFILL_MODES - {"auto", "exact"}))
+            raise RuntimeError(
+                "backend GGUF GDN prefill quant/shape mode must be one of "
+                f"{choices}, got {raw_mode!r}"
+            )
+        normalized[(quant, *shape)] = mode
+    return MappingProxyType(normalized)
 
 
 def _gguf_gdn_prefill_backend_exact_mode(backend: str) -> str:
@@ -24268,6 +24342,9 @@ def _resolve_gguf_gdn_prefill_plan(
             _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_CLUSTER8_KEY
         ),
         auto_mode=_gguf_gdn_prefill_backend_auto_mode(backend),
+        auto_modes_by_quant_shape=(
+            _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(backend)
+        ),
     )
 
 

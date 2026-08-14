@@ -637,6 +637,14 @@ GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
+# Qwen3.5-0.8B has one V head per K head and only 64 exact-LDS32 blocks at
+# pp512. The complete 18-prompt semantic/decode gate and paired full-engine
+# screen admit the existing Vulkan-shaped cluster8 recurrence only for its
+# exact quant and (K heads, V heads, K dim, V dim) geometry. Q8_0 retains the
+# exact route after its strict graph-decode guard missed by 0.0108%.
+GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
+    ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+}
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -1735,6 +1743,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
