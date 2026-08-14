@@ -146,10 +146,13 @@ falls **72.00 -> 25.31 MiB**, cutting physical weights by **46.69 MiB**. Q8_0
 remains structurally unchanged, and P3 dense FFN remains closed/rejected.
 Mandatory M7 then reconciles **232.63/233.61 ms (99.58%)** of post-P6 marker
 wall and confirms SSM-out at **9.68 ms (-73.07% versus post-P2)**. The bounded
-P7 per-leaf audit selects 18 Q4_K gate projections next at **11.74 vs 3.38 ms
-Vulkan**, an **8.36-ms / 3.58%** current request gap. Decode arithmetic remains
+P7 per-leaf audit selects 18 Q4_K gate projections at **11.74 vs 3.38 ms
+Vulkan**, but sole Q4T16 regresses c1 to **0.883x** and raw Q4 regresses every
+operational width, so P7 closes without a production change. P4 full attention
+is next at a corrected **6.06%** request bound; decode arithmetic remains
 blocked behind the graph/direct census. This campaign row is not yet a final
-cross-engine topline; see the [`P7 residual audit`](results/2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json),
+cross-engine topline; see the [`P7 gate closure`](results/2026-08-14-gfx1151-qwen35-08b-q4-gate-routes-rejected.json),
+[`P7 residual audit`](results/2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json),
 [`post-P6 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-p6-rerank.json),
 [`Q5T16 SSM-out route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-ssm-out-route.json),
 [`Q4 cluster8 GDN route`](results/2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json),
