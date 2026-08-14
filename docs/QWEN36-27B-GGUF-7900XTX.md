@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **the 2026-08-14 compact peer-GDN route closes the prefill target independently; the remaining cross-engine blockers are memory, 4K decode, and Vulkan MTP.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met** because every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The compact GDN route materializes normalized Q/K once per K head instead of per value head, and session planning follows that compact ABI instead of reserving V-head-sized Q/K planes. Dense SiLU now also overwrites its dead BF16 gate plane. The fresh strictly serial selector-unset XTX 512/1K/4K/8K matrix measures **975.876/1008.254/987.858/821.028 prefill tok/s** and **33.533/34.538/31.419/29.380 decode tok/s**. Tracked peaks are **15.587/15.681/16.243/16.501 GiB** and whole-device peaks are **16.083/16.287/17.001/17.256 GiB**; throughput moves by at most **0.171%** versus the prior matrix, IDs and dense NextN transactions remain exact, and tracked teardown is zero. The earlier 41.024-ms Q4/Q4 source-F16 residual remains rejected because canonical W7900 M512 regressed.
+Status: **the 2026-08-14 compact peer-GDN route closes the prefill target independently; the remaining cross-engine blockers are memory, 4K decode, and Vulkan MTP.** All requested 512/128, 1K/128, and 4K/128 AR shapes plus natural B1-B3 fit; live target+NextN residency has zero duplicate/alternate payload bytes; deep eager/PM4 state and complete `KVLiveSpans`, transactions, cancellation, public torch-free lifecycle, and the 601-second mixed soak pass; PM4 wins all 15/15 paired HIP-graph samples; and the shared gfx1100 route passes the complete W7900 safeguard. The original “beat both llama.cpp backends everywhere” objective is still **not met** because every memory row, 4K AR decode, Vulkan B4 MTP speed, and Vulkan MTP memory fail. The compact GDN route materializes normalized Q/K once per K head instead of per value head, session planning follows that compact ABI instead of reserving V-head-sized Q/K planes, dense SiLU overwrites its dead BF16 gate plane, and one physical owner exposes the unchanged 188 private-c1 decode-scratch ranges. The fresh strictly serial selector-unset XTX 512/1K/4K/8K matrix measures **976.759/1006.771/987.930/821.496 prefill tok/s** and **33.627/34.521/31.425/29.393 decode tok/s**. Tracked peaks are **15.587/15.681/16.243/16.501 GiB** and whole-device peaks are **16.028/16.195/16.905/17.160 GiB**; throughput moves by at most **0.279%** versus the prior matrix, IDs and dense NextN transactions remain exact, and tracked teardown is zero. The remaining Vulkan memory gaps are **0.339/0.495/0.993/0.994 GiB**, so the memory objective remains open. The earlier 41.024-ms Q4/Q4 source-F16 residual remains rejected because canonical W7900 M512 regressed.
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -966,18 +966,18 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **975.876 current** | >=974.252 (1% margin) — **pass by 0.167%** |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.533 current** | >=33.356 (1% margin) — **pass** |
-| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.083** | <=15.690 — fail |
-| 1024 prefill tok/s | 981.040 | 836.898 | **1008.254 current** | >=990.850 (1% margin) — **pass** |
-| 1024 AR transition tok/s | 32.924 | 13.379 | **34.538 current** | >=33.254 (1% margin) — **pass** |
-| 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.287** | <=15.700 — fail |
-| 4096 prefill tok/s | 946.733 | 835.765 | **987.858 current** | >=956.201 (1% margin) — **pass** |
-| 4096 AR transition tok/s | 32.560 | 13.309 | **31.419 current** | >=32.886 (1% margin) — fail |
-| 4096 peak VRAM delta GiB | 16.562 | **15.912** | **17.001** | <=15.912 — fail |
-| 8192 standardized prefill tok/s | 906.648 | 829.630 | **821.028** | diagnostic: below both |
-| 8192 standardized/context decode tok/s | 32.779 | **37.669** | **29.380** | diagnostic protocols differ |
-| 8192 peak VRAM delta GiB | 16.817 | **16.166** | **17.256** | <=16.166 — fail |
+| 512 prefill tok/s | 964.606 | 870.872 | **976.759 current** | >=974.252 (1% margin) — **pass by 0.257%** |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.627 current** | >=33.356 (1% margin) — **pass** |
+| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.028** | <=15.690 — fail |
+| 1024 prefill tok/s | 981.040 | 836.898 | **1006.771 current** | >=990.850 (1% margin) — **pass** |
+| 1024 AR transition tok/s | 32.924 | 13.379 | **34.521 current** | >=33.254 (1% margin) — **pass** |
+| 1024 peak VRAM delta GiB | 16.373 | **15.700** | **16.195** | <=15.700 — fail |
+| 4096 prefill tok/s | 946.733 | 835.765 | **987.930 current** | >=956.201 (1% margin) — **pass** |
+| 4096 AR transition tok/s | 32.560 | 13.309 | **31.425 current** | >=32.886 (1% margin) — fail |
+| 4096 peak VRAM delta GiB | 16.562 | **15.912** | **16.905** | <=15.912 — fail |
+| 8192 standardized prefill tok/s | 906.648 | 829.630 | **821.496** | diagnostic: below both |
+| 8192 standardized/context decode tok/s | 32.779 | **37.669** | **29.393** | diagnostic protocols differ |
+| 8192 peak VRAM delta GiB | 16.817 | **16.166** | **17.160** | <=16.166 — fail |
 | Natural true AR tok/s | 31.576 | 13.386 | **20.782** | disclosed same protocol |
 | Selected MTP budget | B2 | B4 | **B3** | independently selected |
 | Natural MTP transition tok/s | 46.863 | **81.952** | **72.887** | >=82.771 (1% margin) — fail |
@@ -985,7 +985,7 @@ Populate only from committed artifacts:
 | Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | **17.183** | <=16.673 — fail |
 | Alternate-layout weight bytes | not audited | not audited | **0 plan + live physical bytes** | exactly 0 |
 | Duplicate logical weight bytes | not audited | not audited | **0 live duplicate-payload bytes** | exactly 0 |
-| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
+| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.895 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly; dense rollback/cancel/public reuse pass; 601-s / 408-request soak exact** | **pass** |
 
@@ -1026,13 +1026,15 @@ changing weight residency or arithmetic. It materializes normalized Q/K as
 FP32-state-bit exact and wins all **42/42** cross-board full-engine pairs. The
 subsequent planner cleanup gives the persistent views that same ABI. Dense SiLU
 then aliases its output over the dead BF16 gate plane and models the gate/up
-halves as distinct physical lifetimes. That latest change removes another
-**8.9375/18.75/20.625/20.625 MiB** tracked and
-**11.160/17.965/21.750/21.547 MiB** whole-device peak at 512/1K/4K/8K. The
-clean package-default matrix remains non-regressive within **0.171%**, all
-frozen prefill gates stay passed, and the remaining lower-Vulkan memory gaps are
-**0.394/0.587/1.089/1.090 GiB**
-([dense SiLU gate-plane alias](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
+halves as distinct physical lifetimes. The latest private-c1 owner packing keeps
+all 188 logical state, BF16-KV, metadata, and operation-workspace ranges but
+reduces their physical owners from 188 to one. It saves
+**55.980/94.297/97.988/98.020 MiB** whole-device peak at 512/1K/4K/8K while the
+clean package-default matrix stays within **0.279%** throughput, all frozen
+prefill gates stay passed, and the remaining lower-Vulkan memory gaps fall to
+**0.339/0.495/0.993/0.994 GiB**
+([single-owner decode scratch](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
+[dense SiLU gate-plane alias](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
 [right-sized scratch](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
 [independent matrix](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json),
 [retained route](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json)).
@@ -1054,11 +1056,11 @@ W7900 safeguard:
 | Natural peak delta | 31.680 GiB | **17.183 GiB** | **pass: -45.76%** |
 | Alternate-layout weight bytes | 13.037-GiB pack8 payload plus T16 sidecars | **0** | **pass: candidate exactly 0** |
 
-The current route-shaped scratch plus dense-SiLU alias also passes a fresh
-selector-unset W7900 512/128 safeguard at **875.921 prefill / 28.405 decode
-tok/s**, **15.587 GiB tracked**, and **16.083 GiB whole-device peak delta**. All
-IDs are 9707, logits are finite, and tracked teardown is zero; movement versus
-the current public W7900 row is within 1%.
+The current route-shaped scratch, dense-SiLU alias, and single-owner decode
+scratch also pass a fresh selector-unset W7900 512/128 safeguard at **875.518
+prefill / 28.418 decode tok/s**, **15.587 GiB tracked**, and **16.028 GiB
+whole-device peak delta**. All IDs are 9707, logits are finite, and tracked
+teardown is zero; movement versus the prior current row is within **0.046%**.
 
 ---
 
@@ -1067,8 +1069,9 @@ the current public W7900 row is within 1%.
 Do not declare closure merely because the model fits. Continue until all scorecard
 gates pass or publish an explicit blocker with the failed column and measured
 ceiling. The prefill lane is closed: the current right-sized compact peer-GDN
-plus dense-SiLU alias matrix passes raw HIP and HIP+1% at every shape, including
-M512 by **0.167%**.
+plus dense-SiLU alias and single-owner decode-scratch matrix passes raw HIP and
+HIP+1% at every shape, including M512 by **0.257%**. Memory remains explicitly
+open at **0.339/0.495/0.993/0.994 GiB** above Vulkan.
 The prior 41.024-ms Q4/Q4 residual remains rejected after failing canonical
 W7900 complete-wall non-regression. Continue only on the separate memory, 4K
 decode, and Vulkan MTP blockers.
