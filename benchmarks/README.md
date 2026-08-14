@@ -114,12 +114,13 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
-Current blocker diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` now has a
-98.8-99.5%-reconciled prefill and 96.6-97.6%-reconciled eager-decode semantic
-ledger for Q4_K_M and Q8_0. Q4 prefill is led by fallback linear-attention
-projections; projection GEMVs lead decode in both quants. These instrumented
-rows are not topline throughput; see
-[`2026-08-14-gfx1151-qwen35-08b-stage-attribution.json`](results/2026-08-14-gfx1151-qwen35-08b-stage-attribution.json).
+Current blocker diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` has a
+complete Q4_K_M/Q8_0 HIP/Vulkan semantic join with explicit submission
+residual and `other=0`. Q4 linear-attention projections expose a 38.42%
+projected stage saving and admit one bounded route audit/repair; Q8 GDN exposes
+26.76%. Decode arithmetic remains blocked behind the graph/direct census.
+These instrumented rows are not topline throughput; see
+[`2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
 
 ## Current single-request scoreboards
 

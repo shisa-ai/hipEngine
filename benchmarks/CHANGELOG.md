@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-14
 
+- [gfx1151 joined Vulkan diagnostic; no topline speed claim] Qwen3.5-0.8B / Q4_K_M+Q8_0 / pp512+tg128: unranked cross-engine gap -> **all 131 logger graphs/quant mapped, submission residual explicit, other=0**; Q4 linear-attention projections are **8.16x Vulkan / 38.42% projected stage saving**, Q8 GDN is **3.24x / 26.76%**, so admit exactly one P1 route audit/repair and park arithmetic behind the required re-profile; `benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json`.
 - [gfx1151 diagnostic; no topline speed claim] Qwen3.5-0.8B / Q4_K_M+Q8_0 / pp512 plus eager decode: unusable rocprof/HIP-event durations -> device wall-clock semantic ledgers reconcile **99.5%/98.8% prefill** and **96.6%/97.6% decode**; Q4 fallback linear-attention projections own **43.79%** of prefill, Q8 GDN owns **38.70%**, and projection GEMVs own **60.1%/53.2%** of decode, admitting one bounded Q4 route repair; `benchmarks/results/2026-08-14-gfx1151-qwen35-08b-stage-attribution.json`.
 
 ## 2026-08-12
