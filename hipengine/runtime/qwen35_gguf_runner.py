@@ -21510,30 +21510,25 @@ def _prefill_scratch_allocations_conflict(
     )
 
 
-def _allocate_prefill_scratch_liveness_arena(
+def _plan_prefill_scratch_liveness_offsets(
     sizes: Mapping[str, int],
+    order: tuple[str, ...],
     *,
-    runtime: HipRuntime,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
-        _GGUF_PREFILL_SCRATCH_LIFETIMES
-    ),
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
     allocation_subranges: Mapping[
         str,
         tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ] = MappingProxyType({}),
-) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
-    missing = sorted(set(sizes) - set(lifetimes))
-    if missing:
-        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
+    ],
+) -> tuple[int, Mapping[str, tuple[int, int]]]:
     offsets: dict[str, tuple[int, int]] = {}
-    for name, size in sorted(sizes.items(), key=lambda item: (-int(item[1]), item[0])):
-        size = int(size)
+    for name in order:
+        size = int(sizes[name])
         if size <= 0:
             raise ValueError(f"bulk-prefill liveness field {name} must be positive")
         candidates = {0}
-        # Avoid exact power-of-two separation between simultaneously-live
-        # weight/activation streams; on RDNA3 that can map both ranges onto the
-        # same L2/TLB colors and made the otherwise-exact 512 route slower.
+        # Leave one 64-KiB color between simultaneously-live subranges to
+        # avoid the measured RDNA3 L2/TLB collision from exact power-of-two
+        # weight/activation separation.
         current_subranges = _prefill_scratch_field_subranges(
             name,
             size,
@@ -21566,9 +21561,8 @@ def _allocate_prefill_scratch_liveness_arena(
                 )
             )
         for candidate in sorted(candidates):
-            conflict = False
-            for other, (other_offset, other_size) in offsets.items():
-                if _prefill_scratch_allocations_conflict(
+            if not any(
+                _prefill_scratch_allocations_conflict(
                     name,
                     candidate,
                     size,
@@ -21577,21 +21571,81 @@ def _allocate_prefill_scratch_liveness_arena(
                     other_size,
                     lifetimes=lifetimes,
                     allocation_subranges=allocation_subranges,
-                ):
-                    conflict = True
-                    break
-            if not conflict:
+                )
+                for other, (other_offset, other_size) in offsets.items()
+            ):
                 offsets[name] = (candidate, size)
                 break
         else:  # pragma: no cover - candidate set always includes the current end
             raise RuntimeError(f"failed to place bulk-prefill liveness field {name}")
-    arena_nbytes = _align_prefill_scratch(max(offset + size for offset, size in offsets.values()))
+    arena_nbytes = _align_prefill_scratch(
+        max(offset + size for offset, size in offsets.values())
+    )
+    return arena_nbytes, MappingProxyType(offsets)
+
+
+def _allocate_prefill_scratch_liveness_arena(
+    sizes: Mapping[str, int],
+    *,
+    runtime: HipRuntime,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
+        _GGUF_PREFILL_SCRATCH_LIFETIMES
+    ),
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ] = MappingProxyType({}),
+    priority_min_live_stages: int | None = None,
+) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
+    missing = sorted(set(sizes) - set(lifetimes))
+    if missing:
+        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
+    size_order = tuple(
+        sorted(sizes, key=lambda name: (-int(sizes[name]), name))
+    )
+    arena_nbytes, offsets = _plan_prefill_scratch_liveness_offsets(
+        sizes,
+        size_order,
+        lifetimes=lifetimes,
+        allocation_subranges=allocation_subranges,
+    )
+    if priority_min_live_stages is not None:
+        duration = {
+            name: sum(end - start for _route, start, end in lifetimes[name])
+            for name in sizes
+        }
+        priority = tuple(
+            sorted(
+                (
+                    name
+                    for name in sizes
+                    if duration[name] >= int(priority_min_live_stages)
+                ),
+                key=lambda name: (-duration[name], -int(sizes[name]), name),
+            )
+        )
+        priority_set = frozenset(priority)
+        candidate_order = priority + tuple(
+            name for name in size_order if name not in priority_set
+        )
+        candidate_nbytes, candidate_offsets = (
+            _plan_prefill_scratch_liveness_offsets(
+                sizes,
+                candidate_order,
+                lifetimes=lifetimes,
+                allocation_subranges=allocation_subranges,
+            )
+        )
+        # Keep established addresses on ties and never admit a larger plan.
+        if candidate_nbytes < arena_nbytes:
+            arena_nbytes = candidate_nbytes
+            offsets = candidate_offsets
     arena = malloc(arena_nbytes, runtime=runtime)
     views = {
         name: DeviceBuffer(ptr=arena.ptr + offset, nbytes=size)
         for name, (offset, size) in offsets.items()
     }
-    return arena, views, MappingProxyType(offsets)
+    return arena, views, offsets
 
 
 def _allocate_prefill_scratch_liveness_owner_slots(
@@ -21666,6 +21720,7 @@ def _allocate_prefill_scratch_liveness_arenas(
         str,
         tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
     ] = MappingProxyType({}),
+    priority_min_live_stages: int | None = None,
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
@@ -21687,6 +21742,7 @@ def _allocate_prefill_scratch_liveness_arenas(
         runtime=runtime,
         lifetimes=lifetimes,
         allocation_subranges=allocation_subranges,
+        priority_min_live_stages=priority_min_live_stages,
     )
     return (
         (arena,),
@@ -21804,6 +21860,51 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     ):
         return None
     return disabled_fields
+
+
+def _gguf_prefill_scratch_priority_min_live_stages(
+    runner: object,
+    *,
+    rows: int,
+) -> int | None:
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or bool(getattr(cfg, "is_moe", False))
+        or not isinstance(backend, str)
+    ):
+        return None
+    try:
+        policies = backend_package_capability(
+            backend,
+            "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+            {},
+        )
+    except ValueError:
+        return None
+    if not isinstance(policies, Mapping):
+        return None
+    policy = policies.get(
+        (
+            getattr(weights, "model_name", None),
+            getattr(weights, "file_type_name", None),
+        )
+    )
+    if not isinstance(policy, Mapping):
+        return None
+    raw = policy.get("priority_min_live_stages")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+        min_rows = int(policy.get("priority_min_rows", 1))
+    except (TypeError, ValueError):
+        return None
+    if int(rows) < max(1, min_rows):
+        return None
+    return value if value > 0 else None
 
 
 @dataclass(frozen=True)
@@ -22238,6 +22339,12 @@ class _GGUFFullAttentionPrefillScratch:
                     runtime=runtime,
                     lifetimes=allocation_plan_lifetimes,
                     allocation_subranges=planned_subranges,
+                    priority_min_live_stages=(
+                        _gguf_prefill_scratch_priority_min_live_stages(
+                            runner,
+                            rows=rows,
+                        )
+                    ),
                 )
             )
             fields = {
