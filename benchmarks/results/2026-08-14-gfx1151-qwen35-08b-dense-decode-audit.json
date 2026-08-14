@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-D3 Qwen3.5-0.8B gfx1151 dense decode projection ownership audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "source_commit": "b013e692e",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "backend": "hip_gfx1151",
+  "config": {
+    "hidden_size": 1024,
+    "ffn_size": 3584,
+    "layers": 24
+  },
+  "production_graph_bound": {
+    "graph_ms_per_token": 9.6458058046875,
+    "dense_ffn_projection_sync_share_normalized_ms": 2.771911,
+    "dense_ffn_projection_matched_gap_ms": 1.675694,
+    "dense_ffn_projection_request_bound_percent": 17.372259,
+    "gate_up_sync_share_normalized_ms": 1.626153236524259,
+    "silu_sync_share_normalized_ms": 0.21951174074356966,
+    "gate_up_plus_silu_ms": 1.8456649772678286,
+    "gate_up_plus_silu_wall_percent": 19.134378346813747,
+    "down_plus_residual_sync_share_normalized_ms": 1.1457581537525614
+  },
+  "owners": {
+    "dense_resident_bytes_total": 253231104,
+    "gate_up_resident_bytes_total": 132120576,
+    "gate_up_mall_multiple": 3.9375,
+    "down_resident_bytes_total": 121110528,
+    "inventory": [
+      {
+        "slot": "ffn_down",
+        "source_type": "Q4_K",
+        "layout": "q4_k_pack8",
+        "quant_key": "gguf_q4_k",
+        "shape": [
+          1024,
+          3584
+        ],
+        "layers": [
+          3,
+          4,
+          6,
+          7,
+          9,
+          10,
+          12,
+          13,
+          15,
+          16,
+          18,
+          19
+        ],
+        "count": 12,
+        "resident_bytes_each": 2752512,
+        "resident_bytes_total": 33030144,
+        "allocation_names": [
+          "qweight",
+          "scales",
+          "mins"
+        ]
+      },
+      {
+        "slot": "ffn_down",
+        "source_type": "Q6_K",
+        "layout": "dense_bf16",
+        "quant_key": "gguf_q6_k",
+        "shape": [
+          1024,
+          3584
+        ],
+        "layers": [
+          0,
+          1,
+          2,
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          21,
+          22,
+          23
+        ],
+        "count": 12,
+        "resident_bytes_each": 7340032,
+        "resident_bytes_total": 88080384,
+        "allocation_names": [
+          "raw"
+        ]
+      },
+      {
+        "slot": "ffn_gate",
+        "source_type": "Q4_K",
+        "layout": "q4_k_pack8",
+        "quant_key": "gguf_q4_k",
+        "shape": [
+          3584,
+          1024
+        ],
+        "layers": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "count": 24,
+        "resident_bytes_each": 2752512,
+        "resident_bytes_total": 66060288,
+        "allocation_names": [
+          "qweight",
+          "scales",
+          "mins"
+        ]
+      },
+      {
+        "slot": "ffn_up",
+        "source_type": "Q4_K",
+        "layout": "q4_k_pack8",
+        "quant_key": "gguf_q4_k",
+        "shape": [
+          3584,
+          1024
+        ],
+        "layers": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "count": 24,
+        "resident_bytes_each": 2752512,
+        "resident_bytes_total": 66060288,
+        "allocation_names": [
+          "qweight",
+          "scales",
+          "mins"
+        ]
+      }
+    ],
+    "production_graph": {
+      "gate_up": {
+        "launches": 24,
+        "kernel": "gguf_q4_k_pack8_dual_prefill_out_kernel<BF16,false>",
+        "threads": 32,
+        "then": "24 separate BF16 SiLU launches"
+      },
+      "down": {
+        "q4_pack8_launches": 12,
+        "dense_bf16_launches": 12,
+        "residual_add_launches": 24
+      }
+    }
+  },
+  "frozen_screen": {
+    "semantic_owner": "Q4 pack8 dense gate/up plus BF16 SiLU, rows=1, K1024, N3584",
+    "control": "existing pack8 dual t32 plus separate BF16 SiLU",
+    "candidates": [
+      "existing same-resident fused SiLU t32",
+      "existing same-resident fused SiLU t64",
+      "existing same-resident fused SiLU t128"
+    ],
+    "candidate_count": 3,
+    "pool": "all 24 physical gate/up pairs, 132,120,576 resident bytes / 3.9375x MALL per timed pass",
+    "constraints": [
+      "no resident repack",
+      "no sidecar or duplicate weights",
+      "no workspace or hot-path scratch",
+      "no new kernel body",
+      "unfused fallback retained"
+    ],
+    "stop_rule": "Only a finite/correct winner with >=1% projected production-graph saving may proceed to one full-model gate."
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked before report: optional external /home/lhl/amd-gpu-tuning/reference/atlas checkout is absent",
+    "impact": "No kernel port or new kernel body is in scope; candidates are existing registered leaves."
+  },
+  "provenance": {
+    "inventory_script": "/tmp/d08-d3/inspect_dense_owners.py",
+    "inventory_script_sha256": "d7689359193b7883bf9e00c3979bdaec36cb1f060c3054274f01e5157337f6e7",
+    "raw_inventory": "/tmp/d08-d3/dense-owner-inventory.json",
+    "raw_inventory_sha256": "aa17a6cec41880f55798c4f81ace3226793c0455c22b1ced70599072398d27b8"
+  },
+  "next": "Screen only the three frozen same-resident fused-SiLU thread schedules on the >2x-MALL actual-weight pool."
+}

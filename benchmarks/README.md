@@ -160,8 +160,12 @@ all **334 Q4 / 288 Q8** production graph kernels with exact trajectories and
 finds only **0.20%** launch+Python residual plus zero replay copies. Current
 graph decode is **103.67 tok/s Q4 / 112.30 Q8** versus Vulkan **201.17 / 165.32**;
 the remaining span is device-critical, so D1 closes and D3 dense projections
-are admitted next at a **17.37%** primary-Q4 dense-FFN bound. This campaign row
-is not yet a final cross-engine topline; see the [`graph/direct census`](results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json),
+are admitted at a **17.37%** primary-Q4 dense-FFN bound. The D3 audit identifies
+24 sole-pack8 `[N3584,K1024]` gate/up pairs (**132.12 MB / 3.94x MALL**) and
+freezes only existing fused-SiLU t32/t64/t128 against the current dual-t32 plus
+separate SiLU owner. This campaign row is not yet a final cross-engine topline;
+see the [`dense decode audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-audit.json),
+[`graph/direct census`](results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json),
 [`post-P4 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-p4-rerank.json),
 [`Q4T16 attention-Q route`](results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json),
 [`P4 full-attention audit`](results/2026-08-14-gfx1151-qwen35-08b-p4-full-attention-audit.json),
