@@ -185,6 +185,16 @@ and peer backends retain their prior residents. No attention kernel or
 `KVLiveSpans` ABI changes. Evidence:
 [`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
 
+The same model/quant/backend has one separately qualified decode-only composite:
+`(hip_gfx1151, linear_pair_silu, gguf_q4_k,
+pack8_dual_decode_t128_bf16_bf16_out)` for c1 K=1,024/N=3,584 dense gate/up.
+It binds the existing sole-pack8 dual-SiLU body to 128 threads, replacing 24
+dual-t32 plus 24 standalone SiLU launches with 24 fused launches. Model/file
+identity and exact shape are backend capability data; Q8, other models/shapes,
+rows >1, and peer backends retain prior registered owners and the unfused
+fallback. No persistent bytes or hot scratch are added. Evidence:
+[`0.8B fused dense decode route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json).
+
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
 #### Laguna model families

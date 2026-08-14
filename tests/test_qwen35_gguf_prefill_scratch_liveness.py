@@ -73,6 +73,19 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
     )
 
 
+def _fake_dense_qwen35_08b_runner() -> SimpleNamespace:
+    return SimpleNamespace(
+        backend="hip_gfx1151",
+        hidden_size=1_024,
+        ffn_size=3_584,
+        weights=SimpleNamespace(
+            config=SimpleNamespace(is_moe=False),
+            model_name="Qwen3.5-0.8B",
+            file_type_name="MOSTLY_Q4_K_M",
+        ),
+    )
+
+
 def _install_fake_device(monkeypatch):
     next_ptr = 0x10000000
     allocations: list[DeviceBuffer] = []
@@ -121,6 +134,26 @@ def test_unequal_q4_pair_owner_is_model_backend_scoped(monkeypatch) -> None:
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     monkeypatch.setattr(gguf_runner, "backend_package_capability", lambda *args: True)
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+
+
+def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    expected = "pack8_dual_decode_t128_bf16_bf16_out"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner, rows=1, in_features=1_024, out_features=3_584
+    ) == expected
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner, rows=2, in_features=1_024, out_features=3_584
+    ) is None
+    runner.backend = "hip_gfx1100"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner, rows=1, in_features=1_024, out_features=3_584
+    ) is None
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner, rows=1, in_features=1_024, out_features=3_584
+    ) is None
 
 
 def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(

@@ -3411,6 +3411,7 @@ def launch_gguf_linear_pair_silu(
     use_gemv_decode: bool | None = None,
     use_q4_t16_sidecar: bool = True,
     use_q4_t16_dual_interleaved: bool = True,
+    registered_decode_variant: str | None = None,
 ) -> bool:
     """Launch an exact registered gate/up pair plus SiLU, or return False."""
 
@@ -3599,7 +3600,7 @@ def launch_gguf_linear_pair_silu(
         resolved_backend,
         "linear_pair_silu",
         "gguf_q4_k",
-        "pack8_dual_decode_bf16_bf16_out",
+        registered_decode_variant or "pack8_dual_decode_bf16_bf16_out",
     )
     t16_sidecar_key = KernelKey(
         resolved_backend,

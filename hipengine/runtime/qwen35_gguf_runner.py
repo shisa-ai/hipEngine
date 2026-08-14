@@ -7853,7 +7853,15 @@ class Qwen35GGUFFullStackRunner:
             if next_norm_weight_ptr is not None and rows in (2, 3, 4)
             else None
         )
-        dense_silu_fused = rows > 1 and launch_gguf_linear_pair_silu(
+        dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
+            self,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.ffn_size,
+        )
+        dense_silu_fused = (
+            rows > 1 or dense_decode_variant is not None
+        ) and launch_gguf_linear_pair_silu(
             layer.weight("ffn_gate"),
             layer.weight("ffn_up"),
             scratch.post_norm.ptr,
@@ -7863,6 +7871,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.ffn_size,
             stream=stream,
             runtime=runtime,
+            registered_decode_variant=dense_decode_variant,
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
@@ -9592,6 +9601,43 @@ def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
         getattr(weights, "file_type_name", None),
     )
     return bool(policies.get(identity, False))
+
+
+def _gguf_dense_pair_silu_decode_variant(
+    runner: object,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> str | None:
+    """Resolve a model/backend/shape-qualified dense c1 fused-SiLU owner."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return None
+    try:
+        policies = backend_package_capability(
+            backend, "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES", {}
+        )
+    except (ImportError, ValueError):
+        return None
+    if not isinstance(policies, Mapping):
+        return None
+    identity = (
+        getattr(weights, "model_name", None),
+        getattr(weights, "file_type_name", None),
+    )
+    shapes = policies.get(identity, {})
+    if not isinstance(shapes, Mapping):
+        return None
+    variant = shapes.get((int(rows), int(in_features), int(out_features)))
+    return variant if isinstance(variant, str) and variant else None
 
 
 def _gguf_t16_f16_rocblas_prefill_policy(

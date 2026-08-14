@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1-M8, and accepted D08-P1/P2/P4/P6 completed 2026-08-14; the named prefill ladder is exhausted, D08-M2 closes host submission work, and D08-D3 admits fused-SiLU t128 to one full-model gate.
+Status: D08-C0, D08-M1-M8, and accepted D08-P1/P2/P4/P6/D3 completed 2026-08-14; D3 raises production graph decode 8.29% with no new bytes, and mandatory post-D3 graph rerank M9 is next.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -91,9 +91,10 @@ not a synthetic leaf projection.
 | 10 | **D08-P4 full attention and RoPE/KV** | **accepted: +4.79% graph pp512 / +1.41% graph tg128; -4.13 MiB** | Sole Q4T16 for six source-Q4_K `[N4096,K1024]` Q projections passes all leaf widths, 447/450 top-1, and exact graph/eager trajectories. | Closed with direct c1, rowtile c2-c4, split-c4x2 c8, and WMMA bulk; all other Q4 roles, 27B, and peer backends retain prior owners. |
 | 11 | **Mandatory post-P4 re-profile** | **completed** | Six physical weights and their complete Q projection stages changed owner; pre-P4 ranking was no longer authoritative. | M8 reconciles 99.46% of wall, confirms Q at 2.71 ms and T16 WMMA bulk dispatch, and closes every >=1% prefill package as accepted/exhausted or rejected. |
 | 12 | **D08-M2 graph/direct census** | **completed: device-critical, not host submission bound** | Q4/Q8 graph launch+Python residual is 0.20%, replay copies are zero, and all 334/288 graph kernels are stage-assigned with exact trajectories. | Close D1; Q4/Q8 remain 1.94x/1.47x behind Vulkan, so admit arithmetic by current graph-stage ownership. |
-| 13 | **D08-D3 dense decode projections** | **fused-SiLU t128 qualifies: 1.797x pool / 8.49% graph projection** | Across the 132.12-MB pool, control 1.7891 ms falls to 0.9955 ms with 24/24 top-1 and max abs 6.10e-5; t32 misses the 1% gate and t64 is dominated. | RED/GREEN the gfx1151 model/shape-qualified Q4 registry route, then run the sole combined full-model gate. |
-| 14 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
-| 15 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
+| 13 | **D08-D3 dense decode projections** | **accepted: +8.29% graph tg128 / +2.28% eager; 24 nodes removed** | Model/shape-qualified fused-SiLU t128 passes 446/450 top-1, max KL 0.002843, exact trajectories, 5/5 decode wins, and identical physical weight bytes. | Closed for gate/up; retain generic c1 unfused, rows>1, Q8, other models/shapes, and peer backends as fallbacks. |
+| 14 | **Mandatory post-D3 graph rerank / M9** | **next** | D3 removes 24 nodes and 8.29% of graph decode, so M2 ownership is no longer authoritative. | Repeat production graph/direct semantic census for current Q4; do not select D4 or residual D3 arithmetic from stale shares. |
+| 15 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
+| 16 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
 ### 1.2 Bounded task contract
 
@@ -743,6 +744,32 @@ or runtime behavior changes in this decision unit.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json).
 
+### 2.22 D08-D3 retained fused dense decode route (2026-08-14)
+
+The qualified schedule is now the default only for
+`(hip_gfx1151, linear_pair_silu, gguf_q4_k,
+pack8_dual_decode_t128_bf16_bf16_out)` at Qwen3.5-0.8B Q4 c1
+K=1,024/N=3,584. It reuses the existing sole pack8 residents and fused-SiLU
+body, adds zero persistent/hot-scratch bytes, and retains generic c1 unfused,
+rows>1, Q8, other models/shapes, and peer backends as fallbacks.
+
+The sole combined full-model A/B passes. Production graph tg128 improves
+**101.86 -> 110.31 tok/s (+8.29%, 5/5)**; eager tg128 improves **65.26 ->
+66.75 (+2.28%, 5/5)**. Graph replay falls **335 -> 311 nodes**, exactly the
+expected 24-launch reduction in every pair. Prefill is a same-route neutrality
+control: eager is **+0.48%** and graph is **-0.29%**, inside the frozen 1% guard.
+Physical weight bytes are identical at **838,835,456** and gate/up allocations
+remain 132,120,576 bytes.
+
+All eager and graph trajectory pairs are exact. The full 18-prompt
+category+heldout gate records **446/450 top-1 (99.11%)** and max KL **0.002843**;
+repeated-prompt final graph top-1 is exact with KL 1.03e-6. D3 is retained. Its
+24-node/8.29% topology change makes M2 stale, so mandatory current graph rerank
+M9 precedes D4 or any residual projection work.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -931,6 +958,7 @@ layout, activation reuse, or submission class.
 | **D08-M6** | Mandatory post-P1 Q4 semantic replacement capture and rerank. | **Complete:** 99.60% prefill and 96.24% eager-decode reconciliation; P3 is first at 29.42% projected request saving, P2 second at 19.39%. | completed |
 | **D08-M7** | Mandatory post-P6 Q4 semantic replacement capture and rerank. | **Complete:** 99.58% prefill and 96.59% eager-decode reconciliation; residual linear-attention projections are first non-exhausted at a corrected 10.06% request bound. | completed |
 | **D08-M8** | Mandatory post-P4 Q4 semantic replacement capture and rerank. | **Complete:** 99.46% prefill reconciliation; Q direct markers fall 64.05%, every >=1% prefill package is exhausted, and P5 remains parked at 0.82%. | completed |
+| **D08-M9** | Mandatory post-D3 production graph/direct rerank. | D3 removes 24/335 graph nodes and improves tg128 8.29%; repeat current Q4 stage ownership before choosing D4 or residual D3. | next |
 
 No implementation lane starts before `D08-C0` and the relevant M lane identify
 a shipped owner. A trivial route correction from C0 may be retained immediately
@@ -954,8 +982,8 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | --- | --- | --- | --- | --- | --- |
 | **D08-D1** | Production graph replay, persistent buffers, and redundant sync/copy removal. | **measured host share 0.20% Q4/Q8** | M2 finds one launch+sync per token, zero replay copies, and a device-critical sync span. | **Closed:** no removable >=1% submission package; graph capture remains lifecycle-only and excluded from throughput. | rejected/no candidate |
 | **D08-D2** | LM-head/top-1. Q4_K_M uses the tied Q6_K table; Q8_0 uses Q8_0. | **no positive matched graph gap** | Share-normalized graph LM-head/sampler is already no slower than Vulkan for both quants. | Preserve full vocabulary and top-1; reopen only after a fresh graph census changes ownership. | parked |
-| **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | **t128: 1.797x pool / 0.819 ms / 8.49% graph projection** | Existing fused-SiLU t128 beats control 1.7891 -> 0.9955 ms with 24/24 top-1; t32 fails the 1% gate and t64 is dominated. | RED/GREEN only the gfx1151 Qwen3.5-0.8B Q4 shape key, retain unfused fallback, then one combined full-model gate. | candidate-qualified |
-| **D08-D4** | GDN decode/conv and short-context full attention. | **full-attention core/KV: 14.89% Q4 / 15.96% Q8** | M2 makes full-attention core/KV second for Q4 and first for Q8; GDN is already at/better than Vulkan. | After D3, one semantic owner at a time and at most 2 variants. Preserve complete `KVLiveSpans` state and full trajectories. | second |
+| **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | **realized: +8.29% graph tg128 / +2.28% eager; zero bytes** | Fused-SiLU t128 removes 24 graph nodes, wins all decode pairs, passes 446/450 top-1/max KL 0.002843, and keeps exact trajectories. | **Accepted for Q4 gate/up c1.** Mandatory M9 reranks residual projection ownership before any extension. | accepted |
+| **D08-D4** | GDN decode/conv and short-context full attention. | **pre-D3 stale bound: full-attention core/KV 14.89% Q4 / 15.96% Q8** | M2 ranked this second for Q4 and first for Q8, but D3 has since removed 24 nodes and 8.29% of Q4 wall. | Complete M9 first; then one semantic owner at a time and at most 2 variants with complete `KVLiveSpans` state. | blocked by M9 |
 | **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | medium/low | Norm/residual/activation tails remain individually small after M2; sampler is not a positive gap. | One boundary package after D3/D4. Keep exact measured wins, but stop if complete-wall projection is <1%. | pending |
 
 ### G lane — promotion and closure
@@ -1023,7 +1051,7 @@ potential band, then measured upper bound.
 | Residual linear-attention projections / P7 | **rejected** | **3.58% selected gate bound; unrealized** | Native Q4T16 c1 regresses 11.73%; raw Q4 regresses every c1-c8 width; source-F16 cannot repair c1. | A new sole-resident family passes pp512 and every operational width, or an operation-complete fusion removes the c1 regression without sidecars. |
 | Full-attention Q projection / P4 | **accepted/exhausted** | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Six exact-role sole-Q4T16 residents pass 447/450 top-1 and every graph/eager trajectory; M8 confirms 2.71-ms Q and T16 WMMA bulk ownership. | Closed; reopen only for a regression in this exact role/shape key. |
 | Graph/submission work / D1 | **closed; no candidate** | **0.20% launch+Python share; zero replay copies** | M2 assigns all 334/288 Q4/Q8 graph kernels and proves stream sync contains the device-critical span. | Reopen only if a future graph transport introduces a measured >=1% host/API/copy residual. |
-| Dense decode projections / D3 | **t128 candidate qualified** | **1.797x pool / 0.819 ms / 8.49% projected graph saving** | Fused-SiLU t128 wins the frozen 132.12-MB screen with 24/24 top-1 and max abs 6.10e-5; Q8 remains on its distinct T16 owner. | RED/GREEN the exact gfx1151 model/shape Q4 registry route, then one combined full-model gate. |
+| Dense decode projections / D3 | **accepted; M9 rerank next** | **+8.29% graph tg128 / +2.28% eager; 335 -> 311 nodes** | Default fused-SiLU t128 passes 446/450 top-1, max KL 0.002843, exact trajectories, 5/5 graph wins, and identical bytes. | Closed for gate/up c1; rerank current graph ownership before D4 or residual projection work. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
 | Generic wave64/reduction sweep | rejected/parked prior family | low | Cross-backend and GGUF campaigns already found no broad recovery; wave32 is the production contract. | A minimized hot kernel shows a specific wave32 occupancy/reduction bottleneck and a wave64-correct oracle. |

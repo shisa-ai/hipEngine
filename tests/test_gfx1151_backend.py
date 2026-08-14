@@ -336,19 +336,25 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
         ),
-            KernelKey(
-                "hip_gfx1151",
-                "linear_pair_silu",
-                "gguf_q4_k",
-                "t16_sidecar_dual_decode_bf16_bf16_out",
-            ),
-            KernelKey(
-                "hip_gfx1151",
-                "linear_pair_silu",
-                "gguf_q4_k",
-                "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
-            ),
-        ]
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_decode_t128_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "t16_sidecar_dual_decode_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
+        ),
+    ]
 
 
 def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
@@ -460,6 +466,20 @@ def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
     )
     assert backend_package_capability(
         "hip_gfx1151",
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        {},
+    ) == {
+        ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+            (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
+        }
+    }
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        {},
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151",
         "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
         {},
     ) == {"gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4}}
@@ -499,6 +519,32 @@ def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
                 variant,
             )
         )
+
+
+def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None:
+    import hipengine.kernels.hip_gfx1151 as gfx1151
+
+    calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gfx1151,
+        "gguf_q4_k_pack8_dual_silu_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    register_gfx1151_kernels(replace=True)
+    fn = resolve(
+        backend="hip_gfx1151",
+        layer="linear_pair_silu",
+        quant="gguf_q4_k",
+        variant="pack8_dual_decode_t128_bf16_bf16_out",
+    )
+    fn(1, 2, 3, 4, 5, 6, 7, 8, 1, 1_024, 3_584, stream=9, runtime="runtime")
+
+    assert calls == [
+        (
+            (1, 2, 3, 4, 5, 6, 7, 8, 1, 1_024, 3_584),
+            {"stream": 9, "runtime": "runtime", "threads": 128},
+        )
+    ]
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
