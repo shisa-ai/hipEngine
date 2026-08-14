@@ -1467,6 +1467,35 @@ both quants is the cluster8 kernel's 1.8x per-layer distance to Vulkan's
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json).
 
+### 2.41 D08-X2-K5 retained dense-BF16 WMMA bulk prefill (2026-08-15)
+
+The twelve expanded-dense-BF16 Q6_K down owners (`[1024,3584]`) ran the naive
+32x8 scalar-tile dense GEMM at ~2.1 ms per mat (~25 ms of Q4_K_M pp512). A new
+`dense_prefill_wmma_out_kernel` applies the same LDS-staged wave32 structure
+proven in X2-K1 - 128x64 block tile, 256 threads, BK=32 shared f16 tiles,
+F32-accumulating 16x16x16 WMMA - without dequant. On actual-weight-class data
+it measures **0.0006 ms vs 0.0031 ms (5.2x)** per `[1024,3584] x 512` mat with
+100% top-1 versus the naive reference.
+
+Registered as `dense_gemv/prefill_wmma_out` behind the gfx1151 capability
+`GGUF_DENSE_BF16_WMMA_BULK_PREFILL` and the
+`HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback; rows 1-15, unaligned
+`out_features`, and peer backends keep the exact fallback. Fixtures live in
+`tests/test_dense_prefill_wmma.py`.
+
+Binding gates: five counter-rotated env-pair exact-core blocks on Q4_K_M give
+prefill **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)** and public **+24.63%
+(5/5)** with decode guards **1.0018x / 1.0100x**; the three-block Q8_0 guard
+is neutral (**1.0062x pp**, no dense-BF16 FFN owners). Correctness over the
+18 category/heldout prompts is **446/450 top-1 (99.11%) with max KL
+0.004215**, the accepted D3 route class.
+
+Q4_K_M exact-core prefill reaches **4313 tok/s = 0.72x Vulkan** (from 0.424x
+at campaign open).
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio

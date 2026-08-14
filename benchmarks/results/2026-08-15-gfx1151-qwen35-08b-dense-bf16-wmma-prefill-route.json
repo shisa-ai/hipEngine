@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X2-K5 route gfx1151 dense-BF16 bulk prefill through the LDS-staged WMMA GEMM",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "source_commit": "1dd951ab3",
+  "mechanism": "new dense_prefill_wmma_out_kernel (128x64 tile, 256 threads, BK=32 LDS f16 staging, wave32 WMMA f32-acc) registered as dense_gemv/prefill_wmma_out; capability GGUF_DENSE_BF16_WMMA_BULK_PREFILL on gfx1151; rollback HIPENGINE_GGUF_DENSE_WMMA_BULK=0; naive 32x8 scalar tile remains rows<16 and unaligned fallback",
+  "leaf_screen": {
+    "shape": "[1024,3584] x 512 rows",
+    "wmma_ms": 0.0006,
+    "naive_ms": 0.0031,
+    "speedup": 5.2,
+    "top1_vs_reference": 1.0
+  },
+  "binding_ab": {
+    "protocol": "5 counter-rotated env-pair exact-core blocks Q4_K_M",
+    "performance": {
+      "pp": {
+        "candidate_median": 4313.170625373854,
+        "control_median": 3377.5120039382314,
+        "ratio": 1.2686195017059805,
+        "wins": 5
+      },
+      "tg": {
+        "candidate_median": 143.85698842313357,
+        "control_median": 144.13900302405094,
+        "ratio": 1.0018450869654731,
+        "wins": 3
+      },
+      "pub_pp": {
+        "candidate_median": 4268.565858331185,
+        "control_median": 3434.455808967787,
+        "ratio": 1.2462923950977702,
+        "wins": 5
+      },
+      "pub_tg": {
+        "candidate_median": 121.60716612180845,
+        "control_median": 121.11123257348216,
+        "ratio": 1.009980385803671,
+        "wins": 4
+      }
+    },
+    "all_finite_and_deterministic": true
+  },
+  "q8_guard": {
+    "protocol": "3 counter-rotated env-pair blocks Q8_0",
+    "performance": {
+      "pp": {
+        "candidate_median": 4972.143082817665,
+        "control_median": 4989.680278927026,
+        "ratio": 1.006215748551205,
+        "wins": 2
+      },
+      "tg": {
+        "candidate_median": 143.48479611952186,
+        "control_median": 146.55053797477422,
+        "ratio": 0.9851752930409144,
+        "wins": 1
+      },
+      "pub_pp": {
+        "candidate_median": 4901.611681513301,
+        "control_median": 4931.4594557941855,
+        "ratio": 0.994285486397863,
+        "wins": 1
+      },
+      "pub_tg": {
+        "candidate_median": 116.677916818253,
+        "control_median": 119.12702831367187,
+        "ratio": 0.9876307747659753,
+        "wins": 1
+      }
+    },
+    "note": "Q8_0 has no dense-BF16 FFN owners; all rows within guard"
+  },
+  "correctness": {
+    "protocol": "18 category+heldout prompts x 24 teacher-forced steps vs naive-route logits",
+    "top1_matches": 446,
+    "transitions": 450,
+    "top1_agreement": 0.9911111111111112,
+    "kl_max": 0.004214550112460941
+  },
+  "fixtures": "tests/test_dense_prefill_wmma.py (4 shapes incl. row guards) pass",
+  "decision": "Retained as gfx1151 default for dense_bf16 abi bulk rows (out_features%128==0)."
+}

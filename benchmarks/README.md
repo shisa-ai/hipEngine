@@ -240,9 +240,13 @@ Q4 pp512 **2543 -> 3428 tok/s (+35.3%, 5/5 blocks)** at unchanged decode
 (0.9956x guard) and **447/450 top-1 / max KL 0.003848**; X2-K2 then routes
 Q8_0 GDN prefill through the cluster8 recurrence: exact-core pp512
 **4231 -> 4949 tok/s (+16.70%, 5/5)**, public **+19.38%**, decode guards
-inside 1%, **448/450 top-1 / max KL 0.003260**. See
+inside 1%, **448/450 top-1 / max KL 0.003260**; X2-K5 then adds the
+LDS-staged dense-BF16 WMMA bulk GEMM for the expanded Q6_K down owners:
+Q4_K_M **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)**, Q8_0 neutral,
+**446/450 top-1 / max KL 0.004215**. See
 the [`pack8 WMMA prefill route`](results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json),
 [`Q8 GDN cluster8 route`](results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json),
+[`dense-BF16 WMMA prefill route`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json),
 [`parity gap map`](results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json),
 [`blocked closure gate`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json),
 [`post-D5 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json),
