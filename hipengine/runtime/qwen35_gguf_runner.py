@@ -2038,6 +2038,9 @@ class Qwen35GGUFFullStackRunner:
     host_token_embedding_registered_ptr: int = field(default=0, init=False, repr=False)
     _token_embedding_lock: object = field(default_factory=threading.Lock, init=False, repr=False)
     _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
+    _dense_down_residual_decode_c1: bool | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         self.backend = resolve_backend(self.backend)
@@ -2080,6 +2083,16 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError(
                 "resident GGUF weight backend does not match runner backend: "
                 f"{self.weights.backend!r} != {self.backend!r}"
+            )
+        cfg = getattr(self.weights, "config", None)
+        if cfg is not None:
+            self._dense_down_residual_decode_c1 = (
+                _gguf_dense_down_residual_decode_fused(
+                    self,
+                    rows=1,
+                    in_features=int(cfg.feed_forward_length),
+                    out_features=int(cfg.hidden_size),
+                )
             )
         if placement == "host":
             try:
@@ -7945,10 +7958,24 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_silu")
+        dense_down_decode_c1 = getattr(
+            self, "_dense_down_residual_decode_c1", None
+        )
+        if dense_down_decode_c1 is None:
+            # Compatibility/probe runners constructed without __post_init__
+            # resolve once here; resident production runners precompute this.
+            dense_down_decode_c1 = _gguf_dense_down_residual_decode_fused(
+                self,
+                rows=1,
+                in_features=self.ffn_size,
+                out_features=self.hidden_size,
+            )
+            self._dense_down_residual_decode_c1 = dense_down_decode_c1
+        dense_down_decode_fused = rows == 1 and bool(dense_down_decode_c1)
         down_residual_fused = (
             next_norm_weight_ptr is None
             and not f32_residual
-            and rows > 1
+            and (rows > 1 or dense_down_decode_fused)
             and launch_gguf_linear_residual(
                 layer.weight("ffn_down"),
                 scratch.ffn_intermediate.ptr,
@@ -7959,6 +7986,7 @@ class Qwen35GGUFFullStackRunner:
                 self.hidden_size,
                 stream=stream,
                 runtime=runtime,
+                registered_decode=dense_down_decode_fused,
             )
         )
         if not down_residual_fused:
@@ -9649,6 +9677,52 @@ def _gguf_dense_pair_silu_decode_variant(
         return None
     variant = shapes.get((int(rows), int(in_features), int(out_features)))
     return variant if isinstance(variant, str) and variant else None
+
+
+def _gguf_dense_down_residual_decode_fused(
+    runner: object,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    """Resolve an exact model/backend/shape-qualified c1 down+residual owner."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return False
+    identity = (
+        getattr(weights, "model_name", None),
+        getattr(weights, "file_type_name", None),
+    )
+    shape = (int(rows), int(in_features), int(out_features))
+    cache_key = (backend, identity, shape)
+    cached = getattr(runner, "_dense_down_residual_decode_policy_cache", None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        return bool(cached[1])
+    try:
+        policies = backend_package_capability(
+            backend, "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
+        )
+    except (ImportError, ValueError):
+        return False
+    shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
+    enabled = isinstance(shapes, Mapping) and bool(shapes.get(shape, False))
+    try:
+        setattr(
+            runner,
+            "_dense_down_residual_decode_policy_cache",
+            (cache_key, enabled),
+        )
+    except (AttributeError, TypeError):
+        pass
+    return enabled
 
 
 def _gguf_t16_f16_rocblas_prefill_policy(

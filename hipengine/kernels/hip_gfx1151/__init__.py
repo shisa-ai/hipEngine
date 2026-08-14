@@ -712,6 +712,14 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
     },
 }
+# D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
+# exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
+# Q8, native batches, other models/shapes, and peer backends remain unfused.
+GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 3_584, 1_024): True,
+    },
+}
 # The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
 GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4},
@@ -1817,6 +1825,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",

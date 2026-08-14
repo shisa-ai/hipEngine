@@ -195,6 +195,18 @@ rows >1, and peer backends retain prior registered owners and the unfused
 fallback. No persistent bytes or hot scratch are added. Evidence:
 [`0.8B fused dense decode route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json).
 
+Its dense-down boundary has a second exact decode-only policy for c1
+K=3,584/N=1,024. Twelve existing Q4-pack8 t32 owners derive
+`linear+residual/gguf_q4_k/pack8_bf16_residual_bf16_out`; twelve existing
+dense-BF16 t256 owners derive
+`linear+residual/bf16/out_bf16_residual_bf16_out`. Both round the projection to
+BF16 before adding the BF16 residual in FP32 and rounding the sum to BF16. The
+model/file/shape policy is resolved once when the resident runner initializes.
+It adds no layout, persistent bytes, or hot scratch; Q8, rows >1, other models,
+and peer backends retain the primitive projection+add or their prior registered
+small-row composites. Evidence:
+[`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
+
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
 #### Laguna model families

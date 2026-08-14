@@ -156,6 +156,44 @@ def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
     ) is None
 
 
+def test_dense_down_residual_decode_policy_is_model_backend_shape_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    assert gguf_runner._gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=3_584, out_features=1_024
+    )
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        runner, rows=2, in_features=3_584, out_features=1_024
+    )
+    runner.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=3_584, out_features=1_024
+    )
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=3_584, out_features=1_024
+    )
+
+
+def test_dense_down_residual_decode_policy_caches_owner_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    original = gguf_runner.backend_package_capability
+    calls: list[tuple] = []
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", counted)
+    for _ in range(2):
+        assert gguf_runner._gguf_dense_down_residual_decode_fused(
+            runner, rows=1, in_features=3_584, out_features=1_024
+        )
+    assert len(calls) == 1
+
+
 def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     monkeypatch,
 ) -> None:

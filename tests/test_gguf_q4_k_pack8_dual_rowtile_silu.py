@@ -317,6 +317,7 @@ def _fake_dense_runner():
     runner = object.__new__(qwen35_runner.Qwen35GGUFFullStackRunner)
     runner.weights = weights
     runner.runtime = SimpleNamespace()
+    runner._dense_down_residual_decode_c1 = False
     scratch = SimpleNamespace(
         post_norm=SimpleNamespace(ptr=400),
         residual=SimpleNamespace(ptr=500),
@@ -566,6 +567,59 @@ def test_dense_runner_qualified_c1_consumes_registered_fused_schedule(
 
     assert [name for name, _args, _kwargs in calls] == ["pair_silu", "linear", "add"]
     assert calls[0][2]["registered_decode_variant"] == "pack8_dual_decode_t128_bf16_bf16_out"
+
+
+def test_dense_runner_qualified_c1_fuses_down_residual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[tuple[str, tuple, dict]] = []
+    monkeypatch.setattr(
+        qwen35_runner, "gguf_add_rmsnorm_bf16_f32_weight", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "_gguf_dense_pair_silu_decode_variant",
+        lambda *args, **kwargs: "pack8_dual_decode_t128_bf16_bf16_out",
+    )
+    runner._dense_down_residual_decode_c1 = True
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: calls.append(("pair_silu", args, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_residual",
+        lambda *args, **kwargs: calls.append(("down_residual", args, kwargs))
+        or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear",
+        lambda *args, **kwargs: pytest.fail("fused down must skip primitive projection"),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "gguf_bf16_add",
+        lambda *args, **kwargs: pytest.fail("fused down must skip primitive add"),
+    )
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=1,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == [
+        "pair_silu",
+        "down_residual",
+    ]
+    assert calls[1][2]["registered_decode"] is True
 
 
 def _run_fused_chain(

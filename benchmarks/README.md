@@ -197,7 +197,14 @@ only same-resident Q4/Q6 residual fusions and their combined package. The
 bounded actual-weight screen selects combined C at **1.1033 -> 0.9420 ms
 (1.171x)**, projecting **0.165 ms / 1.99%** graph saving with bit-exact outputs,
 **20/20 sample + 5/5 balanced-block wins**, **24 projected node removals**, and
-zero bytes. This campaign row is not yet a final cross-engine topline; see the
+zero bytes. The retained exact-owner route then passes **450/450 Q4 + 450/450
+Q8 transitions at KL 0**. Under crossed physical-session performance isolation,
+Q4 eager tg128 improves **68.38 -> 71.20 tok/s (+4.13%, 5/5 blocks)** and
+production graph tg128 improves **116.21 -> 117.73 (+1.31%, 5/5)**, with
+**311 -> 287 recording nodes**, neutral pp512, and zero bytes. Q8 selects no
+fused leaves and remains within 1% in eager/graph decode and prefill. A mandatory
+post-D3B current-graph rerank is still required before another package; see the
+[`retained D3B residual route`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json),
 [`D3B fused-residual screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-screen.json),
 [`D3B dense-down audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-audit.json),
 [`post-D4 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d4-graph-rerank.json),
