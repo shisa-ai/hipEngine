@@ -7533,7 +7533,18 @@ class Qwen35GGUFFullStackRunner:
             if bf16_mirror_cache is not None:
                 key_cache, value_cache = bf16_mirror_cache
                 decode_spans = scratch.decode_spans
-            if _use_gguf_full_attention_split_decode(attention_context_cap):
+            use_short_split = (
+                bf16_mirror_cache is None
+                and _use_gguf_short_full_attention_split_decode(
+                    cfg,
+                    backend=self.backend,
+                    block_size=scratch.block_size,
+                    active_context=attention_context_cap,
+                )
+            )
+            if use_short_split or _use_gguf_full_attention_split_decode(
+                attention_context_cap
+            ):
                 chunk_size = int(scratch.block_size)
                 num_splits = min(
                     int(scratch.full_attn_split_count),
@@ -24161,6 +24172,39 @@ def _gguf_full_attention_split_decode_min_context() -> int:
 def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
     threshold = _gguf_full_attention_split_decode_min_context()
     return threshold > 0 and int(active_context) >= threshold
+
+
+def _use_gguf_short_full_attention_split_decode(
+    config,
+    *,
+    backend: str,
+    block_size: int,
+    active_context: int,
+) -> bool:
+    """Select a backend-qualified short-context split-attention policy."""
+
+    if _gguf_full_attention_split_decode_min_context() <= 0:
+        return False
+    policies = backend_package_capability(
+        backend,
+        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+        {},
+    )
+    shape = (
+        int(config.hidden_size),
+        int(config.block_count),
+        int(config.head_count),
+        int(config.head_count_kv),
+        int(config.key_length),
+        int(config.value_length),
+        int(block_size),
+    )
+    context_range = policies.get(shape)
+    if context_range is None or len(context_range) != 2:
+        return False
+    min_context, max_context = (int(value) for value in context_range)
+    context = int(active_context)
+    return 0 < min_context <= context <= max_context
 
 
 def _gguf_paged_attn_gqa_grouped_min_splits() -> int:
