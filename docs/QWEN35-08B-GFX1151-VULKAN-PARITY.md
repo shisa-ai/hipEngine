@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1-M9, and accepted D08-P1/P2/P4/P6/D3 completed 2026-08-14; D08-D4 audits the current full-attention core/KV owner and freezes exactly two existing short-context variants for screening.
+Status: D08-C0, D08-M1-M9, and accepted D08-P1/P2/P4/P6/D3 completed 2026-08-14; D08-D4 selects existing generic split-K3+fused-gate for one Q4+Q8 full-model gate.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -93,7 +93,7 @@ not a synthetic leaf projection.
 | 12 | **D08-M2 graph/direct census** | **completed: device-critical, not host submission bound** | Q4/Q8 graph launch+Python residual is 0.20%, replay copies are zero, and all 334/288 graph kernels are stage-assigned with exact trajectories. | Close D1; Q4/Q8 remain 1.94x/1.47x behind Vulkan, so admit arithmetic by current graph-stage ownership. |
 | 13 | **D08-D3 dense decode projections** | **accepted: +8.29% graph tg128 / +2.28% eager; 24 nodes removed** | Model/shape-qualified fused-SiLU t128 passes 446/450 top-1, max KL 0.002843, exact trajectories, 5/5 decode wins, and identical physical weight bytes. | Closed for gate/up; retain generic c1 unfused, rows>1, Q8, other models/shapes, and peer backends as fallbacks. |
 | 14 | **Mandatory post-D3 graph rerank / M9** | **completed: current graph 111.93 tok/s / 310 nodes** | Exact trajectory/zero KL and 97.60% stage coverage show dense matched gap falls 1.676 -> 1.101 ms. | Current full-attention core/KV leads at 1.431 ms / 16.02%; admit D4 ahead of residual projections. |
-| 15 | **D08-D4 full-attention core/KV** | **audit complete: attention is 93.60% of a 1.659-ms direct package** | Six 8Q/2KV/D256 fixed256-attention+gate owners dominate; KV write and standalone gate are only 0.67%/0.52% of request wall. | Screen only existing generic-context-1024+gate and generic split-K3+fused-gate; preserve `KVLiveSpans`, KV state, full logits, and trajectories. |
+| 15 | **D08-D4 full-attention core/KV** | **screen qualified: graph 8.999 -> 8.483 ms; package 1.777 -> 1.207 ms** | Generic split-K3+fused-gate wins all graph pairs and 514/576/641 guards with exact trajectory, 100% final top-1, and KL 4.33e-7. | RED/GREEN only this 8Q-compatible existing route, preserve fixed256 fallback, then spend the sole Q4+Q8 full-model gate. |
 | 16 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
 | 17 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
@@ -828,6 +828,38 @@ threshold sweeps remain closed.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json).
 
+### 2.25 D08-D4 bounded existing-leaf screen (2026-08-14)
+
+Three counterbalanced 128-transition production-graph runs, five rotated
+marker-graph runs, and one recording/state graph per route consume the complete
+two-candidate budget. The generic 1,024-thread context leaf regresses graph wall
+**8.999 -> 9.101 ms/token (+1.14%)**, is **1.262x slower** across the complete
+six-layer package, and fails the 576/641 context guards. It is rejected.
+
+Generic split-K3 plus its existing fused BF16 gated reducer wins all gates. The
+complete package falls **1.777 -> 1.207 ms (1.472x; -0.570 ms)**, while
+production graph wall falls **8.999 -> 8.483 ms/token (-0.516 ms / -5.73%,
+3/3 wins)** at the same **310 nodes** and zero new persistent or hot-scratch
+bytes. Package savings at live contexts 514/576/641 are respectively
+**7.33%/34.46%/41.81%**. The candidate uses the already-resident 24,768-byte
+split scratch and changes no KV format.
+
+The repeated-prompt 128-step trajectory is exact; final top-1 is exact with KL
+**4.33e-7**. `KVLiveSpans` base/live metadata is byte-exact and every captured
+KV/linear-state component is finite. Alternate reduction order propagates
+expected state hashes after the first full-attention layer, so a separate
+8Q/2KV/D256 BF16 CPU-reference fixture checks the primitive at contexts
+514/576/641: all outputs are finite, head top-1 is 100%, maximum absolute error
+is **7.61e-6**, and split versus current differs by at most **9.54e-7**.
+
+Only generic split-K3 enters RED/GREEN and one combined Q4+Q8 full-model gate.
+The production policy must be exact gfx1151 short-context 8Q/2KV/D256 shape,
+retain fixed256 below/when unsupported, preserve rows>1 and 16Q routes, and add
+no backend/quant branch to runtime dispatch.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -1041,7 +1073,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-D1** | Production graph replay, persistent buffers, and redundant sync/copy removal. | **measured host share 0.20% Q4/Q8** | M2 finds one launch+sync per token, zero replay copies, and a device-critical sync span. | **Closed:** no removable >=1% submission package; graph capture remains lifecycle-only and excluded from throughput. | rejected/no candidate |
 | **D08-D2** | LM-head/top-1. Q4_K_M uses the tied Q6_K table; Q8_0 uses Q8_0. | **no positive matched graph gap** | Share-normalized graph LM-head/sampler is already no slower than Vulkan for both quants. | Preserve full vocabulary and top-1; reopen only after a fresh graph census changes ownership. | parked |
 | **D08-D3** | Dense projection GEMVs, including Q4/Q5/Q6/Q8 replacement/raw layout and wave geometry. | **realized: +8.29% graph tg128 / +2.28% eager; zero bytes** | Fused-SiLU t128 removes 24 graph nodes, wins all decode pairs, passes 446/450 top-1/max KL 0.002843, and keeps exact trajectories. | **Accepted for Q4 gate/up c1.** Mandatory M9 reranks residual projection ownership before any extension. | accepted |
-| **D08-D4** | GDN decode/conv and short-context full attention. | **current full-attention core/KV: 1.431 ms / 16.02% Q4; direct package 1.659 ms** | The audit assigns 93.60% to the fixed256 attention leaf; standalone KV/gate are sub-1%, and Q8 remains independently first on reused evidence. | Screen only generic context-1024+gate and generic split-K3+fused-gate. Preserve complete `KVLiveSpans`/KV state, logits, and trajectories. | screen-frozen |
+| **D08-D4** | GDN decode/conv and short-context full attention. | **qualified split-K3: -0.516 ms / -5.73% graph wall; package 1.472x** | Existing generic split-K3 wins 3/3 graph pairs and every context guard with CPU/full-model screen correctness; Q8 shares the quant-neutral shape. | RED/GREEN only the exact 8Q/2KV/D256 short-context policy, retain fixed256 fallback, then run one combined Q4+Q8 gate. | qualified-next |
 | **D08-D5** | RMSNorm, SiLU/GLU, residual, embedding, sampler, and token transport. | medium/low | Norm/residual/activation tails remain individually small after M2; sampler is not a positive gap. | One boundary package after D3/D4. Keep exact measured wins, but stop if complete-wall projection is <1%. | pending |
 
 ### G lane — promotion and closure
@@ -1110,7 +1142,7 @@ potential band, then measured upper bound.
 | Full-attention Q projection / P4 | **accepted/exhausted** | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Six exact-role sole-Q4T16 residents pass 447/450 top-1 and every graph/eager trajectory; M8 confirms 2.71-ms Q and T16 WMMA bulk ownership. | Closed; reopen only for a regression in this exact role/shape key. |
 | Graph/submission work / D1 | **closed; no candidate** | **0.20% launch+Python share; zero replay copies** | M2 assigns all 334/288 Q4/Q8 graph kernels and proves stream sync contains the device-critical span. | Reopen only if a future graph transport introduces a measured >=1% host/API/copy residual. |
 | Dense decode projections / D3 | **accepted; M9 complete** | **+8.29% graph tg128 / +2.28% eager; 335 -> 311 nodes** | Default fused-SiLU t128 passes 446/450 top-1, max KL 0.002843, exact trajectories, 5/5 graph wins, and identical bytes. | Closed for gate/up c1; M9 lowers the residual dense matched bound to 12.32% and ranks D4 first. |
-| Full-attention core/KV / D4 | **screen-frozen** | **1.431 ms / 16.02% current Q4 request bound; 1.659-ms direct package** | Fixed256 attention is 1.553 ms / 93.60% of the complete package; standalone KV/gate cannot clear 1% request wall. | Exactly two existing 8Q-compatible variants must save >=0.0893 ms with complete `KVLiveSpans`/trajectory correctness. |
+| Full-attention core/KV / D4 | **qualified-next** | **split-K3 screen: 8.999 -> 8.483 ms graph; 1.777 -> 1.207 ms package** | The sole qualifier wins 3/3 graph pairs and all context guards; exact trajectory, final KL 4.33e-7, CPU max abs 7.61e-6. | One exact-shape RED/GREEN and Q4+Q8 gate; fixed256, rows>1, 16Q, peer backends remain fallback. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
 | Generic wave64/reduction sweep | rejected/parked prior family | low | Cross-backend and GGUF campaigns already found no broad recovery; wave32 is the production contract. | A minimized hot kernel shows a specific wave32 occupancy/reduction bottleneck and a wave64-correct oracle. |

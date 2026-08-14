@@ -172,10 +172,13 @@ The retained model/shape-qualified route realizes production graph tg128
 measures the current graph at **111.93 tok/s / 310 nodes** with **97.60%** stage
 coverage and reranks full-attention core/KV first at a **1.431-ms / 16.02%**
 request bound. The D4 device-clock audit then measures the actual six-layer
-package at **1.659 ms**, assigns **1.553 ms / 93.60%** to fixed256 attention,
-and freezes only generic-context-1024+gate and generic split-K3+fused-gate;
-standalone KV write/gate are only **0.67%/0.52%** of request wall. This campaign
-row is not yet a final cross-engine topline; see the [`D4 core/KV audit`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json),
+package at **1.659 ms**, assigning **1.553 ms / 93.60%** to fixed256 attention.
+The bounded screen rejects generic-context-1024 but qualifies existing generic
+split-K3+fused-gate: package **1.777 -> 1.207 ms (1.472x)** and production graph
+**8.999 -> 8.483 ms/token (-5.73%, 3/3)**, with every context guard passing,
+exact trajectory, final KL **4.33e-7**, and CPU-reference max abs **7.61e-6**.
+This campaign row is not yet a final cross-engine topline; see the [`D4 core/KV screen`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json),
+[`D4 core/KV audit`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json),
 [`post-D3 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3-graph-rerank.json),
 [`retained dense decode route`](results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json),
 [`dense decode screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json),
