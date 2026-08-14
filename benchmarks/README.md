@@ -131,17 +131,20 @@ complete Q4_K_M/Q8_0 HIP/Vulkan semantic join with explicit submission
 residual and `other=0`. The first bounded repair replaces 18 expanded BF16 QKV
 weights with sole Q5T16 residents and improves canonical Q4_K_M 512/128 eager
 throughput from **1427.45/49.05 to 1908.17/69.75 tok/s (+33.68%/+42.19%)** while
-tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. After merging upstream
-`841f639c6`, the current exact 1+5 snapshot is **1938.00/69.02 tok/s** with the
-same **1.043 GiB** peak; that is +1.56%/-1.03% versus the pre-merge P1 row, with
-the decode delta inside run spread. The merged ledger still ranks dense FFN
-first at **108.56 ms / 39.12%**, but all three bounded sole-resident P3 layouts
-failed a required c1 or c8 guard, so P3 closes without a production change and
-GDN is admitted next at a **19.45%** matched-Vulkan request bound. Decode
-arithmetic remains blocked behind the graph/direct census. This campaign row
-is not yet a final cross-engine topline; see the [`merge/P3 closure`](results/2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json),
-[`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json),
-and [`joined ledger`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
+tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. The later Q4-only
+16K/16V cluster8 GDN route improves same-session pp512
+**2050.24 -> 2138.95 tok/s (+4.33%, 5/5 pairs)**; its independent default
+snapshot is **2050.96 tok/s (+5.83% versus merged exact)** at the same
+**1.043 GiB** peak. The complete 18-prompt gate passes at **448/450 top-1,
+max KL 0.003455**, and production graph decode is non-regressive by **0.05%**.
+Q8_0 deliberately retains exact GDN: its cluster8 diagnostic gains 18.00%
+prefill but misses the strict graph-decode guard by 0.0108%. P3 dense FFN is
+closed/rejected; post-P2 attribution admits remaining linear projections next
+at a **20.49%** matched-Vulkan request bound. Decode arithmetic remains blocked
+behind the graph/direct census. This campaign row is not yet a final
+cross-engine topline; see the [`Q4 cluster8 GDN route`](results/2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json),
+[`merge/P3 closure`](results/2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json),
+and [`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json).
 
 ## Current single-request scoreboards
 

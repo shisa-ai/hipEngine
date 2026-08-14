@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "retained-default-q4-only",
+  "task": "D08-P2 Qwen3.5-0.8B gfx1151 GDN route",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "primary": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "guard": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+    "shape": {
+      "layers": 24,
+      "linear_attention_layers": 18,
+      "num_k_heads": 16,
+      "num_v_heads": 16,
+      "head_k_dim": 128,
+      "head_v_dim": 128
+    }
+  },
+  "candidate_base_commit": "a0f5caf0e",
+  "route": {
+    "control": "chain_lds32_direct_nonvolatile",
+    "candidate": "chain_peer_cluster8",
+    "policy_key": ["MOSTLY_Q4_K_M", 16, 16, 128, 128],
+    "default_scope": "hip_gfx1151 plus exact quant/GDN geometry",
+    "q8_default": "chain_lds32_direct_nonvolatile"
+  },
+  "audit": {
+    "control_geometry": {
+      "workgroups": 64,
+      "threads_per_workgroup": 32,
+      "lds_bytes_per_workgroup": 16384,
+      "blocks_per_40_cu": 1.6,
+      "compiler_occupancy_warning": "desired waves/EU 4, final 2"
+    },
+    "candidate_geometry": {
+      "workgroups": 64,
+      "threads_per_workgroup": 256,
+      "lanes_per_value_column": 8,
+      "state_rows_per_lane": 16,
+      "lds_bytes_per_workgroup": 0
+    },
+    "compact_peer_excluded": "num_k_heads equals num_v_heads, so per-K-head Q/K materialization saves zero workspace bytes",
+    "lineage_check": "blocked: /home/lhl/amd-gpu-tuning/reference/atlas is absent; only already-cataloged in-tree kernels were screened"
+  },
+  "actual_shape_leaf": {
+    "artifact": "/tmp/d08-p2/gdn-route-screen.json",
+    "method": "seven alternating same-stream device wall-clock samples of prepare + recurrence + RMSNorm/gate",
+    "control_median_ms": 2.597726,
+    "candidates": [
+      {"mode": "chain_peer_wave32", "median_ms": 1.698868, "speedup": 1.529092, "output_nmse": 1.085018e-9, "state_nmse": 1.798846e-13, "top1_agreement": 1.0},
+      {"mode": "chain_peer_cluster8", "median_ms": 1.605170, "speedup": 1.618349, "output_nmse": 8.239796e-10, "state_nmse": 5.874011e-14, "top1_agreement": 1.0},
+      {"mode": "chain_wave32_tree", "median_ms": 1.973550, "speedup": 1.316271, "output_nmse": 5.999225e-10, "state_nmse": 5.143742e-14, "top1_agreement": 1.0}
+    ],
+    "selected": "chain_peer_cluster8"
+  },
+  "q4_counterbalanced_full_model": {
+    "artifact": "/tmp/d08-p2/gdn-full-ab.json",
+    "protocol": "one superset-scratch resident session; one warmup then five alternating 512/128 eager pairs",
+    "prefill_tok_s": {
+      "control_median": 2050.235971,
+      "candidate_median": 2138.953058,
+      "delta_percent": 4.327165,
+      "candidate_pair_wins": 5,
+      "pairs": 5
+    },
+    "decode_tok_s": {
+      "control_median": 67.591775,
+      "candidate_median": 67.321950,
+      "delta_percent": -0.399198,
+      "classification": "mixed/noisy eager diagnostic; production graph suite is binding"
+    },
+    "trajectories_exact": true,
+    "tracked_peak_gib": 1.043405
+  },
+  "q4_semantic_and_graph_gate": {
+    "artifact": "/tmp/d08-p2/gdn-cluster8-semantic.json",
+    "prompts": 18,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "transitions": 450,
+    "top1_matches": 448,
+    "top1_agreement": 0.995556,
+    "kl_max": 0.003455,
+    "baseline_graph_decode_wall_sum_ms": 20536.583228,
+    "candidate_graph_decode_wall_sum_ms": 20526.270913,
+    "candidate_graph_decode_speedup": 1.000502,
+    "decode_non_regressive": true,
+    "passed": true
+  },
+  "q4_default_snapshot": {
+    "artifact": "/tmp/d08-p2/q4-cluster8-default.json",
+    "prefill_tok_s_samples": [2050.955805, 2000.944094, 2096.584840, 1985.429953, 2057.838981],
+    "prefill_tok_s_median": 2050.955805,
+    "delta_vs_merged_exact_percent": 5.828326,
+    "decode_tok_s_samples": [66.069997, 67.140289, 68.781598, 67.121410, 70.133126],
+    "decode_tok_s_median": 67.140289,
+    "decode_delta_vs_independent_merged_exact_percent": -2.729339,
+    "decode_note": "independent eager drift; not used for route causality because same-session eager is mixed and the complete production-graph gate is non-regressive",
+    "tracked_peak_gib": 1.043405,
+    "finite_final_logits": true,
+    "final_token_ids": [9707, 9707, 9707, 9707, 9707]
+  },
+  "q4_post_route_attribution": {
+    "artifact": "/tmp/d08-p2/q4-cluster8-wall-clock.json",
+    "gdn_ms": {"before": 67.599279, "after": 42.828093, "delta_percent": -36.644156},
+    "instrumented_wall_ms": 270.453637,
+    "stage_sum_ms": 269.398016,
+    "coverage": 0.996097,
+    "next_non_exhausted_owner": {
+      "role": "linear_attention_projections",
+      "hip_ms": 74.771265,
+      "vulkan_ms": 19.349841,
+      "projected_request_saving_percent": 20.492
+    }
+  },
+  "q8_candidate_guard": {
+    "candidate_snapshot_artifact": "/tmp/d08-p2/q8-cluster8-default.json",
+    "candidate_prefill_tok_s_median": 4890.573327,
+    "delta_vs_c0_percent": 18.000917,
+    "tracked_peak_gib": 0.958769,
+    "semantic_artifact": "/tmp/d08-p2/q8-cluster8-semantic.json",
+    "artifact_status": "invalid_dirty_measurement; used only to reject because the strict decode rule fails regardless",
+    "top1_agreement": 0.995556,
+    "kl_max": 0.003259,
+    "baseline_graph_decode_wall_sum_ms": 18940.183779,
+    "candidate_graph_decode_wall_sum_ms": 18942.231893,
+    "candidate_graph_decode_wall_delta_percent": 0.010814,
+    "disposition": "rejected by strict decode non-regression; Q8 default remains exact"
+  },
+  "graph_smoke": {
+    "artifact": "/tmp/d08-p2/q4-cluster8-graph-smoke.json",
+    "decode_tok_s": 97.446691,
+    "finite": true,
+    "final_token_id": 9707
+  },
+  "kernel_trace": {
+    "csv": "/tmp/d08-p2/rocprof-cluster8/zbook/1034861_kernel_trace.csv",
+    "kernel": "qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_kernel",
+    "dispatches": 18,
+    "workgroup_size": [256, 1, 1],
+    "grid_size": [256, 16, 4],
+    "vgpr": 96,
+    "scratch_bytes": 0,
+    "lds_bytes": 0,
+    "duration_status": "rocprofv3 gfx1151 blocker: timestamps are zero; same-stream stage markers provide duration evidence"
+  },
+  "exact_commands": {
+    "q4_default": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-p2/q4-cluster8-default.json",
+    "q4_semantic": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 HIPENGINE_GGUF_GDN_PREFILL_MODE=fused python3 scripts/gguf_gdn_semantic_gate.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --backend auto --baseline-mode chain_lds32_direct_nonvolatile --candidate-mode chain_peer_cluster8 --correctness-decode-steps 24 --performance-decode-steps 128 --performance-repetitions 2 --bulk-attention-mode bulk --graph-replay-decode --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-p2/gdn-cluster8-semantic.json",
+    "q8_guard": "same semantic command with --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --json /tmp/d08-p2/q8-cluster8-semantic.json"
+  }
+}
