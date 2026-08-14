@@ -3522,3 +3522,14 @@ should be boring.
   (2026-08-15): pack8 WMMA measures 1.97x/2.33x tile8x8 on the Qwen3.5-0.8B
   dense-FFN pp512 shapes. Remove the env branch once the parity campaign closes
   and no A/B bisection still needs the tile8x8 control.
+
+## gfx1151 pack8 wmma64 diagnostic kernel
+
+- `pack8_wmma64_prefill_bf16_bf16_out` (LDS-staged 128x64 large-tile pack8
+  WMMA GEMM, D08-X2-K1) is registered but deliberately unrouted: the retained
+  screen measured parity-or-worse versus the routed small-tile
+  `pack8_wmma_prefill` leaf on gfx1151 wave32 (best LDS configs 64x64/64x128
+  tie; 128x64 is ~1.4x slower; all outputs bit-exact). Remove the kernel,
+  wrapper, export, and `tests/test_gguf_q4_k_pack8_wmma64_prefill.py` if no
+  wave64/coopmat follow-up consumes it, or wire it in if a future variant
+  beats the small-tile leaf.

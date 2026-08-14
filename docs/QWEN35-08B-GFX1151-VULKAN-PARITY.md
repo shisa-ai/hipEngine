@@ -1408,6 +1408,34 @@ Vulkan is the X2-K1 LDS/large-tile structure described in 2.37.
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json).
 
+### 2.39 D08-X2-K1 LDS large-tile screen: parity, not routed (2026-08-15)
+
+X2-K1 ported the remaining structural delta from llama's mul_mm - LDS-staged
+f16 A/B tiles with large block tiles and per-step shared scale planes - onto
+pack8 in-kernel dequant (`gguf_q4_k_pack8_prefill_wmma64_kernel`, 128x64,
+256 threads, plus parametric 64x64/64x128/128x128 screen variants). After a
+staging-advance repair, every LDS config is **bit-exact** versus the routed
+small-tile pack8 WMMA leaf (max abs diff 0.0 on actual weights).
+
+Performance conclusion: on gfx1151 wave32 the LDS structure reaches **parity
+at best**. In one marker screen the routed 16x32/64x16 small-tile leaf measures
+**0.375 ms gate / 0.351 ms down** per mat (~10.0/10.7 TFLOPS effective) while
+the best LDS configs tie (64x64: 0.437/0.423; 64x128: 0.410/0.465) and the
+in-tree 128x64 is ~1.4x slower; a 64x64 warp tile (32 WMMA/step) also risks
+the accumulator register budget. Vulkan's same-session reference is
+0.328/0.317 ms, so the routed leaf is within **~14%/10% per mat** after X2a's
+routing repair; the big dense-FFN gap was the tile8x8 route, already fixed.
+
+The kernel stays registered as `pack8_wmma64_prefill_bf16_bf16_out` with its
+correctness fixtures (`tests/test_gguf_q4_k_pack8_wmma64_prefill.py`), but no
+production dispatch selects it (see `docs/REFACTOR.md`). The untested residual
+lever is a wave64 WMMA variant (llama runs subgroup 64); X2 priority moves to
+GDN (X2-K2), the largest remaining matched gap.
+
+Artifact:
+[`/tmp/d08-x/pack8-v2-screen.json` retained via the X2 worklog entry; in-tree
+evidence is the test file plus this section].
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
