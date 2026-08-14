@@ -225,8 +225,14 @@ all prefill guards. Graph inventory replaces exactly **24+24** Q4 owners at
 current graph snapshots at **119.88/117.18 tok/s Q4/Q8** and **286/288 nodes**,
 with exact trajectories, zero KL, 97.23%/97.31% coverage, and zero tracked graph
 bytes. Q4 joined norm owners move **0.67405 -> 0.56181 ms (-0.11224 ms)** while
-Q8 moves only +0.00394 ms. Current decode remains **0.596x/0.709x** frozen
-Vulkan, so the fresh G2 parity gate remains binding. See the
+Q8 moves only +0.00394 ms. The final exact-token C1/C2/G1-G2 gate passes
+cross-engine correctness (**645/645 top-1 per quant**) but **blocks closure**:
+Q4 core is **0.424x pp / 0.734x tg** and exact public greedy is **0.463x /
+0.942x**, losing all required measures in 0/5 blocks. Q8 public decode reaches
+**1.028x Vulkan**, but Q8 core/prefill still miss. Q4 memory is near equal;
+hipEngine Q8 owned memory is 23.4% below llama's closest declared-device-buffer
+scope. G3 and D08-T1 remain blocked. See the
+[`blocked closure gate`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json),
 [`post-D5 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json),
 [`retained D5 norm/residual route`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
 [`D5 norm/residual screen`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json),
