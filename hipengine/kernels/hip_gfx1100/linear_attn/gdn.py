@@ -50,9 +50,6 @@ _SYMBOL_PREFILL_NORMALIZED_WAVE32_XOR = (
 _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32"
 )
-_SYMBOL_PREFILL_DIRECT_COMPACT_PEER_OUTPUT_BF16 = (
-    "hipengine_qwen35_gdn_prefill_direct_compact_peer_output_bf16"
-)
 _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32"
 )
@@ -1068,71 +1065,6 @@ def qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
         ctypes.c_void_p(decay_ptr),
         ctypes.c_void_p(recurrent_state_ptr),
         ctypes.c_void_p(out_ptr),
-        ctypes.c_int64(tokens),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
-    )
-    _check_launch(runtime, err)
-
-
-def qwen35_gdn_prefill_direct_compact_peer_output_bf16(
-    conv_out_ptr: int,
-    a_ptr: int,
-    b_ptr: int,
-    dt_bias_ptr: int,
-    a_log_ptr: int,
-    gate_ptr: int,
-    norm_weight_ptr: int,
-    recurrent_state_ptr: int,
-    out_ptr: int,
-    beta_ptr: int,
-    decay_ptr: int,
-    query_scale_ptr: int,
-    key_scale_ptr: int,
-    eps: float,
-    tokens: int,
-    num_k_heads: int,
-    num_v_heads: int,
-    head_k_dim: int,
-    head_v_dim: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Run direct compact-peer prepare, in-place recurrence, and BF16 output."""
-
-    _check_exact_prefill_shape(
-        tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim
-    )
-    library = library or build_qwen35_linear_attn_gdn(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PREFILL_DIRECT_COMPACT_PEER_OUTPUT_BF16)
-    fn.argtypes = (
-        [ctypes.c_void_p] * 13
-        + [ctypes.c_float]
-        + [ctypes.c_int64] * 5
-        + [ctypes.c_void_p]
-    )
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(beta_ptr),
-        ctypes.c_void_p(decay_ptr),
-        ctypes.c_void_p(query_scale_ptr),
-        ctypes.c_void_p(key_scale_ptr),
-        ctypes.c_float(eps),
         ctypes.c_int64(tokens),
         ctypes.c_int64(num_k_heads),
         ctypes.c_int64(num_v_heads),
@@ -3822,16 +3754,6 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_compact_normalized_wave32_xor",
         ),
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "gdn_prefill_output",
-            "gguf_qwen35",
-            "f32_direct_compact_peer_bf16",
-        ),
-        qwen35_gdn_prefill_direct_compact_peer_output_bf16,
         replace=replace,
     )
     register(

@@ -8,13 +8,14 @@ and fits the 24-GiB card. The compact peer-GDN route closes all frozen
 512/1K/4K prefill gates by materializing normalized Q/K once per K head rather
 than per value head while preserving peer-wave32 output/state bits. Persistent
 scratch follows that ABI instead of reserving V-head-sized Q/K planes, dense
-SiLU overwrites its dead BF16 gate plane, and one physical owner exposes all 188
-private-c1 decode-scratch ranges. Tracked peak is
-**15.587/15.681/16.243/16.501 GiB** and whole-device peak is
-**16.028/16.195/16.905/17.160 GiB** at 512/1K/4K/8K. The latest owner packing
-saves **55.980/94.297/97.988/98.020 MiB** whole-device peak with all throughput
-movement within **0.279%**, but does not claim cross-engine closure: Vulkan's
-lower memory floors still lead by **0.339/0.495/0.993/0.994 GiB**, 4K decode
+SiLU overwrites its dead BF16 gate plane, split GDN reuses dead `conv_out` pages
+for its later recurrent output, and one physical owner exposes all 188 private-c1
+decode-scratch ranges. Tracked peak is **15.587/15.668/16.178/16.436 GiB** and
+whole-device peak is **16.030/16.183/16.844/17.099 GiB** at 512/1K/4K/8K. The
+latest lifetime correction shrinks the 4K-row arena **467.5625 -> 401.0625 MiB**
+and saves **0.5/13.391/66.5/66.5 MiB** tracked with all throughput movement
+within **0.228%**, but does not claim cross-engine closure: Vulkan's lower
+memory floors still lead by **0.341/0.483/0.932/0.933 GiB**, 4K decode
 remains below HIP, and Vulkan MTP still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
@@ -22,7 +23,8 @@ remains below HIP, and Vulkan MTP still wins. See
 [`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json),
 [`right-sized compact Q/K scratch`](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
 [`dense SiLU gate-plane alias`](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json), and
-[`single-owner decode-scratch arena`](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json).
+[`single-owner decode-scratch arena`](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json), and
+[`split-GDN lifetime reuse`](../benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

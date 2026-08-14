@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "retained_memory_improvement_goal_open",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B split-GDN conv_out/recurrent_out lifetime reuse",
+  "base_revision": "214b4b949",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "protocol": {
+    "workload": "token 9707, one discarded warmup plus three measured persistent resets, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, cached builds",
+    "memory": "5 ms whole-device sysfs VRAM sampling; accepted rows started at a clean 0.060455322265625-GiB card baseline",
+    "control": "explicit HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_compact_peer_wave32",
+    "candidate": "selector-unset package default with split-mode conv_out lifetime shortened from [2,5) to [2,4)",
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE -u HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS -u HIPENGINE_GGUF_PREFILL_DEVICE_METADATA -u HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {512|8192} --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json OUT.json"
+  },
+  "implementation": {
+    "retained_route": "unchanged split compact-peer prepare -> compact normalized wave32 XOR recurrence -> RMSNorm gate",
+    "allocator_change": "The split prepare fully consumes conv_out before recurrent_out begins. End stage 4 is exclusive, so conv_out [linear,2,4) and recurrent_out [linear,4,5) may occupy overlapping physical arena pages.",
+    "raw_pointer_abi_changed": false,
+    "kernel_changed": false,
+    "decode_or_mtp_changed": false,
+    "rejected_candidate_surfaces_removed": true,
+    "modeled_4096_row_arena_mib": {
+      "before": 467.5625,
+      "after": 401.0625,
+      "saved": 66.5,
+      "delta_percent": -14.222697500334181
+    }
+  },
+  "clean_results": [
+    {
+      "prompt_length": 512,
+      "control": {
+        "prefill_tok_s": 974.8362732590472,
+        "decode_tok_s": 33.54442274881583,
+        "tracked_peak_gib": 15.587157256901264,
+        "whole_device_peak_delta_gib": 16.029998779296875,
+        "final_ids": [9707, 9707, 9707]
+      },
+      "candidate": {
+        "prefill_tok_s": 974.5361284349411,
+        "decode_tok_s": 33.56839714982413,
+        "tracked_peak_gib": 15.586668975651264,
+        "whole_device_peak_delta_gib": 16.03020477294922,
+        "final_ids": [9707, 9707, 9707]
+      },
+      "delta": {
+        "prefill_percent": -0.030789254805074773,
+        "decode_percent": 0.07147060239438563,
+        "tracked_mib": -0.5,
+        "whole_device_mib": 0.2109375
+      },
+      "decision": "pass; the 512 arena floor is unchanged apart from 0.5 MiB tracked and whole-device sampling is within one page-commit/noise band"
+    },
+    {
+      "prompt_length": 8192,
+      "control": {
+        "prefill_tok_s": 820.9476059341164,
+        "decode_tok_s": 29.3874259331346,
+        "tracked_peak_gib": 16.501094348728657,
+        "whole_device_peak_delta_gib": 17.163105010986328,
+        "final_ids": [9707, 9707, 9707]
+      },
+      "candidate": {
+        "prefill_tok_s": 821.6909531096464,
+        "decode_tok_s": 29.375112779496664,
+        "tracked_peak_gib": 16.436152942478657,
+        "whole_device_peak_delta_gib": 17.09880828857422,
+        "final_ids": [9707, 9707, 9707]
+      },
+      "delta": {
+        "prefill_percent": 0.09054745639756057,
+        "decode_percent": -0.04189939488389305,
+        "tracked_mib": -66.5,
+        "tracked_percent": -0.39355817788535585,
+        "whole_device_mib": -65.83984375,
+        "whole_device_percent": -0.3746217387293971
+      },
+      "decision": "retain; exact route, material memory reduction, non-regressive prefill, and unchanged decode path"
+    }
+  ],
+  "w7900_safeguard": {
+    "hardware": "AMD Radeon Pro W7900, gfx1100, HIP_VISIBLE_DEVICES=0, PCI 0000:0d:00.0, sysfs card1",
+    "workload": "512/128, one warmup plus three measured persistent resets, bulk prefill, graph decode, cached builds, 5-ms whole-device sampling",
+    "prior_retained_row": {
+      "prefill_tok_s": 875.5175262354413,
+      "decode_tok_s": 28.41832453596879,
+      "tracked_peak_gib": 15.587157256901264,
+      "whole_device_peak_delta_gib": 16.028438568115234,
+      "final_ids": [9707, 9707, 9707]
+    },
+    "clean_confirmation_rows": [
+      {
+        "prefill_tok_s": 873.644057798491,
+        "decode_tok_s": 28.441226858174073,
+        "tracked_peak_gib": 15.586668975651264,
+        "whole_device_peak_delta_gib": 16.028865814208984,
+        "prefill_delta_percent": -0.21398411577274734,
+        "decode_delta_percent": 0.08058998051168054,
+        "tracked_mib": -0.5,
+        "whole_device_mib": 0.4375,
+        "final_ids": [9707, 9707, 9707]
+      },
+      {
+        "prefill_tok_s": 872.6960664890505,
+        "decode_tok_s": 28.431617677870634,
+        "tracked_peak_gib": 15.586668975651264,
+        "whole_device_peak_delta_gib": 16.029766082763672,
+        "prefill_delta_percent": -0.3222653652602666,
+        "decode_delta_percent": 0.04677961070922465,
+        "tracked_mib": -0.5,
+        "whole_device_mib": 1.359375,
+        "final_ids": [9707, 9707, 9707]
+      }
+    ],
+    "excluded_attempt": "The first W7900 process aborted before writing benchmark JSON with an HSA page-not-present fault. It is not performance evidence; two immediate strictly serial idle-card confirmations completed cleanly with exact IDs, finite logits, and full teardown.",
+    "decision": "pass; both clean confirmations are within 0.323% prefill and 0.081% decode of the prior retained row, tracked ownership falls 0.5 MiB, and whole-device movement is within a 1.4-MiB sampling band"
+  },
+  "current_four_shape_matrix": [
+    {"prompt_length": 512, "prefill_tok_s": 974.5361284349411, "decode_tok_s": 33.56839714982413, "tracked_peak_gib": 15.586668975651264, "whole_device_peak_delta_gib": 16.03020477294922, "gap_vs_llamacpp_vulkan_gib": 0.3407020568847656},
+    {"prompt_length": 1024, "prefill_tok_s": 1007.658856072958, "decode_tok_s": 34.48083003474145, "tracked_peak_gib": 15.668076522648335, "whole_device_peak_delta_gib": 16.183029174804688, "gap_vs_llamacpp_vulkan_gib": 0.48307037353515625},
+    {"prompt_length": 4096, "prefill_tok_s": 986.262209481733, "decode_tok_s": 31.393726419711925, "tracked_peak_gib": 16.17768145352602, "whole_device_peak_delta_gib": 16.843997955322266, "gap_vs_llamacpp_vulkan_gib": 0.9318389892578125},
+    {"prompt_length": 8192, "prefill_tok_s": 821.6909531096464, "decode_tok_s": 29.375112779496664, "tracked_peak_gib": 16.436152942478657, "whole_device_peak_delta_gib": 17.09880828857422, "gap_vs_llamacpp_vulkan_gib": 0.9327392578125}
+  ],
+  "delta_vs_predecessor_four_shape_matrix": [
+    {"prompt_length": 512, "prefill_percent": -0.22762273066527783, "decode_percent": -0.17370228084334638, "tracked_mib": -0.5, "whole_device_mib": 1.796875},
+    {"prompt_length": 1024, "prefill_percent": 0.08818827984784505, "decode_percent": -0.11664520351201135, "tracked_mib": -13.390625, "whole_device_mib": -12.1953125},
+    {"prompt_length": 4096, "prefill_percent": -0.1688135753302844, "decode_percent": -0.10019145152087017, "tracked_mib": -66.5, "whole_device_mib": -62.6875},
+    {"prompt_length": 8192, "prefill_percent": 0.09054745639756057, "decode_percent": -0.04189939488389305, "tracked_mib": -66.5, "whole_device_mib": -62.66015625, "comparison_note": "The predecessor rollup's 17.160-GiB row is used here; the fresh same-session split control was 17.163105 GiB and gives a -65.839844-MiB paired delta."}
+  ],
+  "rejected_direct_output_candidates": [
+    {
+      "name": "raw conv Q/K/V direct output",
+      "shape": "512/128 clean serial",
+      "prefill_tok_s": 964.659252296564,
+      "decode_tok_s": 33.50264216227399,
+      "prefill_delta_vs_clean_split_percent": -1.0439723307032467,
+      "decision": "reject"
+    },
+    {
+      "name": "in-place normalized conv Q/K direct output",
+      "shape": "512/128 clean serial",
+      "prefill_tok_s": 968.1238871588638,
+      "decode_tok_s": 33.52977489852934,
+      "prefill_delta_vs_clean_split_percent": -0.6885642449809394,
+      "decision": "reject"
+    },
+    {
+      "name": "compact Q/K plus strided conv-value output",
+      "shape": "8192/128 clean serial",
+      "prefill_tok_s": 810.6396264899862,
+      "decode_tok_s": 29.348000609127258,
+      "tracked_peak_gib": 16.404841907322407,
+      "whole_device_peak_delta_gib": 17.067668914794922,
+      "prefill_delta_vs_clean_split_percent": -1.255618508687693,
+      "modeled_4096_row_arena_mib": 369.0,
+      "production_shape_gdn_leaf_delta_percent": 7.398216730164253,
+      "decision": "reject and remove; the larger memory saving does not justify a reproducible long-row prefill regression"
+    }
+  ],
+  "contamination_note": {
+    "excluded_run": "/tmp/qwen36-27b-memory-goal/direct-compact-output-512-vram.json",
+    "observed_whole_device_peak_gib": 23.91,
+    "reason": "another XTX process began after the clean sampler baseline and independently held about 8.23 GiB; the run's whole-device peak is invalid",
+    "remediation": "all accepted control/candidate rows were rerun strictly serial from identical 0.060455322265625-GiB baselines"
+  },
+  "correctness": {
+    "mechanical": "3/3 compact-peer source/registry/bit tests and 75/75 routing/liveness tests pass",
+    "dense_nextn": "1/1 dense Q4_K_M B1-B3 reject/partial/full NextN transaction and provider-vs-scalar-AR test passes",
+    "w7900": "two clean 512/128 confirmations completed with finite logits, stable final IDs, and teardown after one excluded pre-JSON GPU-fault attempt",
+    "math_change": false,
+    "quality_inheritance": "The retained kernels and launch order are unchanged; only physical arena coloring after the prepare lifetime boundary changes. Existing compact-peer category quality therefore applies transitively.",
+    "finite_logits": true,
+    "final_ids_stable": true
+  },
+  "comparison_after": {
+    "llamacpp_source": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json",
+    "at_512": {
+      "hipengine_whole_device_peak_delta_gib": 16.03020477294922,
+      "llamacpp_vulkan_peak_delta_gib": 15.689502716064453,
+      "remaining_gap_vs_vulkan_gib": 0.3407020568847656
+    },
+    "at_1024": {
+      "hipengine_whole_device_peak_delta_gib": 16.183029174804688,
+      "llamacpp_vulkan_peak_delta_gib": 15.699958801269531,
+      "remaining_gap_vs_vulkan_gib": 0.48307037353515625
+    },
+    "at_4096": {
+      "hipengine_whole_device_peak_delta_gib": 16.843997955322266,
+      "llamacpp_vulkan_peak_delta_gib": 15.912158966064453,
+      "remaining_gap_vs_vulkan_gib": 0.9318389892578125
+    },
+    "at_8192": {
+      "hipengine_whole_device_peak_delta_gib": 17.09880828857422,
+      "llamacpp_hip_peak_delta_gib": 16.81658935546875,
+      "llamacpp_vulkan_peak_delta_gib": 16.16606903076172,
+      "remaining_gap_vs_hip_gib": 0.28221893310546875,
+      "remaining_gap_vs_vulkan_gib": 0.9327392578125
+    },
+    "goal_status": "open; this is a retained incremental reduction, not memory parity"
+  },
+  "sources": {
+    "control_512_json": {"path": "/tmp/qwen36-27b-memory-goal/direct-compact-control-512-v2.json", "sha256": "8e1eda040ca4b2196d6df84ae5abe41b961bc4b0d7e744baefa4768afed71fa7"},
+    "control_512_vram": {"path": "/tmp/qwen36-27b-memory-goal/direct-compact-control-512-v2-vram.json", "sha256": "3ff461ef2c922ffe356be49d84e57a147fb7f07d19dee5d5c30de615608de2d7"},
+    "candidate_512_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-512.json", "sha256": "00a5a5f40e7fa60e0cda26b5b971447604dcbe541d9ed546cc5bb724de4d1407"},
+    "candidate_512_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-512-vram.json", "sha256": "538399f7525f983a80302434341bbf51c49c689b803cb7cc6dacfc857dd40a15"},
+    "candidate_1024_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-1024.json", "sha256": "85fd412ee90bd7f2a396f3bc69cbf5a8d0a216eb2841b3a9cf12e1c87366260b"},
+    "candidate_1024_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-1024-vram.json", "sha256": "78935c7a001307d830c6ca741048e158c7f9c8813fc26ccf00a231f9afec87b3"},
+    "candidate_4096_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-4096.json", "sha256": "e3c13c3be9d900824e541c405483de31d9d363dbbd4138bd34535b9ad2e15ae5"},
+    "candidate_4096_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-4096-vram.json", "sha256": "73e74c45fcf887316a8fdc9510d7f72a72a172f39c7c8535aab2533579e3c0d9"},
+    "control_8192_json": {"path": "/tmp/qwen36-27b-memory-goal/compact-output-control-8192.json", "sha256": "f9f71d4a97b333eea6a5080d7fe3f3996917df9a4d71c094482f64bd4180e2ac"},
+    "control_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/compact-output-control-8192-vram.json", "sha256": "60ea2e836a1b75d0497bac2ed3754b2ef9089184b8a0d160801174e45abc3323"},
+    "candidate_8192_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-8192.json", "sha256": "87e12efdea647fe7df0234a01fc6490abd65647cdaef24ce91382f66e7dc2bab"},
+    "candidate_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-8192-vram.json", "sha256": "f9f5af2b48d4a42ddfc4f2747bd271ae08d4fe6fe190198d1d54bab0b3e686d0"},
+    "w7900_prior_json": {"path": "/tmp/qwen36-27b-memory-goal/decode-scratch-arena-w7900-512.json", "sha256": "ec00fa4232c6c7aa3e13630e7191794485012186334dcf3f4df9cd19f1ff3bd7"},
+    "w7900_prior_vram": {"path": "/tmp/qwen36-27b-memory-goal/decode-scratch-arena-w7900-512-vram.json", "sha256": "8d0d3e9eb9da40a4f833b30d743e0d79340baf5b7d43fdbd22d2201b5b1e7288"},
+    "w7900_confirmation_1_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-w7900-512-retry.json", "sha256": "036f8e0a80d0b20665474fdcda6a722595d001b88867b0fd6c9f3581f2c49630"},
+    "w7900_confirmation_1_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-w7900-512-vram-retry.json", "sha256": "8bf8d12fa2154c09a0b38881d35faf0183a8fe1916aa255c63e0736c57183ce2"},
+    "w7900_confirmation_2_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-w7900-512-retry2.json", "sha256": "495210817f09df6678806722354f5f81ee51d90cc77567ce3eca3202be2260b2"},
+    "w7900_confirmation_2_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-w7900-512-vram-retry2.json", "sha256": "d03cfbd0121cbd86b14a0316e12c445f0753bdf782f3727ea13510814c991069"}
+  },
+  "decision": "Retain the split-mode lifetime correction and remove the rejected direct-output kernels/wrappers/registry/runtime/test surfaces. Continue the memory campaign; 8K still exceeds clean llama.cpp Vulkan by 0.933 GiB."
+}

@@ -272,7 +272,7 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             )
 
 
-def test_gfx1100_dense_qwen36_inplace_gate_alias_reduces_full_row_scratch(
+def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
     monkeypatch,
 ) -> None:
     _install_fake_device(monkeypatch)
@@ -291,8 +291,18 @@ def test_gfx1100_dense_qwen36_inplace_gate_alias_reduces_full_row_scratch(
     assert scratch.full_query_raw.nbytes == 4_096 * 6_144 * 4
     assert scratch.ffn_gate_up.nbytes == 2 * 4_096 * 17_408 * 2
     assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 475 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 468 * _MIB
+    value_bytes = 4_096 * 48 * 128 * 4
+    assert scratch.prefill_value.nbytes == value_bytes
+    assert scratch.recurrent_out.nbytes == value_bytes
+    assert scratch.allocation_lifetimes["conv_out"] == (("linear", 2, 4),)
+    conv_offset, conv_bytes = scratch.allocation_offsets["conv_out"]
+    recurrent_offset, recurrent_bytes = scratch.allocation_offsets["recurrent_out"]
+    assert max(conv_offset, recurrent_offset) < min(
+        conv_offset + conv_bytes,
+        recurrent_offset + recurrent_bytes,
+    )
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 409 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 401 * _MIB + 64 * 1_024
 
 
 def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -> None:

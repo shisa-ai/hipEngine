@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-14
 
+- [retained/default split-GDN lifetime reuse] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: shorten split-mode `conv_out` from [2,5) to [2,4), shrinking the 4K-row arena **467.5625 -> 401.0625 MiB (-14.223%)**, tracked peaks **15.587/15.681/16.243/16.501 -> 15.587/15.668/16.178/16.436 GiB**, and whole-device peaks **16.028/16.195/16.905/17.160 -> 16.030/16.183/16.844/17.099 GiB** with throughput movement within **0.228%**, exact IDs, unchanged kernels/ABI, and rejected direct-output surfaces removed; `benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json`.
+
 - [rejected/removed compact-GDN value/recurrent scratch alias] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 8K/128: planned bulk scratch **480.987 -> 414.487 MiB (-13.826%)** and whole-device peak **17.160 -> 17.096 GiB (-65.984 MiB)**, but prefill **822.260 -> 811.399 tok/s (-1.321%)** versus a same-tree no-alias control; exact output/state passed, all candidate code was removed, and the prior default remains current; `benchmarks/results/2026-08-14-qwen36-27b-gdn-value-recurrent-alias-rejected.json`.
 
 - [retained/default private-c1 decode-scratch arena] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: pack the unchanged 188 logical state/KV/workspace ranges into one physical owner, lowering whole-device peak **16.083/16.287/17.001/17.256 -> 16.028/16.195/16.905/17.160 GiB (-0.340%/-0.565%/-0.563%/-0.555%; -55.980/-94.297/-97.988/-98.020 MiB)** with prefill/decode movement within **0.279%**, exact IDs/NextN/W7900/lifecycle pass, and Vulkan's lower memory floors still lead by **0.339/0.495/0.993/0.994 GiB**; `benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json`.
