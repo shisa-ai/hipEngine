@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0, D08-M1/M3-M6, and accepted D08-P1/P2 completed 2026-08-14; D08-P3 is closed/rejected, remaining linear-attention projections are admitted next as D08-P6, and D08-M2 graph/direct census remains open.
+Status: D08-C0, D08-M1/M3-M6, and accepted D08-P1/P2/P6 completed 2026-08-14; D08-P3 is closed/rejected, mandatory post-P6 D08-M7 is next, and D08-M2 graph/direct census remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -85,9 +85,10 @@ not a synthetic leaf projection.
 | 4 | **D08-P3 dense FFN projections** | **closed/rejected** | All three sole-resident layouts won at pp512, but raw Q4 regressed c1-c8, Q4T16 regressed c8, and Q6T16 regressed c1. | Preserve the evidence; do not duplicate resident weights or trade decode for prefill. |
 | 5 | **D08-P2 GDN recurrence** | **accepted: +4.33% paired Q4 pp512** | The Q4/16K/16V shape-scoped cluster8 route cuts marker GDN **67.60 -> 42.83 ms (-36.64%)** and passes the complete semantic/graph-decode gate. | Promoted for Q4 only; Q8 remains exact after its strict graph-decode guard missed by 0.0108%. |
 | 6 | **Mandatory post-P2 re-profile** | **completed** | The structural GDN route invalidates the P2-era ranking. | Reconciles 99.61% of wall; dense FFN is exhausted, so remaining linear projections are the largest non-exhausted owner. |
-| 7 | **D08-P6 remaining linear-attention projections** | **high: 20.49% projected Q4 request saving; admitted-next** | Post-P2 measures 74.77 ms versus 19.35 ms Vulkan after excluding exhausted P3. | Audit QKV/gate remainder, alpha/beta, and SSM-out separately; freeze one semantic sub-role before any route change. |
-| 8 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
-| 9 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
+| 7 | **D08-P6 remaining linear-attention projections** | **accepted: +14.18% graph-scope Q4 pp512 / +0.69% graph tg128; -46.69 MiB** | The audit selected 35.93-ms Q5 SSM-out; sole Q5T16 direct/rowtile/WMMA wins the complete production route and correctness gate. | Closed after exactly three shipped leaves and one full-model A/B; Q8 and 27B remain unchanged. |
+| 8 | **Mandatory post-P6 re-profile** | **required next** | P6 removes 48.96 MB of weights and changes 18 bulk projection owners, invalidating the post-P2 ranking. | Replace the semantic capture once; do not compound another implementation owner first. |
+| 9 | **Medium/low tail** | medium/low | Work only if needed for parity or if an exact, already-measured small win is ready to retain. | Keep reproducible non-regressive wins, but close the package rather than extending a low-impact tuning ladder. |
+| 10 | **D08-G1-G3 closure** | campaign gate | Correctness, same-session parity, artifacts, and scoreboards turn diagnostics into a retained result. | Close 0.8B before D08-T1 opens 27B. |
 
 ### 1.2 Bounded task contract
 
@@ -99,7 +100,7 @@ remain indefinitely `in-progress`.
 | Task class | Hard experiment bound | Accept rule | Reject / park rule |
 | --- | --- | --- | --- |
 | Route certification (`C0`) | At most 3 hipEngine routes x 2 quants, 2 supported embedding-placement controls, and 2 fresh llama rows. Each topline row is 1 warmup + 5 measures. No source edit. | Effective route matches the request, correctness passes, and the fastest intended route becomes the certified baseline. | One failed route receives one focused diagnosis. If unresolved, open a named blocker; do not start kernel tuning on an unknown route. |
-| Profile (`M1-M6`) | One clean capture per backend/quant/phase; one replacement capture only for incomplete/corrupt output. | 100% node assignment and <=1% timing residual, with API/launch gap separate. | If the tool cannot expose a complete ledger after one repair, record the missing surface and add the smallest instrumentation needed; do not infer owners from names alone. |
+| Profile (`M1-M7`) | One clean capture per backend/quant/phase; one replacement capture only for incomplete/corrupt output. | 100% node assignment and <=1% timing residual, with API/launch gap separate. | If the tool cannot expose a complete ledger after one repair, record the missing surface and add the smallest instrumentation needed; do not infer owners from names alone. |
 | Kernel/algorithm leaf | Audit current lineage first; test at most 3 predeclared variants and one tuning dimension on the actual hot shape. | Any exact, reproducible, non-regressive production win is retained per project policy. Continue to full-model routing only with >=1.10x leaf speed or >=1% projected request saving (or >=0.5 ms/token decode). | Stop after the budget misses continuation, correctness fails, or measured Amdahl falls below 1%. Preserve the result and revisit trigger; remove rejected transient code. |
 | Full-model A/B | Only the best admitted leaf; one counterbalanced control/candidate sequence with 1 warmup + 5 measured samples, then the named correctness gate. | Correctness and all guards pass; request wall improves reproducibly. Promote the exact route by default unless a concrete blocker is recorded. | Reject on correctness, route mismatch, or a reproducible guard regression. Do not rescue it with an unplanned compound. |
 | Small exact win | No further variant ladder in the same package after the win is measured and retained. | Keep and publish the exact non-regressive improvement even when below the continuation threshold. | Close the package; only a fresh profile may reopen the semantic owner. |
@@ -463,6 +464,42 @@ admitted next.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json).
 
+### 2.12 D08-P6 accepted Q5T16 SSM-out route (2026-08-14)
+
+The required post-P2 split measures SSM-out **35.93 ms**, residual QKV/gate
+**30.43 ms**, alpha/beta **6.33 ms**, and QKV conversion **2.07 ms**. SSM-out
+is the largest non-exhausted sub-role: all 18 `[1024,2048]` source-Q5_K weights
+were expanded to dense BF16 while the existing Q5T16 family covers the exact
+K2,048/N1,024 runtime geometry. P6 froze only the three shipped direct,
+rowtile, and WMMA leaves; no new kernel arithmetic or duplicate layout was
+allowed.
+
+The actual-weight screen selects direct at c1 and c5-c8, exact rowtile at c2-c4,
+and WMMA only for bulk rows. Speedups versus dense BF16 at c1/c2/c4/c8/pp512
+are **0.945x/5.848x/4.649x/1.238x/4.097x**. The generic QKV-derived c8 WMMA
+fallback is explicitly rejected at **0.419x**; the shape policy keeps QKV c8 on
+WMMA but uses direct for exact 0.8B SSM-out. The c1 leaf loss is carried into the
+complete gate rather than hidden.
+
+One combined two-resident A/B covers all 18 category+heldout prompts and five
+counterbalanced eager and production-graph 512/128 pairs. It records **449/450
+top-1 (99.78%)**, max KL **0.003273**, and exact trajectories. Eager pp512
+improves **2098.97 -> 2410.75 tok/s (+14.85%, 5/5)**; graph-scope pp512 improves
+**2086.23 -> 2382.12 (+14.18%, 5/5)**. Binding graph tg128 improves
+**99.29 -> 99.98 tok/s (+0.69%, 5/5)**. The eager tg128 diagnostic moves
+**67.02 -> 66.38 (-0.96%, 1/5)** and remains disclosed; it does not override the
+non-regressive shipped graph route. SSM-out residency falls **72.00 -> 25.31
+MiB (-64.84%)**, reducing all physical weights by **46.69 MiB / 5.49%**.
+
+The policy is exact-role/shape and gfx1151 scoped. Q8 contains Q8_0 SSM-out and
+cannot enter the Q5 selector; the Qwen3.6-27B capability and shape remain
+separate and disabled on gfx1151. P6 is closed. Its structural route and memory
+change require one replacement semantic capture before another owner is
+selected.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-q5t16-ssm-out-route.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q5t16-ssm-out-route.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -649,6 +686,7 @@ layout, activation reuse, or submission class.
 | **D08-M4** | Repeat M1-M3 for Q8_0. | **Complete:** explicit host-embedding HIP route plus complete Q8 Vulkan operation map; no mislabeled quant row. | completed |
 | **D08-M5** | Produce joined semantic-role Amdahl table. | **Complete:** every module was joined or represented by named submission residual; `other=0`; the resulting P1 admission is now accepted and this pre-P1 ranking is superseded. | completed |
 | **D08-M6** | Mandatory post-P1 Q4 semantic replacement capture and rerank. | **Complete:** 99.60% prefill and 96.24% eager-decode reconciliation; P3 is first at 29.42% projected request saving, P2 second at 19.39%. | completed |
+| **D08-M7** | Mandatory post-P6 Q4 semantic replacement capture and rerank. | Replace the post-P2 ledger after 18 SSM-out owners and 48.96 MB of weights changed; reconcile within 1% before selecting another package. | required next |
 
 No implementation lane starts before `D08-C0` and the relevant M lane identify
 a shipped owner. A trivial route correction from C0 may be retained immediately
@@ -661,7 +699,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair, no kernel variants, and M6 re-profile complete. | accepted |
 | **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.60% merged Q4 bound; unrealized** | All three frozen sole-resident candidates won pp512 but failed a required c1 or c8 operational guard. | **Closed:** no duplicate layouts, no full-model A/B, and no production change. Reopen only for a new sole-resident family that is non-regressive at every width. | rejected |
 | **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed:** Q4-only quant/shape plugin policy; Q8 exact fallback retained; no new arithmetic variants. | accepted |
-| **D08-P6** | Remaining linear-attention projections after accepted Q5 QKV routing: residual QKV/gate, alpha/beta, and SSM-out. | **20.49% post-P2 Q4 request bound** | Post-P2 marker capture measures 74.77 ms versus 19.35 ms Vulkan; P3's larger dense role is exhausted. | Audit and time semantic sub-roles separately; select only the largest route mismatch, at most 3 existing variants, and one full-model A/B. | admitted-next |
+| **D08-P6** | Remaining linear-attention projections after accepted Q5 QKV routing: residual QKV/gate, alpha/beta, and SSM-out. | **realized: +14.18% graph-scope pp512 / +0.69% graph tg128; -46.69 MiB weights** | The split selected 35.93-ms Q5 SSM-out; exact-role sole Q5T16 passes 449/450 top-1, max KL 0.003273, and all graph pairs. | **Closed:** exactly three existing leaves and one combined full-model A/B; replacement semantic capture required before another owner. | accepted |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | profile-dependent medium/high | Full-attention role is material in M5 or the intended flash route is absent. | One route/layout candidate; preserve `KVLiveSpans` and include copies/transforms. Stop if complete attention wall fails 1.10x or 1% request projection. | pending |
 | **D08-P5** | Residual/norm/activation/copy launch coalescing. | medium/low | Glue is >=5% of prefill GPU time or launch count is the measured wall owner. | One fusion boundary at a time, at most 2 variants. Retain unfused fallbacks; reject spills/occupancy loss or complete-wall regression. | pending |
 
@@ -686,7 +724,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 
 ## 7. First-pass decision tree
 
-After each current ledger (post-P2 now), choose exactly one implementation owner:
+After each current ledger (the post-P6 replacement is now required), choose exactly one implementation owner:
 
 1. **Fast flags disabled or fallback kernels present?** Fix route selection and
    defaults first. Re-profile; the Amdahl table is invalid after a structural
@@ -736,7 +774,7 @@ potential band, then measured upper bound.
 | P1 Q5T16 QKV route | **accepted** | **realized: +33.68% pp / +42.19% eager tg; -11.59% tracked peak** | One exact-role sole-resident policy reused the shipped direct/rowtile/WMMA family; no arithmetic variants or duplicate weights. | Closed; reopen only if a future correctness regression identifies this exact role. |
 | Dense FFN projection package / P3 | **rejected** | **29.60% merged Q4 bound; unrealized** | Raw Q4 regresses every operational width, Q4T16 regresses c8, and Q6T16 regresses c1; duplicate residents are disallowed. | A new sole-resident family passes pp512 plus c1/c2/c4/c8 without sacrificing memory or either topline scope. |
 | Q4/16K/16V cluster8 GDN / P2 | **accepted** | **realized: +4.33% paired / +5.83% independent pp512; GDN -36.64%** | Complete Q4 semantic and production-graph decode gates pass; Q8 remains exact because its strict decode guard missed. | Closed; reopen only for a regression in this exact quant/shape key. |
-| Remaining linear-attention projections / P6 | **admitted-next** | **20.49% post-P2 Q4 projected saving** | 74.77 ms versus 19.35 ms Vulkan is the largest non-exhausted owner. | Audit QKV/gate remainder, alpha/beta, and SSM-out separately; admit one sub-role only. |
+| Q5T16 SSM-out / P6 | **accepted** | **realized: +14.18% graph pp / +0.69% graph tg; -46.69 MiB** | Exact-role sole Q5T16 replaces 18 dense-BF16 expansions; correctness and all production-graph pairs pass. | Closed; reopen only if this exact shape regresses or a new profile invalidates the route. |
 | Graph/submission work | M2 census in-progress | high if production graph residual >=10% | C0 certifies graph throughput, but eager stage gaps cannot be assigned directly to graph GPU work. | One graph/direct API and sync/copy census reports the production residual and preserves exact graph/eager state. |
 | LM-head specialization | parked D2 | **low: 1.86% Q4 / 1.31% Q8 eager upper bound** | Joined M5 shows the vocab node is not the leading owner. | M2 graph census materially changes ownership and projects >=1% request saving. |
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |

@@ -256,6 +256,7 @@ def plan_qwen35_gguf_materialization(
     decode_repack: bool | None = None,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFMaterializationPlan:
@@ -282,6 +283,7 @@ def plan_qwen35_gguf_materialization(
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
@@ -294,6 +296,7 @@ def plan_qwen35_gguf_materialization(
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
@@ -592,6 +595,13 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q5_t16_ssm_out_08b=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+                False,
+            )
+        ),
         dense_q5_t16_qkv=bool(
             backend_package_capability(
                 backend,
@@ -743,6 +753,7 @@ def _plan_layer(
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> dict[str, Qwen35GGUFWeightSpec]:
@@ -754,6 +765,7 @@ def _plan_layer(
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
+            dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
             dense_q6_qmicro_planar=dense_q6_qmicro_planar,
         )
@@ -891,6 +903,7 @@ def plan_qwen35_gguf_weight_spec(
     decode_repack: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
@@ -902,6 +915,7 @@ def plan_qwen35_gguf_weight_spec(
         decode_repack=bool(decode_repack),
         dense_q4_t16=bool(dense_q4_t16),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+        dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
         dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
     )
@@ -915,6 +929,7 @@ def _spec_for_tensor(
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
@@ -1009,6 +1024,10 @@ def _spec_for_tensor(
             (
                 dense_q5_t16_ssm_out
                 and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
+            )
+            or (
+                dense_q5_t16_ssm_out_08b
+                and _is_dense_q5_t16_ssm_out_08b_tensor(slot_path, tensor)
             )
             or (
                 dense_q5_t16_qkv
@@ -1286,6 +1305,20 @@ def _is_dense_q5_t16_ssm_out_tensor(
     return (
         len(tensor.shape) == 2
         and tuple(map(int, tensor.shape)) == (5_120, 6_144)
+        and slot_path.startswith("layers.")
+        and slot_path.endswith(".ssm_out")
+    )
+
+
+def _is_dense_q5_t16_ssm_out_08b_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select only the measured Qwen3.5-0.8B recurrent output projection."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (1_024, 2_048)
         and slot_path.startswith("layers.")
         and slot_path.endswith(".ssm_out")
     )

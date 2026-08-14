@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "retained-default-q4-only",
+  "task": "D08-P6 Qwen3.5-0.8B gfx1151 Q5T16 SSM-out route",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "sha256-sampled-v1:533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+    "linear_attention_layers": 18,
+    "ssm_out_source": "Q5_K",
+    "ssm_out_shape_gguf": [1024, 2048],
+    "ssm_out_shape_runtime": {"in_features": 2048, "out_features": 1024}
+  },
+  "candidate_base_commit": "8ee0be29759488b3a1f087a9f4e3a65f4a170add",
+  "audit": {
+    "post_p2_prefill_ms": {
+      "ssm_out": 35.930628,
+      "residual_qkv_gate": 30.433584,
+      "alpha_beta": 6.332993,
+      "qkv_bf16_to_f32": 2.074061
+    },
+    "selected_role": "ssm_out",
+    "control": "18 sole dense-BF16 expansions",
+    "candidate": "18 sole source-faithful Q5T16 residents",
+    "variant_budget": [
+      "t16_gemv_decode_bf16_bf16_out",
+      "t16_gemv_rowtile_bf16_bf16_out",
+      "t16_wmma_prefill_bf16_bf16_out"
+    ],
+    "production_policy": {
+      "c1": "direct",
+      "c2_c4": "rowtile",
+      "c5_c8": "direct for exact K2048/N1024 shape",
+      "bulk": "WMMA"
+    },
+    "qwen36_27b_policy_unchanged": true,
+    "q8_policy_unchanged": true
+  },
+  "actual_shape_leaf": {
+    "artifacts": [
+      "/tmp/d08-p6/q5-ssm-out-operational-screen.json",
+      "/tmp/d08-p6/q5-ssm-out-c8-direct-screen.json"
+    ],
+    "script_sha256": {
+      "operational": "bf6cb4192450c31e6b9fc1307b42be1167a234f9bbc438ac865695f1dbef95c5",
+      "c8_direct": "4030a59e233c01bbfecc392c7a40c05e73d3ed13baf61dac9d938092f6badbd2"
+    },
+    "rows": [
+      {"rows": 1, "control_ms": 0.013055, "candidate_ms": 0.013812, "speedup": 0.945204, "candidate": "direct", "top1_agreement": 1.0, "max_abs": 0.001953125},
+      {"rows": 2, "control_ms": 0.075430, "candidate_ms": 0.012899, "speedup": 5.847512, "candidate": "rowtile", "top1_agreement": 1.0, "max_abs": 0.001953125},
+      {"rows": 4, "control_ms": 0.092730, "candidate_ms": 0.019945, "speedup": 4.649159, "candidate": "rowtile", "top1_agreement": 1.0, "max_abs": 0.00390625},
+      {"rows": 8, "control_ms": 0.083325, "candidate_ms": 0.067312, "speedup": 1.237887, "candidate": "direct", "top1_agreement": 1.0, "max_abs": 0.00390625},
+      {"rows": 512, "control_ms": 1.534716, "candidate_ms": 0.374616, "speedup": 4.096774, "candidate": "WMMA", "top1_agreement": 0.994141, "max_abs": 0.0078125}
+    ],
+    "rejected_selector": {
+      "rows": 8,
+      "candidate": "generic Q5T16 WMMA fallback",
+      "control_ms": 0.074519,
+      "candidate_ms": 0.177983,
+      "speedup": 0.418686,
+      "reason": "QKV-derived c5-c8 WMMA fallback is wrong for narrow SSM-out"
+    }
+  },
+  "full_model_ab": {
+    "artifact": "/tmp/d08-p6/q5-ssm-out-full-ab.json",
+    "script_sha256": "74568134448446eecd6a665807b6212bf05a591b7eedf6a55ce746130bb174e7",
+    "protocol": "two simultaneously resident sessions; all 18 category and heldout prompts at 24 teacher-forced decode transitions; one warmup then five counterbalanced 512/128 pairs in eager and production-graph scopes",
+    "correctness": {
+      "prompts": 18,
+      "transitions": 450,
+      "top1_matches": 449,
+      "top1_agreement": 0.997778,
+      "kl_max": 0.003273423,
+      "thresholds": {"top1_agreement_min": 0.90, "kl_max": 0.05},
+      "passed": true
+    },
+    "eager": {
+      "control_prefill_tok_s": [2123.983064, 2132.893477, 2098.970037, 2076.935930, 2061.302251],
+      "candidate_prefill_tok_s": [2427.855849, 2410.962859, 2398.276516, 2410.751473, 2309.631770],
+      "control_decode_tok_s": [69.274092, 66.688191, 67.024126, 67.113538, 66.350751],
+      "candidate_decode_tok_s": [66.377928, 66.823844, 65.939393, 66.631877, 64.596119],
+      "median_prefill_tok_s": {"control": 2098.970037, "candidate": 2410.751473, "delta_percent": 14.854020},
+      "median_decode_tok_s": {"control": 67.024126, "candidate": 66.377928, "delta_percent": -0.964127},
+      "candidate_pair_wins": {"prefill": 5, "decode": 1},
+      "classification": "prefill binding; eager decode diagnostic disclosed, production graph gate binding"
+    },
+    "production_graph": {
+      "control_prefill_tok_s": [2010.982131, 2120.903425, 2086.233781, 2097.514541, 2051.846901],
+      "candidate_prefill_tok_s": [2375.527894, 2400.679899, 2372.152835, 2422.950700, 2382.122206],
+      "control_decode_tok_s": [99.706885, 98.510168, 98.536711, 99.293301, 99.533006],
+      "candidate_decode_tok_s": [102.907522, 99.963081, 99.982592, 99.752455, 100.280994],
+      "median_prefill_tok_s": {"control": 2086.233781, "candidate": 2382.122206, "delta_percent": 14.182899},
+      "median_decode_tok_s": {"control": 99.293301, "candidate": 99.982592, "delta_percent": 0.694197},
+      "candidate_pair_wins": {"prefill": 5, "decode": 5},
+      "trajectories_exact": true,
+      "passed": true
+    }
+  },
+  "memory": {
+    "ssm_out_bytes": {"control": 75497472, "candidate": 26542080, "saving": 48955392, "saving_mib": 46.6875, "reduction_percent": 64.84375},
+    "all_weight_bytes": {"control": 892116224, "candidate": 843160832, "reduction_percent": 5.487558},
+    "duplicate_layouts": false
+  },
+  "validation": {
+    "red": "three focused policy/capability/dispatch tests failed before implementation",
+    "green": "three focused tests pass",
+    "affected_bundle": {"passed": 155, "failed_unrelated_local_fixture_drift": 5, "skipped": 3},
+    "unrelated_failures": "local Qwen3.6 fixtures no longer carry the trailing NextN/ignored block expected by tests; route-sensitive nodes and all other completed nodes pass",
+    "diff_check": "pass",
+    "py_compile": "pass"
+  },
+  "exact_commands": {
+    "leaf": "HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p6/q5_ssm_out_operational_screen.py",
+    "c8_selector": "HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p6/q5_ssm_out_c8_direct_screen.py",
+    "full_model_ab": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-p6/q5_ssm_out_full_ab.py",
+    "focused_tests": "python3 -m pytest -q tests/test_qwen35_gguf_mapping.py::test_qwen35_08b_dense_q5_ssm_out_policy_uses_single_t16_resident tests/test_gfx1151_backend.py::test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles tests/test_gguf_linear_dispatch.py::test_gfx1151_q5_t16_ssm_out_uses_direct_through_c8_and_wmma_for_bulk"
+  },
+  "next": "Complete mandatory post-P6 D08-M7 semantic replacement capture before selecting another owner; D08-M2 graph/direct census remains open."
+}

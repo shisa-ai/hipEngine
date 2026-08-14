@@ -133,16 +133,21 @@ weights with sole Q5T16 residents and improves canonical Q4_K_M 512/128 eager
 throughput from **1427.45/49.05 to 1908.17/69.75 tok/s (+33.68%/+42.19%)** while
 tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. The later Q4-only
 16K/16V cluster8 GDN route improves same-session pp512
-**2050.24 -> 2138.95 tok/s (+4.33%, 5/5 pairs)**; its independent default
-snapshot is **2050.96 tok/s (+5.83% versus merged exact)** at the same
-**1.043 GiB** peak. The complete 18-prompt gate passes at **448/450 top-1,
-max KL 0.003455**, and production graph decode is non-regressive by **0.05%**.
-Q8_0 deliberately retains exact GDN: its cluster8 diagnostic gains 18.00%
-prefill but misses the strict graph-decode guard by 0.0108%. P3 dense FFN is
-closed/rejected; post-P2 attribution admits remaining linear projections next
-at a **20.49%** matched-Vulkan request bound. Decode arithmetic remains blocked
+**2050.24 -> 2138.95 tok/s (+4.33%, 5/5 pairs)** and passes its complete
+18-prompt graph gate.
+
+P6 then replaces all 18 Q5_K SSM-out dense-BF16 expansions with exact-role
+sole Q5T16 residents. In the combined two-resident gate, graph-scope pp512
+improves **2086.23 -> 2382.12 tok/s (+14.18%, 5/5)** and production graph tg128
+improves **99.29 -> 99.98 tok/s (+0.69%, 5/5)** at **449/450 top-1 / max KL
+0.003273** with exact trajectories. Eager tg128 is disclosed at **67.02 ->
+66.38 (-0.96%)**, while the binding graph route improves. SSM-out residency
+falls **72.00 -> 25.31 MiB**, cutting physical weights by **46.69 MiB**. Q8_0
+remains structurally unchanged, and P3 dense FFN remains closed/rejected. A
+mandatory post-P6 semantic capture is next; decode arithmetic remains blocked
 behind the graph/direct census. This campaign row is not yet a final
-cross-engine topline; see the [`Q4 cluster8 GDN route`](results/2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json),
+cross-engine topline; see the [`Q5T16 SSM-out route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-ssm-out-route.json),
+[`Q4 cluster8 GDN route`](results/2026-08-14-gfx1151-qwen35-08b-q4-cluster8-gdn-route.json),
 [`merge/P3 closure`](results/2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json),
 and [`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json).
 
