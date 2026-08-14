@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-14
 
+- [retained/default compact GDN Q/K scratch] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: route-shaped K-head Q/K capacity lowers tracked peak **15.605/15.720/16.368/16.626 -> 15.596/15.699/16.263/16.521 GiB (-9.8125/-21.25/-107.375/-107.375 MiB)** and whole-device peak by **1.395/16.297/98.805/108.254 MiB**; prefill/decode movement is within **0.37%**, exact IDs/NextN/W7900/lifecycle pass, and Vulkan's lower memory floors still lead by **0.405/0.605/1.110/1.111 GiB**; `benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json`.
+
 - [independent/default-path prefill target closure] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K: fresh strictly serial selector-unset prefill **965.209/1003.206/983.082 -> 977.397/1012.309/987.809 tok/s (+1.26%/+0.91%/+0.48%)**, clearing frozen llama.cpp HIP+1% by **0.323%/2.166%/3.306%**; decode is non-regressive at **33.645/34.567/31.421 tok/s**, tracked peaks remain **15.605/15.720/16.368 GiB**, IDs are exact, and teardown is zero; `benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json`.
 
 - [retained/default compact peer-GDN prefill] Qwen3.6-27B / Q4_K_M / gfx1100 512/1K/4K: materialize normalized Q/K once per K head instead of per value head, improving counterbalanced full prefill RX 7900 XTX **966.416/1002.106/981.859 -> 972.647/1009.483/988.721 tok/s (+0.64%/+0.74%/+0.70%)** and W7900 **869.227/900.685/855.755 -> 874.653/909.493/865.807 tok/s (+0.62%/+0.98%/+1.17%)** with **42/42** engine pairs winning, exact token IDs/peaks, bit-exact leaf output/state, and 14/28 MiB less transient Q/K at M512/M1024; `benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json`.

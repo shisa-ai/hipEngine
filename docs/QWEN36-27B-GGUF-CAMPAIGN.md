@@ -3,30 +3,23 @@
 Status: **superseded for current gfx1100 package ownership by the 2026-08-12
 single-layout campaign.** This W7900 study remains the historical Vulkan-parity
 optimization record. The current package uses one sole-T16 rank-2 Q4 payload on
-both W7900 and RX 7900 XTX, passes a same-commit W7900 non-regression gate, and
-fits the 24-GiB card. Its XTX cross-engine campaign remains blocked on the 512
-HIP+1% prefill margin, memory, 4K decode, and Vulkan MTP rather than claiming
-full parity. The prefill lane reopened after materially new byte-neutral Q4
-dual-output, exact unequal-Q4 and selective packed-column source-F16 owners,
-bounded pair-produced full-attention Q, ordered pair-only Q6-QKV/Q4-gate
-ownership, Q5 source-F16 plus its exact natural-octet producer, the exact
-record-owned Q6 producer, and shape-scoped rocBLAS policies reached **0.06%
-raw-HIP lead at 512**, reached **2.26% raw-HIP lead at 1K** (and cleared HIP+1%
-by 1.25%), and cleared the frozen HIP+1% 4K gate by **2.81%**. That projection-only reopen was later superseded by a new GDN dataflow:
-normalized Q/K are materialized once per K head rather than per value head while
-preserving peer-wave32 output/state bits. The compact route improves complete
-GDN-chain wall **1.061-1.116x** and full prefill **+0.62% to +1.17%** across
-512/1K/4K on both gfx1100 boards, with all **42/42** engine pairs winning,
-unchanged tracked peaks, and no decode/MTP owner change. A fresh independent
-selector-unset XTX matrix now measures **977.397/1012.309/987.809 tok/s** at
-512/1K/4K, passing the frozen HIP+1% gates by **0.323%/2.166%/3.306%** with
-non-regressive decode, exact IDs, unchanged tracked peaks, and clean teardown.
-The prefill objective is closed; memory, 4K decode, and Vulkan MTP remain
-separate blockers. See
+both W7900 and RX 7900 XTX, passes same-commit W7900 and dense-NextN safeguards,
+and fits the 24-GiB card. The compact peer-GDN route closes all frozen
+512/1K/4K prefill gates by materializing normalized Q/K once per K head rather
+than per value head while preserving peer-wave32 output/state bits. Its
+persistent scratch now follows that same ABI instead of reserving V-head-sized
+Q/K planes: tracked peak falls to **15.596/15.699/16.263/16.521 GiB** and
+whole-device peak to **16.094/16.305/17.022/17.277 GiB** at 512/1K/4K/8K, with
+all throughput movement within **0.37%**. This saves up to **107.375 MiB**
+tracked and **108.254 MiB** whole-device peak, but does not claim cross-engine
+closure: Vulkan's lower memory floors still lead by
+**0.405/0.605/1.110/1.111 GiB**, 4K decode remains below HIP, and Vulkan MTP
+still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
-[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json), and
-[`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json).
+[`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json),
+[`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
+[`right-sized compact Q/K scratch`](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

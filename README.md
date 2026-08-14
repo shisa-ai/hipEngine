@@ -189,22 +189,24 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **977.397** | **33.645** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.814** | **33.522** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
 F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
 behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
-materialized once per K head. Decode and MTP retain exact owners. The fresh
-strictly serial selector-unset XTX matrix is
-**977.397/1012.309/987.809 tok/s** at 512/1K/4K with unchanged tracked peaks;
-it clears llama.cpp HIP by **1.33%/3.19%/4.34%** and the frozen HIP+1%
-prefill gates by **0.32%/2.17%/3.31%**. Versus the preceding independent
-matrix, decode also moves **+0.23%/+0.17%/+0.18%**, every token remains 9707,
-and tracked teardown reaches zero. This closes the prefill target, while
-memory, 4K decode, and Vulkan MTP remain blocked. Evidence:
-[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json) and
+materialized once per K head. Its persistent scratch now also allocates those
+Q/K planes at K-head rather than V-head capacity. The fresh strictly serial
+selector-unset XTX matrix is **974.814/1009.979/988.405 tok/s** at 512/1K/4K;
+it clears llama.cpp HIP by **1.06%/2.95%/4.40%** and the frozen HIP+1%
+prefill gates by **0.06%/1.93%/3.37%**. Tracked peaks fall to
+**15.596/15.699/16.263 GiB**, all throughput changes are within **0.37%**, every
+token remains 9707, dense NextN transactions pass, and teardown reaches zero.
+This closes the prefill target while reducing memory; the lower Vulkan memory
+floors, 4K decode, and Vulkan MTP remain blocked. Evidence:
+[`right-sized compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
+[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
 [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
