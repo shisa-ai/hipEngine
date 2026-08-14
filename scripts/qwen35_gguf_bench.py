@@ -1527,7 +1527,18 @@ def _sum_named_buffers(owner: object, names: tuple[str, ...]) -> int:
 
 
 def _sum_buffers(buffers) -> int:
-    return sum(_buffer_nbytes(buffer) for buffer in buffers if buffer is not None)
+    total = 0
+    seen_ptrs: set[int] = set()
+    for buffer in buffers:
+        if buffer is None:
+            continue
+        ptr = int(getattr(buffer, "ptr", 0))
+        if ptr != 0 and ptr in seen_ptrs:
+            continue
+        if ptr != 0:
+            seen_ptrs.add(ptr)
+        total += _buffer_nbytes(buffer)
+    return total
 
 
 def _buffer_nbytes(buffer: object | None) -> int:

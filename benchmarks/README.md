@@ -50,16 +50,21 @@ behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
 materialized once per K head. Persistent scratch allocates those Q/K planes at
 K-head capacity, replaces the dead dense-SiLU BF16 gate plane in place, reuses
 split-GDN `conv_out` pages for the later recurrent output, exposes 188
-private-c1 decode ranges through one physical owner, and uses a constrained
-long-row placement order that leaves `attn_out` at its exact-safe address. The
-strictly serial selector-unset XTX matrix is **974.481/1006.756/987.193 tok/s**
-at 512/1K/4K and still clears the frozen prefill gates. Tracked peaks are
-**15.587/15.668/16.150 GiB**, while whole-device peaks are
-**16.029/16.182/16.813 GiB**; the 8K diagnostic is **16.408/17.068 GiB**.
-All throughput changes versus the prior current matrix are within **0.172%**,
-every token remains 9707, dense NextN transactions pass, and teardown reaches
-zero. This closes the prefill target while reducing memory; the lower Vulkan
-memory floors, 4K decode, and Vulkan MTP remain blocked. Evidence:
+private-c1 decode ranges through one physical owner, uses a constrained
+long-row placement order that leaves `attn_out` at its exact-safe address, and
+reuses one physical 40-MiB hidden plane for both long-row ping-pong roles. The
+strictly serial selector-unset XTX matrix is
+**974.481/1006.756/987.812/819.432 tok/s** prefill and
+**33.516/34.494/31.389/29.357 tok/s** decode at 512/1K/4K/8K. Tracked peaks are
+**15.587/15.668/16.111/16.369 GiB**, while whole-device peaks are
+**16.029/16.182/16.777/17.029 GiB**. The latest step removes exactly **40 MiB**
+tracked at 4K/8K and about **37.3/39.9 MiB** process-delta whole-device VRAM;
+all XTX and W7900 throughput movement is within **0.114%**, every token remains
+9707, forced-alias dense NextN transactions pass, and teardown reaches zero.
+This closes the prefill target while reducing memory; Vulkan's lower memory
+floors still lead by **0.340/0.482/0.865/0.863 GiB**, while 4K decode and Vulkan
+MTP remain blocked. Evidence:
+[`long-row hidden-owner reuse`](results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json),
 [`constrained long-row recoloring`](results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json),
 [`split-GDN lifetime reuse`](results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json),
 [`single-owner decode-scratch arena`](results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),

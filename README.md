@@ -189,7 +189,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.536** | **33.568** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.481** | **33.516** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
@@ -198,21 +198,26 @@ F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
 behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
 materialized once per K head. Persistent scratch allocates those Q/K planes at
 K-head capacity, replaces the dead dense-SiLU BF16 gate plane in place, reuses
-split-GDN `conv_out` pages for the later recurrent output, and exposes 188
-private-c1 decode ranges through one physical owner. The fresh strictly serial
-selector-unset XTX matrix is **974.536/1007.659/986.262 tok/s** at 512/1K/4K;
-it clears llama.cpp HIP by **1.03%/2.71%/4.18%** and the frozen HIP+1% prefill
-gates. Tracked peaks are **15.587/15.668/16.178 GiB**, while whole-device peaks
-are **16.030/16.183/16.844 GiB**. All throughput changes versus the prior
-current matrix are within **0.228%**, every token remains 9707, dense NextN
-transactions and two clean W7900 confirmations pass, and teardown reaches zero.
-This closes the prefill target
-while reducing memory; the lower Vulkan memory floors, 4K decode, and Vulkan
-MTP remain blocked. Evidence: [`split-GDN lifetime reuse`](results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json),
+split-GDN `conv_out` pages for the later recurrent output, exposes 188
+private-c1 decode ranges through one physical owner, uses a constrained
+long-row placement order that leaves `attn_out` at its exact-safe address, and
+reuses one physical 40-MiB hidden plane for both long-row ping-pong roles. The
+strictly serial selector-unset XTX matrix is
+**974.481/1006.756/987.812/819.432 tok/s** prefill and
+**33.516/34.494/31.389/29.357 tok/s** decode at 512/1K/4K/8K. Tracked peaks are
+**15.587/15.668/16.111/16.369 GiB**, while whole-device peaks are
+**16.029/16.182/16.777/17.029 GiB**. The latest step removes exactly **40 MiB**
+tracked at 4K/8K and about **37.3/39.9 MiB** process-delta whole-device VRAM;
+all XTX and W7900 throughput movement is within **0.114%**, every token remains
+9707, forced-alias dense NextN transactions pass, and teardown reaches zero.
+This closes the prefill target while reducing memory; Vulkan's lower memory
+floors still lead by **0.340/0.482/0.865/0.863 GiB**, while 4K decode and Vulkan
+MTP remain blocked. Evidence:
+[`long-row hidden-owner reuse`](results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json),
+[`constrained long-row recoloring`](results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json),
+[`split-GDN lifetime reuse`](results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json),
 [`single-owner decode-scratch arena`](results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
-[`dense SiLU gate-plane alias`](results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
-[`right-sized compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
-[`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
+[`dense SiLU gate-plane alias`](results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json), and
 [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)

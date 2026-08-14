@@ -10,16 +10,18 @@ than per value head while preserving peer-wave32 output/state bits. Persistent
 scratch follows that ABI instead of reserving V-head-sized Q/K planes, dense
 SiLU overwrites its dead BF16 gate plane, split GDN reuses dead `conv_out` pages
 for its later recurrent output, one physical owner exposes all 188 private-c1
-decode-scratch ranges, and a constrained rows>=4096 placement order reuses the
-remaining long-row holes without moving `attn_out`. Tracked peak is
-**15.587/15.668/16.150/16.408 GiB** and whole-device peak is
-**16.029/16.182/16.813/17.068 GiB** at 512/1K/4K/8K. The latest step shrinks
-the 4K-row arena **401.0625 -> 372.375 MiB (-28.6875 MiB)** and saves exactly
-**28.6875 MiB** tracked plus about **31.47 MiB** whole-device at 4K/8K with all
-throughput movement within **0.172%**. Rows below 4096 deliberately retain the
-size-first order after RED coverage caught a short-row NextN NaN. This does not
-claim cross-engine closure: Vulkan's lower memory floors still lead by
-**0.340/0.482/0.901/0.902 GiB**, 4K decode remains below HIP, and Vulkan MTP
+decode-scratch ranges, a constrained rows>=4096 placement order reuses the
+remaining long-row holes without moving `attn_out`, and one physical 40-MiB
+hidden plane serves both long-row ping-pong roles. Tracked peak is
+**15.587/15.668/16.111/16.369 GiB** and whole-device peak is
+**16.029/16.182/16.777/17.029 GiB** at 512/1K/4K/8K. The latest step saves
+exactly **40 MiB** tracked at 4K/8K and **37.316/39.859 MiB** whole-device
+process-delta VRAM, with XTX/W7900 throughput movement within **0.114%** and a
+forced-alias dense NextN transaction passing. Rows below 4096 deliberately
+retain two hidden owners and the size-first arena order after RED coverage
+caught a short-row NextN NaN in the independent recoloring experiment. This
+does not claim cross-engine closure: Vulkan's lower memory floors still lead by
+**0.340/0.482/0.865/0.863 GiB**, 4K decode remains below HIP, and Vulkan MTP
 still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
@@ -29,7 +31,8 @@ still wins. See
 [`dense SiLU gate-plane alias`](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json), and
 [`single-owner decode-scratch arena`](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json), and
 [`split-GDN lifetime reuse`](../benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json), and
-[`constrained long-row recoloring`](../benchmarks/results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json).
+[`constrained long-row recoloring`](../benchmarks/results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json), and
+[`long-row hidden-owner reuse`](../benchmarks/results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

@@ -709,6 +709,9 @@ GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
         # Short verifier/NextN arenas retain size-first coloring: moving the
         # long-row priority fields there corrupts the second target-logit row.
         "priority_min_rows": 4_096,
+        # Long-row bulk layers consume the source hidden plane before writing
+        # final FFN output, so one physical plane can serve both roles.
+        "hidden_inplace_min_rows": 4_096,
         # Prefix-8 production oracle: duration>=5 reaches 372.375 MiB while
         # preserving root+128 IDs. Moving the next field (attn_out) diverges.
         "priority_min_live_stages": 5,
