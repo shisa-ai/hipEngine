@@ -193,8 +193,13 @@ stage is **1.126 ms**. D3B's exact owner split then measures **0.346-ms Q4
 pack8 + 0.589-ms Q6 dense + 0.191-ms residual adds** versus Vulkan's already
 fused **0.191/0.238-ms** Q4/Q6 down rows. The operation-complete gap is **0.698
 ms / 8.42%** at **121.11 MB / 3.61x MALL** current sole residency, admitting
-only same-resident Q4/Q6 residual fusions and their combined package. This
-campaign row is not yet a final cross-engine topline; see the [`D3B dense-down audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-audit.json),
+only same-resident Q4/Q6 residual fusions and their combined package. The
+bounded actual-weight screen selects combined C at **1.1033 -> 0.9420 ms
+(1.171x)**, projecting **0.165 ms / 1.99%** graph saving with bit-exact outputs,
+**20/20 sample + 5/5 balanced-block wins**, **24 projected node removals**, and
+zero bytes. This campaign row is not yet a final cross-engine topline; see the
+[`D3B fused-residual screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-screen.json),
+[`D3B dense-down audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-audit.json),
 [`post-D4 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d4-graph-rerank.json),
 [`retained D4 split-K3 route`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-splitk3-retained.json),
 [`D4 core/KV screen`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json),

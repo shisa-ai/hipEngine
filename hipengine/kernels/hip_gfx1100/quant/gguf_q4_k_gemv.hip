@@ -839,13 +839,14 @@ int launch_gguf_q4_k_selected_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t, typename out_t>
+template <typename scalar_t, typename out_t, bool kFuseResidual>
 __launch_bounds__(128, 4)
 __global__ void gguf_q4_k_pack8_prefill_out_kernel(
     const scalar_t* __restrict__ x,
     const int32_t* __restrict__ qweight,
     const float* __restrict__ scales,
     const float* __restrict__ mins,
+    const out_t* __restrict__ residual,
     out_t* __restrict__ out,
     int rows,
     int in_features,
@@ -936,14 +937,26 @@ __global__ void gguf_q4_k_pack8_prefill_out_kernel(
                         r0, r1, r2, r3, r4, r5, r6, r7);
   if (tid == 0) {
     const int64_t out_base = row * static_cast<int64_t>(out_features) + out_col;
-    store_output<out_t>(out, out_base + 0, r0);
-    store_output<out_t>(out, out_base + 1, r1);
-    store_output<out_t>(out, out_base + 2, r2);
-    store_output<out_t>(out, out_base + 3, r3);
-    store_output<out_t>(out, out_base + 4, r4);
-    store_output<out_t>(out, out_base + 5, r5);
-    store_output<out_t>(out, out_base + 6, r6);
-    store_output<out_t>(out, out_base + 7, r7);
+    if constexpr (kFuseResidual) {
+      const float values[8] = {r0, r1, r2, r3, r4, r5, r6, r7};
+#pragma unroll
+      for (int col = 0; col < 8; ++col) {
+        const int64_t out_index = out_base + col;
+        const uint16_t projected = float_to_bf16_bits(values[col]);
+        out[out_index] = float_to_bf16_bits(
+            bf16_bits_to_float(projected) +
+            bf16_bits_to_float(static_cast<uint16_t>(residual[out_index])));
+      }
+    } else {
+      store_output<out_t>(out, out_base + 0, r0);
+      store_output<out_t>(out, out_base + 1, r1);
+      store_output<out_t>(out, out_base + 2, r2);
+      store_output<out_t>(out, out_base + 3, r3);
+      store_output<out_t>(out, out_base + 4, r4);
+      store_output<out_t>(out, out_base + 5, r5);
+      store_output<out_t>(out, out_base + 6, r6);
+      store_output<out_t>(out, out_base + 7, r7);
+    }
   }
 }
 
@@ -1601,11 +1614,12 @@ int launch_gguf_q4_k_pack8_gemv_out(
   const int64_t out_packed = out_features >> 3;
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows));
-  gguf_q4_k_pack8_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+  gguf_q4_k_pack8_prefill_out_kernel<scalar_t, out_t, false><<<grid, block, 0, stream>>>(
       x,
       qweight,
       scales,
       mins,
+      nullptr,
       out,
       static_cast<int>(rows),
       static_cast<int>(in_features),
@@ -2136,6 +2150,42 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_gguf_q4_k_pack8_gemv_out<uint16_t, uint16_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_residual_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const float* scales,
+    const float* mins,
+    const uint16_t* residual,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || scales == nullptr || mins == nullptr ||
+      residual == nullptr || out == nullptr || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 ||
+      (threads != 32 && threads != 64 && threads != 128)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  gguf_q4_k_pack8_prefill_out_kernel<uint16_t, uint16_t, true><<<
+      dim3(static_cast<unsigned int>(out_packed), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)), 0, stream>>>(
+      x,
+      qweight,
+      scales,
+      mins,
+      residual,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(out_packed));
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out(

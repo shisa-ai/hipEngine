@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "qualified-screen",
+  "task": "D08-D3B bounded dense-down fused-residual screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "base_commit": "bde03ee60",
+  "source_state": "base plus transient in-tree Q4-pack8 and dense-BF16 fused-residual siblings and RED/GREEN test",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "protocol": {
+    "weights": "all 24 current ffn_down residents in model order; 121,110,528 bytes / 3.61x MALL per route",
+    "input": "shared deterministic BF16 1x3584 activation and 1x1024 residual; timing depends on actual resident weights, not token IDs",
+    "timing": "one warmup per route; five blocks of four counter-rotated orders, 20 device-clock observations per route; marker baseline subtracted",
+    "control": "12 Q4 pack8 t32 + 12 Q6 dense-BF16 t256 projections and 24 separate BF16 adds",
+    "A": "Q4 residual fused only",
+    "B": "Q6 residual fused only",
+    "C": "both residual fusions",
+    "acceptance": "A/B each exact and faster; C exact, >=1% normalized graph saving, and >=4/5 balanced block wins"
+  },
+  "registry": {
+    "q4": [
+      "hip_gfx1151",
+      "linear+residual",
+      "gguf_q4_k",
+      "pack8_prefill_bf16_residual_bf16_out"
+    ],
+    "q6_dense": [
+      "hip_gfx1151",
+      "linear+residual",
+      "bf16",
+      "out_bf16_residual_bf16_out"
+    ]
+  },
+  "residency": {
+    "current_down_weight_bytes": 121110528,
+    "candidate_persistent_bytes_delta": 0,
+    "candidate_hot_scratch_bytes_delta": 0
+  },
+  "correctness": {
+    "A_q4_fused": {
+      "rows_exact": 24,
+      "rows_total": 24,
+      "bit_exact": true,
+      "all_finite": true,
+      "max_abs": 0.0
+    },
+    "B_q6_fused": {
+      "rows_exact": 24,
+      "rows_total": 24,
+      "bit_exact": true,
+      "all_finite": true,
+      "max_abs": 0.0
+    },
+    "C_combined": {
+      "rows_exact": 24,
+      "rows_total": 24,
+      "bit_exact": true,
+      "all_finite": true,
+      "max_abs": 0.0
+    }
+  },
+  "timing": {
+    "control": {
+      "median_ms": 1.1032852263049795,
+      "mean_ms": 1.104589830052099,
+      "min_ms": 0.938451182246268,
+      "max_ms": 1.6259724726981264,
+      "balanced_block_means_ms": [
+        1.2547004934375314,
+        1.1232381759718466,
+        1.0046260942666065,
+        1.1412578038898908,
+        0.9991265826946198
+      ]
+    },
+    "A_q4_fused": {
+      "median_ms": 1.0048020927261798,
+      "mean_ms": 1.0101398751377617,
+      "min_ms": 0.837104874261096,
+      "max_ms": 1.1555586865043581,
+      "balanced_block_means_ms": [
+        1.0674021265404268,
+        1.028959045624186,
+        0.9907898053176034,
+        0.9954106943818254,
+        0.968137703824767
+      ]
+    },
+    "B_q6_fused": {
+      "median_ms": 0.9855190486925158,
+      "mean_ms": 0.9725389333483618,
+      "min_ms": 0.785727256787897,
+      "max_ms": 1.0796571297966135,
+      "balanced_block_means_ms": [
+        1.0179907449153391,
+        0.9217177872332432,
+        0.9515828120303577,
+        0.9994984611386635,
+        0.971904861424206
+      ]
+    },
+    "C_combined": {
+      "median_ms": 0.9420363534465485,
+      "mean_ms": 0.9311973844053703,
+      "min_ms": 0.7614251452760245,
+      "max_ms": 1.0029127216711753,
+      "balanced_block_means_ms": [
+        0.952666629095281,
+        0.9290492169497044,
+        0.9162481762223225,
+        0.9236343192691113,
+        0.9343885804904318
+      ]
+    }
+  },
+  "comparisons": {
+    "A_q4_fused": {
+      "speedup": 1.098012468616183,
+      "normalized_candidate_stage_ms": 1.0258216843562347,
+      "projected_graph_saving_ms": 0.10054331564376562,
+      "projected_graph_saving_percent": 1.2127371027752432,
+      "sample_wins": 18,
+      "block_wins": 5
+    },
+    "B_q6_fused": {
+      "speedup": 1.1194966020887203,
+      "normalized_candidate_stage_ms": 1.0061352557019514,
+      "projected_graph_saving_ms": 0.12022974429804889,
+      "projected_graph_saving_percent": 1.450191599847694,
+      "sample_wins": 19,
+      "block_wins": 5
+    },
+    "C_combined": {
+      "speedup": 1.1711705416340712,
+      "normalized_candidate_stage_ms": 0.9617429400405203,
+      "projected_graph_saving_ms": 0.16462205995947998,
+      "projected_graph_saving_percent": 1.9856444833737825,
+      "sample_wins": 20,
+      "block_wins": 5
+    }
+  },
+  "mechanical": {
+    "control_launches": 48,
+    "A_launches": 36,
+    "B_launches": 36,
+    "C_launches": 24,
+    "combined_graph_node_projection": {
+      "pre_d3b": 310,
+      "candidate": 286,
+      "delta": -24
+    },
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0,
+    "unfused_fallback": "registered primitive projection plus gguf_bf16_add"
+  },
+  "validation": {
+    "red": "tests/test_gguf_dense_down_residual_fusion.py failed collection because both fused wrappers were absent.",
+    "green": "3 passed: registry contract plus Q4 and dense GPU bit-exact comparisons to unfused projection+add and a CPU rounded-BF16 boundary oracle.",
+    "affected_bundle": "64 tests passed before one unrelated existing isolated gfx1151 Q5T16 lazy-bootstrap failure; the changed new/dense/Q4 files all passed. A detached clean bde03ee60 worktree reproduces the failing backend node unchanged, proving it predates D3B.",
+    "rocprof": {
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/d08-d3b/rocprof-fused -- python3 /tmp/d08-d3b/trace_fused_leaves.py",
+      "trace": "/tmp/d08-d3b/rocprof-fused/zbook/1246593_kernel_trace.csv",
+      "trace_sha256": "b8d1287bca8203f9eb0a745621438e97b2fc327ab03be7ca359c87c523f446d4",
+      "targets": [
+        {
+          "kernel_name": "void (anonymous namespace)::gguf_q4_k_pack8_prefill_out_kernel<unsigned short, unsigned short, true>(unsigned short const*, int const*, float const*, float const*, unsigned short const*, unsigned short*, int, int, int, int)",
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "grid": [
+            4096,
+            1,
+            1
+          ],
+          "duration_ns": 0
+        },
+        {
+          "kernel_name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short, true>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "grid": [
+            262144,
+            1,
+            1
+          ],
+          "duration_ns": 0
+        }
+      ],
+      "caveat": "rocprofv3 on this gfx1151/TheRock stack reports equal start/end timestamps (zero duration), the already-recorded M2 tool blocker. Kernel identity and geometry are confirmed here; plausible device durations come from the 20-observation same-stream marker screen."
+    }
+  },
+  "raw": {
+    "screen": "/tmp/d08-d3b/dense-down-residual-fusion-screen.json",
+    "screen_sha256": "1181e561893348a6d9081730af59dcb7f99270bbae97dc33da9f357a52117c1e",
+    "screen_script": "/tmp/d08-d3b/screen_dense_down_residual_fusions.py",
+    "screen_script_sha256": "79f0b382c2fec5f74df048bba2c4f207d1db87849826ffba406a3721da806bb9",
+    "trace_script": "/tmp/d08-d3b/trace_fused_leaves.py",
+    "trace_script_sha256": "3ebae1ad0f8eada2e5f0957c69d992d2444ee3c06801b0b9b1d1829b5826b614"
+  },
+  "decision": {
+    "status": "qualified-full-model-gate",
+    "selected": "C_combined",
+    "reason": "A and B are independently bit-exact and faster; C is bit-exact, wins 20/20 samples and 5/5 balanced blocks, and projects 0.165 ms / 1.99% graph saving",
+    "next": "Retain the two registered siblings, bind only exact gfx1151 Qwen3.5-0.8B Q4_K_M c1 dense-down owners through a backend capability, preserve unfused/Q8/peer fallbacks, and spend the sole combined full-model gate."
+  },
+  "passed": true
+}
