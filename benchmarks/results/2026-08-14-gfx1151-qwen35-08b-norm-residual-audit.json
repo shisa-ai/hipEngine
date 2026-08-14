@@ -1,0 +1,435 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "audit-admits-bounded-screen",
+  "task": "D08-D5 Qwen3.5-0.8B gfx1151 RMSNorm/residual boundary owner audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "source_commit": "3a87b92f9",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "protocol": {
+    "owners": "all 24 attn_norm F32 weights and all 24 post_attention_norm F32 weights; rows1/hidden1024/BF16 activations",
+    "timing": "one warmup per route, then five blocks of nine counter-rotated orders = 45 same-stream device-clock observations per route; marker baseline subtracted",
+    "correctness": "every actual weight compared against current t256 using deterministic BF16 random inputs; bit exactness, finite, vector top-1, max abs",
+    "screen_boundary": "audit/ranking only; no runtime route or default changes",
+    "exact_command": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib:$LD_LIBRARY_PATH HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-d5/audit_norm_residual_owners.py"
+  },
+  "owner_inventory": {
+    "standalone_attention_rmsnorm": {
+      "linear_attention": 18,
+      "full_attention": 6,
+      "total": 24,
+      "hidden_size": 1024,
+      "weight_dtype": "f32",
+      "weight_bytes": 98304,
+      "current_threads": 256,
+      "graph_nodes": 24,
+      "m11_stage_ms": 0.332426,
+      "vulkan_role_ms": 0.108623
+    },
+    "post_attention_add_rmsnorm": {
+      "linear_attention": 18,
+      "full_attention": 6,
+      "total": 24,
+      "hidden_size": 1024,
+      "weight_dtype": "f32",
+      "weight_bytes": 98304,
+      "current_threads": 256,
+      "graph_nodes": 24,
+      "m11_stage_ms": 0.341622,
+      "vulkan_role_ms": 0.163005
+    },
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0
+  },
+  "semantics": {
+    "hip_standalone": "one BF16-input/F32-weight RMSNorm node per layer; reduction and output are BF16",
+    "hip_post_attention": "one node per layer computes unrounded FP32 BF16+BF16 sum for norm, emits rounded BF16 residual and BF16 normalized output",
+    "vulkan": "49 RMS_NORM(1024,c1) calls split 24 attention + 24 post-attention + 1 final; post-attention role also assigns 18 standalone ADD calls while six residual adds are fused into projection boundaries",
+    "join_caveat": "Vulkan residual_norm_glue is operation-complete role evidence, not a one-to-one kernel comparison with HIP add+RMSNorm"
+  },
+  "implementation_inventory": {
+    "source": "hipengine/kernels/hip_gfx1100/fused/gguf_ops.{hip,py}",
+    "current_registry_keys": [
+      [
+        "hip_gfx1151",
+        "rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out"
+      ],
+      [
+        "hip_gfx1151",
+        "add_rmsnorm",
+        "gguf_f32_weight",
+        "bf16_out"
+      ]
+    ],
+    "staged_source_key": [
+      "hip_gfx1100",
+      "add_rmsnorm",
+      "gguf_f32_weight",
+      "bf16_out_staged_f32_local256"
+    ],
+    "staged_gfx1151_registered": false,
+    "staged_global_read_saving_bytes_per_24_call_window": 98304,
+    "dynamic_lds_bytes": {
+      "t64": 256,
+      "t128": 512,
+      "t256": 1024,
+      "t512": 2048,
+      "staged256": 5120
+    }
+  },
+  "prior_staged_rejection": {
+    "artifact": "/home/lhl/hipEngine/benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-rejected.json",
+    "sha256": "27cfd952363e9bd482f9693abc78f985914b39387209df76bca1f2d3d66413e8",
+    "scope": "gfx1100 W7900 Laguna hidden3072, 48 calls/token",
+    "decision": "runtime integration rejected; unchanged schedule must not be retried on that owner",
+    "independent_gate_rationale": "gfx1151, Qwen3.5-0.8B, hidden1024, and 24 calls/token are a distinct architecture/model/shape owner; the retained gfx1151 exclusion remains until this campaign independently qualifies it"
+  },
+  "correctness": {
+    "rms_t64": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "rms_t128": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "rms_t256": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "rms_t512": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "add_t64": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      },
+      "residual": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "add_t128": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      },
+      "residual": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "add_t256": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      },
+      "residual": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "add_t512": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      },
+      "residual": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    },
+    "add_staged256": {
+      "norm": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      },
+      "residual": {
+        "bit_exact_rows": 24,
+        "rows": 24,
+        "bit_exact": true,
+        "top1_rows": 24,
+        "top1_agreement": 1.0,
+        "max_abs": 0.0,
+        "all_finite": true
+      }
+    }
+  },
+  "timing_ms": {
+    "rms_t64": {
+      "median": 0.19035667768760645,
+      "mean": 0.18615909116209686,
+      "min": 0.13433335838092375,
+      "max": 0.22278328824767057
+    },
+    "rms_t128": {
+      "median": 0.13017232742210197,
+      "mean": 0.13018652105667436,
+      "min": 0.09698239154393347,
+      "max": 0.16776375112714156
+    },
+    "rms_t256": {
+      "median": 0.11703611862538824,
+      "mean": 0.11509495819835465,
+      "min": 0.08032511772367498,
+      "max": 0.14178439034164914
+    },
+    "rms_t512": {
+      "median": 0.11596282937581405,
+      "mean": 0.11099561388861058,
+      "min": 0.07192478208596334,
+      "max": 0.14788598336839998
+    },
+    "add_t64": {
+      "median": 0.191198276725779,
+      "mean": 0.19313167239978182,
+      "min": 0.14008052800320608,
+      "max": 0.22899258591323515
+    },
+    "add_t128": {
+      "median": 0.12670824566676686,
+      "mean": 0.1296499460085273,
+      "min": 0.09916278429015128,
+      "max": 0.15227181645125737
+    },
+    "add_t256": {
+      "median": 0.12367247770764453,
+      "mean": 0.11959706776208129,
+      "min": 0.08233080352670073,
+      "max": 0.142380522993688
+    },
+    "add_t512": {
+      "median": 0.12057722172127042,
+      "mean": 0.11313144975453361,
+      "min": 0.07642332932571887,
+      "max": 0.13775423304278128
+    },
+    "add_staged256": {
+      "median": 0.11875313094880273,
+      "mean": 0.11464076189203933,
+      "min": 0.07586226330027052,
+      "max": 0.1550971846508366
+    }
+  },
+  "comparisons": {
+    "standalone_rmsnorm": {
+      "rms_t64": {
+        "speedup": 0.6148253901418459,
+        "normalized_stage_ms": 0.5406835913580379,
+        "projected_saving_ms": -0.2082575913580379,
+        "projected_graph_saving_percent": -2.5035453039594473,
+        "sample_wins": 0,
+        "block_wins": 0
+      },
+      "rms_t128": {
+        "speedup": 0.899086011160285,
+        "normalized_stage_ms": 0.3697377068196166,
+        "projected_saving_ms": -0.0373117068196166,
+        "projected_graph_saving_percent": -0.4485385035994631,
+        "sample_wins": 3,
+        "block_wins": 0
+      },
+      "rms_t256": {
+        "speedup": 1.0,
+        "normalized_stage_ms": 0.332426,
+        "projected_saving_ms": 0.0,
+        "projected_graph_saving_percent": 0.0,
+        "sample_wins": 0,
+        "block_wins": 0
+      },
+      "rms_t512": {
+        "speedup": 1.0092554593170184,
+        "normalized_stage_ms": 0.32937746031610154,
+        "projected_saving_ms": 0.0030485396838984546,
+        "projected_graph_saving_percent": 0.03664767829008805,
+        "sample_wins": 22,
+        "block_wins": 5
+      }
+    },
+    "add_rmsnorm": {
+      "add_t64": {
+        "speedup": 0.6468284119789347,
+        "normalized_stage_ms": 0.5281493417316455,
+        "projected_saving_ms": -0.18652734173164554,
+        "projected_graph_saving_percent": -2.242317542458587,
+        "sample_wins": 0,
+        "block_wins": 0
+      },
+      "add_t128": {
+        "speedup": 0.976041275426493,
+        "normalized_stage_ms": 0.35000773901772153,
+        "projected_saving_ms": -0.00838573901772155,
+        "projected_graph_saving_percent": -0.10080822216921316,
+        "sample_wins": 9,
+        "block_wins": 0
+      },
+      "add_t256": {
+        "speedup": 1.0,
+        "normalized_stage_ms": 0.341622,
+        "projected_saving_ms": 0.0,
+        "projected_graph_saving_percent": 0.0,
+        "sample_wins": 0,
+        "block_wins": 0
+      },
+      "add_t512": {
+        "speedup": 1.025670320995861,
+        "normalized_stage_ms": 0.33307193647594935,
+        "projected_saving_ms": 0.008550063524050633,
+        "projected_graph_saving_percent": 0.10278363081320521,
+        "sample_wins": 39,
+        "block_wins": 5
+      },
+      "add_staged256": {
+        "speedup": 1.0414249857627977,
+        "normalized_stage_ms": 0.32803322819240505,
+        "projected_saving_ms": 0.013588771807594935,
+        "projected_graph_saving_percent": 0.16335589797057254,
+        "sample_wins": 36,
+        "block_wins": 5
+      }
+    }
+  },
+  "existing_route_stop": {
+    "best_standalone": "rms_t512",
+    "best_add_rmsnorm": "add_staged256",
+    "combined_normalized_stage_ms": 0.6574106885085066,
+    "combined_saving_ms": 0.01663731149149339,
+    "combined_graph_saving_percent": 0.20000357626066056,
+    "threshold_percent": 1.0,
+    "passed": false,
+    "reason": "All existing thread schedules plus the independently callable staged diagnostic project only 0.200% complete-wall saving; none may enter a full-model gate. The prior gfx1100/Laguna rejection remains closed."
+  },
+  "frozen_screen": {
+    "status": "one-new-family-screen-admitted",
+    "candidate_family": "fixed-hidden1024 register-cached DPP reduction",
+    "variants": {
+      "A_standalone": {
+        "operation": "24 BF16-input/F32-weight RMSNorm nodes",
+        "schedule": "t256/wave32; four BF16 values cached per thread; DPP intra-wave plus shared wave-leader final reduction",
+        "global_read_saving_bytes": 49152
+      },
+      "B_add_rmsnorm": {
+        "operation": "24 unrounded-F32 BF16+BF16 add+RMSNorm nodes",
+        "schedule": "t256/wave32; four unrounded sums cached per thread; DPP intra-wave plus shared wave-leader final reduction",
+        "global_read_saving_bytes": 98304
+      },
+      "C_combined": {
+        "operation": "A+B only",
+        "global_read_saving_bytes": 147456
+      }
+    },
+    "mechanical_projection": {
+      "current_dynamic_barriers_per_call": 9,
+      "candidate_dynamic_barriers_per_call": 2,
+      "barriers_removed_per_token": 336,
+      "current_complete_stage_ms": 0.674048,
+      "max_candidate_stage_ms_for_1pct_wall_gate": 0.59086293,
+      "required_package_reduction_percent": 12.341119623528295
+    },
+    "constraints": [
+      "No layout, sidecar, persistent allocation, hot scratch, or node-count change",
+      "Exact hidden1024/rows1/BF16-input/F32-weight/BF16-output owner only",
+      "Unfused generic t256 keys remain fallback",
+      "RED/GREEN actual-weight and independent CPU oracle before timing",
+      "Reject unless C saves >=1% current graph wall, wins every balanced block, remains spill/scratch-free, and Q8/rows>1/other models/backends remain on fallback"
+    ]
+  },
+  "lineage": {
+    "catalog_read": "docs/KERNELS.md GGUF norm/RoPE/glue family",
+    "check_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "check_status": "blocked before report because manifest reference /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "port_status": "No external kernel is ported; the frozen candidate is a new in-tree shape-specific schedule derived from current gguf_ops semantics."
+  },
+  "raw": {
+    "audit": "/tmp/d08-d5/norm-residual-owner-audit.json",
+    "audit_sha256": "fdf853c43d611e1432d631a7671c08fc4500786b3614a39424b7520287c8f2c9",
+    "script": "/tmp/d08-d5/audit_norm_residual_owners.py",
+    "script_sha256": "6a60407d9943ac81ad6e4f0b979f630fe40d333a8ffd5c9b2587f0bb9e4ceb16"
+  },
+  "decision": {
+    "status": "screen-new-family-only",
+    "reason": "Existing routes stop at 0.200% projected wall saving, but the current bodies execute nine barriers and reread 147,456 bytes across the exact 48-node package. One fixed-1024 register+DPP family has a concrete >=1% mechanism and is the sole screen candidate; no existing staged/thread route is reopened."
+  }
+}
