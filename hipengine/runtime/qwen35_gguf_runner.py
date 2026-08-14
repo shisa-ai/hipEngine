@@ -12261,8 +12261,14 @@ class Qwen35GGUFResidentSession:
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
         alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
         self._prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
-        self._prefill_hidden_a = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
-        self._prefill_hidden_b = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
+        self._prefill_hidden_a, self._prefill_hidden_b = (
+            _allocate_prefill_hidden_buffers(
+                self.runner,
+                rows=prefill_rows,
+                nbytes=alloc_capacity * hidden_bytes,
+                runtime=runtime,
+            )
+        )
         self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
             self.runner,
             rows=prefill_rows,
@@ -12286,6 +12292,11 @@ class Qwen35GGUFResidentSession:
                 head_major_kv_capacity=prefill_capacity,
                 buffers=(*self._bulk_prefill_scratch.buffers, *head_major_pair),
             )
+        prefill_hidden_buffers = (
+            (self._prefill_hidden_a,)
+            if self._prefill_hidden_a.ptr == self._prefill_hidden_b.ptr
+            else (self._prefill_hidden_a, self._prefill_hidden_b)
+        )
         self._buffers = (
             self._token_buf,
             self._hidden_a,
@@ -12298,8 +12309,7 @@ class Qwen35GGUFResidentSession:
             self._lm_out_index,
             self._lm_out_value,
             self._prefill_token_buf,
-            self._prefill_hidden_a,
-            self._prefill_hidden_b,
+            *prefill_hidden_buffers,
             *self._bulk_prefill_scratch.buffers,
         )
         # Lazily-created per-layer MoE FFN graph cache (rows==1 resident decode),
@@ -21862,11 +21872,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     return disabled_fields
 
 
-def _gguf_prefill_scratch_priority_min_live_stages(
-    runner: object,
-    *,
-    rows: int,
-) -> int | None:
+def _gguf_dense_prefill_scratch_policy(runner: object) -> Mapping | None:
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
@@ -21892,7 +21898,16 @@ def _gguf_prefill_scratch_priority_min_live_stages(
             getattr(weights, "file_type_name", None),
         )
     )
-    if not isinstance(policy, Mapping):
+    return policy if isinstance(policy, Mapping) else None
+
+
+def _gguf_prefill_scratch_priority_min_live_stages(
+    runner: object,
+    *,
+    rows: int,
+) -> int | None:
+    policy = _gguf_dense_prefill_scratch_policy(runner)
+    if policy is None:
         return None
     raw = policy.get("priority_min_live_stages")
     if raw is None:
@@ -21905,6 +21920,26 @@ def _gguf_prefill_scratch_priority_min_live_stages(
     if int(rows) < max(1, min_rows):
         return None
     return value if value > 0 else None
+
+
+def _allocate_prefill_hidden_buffers(
+    runner: object,
+    *,
+    rows: int,
+    nbytes: int,
+    runtime: HipRuntime,
+) -> tuple[DeviceBuffer, DeviceBuffer]:
+    hidden_a = malloc(int(nbytes), runtime=runtime)
+    policy = _gguf_dense_prefill_scratch_policy(runner)
+    if policy is None:
+        return hidden_a, malloc(int(nbytes), runtime=runtime)
+    try:
+        min_rows = int(policy.get("hidden_inplace_min_rows", 0))
+    except (TypeError, ValueError):
+        min_rows = 0
+    if min_rows > 0 and int(rows) >= min_rows:
+        return hidden_a, hidden_a
+    return hidden_a, malloc(int(nbytes), runtime=runtime)
 
 
 @dataclass(frozen=True)

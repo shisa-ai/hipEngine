@@ -272,6 +272,29 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
             )
 
 
+def test_gfx1100_dense_qwen36_hidden_reuse_is_long_row_only(monkeypatch) -> None:
+    allocations = _install_fake_device(monkeypatch)
+    runner = _fake_dense_qwen36_runner()
+
+    short_a, short_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=64,
+        nbytes=64 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert short_a.ptr != short_b.ptr
+    assert len(allocations) == 2
+
+    long_a, long_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=4_096,
+        nbytes=4_096 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert long_a.ptr == long_b.ptr
+    assert len(allocations) == 3
+
+
 def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:
     runner = _fake_dense_qwen36_runner()
 
