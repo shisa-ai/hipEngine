@@ -700,16 +700,16 @@ ROCm-default scheduler diagnostic. Never attribute a result across different
 queue policies without an explicit process-level comparison. gfx1100 and mixed
 recognized architecture sets retain ROCm's queue default.
 
-On gfx1100, hipEngine applies `HSA_SCRATCH_SINGLE_LIMIT=33554432` before loading
+On gfx1100, hipEngine applies `HSA_SCRATCH_SINGLE_LIMIT=8388608` before loading
 `libamdhip64` unless the user already supplied a value. ROCr 7.2.4's upstream
 140-MiB threshold is reserved per process/GPU; dispatches above it use
-use-once scratch. Cached 4K tracing identifies one scratch-bearing AOTriton
-`attn_fwd` family with 16 launches and 16 matching 300-MiB allocation/free
-pairs. Lowering the threshold to 32 MiB preserves those allocations and kernel
-timing while removing the exact 108-MiB difference from the reserve. Every
-artifact must capture this variable: use `146800640` for an upstream-default
-rollback, do not overwrite an explicit user value, and do not apply a
-backend-local default to mixed recognized architectures. See
+use-once scratch. Cached 4K tracing at the intermediate 32-MiB threshold
+identifies one scratch-bearing AOTriton `attn_fwd` family with 16 launches and
+16 matching 300-MiB allocation/free pairs. Lowering the final threshold to 8
+MiB preserves full-engine behavior and removes the exact 132-MiB difference
+from the reserve. Every artifact must capture this variable: use `146800640`
+for an upstream-default rollback, do not overwrite an explicit user value, and
+do not apply a backend-local default to mixed recognized architectures. See
 `benchmarks/results/2026-08-15-gfx1100-rocr-scratch-reserve-retained.json`.
 
 For a bounded 128K stall reproduction, add the default-off persistent prefill

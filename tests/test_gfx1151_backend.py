@@ -225,8 +225,8 @@ def test_gfx1100_hip_process_environment_caps_reclaimable_scratch() -> None:
 
     applied = configure_hip_process_environment(detected_arches=["gfx1100"], env=env)
 
-    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "33554432"}
-    assert env["HSA_SCRATCH_SINGLE_LIMIT"] == "33554432"
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
+    assert env["HSA_SCRATCH_SINGLE_LIMIT"] == "8388608"
     assert "GPU_MAX_HW_QUEUES" not in env
 
 
@@ -244,7 +244,7 @@ def test_explicit_gfx1100_arch_hint_applies_scratch_default() -> None:
 
     applied = configure_hip_process_environment(env=env)
 
-    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "33554432"}
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
 
 
 def test_mixed_hip_arches_do_not_receive_a_process_wide_queue_default() -> None:
@@ -273,7 +273,7 @@ def test_explicit_gfx1100_backend_hint_applies_when_arch_detection_is_empty() ->
 
     applied = configure_hip_process_environment(detected_arches=[], env=env)
 
-    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "33554432"}
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
 
 
 def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
