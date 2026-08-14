@@ -21379,6 +21379,66 @@ def _align_prefill_scratch(value: int, alignment: int = 256) -> int:
     return (int(value) + alignment - 1) // alignment * alignment
 
 
+def _prefill_scratch_field_subranges(
+    name: str,
+    size: int,
+    *,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ],
+) -> tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...]:
+    subranges = allocation_subranges.get(name)
+    if subranges is None:
+        return ((0, int(size), lifetimes[name]),)
+    for relative_offset, subrange_size, _subrange_lifetimes in subranges:
+        if (
+            int(relative_offset) < 0
+            or int(subrange_size) <= 0
+            or int(relative_offset) + int(subrange_size) > int(size)
+        ):
+            raise ValueError(f"invalid bulk-prefill allocation subrange for {name}")
+    return subranges
+
+
+def _prefill_scratch_allocations_conflict(
+    name_a: str,
+    offset_a: int,
+    size_a: int,
+    name_b: str,
+    offset_b: int,
+    size_b: int,
+    *,
+    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ],
+) -> bool:
+    subranges_a = _prefill_scratch_field_subranges(
+        name_a,
+        size_a,
+        lifetimes=lifetimes,
+        allocation_subranges=allocation_subranges,
+    )
+    subranges_b = _prefill_scratch_field_subranges(
+        name_b,
+        size_b,
+        lifetimes=lifetimes,
+        allocation_subranges=allocation_subranges,
+    )
+    return any(
+        int(offset_a) + int(relative_a)
+        < int(offset_b) + int(relative_b) + int(subrange_size_b)
+        and int(offset_b) + int(relative_b)
+        < int(offset_a) + int(relative_a) + int(subrange_size_a)
+        and _prefill_scratch_lifetimes_overlap(lifetimes_a, lifetimes_b)
+        for relative_a, subrange_size_a, lifetimes_a in subranges_a
+        for relative_b, subrange_size_b, lifetimes_b in subranges_b
+    )
+
+
 def _allocate_prefill_scratch_liveness_arena(
     sizes: Mapping[str, int],
     *,
@@ -21386,6 +21446,10 @@ def _allocate_prefill_scratch_liveness_arena(
     lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
         _GGUF_PREFILL_SCRATCH_LIFETIMES
     ),
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ] = MappingProxyType({}),
 ) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
     missing = sorted(set(sizes) - set(lifetimes))
     if missing:
@@ -21399,17 +21463,49 @@ def _allocate_prefill_scratch_liveness_arena(
         # Avoid exact power-of-two separation between simultaneously-live
         # weight/activation streams; on RDNA3 that can map both ranges onto the
         # same L2/TLB colors and made the otherwise-exact 512 route slower.
-        candidates.update(
-            _align_prefill_scratch(offset + allocated + _GGUF_PREFILL_SCRATCH_COLOR_BYTES)
-            for offset, allocated in offsets.values()
+        current_subranges = _prefill_scratch_field_subranges(
+            name,
+            size,
+            lifetimes=lifetimes,
+            allocation_subranges=allocation_subranges,
         )
+        for other, (other_offset, other_size) in offsets.items():
+            other_subranges = _prefill_scratch_field_subranges(
+                other,
+                other_size,
+                lifetimes=lifetimes,
+                allocation_subranges=allocation_subranges,
+            )
+            candidates.update(
+                _align_prefill_scratch(
+                    other_offset
+                    + other_relative
+                    + other_subrange_size
+                    + _GGUF_PREFILL_SCRATCH_COLOR_BYTES
+                    - current_relative
+                )
+                for current_relative, _current_size, _current_lifetimes in current_subranges
+                for other_relative, other_subrange_size, _other_lifetimes in other_subranges
+                if (
+                    other_offset
+                    + other_relative
+                    + other_subrange_size
+                    + _GGUF_PREFILL_SCRATCH_COLOR_BYTES
+                    >= current_relative
+                )
+            )
         for candidate in sorted(candidates):
             conflict = False
             for other, (other_offset, other_size) in offsets.items():
-                ranges_overlap = candidate < other_offset + other_size and other_offset < candidate + size
-                if ranges_overlap and _prefill_scratch_lifetimes_overlap(
-                    lifetimes[name],
-                    lifetimes[other],
+                if _prefill_scratch_allocations_conflict(
+                    name,
+                    candidate,
+                    size,
+                    other,
+                    other_offset,
+                    other_size,
+                    lifetimes=lifetimes,
+                    allocation_subranges=allocation_subranges,
                 ):
                     conflict = True
                     break
@@ -21495,6 +21591,10 @@ def _allocate_prefill_scratch_liveness_arenas(
     lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
         _GGUF_PREFILL_SCRATCH_LIFETIMES
     ),
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ] = MappingProxyType({}),
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
@@ -21502,6 +21602,8 @@ def _allocate_prefill_scratch_liveness_arenas(
     Mapping[str, str],
 ]:
     if grouping == "owner_slots":
+        if allocation_subranges:
+            raise ValueError("owner-slot prefill arenas do not support allocation subranges")
         return _allocate_prefill_scratch_liveness_owner_slots(
             sizes,
             runtime=runtime,
@@ -21513,6 +21615,7 @@ def _allocate_prefill_scratch_liveness_arenas(
         sizes,
         runtime=runtime,
         lifetimes=lifetimes,
+        allocation_subranges=allocation_subranges,
     )
     return (
         (arena,),
@@ -21750,6 +21853,13 @@ class _GGUFFullAttentionPrefillScratch:
     allocation_groups: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    allocation_inplace_aliases: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    allocation_subranges: Mapping[
+        str,
+        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+    ] = field(default_factory=lambda: MappingProxyType({}))
     cos_table: object | None = None
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
@@ -21979,6 +22089,11 @@ class _GGUFFullAttentionPrefillScratch:
         allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
         allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
         allocation_groups: Mapping[str, str] = MappingProxyType({})
+        allocation_inplace_aliases: Mapping[str, str] = MappingProxyType({})
+        allocation_subranges: Mapping[
+            str,
+            tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+        ] = MappingProxyType({})
         owners: list[DeviceBuffer] = []
         liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
             runner,
@@ -21990,32 +22105,99 @@ class _GGUFFullAttentionPrefillScratch:
             else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
         )
         if liveness_disabled_fields is not None:
-            active_sizes = {
-                name: int(nbytes)
-                for name, nbytes in field_sizes.items()
+            arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
+            # Dense SiLU consumes gate/up elementwise and may replace the dead
+            # gate plane in place.  Keep this intentional source/output alias
+            # separate from ordinary stage-disjoint arena coloring. Owner-slot
+            # arenas cannot describe subranges and retain the ordinary layout.
+            inplace_aliases = (
+                {"ffn_intermediate": "ffn_gate_up"}
+                if not bool(cfg.is_moe) and arena_grouping == "single"
+                else {}
+            )
+            active_names = {
+                name
+                for name in field_sizes
                 if name not in liveness_disabled_fields and name not in inactive_fields
             }
+            active_sizes = {
+                name: int(field_sizes[name])
+                for name in active_names
+                if name not in inplace_aliases
+            }
+            allocation_plan_lifetimes = dict(scratch_lifetimes)
+            planned_subranges: dict[
+                str,
+                tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+            ] = {}
+            for alias, source in inplace_aliases.items():
+                source_lifetimes = scratch_lifetimes[source]
+                alias_lifetimes = scratch_lifetimes[alias]
+                alias_nbytes = int(field_sizes[alias])
+                source_nbytes = int(field_sizes[source])
+                combined_lifetimes = tuple(
+                    dict.fromkeys((*source_lifetimes, *alias_lifetimes))
+                )
+                allocation_plan_lifetimes[source] = combined_lifetimes
+                source_subranges = [(0, alias_nbytes, combined_lifetimes)]
+                if source_nbytes > alias_nbytes:
+                    source_subranges.append(
+                        (
+                            alias_nbytes,
+                            source_nbytes - alias_nbytes,
+                            source_lifetimes,
+                        )
+                    )
+                planned_subranges[source] = tuple(source_subranges)
             arenas, active_fields, allocation_offsets, allocation_groups = (
                 _allocate_prefill_scratch_liveness_arenas(
                     active_sizes,
-                    grouping=_gguf_prefill_scratch_arena_grouping(runner.backend),
+                    grouping=arena_grouping,
                     runtime=runtime,
-                    lifetimes=scratch_lifetimes,
+                    lifetimes=allocation_plan_lifetimes,
+                    allocation_subranges=planned_subranges,
                 )
             )
             fields = {
                 name: (
                     _GGUF_PREFILL_SCRATCH_EMPTY
                     if name in liveness_disabled_fields or name in inactive_fields
-                    else active_fields[name]
+                    else active_fields.get(name)
                 )
                 for name in field_sizes
             }
+            offsets = dict(allocation_offsets)
+            groups = dict(allocation_groups)
+            for alias, source in inplace_aliases.items():
+                alias_nbytes = int(field_sizes[alias])
+                source_view = fields[source]
+                if source_view is None or alias_nbytes > int(source_view.nbytes):
+                    raise RuntimeError(
+                        f"invalid dense prefill in-place alias {alias} -> {source}"
+                    )
+                fields[alias] = DeviceBuffer(
+                    ptr=int(source_view.ptr),
+                    nbytes=alias_nbytes,
+                )
+                source_offset, _source_nbytes = offsets[source]
+                offsets[alias] = (int(source_offset), alias_nbytes)
+                groups[alias] = groups[source]
             owners.extend(arenas)
             allocation_mode = "liveness_aliased"
+            allocation_offsets = MappingProxyType(offsets)
             allocation_lifetimes = MappingProxyType(
-                {name: scratch_lifetimes[name] for name in active_sizes}
+                {
+                    name: (
+                        scratch_lifetimes[name]
+                        if name in inplace_aliases
+                        else allocation_plan_lifetimes[name]
+                    )
+                    for name in active_names
+                }
             )
+            allocation_groups = MappingProxyType(groups)
+            allocation_inplace_aliases = MappingProxyType(inplace_aliases)
+            allocation_subranges = MappingProxyType(planned_subranges)
         else:
             fields = {
                 name: (_GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes))
@@ -22109,6 +22291,8 @@ class _GGUFFullAttentionPrefillScratch:
             allocation_offsets=allocation_offsets,
             allocation_lifetimes=allocation_lifetimes,
             allocation_groups=allocation_groups,
+            allocation_inplace_aliases=allocation_inplace_aliases,
+            allocation_subranges=allocation_subranges,
             gdn_segment_capacity=segments,
             gdn_active_segments=1,
         )

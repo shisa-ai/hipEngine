@@ -66,11 +66,13 @@ __global__ void silu_mul_dual_out_kernel(
   out[idx] = float_to_scalar<scalar_t>(gate * sig * up);
 }
 
+// gate and out may intentionally alias: each lane loads its gate/up element
+// before replacing that same gate element with the BF16 product.
 template <typename scalar_t>
 __global__ void silu_mul_separate_out_kernel(
-    const scalar_t* __restrict__ gate,
+    const scalar_t* gate,
     const scalar_t* __restrict__ up,
-    scalar_t* __restrict__ out,
+    scalar_t* out,
     int64_t rows,
     int64_t features) {
   const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
