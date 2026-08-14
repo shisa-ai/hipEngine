@@ -805,6 +805,13 @@ GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 # F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
 # keeps the established direct/split routes.
 GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
+# D08-D4 independently qualifies the existing generic split-K3 plus fused-gate
+# chain for Qwen3.5-0.8B's private-c1 8Q/2KV/D256 graph cap. The exact model/
+# attention shape and measured 514-641 window preserve fixed256 at the 513 warm
+# boundary and for every unqualified model, context, backend, and batch route.
+GGUF_SHORT_C1_SPLIT_ATTN_POLICIES = {
+    (1_024, 24, 8, 2, 256, 256, 256): (514, 641),
+}
 # Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
@@ -1796,6 +1803,7 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+    "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",

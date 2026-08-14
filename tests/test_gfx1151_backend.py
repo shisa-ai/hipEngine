@@ -421,6 +421,21 @@ def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> 
     ) is None
 
 
+def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+        {},
+    ) == {
+        (1_024, 24, 8, 2, 256, 256, 256): (514, 641),
+    }
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+        {},
+    ) == {}
+
+
 def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
     register_gfx1151_kernels()
 
