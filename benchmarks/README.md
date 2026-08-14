@@ -114,13 +114,18 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
-Current blocker diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` has a
+Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` has a
 complete Q4_K_M/Q8_0 HIP/Vulkan semantic join with explicit submission
-residual and `other=0`. Q4 linear-attention projections expose a 38.42%
-projected stage saving and admit one bounded route audit/repair; Q8 GDN exposes
-26.76%. Decode arithmetic remains blocked behind the graph/direct census.
-These instrumented rows are not topline throughput; see
-[`2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
+residual and `other=0`. The first bounded repair replaces 18 expanded BF16 QKV
+weights with sole Q5T16 residents and improves canonical Q4_K_M 512/128 eager
+throughput from **1427.45/49.05 to 1908.17/69.75 tok/s (+33.68%/+42.19%)** while
+tracked peak falls **1.180 -> 1.043 GiB (-11.59%)**. A replacement semantic
+capture is required before selecting the next owner; decode arithmetic remains
+blocked behind the graph/direct census. This in-progress campaign row is not
+yet a final cross-engine topline; see
+[`Q5T16 QKV route`](results/2026-08-14-gfx1151-qwen35-08b-q5t16-qkv-route.json)
+and the
+[`joined ledger`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-semantic-ledger.json).
 
 ## Current single-request scoreboards
 

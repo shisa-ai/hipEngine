@@ -413,7 +413,7 @@ def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> 
     ) is None
 
 
-def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
+def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_qkv() -> None:
     register_gfx1151_kernels()
 
     assert backend_package_capability(
@@ -426,12 +426,22 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,
     )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_QKV",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_QKV",
+        False,
+    )
     for variant in (
         "t16_gemv_decode_bf16_bf16_out",
         "t16_gemv_rowtile_bf16_bf16_out",
         "t16_wmma_prefill_bf16_bf16_out",
     ):
-        assert not is_registered(
+        assert is_registered(
             KernelKey(
                 "hip_gfx1151",
                 "linear",

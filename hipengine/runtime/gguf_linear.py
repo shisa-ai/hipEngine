@@ -3662,14 +3662,25 @@ def _native_batch_decode_dispatch(
             t16_rowtile_max_rows = 0
     if (
         dispatch.abi == "t16"
-        and rows <= t16_rowtile_max_rows
         and dispatch.key.variant == "t16_gemv_decode_bf16_bf16_out"
     ):
+        if rows <= t16_rowtile_max_rows:
+            rewritten_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "t16_gemv_rowtile_bf16_bf16_out",
+            )
+            if is_registered(rewritten_key):
+                return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+        # Direct T16 decoders are c1-only. Native widths above a backend's
+        # measured rowtile bound must use the same-ABI WMMA sibling rather
+        # than launching the direct leaf with an invalid row count.
         rewritten_key = KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,
             dispatch.key.quant,
-            "t16_gemv_rowtile_bf16_bf16_out",
+            "t16_wmma_prefill_bf16_bf16_out",
         )
         if is_registered(rewritten_key):
             return GGUFLinearDispatch(rewritten_key, dispatch.abi)

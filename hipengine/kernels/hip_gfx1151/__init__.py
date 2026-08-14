@@ -681,8 +681,11 @@ GGUF_DENSE_Q4_T16 = False
 # Dense Qwen3.6 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
+# D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
+# exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
+GGUF_DENSE_Q5_T16_QKV = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    "gguf_q5_k_t16_v1": 0,
+    "gguf_q5_k_t16_v1": 4,
 }
 # Dense Qwen3.6 planar-qmicro projection/root ownership is W7900-only until
 # gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
@@ -825,19 +828,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_m",
             "mixed_bf16_shared_batch_spans",
         ),
-        # Dense Q5T16 ssm_out is W7900-only pending a separate gfx1151 gate.
-        *(
-            (
-                "linear",
-                "gguf_q5_k_t16_v1",
-                variant,
-            )
-            for variant in (
-                "t16_gemv_decode_bf16_bf16_out",
-                "t16_gemv_rowtile_bf16_bf16_out",
-                "t16_wmma_prefill_bf16_bf16_out",
-            )
-        ),
+        # Dense Q5T16 ssm_out fusions remain W7900-only; D08-P1 aliases the
+        # generic direct/rowtile/WMMA leaves for its independently gated QKV.
         (
             "gdn_recurrent_rmsnorm_gate+cast",
             "gguf_q5_k_t16_v1",
@@ -1761,6 +1753,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
+    "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

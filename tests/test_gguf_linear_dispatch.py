@@ -733,7 +733,7 @@ def test_q5_t16_routes_decode_bounded_native_rowtile_and_dense_wmma() -> None:
             {"stream": 8, "runtime": "runtime-sentinel"},
         ),
         (
-            "decode",
+            "wmma",
             (102, 14, 202, 5, 6144, 5120),
             {"stream": 9, "runtime": "runtime-sentinel"},
         ),
