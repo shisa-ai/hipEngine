@@ -254,10 +254,13 @@ owner saves **55.980/94.297/97.988/98.020 MiB** whole-device peak at
 less than **5.1 KiB** of alignment padding. Throughput movement versus the prior
 matrix is within **0.279%**; exact IDs, finite logits, dense NextN transactions,
 W7900 behavior, and teardown all pass. A larger linear-scratch candidate was
-removed after a **2.94%** 8K prefill regression. The remaining gaps to the lower
-Vulkan memory floors are **0.339/0.495/0.993/0.994 GiB**, so memory parity
-remains open. Evidence:
+removed after a **2.94%** 8K prefill regression. An exact GDN value/recurrent
+alias was also removed: it saved **65.984 MiB** whole-device at 8K but regressed
+prefill **1.321%** against a same-tree no-alias control. The remaining gaps to
+the lower Vulkan memory floors are **0.339/0.495/0.993/0.994 GiB**, so memory
+parity remains open. Evidence:
 [`retained single-owner decode-scratch arena`](results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
+[`rejected GDN value/recurrent alias`](results/2026-08-14-qwen36-27b-gdn-value-recurrent-alias-rejected.json),
 [`retained dense SiLU gate-plane alias`](results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
 [`retained compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json).
 

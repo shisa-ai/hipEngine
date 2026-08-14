@@ -1032,12 +1032,15 @@ reduces their physical owners from 188 to one. It saves
 **55.980/94.297/97.988/98.020 MiB** whole-device peak at 512/1K/4K/8K while the
 clean package-default matrix stays within **0.279%** throughput, all frozen
 prefill gates stay passed, and the remaining lower-Vulkan memory gaps fall to
-**0.339/0.495/0.993/0.994 GiB**
-([single-owner decode scratch](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
+**0.339/0.495/0.993/0.994 GiB**. A subsequent exact GDN value/recurrent alias
+was removed: its 8K whole-device saving was **65.984 MiB**, but complete prefill
+regressed **1.321%** against a same-tree no-alias control
+([rejection](../benchmarks/results/2026-08-14-qwen36-27b-gdn-value-recurrent-alias-rejected.json)). Current retained evidence:
+[single-owner decode scratch](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
 [dense SiLU gate-plane alias](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
 [right-sized scratch](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
-[independent matrix](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json),
-[retained route](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json)).
+[independent matrix](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
+[retained route](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
 
 The earlier zero-workspace hipBLASLt route remains rejected: best-of-32
 FFN-gate source-F16 is **0.691x/1.051x/1.183x** retained exact T16 at
