@@ -237,8 +237,12 @@ for fine-grained cross-engine profiling plus direct llama.cpp source review
 24.5 ms, 89.3 ms matched gap**), and the first retained X2a repair routes the
 registered pack8 WMMA leaf over the exact tile8x8 owner, raising exact-core
 Q4 pp512 **2543 -> 3428 tok/s (+35.3%, 5/5 blocks)** at unchanged decode
-(0.9956x guard) and **447/450 top-1 / max KL 0.003848**; Q8 is untouched. See
+(0.9956x guard) and **447/450 top-1 / max KL 0.003848**; X2-K2 then routes
+Q8_0 GDN prefill through the cluster8 recurrence: exact-core pp512
+**4231 -> 4949 tok/s (+16.70%, 5/5)**, public **+19.38%**, decode guards
+inside 1%, **448/450 top-1 / max KL 0.003260**. See
 the [`pack8 WMMA prefill route`](results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json),
+[`Q8 GDN cluster8 route`](results/2026-08-15-gfx1151-qwen35-08b-q8-gdn-cluster8-route.json),
 [`parity gap map`](results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json),
 [`blocked closure gate`](results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json),
 [`post-D5 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d5-graph-rerank.json),

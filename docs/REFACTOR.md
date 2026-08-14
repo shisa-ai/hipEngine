@@ -3533,3 +3533,11 @@ should be boring.
   wrapper, export, and `tests/test_gguf_q4_k_pack8_wmma64_prefill.py` if no
   wave64/coopmat follow-up consumes it, or wire it in if a future variant
   beats the small-tile leaf.
+
+## gfx1151 Q8_0 GDN cluster8 route
+
+- `GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE` now routes
+  `("MOSTLY_Q8_0", 16, 16, 128, 128)` to `chain_peer_cluster8` (D08-X2-K2,
+  2026-08-15). Rollback: `HIPENGINE_GGUF_GDN_PREFILL_MODE=
+  chain_lds32_direct_nonvolatile`. Remove the rollback note after the parity
+  campaign closes and no A/B still needs the exact route.
