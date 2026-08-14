@@ -183,9 +183,15 @@ isolation removes an untouched-prefill session bias, **110.43 -> 117.00
 (+5.95%, 5/5)** for Q8_0. Q4/Q8 correctness is **448/450 / 449/450 top-1**
 with max KL **0.001494 / 0.001944**, all trajectories are exact, no prefill
 regression exceeds 1%, and persistent bytes, hot scratch, and graph nodes are
-unchanged.
-Mandatory post-D4 graph rerank M10 is next. This campaign row is not yet a final
-cross-engine topline; see the [`retained D4 split-K3 route`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-splitk3-retained.json),
+unchanged. Mandatory M10 then measures current single-session graph snapshots
+at **120.62 tok/s Q4 / 119.14 Q8** with exact trajectories, zero KL, unchanged
+**310/288 nodes**, and zero tracked graph bytes. Full-attention core/KV falls
+**1.590 -> 1.078 ms Q4 / 1.584 -> 1.092 ms Q8**, while current Q4 dense FFN
+projections become the largest matched role gap at **1.063 ms / 12.82%**. Its
+accepted gate/up stage is closed; the separately marked unworked down+residual
+stage is **1.126 ms**, so D3B's cross-backend owner split is next. This campaign
+row is not yet a final cross-engine topline; see the [`post-D4 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d4-graph-rerank.json),
+[`retained D4 split-K3 route`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-splitk3-retained.json),
 [`D4 core/KV screen`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json),
 [`D4 core/KV audit`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json),
 [`post-D3 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3-graph-rerank.json),
