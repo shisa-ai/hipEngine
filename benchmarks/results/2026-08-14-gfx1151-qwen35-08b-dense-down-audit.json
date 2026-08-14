@@ -1,0 +1,288 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-D3B Qwen3.5-0.8B gfx1151 dense FFN down owner audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "source_commit": "bf7de8846",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "method": {
+    "raw": "/tmp/d08-d3b/dense-down-owner-audit.json",
+    "raw_sha256": "3fd8d69fec8e59c9b36ecb9624bc9d8f51da4681b443bf5411cbbc830f4e616c",
+    "script": "/tmp/d08-d3b/audit_dense_down_owners.py",
+    "script_sha256": "efea496faf4ddc997444cde30d4fd3091a4c2b2707fbf29b0e38415a598a665d",
+    "builder": "/tmp/d08-d3b/build_dense_down_audit.py",
+    "builder_sha256": "c8bd6ca5d1665027747a0da706efaa13c215322646add3a8aaf1506edee18349",
+    "hip": "one focused replacement capture after the first graph-name-wide inventory was found insufficient; 128 graph replays with exact marker intervals around each of 12 Q4 projections, 12 Q6 projections, and 24 residual adds; marker-adjusted owner shares normalized to M10 production down+residual stage",
+    "vulkan": "reparse the frozen 128 measured decode logger blocks; exact m/k/quant rows split gate/up from MUL_MAT_ADD down+residual",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d3b/audit_dense_down_owners.py"
+  },
+  "production_bound": {
+    "current_q4_graph_ms": 8.290611,
+    "current_q4_graph_tok_s": 120.618368,
+    "hip_down_residual_ms": 1.1263650000000003,
+    "vulkan_down_residual_ms": 0.4286161015625,
+    "matched_gap_ms": 0.6977488984375002,
+    "request_bound_percent": 8.416133605080496
+  },
+  "owners": {
+    "groups": [
+      {
+        "source_type": "Q6_K",
+        "layout": "dense_bf16",
+        "quant_key": "gguf_q6_k",
+        "shape": [
+          1024,
+          3584
+        ],
+        "count": 12,
+        "layers": [
+          0,
+          1,
+          2,
+          5,
+          8,
+          11,
+          14,
+          17,
+          20,
+          21,
+          22,
+          23
+        ],
+        "resident_bytes_each": 7340032,
+        "resident_bytes_total": 88080384,
+        "allocation_names": [
+          "raw"
+        ]
+      },
+      {
+        "source_type": "Q4_K",
+        "layout": "q4_k_pack8",
+        "quant_key": "gguf_q4_k",
+        "shape": [
+          1024,
+          3584
+        ],
+        "count": 12,
+        "layers": [
+          3,
+          4,
+          6,
+          7,
+          9,
+          10,
+          12,
+          13,
+          15,
+          16,
+          18,
+          19
+        ],
+        "resident_bytes_each": 2752512,
+        "resident_bytes_total": 33030144,
+        "allocation_names": [
+          "mins",
+          "qweight",
+          "scales"
+        ]
+      }
+    ],
+    "total_resident_bytes": 121110528
+  },
+  "hip_split": {
+    "q4_pack8_projection_ms": 0.34611455665436325,
+    "q6_dense_projection_ms": 0.5887692554126305,
+    "residual_add_ms": 0.1914811879330064,
+    "q4_operation_complete_allocated_ms": 0.44185515062086644,
+    "q6_operation_complete_allocated_ms": 0.6845098493791337,
+    "residual_allocation_rule": "half of residual total to each 12-layer owner; package aggregate remains binding",
+    "target_intervals": {
+      "hip_q4_pack8_down": {
+        "nodes": 12,
+        "kernel_name_counts": {
+          "_ZN12_GLOBAL__N_134gguf_q4_k_pack8_prefill_out_kernelIttEEvPKT_PKiPKfS7_PT0_iiii": 12
+        },
+        "geometries": [
+          [
+            [
+              128,
+              1,
+              1
+            ],
+            [
+              32,
+              1,
+              1
+            ],
+            0
+          ]
+        ]
+      },
+      "hip_q6_dense_down": {
+        "nodes": 12,
+        "kernel_name_counts": {
+          "_ZN12_GLOBAL__N_121dense_gemv_out_kernelItEEvPKT_S3_PS1_lll": 12
+        },
+        "geometries": [
+          [
+            [
+              1024,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1
+            ],
+            0
+          ]
+        ]
+      },
+      "hip_residual_add": {
+        "nodes": 24,
+        "kernel_name_counts": {
+          "_Z20gguf_bf16_add_kernelPKtS0_Ptl": 24
+        },
+        "geometries": [
+          [
+            [
+              4,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1
+            ],
+            0
+          ]
+        ]
+      }
+    },
+    "marker_intervals": {
+      "marker_baseline": 64,
+      "between_targets": 48,
+      "hip_q6_dense_down": 12,
+      "hip_residual_add": 24,
+      "hip_q4_pack8_down": 12
+    },
+    "raw_marker_adjusted_means_ms": {
+      "hip_q4_pack8_down": 0.39942971724401366,
+      "hip_q6_dense_down": 0.6794627174443943,
+      "hip_residual_add": 0.2209767699253582
+    },
+    "m10_normalization_scale": 0.866521797733242
+  },
+  "vulkan_split": {
+    "gate_up_ms": 0.66760134375,
+    "q4_down_residual_ms": 0.190868265625,
+    "q6_down_residual_ms": 0.2377478359375,
+    "down_residual_ms": 0.4286161015625,
+    "dense_projection_reconciled_ms": 1.0962174453125,
+    "row_selection": {
+      "q4_down_residual": {
+        "unique_labels": [
+          "MUL_MAT_ADD MUL_MAT_VEC q4_K m=1024 n=1 k=3584"
+        ],
+        "calls_per_block": [
+          12
+        ]
+      },
+      "q6_down_residual": {
+        "unique_labels": [
+          "MUL_MAT_ADD MUL_MAT_VEC q6_K m=1024 n=1 k=3584"
+        ],
+        "calls_per_block": [
+          12
+        ]
+      },
+      "gate_up": {
+        "unique_labels": [
+          "MUL_MAT_VEC q4_K m=3584 n=1 k=1024"
+        ],
+        "calls_per_block": [
+          48
+        ]
+      }
+    },
+    "residual_fusion": "Both down rows are MUL_MAT_ADD MUL_MAT_VEC and include the residual boundary; gate/up is plain MUL_MAT_VEC.",
+    "raw_log": "/tmp/d08-m3/q4-vulkan-perf.log",
+    "raw_log_sha256": "ff1d609978325575c47930693ca7f511a6750fd0665c9b2cf690165673a25614"
+  },
+  "owner_bounds": {
+    "q4_pack8": {
+      "hip_operation_complete_allocated_ms": 0.44185515062086644,
+      "vulkan_operation_complete_ms": 0.190868265625,
+      "matched_gap_ms": 0.2509868849958664,
+      "request_bound_percent": 3.0273629409927256
+    },
+    "q6_dense": {
+      "hip_operation_complete_allocated_ms": 0.6845098493791337,
+      "vulkan_operation_complete_ms": 0.2377478359375,
+      "matched_gap_ms": 0.4467620134416337,
+      "request_bound_percent": 5.38877066408777
+    },
+    "caveat": "owner residual shares are equal-count allocations for ranking; only the aggregate package gap is binding"
+  },
+  "correctness": {
+    "trajectory_exact": true,
+    "top1_agreement": 1.0,
+    "kl_max": 0.0,
+    "max_abs": 0.0
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked before report by absent optional /home/lhl/amd-gpu-tuning/reference/atlas checkout",
+    "impact": "No external port is planned. Any transient fused siblings are developed and validated in-tree from the current primitive bodies."
+  },
+  "rejected_repack_reuse": {
+    "source": "/home/lhl/hipEngine/benchmarks/results/2026-08-14-gfx1151-qwen35-08b-origin-merge-p3-reject.json",
+    "q6_t16_c1_speedup": 0.9004,
+    "q4_t16_down_c1_speedup": 1.144469,
+    "disposition": "Do not reopen sole-layout repacks: Q6T16 failed the c1 guard and the P3 package is closed; D3B keeps current residents and targets only the measured decode boundary."
+  },
+  "frozen_screen": {
+    "semantic_owner": "operation-complete Q4_K_M c1 dense FFN down plus rounded-BF16 residual across 12 Q4-pack8 and 12 Q6-dense current residents",
+    "control": "Q4 pack8 t32 + Q6 dense-BF16 t256 + 24 separate BF16 residual adds",
+    "candidates": [
+      {
+        "id": "A",
+        "name": "Q4 pack8 t32 fused rounded-BF16 residual",
+        "scope": "12 Q4 owners; same resident allocations and exact primitive arithmetic"
+      },
+      {
+        "id": "B",
+        "name": "Q6 dense-BF16 t256 fused rounded-BF16 residual",
+        "scope": "12 Q6 owners; same resident allocations and exact primitive arithmetic"
+      },
+      {
+        "id": "C",
+        "name": "combined A+B package",
+        "scope": "all 24 down owners; sole candidate eligible for one full-model gate if both leaves qualify"
+      }
+    ],
+    "candidate_count": 3,
+    "constraints": [
+      "no repack, sidecar, duplicate weights, persistent bytes, or hot scratch",
+      "unfused projection+gguf_bf16_add remains registered fallback",
+      "fused output must round projection to BF16 before residual addition and round the sum to BF16 exactly like the control",
+      "Q8, rows>1, other roles/models/backends remain unchanged"
+    ],
+    "screen_protocol": "bit-exact RED CPU/reference test first; actual-weight complete 121,110,528-byte / 3.61x-MALL pool, counter-rotated device timing; measure A/B independently and C operation-complete; finite/full-output correctness",
+    "continuation": "retain any exact non-regressive measured win; only C proceeds to one Q4 full-model plus Q8 guard gate if complete package saves >=1% graph wall and wins at least 4/5 rotated observations",
+    "reject": "stop on bit mismatch, non-finite output, owner operational regression, added residency/scratch, or combined package below 1%; remove rejected transient code"
+  },
+  "decision": {
+    "status": "qualified-screen",
+    "reason": "operation-complete down+residual gap is 0.698 ms / 8.42% of current Q4 graph wall; Vulkan fuses residual in both exact down rows while HIP issues 24 explicit adds",
+    "next": "Implement only the two transient same-resident fused-residual siblings under RED and screen the frozen A/B/C budget."
+  }
+}

@@ -189,8 +189,13 @@ at **120.62 tok/s Q4 / 119.14 Q8** with exact trajectories, zero KL, unchanged
 **1.590 -> 1.078 ms Q4 / 1.584 -> 1.092 ms Q8**, while current Q4 dense FFN
 projections become the largest matched role gap at **1.063 ms / 12.82%**. Its
 accepted gate/up stage is closed; the separately marked unworked down+residual
-stage is **1.126 ms**, so D3B's cross-backend owner split is next. This campaign
-row is not yet a final cross-engine topline; see the [`post-D4 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d4-graph-rerank.json),
+stage is **1.126 ms**. D3B's exact owner split then measures **0.346-ms Q4
+pack8 + 0.589-ms Q6 dense + 0.191-ms residual adds** versus Vulkan's already
+fused **0.191/0.238-ms** Q4/Q6 down rows. The operation-complete gap is **0.698
+ms / 8.42%** at **121.11 MB / 3.61x MALL** current sole residency, admitting
+only same-resident Q4/Q6 residual fusions and their combined package. This
+campaign row is not yet a final cross-engine topline; see the [`D3B dense-down audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-audit.json),
+[`post-D4 graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d4-graph-rerank.json),
 [`retained D4 split-K3 route`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-splitk3-retained.json),
 [`D4 core/KV screen`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json),
 [`D4 core/KV audit`](results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-audit.json),
