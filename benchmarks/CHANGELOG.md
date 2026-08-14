@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-15
+
+- [retained/default gfx1100 ROCr scratch reserve] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: lower the process-start `HSA_SCRATCH_SINGLE_LIMIT` from ROCr's 140-MiB default to 32 MiB, preserving the traced 16 x 300-MiB use-once AOTriton allocation/free pairs while lowering whole-device process-delta peaks **16.028/16.182/16.777/17.029 -> 15.923/16.076/16.671/16.925 GiB (-0.658%/-0.657%/-0.634%/-0.610%; -108.012/-108.871/-108.852/-106.332 MiB)** with unchanged tracked bytes and throughput movement within **0.104%**; W7900 4K confirms **-108.824 MiB**, exact IDs, and finite outputs, while explicit overrides and mixed-arch processes remain user-owned; `benchmarks/results/2026-08-15-gfx1100-rocr-scratch-reserve-retained.json`.
+
 ## 2026-08-14
 
 - [retained/default long-row hidden-owner reuse] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 4K/8K: reuse one physical prefill hidden plane at model-policy scratch rows>=4096, lowering tracked peaks **16.150/16.408 -> 16.111/16.369 GiB (-40 MiB exact each)** and whole-device process-delta peaks **16.813/17.068 -> 16.777/17.029 GiB (-37.316/-39.859 MiB)** with throughput movement within **0.103%**; W7900 4K confirms **-40 MiB**, **+0.094%** prefill, and **+0.114%** decode, while root+128, forced-alias B1-B3 NextN, finite outputs, and teardown pass; `benchmarks/results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json`.
