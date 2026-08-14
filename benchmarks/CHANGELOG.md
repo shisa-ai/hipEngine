@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-14
 
+- [rejected/removed compact-GDN value/recurrent scratch alias] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 8K/128: planned bulk scratch **480.987 -> 414.487 MiB (-13.826%)** and whole-device peak **17.160 -> 17.096 GiB (-65.984 MiB)**, but prefill **822.260 -> 811.399 tok/s (-1.321%)** versus a same-tree no-alias control; exact output/state passed, all candidate code was removed, and the prior default remains current; `benchmarks/results/2026-08-14-qwen36-27b-gdn-value-recurrent-alias-rejected.json`.
+
 - [retained/default private-c1 decode-scratch arena] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: pack the unchanged 188 logical state/KV/workspace ranges into one physical owner, lowering whole-device peak **16.083/16.287/17.001/17.256 -> 16.028/16.195/16.905/17.160 GiB (-0.340%/-0.565%/-0.563%/-0.555%; -55.980/-94.297/-97.988/-98.020 MiB)** with prefill/decode movement within **0.279%**, exact IDs/NextN/W7900/lifecycle pass, and Vulkan's lower memory floors still lead by **0.339/0.495/0.993/0.994 GiB**; `benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json`.
 
 - [retained/default dense SiLU gate-plane alias] Qwen3.6-27B / Q4_K_M / RX 7900 XTX 512/1K/4K/8K: overwrite the dead BF16 gate plane with the unchanged SiLU output, lowering tracked peak **15.596/15.699/16.263/16.521 -> 15.587/15.681/16.243/16.501 GiB (-8.9375/-18.75/-20.625/-20.625 MiB)** and whole-device peak by **11.160/17.965/21.750/21.547 MiB**; prefill/decode movement is within **0.171%**, exact IDs/NextN/W7900/lifecycle pass, and Vulkan's lower memory floors still lead by **0.394/0.587/1.089/1.090 GiB**; `benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json`.
