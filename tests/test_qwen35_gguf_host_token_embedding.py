@@ -212,18 +212,30 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 
     monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
-    monkeypatch.setattr(
-        gguf_runner,
-        "backend_package_capability",
-        lambda backend, name, default=None: backend == "hip_gfx1151"
-        and name == "GGUF_HOST_TOKEN_EMBEDDING_C1",
-    )
+
+    def capability(backend, name, default=None):
+        if backend != "hip_gfx1151":
+            return default
+        if name == "GGUF_HOST_TOKEN_EMBEDDING_C1":
+            return True
+        if name == "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
+            return ("Q8_0",)
+        return default
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
 
     assert _resolve_gguf_token_embedding_placement(
         backend="hip_gfx1151",
         max_batch_size=1,
         has_shared_runner=False,
+        token_embedding_type_name="Q8_0",
     ) == ("host", "gfx1151_private_c1_auto")
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1151",
+        max_batch_size=1,
+        has_shared_runner=False,
+        token_embedding_type_name="Q4_K",
+    ) == ("device", "host_type_device_fallback")
     assert _resolve_gguf_token_embedding_placement(
         backend="hip_gfx1151",
         max_batch_size=2,
