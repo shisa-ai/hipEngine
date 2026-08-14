@@ -1941,6 +1941,40 @@ def clear_gguf_linear_dispatch_cache() -> None:
     _Q8_1_DISPATCH_RESOLVE_CACHE.clear()
 
 
+def _native_split_row_chunk(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> int | None:
+    """Resolve one backend-qualified exact-row split or fail closed."""
+
+    if not _native_batch_decode_session_enabled:
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
+        {},
+    )
+    quant_policy = (
+        policies.get(weight.spec.quant_key, {})
+        if isinstance(policies, Mapping)
+        else {}
+    )
+    if not isinstance(quant_policy, Mapping):
+        return None
+    raw_chunk = quant_policy.get((int(rows), int(in_features), int(out_features)))
+    try:
+        chunk = int(raw_chunk)
+    except (TypeError, ValueError):
+        return None
+    if chunk <= 1 or rows <= chunk or rows % chunk:
+        return None
+    return chunk
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -1982,6 +2016,41 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    split_row_chunk = (
+        _native_split_row_chunk(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
+    if split_row_chunk is not None:
+        element_nbytes = DType.BF16.itemsize
+        for row_start in range(0, rows, split_row_chunk):
+            launch_gguf_linear(
+                weight,
+                x_ptr + row_start * in_features * element_nbytes,
+                out_ptr + row_start * out_features * element_nbytes,
+                split_row_chunk,
+                in_features,
+                out_features,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=resolved_backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+            )
+        return
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)

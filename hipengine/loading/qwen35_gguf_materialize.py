@@ -255,6 +255,7 @@ def plan_qwen35_gguf_materialization(
     *,
     decode_repack: bool | None = None,
     dense_q4_t16: bool = False,
+    dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
@@ -282,6 +283,7 @@ def plan_qwen35_gguf_materialization(
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
+            dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
@@ -295,6 +297,7 @@ def plan_qwen35_gguf_materialization(
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
+            dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
@@ -588,6 +591,13 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q4_t16_attn_q_08b=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
+                False,
+            )
+        ),
         dense_q5_t16_ssm_out=bool(
             backend_package_capability(
                 backend,
@@ -752,6 +762,7 @@ def _plan_layer(
     decode_repack: bool,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
@@ -764,6 +775,7 @@ def _plan_layer(
             decode_repack=decode_repack,
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
+            dense_q4_t16_attn_q_08b=dense_q4_t16_attn_q_08b,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
@@ -902,6 +914,7 @@ def plan_qwen35_gguf_weight_spec(
     *,
     decode_repack: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
@@ -914,6 +927,7 @@ def plan_qwen35_gguf_weight_spec(
         tensor,
         decode_repack=bool(decode_repack),
         dense_q4_t16=bool(dense_q4_t16),
+        dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
@@ -928,6 +942,7 @@ def _spec_for_tensor(
     decode_repack: bool,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
@@ -992,10 +1007,15 @@ def _spec_for_tensor(
                 allocation_names=("raw",),
                 sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
             )
-        if (
-            decode_repack
-            and dense_q4_t16
-            and _dense_q4_t16_sidecar_allocation_name(slot_path, tensor) is not None
+        if decode_repack and (
+            (
+                dense_q4_t16
+                and _dense_q4_t16_sidecar_allocation_name(slot_path, tensor) is not None
+            )
+            or (
+                dense_q4_t16_attn_q_08b
+                and _is_dense_q4_t16_attn_q_08b_tensor(slot_path, tensor)
+            )
         ):
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
@@ -1280,6 +1300,20 @@ def _dense_q4_t16_sidecar_allocation_name(
         if shape == expected_shape and slot_path.endswith(f".{role}"):
             return allocation_name
     return None
+
+
+def _is_dense_q4_t16_attn_q_08b_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select only the measured Qwen3.5-0.8B full-attention Q projection."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (4_096, 1_024)
+        and slot_path.startswith("layers.")
+        and slot_path.endswith(".attn_q")
+    )
 
 
 def _is_dense_q5_t16_qkv_tensor(

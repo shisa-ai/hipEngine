@@ -78,6 +78,44 @@ def test_qwen35_gguf_tensor_map_covers_local_inventory() -> None:
     assert layer3.tensor("attn_output").ggml_type_name == "Q4_K"
 
 
+def test_qwen35_08b_dense_q4_attn_q_policy_uses_single_t16_resident() -> None:
+    reader = GGUFReader(MODEL) if MODEL.exists() else None
+    if reader is None:
+        pytest.skip(f"local GGUF fixture not found: {MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    baseline = plan_qwen35_gguf_materialization(model_map, decode_repack=True)
+    candidate = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16_attn_q_08b=True,
+    )
+    baseline_by_slot = {spec.slot_path: spec for spec in baseline.specs}
+    candidate_attn_q = tuple(
+        spec
+        for spec in candidate.specs
+        if spec.slot_path.endswith(".attn_q")
+        and spec.source.ggml_type_name == "Q4_K"
+    )
+
+    assert len(candidate_attn_q) == 6
+    assert all(spec.source.shape == (4_096, 1_024) for spec in candidate_attn_q)
+    assert all(spec.layout == LAYOUT_GGUF_Q4_K_T16 for spec in candidate_attn_q)
+    assert all(spec.quant_key == "gguf_q4_k_t16_v1" for spec in candidate_attn_q)
+    assert all(spec.allocation_names == ("tiles",) for spec in candidate_attn_q)
+    assert all(
+        baseline_by_slot[spec.slot_path].layout == LAYOUT_Q4_K_PACK8
+        for spec in candidate_attn_q
+    )
+    assert all(
+        spec.layout == LAYOUT_Q4_K_PACK8
+        for spec in candidate.specs
+        if spec.source.ggml_type_name == "Q4_K"
+        and not spec.slot_path.endswith(".attn_q")
+        and spec.slot_path != "root.token_embedding"
+    )
+
+
 def test_qwen35_08b_dense_q5_qkv_policy_uses_single_t16_resident() -> None:
     reader = GGUFReader(MODEL) if MODEL.exists() else None
     if reader is None:

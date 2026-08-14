@@ -148,11 +148,14 @@ Mandatory M7 then reconciles **232.63/233.61 ms (99.58%)** of post-P6 marker
 wall and confirms SSM-out at **9.68 ms (-73.07% versus post-P2)**. The bounded
 P7 per-leaf audit selects 18 Q4_K gate projections at **11.74 vs 3.38 ms
 Vulkan**, but sole Q4T16 regresses c1 to **0.883x** and raw Q4 regresses every
-operational width, so P7 closes without a production change. P4 then selects
-six Q4_K `[N4096,K1024]` full-attention Q projections at **7.57 vs 2.20 ms
-Vulkan**, a **5.37-ms / 2.30%** current request gap, for one sole-Q4T16 screen;
-decode arithmetic remains blocked behind the graph/direct census. This campaign
-row is not yet a final cross-engine topline; see the [`P4 full-attention audit`](results/2026-08-14-gfx1151-qwen35-08b-p4-full-attention-audit.json),
+operational width, so P7 closes without a production change. P4 then retains
+sole Q4T16 for six Q4_K `[N4096,K1024]` full-attention Q projections, improving
+paired graph pp512 **2380.52 -> 2494.52 tok/s (+4.79%, 5/5)** and production
+graph tg128 **100.58 -> 102.00 tok/s (+1.41%, 4/5)** at **447/450 top-1 / max
+KL 0.003574**, exact trajectories, and **-4.13 MiB**. Mandatory M8 re-profile is
+next; decode arithmetic remains blocked behind the graph/direct census. This
+campaign row is not yet a final cross-engine topline; see the [`Q4T16 attention-Q route`](results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json),
+[`P4 full-attention audit`](results/2026-08-14-gfx1151-qwen35-08b-p4-full-attention-audit.json),
 [`P7 gate closure`](results/2026-08-14-gfx1151-qwen35-08b-q4-gate-routes-rejected.json),
 [`P7 residual audit`](results/2026-08-14-gfx1151-qwen35-08b-p7-residual-linear-audit.json),
 [`post-P6 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-p6-rerank.json),
