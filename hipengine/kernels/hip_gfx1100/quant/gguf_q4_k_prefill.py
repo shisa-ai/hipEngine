@@ -149,6 +149,10 @@ def _default_q4_pack8_tiles(
         return 64, 32
     if shape == (512, 3072, 12288):
         return 32, 32
+    if shape == (512, 1024, 3584):
+        return 16, 32
+    if shape == (512, 3584, 1024):
+        return 64, 16
     return 64, 16
 
 

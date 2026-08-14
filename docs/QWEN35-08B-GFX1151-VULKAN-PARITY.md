@@ -1308,6 +1308,106 @@ new non-gamed complete-package contract.
 Artifact:
 [`2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-closure.json).
 
+### 2.37 D08-X2 source-level cross-engine review (2026-08-15)
+
+Human approval reopened the campaign for fine-grained profiling plus direct
+source comparison against the pinned llama.cpp Vulkan checkout. The X1 gap map
+(`2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`) ranks owners; this
+section records what the reference implementation actually does per submodule
+and the structural deltas it exposes. Files cited are from llama.cpp
+`1d2869c6e54d5003f3927a79efbca0fefa034a6d` build 10415.
+
+**Dispatch/fusion is not the gap.** A fresh logger capture counts **693 Vulkan
+ops per pp512** and **663 ops per decode token** versus hipEngine's 491 prefill
+dispatches and 286 production-graph nodes. llama.cpp dispatches 2.3x more ops
+per token and still runs 1.68x faster. Its boundary fusions (MUL_MAT_ADD
+residual-in-matvec, GLU, RMS_NORM_MUL, SSM_CONV_SILU) have hipEngine
+equivalents (D3/D3B/D5, fused conv). Per-kernel memory structure, not launch
+count, is the differentiator.
+
+**Dense/linear prefill GEMM.** llama's `mul_mm.comp` + `mul_mm_funcs.glsl`
+with the AMD/RADV coopmat tuning (`ggml-vulkan.cpp` l_warptile_mmq at the
+`VK_VENDOR_ID_AMD && coopmat_support` branch; device subgroup is 64) runs
+**256-thread workgroups, BM=128 x BN=128 block tiles, BK=32, WM=WN=64 warp
+tiles, WMITER=2**, dequantizing Q4_K activations-side loads with LOAD_VEC 4
+into **LDS-staged f16 tiles** (bank-conflict offset 8), then issuing coopmat
+16x16x16 f32-accumulate fragments loaded from LDS, with workgroup k-split plus
+a reduce shader for large K. hipEngine's `gguf_q4_k_pack8_prefill_wmma_kernel`
+is a **32-thread single-wave, 16x32-tile, no-LDS, no-k-split** kernel that
+re-reads activations from global once per 16-column band: for `[3584,1024]`
+at rows=512 that is 224 band reads x 1.05 MB = **235 MB activation traffic per
+mat** versus llama's 28 tiles x 1.05 MB = **29 MB**. The registered-but-disabled
+pack8 WMMA leaf already measures 1.97x/2.33x the shipped tile8x8 leaf on the
+0.8B dense shapes (within one BF16 ULP); X2a routes it. The remaining 1.5-1.7x
+to Vulkan requires the LDS/large-tile structure (X2-K1).
+
+**Decode GEMV.** `mul_mat_vec_q4_k.comp` assigns a 16-thread team per Q4_K
+superblock: packed 32-bit loads, unpack8 bit-trick scale decode, fully unrolled
+vec4 FMA trees in registers, then one subgroup reduction per output row.
+Measured Vulkan dense-FFN matvec traffic is ~198 GB/s effective
+(132.1 MB gate/up in 0.668 ms) versus hipEngine pack8 t32/t128 leaves at
+~123 GB/s on the same pool. The mechanism to port is wider per-thread ILP with
+vectorized packed loads, not more launches (X2-K3).
+
+**GDN.** `gated_delta_net.comp` is a **sequential register-state scan**: grid =
+heads x sequences x value-columns, S_V=128 state rows sharded as
+`ROWS_PER_LANE = S_V / LANES_PER_COLUMN` registers per lane, per token two
+subgroup-clustered reductions, exp once per token, state written back only at
+the end (plus optional snapshot slots for chunked queries). There is no chunk
+decomposition, no inter-chunk kernel, and no intermediate global state traffic.
+hipEngine's chunked scan pays chunk metadata, intra/inter boundaries, and
+state finalize; its exact route exposes only 64 one-wave blocks. X2-K2 ports
+the column-parallel register-state structure as an additional prefill schedule
+for both quants.
+
+**Full-attention decode core.** Vulkan `FLASH_ATTN_EXT` at c1 8Q/2KV/D256 and
+live context 512-641 costs ~26 us/layer; hipEngine's retained split-K3
+producer plus fused reducer costs ~153 us/layer (5.9x). X2-K4 targets a
+single-kernel c1 scan without the second launch.
+
+**Bounded fix ladder (human-approved):** X2a (done below) routes the measured
+pack8 WMMA bulk leaf; X2-K1 writes the LDS-staged large-tile pack8 WMMA GEMM
+(acceptance >= 2x X2a at pp512, no c1-c8 change); X2-K2 adds the GDN register
+scan; X2-K3 raises decode GEMV bandwidth; X2-K4 replaces the split-K pair.
+Each keeps its unfused/legacy fallback registered and passes the standard
+correctness/full-model gates.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json).
+
+### 2.38 D08-X2a retained pack8 WMMA bulk prefill route (2026-08-15)
+
+The registered-but-disabled pack8 WMMA leaf was measured on actual 0.8B
+dense-FFN weights at rows=512 (5 rotated marker repeats): **16x32 tile gate
+`[3584,1024]` 0.585 ms = 1.97x** the shipped tile8x8 control (1.151 ms) and
+**64x16 tile down `[1024,3584]` 0.480 ms = 2.33x** control (1.119 ms); t16
+WMMA and the base pack8 prefill measure 0.552/0.688 and 3.19/2.44 ms. Every
+WMMA output is within one BF16 ULP of the control.
+
+The route repair is registry-clean: gfx1151 package capability
+`GGUF_Q4_PACK8_WMMA_BULK_PREFILL`, a measured 0.8B tile policy in
+`_default_q4_pack8_tiles`, and `_q4_pack8_wmma_dispatch` now overriding the
+exact tile8x8 variant for bulk rows. `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0`
+rolls back (see `docs/REFACTOR.md`). Sole pack8 residency is unchanged; c1-c8
+leaves are untouched; gfx1100 keeps tile8x8.
+
+The binding gate is five counter-rotated env-pair exact-core blocks per quant.
+Q4 prefill improves **2543.4 -> 3427.9 tok/s (+35.31%, 5/5)** and public
+prefill **+34.97% (5/5)**; decode guards are **0.9956x core / 0.9942x public**
+(inside 1%). Q8 is a no-route guard (**1.009/0.992 prefill, 1.007/1.000
+decode**). Correctness over the 18 category/heldout prompts is **447/450
+top-1 (99.33%) with max KL 0.003848**, matching the accepted P4 route class.
+A cached-build rocprofv3 kernel trace confirms
+`gguf_q4_k_pack8_prefill_wmma_kernel<16,32>` (288 dispatches) and `<64,16>`
+(264) with the tile8x8 kernel absent; the stack's zero-duration blocker still
+applies, so names and geometry are the smoke evidence.
+
+Retained as the gfx1151 default. The remaining ~1.5-1.7x per-mat gap to
+Vulkan is the X2-K1 LDS/large-tile structure described in 2.37.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio

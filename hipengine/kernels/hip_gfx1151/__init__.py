@@ -354,6 +354,11 @@ LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
+# D08-X (2026-08-15): on Qwen3.5-0.8B dense-FFN pack8 shapes the registered
+# pack8 WMMA bulk consumer measures 1.97x ([3584,1024], 16x32) and 2.33x
+# ([1024,3584], 64x16) versus the exact tile8x8 leaf at rows=512, within one
+# BF16 ULP. Bulk prefill sessions on this backend therefore prefer it.
+GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is

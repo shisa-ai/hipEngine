@@ -2102,6 +2102,7 @@ def launch_gguf_linear(
         raw_k_rowbatch,
         raw_k_variant,
         bool(use_q4_pack8_wmma),
+        os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
@@ -2215,7 +2216,23 @@ def launch_gguf_linear(
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
             rows=rows,
-            enabled=use_q4_pack8_wmma,
+            enabled=(
+                use_q4_pack8_wmma
+                or (
+                    use_wmma
+                    and bool(
+                        backend_package_capability(
+                            resolved_backend,
+                            "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
+                            False,
+                        )
+                    )
+                    and os.environ.get(
+                        "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1"
+                    )
+                    != "0"
+                )
+            ),
         )
         _ensure_linear_kernel_registered(dispatch.key)
         fn = resolve(
@@ -5007,7 +5024,11 @@ def _q4_pack8_wmma_dispatch(
     if (
         dispatch.abi == "pack8"
         and dispatch.key.quant == "gguf_q4_k"
-        and dispatch.key.variant == "pack8_prefill_bf16_bf16_out"
+        and dispatch.key.variant
+        in (
+            "pack8_prefill_bf16_bf16_out",
+            "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+        )
     ):
         key = KernelKey(
             dispatch.key.backend,
