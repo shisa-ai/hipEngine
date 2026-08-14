@@ -208,7 +208,12 @@ Q8** and **286/288 nodes**, with KL 0, exact trajectories, **97.35%/97.32%**
 stage coverage, and zero tracked graph bytes. Q4 dense FFN falls **2.159 ->
 2.057 ms**, including down+residual at **1.011 ms**; larger arithmetic budgets
 remain closed. M11 admits only D5's exact 24 RMSNorm + 24 add-RMSNorm owner
-audit at a **0.402-ms / 4.84%** joined bound; see the
+audit at a **0.402-ms / 4.84%** joined bound. That audit finds every supported
+thread/staged combination bit-exact, but the best existing package projects only
+**0.01664 ms / 0.200%** wall saving and stops. One fixed-hidden-1024 t256
+register+DPP family is frozen because it can remove **336 barriers and 147,456
+read bytes/token**; combined C must reduce the 0.674-ms package by **>=12.34%**
+or D5 closes. See the [`D5 norm/residual audit`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json),
 [`post-D3B graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3b-graph-rerank.json),
 [`retained D3B residual route`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json),
 [`D3B fused-residual screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-down-screen.json),
