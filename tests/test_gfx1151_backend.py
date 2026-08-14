@@ -562,6 +562,38 @@ def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None
     ]
 
 
+def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+        register_dense_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        register_gguf_q4_k_gemv_kernels,
+    )
+
+    register_dense_gemv_kernels()
+    register_gguf_q4_k_gemv_kernels()
+    register_gfx1151_kernels(replace=True)
+    expected = {
+        ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {(1, 3_584, 1_024): True}
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
+    ) == expected
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
+    ) == {}
+    for quant, variant in (
+        ("gguf_q4_k", "pack8_bf16_residual_bf16_out"),
+        ("bf16", "out_bf16_residual_bf16_out"),
+    ):
+        assert is_registered(
+            KernelKey("hip_gfx1151", "linear+residual", quant, variant)
+        )
+        assert is_registered(
+            KernelKey("hip_gfx1100", "linear+residual", quant, variant)
+        )
+
+
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_qwen35_rmsnorm_kernels()
     register_gfx1151_kernels()

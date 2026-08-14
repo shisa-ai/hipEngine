@@ -1315,6 +1315,102 @@ def test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners() -> Non
     ]
 
 
+def test_launch_gguf_linear_residual_routes_registered_c1_pack8_and_dense_abis() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+        register_dense_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        register_gguf_q4_k_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    launch = gguf_linear_module.launch_gguf_linear_residual
+    register_dense_gemv_kernels()
+    register_gguf_q4_k_gemv_kernels()
+    register_gfx1151_kernels(replace=True)
+    keys = (
+        KernelKey(
+            "hip_gfx1151",
+            "linear+residual",
+            "gguf_q4_k",
+            "pack8_bf16_residual_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear+residual",
+            "bf16",
+            "out_bf16_residual_bf16_out",
+        ),
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in keys
+    }
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    for key, label in zip(keys, ("q4", "dense"), strict=True):
+        register(key, capture(label), replace=True)
+    q4 = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    dense = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="bf16")
+    try:
+        assert not launch(
+            q4, 100, 300, 400, 1, 3_584, 1_024, backend="hip_gfx1151"
+        )
+        assert launch(
+            q4,
+            100,
+            300,
+            400,
+            1,
+            3_584,
+            1_024,
+            backend="hip_gfx1151",
+            registered_decode=True,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        assert launch(
+            dense,
+            101,
+            301,
+            401,
+            1,
+            3_584,
+            1_024,
+            backend="hip_gfx1151",
+            registered_decode=True,
+            stream=8,
+            runtime="runtime-sentinel",
+        )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert calls == [
+        (
+            "q4",
+            (100, 11, 12, 13, 300, 400, 1, 3_584, 1_024),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "dense",
+            (101, 10, 301, 401, 1, 3_584, 1_024),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+    ]
+
+
 def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

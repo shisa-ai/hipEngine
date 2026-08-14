@@ -2429,10 +2429,61 @@ def launch_gguf_q4_t16_sidecar_decode(
 def _linear_residual_variant(variant: str) -> str | None:
     """Return the same-ABI rounded-BF16 residual sibling name."""
 
+    if variant == "out":
+        return "out_bf16_residual_bf16_out"
     suffix = "_bf16_bf16_out"
     if not variant.endswith(suffix):
         return None
     return f"{variant[: -len(suffix)]}_bf16_residual_bf16_out"
+
+
+def _resolve_registered_linear_residual(
+    normal_key: KernelKey,
+    *,
+    rows: int,
+):
+    """Resolve one composite only when its exact primitive sibling exists."""
+
+    fused_variant = _linear_residual_variant(normal_key.variant)
+    if fused_variant is None:
+        return None
+    residual_max_rows = 4
+    residual_limits = backend_package_capability(
+        normal_key.backend,
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        {},
+    )
+    if isinstance(residual_limits, Mapping):
+        try:
+            residual_max_rows = int(
+                residual_limits.get(normal_key.quant, residual_max_rows)
+            )
+        except (TypeError, ValueError):
+            residual_max_rows = 0
+    if rows > residual_max_rows:
+        return None
+    _ensure_linear_kernel_registered(normal_key)
+    if not is_registered(normal_key):
+        return None
+    fused_key = KernelKey(
+        normal_key.backend,
+        "linear+residual",
+        normal_key.quant,
+        fused_variant,
+    )
+    # Ensuring the primitive restores its whole owning module after registry
+    # tests clear global state, including any supported composite siblings.
+    # Do not bootstrap again for an unsupported composite: dense models with a
+    # different quant must fail closed without re-registering every kernel.
+    if not is_registered(fused_key):
+        return None
+    fn = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    return fused_key, fn
 
 
 def _launch_registered_linear_residual(
@@ -2451,46 +2502,10 @@ def _launch_registered_linear_residual(
 ) -> bool:
     """Launch one exact composite only when its primitive owner also exists."""
 
-    fused_variant = _linear_residual_variant(normal_key.variant)
-    if fused_variant is None:
+    resolved = _resolve_registered_linear_residual(normal_key, rows=rows)
+    if resolved is None:
         return False
-    residual_max_rows = 4
-    residual_limits = backend_package_capability(
-        normal_key.backend,
-        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
-        {},
-    )
-    if isinstance(residual_limits, Mapping):
-        try:
-            residual_max_rows = int(
-                residual_limits.get(normal_key.quant, residual_max_rows)
-            )
-        except (TypeError, ValueError):
-            residual_max_rows = 0
-    if rows > residual_max_rows:
-        return False
-    _ensure_linear_kernel_registered(normal_key)
-    if not is_registered(normal_key):
-        return False
-    fused_key = KernelKey(
-        normal_key.backend,
-        "linear+residual",
-        normal_key.quant,
-        fused_variant,
-    )
-    # Ensuring the primitive restores its whole owning module after registry
-    # tests clear global state, including any supported composite siblings.
-    # Do not bootstrap again for an unsupported composite: dense models with a
-    # different T16 quant must fail closed without re-registering every kernel
-    # on every layer/pass.
-    if not is_registered(fused_key):
-        return False
-    fn = resolve(
-        backend=fused_key.backend,
-        layer=fused_key.layer,
-        quant=fused_key.quant,
-        variant=fused_key.variant,
-    )
+    fused_key, fn = resolved
     kwargs = {"stream": stream, "runtime": runtime}
     if libraries is not None:
         library = libraries.get(
@@ -2659,23 +2674,60 @@ def launch_gguf_linear_residual(
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
+    registered_decode: bool = False,
 ) -> bool:
     """Launch an exact small-row projection plus rounded-BF16 residual.
 
-    Only registry-qualified native rows 2-4 can own this boundary. Any shape,
-    backend, WMMA-policy, allocation, primitive-key, or composite-key miss
-    returns ``False`` so callers execute the ordinary projection plus
-    ``gguf_bf16_add`` chain.
+    Registry-qualified native rows 2-4 use their existing session policy. A
+    caller may independently admit one model/shape-qualified c1 owner through
+    ``registered_decode``; ABI and sibling registry misses still fail closed to
+    the ordinary projection plus ``gguf_bf16_add`` chain.
     """
 
-    if (
-        not _native_batch_decode_session_enabled
-        or rows < 2
-        or rows > 4
-        or _resolve_use_wmma_prefill(None)
-    ):
+    if rows < 1 or rows > 4 or _resolve_use_wmma_prefill(None):
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
+    if rows == 1:
+        if not registered_decode:
+            return False
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return False
+        fused_key, fn = resolved
+        kwargs = {"stream": stream, "runtime": runtime}
+        if libraries is not None:
+            library = libraries.get(
+                f"{fused_key.quant}:{fused_key.variant}",
+                libraries.get(
+                    f"{dispatch.key.quant}:{dispatch.key.variant}",
+                    libraries.get(fused_key.quant),
+                ),
+            )
+            if library is not None:
+                kwargs["library"] = library
+        launcher(
+            fn,
+            weight,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
+        return True
+    if not _native_batch_decode_session_enabled:
+        return False
 
     # Legacy compact-Q4 weights expose T16 as a sidecar. Try those registered
     # sibling keys first; sole-T16 owners continue through the canonical route.
@@ -4201,6 +4253,54 @@ def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, k
     )
 
 
+def _launch_pack8_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("qweight").tensor.ptr,
+        weight.allocation("scales").tensor.ptr,
+        weight.allocation("mins").tensor.ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def _launch_dense_bf16_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -5072,6 +5172,12 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
+
+
+_LAUNCH_RESIDUAL_ABI = {
+    "dense_bf16": _launch_dense_bf16_residual,
+    "pack8": _launch_pack8_residual,
+}
 
 
 _LAUNCH_ABI = {
