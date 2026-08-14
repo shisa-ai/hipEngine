@@ -40,22 +40,24 @@ Each value is the total tokens per second across all active requests:
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **974.814** | **33.522** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **975.876** | **33.533** |
 
 The 27B row is a current sole-T16 snapshot with exact same-input Q4 pair
 reuse, exact dual-Q4 gate/up+SiLU, model-qualified Q4/Q5/Q6 source-F16 prefill,
 shape-scoped rocBLAS solutions, exact packed-record Q6 and packed-column Q4/Q5
 F16 producers, bounded pair-produced full-attention Q, pair-only Q4 gates
 behind the 24 admitted Q6-QKV peers, and compact peer-GDN normalized Q/K
-materialized once per K head. Its persistent scratch now also allocates those
-Q/K planes at K-head rather than V-head capacity. The fresh strictly serial
-selector-unset XTX matrix is **974.814/1009.979/988.405 tok/s** at 512/1K/4K;
-it clears llama.cpp HIP by **1.06%/2.95%/4.40%** and the frozen HIP+1%
-prefill gates by **0.06%/1.93%/3.37%**. Tracked peaks fall to
-**15.596/15.699/16.263 GiB**, all throughput changes are within **0.37%**, every
-token remains 9707, dense NextN transactions pass, and teardown reaches zero.
-This closes the prefill target while reducing memory; the lower Vulkan memory
-floors, 4K decode, and Vulkan MTP remain blocked. Evidence:
+materialized once per K head. Persistent scratch allocates those Q/K planes at
+K-head capacity and now replaces the dead dense-SiLU BF16 gate plane in place.
+The fresh strictly serial selector-unset XTX matrix is
+**975.876/1008.254/987.858 tok/s** at 512/1K/4K; it clears llama.cpp HIP by
+**1.17%/2.77%/4.34%** and the frozen HIP+1% prefill gates by
+**0.17%/1.76%/3.31%**. Tracked peaks fall to
+**15.587/15.681/16.243 GiB**, all throughput changes versus the prior current
+matrix are within **0.171%**, every token remains 9707, dense NextN transactions
+pass, and teardown reaches zero. This closes the prefill target while reducing
+memory; the lower Vulkan memory floors, 4K decode, and Vulkan MTP remain blocked.
+Evidence: [`dense SiLU gate-plane alias`](results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
 [`right-sized compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
 [`independent compact peer-GDN XTX matrix`](results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json), and
 [`compact peer-GDN retention`](results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json).
@@ -205,9 +207,10 @@ The pre-campaign dual-layout hipEngine path could not admit this model on the
 23.984-GiB XTX. The package-default sole-T16 route now fits and is stable; its
 model-qualified prefill-only Q4/Q5/Q6 source-F16 arithmetic passes the complete
 category quality gate and same-commit W7900 safeguard. The compact peer-GDN
-route closes all three frozen prefill targets, and its Q/K scratch is now sized
-to the compact 16-K-head ABI rather than the 48-V-head fallback ABI. The
-campaign still does **not** meet complete cross-engine acceptance: Vulkan sets
+route closes all three frozen prefill targets, its Q/K scratch is sized to the
+compact 16-K-head ABI rather than the 48-V-head fallback ABI, and dense SiLU now
+reuses its dead BF16 gate plane as the down-projection input. The campaign still
+does **not** meet complete cross-engine acceptance: Vulkan sets
 the lower memory floor at every shape, 4K AR decode remains below HIP, and
 Vulkan wins selected MTP. The selector-unset 512/128, 1024/128, 4096/128, and
 8192/128 hipEngine matrix is retained as the current partial result. Clean
@@ -230,24 +233,27 @@ peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
 the lower Vulkan memory row.
 
-Current right-sized compact peer-GDN hipEngine matrix (one warmup plus three
-strictly serial, selector-unset persistent-session reset/replays per shape;
-5-ms whole-device sampling around each clean process):
+Current compact peer-GDN plus dense-SiLU gate-plane-alias hipEngine matrix (one
+warmup plus three strictly serial, selector-unset persistent-session
+reset/replays per shape; 5-ms whole-device sampling around each process):
 
 | Workload | Prefill | Decode | Tracked peak | Whole-device peak delta | Gate status |
 | --- | ---: | ---: | ---: | ---: | --- |
-| 512/128 | **974.814 tok/s** | **33.522 tok/s** | **15.596 GiB** | **16.094 GiB** | **prefill pass** / **decode pass** / memory fail |
-| 1024/128 | **1009.979 tok/s** | **34.530 tok/s** | **15.699 GiB** | **16.305 GiB** | **prefill pass** / **decode pass** / memory fail |
-| 4096/128 | **988.405 tok/s** | **31.401 tok/s** | **16.263 GiB** | **17.022 GiB** | **prefill pass** / decode fail / memory fail |
-| 8192/128 diagnostic | **820.061 tok/s** | **29.381 tok/s** | **16.521 GiB** | **17.277 GiB** | standardized speed below llama.cpp / memory fail |
+| 512/128 | **975.876 tok/s** | **33.533 tok/s** | **15.587 GiB** | **16.083 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 1024/128 | **1008.254 tok/s** | **34.538 tok/s** | **15.681 GiB** | **16.287 GiB** | **prefill pass** / **decode pass** / memory fail |
+| 4096/128 | **987.858 tok/s** | **31.419 tok/s** | **16.243 GiB** | **17.001 GiB** | **prefill pass** / decode fail / memory fail |
+| 8192/128 diagnostic | **821.028 tok/s** | **29.380 tok/s** | **16.501 GiB** | **17.256 GiB** | standardized speed below llama.cpp / memory fail |
 
-The right-sized Q/K owner removes **9.8125/21.25/107.375/107.375 MiB** tracked
-and **1.395/16.297/98.805/108.254 MiB** whole-device peak at 512/1K/4K/8K.
-Throughput changes versus the prior current matrix are within **0.37%**; exact
-IDs, finite logits, dense NextN transactions, W7900 behavior, and teardown all
-pass. The remaining gaps to the lower Vulkan memory floors are
-**0.405/0.605/1.110/1.111 GiB**. Evidence: [`retained compact Q/K
-scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json).
+The dense gate-plane alias removes an additional
+**8.9375/18.75/20.625/20.625 MiB** tracked and
+**11.160/17.965/21.750/21.547 MiB** whole-device peak at 512/1K/4K/8K.
+Throughput changes versus the prior compact-QK matrix are within **0.171%**;
+exact IDs, finite logits, dense NextN transactions, W7900 behavior, and teardown
+all pass. A larger linear-scratch candidate was removed after a **2.94%** 8K
+prefill regression. The remaining gaps to the lower Vulkan memory floors are
+**0.394/0.587/1.089/1.090 GiB**, so memory parity remains open. Evidence:
+[`retained dense SiLU gate-plane alias`](results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
+[`retained compact Q/K scratch`](results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json).
 
 The bounded sole-T16 Q4/Q6-to-F16/rocBLAS owners improve prefill over the prior
 Q6-only matrix by **2.62%/2.40%/2.43%** at 512/1K/4K while decode changes
