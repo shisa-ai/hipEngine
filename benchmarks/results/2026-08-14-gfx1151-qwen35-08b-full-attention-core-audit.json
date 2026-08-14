@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-D4 Qwen3.5-0.8B gfx1151 full-attention core/KV owner audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "source_commit": "08bf196fe",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "backend": "hip_gfx1151",
+  "production_graph": {
+    "prompt": "token 9707 repeated 512 times; one warmup decode then 128 graph transitions",
+    "capture_position": 513,
+    "live_context_range": [
+      514,
+      641
+    ],
+    "fixed_replay_context_cap": 641,
+    "graph_ms_per_token": 8.934396,
+    "m9_normalized_package_ms": 1.589618,
+    "m9_matched_vulkan_gap_ms": 1.43122,
+    "m9_request_bound_percent": 16.019218,
+    "audit_marker_adjusted_leaf_ms": {
+      "kv_write": {
+        "mean": 0.059532,
+        "median": 0.061737,
+        "min": 0.000321,
+        "max": 0.102354
+      },
+      "attention": {
+        "mean": 1.553001,
+        "median": 1.602064,
+        "min": 0.862278,
+        "max": 2.146078
+      },
+      "gate": {
+        "mean": 0.0467,
+        "median": 0.050396,
+        "min": 0.0,
+        "max": 0.0842
+      }
+    },
+    "audit_marker_adjusted_package_ms": 1.659233,
+    "audit_package_share_percent": 18.571295,
+    "attention_share_of_package_percent": 93.597524,
+    "kv_write_share_of_request_percent": 0.666324,
+    "gate_share_of_request_percent": 0.522699,
+    "graph_target_kernel_counts": {
+      "_ZN12_GLOBAL__N_126wall_clock_mark_u64_kernelEPml": 38,
+      "_ZN12_GLOBAL__N_137qwen35_full_attn_gate_mul_bf16_kernelEPKfPKtPtl": 6,
+      "_ZN12_GLOBAL__N_156qwen35_write_paged_kv_mixed_value_position_tensor_kernelItEEvPKfPKT_PtS6_PKiPKlllll": 6,
+      "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EEEvPKfPKtS4_PKiPKlPflllllllf": 6
+    },
+    "trajectory_exact_repeated_token": true
+  },
+  "owner": {
+    "layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23
+    ],
+    "rows": 1,
+    "q_heads": 8,
+    "kv_heads": 2,
+    "head_dim": 256,
+    "q_width": 2048,
+    "kv_width": 512,
+    "block_size": 256,
+    "route": "context cap <=1023 selects backend short-context registry leaf; no split-K",
+    "registry_key": [
+      "hip_gfx1151",
+      "paged_attn_decode",
+      "w4_paro",
+      "bf16_context_batch_c1_exact_spans"
+    ],
+    "registry_fn": "qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans",
+    "launches_per_token": {
+      "kv_write": 6,
+      "fixed256_attention": 6,
+      "unfused_gate": 6
+    },
+    "resources": {
+      "kv_write": {
+        "grid_blocks_per_layer": 2,
+        "threads": 256,
+        "dynamic_lds_bytes": 0,
+        "elements": 512
+      },
+      "fixed256_attention": {
+        "grid_blocks_per_layer": 8,
+        "threads": 256,
+        "dynamic_lds_bytes_at_cap641": 9779,
+        "active_cu_upper_bound": 8,
+        "precompute_token_offsets": true,
+        "value_vector": 2
+      },
+      "gate": {
+        "grid_blocks_per_layer": 8,
+        "threads": 256,
+        "dynamic_lds_bytes": 0,
+        "elements": 2048
+      },
+      "resident_split_scratch_already_allocated_bytes": 24768
+    },
+    "kv_semantics": "All writes and attention reads consume complete KVLiveSpans base_offsets/live_counts/token_positions/evict_mask contract; current dense policy supplies uniform live spans."
+  },
+  "frozen_screen": {
+    "semantic_owner": "six rows=1 BF16 KV write + paged attention + BF16 sigmoid-gate packages at graph cap641/live514-641",
+    "control": "existing fixed256 precomputed-offset value-vector2 context leaf plus separate BF16 gate",
+    "candidates": [
+      {
+        "name": "generic_context_1024_plus_gate",
+        "fn": "qwen35_paged_full_attn_decode_context_bf16_batch_spans",
+        "launches_per_layer": 2,
+        "grid": "8 blocks x 1024 threads attention, then 8 x 256 gate",
+        "dynamic_lds_bytes_at_cap641": 7812
+      },
+      {
+        "name": "generic_split_k_3_fused_gate",
+        "fn": "qwen35_paged_full_attn_decode_split_k_gate_bf16_spans",
+        "launches_per_layer": 2,
+        "grid": "24 blocks x 256 producer, then 8 x 256 fused reducer",
+        "producer_dynamic_lds_bytes": 3072,
+        "reducer_dynamic_lds_bytes": 40,
+        "num_splits": 3,
+        "chunk_size": 256
+      }
+    ],
+    "candidate_count": 2,
+    "excluded": [
+      "warp and grouped-GQA split leaves require the 16Q/2KV/D256 parent shape; this model is 8Q/2KV/D256",
+      "standalone KV-write and gate work are only 0.67% and 0.52% of request wall respectively",
+      "new kernel bodies, split-count sweeps, wave64, INT8 KV, duplicate caches, and direct/split threshold sweeps"
+    ],
+    "constraints": [
+      "same BF16 KV residency",
+      "existing 24,768-byte split scratch only",
+      "complete KVLiveSpans",
+      "finite outputs",
+      "top-1 >=90% and KL <=0.05",
+      "exact repeated-prompt 128-step trajectory",
+      "no prefill regression beyond 1%"
+    ],
+    "stop_rule": "A candidate must save at least 0.089344 ms (1% of current graph wall), win the complete package at live contexts 514/576/641 without a context regression, and pass correctness before one Q4+Q8 full-model gate. If neither does, close D4 without source changes."
+  },
+  "prior_evidence": {
+    "short_context_fixed256": "benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json",
+    "finding": "The current fixed256 body is already retained and exact; D4 does not repeat its old direct-owner comparison.",
+    "anti_repeat": "Prior forced direct/split threshold and broad wave/reduction sweeps remain closed; only the exact 8Q shape and two existing leaves above are screened."
+  },
+  "q8_reuse": {
+    "source": "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json",
+    "reason": "Q8 independently ranks the same quant-neutral full-attention core/KV package first at 1.420967 ms / 15.957393%; it enters the final gate only if a shape route qualifies."
+  },
+  "provenance": {
+    "script": "/tmp/d08-d4/current_leaf_audit.py",
+    "script_sha256": "3840763bb868a349b37102580a0cf36a145f0d45d2667afa446d5f19d8ce3e00",
+    "raw": "/tmp/d08-d4/current-leaf-audit.json",
+    "raw_sha256": "75ee5e204bed0015c69121244ca67a91b5ef5d8befb97ca8869348391663c152",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d4/current_leaf_audit.py"
+  },
+  "next": "Screen exactly generic context-1024 plus gate and generic split-K3 plus fused gate; no implementation until one clears the frozen gate."
+}
