@@ -256,6 +256,7 @@ def plan_qwen35_gguf_materialization(
     decode_repack: bool | None = None,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFMaterializationPlan:
     requested_decode_repack = gguf_decode_repack_enabled(decode_repack)
@@ -281,6 +282,7 @@ def plan_qwen35_gguf_materialization(
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
         for slot, tensor in model_map.root_tensors.items()
@@ -292,6 +294,7 @@ def plan_qwen35_gguf_materialization(
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
         for layer in model_map.layers
@@ -589,6 +592,13 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q5_t16_qkv=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q5_T16_QKV",
+                False,
+            )
+        ),
         dense_q6_qmicro_planar=bool(
             backend_package_capability(
                 backend,
@@ -733,6 +743,7 @@ def _plan_layer(
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> dict[str, Qwen35GGUFWeightSpec]:
     return {
@@ -743,6 +754,7 @@ def _plan_layer(
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
+            dense_q5_t16_qkv=dense_q5_t16_qkv,
             dense_q6_qmicro_planar=dense_q6_qmicro_planar,
         )
         for slot, tensor in layer.tensors.items()
@@ -879,6 +891,7 @@ def plan_qwen35_gguf_weight_spec(
     decode_repack: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
     """Plan one canonical GGUF weight for AR or draft-model materialization."""
@@ -889,6 +902,7 @@ def plan_qwen35_gguf_weight_spec(
         decode_repack=bool(decode_repack),
         dense_q4_t16=bool(dense_q4_t16),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+        dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
         dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
     )
 
@@ -901,6 +915,7 @@ def _spec_for_tensor(
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
@@ -990,10 +1005,15 @@ def _spec_for_tensor(
             allocation_names=allocation_names,
         )
     if qtype == GGMLQuantizationType.Q5_K:
-        if (
-            decode_repack
-            and dense_q5_t16_ssm_out
-            and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
+        if decode_repack and (
+            (
+                dense_q5_t16_ssm_out
+                and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
+            )
+            or (
+                dense_q5_t16_qkv
+                and _is_dense_q5_t16_qkv_tensor(slot_path, tensor)
+            )
         ):
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
@@ -1241,6 +1261,20 @@ def _dense_q4_t16_sidecar_allocation_name(
         if shape == expected_shape and slot_path.endswith(f".{role}"):
             return allocation_name
     return None
+
+
+def _is_dense_q5_t16_qkv_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select only the measured Qwen3.5-0.8B linear-attention QKV projection."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (6_144, 1_024)
+        and slot_path.startswith("layers.")
+        and slot_path.endswith(".attn_qkv")
+    )
 
 
 def _is_dense_q5_t16_ssm_out_tensor(

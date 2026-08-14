@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "accepted",
+  "task": "D08-P1",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint_sha256_sampled_v1": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+    "tensor_inventory_sha256": "c2a338f6f9c459327244d7ed53b954de6647e12d04220458889fc2ee1c93bb69"
+  },
+  "change": {
+    "summary": "Materialize the 18 Q5_K linear-attention QKV weights as sole Q5T16 residents on gfx1151 and route c1/c2-c4/c5+ through the existing direct/rowtile/WMMA family.",
+    "control_layout": "dense_bf16",
+    "candidate_layout": "gguf_q5_k_t16_v1",
+    "duplicate_resident_weights": false,
+    "scope": "exact role and shape: layers.*.attn_qkv, [6144,1024]"
+  },
+  "actual_weight_leaf_screen": {
+    "tensor": "blk.0.attn_qkv.weight",
+    "shape": [6144, 1024],
+    "input_dtype": "bf16",
+    "output_dtype": "bf16",
+    "rows": {
+      "1": {"control_ms": 0.0771646, "candidate_ms": 0.0288729, "speedup": 2.67257, "top1_agreement": 1.0, "max_abs": 0.0078125},
+      "2": {"control_ms": 0.1940719, "candidate_ms": 0.0327006, "speedup": 5.93481, "top1_agreement": 1.0, "max_abs": 0.0078125},
+      "4": {"control_ms": 0.2320297, "candidate_ms": 0.0548614, "speedup": 4.22938, "top1_agreement": 1.0, "max_abs": 0.0078125},
+      "8": {"control_ms": 0.2265959, "candidate_ms": 0.1395067, "speedup": 1.62427, "top1_agreement": 1.0, "max_abs": 0.00390625},
+      "512": {"control_ms": 5.3327522, "candidate_ms": 0.7143773, "speedup": 7.46490, "top1_agreement": 0.9921875, "max_abs": 0.015625}
+    },
+    "control_weight_bytes": 12582912,
+    "candidate_weight_bytes": 4423680
+  },
+  "full_model_counterbalanced_ab": {
+    "protocol": "Control and candidate sessions resident simultaneously; one warmup each; C,A,A,C,C,A,A,C,C,A order; five eager 512/128 samples per role; device embedding.",
+    "control": {"prefill_tok_s_median": 1482.305645, "decode_tok_s_median": 48.313083},
+    "candidate": {"prefill_tok_s_median": 1982.056627, "decode_tok_s_median": 55.434153},
+    "speedup": {"prefill": 1.337144, "decode": 1.147394},
+    "correctness": "All samples finite with identical preview/tail/final token IDs across roles."
+  },
+  "canonical_route": {
+    "workload": "repeated token 9707, pp512/tg128, eager decode, one warmup plus five measured runs, persistent session, forced bulk prefill, WMMA and GEMV enabled, device embedding",
+    "control_source": "/tmp/d08-c0/q4-fast-eager.json",
+    "candidate_source": "/tmp/d08-p1/q4-fast-eager.json",
+    "control": {"prefill_tok_s_median": 1427.445730, "decode_tok_s_median": 49.051854, "tracked_peak_gib": 1.180185},
+    "candidate": {"prefill_tok_s_median": 1908.173617, "decode_tok_s_median": 69.745469, "tracked_peak_gib": 1.043405},
+    "delta_percent": {"prefill_tok_s": 33.677490, "decode_tok_s": 42.187224, "tracked_peak_gib": -11.589685},
+    "correctness": {"finite_logits_all": true, "final_token_ids": [9707, 9707, 9707, 9707, 9707]}
+  },
+  "correctness": {
+    "control_candidate_prompt": "The answer is",
+    "control_top1": 220,
+    "candidate_top1": 220,
+    "kl_control_to_candidate": 0.000173478,
+    "max_abs_logit": 0.1020074,
+    "mean_abs_logit": 0.0175336,
+    "deterministic_public_outputs_match": true,
+    "public_output": " 1.\\n",
+    "note": "The checked-in E2E fixture expects one additional terminal newline and points to a missing legacy llama-tokenize binary; both are pre-existing and reproduce on the gfx1151 control."
+  },
+  "graph_guard": {
+    "effective_graph_replay_decode": true,
+    "finite": true,
+    "final_token_id": 9707,
+    "prefill_tok_s_single_sample": 1615.337646,
+    "decode_tok_s_single_sample": 103.554257
+  },
+  "validation": {
+    "red_nodes": "3 failed before implementation; all 3 pass after implementation",
+    "focused_bundle": "110 passed, 2 skipped, 1 unrelated pre-existing local 27B inventory expectation failure",
+    "unrelated_failure": "tests/test_qwen35_gguf_mapping.py::test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight expects ignored_block_ids=(64,), local model reports ()."
+  },
+  "exact_candidate_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-p1/q4-fast-eager.json",
+  "source_base_commit": "d54e3838d4b18a211784c4d3ff5da3ca0f1eebf7",
+  "candidate_commit": "commit containing this artifact"
+}
