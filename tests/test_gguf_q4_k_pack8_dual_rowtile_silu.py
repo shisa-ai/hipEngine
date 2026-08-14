@@ -520,6 +520,54 @@ def test_dense_runner_c1_retains_unfused_chain(monkeypatch: pytest.MonkeyPatch) 
     assert calls == ["pair", "silu", "down", "add"]
 
 
+def test_dense_runner_qualified_c1_consumes_registered_fused_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[tuple[str, tuple, dict]] = []
+    monkeypatch.setattr(qwen35_runner, "gguf_add_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(
+        qwen35_runner,
+        "_gguf_dense_pair_silu_decode_variant",
+        lambda owner, *, rows, in_features, out_features: (
+            "pack8_dual_decode_t128_bf16_bf16_out"
+            if (owner, rows, in_features, out_features)
+            == (runner, 1, 5_120, 17_408)
+            else None
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: calls.append(("pair_silu", args, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair",
+        lambda *args, **kwargs: pytest.fail("qualified fused route must skip the unfused pair"),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "silu_mul_separate_out_bf16",
+        lambda *args, **kwargs: pytest.fail("qualified fused route must skip separate SiLU"),
+    )
+    monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append(("linear", a, k)))
+    monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append(("add", a, k)))
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=1,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == ["pair_silu", "linear", "add"]
+    assert calls[0][2]["registered_decode_variant"] == "pack8_dual_decode_t128_bf16_bf16_out"
+
+
 def _run_fused_chain(
     *,
     rows: int,

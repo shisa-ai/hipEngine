@@ -164,9 +164,14 @@ are admitted at a **17.37%** primary-Q4 dense-FFN bound. The D3 audit identifies
 24 sole-pack8 `[N3584,K1024]` gate/up pairs (**132.12 MB / 3.94x MALL**) and
 freezes only existing fused-SiLU t32/t64/t128 against the current dual-t32 plus
 separate SiLU owner. The bounded screen selects t128 at **1.7891 -> 0.9955 ms
-(1.797x)** per complete pool pass, projecting **0.819 ms / 8.49%** graph saving
-with 24/24 top-1 and max abs 6.10e-5; it now enters one full-model gate. This
-campaign row is not yet a final cross-engine topline; see the [`dense decode screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json),
+(1.797x)** per complete pool pass, projecting **0.819 ms / 8.49%** graph saving.
+The retained model/shape-qualified route realizes production graph tg128
+**101.86 -> 110.31 tok/s (+8.29%, 5/5)** and eager **65.26 -> 66.75 (+2.28%,
+5/5)**, removes **24 graph nodes**, preserves exact trajectories, passes
+**446/450 top-1 / max KL 0.002843**, and adds zero bytes. Mandatory current
+graph rerank M9 is next. This campaign row is not yet a final cross-engine
+topline; see the [`retained dense decode route`](results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json),
+[`dense decode screen`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-screen.json),
 [`dense decode audit`](results/2026-08-14-gfx1151-qwen35-08b-dense-decode-audit.json),
 [`graph/direct census`](results/2026-08-14-gfx1151-qwen35-08b-graph-direct-census.json),
 [`post-P4 rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-p4-rerank.json),

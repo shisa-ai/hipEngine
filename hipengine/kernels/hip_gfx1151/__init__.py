@@ -50,6 +50,15 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+
+
+def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
+    """Bind the qualified 0.8B fused gate/up schedule to 128 threads."""
+
+    kwargs["threads"] = 128
+    return gguf_q4_k_pack8_dual_silu_bf16_bf16_out(*args, **kwargs)
+
+
 # Clean AR-O2 three-repeat category/quality gates admit compensated source-F16
 # WMMA only for SWA QKV/gate/O from 16 rows. Full-attention layers and M2-15
 # retain the exact LPF-1 tile; decode retains the separately registered GEMV.
@@ -695,6 +704,14 @@ GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
 # D08-P4 admits sole compact Q4T16 only for the six Qwen3.5-0.8B full-attention
 # K1,024/N4,096 Q projections; other Q4 roles and 27B keep their prior owners.
 GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
+# D08-D3 keeps every Qwen3.5-0.8B Q4 gate/up pair in its sole pack8 layout and
+# selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
+# Q8, other models/shapes, native batches, and peer backends retain prior owners.
+GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
+    },
+}
 # The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
 GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4},
@@ -1719,6 +1736,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
             replace=replace,
         )
+    q4_pack8_decode_pair_silu_t128_key = KernelKey(
+        BACKEND,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_decode_t128_bf16_bf16_out",
+    )
+    if replace or not is_registered(q4_pack8_decode_pair_silu_t128_key):
+        register(
+            q4_pack8_decode_pair_silu_t128_key,
+            _qwen35_08b_q4_pack8_dual_silu_t128,
+            replace=replace,
+        )
     q4_t16_sidecar_pair_silu_key = KernelKey(
         BACKEND,
         "linear_pair_silu",
@@ -1779,6 +1808,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
