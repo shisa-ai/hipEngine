@@ -48,7 +48,7 @@
     "sources": [
       {
         "path": "/tmp/qwen36-27b-memory-goal/eager-decode4k-summary.json",
-        "sha256": "b1a764c4fe684cd82a4430d4cac6ef7888c6203d929cbdbc877c6c7aa45e70"
+        "sha256": "b1a764c4fe684cd82a4430d4cac6ef7888c6203d929cbdbc877c6c7c7aa45e70"
       },
       {
         "path": "/tmp/qwen36-27b-memory-goal/eager-decode8k-summary.json",
