@@ -131,6 +131,13 @@ def test_bulk_prefill_scratch_census_exposes_logical_aliases_and_lifetimes() -> 
             "field_b": (("full", 1, 2),),
         },
         allocation_groups={"field_a": "owner_slot_00", "field_b": "owner_slot_00"},
+        allocation_inplace_aliases={"field_b": "field_a"},
+        allocation_subranges={
+            "field_a": (
+                (0, 40, (("linear", 0, 2),)),
+                (40, 40, (("full", 1, 2),)),
+            )
+        },
         field_a=DeviceBuffer(0x1000, 80),
         field_b=DeviceBuffer(0x1000, 80),
         metadata=DeviceBuffer(0x1050, 20),
@@ -152,6 +159,14 @@ def test_bulk_prefill_scratch_census_exposes_logical_aliases_and_lifetimes() -> 
     assert census["allocation_groups"] == {
         "field_a": "owner_slot_00",
         "field_b": "owner_slot_00",
+    }
+    assert census["allocation_inplace_aliases"] == {"field_b": "field_a"}
+    assert census["allocation_subranges"]["field_a"][0] == {
+        "relative_offset_bytes": 0,
+        "nbytes": 40,
+        "lifetimes": [
+            {"route": "linear", "start_stage": 0, "end_stage": 2}
+        ],
     }
 
 

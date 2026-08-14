@@ -219,3 +219,41 @@ def test_silu_mul_separate_out_f32_matches_cpu_reference() -> None:
     up_f32 = _bf16_to_f32(up)
     expected = gate_f32 * (1.0 / (1.0 + np.exp(-gate_f32))) * up_f32
     np.testing.assert_allclose(out, expected, rtol=1.0e-6, atol=1.0e-6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_silu_mul_separate_bf16_may_replace_gate_in_place() -> None:
+    rng = np.random.default_rng(20260814)
+    rows = 7
+    features = 259
+    gate = _bf16_bits(rng.normal(size=(rows, features)).astype(np.float32))
+    up = _bf16_bits(rng.normal(size=(rows, features)).astype(np.float32))
+    actual = np.empty_like(gate)
+
+    runtime = get_hip_runtime()
+    library = build_paro_silu(load=True)
+    bufs: list = []
+    try:
+        gate_d = _dev(np.ascontiguousarray(gate), runtime, bufs)
+        up_d = _dev(np.ascontiguousarray(up), runtime, bufs)
+        silu_mul_separate_out_bf16(
+            gate_d.ptr,
+            up_d.ptr,
+            gate_d.ptr,
+            rows,
+            features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), gate_d, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    gate_f32 = _bf16_to_f32(gate)
+    up_f32 = _bf16_to_f32(up)
+    expected = _bf16_bits(
+        gate_f32 * (1.0 / (1.0 + np.exp(-gate_f32))) * up_f32
+    )
+    np.testing.assert_array_equal(actual, expected)

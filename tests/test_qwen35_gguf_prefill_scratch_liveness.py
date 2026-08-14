@@ -214,7 +214,10 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     assert scratch.prefill_key.nbytes == compact_qk_bytes
     assert scratch.prefill_value.nbytes == value_bytes
     assert scratch.ffn_gate_up.ptr != 0
-    assert scratch.ffn_intermediate.ptr != 0
+    # Dense SiLU reads gate/up before replacing the gate half in place, so the
+    # down-projection input reuses the dead gate plane exactly.
+    assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
+    assert scratch.ffn_intermediate.nbytes * 2 == scratch.ffn_gate_up.nbytes
     assert scratch.ffn_down.ptr != 0
     assert scratch.moe_q8_1 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.moe_shared_gate == DeviceBuffer(ptr=0, nbytes=0)
@@ -223,8 +226,16 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     offsets = dict(scratch.allocation_offsets)
     lifetimes = dict(scratch.allocation_lifetimes)
     assert offsets
+    gate_up_offset, gate_up_size = offsets["ffn_gate_up"]
     intermediate_offset, intermediate_size = offsets["ffn_intermediate"]
     down_offset, down_size = offsets["ffn_down"]
+    assert (intermediate_offset, intermediate_size) == (
+        gate_up_offset,
+        gate_up_size // 2,
+    )
+    assert dict(scratch.allocation_inplace_aliases) == {
+        "ffn_intermediate": "ffn_gate_up"
+    }
     assert (
         intermediate_offset + intermediate_size <= down_offset
         or down_offset + down_size <= intermediate_offset
@@ -240,18 +251,48 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
-            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
-                lifetimes[name_a],
-                lifetimes[name_b],
+            allocations_conflict = gguf_runner._prefill_scratch_allocations_conflict(
+                name_a,
+                offset_a,
+                size_a,
+                name_b,
+                offset_b,
+                size_b,
+                lifetimes=lifetimes,
+                allocation_subranges=scratch.allocation_subranges,
             )
-            ranges_overlap = (
-                offset_a < offset_b + size_b
-                and offset_b < offset_a + size_a
+            inplace_aliases = dict(scratch.allocation_inplace_aliases)
+            intentional_inplace_alias = (
+                inplace_aliases.get(name_a) == name_b
+                or inplace_aliases.get(name_b) == name_a
             )
-            assert not (lifetimes_overlap and ranges_overlap), (
+            assert not (allocations_conflict and not intentional_inplace_alias), (
                 f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
                 f"{name_b}={offsets[name_b]}"
             )
+
+
+def test_gfx1100_dense_qwen36_inplace_gate_alias_reduces_full_row_scratch(
+    monkeypatch,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=4_096,
+        capacity=4_352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.rows == 4_096
+    assert scratch.linear_qkv_f32.nbytes == 4_096 * 10_240 * 4
+    assert scratch.full_query_raw.nbytes == 4_096 * 6_144 * 4
+    assert scratch.ffn_gate_up.nbytes == 2 * 4_096 * 17_408 * 2
+    assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 475 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 468 * _MIB
 
 
 def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -> None:
