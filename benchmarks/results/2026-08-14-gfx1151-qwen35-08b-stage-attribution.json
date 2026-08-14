@@ -1,0 +1,68 @@
+{
+  "schema": "hipengine.qwen35_08b.stage_attribution.v1",
+  "date": "2026-08-14",
+  "status": "diagnostic",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "7.15.0-0000000"
+  },
+  "source_commit": "f668245dc3b0338641c70412d3acc0a3e7d53acc",
+  "capture_worktree_note": "source commit plus the stage-marker changes committed with this artifact",
+  "method": {
+    "name": "same_stream_device_wall_clock_markers",
+    "clock_rate_khz": 99810,
+    "marker_kernel": "wall_clock_mark_u64_kernel",
+    "reason": "rocprofv3 and hipEventElapsedTime returned unusable zero/negative durations",
+    "scope": "pp512 plus four eager decode steps after one warmup; diagnostic, not topline",
+    "alias_rule": "generic prefill qkv/alpha aliases omitted when route-specific keys exist"
+  },
+  "marker_validation": {
+    "cpu_sleep_ms": 20.0,
+    "measured_sleep_ms": 20.206873,
+    "back_to_back_ms": 0.012985,
+    "rocprof_dispatches": 3,
+    "rocprof_duration_status": "zero from known profiler blocker; names/resources captured"
+  },
+  "role_columns": ["role", "ms", "percent_of_stage_sum"],
+  "rows": {
+    "q4_k_m": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "fingerprint": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+      "size_bytes": 532517120,
+      "quant": "gguf_q4_k_m",
+      "host_embedding": false,
+      "routes": {"wmma_prefill": true, "gemv_decode": true, "graph_decode": false},
+      "correctness": {"finite_final_logits": true, "final_token_id": 9707, "final_logit": 26.88048553466797},
+      "instrumented_wall_ms": {"prefill": 362.126180, "decode_per_token": 20.047185},
+      "coverage": {"prefill_stage_ms": 360.336419, "prefill_fraction": 0.995058, "decode_stage_ms_per_token": 19.363906, "decode_fraction": 0.965916},
+      "prefill_roles": [["linear_attention_projections", 157.792846, 43.790], ["dense_ffn_projections", 100.905841, 28.003], ["gdn_recurrence", 67.506402, 18.734], ["full_attention_projections_rope", 15.770243, 4.377], ["full_attention_core_kv", 5.245046, 1.456], ["linear_attention_conv", 4.752870, 1.319], ["attention_norm", 2.223034, 0.617], ["dense_ffn_activation", 1.880413, 0.522], ["input_setup", 1.753181, 0.487], ["lm_head_sampler_transport", 1.415750, 0.393], ["residual_norm_glue", 1.073119, 0.298], ["final_norm", 0.017674, 0.005]],
+      "decode_roles_per_token": [["linear_attention_projections", 4.985372, 25.746], ["dense_ffn_projections", 4.743921, 24.499], ["full_attention_projections_rope", 1.906986, 9.848], ["full_attention_core_kv", 1.828597, 9.443], ["attention_norm", 1.467581, 7.579], ["gdn_recurrence", 1.298021, 6.703], ["lm_head_sampler_transport", 1.288315, 6.653], ["residual_norm_glue", 0.799068, 4.127], ["linear_attention_conv", 0.537363, 2.775], ["dense_ffn_activation", 0.267047, 1.379], ["input_setup", 0.205571, 1.062], ["final_norm", 0.036064, 0.186]],
+      "fallback_prefill_ms": {"linear_qkv_gate": 118.590201, "linear_alpha_beta": 5.938323},
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-m1/q4-wall-clock.json"
+    },
+    "q8_0": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "fingerprint": "4f43821574f5137d61d3e070af433e3ee9c72c1e95330be0e8151d0216e45c57",
+      "size_bytes": 811843840,
+      "quant": "gguf_q8_0",
+      "host_embedding": true,
+      "routes": {"wmma_prefill": true, "gemv_decode": true, "graph_decode": false},
+      "correctness": {"finite_final_logits": true, "final_token_id": 9707, "final_logit": 27.70020866394043},
+      "instrumented_wall_ms": {"prefill": 132.048386, "decode_per_token": 17.869223},
+      "coverage": {"prefill_stage_ms": 130.480523, "prefill_fraction": 0.988127, "decode_stage_ms_per_token": 17.436094, "decode_fraction": 0.975761},
+      "prefill_roles": [["gdn_recurrence", 50.490542, 38.696], ["dense_ffn_projections", 27.733574, 21.255], ["linear_attention_projections", 24.516792, 18.790], ["full_attention_core_kv", 8.478479, 6.498], ["full_attention_projections_rope", 7.087136, 5.432], ["linear_attention_conv", 5.501122, 4.216], ["attention_norm", 2.191905, 1.680], ["lm_head_sampler_transport", 1.398056, 1.071], ["input_setup", 1.083599, 0.830], ["dense_ffn_activation", 1.065945, 0.817], ["residual_norm_glue", 0.913095, 0.700], ["final_norm", 0.020279, 0.016]],
+      "decode_roles_per_token": [["dense_ffn_projections", 4.640880, 26.617], ["linear_attention_projections", 3.287712, 18.856], ["full_attention_core_kv", 1.798006, 10.312], ["gdn_recurrence", 1.446331, 8.295], ["lm_head_sampler_transport", 1.413415, 8.106], ["attention_norm", 1.381532, 7.923], ["full_attention_projections_rope", 1.343165, 7.703], ["residual_norm_glue", 0.874534, 5.016], ["linear_attention_conv", 0.752244, 4.314], ["dense_ffn_activation", 0.265156, 1.521], ["input_setup", 0.214673, 1.231], ["final_norm", 0.018445, 0.106]],
+      "fallback_prefill_ms": {"linear_qkv_gate": 14.043252, "linear_alpha_beta": 3.735137},
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --quant gguf_q8_0 --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-m1/q8-wall-clock.json"
+    }
+  },
+  "decision": {
+    "highest_q4_prefill_owner": "linear attention projections: 43.790%; qkv/gate and alpha/beta are fallback routes",
+    "highest_q8_prefill_owner": "GDN recurrence: 38.696%",
+    "shared_decode_owner": "projection GEMVs: 60.1% Q4 and 53.2% Q8",
+    "next_package": "D08-P1 Q4 prefill projection route/default correction; one route repair then remeasure",
+    "caveat": "marker launches perturb absolute wall; use role ranking here and C0 for topline"
+  },
+  "related_artifact": "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-c0.json"
+}

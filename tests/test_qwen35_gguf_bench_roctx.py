@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_bench_module():
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "qwen35_gguf_bench.py"
@@ -93,3 +95,28 @@ def test_disabled_profiler_control_does_not_load_roctx(monkeypatch) -> None:
 
     with control.region("prefill", selected="prefill"):
         pass
+
+
+def test_gpu_stage_timings_require_persistent_session(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["qwen35_gguf_bench.py", "--gpu-stage-timings"])
+
+    with pytest.raises(ValueError, match="requires --persistent-session"):
+        BENCH.main()
+
+
+def test_gpu_stage_timings_reject_graph_decode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qwen35_gguf_bench.py",
+            "--persistent-session",
+            "--gpu-stage-timings",
+            "--graph-replay-decode",
+            "--decode-tokens",
+            "1",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="requires eager decode"):
+        BENCH.main()

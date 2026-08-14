@@ -224,8 +224,39 @@ The ROCm 7.15 selected-region control functions live in
 now supports both. Dispatch/resource traces are valid (491 Q4 prefill
 dispatches and 334 graph-decode dispatches/token), but rocprofv3 1.3.5 emits
 zero kernel durations on this gfx1151 stack even without selected regions.
-M1/M2 therefore keep rocprof for names/resources and use HIP-event semantic
-stage timing for Amdahl ownership.
+HIP events are not a substitute on this stack: `hipEventElapsedTime` returned
+near-zero intervals and large negative clock-wrap values. M1/M2 therefore keep
+rocprof for names/resources and use a same-stream `wall_clock64()` marker kernel
+for semantic ownership. A 20-ms CPU sleep calibrated to 20.207 ms, adjacent
+markers measured 0.013 ms, and rocprof captured all three marker dispatches
+under the expected kernel name (while retaining the global zero-duration
+blocker).
+
+### 2.5 HIP semantic attribution checkpoint (2026-08-14)
+
+The repaired profiling-only route records device steady-clock boundaries around
+every semantic stage. It is intentionally eager and marker-perturbed, so C0
+remains the only topline throughput source. Route-specific prefill keys replace
+their generic aliases in the reconciliation sum.
+
+| Quant/scope | Stage sum / instrumented wall | Coverage | Largest roles by stage share |
+| --- | ---: | ---: | --- |
+| Q4_K_M prefill | 360.34 / 362.13 ms | **99.51%** | linear-attention projections **43.79%**; dense FFN projections **28.00%**; GDN **18.73%** |
+| Q8_0 prefill | 130.48 / 132.05 ms | **98.81%** | GDN **38.70%**; dense FFN projections **21.25%**; linear-attention projections **18.79%** |
+| Q4_K_M eager decode | 19.36 / 20.05 ms/token | **96.59%** | linear-attention projections **25.75%**; dense FFN projections **24.50%**; full-attention projections/core **19.29%** |
+| Q8_0 eager decode | 17.44 / 17.87 ms/token | **97.58%** | dense FFN projections **26.62%**; linear-attention projections **18.86%**; full-attention projections/core **18.02%** |
+
+The Q4 linear-attention QKV/gate and alpha/beta rows explicitly report the
+`fallback` route. QKV/gate alone consumes 118.59 ms versus 14.04 ms in Q8,
+although Q4 carries fewer encoded bytes. This admits P1 as the first prefill
+package once the Vulkan half of M3/M4 closes the joined ledger. Its bound stays
+one route repair followed by one C0 remeasurement; do not tune arithmetic in
+P1. Decode remains projection-dominated across both files (linear+dense+full:
+**60.1% Q4, 53.2% Q8**), making D3 the leading arithmetic candidate after the
+required graph/direct submission census.
+
+Artifact:
+[`2026-08-14-gfx1151-qwen35-08b-stage-attribution.json`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-stage-attribution.json).
 
 ## 3. Comparison contracts
 
@@ -407,11 +438,11 @@ layout, activation reuse, or submission class.
 
 | ID | Work | Exit gate | Status |
 | --- | --- | --- | --- |
-| **D08-M1** | hipEngine Q4 prefill selected-region kernel/API profile. | Dispatch/resources captured; HIP-event semantic timing and <=1% ledger residual still required because rocprof durations are zero. | in-progress |
-| **D08-M2** | hipEngine Q4 eager and graph decode profiles. | Graph dispatch count captured; eager HIP-event role table plus graph/direct submission gap and sampler/transport ledger remain. | in-progress |
+| **D08-M1** | hipEngine Q4 prefill selected-region kernel/API profile. | **Complete:** names/resources captured and steady-clock semantic stages reconcile 99.51% of instrumented wall; Q4 fallback projection route identified. | completed |
+| **D08-M2** | hipEngine Q4 eager and graph decode profiles. | Eager role table reconciles 96.59%; graph dispatch count is captured. Graph/direct submission gap and core-vs-sampler/transport split remain. | in-progress |
 | **D08-M3** | llama.cpp Vulkan Q4 pp512/tg128 perf-logger profiles. | All nodes assigned to semantic roles; logger total reconciled. | pending |
-| **D08-M4** | Repeat M1-M3 for Q8_0. | Q8 route/embedding differences explicit; no mislabeled quant row. | pending |
-| **D08-M5** | Produce joined semantic-role Amdahl table. | Every module appears for both engines or is marked backend-specific; `other` <=1%. | pending |
+| **D08-M4** | Repeat M1-M3 for Q8_0. | HIP prefill/decode side reconciles 98.81%/97.58% with explicit host embedding; Vulkan logger side remains. | in-progress |
+| **D08-M5** | Produce joined semantic-role Amdahl table. | HIP role table is complete; join waits on M3 and Vulkan M4. Every module must appear or be backend-specific; `other` <=1%. | in-progress |
 
 No implementation lane starts before `D08-C0` and the relevant M lane identify
 a shipped owner. A trivial route correction from C0 may be retained immediately

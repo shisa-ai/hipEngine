@@ -88,6 +88,12 @@ __global__ void prefill_flight_recorder_mark_i64_kernel(int64_t* out, int64_t va
   }
 }
 
+__global__ void wall_clock_mark_u64_kernel(uint64_t* out, int64_t index) {
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    out[index] = static_cast<uint64_t>(wall_clock64());
+  }
+}
+
 __global__ void set_decode_position_i64_kernel(
     int64_t* position,
     int64_t* context,
@@ -562,6 +568,37 @@ extern "C" int hipengine_prefill_flight_recorder_mark_i64(
       out,
       value);
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_wall_clock_mark_u64(
+    uint64_t* out,
+    int64_t index,
+    hipStream_t stream) {
+  if (out == nullptr || index < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      wall_clock_mark_u64_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      out,
+      index);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_wall_clock_rate_khz(int* rate_khz) {
+  if (rate_khz == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  int device = 0;
+  hipError_t status = hipGetDevice(&device);
+  if (status != hipSuccess) {
+    return static_cast<int>(status);
+  }
+  return static_cast<int>(
+      hipDeviceGetAttribute(rate_khz, hipDeviceAttributeWallClockRate, device));
 }
 
 extern "C" int hipengine_set_i64_vector(

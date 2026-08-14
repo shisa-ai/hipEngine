@@ -32,6 +32,8 @@ from hipengine.kernels.hip_gfx1100.runtime.state import (
     set_i64_scalar,
     set_i64_vector,
     unpack_verify_chain_dynamic_metadata_i64,
+    wall_clock_mark_u64,
+    wall_clock_rate_khz,
 )
 
 __all__ = [
@@ -64,4 +66,6 @@ __all__ = [
     "set_i64_scalar",
     "set_i64_vector",
     "unpack_verify_chain_dynamic_metadata_i64",
+    "wall_clock_mark_u64",
+    "wall_clock_rate_khz",
 ]
