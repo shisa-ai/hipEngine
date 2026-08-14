@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "candidate-qualified-not-yet-retained",
+  "task": "D08-D3 Q4_K_M dense gate/up c1 existing-leaf screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "mall_bytes": 33554432
+  },
+  "source_commit": "fc1ed60ee",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "shape": {
+    "rows": 1,
+    "in_features": 1024,
+    "out_features": 3584,
+    "layers": 24
+  },
+  "method": {
+    "pool": {
+      "resident_bytes": 132120576,
+      "mall_multiple": 3.9375,
+      "passes_2x_mall": true,
+      "order": "all 24 physical gate/up pairs per event sample; rotated and alternately reversed method order"
+    },
+    "samples": {
+      "rounds": 20,
+      "per_method": 20,
+      "unit": "ms per complete 24-layer pool pass"
+    },
+    "control": "current pack8 dual t32 plus separate BF16 SiLU",
+    "candidates": [
+      "existing pack8 dual SiLU t32",
+      "existing pack8 dual SiLU t64",
+      "existing pack8 dual SiLU t128"
+    ],
+    "timer": "same-stream wall_clock64 around all 24 physical pairs; one warm pool pass per method; 20 rotated/counter-reversed samples",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d3/q4_dense_gateup_c1_screen.py",
+    "screen_script": "/tmp/d08-d3/q4_dense_gateup_c1_screen.py",
+    "screen_script_sha256": "96c720436a4df482a0d9d90ef974490302083dca9fa6d67b9eb630c927e7df74",
+    "raw": "/tmp/d08-d3/q4-dense-gateup-c1-screen.json",
+    "raw_sha256": "828dc5bf190a131d1e7a9c5dd36f6e27d303dd751a1e000c468527686c7055b1"
+  },
+  "correctness": {
+    "fused_silu_t32": {
+      "exact_layers": 24,
+      "finite_layers": 24,
+      "top1_layers": 24,
+      "max_abs_bf16_word_delta": 0,
+      "max_abs": 0.0,
+      "element_count": 86016,
+      "mean_abs": 0.0,
+      "top1_agreement": 1.0,
+      "finite": true
+    },
+    "fused_silu_t64": {
+      "exact_layers": 7,
+      "finite_layers": 24,
+      "top1_layers": 24,
+      "max_abs_bf16_word_delta": 128,
+      "max_abs": 3.814697265625e-06,
+      "element_count": 86016,
+      "mean_abs": 6.335012937511021e-11,
+      "top1_agreement": 1.0,
+      "finite": true
+    },
+    "fused_silu_t128": {
+      "exact_layers": 9,
+      "finite_layers": 24,
+      "top1_layers": 24,
+      "max_abs_bf16_word_delta": 4,
+      "max_abs": 6.103515625e-05,
+      "element_count": 86016,
+      "mean_abs": 1.654917642077808e-09,
+      "top1_agreement": 1.0,
+      "finite": true
+    }
+  },
+  "timing": {
+    "control_unfused_t32": {
+      "median": 1.7891393647931069,
+      "mean": 1.7486564472497745,
+      "min": 1.562248271716261,
+      "max": 1.8505059613265205,
+      "median_ms_per_layer": 0.07454747353304612,
+      "speedup_vs_control": 1.0,
+      "projected_graph_saving_ms_per_token": 0.0,
+      "projected_graph_saving_percent": 0.0,
+      "samples_ms": [
+        1.791002905520489,
+        1.6660054102795312,
+        1.7791804428413986,
+        1.78386935176836,
+        1.787275824065725,
+        1.772287345957319,
+        1.5702635006512373,
+        1.8070734395351167,
+        1.7911632100991886,
+        1.8000200380723375,
+        1.8237451157198679,
+        1.565654744013626,
+        1.8080753431519887,
+        1.8387736699729487,
+        1.562248271716261,
+        1.7366195771966737,
+        1.8093277226730788,
+        1.8295160805530508,
+        1.6005209898807735,
+        1.8505059613265205
+      ]
+    },
+    "fused_silu_t32": {
+      "median": 1.7147780783488629,
+      "mean": 1.684110810540026,
+      "min": 1.5177637511271416,
+      "max": 1.7603246167718665,
+      "median_ms_per_layer": 0.07144908659786929,
+      "speedup_vs_control": 1.0433649621389174,
+      "projected_graph_saving_ms_per_token": 0.07671063794999171,
+      "projected_graph_saving_percent": 0.795274542150882,
+      "samples_ms": [
+        1.7047590421801422,
+        1.5177637511271416,
+        1.7220719366796915,
+        1.7100490932772268,
+        1.743993587816852,
+        1.7425107704638814,
+        1.5250175333132954,
+        1.7491634104799119,
+        1.7369401863540728,
+        1.6550646227832881,
+        1.704117823865344,
+        1.6706943192064923,
+        1.7356176735798017,
+        1.7234645827071435,
+        1.6924155896202786,
+        1.5433924456467287,
+        1.719507063420499,
+        1.7417994188959023,
+        1.583548742610961,
+        1.7603246167718665
+      ]
+    },
+    "fused_silu_t64": {
+      "median": 1.2654042681094078,
+      "mean": 1.2202790301572988,
+      "min": 1.048973048792706,
+      "max": 1.3006311992786295,
+      "median_ms_per_layer": 0.05272517783789199,
+      "speedup_vs_control": 1.4138875692794934,
+      "projected_graph_saving_ms_per_token": 0.5402818496628765,
+      "projected_graph_saving_percent": 5.601210107301972,
+      "samples_ms": [
+        1.0849013124937381,
+        1.05700831580002,
+        1.1759543131950707,
+        1.2198777677587416,
+        1.2703737100490933,
+        1.2758240657248772,
+        1.1580002003807233,
+        1.282997695621681,
+        1.2689309688407975,
+        1.2955415289049192,
+        1.3006311992786295,
+        1.281074040677287,
+        1.2618775673780183,
+        1.2407173629896804,
+        1.048973048792706,
+        1.094449453962529,
+        1.2259092275323114,
+        1.2803025748922954,
+        1.2838793708045286,
+        1.29835687806833
+      ]
+    },
+    "fused_silu_t128": {
+      "median": 0.9955214908325818,
+      "mean": 0.9780828574291153,
+      "min": 0.8975854122833383,
+      "max": 1.0279931870554053,
+      "median_ms_per_layer": 0.04148006211802424,
+      "speedup_vs_control": 1.7971880881213331,
+      "projected_graph_saving_ms_per_token": 0.81869123452665,
+      "projected_graph_saving_percent": 8.48753594156744,
+      "samples_ms": [
+        0.9169421901613065,
+        0.8975854122833383,
+        0.9575393247169622,
+        1.0142470694319206,
+        1.024706943192065,
+        1.0279931870554053,
+        0.961025949303677,
+        1.0162108005209898,
+        1.0252680092175133,
+        0.9654343252179141,
+        1.0068730588117423,
+        0.8979861737300872,
+        1.0082356477306884,
+        1.0050696323013726,
+        0.9129345756938183,
+        0.9906622582907524,
+        0.9846608556256888,
+        1.0003807233744113,
+        0.9410279531109107,
+        1.0068730588117423
+      ]
+    }
+  },
+  "qualification": {
+    "minimum_projected_graph_saving_percent": 1.0,
+    "winner_projected_graph_saving_percent": 8.48753594156744,
+    "passes": true,
+    "graph_component_basis_ms": 1.8456649772678286,
+    "production_graph_basis_ms": 9.6458058046875,
+    "winner": "fused_silu_t128",
+    "winner_projected_graph_saving_ms": 0.81869123452665
+  },
+  "q8_context": {
+    "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+    "gate_up_resident_bytes_total": 187170816,
+    "gate_up_mall_multiple": 5.578125,
+    "owner": "24 Q8_0 T16 dual-split gate/up leaves; candidate Q4 registry key cannot match",
+    "decision": "unchanged control; no Q8 candidate frozen or screened",
+    "inventory_script": "/tmp/d08-d3/inspect_dense_owners_q8.py",
+    "inventory_script_sha256": "64581f7ef4fb89a9d35873908f93d3224a1f241105171fd610d93427cd3c4c1f",
+    "raw_inventory": "/tmp/d08-d3/dense-owner-inventory-q8.json",
+    "raw_inventory_sha256": "a11fd57c1b697114a12d354cf99443309f40963f59bd35fb7443473aa130ba21"
+  },
+  "decision": {
+    "admit": "fused_silu_t128 only",
+    "reason": "fastest qualified same-resident schedule; 1.797x pool speedup, 8.49% projected graph saving, finite, 24/24 top-1, max abs 6.1035e-5",
+    "reject": [
+      "fused_silu_t32: 0.80% projected, below 1% gate",
+      "fused_silu_t64: qualifies but is dominated by t128 under the same arithmetic/layout contract"
+    ],
+    "production_change": "none in this artifact",
+    "next": "RED/GREEN a gfx1151 model/shape-qualified Q4 linear_pair_silu t128 registry route, then one combined full-model gate."
+  }
+}
