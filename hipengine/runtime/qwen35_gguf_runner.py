@@ -7,6 +7,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
@@ -3863,7 +3864,13 @@ class Qwen35GGUFFullStackRunner:
         runtime: HipRuntime,
     ) -> int | None:
         if hidden_f32_ptr is None:
-            gguf_rmsnorm_bf16_f32_weight(
+            norm_kernel = _gguf_norm_residual_decode_kernel(
+                self,
+                layer="rmsnorm",
+                rows=rows,
+                hidden_size=self.hidden_size,
+            )
+            norm_kernel(
                 hidden_ptr,
                 weight_ptr,
                 out_ptr,
@@ -7819,7 +7826,13 @@ class Qwen35GGUFFullStackRunner:
                 )
                 post_norm_f32_ptr = scratch.post_norm_f32.ptr
         else:
-            gguf_add_rmsnorm_bf16_f32_weight(
+            add_norm_kernel = _gguf_norm_residual_decode_kernel(
+                self,
+                layer="add_rmsnorm",
+                rows=rows,
+                hidden_size=self.hidden_size,
+            )
+            add_norm_kernel(
                 hidden_ptr,
                 attn_out_ptr,
                 layer.weight("post_attention_norm").allocation().tensor.ptr,
@@ -9723,6 +9736,85 @@ def _gguf_dense_down_residual_decode_fused(
     except (AttributeError, TypeError):
         pass
     return enabled
+
+
+def _gguf_norm_residual_decode_kernel(
+    runner: object,
+    *,
+    layer: str,
+    rows: int,
+    hidden_size: int,
+):
+    """Resolve one exact model/backend/shape-qualified D5 norm leaf."""
+
+    fallback = {
+        "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
+        "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
+    }.get(layer)
+    if fallback is None:
+        raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return fallback
+    identity = (
+        getattr(weights, "model_name", None),
+        getattr(weights, "file_type_name", None),
+    )
+    shape = (int(rows), int(hidden_size))
+    policy_key = (backend, identity, shape)
+    cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
+    if (
+        isinstance(cached_policy, tuple)
+        and len(cached_policy) == 2
+        and cached_policy[0] == policy_key
+    ):
+        variant = cached_policy[1]
+    else:
+        try:
+            policies = backend_package_capability(
+                backend, "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
+            )
+        except (ImportError, ValueError):
+            return fallback
+        shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
+        variant = shapes.get(shape) if isinstance(shapes, Mapping) else None
+        try:
+            setattr(
+                runner,
+                "_norm_residual_decode_policy_cache",
+                (policy_key, variant),
+            )
+        except (AttributeError, TypeError):
+            pass
+    if not isinstance(variant, str) or not variant:
+        return fallback
+    kernel_key = (backend, layer, variant)
+    cached_kernels = getattr(runner, "_norm_residual_decode_kernel_cache", None)
+    if not isinstance(cached_kernels, dict):
+        cached_kernels = {}
+        try:
+            setattr(runner, "_norm_residual_decode_kernel_cache", cached_kernels)
+        except (AttributeError, TypeError):
+            pass
+    kernel = cached_kernels.get(kernel_key)
+    if kernel is None:
+        kernel = partial(
+            resolve(
+                backend=backend,
+                layer=layer,
+                quant="gguf_f32_weight",
+                variant=variant,
+            ),
+            _prevalidated=True,
+        )
+        cached_kernels[kernel_key] = kernel
+    return kernel
 
 
 def _gguf_t16_f16_rocblas_prefill_policy(

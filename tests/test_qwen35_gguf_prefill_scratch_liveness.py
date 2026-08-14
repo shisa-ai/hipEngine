@@ -175,6 +175,163 @@ def test_dense_down_residual_decode_policy_is_model_backend_shape_scoped() -> No
     )
 
 
+def test_fixed1024_norm_residual_decode_kernel_is_exactly_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    resolved: list[dict[str, object]] = []
+
+    def candidate(*args, **kwargs):
+        return None
+
+    def fake_resolve(**kwargs):
+        resolved.append(kwargs)
+        return candidate
+
+    monkeypatch.setattr(gguf_runner, "resolve", fake_resolve)
+    for layer in ("rmsnorm", "add_rmsnorm"):
+        selected = gguf_runner._gguf_norm_residual_decode_kernel(
+            runner,
+            layer=layer,
+            rows=1,
+            hidden_size=1_024,
+        )
+        assert selected.func is candidate
+        assert selected.keywords == {"_prevalidated": True}
+    assert resolved == [
+        {
+            "backend": "hip_gfx1151",
+            "layer": "rmsnorm",
+            "quant": "gguf_f32_weight",
+            "variant": "bf16_out_fixed1024_wave256",
+        },
+        {
+            "backend": "hip_gfx1151",
+            "layer": "add_rmsnorm",
+            "quant": "gguf_f32_weight",
+            "variant": "bf16_out_fixed1024_wave256",
+        },
+    ]
+
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="rmsnorm", rows=2, hidden_size=1_024
+    ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add_rmsnorm", rows=1, hidden_size=2_048
+    ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    runner.backend = "hip_gfx1100"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="rmsnorm", rows=1, hidden_size=1_024
+    ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add_rmsnorm", rows=1, hidden_size=1_024
+    ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    assert len(resolved) == 2
+
+
+def test_attention_norm_rows_uses_fixed1024_registry_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    calls: list[tuple[tuple, dict]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_runner,
+        "_gguf_norm_residual_decode_kernel",
+        lambda *args, **kwargs: candidate,
+    )
+    gguf_runner.Qwen35GGUFFullStackRunner._run_attention_norm_rows(
+        runner,
+        hidden_ptr=1,
+        hidden_f32_ptr=None,
+        weight_ptr=2,
+        out_ptr=3,
+        rows=1,
+        eps=1.0e-6,
+        stream=4,
+        runtime="runtime",
+    )
+    assert calls == [
+        (
+            (1, 2, 3),
+            {
+                "rows": 1,
+                "hidden_size": 1_024,
+                "eps": 1.0e-6,
+                "stream": 4,
+                "runtime": "runtime",
+            },
+        )
+    ]
+
+
+def test_post_attention_norm_rows_uses_fixed1024_registry_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StopAfterNorm(Exception):
+        pass
+
+    calls: list[tuple[tuple, dict]] = []
+
+    def candidate(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise StopAfterNorm
+
+    layer = SimpleNamespace(
+        weight=lambda name: SimpleNamespace(
+            allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=5))
+        )
+    )
+    runner = object.__new__(gguf_runner.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1151"
+    runner.runtime = "runtime"
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(
+            is_moe=False,
+            hidden_size=1_024,
+            rms_norm_eps=1.0e-6,
+        ),
+        model_name="Qwen3.5-0.8B",
+        file_type_name="MOSTLY_Q4_K_M",
+        layer=lambda layer_id: layer,
+    )
+    scratch = SimpleNamespace(
+        post_norm=SimpleNamespace(ptr=3),
+        residual=SimpleNamespace(ptr=4),
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "_gguf_norm_residual_decode_kernel",
+        lambda *args, **kwargs: candidate,
+    )
+    with pytest.raises(StopAfterNorm):
+        runner._run_post_attention_ffn_rows(
+            0,
+            1,
+            2,
+            6,
+            scratch,
+            rows=1,
+        )
+    assert calls == [
+        (
+            (1, 2, 5, 3, 4),
+            {
+                "rows": 1,
+                "hidden_size": 1_024,
+                "eps": 1.0e-6,
+                "stream": 0,
+                "runtime": "runtime",
+            },
+        )
+    ]
+
+
 def test_dense_down_residual_decode_policy_caches_owner_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

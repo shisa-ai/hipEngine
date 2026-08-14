@@ -720,6 +720,14 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
         (1, 3_584, 1_024): True,
     },
 }
+# D08-D5 admits both fixed-hidden wave-reduction leaves as one inseparable C
+# route for the exact dense-0.8B Q4 decode owner. Q8, native batches, output
+# norm, other shapes/models, and peer backends keep the generic primitives.
+GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 1_024): "bf16_out_fixed1024_wave256",
+    },
+}
 # The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
 GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4},
@@ -1826,6 +1834,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
+    "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",

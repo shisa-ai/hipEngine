@@ -214,7 +214,15 @@ thread/staged combination bit-exact, but the best existing package projects only
 register+wave-shuffle family then qualifies combined C at **1.229x**, normalizing
 **0.67405 -> 0.54834 ms** and projecting **0.12570 ms / 1.511%** graph saving.
 It is actual-weight bit-exact, CPU max KL **2.84e-5**/top-1 100%, wins **5/5
-blocks**, and stays LDS512/scratch0 with zero bytes/nodes. See the
+blocks**, and stays LDS512/scratch0 with zero bytes/nodes. The retained exact
+capability then realizes Q4 production graph tg128 **118.18 -> 121.59 tok/s
+(+2.884%, 5/5 crossed-session blocks)** and, after hoisting repeated public-
+wrapper checks behind a cached prevalidated registry partial, eager **69.59 ->
+69.73 (+0.207%)**. The full Q4+Q8 category/heldout gate passes **900/900 top-1**
+at max KL **0.001745**; Q8 selects no fixed leaves and remains within 1%, as do
+all prefill guards. Graph inventory replaces exactly **24+24** Q4 owners at
+**287 -> 287 nodes**, zero bytes, and zero scratch. See the
+[`retained D5 norm/residual route`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
 [`D5 norm/residual screen`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json),
 [`D5 norm/residual audit`](results/2026-08-14-gfx1151-qwen35-08b-norm-residual-audit.json),
 [`post-D3B graph rerank`](results/2026-08-14-gfx1151-qwen35-08b-post-d3b-graph-rerank.json),
