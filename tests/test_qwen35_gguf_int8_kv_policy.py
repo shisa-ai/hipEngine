@@ -23,6 +23,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_int8_kv_prompt_write_fn,
     _gguf_int8_kv_scale_granularity,
     _gguf_int8_kv_value_bf16_enabled,
+    _plan_gguf_int8_prefill_lifetime,
     _validate_gguf_int8_kv_context,
 )
 from scripts.qwen35_gguf_bench import _decode_scratch_breakdown
@@ -89,6 +90,94 @@ def _hadamard_group32_scale_metadata() -> KVScaleMetadata:
         scale_dtype=DType.FP16,
         granularity="hadamard_group32",
     )
+
+
+def test_qwen38_pure_int8_prefill_plan_trades_layer_local_oracles_for_one_hidden_plane() -> None:
+    plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=33_024,
+        scratch_rows=4_096,
+        hidden_size=5_120,
+        head_count_kv=4,
+        key_length=256,
+        full_attention_layers=16,
+        bf16_full_attention_layers=0,
+        has_bf16_mirror=False,
+        hidden_buffer_count=1,
+    )
+
+    assert plan.mode == "layer_outer_shared_oracle"
+    assert plan.int8_full_attention_layers == 16
+    assert plan.oracle_pair_bytes == 135_266_304
+    assert plan.layer_local_oracle_bytes == 2_164_260_864
+    assert plan.chunk_hidden_bytes == 41_943_040
+    assert plan.layer_outer_hidden_bytes == 338_165_760
+    assert plan.projected_peak_delta_bytes == -1_732_771_840
+    assert plan.projected_peak_saving_bytes == 1_732_771_840
+    assert plan.required_hidden_capacity == 33_024
+    assert plan.oracle_buffer_count == 1
+
+
+def test_qwen38_tail4_prefill_plan_still_saves_peak_with_shared_oracle() -> None:
+    plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=33_024,
+        scratch_rows=4_096,
+        hidden_size=5_120,
+        head_count_kv=4,
+        key_length=256,
+        full_attention_layers=16,
+        bf16_full_attention_layers=12,
+        has_bf16_mirror=False,
+        hidden_buffer_count=1,
+    )
+
+    assert plan.mode == "layer_outer_shared_oracle"
+    assert plan.int8_full_attention_layers == 4
+    assert plan.projected_peak_delta_bytes == -109_576_192
+    assert plan.projected_peak_saving_bytes == 109_576_192
+
+
+def test_gguf_int8_prefill_plan_keeps_layer_local_route_when_full_hidden_costs_more() -> None:
+    plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131_328,
+        scratch_rows=4_096,
+        hidden_size=7_168,
+        head_count_kv=2,
+        key_length=256,
+        full_attention_layers=10,
+        bf16_full_attention_layers=8,
+        has_bf16_mirror=False,
+        hidden_buffer_count=1,
+    )
+
+    assert plan.mode == "chunk_outer_layer_local_oracles"
+    assert plan.int8_full_attention_layers == 2
+    assert plan.projected_peak_delta_bytes == 1_555_038_208
+    assert plan.projected_peak_saving_bytes == 0
+    assert plan.required_hidden_capacity == 4_096
+    assert plan.oracle_buffer_count == 2
+
+
+def test_gguf_int8_prefill_plan_preserves_short_bf16_mirror_route() -> None:
+    plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=8_192,
+        scratch_rows=4_096,
+        hidden_size=5_120,
+        head_count_kv=4,
+        key_length=256,
+        full_attention_layers=16,
+        bf16_full_attention_layers=0,
+        has_bf16_mirror=True,
+        hidden_buffer_count=1,
+    )
+
+    assert plan.mode == "bf16_mirror"
+    assert plan.required_hidden_capacity == 4_096
+    assert plan.oracle_buffer_count == 0
+    assert plan.projected_peak_delta_bytes == 0
 
 
 def test_gguf_full_attention_prefill_scratch_retains_bf16_cache_by_default() -> None:

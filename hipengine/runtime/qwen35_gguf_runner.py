@@ -9419,6 +9419,134 @@ _GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV = "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LA
 _GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV = "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
 _GGUF_INT8_KV_KEY_ONLY_ENV = "HIPENGINE_GGUF_INT8_KV_KEY_ONLY"
 _GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
+
+
+@dataclass(frozen=True)
+class _GGUFInt8PrefillLifetimePlan:
+    """Byte-exact choice between chunk-outer and layer-outer INT8 prefill.
+
+    ``oracle_buffer_count`` counts BF16 K/V *pairs*.  The layer-outer route is
+    admissible only when one full-prompt hidden owner plus one reusable oracle
+    pair has a lower modeled peak than chunk-sized hidden storage plus one
+    full-length oracle pair for every INT8-retained full-attention layer.
+    """
+
+    mode: str
+    int8_full_attention_layers: int
+    oracle_pair_bytes: int
+    layer_local_oracle_bytes: int
+    chunk_hidden_bytes: int
+    layer_outer_hidden_bytes: int
+    projected_peak_delta_bytes: int
+    projected_peak_saving_bytes: int
+    required_hidden_capacity: int
+    oracle_buffer_count: int
+
+
+def _plan_gguf_int8_prefill_lifetime(
+    *,
+    kv_storage_dtype: DType,
+    max_positions: int,
+    scratch_rows: int,
+    hidden_size: int,
+    head_count_kv: int,
+    key_length: int,
+    full_attention_layers: int,
+    bf16_full_attention_layers: int,
+    has_bf16_mirror: bool,
+    hidden_buffer_count: int,
+) -> _GGUFInt8PrefillLifetimePlan:
+    """Return the lower-peak exact-prefill lifetime without model-name gates."""
+
+    positions = int(max_positions)
+    chunk_rows = int(scratch_rows)
+    hidden = int(hidden_size)
+    kv_heads = int(head_count_kv)
+    head_dim = int(key_length)
+    full_layers = int(full_attention_layers)
+    bf16_layers = int(bf16_full_attention_layers)
+    hidden_buffers = int(hidden_buffer_count)
+    positive_fields = {
+        "max_positions": positions,
+        "scratch_rows": chunk_rows,
+        "hidden_size": hidden,
+        "head_count_kv": kv_heads,
+        "key_length": head_dim,
+        "hidden_buffer_count": hidden_buffers,
+    }
+    bad = [name for name, value in positive_fields.items() if value <= 0]
+    if bad:
+        raise ValueError(f"INT8 prefill lifetime fields must be positive: {bad!r}")
+    if chunk_rows > positions:
+        raise ValueError("INT8 prefill scratch_rows cannot exceed max_positions")
+    if full_layers < 0 or bf16_layers < 0 or bf16_layers > full_layers:
+        raise ValueError("invalid BF16/full-attention layer counts")
+
+    int8_layers = (
+        full_layers - bf16_layers
+        if kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        else 0
+    )
+    hidden_element_bytes = DType.BF16.itemsize
+    chunk_hidden_bytes = chunk_rows * hidden * hidden_element_bytes * hidden_buffers
+    layer_outer_hidden_bytes = positions * hidden * hidden_element_bytes * hidden_buffers
+    oracle_pair_bytes = (
+        positions * kv_heads * head_dim * hidden_element_bytes * 2
+        if int8_layers > 0
+        else 0
+    )
+    layer_local_oracle_bytes = int8_layers * oracle_pair_bytes
+
+    if int8_layers == 0:
+        return _GGUFInt8PrefillLifetimePlan(
+            mode="bf16",
+            int8_full_attention_layers=0,
+            oracle_pair_bytes=0,
+            layer_local_oracle_bytes=0,
+            chunk_hidden_bytes=chunk_hidden_bytes,
+            layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+            projected_peak_delta_bytes=0,
+            projected_peak_saving_bytes=0,
+            required_hidden_capacity=chunk_rows,
+            oracle_buffer_count=0,
+        )
+    if has_bf16_mirror:
+        return _GGUFInt8PrefillLifetimePlan(
+            mode="bf16_mirror",
+            int8_full_attention_layers=int8_layers,
+            oracle_pair_bytes=oracle_pair_bytes,
+            layer_local_oracle_bytes=0,
+            chunk_hidden_bytes=chunk_hidden_bytes,
+            layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+            projected_peak_delta_bytes=0,
+            projected_peak_saving_bytes=0,
+            required_hidden_capacity=chunk_rows,
+            oracle_buffer_count=0,
+        )
+
+    projected_delta = (
+        layer_outer_hidden_bytes
+        + oracle_pair_bytes
+        - chunk_hidden_bytes
+        - layer_local_oracle_bytes
+    )
+    use_shared = projected_delta < 0
+    return _GGUFInt8PrefillLifetimePlan(
+        mode=(
+            "layer_outer_shared_oracle"
+            if use_shared
+            else "chunk_outer_layer_local_oracles"
+        ),
+        int8_full_attention_layers=int8_layers,
+        oracle_pair_bytes=oracle_pair_bytes,
+        layer_local_oracle_bytes=layer_local_oracle_bytes,
+        chunk_hidden_bytes=chunk_hidden_bytes,
+        layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+        projected_peak_delta_bytes=projected_delta,
+        projected_peak_saving_bytes=max(0, -projected_delta) if use_shared else 0,
+        required_hidden_capacity=positions if use_shared else chunk_rows,
+        oracle_buffer_count=1 if use_shared else int8_layers,
+    )
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
