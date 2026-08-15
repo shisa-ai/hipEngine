@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_q4_t16_dense_dp4a_rejected",
+  "status": "rejected_model_trajectory",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "role": "64 dense K5120/N17408 Q4T16 gate/up pairs"
+  },
+  "baseline": {
+    "commit": "2f3afbfc7f4564343e0aa25803a7a999010fc494",
+    "route": "two sole-Q4T16 local32 projections plus primitive BF16 SiLU",
+    "profile_source": "/tmp/qwen38-task21-p4-postprofile/profile-summary.json",
+    "profile_gate_up_plus_silu_ms": 4181.033072,
+    "profile_eager_512_128_wall_ms": 11087.430579
+  },
+  "candidate": {
+    "route": "one BF16-to-Q8_1 quantizer plus same-resident dual-Q4T16 dp4a+SiLU",
+    "resident_weight_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "bounded_workspace_bytes": 5760,
+    "fallback": "unchanged exact two-projection plus primitive-SiLU chain"
+  },
+  "actual_weight_leaf": {
+    "status": "passed_leaf_only",
+    "layers": [
+      0,
+      8,
+      63
+    ],
+    "pairs": 45,
+    "all_pairs_positive": true,
+    "layer_speedups": [
+      1.040478892184042,
+      1.0328734126189258,
+      1.0311109569749384
+    ],
+    "aggregate_speedup": 1.0348183117484948,
+    "projected_request_saving_percent": 1.268809125307102,
+    "finite": true,
+    "max_abs_vs_control": 0.001953125,
+    "max_kl_vs_control": 1.4421521685678046e-08,
+    "top1_agreement": 1.0,
+    "bf16_exact": false,
+    "tracked_teardown_bytes": 0,
+    "evidence": {
+      "path": "/tmp/qwen38-task22-q4-dp4a-leaf/leaf.json",
+      "sha256": "5d3060ca8f83faf34bf3b2241adc9268ed20c077c2729466f1a265bb32523350",
+      "bytes": 7918
+    }
+  },
+  "repeated_shape_gate": {
+    "workload": "512/128",
+    "protocol": "one warmup plus three measured persistent graph-replay runs; control then candidate",
+    "control_decode_tok_s": {
+      "samples": [
+        11.844521892509913,
+        11.84734764164701,
+        11.844427120060935
+      ],
+      "median": 11.844521892509913
+    },
+    "candidate_decode_tok_s": {
+      "samples": [
+        11.923895696220024,
+        11.923938864451628,
+        11.923579382348137
+      ],
+      "median": 11.923895696220024
+    },
+    "decode_ratio": 1.0067013092153854,
+    "decode_delta_percent": 0.6701309215385365,
+    "prefill_control_median_tok_s": 344.14078753211123,
+    "prefill_candidate_median_tok_s": 344.8338595452263,
+    "tracked_peak_gib_control": 16.753218058496714,
+    "tracked_peak_gib_candidate": 16.753218058496714,
+    "fixed_prompt_ids_identical": true,
+    "control_evidence": {
+      "path": "/tmp/qwen38-task22-q4-dp4a-integration/control-c3-p512-d128.json",
+      "sha256": "0333759a08762e2e7ce14fdb07d269512663efa1654ebb75d5c4a511d42573d7",
+      "bytes": 454699
+    },
+    "candidate_evidence": {
+      "path": "/tmp/qwen38-task22-q4-dp4a-integration/candidate-a3-p512-d128.json",
+      "sha256": "dd2085ec46d941e4189a8431eaeefcba7e50cf1697072a32667bb888e55dbe4b",
+      "bytes": 454617
+    }
+  },
+  "natural_gate": {
+    "status": "correctness_failed",
+    "protocol": "all ten committed prompts, four categories, six train/four heldout, three runs, 25 visible outputs, true AR plus native B1-B3",
+    "requests_per_mode": 30,
+    "candidate_tok_s_diagnostic_only": {
+      "true_ar": 12.154353234116329,
+      "b1": 18.963704487199138,
+      "b2": 23.195299001486497,
+      "b3": 24.26691384813577
+    },
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_reconciled": true,
+    "tracked_teardown_bytes": 0,
+    "true_ar_vs_retained": {
+      "different_requests": 3,
+      "total_requests": 30,
+      "prompt": "general_ja_explain",
+      "runs": [
+        0,
+        1,
+        2
+      ],
+      "first_different_output_index": 11,
+      "retained_token_id": 5205,
+      "candidate_token_id": 241456
+    },
+    "mtp_vs_candidate_ar": {
+      "different_requests": 9,
+      "total_requests": 90,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "prompt": "general_ja_explain",
+      "reason": "rows2-4 exact verifier arithmetic follows the retained trajectory while changed-association c1 candidate AR diverges"
+    },
+    "candidate_mtp_vs_retained": {
+      "token_differences": 0,
+      "acceptance_trajectory_differences": 0
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task22-q4-dp4a-natural/natural.json",
+      "sha256": "cd5b1d09292cd8f34e3a60c4cf33498bdef72cf962e5fe4e8cc0bf68909a230e",
+      "bytes": 2069026
+    },
+    "retained_control_evidence": {
+      "path": "/tmp/qwen38-task21-p4-q5-natural/natural.json",
+      "sha256": "687f8471a4393675363fcfa8a17f366e86aeeff310e38454098286ee1b9e113a",
+      "bytes": 2069065
+    }
+  },
+  "validation": {
+    "focused_route_abi_gpu_tests": 4,
+    "require_cached_build": true,
+    "compiler_child_measured": false,
+    "source_restored": true
+  },
+  "decision": "Reject and restore the exact route. The 0.67% repeated graph win cannot override deterministic true-AR trajectory divergence on a heldout category prompt. Extending the changed association to rows2-4 would only make MTP follow the invalid candidate AR and therefore cannot repair the binding control-trajectory failure."
+}
