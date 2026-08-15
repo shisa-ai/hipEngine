@@ -1,8 +1,9 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G0 baseline frozen on 2026-08-15; P1 sole-Q4 qualification is
-next.** The working performance set is `512/128`, `1024/128`, and `4096/128`.
-The model is Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
+Status: **G1 single-layout ownership complete on 2026-08-15; the bounded P4
+prefill ladder is closed below G2, and P5 true-AR decode is next.** The working
+performance set is `512/128`, `1024/128`, and `4096/128`. The model is
+Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -10,9 +11,17 @@ valid exact MTP, while minimizing resident and whole-process memory. A separate
 lane will determine whether native INT8 K/V can meet the repository quality
 contract without losing the production graph path or hiding a BF16 cache.
 
-This document remains a campaign plan. Section 2 now freezes the clean G0
-current snapshot used as the optimization denominator; it is not itself an
-optimization claim.
+The retained-path P4 development gate is `343.320/338.038/332.676` prefill
+tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
+below clean llama HIP and is 6.12% below Vulkan at 4K. These are not new clean
+publication toplines: a same-protocol clean three-shape refresh is still needed
+before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
+planar-Q6 row80, and standard-Q6 48x64 tiling are rejected. AOTriton attention
+is active but nonmaterial, and the remaining primitive add boundary is below
+the >=1% request gate.
+
+This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
+used as the optimization denominator; it is not itself an optimization claim.
 
 Related authorities:
 
@@ -420,6 +429,17 @@ A leaf normally needs >=1.10x and >=1% projected request saving to receive a
 full-model A/B. Keep a smaller exact non-regressive win if already measured, but
 close the package rather than opening an unbounded variant ladder.
 
+P4 closure on 2026-08-15 follows that bound. Q5 K6,144/N5,120 source-F16 is the
+only retained P4 unit. Chunk128/256/512 loses every complete shape; Q4 dual
+row128 loses 9.9-12.1%; planar-Q6 row80 is nonuniform and projects below 1%;
+and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. The pp512
+ledger leaves Q4 dual/single and Q6 as large families, but previously screened
+Q4/Q6 source-F16, geometry, attention, and add-boundary mechanisms provide no
+remaining bounded all-shape candidate. G2 therefore remains blocked rather
+than complete. Reopen P4 only for a materially new operation-complete dataflow
+with a measured >=1% request projection or after a compiler/runtime/baseline
+change invalidates these economics.
+
 ### P5 — True-AR decode
 
 Re-profile c1 after compressed ownership. Rank by complete graph-stage wall,
@@ -619,7 +639,7 @@ Do not start or repeat these without a new measured complete-owner premise:
 | Milestone | Required result |
 | --- | --- |
 | **G0 Baseline frozen — complete 2026-08-15** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
-| **G1 Single-layout parity** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
+| **G1 Single-layout parity — complete 2026-08-15** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
 | **G2 Prefill win** | hipEngine beats both llama backends at all three prefill shapes with retained quality and memory. |
 | **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
