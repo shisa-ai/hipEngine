@@ -1,0 +1,716 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen36_qwen38_hipengine_llamacpp_hip_vulkan",
+  "status": "complete_with_vulkan_mtp_correctness_failure",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "decision": "diagnostic_only",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "AMD Ryzen AI MAX+ 395",
+    "memory": "128 GiB unified GTT aperture"
+  },
+  "software": {
+    "hipengine": "bfb7cfadd865ecb1ef722158dbab3761854fa1a2",
+    "llamacpp_hip": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llamacpp_vulkan": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llamacpp_build": 10438,
+    "clean_sources": true,
+    "rocm": "HIP 7.15.0"
+  },
+  "protocol": {
+    "prefill": "token 9707 x512; one warmup; 3 measured; median; BF16 KV; batch/ubatch 512",
+    "decode": "10 natural25 prompts; 4 categories and heldouts; exact shared prompt token IDs; 25 outputs / 24 timed transitions; greedy seed 12345; BF16 KV; B3/B4",
+    "memory": "hipEngine tracked/hipMemGetInfo phase samples; llama process RSS + DRM GTT + system MemAvailable at 250 ms; scopes not interchangeable"
+  },
+  "results": {
+    "qwen36": {
+      "model_path": "/home/lhl/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "prefill": {
+        "hipengine": {
+          "median": 147.19416915141383,
+          "min": 147.17025092998378,
+          "max": 148.3676145023365
+        },
+        "llamacpp_hip": {
+          "median": 353.6695634874858,
+          "min": 353.54940818453065,
+          "max": 354.095893594184
+        },
+        "llamacpp_vulkan": {
+          "median": 243.57673404512926,
+          "min": 243.24415489521738,
+          "max": 244.33519352588092
+        }
+      },
+      "decode": {
+        "hipengine": {
+          "ar": 7.126779025865901,
+          "b3": {
+            "tok_s": 22.13212204800138,
+            "speedup": 3.10548734115021,
+            "acceptance": 0.7567567567567568,
+            "accepted": 168,
+            "proposed": 222,
+            "exact": true,
+            "heldout_speedup": 2.834257761072797
+          },
+          "b4": null
+        },
+        "llamacpp_hip": {
+          "ar": 12.09626510174597,
+          "b3": {
+            "tok_s": 21.949148395905937,
+            "speedup": 1.8145392988070181,
+            "acceptance": 0.7677725118483413,
+            "accepted": 162,
+            "proposed": 211,
+            "exact_prompts": 10,
+            "total_prompts": 10,
+            "exact": true,
+            "heldout": {
+              "tok_s": 20.132999433130234,
+              "acceptance": 0.6739130434782609
+            },
+            "categories": {
+              "code": {
+                "tok_s": 24.336476118818787,
+                "acceptance": 0.8947368421052632
+              },
+              "general_en": {
+                "tok_s": 22.889504256255627,
+                "acceptance": 0.825
+              },
+              "general_ja": {
+                "tok_s": 19.080798436010557,
+                "acceptance": 0.6122448979591837
+              },
+              "mixed_ja_en": {
+                "tok_s": 20.19335133907161,
+                "acceptance": 0.6739130434782609
+              }
+            }
+          },
+          "b4": {
+            "tok_s": 21.209237612744772,
+            "speedup": 1.7533707664594287,
+            "acceptance": 0.6614173228346457,
+            "accepted": 168,
+            "proposed": 254,
+            "exact_prompts": 10,
+            "total_prompts": 10,
+            "exact": true,
+            "heldout": {
+              "tok_s": 19.163914349280308,
+              "acceptance": 0.5765765765765766
+            },
+            "categories": {
+              "code": {
+                "tok_s": 24.42402550682397,
+                "acceptance": 0.8068181818181818
+              },
+              "general_en": {
+                "tok_s": 22.0112908750818,
+                "acceptance": 0.7083333333333334
+              },
+              "general_ja": {
+                "tok_s": 18.06281569944679,
+                "acceptance": 0.5166666666666667
+              },
+              "mixed_ja_en": {
+                "tok_s": 18.844398659535106,
+                "acceptance": 0.5517241379310345
+              }
+            }
+          }
+        },
+        "llamacpp_vulkan": {
+          "ar": 12.775379969077193,
+          "b3": {
+            "tok_s": 28.371953472833496,
+            "speedup": 2.2208304990933976,
+            "acceptance": 0.7570093457943925,
+            "accepted": 162,
+            "proposed": 214,
+            "exact_prompts": 6,
+            "total_prompts": 10,
+            "exact": false,
+            "heldout": {
+              "tok_s": 26.136687251122925,
+              "acceptance": 0.6526315789473685
+            },
+            "categories": {
+              "code": {
+                "tok_s": 31.882544705305655,
+                "acceptance": 0.8947368421052632
+              },
+              "general_en": {
+                "tok_s": 31.777515024806323,
+                "acceptance": 0.85
+              },
+              "general_ja": {
+                "tok_s": 25.074806506076463,
+                "acceptance": 0.6122448979591837
+              },
+              "mixed_ja_en": {
+                "tok_s": 23.72441717015152,
+                "acceptance": 0.6122448979591837
+              }
+            }
+          },
+          "b4": {
+            "tok_s": 30.01016969625582,
+            "speedup": 2.3490627886525046,
+            "acceptance": 0.7107438016528925,
+            "accepted": 172,
+            "proposed": 242,
+            "exact_prompts": 6,
+            "total_prompts": 10,
+            "exact": false,
+            "heldout": {
+              "tok_s": 31.905676185968883,
+              "acceptance": 0.7526881720430108
+            },
+            "categories": {
+              "code": {
+                "tok_s": 32.904602359876954,
+                "acceptance": 0.8470588235294118
+              },
+              "general_en": {
+                "tok_s": 31.634390800719157,
+                "acceptance": 0.7608695652173914
+              },
+              "general_ja": {
+                "tok_s": 26.10477586874519,
+                "acceptance": 0.5714285714285714
+              },
+              "mixed_ja_en": {
+                "tok_s": 27.84733164547562,
+                "acceptance": 0.6
+              }
+            }
+          }
+        }
+      }
+    },
+    "qwen38": {
+      "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "prefill": {
+        "hipengine": {
+          "median": 147.98373889933563,
+          "min": 146.9682242212689,
+          "max": 148.39942143214927
+        },
+        "llamacpp_hip": {
+          "median": 353.6199773185936,
+          "min": 352.9775935063153,
+          "max": 353.9098746384866
+        },
+        "llamacpp_vulkan": {
+          "median": 242.5380469718509,
+          "min": 241.68819202126858,
+          "max": 242.6935955435389
+        }
+      },
+      "decode": {
+        "hipengine": {
+          "ar": 7.135843802166474,
+          "b3": {
+            "tok_s": 19.440435606105353,
+            "speedup": 2.72433592229179,
+            "acceptance": 0.6309523809523809,
+            "accepted": 159,
+            "proposed": 252,
+            "exact": true,
+            "heldout_speedup": 2.7414887453594945
+          },
+          "b4": null
+        },
+        "llamacpp_hip": {
+          "ar": 12.043731995247944,
+          "b3": {
+            "tok_s": 19.655189019039,
+            "speedup": 1.6319849218493307,
+            "acceptance": 0.6401673640167364,
+            "accepted": 153,
+            "proposed": 239,
+            "exact_prompts": 10,
+            "total_prompts": 10,
+            "exact": true,
+            "heldout": {
+              "tok_s": 19.11178763300112,
+              "acceptance": 0.6185567010309279
+            },
+            "categories": {
+              "code": {
+                "tok_s": 24.47129886261991,
+                "acceptance": 0.8947368421052632
+              },
+              "general_en": {
+                "tok_s": 18.121078249458538,
+                "acceptance": 0.5686274509803921
+              },
+              "general_ja": {
+                "tok_s": 15.532372052085222,
+                "acceptance": 0.41935483870967744
+              },
+              "mixed_ja_en": {
+                "tok_s": 18.83546592664214,
+                "acceptance": 0.6
+              }
+            }
+          },
+          "b4": {
+            "tok_s": 19.142886814331703,
+            "speedup": 1.5894480898350154,
+            "acceptance": 0.5614035087719298,
+            "accepted": 160,
+            "proposed": 285,
+            "exact_prompts": 10,
+            "total_prompts": 10,
+            "exact": true,
+            "heldout": {
+              "tok_s": 18.73712920245995,
+              "acceptance": 0.5478260869565217
+            },
+            "categories": {
+              "code": {
+                "tok_s": 26.675469571625303,
+                "acceptance": 0.9125
+              },
+              "general_en": {
+                "tok_s": 17.363949835548926,
+                "acceptance": 0.4838709677419355
+              },
+              "general_ja": {
+                "tok_s": 13.799102885823634,
+                "acceptance": 0.3170731707317073
+              },
+              "mixed_ja_en": {
+                "tok_s": 17.806485789867885,
+                "acceptance": 0.5081967213114754
+              }
+            }
+          }
+        },
+        "llamacpp_vulkan": {
+          "ar": 12.772279725272522,
+          "b3": {
+            "tok_s": 26.07887490517884,
+            "speedup": 2.041833992531227,
+            "acceptance": 0.652542372881356,
+            "accepted": 154,
+            "proposed": 236,
+            "exact_prompts": 9,
+            "total_prompts": 10,
+            "exact": false,
+            "heldout": {
+              "tok_s": 24.997474213543008,
+              "acceptance": 0.6185567010309279
+            },
+            "categories": {
+              "code": {
+                "tok_s": 32.1659333280617,
+                "acceptance": 0.8947368421052632
+              },
+              "general_en": {
+                "tok_s": 23.609998244006377,
+                "acceptance": 0.5686274509803921
+              },
+              "general_ja": {
+                "tok_s": 20.395052160345898,
+                "acceptance": 0.41935483870967744
+              },
+              "mixed_ja_en": {
+                "tok_s": 26.204048743898007,
+                "acceptance": 0.6595744680851063
+              }
+            }
+          },
+          "b4": {
+            "tok_s": 26.106368877118303,
+            "speedup": 2.0439866209210567,
+            "acceptance": 0.5629370629370629,
+            "accepted": 161,
+            "proposed": 286,
+            "exact_prompts": 6,
+            "total_prompts": 10,
+            "exact": false,
+            "heldout": {
+              "tok_s": 24.416918890047565,
+              "acceptance": 0.5166666666666667
+            },
+            "categories": {
+              "code": {
+                "tok_s": 36.11734072534907,
+                "acceptance": 0.8902439024390244
+              },
+              "general_en": {
+                "tok_s": 21.635333745306145,
+                "acceptance": 0.4084507042253521
+              },
+              "general_ja": {
+                "tok_s": 19.575225757408305,
+                "acceptance": 0.35064935064935066
+              },
+              "mixed_ja_en": {
+                "tok_s": 25.744388259700806,
+                "acceptance": 0.5714285714285714
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "correctness": {
+    "qwen36": {
+      "hipengine_b3_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true,
+        "gpu_accept_match_cpu": true
+      },
+      "llamacpp_hip_b3_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true
+      },
+      "llamacpp_hip_b4_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true
+      },
+      "llamacpp_vulkan_b3_vs_ar": {
+        "matches": 6,
+        "total": 10,
+        "exact": false
+      },
+      "llamacpp_vulkan_b4_vs_ar": {
+        "matches": 6,
+        "total": 10,
+        "exact": false
+      },
+      "hipengine_ar_vs_llamacpp_hip_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true,
+        "first_differences": []
+      },
+      "hipengine_ar_vs_llamacpp_vulkan_ar": {
+        "matches": 6,
+        "total": 10,
+        "exact": false,
+        "first_differences": [
+          {
+            "id": "code_lru_cache",
+            "index": 3,
+            "left": 1445,
+            "right": 1005
+          },
+          {
+            "id": "general_en_explain",
+            "index": 2,
+            "left": 369,
+            "right": 383
+          },
+          {
+            "id": "general_ja_explain",
+            "index": 18,
+            "left": 5205,
+            "right": 12512
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "index": 4,
+            "left": 2228,
+            "right": 198
+          }
+        ]
+      },
+      "llamacpp_hip_ar_vs_vulkan_ar": {
+        "matches": 6,
+        "total": 10,
+        "exact": false,
+        "first_differences": [
+          {
+            "id": "code_lru_cache",
+            "index": 3,
+            "left": 1445,
+            "right": 1005
+          },
+          {
+            "id": "general_en_explain",
+            "index": 2,
+            "left": 369,
+            "right": 383
+          },
+          {
+            "id": "general_ja_explain",
+            "index": 18,
+            "left": 5205,
+            "right": 12512
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "index": 4,
+            "left": 2228,
+            "right": 198
+          }
+        ]
+      }
+    },
+    "qwen38": {
+      "hipengine_b3_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true,
+        "gpu_accept_match_cpu": true
+      },
+      "llamacpp_hip_b3_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true
+      },
+      "llamacpp_hip_b4_vs_ar": {
+        "matches": 10,
+        "total": 10,
+        "exact": true
+      },
+      "llamacpp_vulkan_b3_vs_ar": {
+        "matches": 9,
+        "total": 10,
+        "exact": false
+      },
+      "llamacpp_vulkan_b4_vs_ar": {
+        "matches": 6,
+        "total": 10,
+        "exact": false
+      },
+      "hipengine_ar_vs_llamacpp_hip_ar": {
+        "matches": 9,
+        "total": 10,
+        "exact": false,
+        "first_differences": [
+          {
+            "id": "general_ja_explain",
+            "index": 11,
+            "left": 241456,
+            "right": 5205
+          }
+        ]
+      },
+      "hipengine_ar_vs_llamacpp_vulkan_ar": {
+        "matches": 8,
+        "total": 10,
+        "exact": false,
+        "first_differences": [
+          {
+            "id": "general_ja_plan",
+            "index": 14,
+            "left": 247208,
+            "right": 247723
+          },
+          {
+            "id": "general_ja_explain",
+            "index": 11,
+            "left": 241456,
+            "right": 5205
+          }
+        ]
+      },
+      "llamacpp_hip_ar_vs_vulkan_ar": {
+        "matches": 9,
+        "total": 10,
+        "exact": false,
+        "first_differences": [
+          {
+            "id": "general_ja_plan",
+            "index": 14,
+            "left": 247208,
+            "right": 247723
+          }
+        ]
+      }
+    }
+  },
+  "memory": {
+    "qwen36": {
+      "hipengine": {
+        "ar": {
+          "owned_gib": 31.659172419458628,
+          "tracked_gib": 31.659172419458628,
+          "hip_used_phase_peak_gib": 33.125885009765625
+        },
+        "b3": {
+          "tracked_gib": 33.04344729799777
+        },
+        "after_close_bytes": 0
+      },
+      "llamacpp_hip": {
+        "ar": {
+          "rss_peak_gib": 4.475383758544922,
+          "gtt_delta_gib": 15.789741516113281,
+          "gtt_peak_gib": 15.807136535644531,
+          "system_available_drop_gib": 20.07699966430664,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b3": {
+          "rss_peak_gib": 4.237922668457031,
+          "gtt_delta_gib": 16.33858871459961,
+          "gtt_peak_gib": 16.35598373413086,
+          "system_available_drop_gib": 20.39226531982422,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b4": {
+          "rss_peak_gib": 4.239459991455078,
+          "gtt_delta_gib": 16.48522186279297,
+          "gtt_peak_gib": 16.50261688232422,
+          "system_available_drop_gib": 20.504432678222656,
+          "swap_delta_gib": 0.0
+        }
+      },
+      "llamacpp_vulkan": {
+        "ar": {
+          "rss_peak_gib": 3.379985809326172,
+          "gtt_delta_gib": 15.8677978515625,
+          "gtt_peak_gib": 15.88519287109375,
+          "system_available_drop_gib": 19.28216552734375,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b3": {
+          "rss_peak_gib": 3.080211639404297,
+          "gtt_delta_gib": 16.72209930419922,
+          "gtt_peak_gib": 16.73949432373047,
+          "system_available_drop_gib": 19.81291961669922,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b4": {
+          "rss_peak_gib": 3.0790939331054688,
+          "gtt_delta_gib": 16.869140625,
+          "gtt_peak_gib": 16.88653564453125,
+          "system_available_drop_gib": 19.94640350341797,
+          "swap_delta_gib": 0.0
+        }
+      }
+    },
+    "qwen38": {
+      "hipengine": {
+        "ar": {
+          "owned_gib": 31.659172419458628,
+          "tracked_gib": 31.659172419458628,
+          "hip_used_phase_peak_gib": 33.125885009765625
+        },
+        "b3": {
+          "tracked_gib": 33.04375291056931
+        },
+        "after_close_bytes": 0
+      },
+      "llamacpp_hip": {
+        "ar": {
+          "rss_peak_gib": 4.475399017333984,
+          "gtt_delta_gib": 15.789741516113281,
+          "gtt_peak_gib": 15.807136535644531,
+          "system_available_drop_gib": 20.058216094970703,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b3": {
+          "rss_peak_gib": 4.243919372558594,
+          "gtt_delta_gib": 16.338722229003906,
+          "gtt_peak_gib": 16.356117248535156,
+          "system_available_drop_gib": 20.379234313964844,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b4": {
+          "rss_peak_gib": 4.244503021240234,
+          "gtt_delta_gib": 16.48522186279297,
+          "gtt_peak_gib": 16.50261688232422,
+          "system_available_drop_gib": 20.562946319580078,
+          "swap_delta_gib": 0.0
+        }
+      },
+      "llamacpp_vulkan": {
+        "ar": {
+          "rss_peak_gib": 3.3420867919921875,
+          "gtt_delta_gib": 15.8677978515625,
+          "gtt_peak_gib": 15.88519287109375,
+          "system_available_drop_gib": 19.069305419921875,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b3": {
+          "rss_peak_gib": 3.0644989013671875,
+          "gtt_delta_gib": 16.72209930419922,
+          "gtt_peak_gib": 16.73949432373047,
+          "system_available_drop_gib": 19.881168365478516,
+          "swap_delta_gib": 0.0
+        },
+        "mtp_b4": {
+          "rss_peak_gib": 3.059825897216797,
+          "gtt_delta_gib": 16.85723876953125,
+          "gtt_peak_gib": 16.8746337890625,
+          "system_available_drop_gib": 19.91822052001953,
+          "swap_delta_gib": 0.0
+        }
+      }
+    }
+  },
+  "commands": {
+    "hipengine": {
+      "qwen36": {
+        "prefill": "/tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-qwen36-p512-d128.json",
+        "ar_b3": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipcc-version-gfx1151.txt --output /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-qwen36-natural25-native-b3.json --max-new-tokens 25 --require-cached-build"
+      },
+      "qwen38": {
+        "prefill": "/tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-qwen38-p512-d128.json",
+        "ar_b3": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipcc-version-gfx1151.txt --output /tmp/hipengine-llamacpp-27b-compare-20260815-020552/hipengine-qwen38-natural25-native-b3.json --max-new-tokens 25 --require-cached-build"
+      }
+    },
+    "llamacpp_server": {
+      "hip_qwen36_mtp_b3": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "hip_qwen36_mtp_b4": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "hip_qwen36_ar": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps",
+      "vulkan_qwen36_mtp_b3": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "vulkan_qwen36_mtp_b4": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "vulkan_qwen36_ar": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps",
+      "hip_qwen38_mtp_b3": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "hip_qwen38_mtp_b4": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "hip_qwen38_ar": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-hip/build/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps",
+      "vulkan_qwen38_mtp_b3": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "vulkan_qwen38_mtp_b4": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-n-min 0 --spec-draft-p-min 0.0 --spec-draft-ngl all --spec-draft-type-k bf16 --spec-draft-type-v bf16",
+      "vulkan_qwen38_ar": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin:/usr/local/lib:/usr/lib:/lib GGML_VK_VISIBLE_DEVICES=0 XDG_RUNTIME_DIR=/run/user/1000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18080 --no-webui --metrics --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto --log-timestamps"
+    }
+  },
+  "raw_root": "/tmp/hipengine-llamacpp-27b-compare-20260815-020552",
+  "script_sha256": {
+    "run-hipengine-current.sh": "08b1ac17d6021d56a268d7e1b6321bf01530438515d6ac421a8678a3cc72356d",
+    "run-llamacpp.sh": "53f62faf4bf79147e36a96a252087ef9d9c601180a665689fe65222373a717d4",
+    "llamacpp_server_suite.py": "3a66d91127b964b1c93b6cc63b937da3c1b62a71dfc33227c970d2b3775aa6b8",
+    "memory_sampler.py": "b0a1555b492aeba43fee92ba9ff2fa2d78a3bba535aa5a16d4e1978022d39fc6",
+    "llamacpp-natural25-prompts.json": "73d81db1ac7d785972f3ac05f8f09b6cc44957f292d665507c39d81bf07e9546"
+  },
+  "budget_findings": {
+    "qwen36": {
+      "hip": {
+        "b4_vs_b3_percent": -3.371022737716678,
+        "valid_exact_comparison": true
+      },
+      "vulkan": {
+        "b4_vs_b3_percent": 5.774069187695985,
+        "valid_exact_comparison": false
+      }
+    },
+    "qwen38": {
+      "hip": {
+        "b4_vs_b3_percent": -2.60644761142238,
+        "valid_exact_comparison": true
+      },
+      "vulkan": {
+        "b4_vs_b3_percent": 0.1054262196487743,
+        "valid_exact_comparison": false
+      }
+    }
+  }
+}
