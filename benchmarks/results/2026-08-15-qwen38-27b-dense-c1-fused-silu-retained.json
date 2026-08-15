@@ -1,0 +1,191 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_dense_c1_fused_silu_retained",
+  "created_at": "2026-08-15T05:13:51Z",
+  "status": "accepted_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": true,
+  "decision": "retain_existing_q4t16_dense_dual_local32_silu_owner",
+  "decision_reason": "The existing exact Q4T16 c1 dual+SiLU owner is the only retained gfx1151 0.8B optimization with both a matching 27B operation and a matching sole-resident layout. It removes 128 PM4 graph nodes, improves Qwen3.8 graph decode 1.259% and full-suite true AR 13.364%, leaves prefill and memory non-regressive, and improves absolute native-B3 throughput with unchanged acceptance and exact outputs.",
+  "source": {
+    "base_commit": "421325cee",
+    "tested_tree_dirty_only_for_candidate": true,
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "kernel_body_changed": false,
+    "existing_registry_key": [
+      "hip_gfx1100",
+      "linear_pair_silu",
+      "gguf_q4_k_t16_v1",
+      "dense_dual_local32_bf16_bf16_out"
+    ],
+    "gfx1151_source_artifacts": [
+      "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json",
+      "benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-dense-sidecar-retained.json"
+    ]
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "total_vram_gib": 23.984375,
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "file_type": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "geometry": "QWEN35_DENSE_H5120_GEOMETRY",
+    "dense_shape": {
+      "layers": 64,
+      "hidden": 5120,
+      "ffn": 17408
+    }
+  },
+  "implementation": {
+    "policy_capability": "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "policy_identity": ["QWEN35_DENSE_H5120_GEOMETRY", "MOSTLY_Q4_K_M"],
+    "shape_key": [1, 5120, 17408],
+    "variant": "dense_dual_local32_bf16_bf16_out",
+    "weight_layout": "sole gguf_q4_k_t16_v1 canonical tiles",
+    "persistent_bytes_added": 0,
+    "hot_scratch_bytes_added": 0,
+    "fallback": "two registered dense_single_local32 Q4T16 projections plus separate BF16 SiLU",
+    "routing": "geometry policy with legacy name-key fallback for existing narrow-model policies; no backend or quant branch in runtime"
+  },
+  "gfx1151_08b_transfer_audit": [
+    {
+      "package": "P1/P6 compact Q5T16 QKV and SSM-out",
+      "disposition": "already_subsumed",
+      "reason": "Dense H5120 already uses sole Q5T16 SSM-out and T16/source-F16 projection routes; the 0.8B K1024 shapes do not match."
+    },
+    {
+      "package": "P2/X2-K2 cluster8 GDN",
+      "disposition": "not_applicable",
+      "reason": "The 0.8B recurrence is 16 K heads/16 V heads; H5120 is 16/48 and already benefits from compact peer-wave Q/K ownership."
+    },
+    {
+      "package": "P4 sole Q4T16 attention-Q",
+      "disposition": "already_subsumed",
+      "reason": "All qualified H5120 rank-2 Q4 weights already use the sole Q4T16 representation and production bulk policies."
+    },
+    {
+      "package": "D3 fused dense gate/up plus SiLU",
+      "disposition": "retained",
+      "reason": "The pack8 t128 leaf is shape-specific, but the existing Q4T16 dense dual local32+SiLU sibling exactly matches H5120 c1 and needs only policy admission."
+    },
+    {
+      "package": "D3B fused down plus residual",
+      "disposition": "deferred_not_direct",
+      "reason": "The 0.8B pack8/dense-BF16 bodies do not consume H5120's sole Q4T16/qmicro-planar c1 owners; a new exact body and current profile would be required."
+    },
+    {
+      "package": "D4 short split-K3 attention",
+      "disposition": "not_applicable",
+      "reason": "It is qualified only for 8Q/2KV/D256 at live 514-641; H5120 is 24Q/4KV/D256 and already selects the long-context parallel reducer at 32K."
+    },
+    {
+      "package": "D5 fixed-1024 RMSNorm",
+      "disposition": "not_applicable",
+      "reason": "The fixed hidden-1024 wave schedule does not match hidden 5120."
+    },
+    {
+      "package": "X2a/K1/K5 pack8 and dense-BF16 bulk WMMA",
+      "disposition": "not_applicable",
+      "reason": "H5120 has neither a resident pack8 Q4 payload nor expanded dense-BF16 FFN owners; sole T16 plus selected source-F16/rocBLAS routes already own bulk prefill."
+    }
+  ],
+  "red_green": {
+    "red_command": "uv run pytest -q tests/test_qwen35_gguf_geometry_policy.py tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py -k 'dense_backend_policies_are_geometry_keyed or dense_policy_admission_ignores_finetune_name or qualified_c1_consumes_registered_fused_schedule'",
+    "red_result": "3 failed: missing gfx1100 policy, name-keyed resolver returned None, and qualified c1 did not force the admitted GEMV owner",
+    "green_result": "3 passed",
+    "focused_command": "uv run pytest -q tests/test_gguf_q4_k_t16_dense.py::test_q4_t16_dense_c1_pair_silu_matches_unfused_chain tests/test_qwen35_gguf_geometry_policy.py tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py",
+    "focused_result": "22 passed",
+    "gpu_leaf_oracle": "The c1 fused Q4T16 output is BF16 bit-exact to two registered single Q4T16 projections followed by the registered separate BF16 SiLU chain on a deterministic HIP fixture."
+  },
+  "direct_512_128": {
+    "protocol": "persistent session; one discarded warmup plus three measured runs; PM4 one-step graph replay; repeated token 9707 only for fixed-shape throughput and topology",
+    "control_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-xtx-geometry_current-512x128.json",
+    "candidate_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-xtx-fused-silu-production-512x128.json",
+    "control": {
+      "prefill_tok_s_samples": [956.5884646301366, 951.4167853766127, 954.9686326833279],
+      "prefill_tok_s_median": 954.9686326833279,
+      "decode_tok_s_samples": [33.53856055992347, 33.541906587328015, 33.550420676973935],
+      "decode_tok_s_median": 33.541906587328015,
+      "graph_nodes": 950,
+      "q4t16_single_nodes": 288,
+      "separate_silu_nodes": 64,
+      "tracked_peak_gib": 15.586668975651264,
+      "sampled_hip_peak_gib": 15.75146484375
+    },
+    "candidate": {
+      "prefill_tok_s_samples": [958.5992124648901, 953.7213179726107, 956.5793857711162],
+      "prefill_tok_s_median": 956.5793857711162,
+      "decode_tok_s_samples": [33.97391884581858, 33.96417612341213, 33.94813755208938],
+      "decode_tok_s_median": 33.96417612341213,
+      "graph_nodes": 822,
+      "q4t16_single_nodes": 160,
+      "q4t16_dual_silu_nodes": 64,
+      "separate_silu_nodes": 0,
+      "tracked_peak_gib": 15.586668975651264,
+      "sampled_hip_peak_gib": 15.74755859375
+    },
+    "changes_percent": {
+      "prefill_tok_s": 0.16867078484685827,
+      "decode_tok_s": 1.2589312267766273,
+      "tracked_peak_gib": 0.0,
+      "graph_nodes": -13.473684210526315
+    },
+    "finite_final_logits": true,
+    "final_token_ids_control": [9707, 9707, 9707],
+    "final_token_ids_candidate": [9707, 9707, 9707]
+  },
+  "mtp_full_natural25": {
+    "protocol": "all ten prompts, four categories, six train and four heldout, 25 visible outputs/24 timed transitions, true no-MTP AR and native B3, one run after warmup",
+    "candidate_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 10 --warmup --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen38-xtx-fused-silu-production-full-native-b3.json",
+    "control": {
+      "true_ar_tok_s": 19.123027951764392,
+      "mtp_b3_tok_s": 60.503057246577065,
+      "mtp_vs_true_ar": 3.1638847884963077,
+      "draft_acceptance": 0.6309523809523809
+    },
+    "candidate": {
+      "true_ar_tok_s": 21.67862522852481,
+      "mtp_b3_tok_s": 60.92461055478097,
+      "mtp_vs_true_ar": 2.8103539736743155,
+      "draft_acceptance": 0.6309523809523809,
+      "category_mtp_tok_s": {
+        "code": 72.38088917957107,
+        "general_en": 53.60502227384941,
+        "general_ja": 53.60866195093521,
+        "mixed_ja_en": 58.382679446205394
+      },
+      "category_mtp_vs_true_ar": {
+        "code": 3.321129830804026,
+        "general_en": 2.489058605627785,
+        "general_ja": 2.500778710229346,
+        "mixed_ja_en": 2.673442147336919
+      }
+    },
+    "changes_percent": {
+      "true_ar_tok_s": 13.363978148265087,
+      "mtp_b3_tok_s": 0.6967471188867203
+    },
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_bytes_after_close": 0,
+    "peak_allocated_bytes": 17761163794
+  },
+  "capacity_scope": {
+    "prior_real_32k_server_gate": "benchmarks/results/2026-08-15-qwen38-27b-xtx-geometry-32k-validation.json",
+    "reprobe_required": false,
+    "reason": "The retained route adds no allocation, changes no KV/prefill path, and direct tracked peak is byte-identical; the earlier real 32K gate retains its 2.115 GiB headroom."
+  },
+  "limitations": [
+    "The direct A/B uses separate resident processes in control-then-candidate order; each side has three low-variance measured runs.",
+    "Natural25 MTP has one full-suite run per route, as required by the dense suite protocol; every category is non-regressive in absolute MTP throughput.",
+    "Only the existing c1 gate/up+SiLU owner is retained. No 0.8B shape-specific pack8, GDN, attention, norm, or dense-BF16 policy is copied."
+  ]
+}

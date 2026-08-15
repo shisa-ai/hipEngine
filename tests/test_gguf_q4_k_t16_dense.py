@@ -25,6 +25,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+    build_gguf_t16_selected_gemv,
+    gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+)
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.materialize import DeviceTensorAllocation
@@ -233,6 +238,104 @@ def test_q4_t16_dense_c1_pair_silu_uses_canonical_tiles() -> None:
 
     assert launched
     assert calls[0][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_t16_dense_c1_pair_silu_matches_unfused_chain() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+        build_paro_silu,
+        silu_mul_separate_out_bf16,
+    )
+
+    runtime = get_hip_runtime()
+    in_features = 256
+    out_features = 32
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=1, axis=0).copy()
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(0x38D51)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(1, in_features)).astype(np.float32)
+    )
+    expected_bits = np.zeros((1, out_features), dtype=np.uint16)
+    actual_bits = np.zeros_like(expected_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        gate_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        up_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        expected_dev = malloc(expected_bits.nbytes, runtime=runtime)
+        actual_dev = malloc(actual_bits.nbytes, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                gate_dev,
+                up_dev,
+                expected_dev,
+                actual_dev,
+            )
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(
+            tiles_a_dev, host_array_ptr(tiles_a), runtime=runtime
+        )
+        copy_host_to_device(
+            tiles_b_dev, host_array_ptr(tiles_b), runtime=runtime
+        )
+        library = build_gguf_t16_selected_gemv(load=True)
+        for tiles_dev, out_dev in (
+            (tiles_a_dev, gate_dev),
+            (tiles_b_dev, up_dev),
+        ):
+            gguf_q4_k_t16_dense_single_local32_bf16_bf16_out(
+                x_dev.ptr,
+                tiles_dev.ptr,
+                out_dev.ptr,
+                1,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        silu_mul_separate_out_bf16(
+            gate_dev.ptr,
+            up_dev.ptr,
+            expected_dev.ptr,
+            1,
+            out_features,
+            library=build_paro_silu(load=True),
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            actual_dev.ptr,
+            1,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(expected_bits), expected_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_bits), actual_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_bits, expected_bits)
+    assert np.isfinite(_bf16_bits_to_f32(actual_bits)).all()
 
 
 def test_q4_t16_dense_small_row_pair_silu_uses_canonical_tiles() -> None:
