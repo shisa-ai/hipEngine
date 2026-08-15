@@ -17,11 +17,12 @@ tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
 below clean llama HIP and is 6.12% below Vulkan at 4K. These are not new clean
 publication toplines: a same-protocol clean three-shape refresh is still needed
 before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
-planar-Q6 row80, standard-Q6 48x64 tiling, and the exact unequal-output Q4
-QKV+gate pair are rejected. The latter wins every actual-weight leaf but
-projects only 0.208-0.472% complete-prefill saving. AOTriton attention is active
-but nonmaterial, and the remaining primitive add boundary is below the >=1%
-request gate.
+planar-Q6 row80, standard-Q6 48x64 tiling, the exact unequal-output Q4
+QKV+gate pair, and 16-column dual-Q4 output subdivision are rejected. The
+unequal pair wins every actual-weight leaf but projects only 0.208-0.472%
+complete-prefill saving; 16-column subdivision is exact but raises leaf wall
+50.35-63.30%. AOTriton attention is active but nonmaterial, and the remaining
+primitive add boundary is below the >=1% request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up and an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs. The first unit improves
@@ -446,10 +447,13 @@ row128 loses 9.9-12.1%; planar-Q6 row80 is nonuniform and projects below 1%;
 and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. A later
 transfer screen of the already registered exact unequal-output Q4 QKV+gate pair
 wins all 45 actual-weight pairs at 1.038-1.085x, but its 24 calls project only
-0.208-0.472% complete-prefill saving and therefore stop before integration. The
-pp512 ledger leaves Q4 dual/single and Q6 as large families, but previously
-screened Q4/Q6 source-F16, geometry, attention, and add-boundary mechanisms
-provide no remaining bounded all-shape candidate. G2 therefore remains blocked
+0.208-0.472% complete-prefill saving and therefore stop before integration. A
+materially distinct 16-column dual-Q4 output subdivision halves LDS and lowers
+VGPR 248 -> 224, but doubles output workgroups/activation transport and raises
+actual-weight wall 50.35-63.30% at 512/1K/4K with 0/45 wins. The pp512 ledger
+leaves Q4 dual/single and Q6 as large families, but previously screened Q4/Q6
+source-F16, geometry, attention, and add-boundary mechanisms provide no
+remaining bounded all-shape candidate. G2 therefore remains blocked
 rather than complete. Reopen P4 only for a materially new operation-complete
 dataflow with a measured >=1% request projection or after a
 compiler/runtime/baseline change invalidates these economics.
