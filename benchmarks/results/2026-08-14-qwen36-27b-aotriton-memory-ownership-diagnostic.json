@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic_no_memory_leverage",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "pci_id": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "name": "Qwen3.6-27B",
+    "quant": "Q4_K_M",
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"
+  },
+  "workload": {
+    "shape": "512/128",
+    "token_id": 9707,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "persistent_session": true,
+    "decode": "HIP graph replay",
+    "memory_poll_interval_seconds": 0.005
+  },
+  "comparison": {
+    "package_default": {
+      "prefill_attn_aotriton_min_tokens": 512,
+      "prefill_tok_s": 974.8138175843076,
+      "decode_tok_s": 33.52215268767052,
+      "tracked_peak_gib": 15.595880448818207,
+      "whole_device_peak_delta_gib": 16.094017028808594,
+      "hip_used_before_close_gib": 15.94873046875,
+      "hip_used_after_close_gib": 0.26123046875,
+      "source": "/tmp/qwen36-27b-memory-goal/compact-qk-final-512.json"
+    },
+    "aotriton_disabled": {
+      "prefill_attn_aotriton_min_tokens": 0,
+      "prefill_tok_s": 978.8987346120438,
+      "decode_tok_s": 33.58356756506582,
+      "tracked_peak_gib": 15.595880448818207,
+      "whole_device_peak_delta_gib": 16.09288787841797,
+      "whole_device_saved_mib": 1.15625,
+      "hip_used_before_close_gib": 15.94873046875,
+      "hip_used_after_close_gib": 0.26123046875,
+      "finite_final_logits": true,
+      "final_token_ids": [9707, 9707, 9707],
+      "tracked_bytes_after_close": 0,
+      "source": "/tmp/qwen36-27b-memory-goal/reopen-noaotriton-512.json",
+      "source_sha256": "072a0acd9cc7d77862d4b468c8b420a2f92c3942dff68256ccab4e73b911347a",
+      "vram_source": "/tmp/qwen36-27b-memory-goal/reopen-noaotriton-512-vram.json",
+      "vram_source_sha256": "486027e4e207cc0d37348f0b56d2431aa3ab743f183c02f34bf347b6ab1ca8cc"
+    }
+  },
+  "decision": {
+    "retain": false,
+    "reason": "Disabling AOTriton changes neither tracked ownership nor steady HIP usage and saves only 1.156 MiB whole-device, far below the 414.5-MiB 512-row Vulkan gap. The apparent 0.42% prefill difference is not promoted from an unpaired diagnostic.",
+    "run_4k": false,
+    "next": "Treat the whole-minus-tracked gap as general HIP/runtime/transient overhead, not an AOTriton-owned allocation. Continue with simultaneous full-row scratch lifetime reduction."
+  }
+}

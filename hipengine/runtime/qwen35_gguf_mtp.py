@@ -494,6 +494,26 @@ class _StateJournal:
         )
 
 
+def _resolve_gguf_verifier_backend(
+    target: Qwen35GGUFResidentSession,
+    requested: str | None,
+) -> str:
+    """Use the target's concrete backend for every verifier registry lookup."""
+
+    target_backend = str(target.backend)
+    if target_backend == "auto":
+        raise ValueError("GGUF target backend must be concrete before verifier setup")
+    normalized = "auto" if requested is None else str(requested).strip()
+    if normalized == "auto":
+        return target_backend
+    if normalized != target_backend:
+        raise ValueError(
+            f"verifier backend {normalized!r} does not match target backend "
+            f"{target_backend!r}"
+        )
+    return normalized
+
+
 class Qwen35GGUFTransactionalVerifier:
     """Shared-ABI chain verifier with journaled GGUF state/KV commit.
 
@@ -511,7 +531,7 @@ class Qwen35GGUFTransactionalVerifier:
         target: Qwen35GGUFResidentSession,
         *,
         max_candidate_budget: int = 3,
-        backend: str = "hip_gfx1100",
+        backend: str | None = None,
         quant: str = "gguf_ud_q3_k_m",
         target_verify_mode: str = "serial_exact",
     ) -> None:
@@ -524,7 +544,7 @@ class Qwen35GGUFTransactionalVerifier:
             raise ValueError("target_verify_mode must be 'serial_exact' or 'native'")
         self.target = target
         self.max_candidate_budget = int(max_candidate_budget)
-        self.backend = str(backend)
+        self.backend = _resolve_gguf_verifier_backend(target, backend)
         self.quant = str(quant)
         self.target_verify_mode = selected_verify_mode
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)

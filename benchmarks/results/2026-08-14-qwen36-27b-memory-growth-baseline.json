@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic_baseline_complete_candidate_pending",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B sole-T16 XTX memory-growth and 8K baseline",
+  "repo_revision": "841f639c6567317a3d9a61f96c3ec197d7c5279c",
+  "git_dirty": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "sysfs_card": "card0",
+    "vram_total_bytes": 25753026560,
+    "vram_total_gib": 23.984375
+  },
+  "protocol": {
+    "hipengine": "Package-default persistent sole-T16 session, token 9707, one discarded warmup plus three measured resets, bulk prefill, BF16 KV, PM4/HIP graph decode, 128 timed transitions, cached compiler artifacts, 5 ms whole-device sysfs VRAM around the complete child process.",
+    "llamacpp_512_4k": "Frozen clean same-commit c8e03ce81 packet: standardized llama-bench prefill and 5 ms whole-device peak; context-matched llama-server 128-transition decode.",
+    "llamacpp_8k": "Fresh clean same-commit c8e03ce81 standardized llama-bench split-phase 8K/128 row, one warmup and five repetitions, BF16 KV, 5 ms whole-device VRAM. Its decode number is standardized llama-bench at depth 8192, not a context-matched server row.",
+    "memory_scope": "Tracked memory is hipEngine allocator/owned-session high water. Whole-device peak delta is sysfs mem_info_vram_used peak minus the pre-process baseline. The cross-engine gate uses whole-device peak delta, never tracked memory."
+  },
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "hipengine_prefill_tok_s": 977.3965250007004,
+      "hipengine_decode_tok_s": 33.64496697549742,
+      "hipengine_tracked_peak_gib": 15.605462968349457,
+      "hipengine_whole_device_peak_delta_gib": 16.095378875732422,
+      "llamacpp_hip_prefill_tok_s": 964.60567,
+      "llamacpp_hip_context_decode_tok_s": 33.02528653306218,
+      "lower_llamacpp_whole_device_peak_delta_gib": 15.689502716064453,
+      "memory_gap_gib": 0.40587615966796875,
+      "whole_minus_tracked_gib": 0.4899159073829651,
+      "prefill_delta_vs_llamacpp_hip_percent": 1.3260190561289464,
+      "decode_delta_vs_llamacpp_hip_percent": 1.8763817289362938
+    },
+    {
+      "workload": "1024/128",
+      "prompt_length": 1024,
+      "hipengine_prefill_tok_s": 1012.308803043644,
+      "hipengine_decode_tok_s": 34.566610914273326,
+      "hipengine_tracked_peak_gib": 15.720211334526539,
+      "hipengine_whole_device_peak_delta_gib": 16.320484161376953,
+      "llamacpp_hip_prefill_tok_s": 981.039726,
+      "llamacpp_hip_context_decode_tok_s": 32.92428340811604,
+      "lower_llamacpp_whole_device_peak_delta_gib": 15.699958801269531,
+      "memory_gap_gib": 0.6205253601074219,
+      "whole_minus_tracked_gib": 0.6002728268504143,
+      "prefill_delta_vs_llamacpp_hip_percent": 3.18734055461114,
+      "decode_delta_vs_llamacpp_hip_percent": 4.988195143990426
+    },
+    {
+      "workload": "4096/128",
+      "prompt_length": 4096,
+      "hipengine_prefill_tok_s": 987.8087017653517,
+      "hipengine_decode_tok_s": 31.420819321724117,
+      "hipengine_tracked_peak_gib": 16.367618195712566,
+      "hipengine_whole_device_peak_delta_gib": 17.118637084960938,
+      "llamacpp_hip_prefill_tok_s": 946.733397,
+      "llamacpp_hip_context_decode_tok_s": 32.5601236674197,
+      "lower_llamacpp_whole_device_peak_delta_gib": 15.912158966064453,
+      "memory_gap_gib": 1.2064781188964844,
+      "whole_minus_tracked_gib": 0.7510188892483711,
+      "prefill_delta_vs_llamacpp_hip_percent": 4.33863481477581,
+      "decode_delta_vs_llamacpp_hip_percent": -3.499078680820844
+    },
+    {
+      "workload": "8192/128",
+      "prompt_length": 8192,
+      "hipengine_prefill_tok_s": 819.5584350366046,
+      "hipengine_decode_tok_s": 29.39939660528266,
+      "hipengine_tracked_peak_gib": 16.626089744269848,
+      "hipengine_whole_device_peak_delta_gib": 17.38248062133789,
+      "llamacpp_hip_standardized_prefill_tok_s": 906.647772,
+      "llamacpp_hip_standardized_decode_tok_s": 32.779072,
+      "llamacpp_vulkan_standardized_prefill_tok_s": 829.630459,
+      "llamacpp_vulkan_standardized_decode_tok_s": 37.669371,
+      "lower_llamacpp_whole_device_peak_delta_gib": 16.16606903076172,
+      "memory_gap_gib": 1.2164115905761719,
+      "whole_minus_tracked_gib": 0.7563908770680428,
+      "prefill_delta_vs_llamacpp_hip_percent": -9.605641755594085,
+      "decode_delta_vs_llamacpp_hip_standardized_percent": -10.310466979410949
+    }
+  ],
+  "owned_session_breakdown_gib": [
+    {
+      "prompt_length": 512,
+      "weights": 15.279573440551758,
+      "decode_scratch": 0.19899194687604904,
+      "full_attention_bf16_kv": 0.046875,
+      "linear_attention_state": 0.14794921875,
+      "session_buffers": 0.126296766102314,
+      "full_sequence_hidden": 0.0146484375,
+      "bulk_prefill_scratch": 0.11069301515817642
+    },
+    {
+      "prompt_length": 1024,
+      "weights": 15.279573440551758,
+      "decode_scratch": 0.2305322289466858,
+      "full_attention_bf16_kv": 0.078125,
+      "linear_attention_state": 0.14794921875,
+      "session_buffers": 0.2095048502087593,
+      "full_sequence_hidden": 0.0244140625,
+      "bulk_prefill_scratch": 0.1841316595673561
+    },
+    {
+      "prompt_length": 4096,
+      "weights": 15.279573440551758,
+      "decode_scratch": 0.4197739213705063,
+      "full_attention_bf16_kv": 0.265625,
+      "linear_attention_state": 0.14794921875,
+      "session_buffers": 0.6676700189709663,
+      "full_sequence_hidden": 0.078125,
+      "bulk_prefill_scratch": 0.5885649099946022
+    },
+    {
+      "prompt_length": 8192,
+      "weights": 15.279573440551758,
+      "decode_scratch": 0.6720961779356003,
+      "full_attention_bf16_kv": 0.515625,
+      "linear_attention_state": 0.14794921875,
+      "session_buffers": 0.6738193109631538,
+      "full_sequence_hidden": 0.078125,
+      "bulk_prefill_scratch": 0.5947142019867897
+    }
+  ],
+  "growth_analysis": {
+    "512_to_4096_tracked_growth_gib": 0.7621552273631096,
+    "512_to_4096_full_attention_kv_growth_gib": 0.21875,
+    "512_to_4096_session_buffer_growth_gib": 0.5413732528686523,
+    "4096_to_8192_tracked_growth_gib": 0.2584715485572815,
+    "4096_to_8192_full_attention_kv_growth_gib": 0.25,
+    "4096_to_8192_session_buffer_growth_gib": 0.0061492919921875,
+    "4096_to_8192_tracked_bytes_per_added_token": 67756.765625,
+    "conclusion": "The apparent growth has two regimes. From 512 through 4K, the dominant avoidable growth is the liveness-aliased bulk-prefill arena and full-sequence hidden buffer, which add 0.541 GiB while BF16 KV adds 0.219 GiB. Above the 4096-row prefill chunk cap, scratch is flat: 0.250 of the 0.258-GiB tracked 4K-to-8K growth is the expected BF16 full-attention KV cache. The fixed 15.280-GiB weight payload is resident footprint, not per-token growth. Whole-device overhead above tracked ownership rises to roughly 0.75 GiB at 4K/8K and needs separate allocator/library attribution."
+  },
+  "candidate_constraints": {
+    "do_not_repeat": [
+      "raw-Q4 or raw-plus-T16 sidecars; maximum Q4 residency savings were insufficient and cache-cold performance was rejected",
+      "pure or mixed INT8 KV as a default; Qwen3.6-27B quality/capacity promotion remains rejected",
+      "any context-specific fallback that changes sole-T16 ownership or regresses current prefill/decode"
+    ],
+    "next_profile": "Use a narrow cache-only 4K/8K decode profile to rank bytes-per-token/kernel families, while separately attributing the approximately 0.75-GiB whole-device-minus-tracked gap. Select a non-duplicative candidate only after the profile."
+  },
+  "sources": {
+    "current_512_4k": "benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json",
+    "whole_device_512_4k": "benchmarks/results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json",
+    "llamacpp_512_4k": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json",
+    "hipengine_8k_raw": {
+      "path": "/tmp/qwen36-current-xtx-8192x128.json",
+      "sha256": "35e38940fdcc74bb93e9194d708e9e661f3c22b90e1bced97fb35a095a7e88b6"
+    },
+    "hipengine_8k_vram_raw": {
+      "path": "/tmp/qwen36-current-xtx-8192x128-vram.json",
+      "sha256": "c15683d781117e4ece1416539f788b82693155d99c43ad89c270440d365b6f93"
+    },
+    "llamacpp_hip_8k_raw": {
+      "path": "/tmp/qwen36-27b-memory-goal/llamacpp-hip-8k-ar-peak.json",
+      "sha256": "946efaeeca8250a8e9760c530bd8570b739da12c5706f4fec985c0686416c5fa"
+    },
+    "llamacpp_vulkan_8k_raw": {
+      "path": "/tmp/qwen36-27b-memory-goal/llamacpp-vulkan-8k-ar-peak.json",
+      "sha256": "cef6d80b0404a9b506c8a7f0fd071a2f2a72eca7b3df39bdf2a8fea817385cff"
+    }
+  },
+  "commands": {
+    "hipengine_8k": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 8192 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json /tmp/qwen36-current-xtx-8192x128.json",
+    "llamacpp_hip_8k": "HIP_VISIBLE_DEVICES=1 python3 scripts/llamacpp_bench_with_peak.py --llama-bench /tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-hip/bin/llama-bench --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant Q4_K_M --backend hip --workloads 8K/128 --repetitions 5 --ngl 99 --flash-attn 1 --cache-type-k f16 --cache-type-v f16 --extra-args='-dev ROCm0' --poll 5 --memory-domain vram --card-name card0 --output /tmp/qwen36-27b-memory-goal/llamacpp-hip-8k-ar-peak.json",
+    "llamacpp_vulkan_8k": "python3 scripts/llamacpp_bench_with_peak.py --llama-bench /tmp/llama-qwen36-27b-xtx-c8e03ce8122b7af76f836d53efde6df1ce5ec437/build-vulkan/bin/llama-bench --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant Q4_K_M --backend vulkan --workloads 8K/128 --repetitions 5 --ngl 99 --flash-attn 1 --cache-type-k f16 --cache-type-v f16 --extra-args='-dev Vulkan1' --poll 5 --memory-domain vram --card-name card0 --output /tmp/qwen36-27b-memory-goal/llamacpp-vulkan-8k-ar-peak.json"
+  },
+  "validation": {
+    "hipengine_all_final_token_ids": [9707, 9707, 9707],
+    "hipengine_all_final_logits_finite": true,
+    "hipengine_tracked_bytes_after_close": 0,
+    "llamacpp_hip_returncode": 0,
+    "llamacpp_vulkan_returncode": 0
+  },
+  "decision": "Freeze the four-shape baseline and proceed to a narrow 4K/8K decode traffic profile. Do not call the linear 4K-to-8K BF16 KV growth a leak; the actionable short-to-mid-context growth is prefill scratch plus untracked allocator/library overhead. No runtime path changes in this audit."
+}

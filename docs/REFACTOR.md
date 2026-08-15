@@ -50,29 +50,30 @@ should be removed or collapsed.
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they
   have conclusively failed to distinguish the lifecycle fault.
 
-## Qwen3.6 exact unequal-Q4 pair context seam
+## Dense-H5120 exact unequal-Q4 pair context seam
 
 - Added 2026-08-13 for the exact Q4T16 linear-attention QKV/gate bulk-prefill
-  owner. The model-scoped runner context prevents the shape-general registry
-  leaf from claiming unqualified models; rows below 512 and all misses retain
-  the two exact singleton projections. There is no environment selector,
-  workspace, sidecar, or alternate payload.
+  owner. The architecture/geometry-scoped runner context prevents the
+  shape-general registry leaf from claiming unqualified models; rows below 512
+  and all misses retain the two exact singleton projections. There is no
+  environment selector, workspace, sidecar, or alternate payload.
 - Removal trigger: after one release window with complete category, 512/1K/4K
   cross-board, and natural MTP safeguards stable, collapse the private boolean
   context into a quant-neutral model-policy object if more exact pair owners are
   admitted. Keep the separately registered singleton chain permanently as the
   required numerical/peer-backend fallback.
 
-## Qwen3.6 bounded Q4/Q5/Q6 source-F16 rollback seam
+## Dense-H5120 bounded Q4/Q5/Q6 source-F16 rollback seam
 
 - Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
   prefill owner; retained Q4 and Q5 extensions now share that owner and keep
   compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a whole-route
   exact rollback. The name is stale but the rollback remains useful while
   changed-arithmetic Q4/Q5/Q6 accumulates release evidence. Q5 is limited to
-  Qwen3.6-27B recurrent-output prefill at measured bulk-row anchors and casts its
-  dead K6,144 input in place. Exact Q4 pair-owned and Q5 natural-octet-owned
-  source-F16 production are selected through a generic quant/shape/inclusive-row
+  the qualified dense-H5120 recurrent-output geometry at measured anchors and
+  casts its dead K6,144 input in place. Exact Q4 pair-owned and Q5
+  natural-octet-owned source-F16 production are selected through a generic
+  quant/shape/inclusive-row
   variant policy; misses retain each scalar producer. An ordered pair-only
   policy can admit a second projection only when its already-qualified first
   peer owns the common activation, without exposing that shape to singleton or
@@ -269,23 +270,44 @@ should be removed or collapsed.
   MiB** while all **161 larger owners / 95.965% of weight bytes**, all
   state/scratch, c>N requests, unsupported layouts, and denied routes keep
   dedicated behavior.
-- The gfx1100 Qwen3.6-27B policy was added on 2026-08-12 and subsequently
-  widened to the first complete 80-MiB inventory crossover. It packs 849
-  allocations into one owner, leaves only the 1,042,944,000-byte untied head
+- The gfx1100 dense-H5120 geometry policy was added on 2026-08-12 and
+  subsequently widened to the first complete 80-MiB inventory crossover. It
+  packs 849 allocations into one owner, leaves only the 1,042,944,000-byte
+  untied head
   dedicated, reduces physical weight owners **370 -> 2**, and cuts the XTX
   512/128 process peak **16.171 -> 16.095 GiB** with exact output. The complete
   W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
   true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
   peak delta falls **45.50-47.03%**.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Its Qwen3.6 removal trigger is closed;
-  remove the shared environment seam after the next cumulative gfx1151 GGUF
+  disable-only rollback/bisection seam. Its dense-H5120 removal trigger is
+  closed; remove the shared environment seam after the next cumulative gfx1151 GGUF
   policy refresh confirms retained **3/4 fork-memory parity** and no supported
   gfx1151 private-c1 consumer requires rollback.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
   telemetry while this production owner is active. Do not add the rejected SH15
   state arena or compact-Q4 stack to this package; 4K still needs a separately
   admitted structural owner.
+
+## Dense-H5120 gfx1100 private-c1 decode-scratch arena
+
+- Added 2026-08-14 as an architecture/geometry/quant/backend-policy-scoped
+  default plus the disable-only
+  `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA=0` comparison
+  seam. One 256-byte-aligned owner exposes the same 188 logical c1 state, BF16
+  KV, metadata, and operation-workspace views; shared runners, c>N, peer
+  models/backends, explicit opt-out, and owner-allocation denial keep dedicated
+  allocation.
+- Full-engine XTX qualification saves **55.98/94.30/97.99/98.02 MiB** of
+  whole-device peak at 512/1K/4K/8K without changing requested bytes. All
+  prefill/decode movement is within **0.279%**; the W7900 512 safeguard is
+  within **0.046%** and saves **55.99 MiB**. This does not waive the prior
+  gfx1151 SH15 rejection or close the Vulkan parity objective.
+- Removal trigger: delete the environment seam after one release window if the
+  complete four-shape, dense-NextN, W7900, lifecycle, and memory gates remain
+  stable. If a later binding gate fails, remove the capability, resolver,
+  arena path, telemetry, tests, and this open entry together; retain dedicated
+  allocation unchanged.
 
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
@@ -1372,7 +1394,7 @@ shorter-horizon audit establishes a lower break-even.
 | gfx1151 conservative prefill kernel profiles | `qwen35_readme_sweep.py --prefill-kernel-profile conservative|gdn_exact|q4_shared_x|q4_baseline` applies and records fail-closed selector sets. Conservative uses unfused exact GDN `chain`, baseline Q4 selected prefill, baseline linear-attention convolution, 512-thread router selection, and host metadata; `gdn_exact` and `q4_shared_x` each restore one family, while `q4_baseline` changes only the implicated Q4 route beneath otherwise-current package defaults. | Default-off diagnostics for the repeated-128K stall without host drains. Conservative, exact-GDN, and production-shaped Q4 baseline each pass three independent warmup+3 processes (**12/12** prefills). Q4 shared-X reproduces the stall on measured prefill 3 of its first process, isolating `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`. These routes are diagnostic, not independent performance paths. | Remove the conservative/GDN split profiles after one release with the gfx1151 Q4 baseline fallback. Retain the baseline-only and shared-X selectors until a repaired shared-X body passes the repeated-128K gate; then remove the isolation profiles and keep only the normal rollback needed for release safety. |
 | gfx1151 prefill queue-drain containment | `Qwen35GGUFResidentSession.prefill_queue_drain` and `qwen35_readme_sweep.py --prefill-queue-drain none|chunk|layer` add real host stream synchronization at outer-chunk or model-layer boundaries. | Default `none` is unchanged. `layer` bounds ROCm/ROCm#6437's observed two-layer submission lead and passes the predeclared gate: matched exact 512/4K/64K prefill changes **-1.791%/-0.242%/-0.864%**, while three independent 128K warmup+3 processes complete all **12/12** prefills with finite identical logits, token 9707, normal telemetry, measured graph replay, and full cleanup. It is a qualified slower opt-in containment path, not a default-path fix or proof of root cause. Artifact `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`. | Keep explicit `layer` while the upstream issue remains open; never silently default it on. Do not restore the removed `enable_lr_compute_wa` workaround: the captured kernel already has the replacement gfx1151 VGPR-size correction active. Remove after a fixed kernel/firmware/runtime passes the original default-path three-process gate. If maintained beyond that investigation, graduate it from diagnostic CLI/session plumbing into a documented safe-mode policy with explicit admission and cost semantics. |
 | gfx1151 HIP hardware-queue workaround | `configure_hip_process_environment()` sets `GPU_MAX_HW_QUEUES=1` before loading `libamdhip64` when all recognized visible HIP arches map to gfx1151. Existing user values win; gfx1100 and mixed recognized arches are unchanged. | Risk-reducing default after a clean same-command 128K A/B: ROCm's documented four-queue default stalls in first warmup, while one queue once completes warmup+3 at **499.755 / 500.210/500.873/500.687 prefill tok/s**, exact IDs, and is non-regressive at 512/4K (**+0.35%/+0.46% prefill**). It is not lifecycle-safe: later current-production, router-rollback, and SDMA-disabled full 128K gates all complete warmup then reproduce the stall. A clean HIP 7.13 versus 7.15 matrix also reproduces under both stacks: 7.13 completes two gates but stalls on a third after measured pass 1; 7.15 stalls in both controls. Upstream initial/follow-up evidence is posted to ROCm#5107; cross-stack evidence is in `benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`. | Keep one queue as risk reduction until a fixed gfx11 firmware/runtime independently completes the bounded 128K 1+3 lifecycle gate. Preserve explicit `GPU_MAX_HW_QUEUES=4` for rollback/diagnosis and provenance. Do not add `HSA_ENABLE_SDMA=0`: one 1+1 screen passes but the full gate fails. Remove the workaround only after fixed-stack evidence, not after an intermittent passing run. |
-| GGUF GDN prefill | `HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|exact|fused|chain|chain_k2|chain_peer_wave32|chain_compact_peer_wave32|chain_peer_cluster8|chain_tile64|chain_tile32|chain_wave32|chain_wave32_tree|chain_lds64|chain_lds32|chain_lds32_direct|chain_lds32_direct_nonvolatile` is the fail-closed rollback/bisection selector. Explicit `chain` is the GGUF-only exact split; `chain_k2` exposes the registered PARO normalized-Q/K two-wave recurrence; `chain_peer_wave32` exposes GPF-9C's llama.cpp-HIP-shaped normalized-Q/K XOR reduction; `chain_peer_cluster8` exposes GPF-9D's llama.cpp-Vulkan-shaped eight-lane clustered reduction; tile64/tile32 and the older wave32 routes are historical controls. The semantic harness sets `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` internally before session allocation so materialized candidates receive dedicated Q/K/V scratch rather than production direct-route null views. gfx1100 `auto` now selects the bit-equivalent `chain_compact_peer_wave32`; the prior `chain_peer_wave32` remains its rollback. gfx1151 selects byte-exact compiler-cacheable `chain_lds32_direct_nonvolatile` except for the Qwen3.5-0.8B Q4 `(16K,16V,128,128)` plugin key, which selects `chain_peer_cluster8`; Q8 and all other shapes stay exact. | On gfx1151, LCP-2A preserves six-case state plus 250/250 natural transitions exactly and improves balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%. Under the prospective 18-prompt 0.05/0.90 contract, clean W7900 rejects K2 at KL `0.059031` and register-tree at `0.068757`; both pass top-1 and decode. GPF-9C passes at KL `0.041737`, top-1 `445/450`, and non-regressive decode, but originally missed the 512 floor. LCP-5A removes HIP 7.2 spills from the exact selected-Q5/Q6 T16 prefill leaves, moving clean-target pp512 peer kernels/span to **184.513/194.886 ms**, faster than llama.cpp HIP's **203.301/212.236 ms**. The clean selector-unset 512/4K screen reaches **2588.231/2757.752 tok/s**, clears both floors, keeps IDs stable, and preserves the liveness arena at **21.670 GiB** tracked peak. The final W7900 strict-exact convergence screen selects nonvolatile direct-LDS32: it halves VGPR **64 -> 32**, cuts the 512 trace-family median **74.39%**, and improves volatile-direct full-model 512/4K prefill **+73.01%/+82.46%** with byte-exact primitive state, flat decode, and unchanged compact-scratch memory. The new architecture-scoped `exact` alias exposes that rollback without changing gfx1100 peer-wave production. GPF-9D remains rejected outside its new 0.8B Q4 scope. Inside that key, cluster8 improves paired pp512 +4.33%, passes 448/450 top-1 at max KL 0.003455, and is graph-decode non-regressive; the Q8 candidate remains rejected after missing strict decode by 0.0108%. | Retain explicit volatile `chain_lds32_direct` for one release beneath the promoted `exact` nonvolatile route, then remove it if no exact-route regression appears. Remove `chain_k2` and `chain_wave32_tree` after the final gfx1151 peer transfer decision; retain cluster8 while the 0.8B Q4 plugin key is shipped, plus fused, `chain`, `exact`, and peer-wave as production/correctness/bisection routes. After one release of compact-peer coverage, remove the per-V-head `chain_peer_wave32` producer/consumer and collapse `HIPENGINE_GGUF_GDN_PREFILL_MODE` to `auto|exact|fused|chain|chain_compact_peer_wave32`. |
+| GGUF GDN prefill | `HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|exact|fused|chain|chain_k2|chain_peer_wave32|chain_compact_peer_wave32|chain_peer_cluster8|chain_tile64|chain_tile32|chain_wave32|chain_wave32_tree|chain_lds64|chain_lds32|chain_lds32_direct|chain_lds32_direct_nonvolatile` is the fail-closed rollback/bisection selector. Explicit `chain` is the GGUF-only exact split; `chain_k2` exposes the registered PARO normalized-Q/K two-wave recurrence; `chain_peer_wave32` exposes GPF-9C's llama.cpp-HIP-shaped normalized-Q/K XOR reduction; `chain_peer_cluster8` exposes GPF-9D's llama.cpp-Vulkan-shaped eight-lane clustered reduction; tile64/tile32 and the older wave32 routes are historical controls. The semantic harness sets `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` internally before session allocation so materialized candidates receive dedicated Q/K/V scratch rather than production direct-route null views. gfx1100 `auto` now selects the bit-equivalent `chain_compact_peer_wave32`; its normalized Q/K scratch is sized at K-head capacity, while explicit `chain_peer_wave32` sessions retain V-head capacity and widening the mode requires session reconstruction. the prior `chain_peer_wave32` remains its rollback. gfx1151 selects byte-exact compiler-cacheable `chain_lds32_direct_nonvolatile` except for the Qwen3.5-0.8B Q4 `(16K,16V,128,128)` plugin key, which selects `chain_peer_cluster8`; Q8 and all other shapes stay exact. | On gfx1151, LCP-2A preserves six-case state plus 250/250 natural transitions exactly and improves balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%. Under the prospective 18-prompt 0.05/0.90 contract, clean W7900 rejects K2 at KL `0.059031` and register-tree at `0.068757`; both pass top-1 and decode. GPF-9C passes at KL `0.041737`, top-1 `445/450`, and non-regressive decode, but originally missed the 512 floor. LCP-5A removes HIP 7.2 spills from the exact selected-Q5/Q6 T16 prefill leaves, moving clean-target pp512 peer kernels/span to **184.513/194.886 ms**, faster than llama.cpp HIP's **203.301/212.236 ms**. The clean selector-unset 512/4K screen reaches **2588.231/2757.752 tok/s**, clears both floors, keeps IDs stable, and preserves the liveness arena at **21.670 GiB** tracked peak. The final W7900 strict-exact convergence screen selects nonvolatile direct-LDS32: it halves VGPR **64 -> 32**, cuts the 512 trace-family median **74.39%**, and improves volatile-direct full-model 512/4K prefill **+73.01%/+82.46%** with byte-exact primitive state, flat decode, and unchanged compact-scratch memory. The new architecture-scoped `exact` alias exposes that rollback without changing gfx1100 peer-wave production. GPF-9D remains rejected outside its new 0.8B Q4 scope. Inside that key, cluster8 improves paired pp512 +4.33%, passes 448/450 top-1 at max KL 0.003455, and is graph-decode non-regressive; the Q8 candidate remains rejected after missing strict decode by 0.0108%. | Retain explicit volatile `chain_lds32_direct` for one release beneath the promoted `exact` nonvolatile route, then remove it if no exact-route regression appears. Remove `chain_k2` and `chain_wave32_tree` after the final gfx1151 peer transfer decision; retain cluster8 while the 0.8B Q4/Q8_0 plugin keys are shipped (X2-K2 added Q8_0 after a fresh gate), plus fused, `chain`, `exact`, and peer-wave as production/correctness/bisection routes. After one release of compact-peer coverage, remove the per-V-head `chain_peer_wave32` producer/consumer and collapse `HIPENGINE_GGUF_GDN_PREFILL_MODE` to `auto|exact|fused|chain|chain_compact_peer_wave32`. |
 | GGUF Q4T16 selected-prefill GPF-3A | `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=auto|baseline|shared_x`, explicit baseline/shared-X registry variants, and replay switch `scripts/qwen35_gguf_moe_replay.py --q4-t16-shared-x` retain duplicate Q4T16 compact32 bodies. gfx1100 `auto` selects `shared_x`; gfx1151 `auto` is rolled back to `baseline`. | BF16/FP16 fixture bytes are exact; tiny trace is `44.725 -> 33.343 us` (-25.45%), real Q4 gate/up replay is `114.633 -> 97.082 ms` (-15.31%), and clean gfx1151 full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%. However, the gfx1151 repeated-128K split changes only this route and reproduces the no-progress state on prefill 4; baseline-only passes **12/12** at **575.180-580.626 tok/s**. The W7900 transfer remains independently admitted. | Keep both bodies and the explicit selector while repairing/bisecting shared-X on gfx1151. Do not restore gfx1151 automatic shared-X until primitive correctness, kernel tracing, and three independent 128K warmup+3 processes pass. gfx1100 remains unchanged. |
 | GGUF Q8T16 prefill GPF-5A | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0|1` selects production/two-wave on gfx1100 and remains the first gfx1151 rollback beneath the promoted four-wave route; request-scoped package ceilings restore production above 65,536 gfx1151 prompt tokens and above 4,096 gfx1100 prompt tokens. | Exact 32-column waves share 1 KiB LDS; 80 VGPR/zero scratch. Published gfx1151 512-64K prefill is **889.904/919.598/762.940/648.948/546.296 tok/s (+1.01% to +8.57%)**; same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**. Independent W7900 focus improves 512/4K **645.901/676.444 -> 654.872/683.164 tok/s (+1.389%/+0.993%)** with exact primitive bytes, so gfx1100 is intentionally capped at the measured 4K scope. | Keep env rollback and both architecture ceilings for one release. Expand the gfx1100 ceiling only after a clean hardware-local long-context A/B; collapse the duplicate only if a replacement schedule passes 128K too. |
 | GGUF small-B linear dispatch | `HIPENGINE_GGUF_Q4K_ROWTILE` / `q4k_rowtile_session(False)` opt out of raw K-quant rowtiles (rows 2..8, WMMA off) and native resident-pack8 Q4 rowtiles (rows 2..4). | Raw rowtiles remain default-on and exact; their historical MoE full-path result was flat because selected experts dominated. Dense Qwen3.6 now routes native pack8 singles and gate/up pairs through exact local32 row reuse. Rows 2/3/4 improve the real pair 1.715/2.353/3.114x on GPU1; rowtile-4 is VGPR96/scratch0. The routed W7900 transaction oracle observes `{2,3,4}`, and clean natural25 improves B1/B2/B3 **+10.04%/+16.00%/+19.38%** with every full/train/heldout/category row positive, exact IDs/state/acceptance, unchanged memory, and B2 at **1.0678x** own AR. | Keep the opt-out and dual/single rollback for one release after the `4181b85fb` promotion, then make qualified rowtiles unconditional. Preserve per-row kernels for rows==1, rows above each admitted ceiling, registry/backend misses, and explicit WMMA. |

@@ -7,6 +7,7 @@ import pytest
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
+from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.runtime.gguf_decode_graph import (
     Qwen35GGUFDecodeGraph,
     _decode_graph_kv_layout_admitted,
@@ -18,7 +19,7 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 def test_decode_graph_submission_transport_uses_backend_default_with_explicit_precedence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
+    identity = (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M")
     policies = {
         "hip_gfx1100": {
             identity: {
@@ -38,92 +39,63 @@ def test_decode_graph_submission_transport_uses_backend_default_with_explicit_pr
     )
 
     resolve = gguf_runner._resolve_gguf_decode_graph_submission_transport
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=2,
-            replay_steps=128,
-            env={},
-        )
-        == "pm4"
-    )
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=1,
-            replay_steps=128,
-            env={},
-        )
-        == "hipgraph"
-    )
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=1,
-            replay_steps=160,
-            env={},
-        )
-        == "pm4"
-    )
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=2,
-            replay_steps=63,
-            env={},
-        )
-        == "hipgraph"
-    )
-    assert resolve("hip_gfx1100", model_name="unmeasured", env={}) == "hipgraph"
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name="unmeasured",
-            replay_steps=1,
-            env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"},
-        )
-        == "pm4"
-    )
-    assert (
-        resolve(
-            "hip_gfx1151",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=2,
-            replay_steps=128,
-            env={},
-        )
-        == "hipgraph"
-    )
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            physical_rows=2,
-            replay_steps=128,
-            env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
-        )
-        == "hipgraph"
-    )
-    assert (
-        resolve(
-            "hip_gfx1100",
-            model_name=identity[0],
-            file_type_name=identity[1],
-            requested="aql",
-            env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
-        )
-        == "aql"
-    )
+    common = {"geometry": identity[0], "file_type_name": identity[1]}
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=2,
+        replay_steps=128,
+        env={},
+    ) == "pm4"
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=1,
+        replay_steps=128,
+        env={},
+    ) == "hipgraph"
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=1,
+        replay_steps=160,
+        env={},
+    ) == "pm4"
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=2,
+        replay_steps=63,
+        env={},
+    ) == "hipgraph"
+    assert resolve("hip_gfx1100", geometry=None, env={}) == "hipgraph"
+    assert resolve(
+        "hip_gfx1100",
+        geometry=None,
+        replay_steps=1,
+        env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"},
+    ) == "pm4"
+    assert resolve(
+        "hip_gfx1151",
+        **common,
+        physical_rows=2,
+        replay_steps=128,
+        env={},
+    ) == "hipgraph"
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=2,
+        replay_steps=128,
+        env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
+    ) == "hipgraph"
+    assert resolve(
+        "hip_gfx1100",
+        **common,
+        physical_rows=2,
+        requested="aql",
+        env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
+    ) == "aql"
 
 
 def test_resident_session_reselects_shape_scoped_default_per_graph(
@@ -132,7 +104,7 @@ def test_resident_session_reselects_shape_scoped_default_per_graph(
     import hipengine.core.pm4.transport as transport_module
     import hipengine.runtime.gguf_decode_graph as decode_graph_module
 
-    identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
+    identity = (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M")
     policy = {
         identity: {
             "transport": "pm4",
@@ -167,7 +139,7 @@ def test_resident_session_reselects_shape_scoped_default_per_graph(
     session.runner = SimpleNamespace(
         backend="hip_gfx1100",
         target_arch="gfx1100",
-        weights=SimpleNamespace(model_name=identity[0], file_type_name=identity[1]),
+        weights=SimpleNamespace(geometry=identity[0], file_type_name=identity[1]),
     )
     session.runtime = object()
     session._decode_graph_submission_contexts = {}

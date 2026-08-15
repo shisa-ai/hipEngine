@@ -13,6 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipError, HipRuntime
 from hipengine.core.memory import DeviceBuffer, DeviceMemoryArena, free, malloc
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading.materialize import (
     DeviceBufferAllocator,
@@ -187,6 +188,7 @@ class Qwen35GGUFResidentWeights:
     root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
     backend: str
+    geometry: GGUFModelGeometry | None = None
     model_name: str | None = None
     file_type_name: str | None = None
     allocation_arena: DeviceMemoryArena | None = None
@@ -748,6 +750,7 @@ def materialize_qwen35_gguf_weights(
         root_weights=MappingProxyType(root_weights),
         layers=layers,
         backend=backend,
+        geometry=GGUFModelGeometry.try_from_config(plan.config),
         model_name=model_name,
         file_type_name=(None if file_type_name is None else str(file_type_name)),
         allocation_arena=allocation_arena,
@@ -1291,7 +1294,7 @@ def _dense_q4_t16_sidecar_allocation_name(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> str | None:
-    """Return the measured Qwen3.6-27B compact-T16 verifier policy."""
+    """Return the measured dense-H5120 compact-T16 verifier policy."""
 
     if len(tensor.shape) != 2:
         return None
@@ -1334,7 +1337,7 @@ def _is_dense_q5_t16_ssm_out_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select only the measured Qwen3.6-27B recurrent output projection."""
+    """Select only the measured dense-H5120 recurrent output projection."""
 
     return (
         len(tensor.shape) == 2
@@ -1375,7 +1378,7 @@ def _is_narrow_q6_attn_v_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
 ) -> bool:
-    """Select the measured Qwen3.6-27B full-attention V projection."""
+    """Select the measured dense-H5120 full-attention V projection."""
 
     return (
         len(tensor.shape) == 2

@@ -10,6 +10,7 @@ from typing import Mapping
 from hipengine.core.device import Device
 from hipengine.core.hip import HipRuntime
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -106,6 +107,7 @@ class Qwen35GGUFNextNResidentWeights:
             root_weights=root_weights,
             layers=(layer,),
             backend=self.backend,
+            geometry=GGUFModelGeometry.from_config(draft_config),
         )
 
     def free(self, *, runtime: HipRuntime | None = None) -> None:

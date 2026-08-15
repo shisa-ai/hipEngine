@@ -504,6 +504,28 @@ def _borrowed_nextn_fallback_weights(
     return borrow_qwen35_gguf_nextn_fallback_weights(target)
 
 
+def _resolved_target_identity(
+    target: Qwen35GGUFResidentSession,
+) -> tuple[str, str]:
+    """Return the concrete backend/architecture pair used by the target runner."""
+
+    if target.runner is None:
+        raise RuntimeError("target GGUF runner is unavailable")
+    target_backend = str(target.backend)
+    runner_backend = str(target.runner.backend)
+    if target_backend == "auto" or runner_backend == "auto":
+        raise ValueError("target backend identity must be concrete after construction")
+    if target_backend != runner_backend:
+        raise ValueError(
+            f"target backend {target_backend!r} does not match runner backend "
+            f"{runner_backend!r}"
+        )
+    target_arch = str(target.runner.target_arch)
+    if not target_arch:
+        raise ValueError("target runner architecture identity is empty")
+    return target_backend, target_arch
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     if int(args.max_new_tokens) <= 1:
         raise ValueError("--max-new-tokens must exceed one for transition-normalized timing")
@@ -557,6 +579,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         target.select_prefill_quant(str(args.quant))
         if target.runner.weights is None:
             raise RuntimeError("target GGUF weights are unavailable")
+        resolved_backend, target_arch = _resolved_target_identity(target)
         borrowed_fallback_weights = _borrowed_nextn_fallback_weights(target)
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             model,
@@ -680,8 +703,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend="auto",
-        resolved_backend="hip_gfx1100",
-        target_arch="gfx1100",
+        resolved_backend=resolved_backend,
+        target_arch=target_arch,
         model_path=model,
         quant=str(args.quant),
         kv_dtype="bf16",

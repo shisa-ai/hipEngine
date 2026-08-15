@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from dataclasses import replace
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
@@ -17,6 +18,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.materialize import DeviceTensorAllocation, float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -212,18 +214,30 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 
     monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
-    monkeypatch.setattr(
-        gguf_runner,
-        "backend_package_capability",
-        lambda backend, name, default=None: backend == "hip_gfx1151"
-        and name == "GGUF_HOST_TOKEN_EMBEDDING_C1",
-    )
+
+    def capability(backend, name, default=None):
+        if backend != "hip_gfx1151":
+            return default
+        if name == "GGUF_HOST_TOKEN_EMBEDDING_C1":
+            return True
+        if name == "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
+            return ("Q8_0",)
+        return default
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
 
     assert _resolve_gguf_token_embedding_placement(
         backend="hip_gfx1151",
         max_batch_size=1,
         has_shared_runner=False,
+        token_embedding_type_name="Q8_0",
     ) == ("host", "gfx1151_private_c1_auto")
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1151",
+        max_batch_size=1,
+        has_shared_runner=False,
+        token_embedding_type_name="Q4_K",
+    ) == ("device", "host_type_device_fallback")
     assert _resolve_gguf_token_embedding_placement(
         backend="hip_gfx1151",
         max_batch_size=2,
@@ -327,13 +341,13 @@ def test_private_c1_small_weight_arena_defaults_on_with_capability_and_private_s
     ) == (False, "backend_capability_fallback")
 
 
-def test_private_c1_small_weight_arena_admits_model_scoped_policy(
+def test_private_c1_small_weight_arena_admits_geometry_scoped_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 
     policy = {
-        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             "enabled": True,
             "max_allocation_bytes": 80 * 1024 * 1024,
         },
@@ -346,28 +360,30 @@ def test_private_c1_small_weight_arena_admits_model_scoped_policy(
         else False,
     )
 
+    common = {
+        "backend": "hip_gfx1100",
+        "geometry": QWEN35_DENSE_H5120_GEOMETRY,
+        "file_type_name": "MOSTLY_Q4_K_M",
+    }
     assert _resolve_gguf_private_c1_small_weight_arena(
-        backend="hip_gfx1100",
+        **common,
         max_batch_size=1,
         has_shared_runner=False,
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
     ) == (True, "private_c1_selective")
+    other = replace(QWEN35_DENSE_H5120_GEOMETRY, head_count=23)
     assert _resolve_gguf_private_c1_small_weight_arena(
         backend="hip_gfx1100",
+        geometry=other,
+        file_type_name="MOSTLY_Q4_K_M",
         max_batch_size=1,
         has_shared_runner=False,
-        model_name="Other",
-        file_type_name="MOSTLY_Q4_K_M",
     ) == (False, "backend_capability_fallback")
     assert _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
-        backend="hip_gfx1100",
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
+        **common,
     ) == 80 * 1024 * 1024
     assert _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
         backend="hip_gfx1100",
-        model_name="Other",
+        geometry=other,
         file_type_name="MOSTLY_Q4_K_M",
     ) == 16 * 1024 * 1024
 

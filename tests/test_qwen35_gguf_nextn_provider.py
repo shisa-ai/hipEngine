@@ -42,6 +42,32 @@ def _hip_available() -> bool:
     return True
 
 
+def test_nextn_executor_backend_inherits_borrowed_target_backend() -> None:
+    borrowed = {
+        "token_embedding": SimpleNamespace(backend="hip_gfx1151"),
+        "lm_head": SimpleNamespace(backend="hip_gfx1151"),
+    }
+
+    assert nextn_mod._resolve_nextn_executor_backend(None, borrowed) == "hip_gfx1151"
+    assert (
+        nextn_mod._resolve_nextn_executor_backend("auto", borrowed) == "hip_gfx1151"
+    )
+    assert (
+        nextn_mod._resolve_nextn_executor_backend("hip_gfx1151", borrowed)
+        == "hip_gfx1151"
+    )
+    with pytest.raises(ValueError, match="does not match borrowed fallback backend"):
+        nextn_mod._resolve_nextn_executor_backend("hip_gfx1100", borrowed)
+    with pytest.raises(ValueError, match="multiple backends"):
+        nextn_mod._resolve_nextn_executor_backend(
+            None,
+            {
+                "token_embedding": SimpleNamespace(backend="hip_gfx1151"),
+                "lm_head": SimpleNamespace(backend="hip_gfx1100"),
+            },
+        )
+
+
 class _FakeExecutor:
     hidden_size = 8
 

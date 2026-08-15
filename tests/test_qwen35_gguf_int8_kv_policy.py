@@ -566,6 +566,8 @@ def test_gguf_decode_scratch_breakdown_reports_int8_kv_scales_separately() -> No
     breakdown = _decode_scratch_breakdown(scratch)
 
     assert breakdown["total_bytes"] == 231
+    assert breakdown["allocation_mode"] == "dedicated"
+    assert breakdown["physical_owner_count"] == 5
     assert breakdown["kv_storage_dtype"] == "int8_per_token_head"
     assert breakdown["kv_storage_layout"] == "tail4_hadamard_group32"
     assert breakdown["kv_scale_dtype"] == "fp16"
