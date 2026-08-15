@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selects exactly one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen. Core Vulkan parity and G3 remain open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. GDN is next. Core Vulkan parity and G3 remain open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -115,6 +115,7 @@ not a synthetic leaf projection.
 | 34 | **D08-X3 operation-complete Q4 pack8 prefill** | **accepted: +13.81% core / +13.85% public pp512** | One 128-thread block owns same-resident gate+up+SiLU, reuses each A fragment, and preserves both BF16 projection boundaries; the leaf is byte-exact and 2.089x. | Five fresh-process Q4 blocks win 5/5; decode and Q8 guards stay within 1.1%. Retain for exact 0.8B/Q4/rows512/K1024/N3584 only. |
 | 35 | **Post-X3 synchronized exact three-way** | **completed: Q4 core pp 1.010x HIP / 0.889x Vulkan** | Six clean-HEAD serial blocks confirm the retained route with unchanged same-source llama helpers; all 36 Q4/Q8 children and cross-engine trajectories pass. | The hipEngine-specific core-prefill gap to llama HIP is closed at current variance, but Vulkan retains 11.657 ms. Re-profile Q4 semantic owners before another package. |
 | 36 | **D08-X4 post-X3 Q4 owner rerank** | **completed: 100.08% marker-wall coverage** | Dense FFN falls to 34.007 ms; normalized historical gaps now rank linear-attention projections 13.460 ms, GDN 10.641 ms, and dense FFN 8.948 ms. | Admit exactly one heterogeneous Q5T16-QKV + pack8-Q4-gate operation-complete p512 screen; its current explicit fallback stage owns 17.628 ms. |
+| 37 | **D08-X4 heterogeneous QKV/gate screen** | **rejected: 1.0059x leaf; no production change** | One 128-thread schedule is byte-exact on actual resident weights but saves only 0.114 ms across all 18 pairs, projecting 0.11% of exact wall. | Stop before profile/full-model gates and remove all transient code. Reopen only for a materially different >=1.10x mechanism; GDN remains next. |
 
 ### 1.2 Bounded task contract
 
@@ -1835,6 +1836,40 @@ and Q8 >=0.98x. No tile ladder is admitted.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json).
+
+### 2.50 D08-X4 heterogeneous QKV/gate screen (2026-08-15)
+
+The one admitted implementation used a 128-thread, 32-column x 256-row K256
+schedule over resident Q5T16 QKV and pack8-Q4 gate weights. It reused activation
+fragments in the overlapping 2,048 columns, retained QKV-only handling through
+N6144, preserved separate BF16 outputs and singleton fallbacks, and added no
+resident bytes.
+
+The actual-resident screen cycles all 18 linear-attention pairs ten times per
+sample. Five rotated blocks measure:
+
+| Block | Singleton control | Heterogeneous candidate |
+| ---: | ---: | ---: |
+| 0 | 21.61973 ms | 20.00583 ms |
+| 1 | 19.57751 | 19.72724 |
+| 2 | 19.48013 | 19.19493 |
+| 3 | 19.84262 | 19.06383 |
+| 4 | 19.59634 | 19.48194 |
+| **Median** | **19.59634** | **19.48194** |
+
+Layer-0 QKV and gate outputs are both byte-exact, but the candidate is only
+**1.00587x / 0.11440 ms** faster. That misses the predeclared 1.10x leaf gate
+and projects just **0.109%** of the fresh 104.575-ms exact wall. Per protocol,
+no scratch profile, complete-model A/B, or cumulative gate was consumed. The
+entire transient 699-line kernel/wrapper/route/test diff was removed; no default
+or registered diagnostic remains.
+
+This mechanism is closed. Revisit only for a materially different schedule with
+>=1.10x combined-leaf evidence, not another tile ladder. The rerank is otherwise
+unchanged and GDN recurrence becomes the next material package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json).
 
 ## 3. Comparison contracts
 

@@ -131,9 +131,11 @@ Full per-package evidence and history live in
 The post-X3 Q4 marker rerank reconciles **100.08%** of its 106.338-ms wall.
 Current owners are dense FFN **34.007 ms**, linear-attention projections
 **31.815 ms**, and GDN **23.617 ms**; normalized historical-attribution gaps
-rerank linear projections first at **13.460 ms**. The Q5-QKV + Q4-gate stage is
-an explicit **17.628-ms fallback**, selecting one bounded heterogeneous
-operation-complete screen. Evidence: [`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json).
+rerank linear projections first at **13.460 ms**. Its explicit 17.628-ms
+Q5-QKV + Q4-gate fallback screen was byte-exact but only **1.0059x / 0.114 ms**
+faster across all 18 pairs, so the transient route was removed and GDN remains
+next. Evidence: [`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json)
+and [`heterogeneous pair rejection`](results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json).
 The prior same-session graph replay census, whose decode route is unchanged by
 X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
 fresh-process p16-p4096 threshold diagnostic then completes all **187** children
