@@ -97,6 +97,22 @@ def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> No
     assert bench._decode_graph_disabled_reason(HostEmbeddingGraphSession(), requested=True) == "host_token_embedding"
 
 
+def test_reset_existing_session_drains_prior_work_before_zeroing_state() -> None:
+    calls: list[object] = []
+
+    class Runtime:
+        def stream_synchronize(self, stream: int) -> None:
+            calls.append(("sync", stream))
+
+    class Session:
+        def reset(self) -> None:
+            calls.append("reset")
+
+    bench._reset_existing_session(Session(), Runtime())
+
+    assert calls == [("sync", 0), "reset"]
+
+
 def test_rearm_reused_decode_graph_resets_window_and_device_position() -> None:
     calls: list[object] = []
 
