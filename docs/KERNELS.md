@@ -194,14 +194,19 @@ plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
 `gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
 absent. The rows1 H=5,120/N=17,408 gate/up pair uses a model/quant/shape-
 qualified primary-plus-residual Q8_1 producer and same-resident dual-Q4T16
-dp4a+SiLU consumer. It adds only an 11,520-byte rows1 workspace, preserves all
-tested natural AR/B1-B3 trajectories, and leaves the exact two-local32-plus-
-primitive-SiLU chain as the policy-miss rollback. Exact rows-2-4 rowtile,
-same-T16 residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
+dp4a+SiLU consumer. Serial true AR defaults to the exact four-wave split-weight
+sibling: independent two-wave gate/up owners preserve the prior K/FMA/reduction
+order while lowering traced resources from 224 to 120 VGPR and 1,024 to 512 B
+LDS. It reuses the same 11,520-byte rows1 workspace and adds no resident bytes.
+`native_batch_decode_session` retains the prior Q8_1x2 consumer after the
+split-weight B1 diagnostic regressed; the exact two-local32-plus-primitive-SiLU
+chain remains the policy-miss rollback. Exact rows-2-4 rowtile, same-T16
+residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
 attention-pair owners cover the remaining operation set. The raw token
 embedding remains raw GGUF, peer geometries retain prior policy, and no
 `KVLiveSpans` ABI changes are involved. Evidence:
-[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json).
+[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json) and
+[`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 The same gfx1151 model policy also gives the 48 exact
 K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
 `gguf_q5_k_t16_v1/tiles` payload each. Serial c1 uses the exact eight-column

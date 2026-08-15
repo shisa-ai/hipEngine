@@ -285,26 +285,27 @@ open campaign gaps. Evidence:
 
 These rows are dirty-development gates, not replacement clean publication
 toplines. Single-layout ownership plus bounded P4 raises prefill to
-343.320/338.038/332.676 tok/s. P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up and
-an exact serial-c1 Q5T16 recurrent-output tile8 owner. The current exact graph
-AR rows, against fresh same-source direct-Q5 controls, are:
+343.320/338.038/332.676 tok/s. P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an
+exact serial-c1 Q5T16 recurrent-output tile8 owner, and an exact four-wave Q4
+split-weight gate/up owner. The latest exact graph-AR rows, against fresh
+same-source pre-split controls, are:
 
-| Shape | Same-source direct control | Current AR | Q5 tile8 delta | llama HIP | llama Vulkan |
+| Shape | Same-source control | Current AR | Split-weight delta | llama HIP | llama Vulkan |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 11.88520 | **11.95579** | **+0.594%** | 12.1506 | 12.7629 |
-| 1K/128 | 11.70329 | **11.78430** | **+0.692%** | 12.0645 | 12.7197 |
-| 4K/128 | 10.94625 | **11.00441** | **+0.531%** | 11.5081 | 12.5683 |
+| 512/128 | 11.93837 | **12.07616** | **+1.154%** | 12.1506 | 12.7629 |
+| 1K/128 | 11.78474 | **11.91648** | **+1.118%** | 12.0645 | 12.7197 |
+| 4K/128 | 11.00884 | **11.11492** | **+0.964%** | 11.5081 | 12.5683 |
 
-Q8_1x2 first moved natural true AR **12.02451/12.01511 -> 12.10945 tok/s
-(+0.706%/+0.785%)**. Q5 tile8 then reaches **12.15775 tok/s**, or
-**+0.541%** versus its fresh direct control and **+0.399%** versus Q8_1x2,
-with every full/train/heldout/category scope positive and all trajectories
-exact. Native rows and MTP remain on their prior exact owners, preserving the
-current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows. Tracked peaks and
-resident bytes are unchanged. Clean Vulkan AR remains faster, so P5 and the
-campaign stay open. Evidence:
-[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json)
-and [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
+The split-weight owner also moves natural true AR **12.17631 -> 12.31049
+tok/s (+1.102%)**, with every full/train/heldout/category scope at least
+**+1.078%** and all 30 trajectories exact. Native rows and MTP stay on their
+prior exact owners after the pre-scope B1 diagnostic regressed 0.290%,
+preserving the current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows.
+Tracked peaks and resident bytes are unchanged. Clean llama.cpp HIP and Vulkan
+AR remain faster, so P5 and the campaign stay open. Evidence:
+[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
+[`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
+and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

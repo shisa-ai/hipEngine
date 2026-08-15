@@ -3782,6 +3782,128 @@ void q4_k_t16_selected_dual_q8_1x2_dp4a_silu_direct_gemv_kernel(
   }
 }
 
+// Exact dense-c1 residual-Q8_1x2 sibling with independent gate/up wave pairs.
+// Waves 0-1 preserve the retained 64-thread gate K partition while waves 2-3
+// preserve the same up partition. Each thread therefore owns one 16-column
+// accumulator plane instead of both planes; only the small activation reads are
+// repeated, while weight traffic, FMA order, reduction order, and output work
+// remain unchanged.
+template <typename scalar_t>
+__global__ __launch_bounds__(128, 2)
+void q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t q8_blocks_per_row) {
+  const int64_t out_tile = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int wave_id = tid >> 5;
+  const int wave_lane = tid & 31;
+  const bool up_plane = wave_id >= 2;
+  const int k_wave = wave_id & 1;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const gguf_q8_1_block* __restrict__ xq_row0 = xq;
+  const gguf_q8_1_block* __restrict__ xq_row1 = xq + q8_blocks_per_row;
+
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc[col] = 0.0f;
+  }
+
+  const int64_t groups4 = in_features >> 2;
+  for (int64_t group = k_wave * 32 + wave_lane;
+       group < groups4;
+       group += 64) {
+    const int64_t k4 = group << 2;
+    const int64_t blk = k4 / QK_K;
+    const int within = static_cast<int>(k4 - blk * QK_K);
+    const int sb = within >> 5;
+    const int lane4 = within & 31;
+    const int64_t q8_index = blk * Q4_SUBBLOCKS + sb;
+    const gguf_q8_1_block* __restrict__ xb0 = xq_row0 + q8_index;
+    const gguf_q8_1_block* __restrict__ xb1 = xq_row1 + q8_index;
+    const uint32_t x_pack0 =
+        *reinterpret_cast<const uint32_t*>(xb0->qs + lane4);
+    const uint32_t x_pack1 =
+        *reinterpret_cast<const uint32_t*>(xb1->qs + lane4);
+    const int q8_sum0 = t16_dp4a_u8_s8(0x01010101u, x_pack0, 0);
+    const int q8_sum1 = t16_dp4a_u8_s8(0x01010101u, x_pack1, 0);
+    const float xd0 = static_cast<float>(xb0->d);
+    const float xd1 = static_cast<float>(xb1->d);
+
+    const uint8_t* __restrict__ tile =
+        expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            up_plane ? tiles_b : tiles_a,
+            0,
+            out_tile,
+            blk,
+            out_tiles,
+            blocks_per_row);
+
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      const float d =
+          fp16_bytes_to_float(tile + Q4_T16_D_OFFSET + col * 2);
+      const float dmin =
+          fp16_bytes_to_float(tile + Q4_T16_DMIN_OFFSET + col * 2);
+      const float scale = static_cast<float>(
+          tile[Q4_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+      const float minv = static_cast<float>(
+          tile[Q4_T16_MIN_OFFSET + sb * T16_COLS + col]);
+      const uint32_t weight_pack = t16_q4_pack4(tile, sb, lane4, col);
+      const int dot0 = t16_dp4a_u8_s8(weight_pack, x_pack0, 0);
+      const int dot1 = t16_dp4a_u8_s8(weight_pack, x_pack1, 0);
+      const float weight_scale = d * scale;
+      const float weight_min = dmin * minv;
+      acc[col] += xd0 *
+          (weight_scale * static_cast<float>(dot0) -
+           weight_min * static_cast<float>(q8_sum0));
+      acc[col] += xd1 *
+          (weight_scale * static_cast<float>(dot1) -
+           weight_min * static_cast<float>(q8_sum1));
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    GGUF_T16_WAVE_REDUCE(acc[col]);
+  }
+
+  __shared__ float xchg_a[2 * T16_COLS];
+  __shared__ float xchg_b[2 * T16_COLS];
+  if (wave_lane == 0) {
+    float* __restrict__ xchg = up_plane ? xchg_b : xchg_a;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg[k_wave * T16_COLS + col] = acc[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row = out + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total_a = 0.0f;
+      float total_b = 0.0f;
+#pragma unroll
+      for (int g = 0; g < 2; ++g) {
+        total_a += xchg_a[g * T16_COLS + col];
+        total_b += xchg_b[g * T16_COLS + col];
+      }
+      const float gate = round_trip_scalar_to_float<scalar_t>(total_a);
+      const float up = round_trip_scalar_to_float<scalar_t>(total_b);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out_row[col] = float_to_scalar<scalar_t>(gate * sig * up);
+    }
+  }
+}
+
 template <
     typename scalar_t,
     int qtype,
@@ -5847,6 +5969,42 @@ int launch_q4_dense_dual_q8_1x2_dp4a_silu(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t>
+int launch_q4_dense_dual_q8_1x2_split_weight_dp4a_silu(
+    const void* xq,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!xq || !tiles_a || !tiles_b || !out || rows != 1 ||
+      in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
+  hipLaunchKernelGGL(
+      (q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<
+          scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features,
+      q8_blocks_per_row);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <
     typename scalar_t,
     int qtype,
@@ -6219,6 +6377,20 @@ hipengine_gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_gemv_bf16_bf16_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_dual_q8_1x2_dp4a_silu<uint16_t>(
+      xq, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_bf16_bf16_out(
+    const void* xq,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_dual_q8_1x2_split_weight_dp4a_silu<uint16_t>(
       xq, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 

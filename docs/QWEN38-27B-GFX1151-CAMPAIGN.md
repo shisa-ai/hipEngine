@@ -24,13 +24,15 @@ complete-prefill saving; 16-column subdivision is exact but raises leaf wall
 50.35-63.30%. AOTriton attention is active but nonmaterial, and the remaining
 primitive add boundary is below the >=1% request gate.
 
-P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up and an exact
-serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs. The first unit improves
-development graph AR 0.454%/0.534%/0.271% at 512/1K/4K and natural AR to
-12.1095 tok/s. The second adds 0.594%/0.692%/0.531% against fresh controls and
-raises natural AR to 12.1578 tok/s (+0.541% fresh / +0.399% post-Q8_1x2), with
-every natural scope positive. All tested trajectories remain exact. Native rows
-and MTP retain their prior owners; neither unit closes the clean Vulkan AR gap.
+P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up, an exact
+serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs, and an exact four-wave
+split-weight owner for the dense Q4 gate/up pair. The latest unit lowers that
+family from 224 to 120 VGPR and improves fresh graph AR
+1.154%/1.118%/0.964% at 512/1K/4K. Natural AR rises **12.1763 -> 12.3105
+tok/s (+1.102%)**, with every full/train/heldout/category scope positive. All
+tested trajectories remain exact and bytes/peaks are unchanged. Native rows and
+MTP retain their prior owners after the pre-scope B1 diagnostic regressed; clean
+llama.cpp HIP and Vulkan AR remain faster, so P5 stays open.
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -519,6 +521,21 @@ and natural true AR improves every full/train/heldout/category scope to
 unchanged, and the final policy excludes `native_batch_decode_session`, leaving
 B1-B3 and all native rows on the direct owner. Evidence:
 [`Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
+
+A second exact micro-win splits the dominant residual-Q8_1x2 Q4T16 gate/up
+consumer into independent two-wave gate and up owners. This halves each
+thread's accumulator planes and lowers traced resources **224 -> 120 VGPR** and
+**1,024 -> 512 B LDS** with zero scratch. Three cache-cold actual layers improve
+**1.445515 -> 1.432400 ms (1.00916x, 39/45)**; although that projects only
+0.352% selected wall, complete graph AR improves **1.154%/1.118%/0.964%** at
+512/1K/4K and every candidate sample/process beats control. The ten-prompt
+natural suite improves **12.176315 -> 12.310492 tok/s (+1.102%)** and its
+minimum full/train/heldout/category ratio is 1.01078. BF16 outputs, all 30 AR
+trajectories, all 30 diagnostic B1 trajectories, peaks, and teardown are exact.
+Because pre-scope B1 regressed 0.290%, `native_batch_decode_session` explicitly
+keeps the prior Q8_1x2 owner; the final policy changes serial true AR only.
+Evidence:
+[`Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
 ### P6 — Exact B3 MTP
 
