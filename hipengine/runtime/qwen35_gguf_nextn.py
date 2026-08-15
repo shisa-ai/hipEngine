@@ -13,6 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
@@ -141,6 +142,33 @@ def borrow_qwen35_gguf_nextn_fallback_weights(
     }
 
 
+def _resolve_nextn_executor_backend(
+    requested: str | None,
+    borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None,
+) -> str:
+    """Resolve one backend shared by the draft block and borrowed target roots."""
+
+    borrowed_backends = {
+        str(weight.backend) for weight in (borrowed_fallback_weights or {}).values()
+    }
+    if len(borrowed_backends) > 1:
+        raise ValueError(
+            "borrowed NextN fallback weights use multiple backends: "
+            f"{sorted(borrowed_backends)}"
+        )
+    borrowed_backend = next(iter(borrowed_backends), None)
+    normalized = "auto" if requested is None else str(requested).strip()
+    if normalized == "auto" and borrowed_backend is not None:
+        return borrowed_backend
+    resolved = resolve_backend(normalized)
+    if borrowed_backend is not None and resolved != borrowed_backend:
+        raise ValueError(
+            f"NextN backend {resolved!r} does not match borrowed fallback backend "
+            f"{borrowed_backend!r}"
+        )
+    return resolved
+
+
 class Qwen35GGUFNextNStepExecutor(Protocol):
     hidden_size: int
 
@@ -198,12 +226,16 @@ class Qwen35GGUFNextNExecutor:
         compiler_version: str | None = None,
         require_cached_build: bool = False,
         borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
+        backend: str | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
         if max_requests <= 0:
             raise ValueError("max_requests must be positive")
         self.model = Path(model)
+        self.backend = _resolve_nextn_executor_backend(
+            backend, borrowed_fallback_weights
+        )
         self.runtime = runtime or get_hip_runtime()
         self.compiler_version = compiler_version
         self.require_cached_build = bool(require_cached_build)
@@ -214,6 +246,7 @@ class Qwen35GGUFNextNExecutor:
             self.model,
             borrowed_fallback_weights=borrowed_fallback_weights,
             runtime=self.runtime,
+            backend=self.backend,
         )
         adapted = self.weights.as_full_stack_weights()
         self.runner = Qwen35GGUFFullStackRunner(
@@ -221,6 +254,7 @@ class Qwen35GGUFNextNExecutor:
             runtime=self.runtime,
             compiler_version=self.compiler_version,
             require_cached_build=self.require_cached_build,
+            backend=self.backend,
             resident_weights=adapted,
             owns_resident_weights=False,
         )

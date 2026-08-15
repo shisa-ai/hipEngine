@@ -1,5 +1,10 @@
 """gfx1100 / RDNA3 backend capabilities."""
 
+from hipengine.kernels.policy import (
+    QWEN35_DENSE_H5120_GEOMETRY,
+    QWEN35_MOE_H2048_E256_GEOMETRY,
+)
+
 # Clean W7900 context/category gates retain the exact token4 score-parallel SWA
 # decode default. The wider token8 screen failed the every-category h16 gate and
 # was removed; other backends retain the separately registered baseline.
@@ -164,11 +169,11 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
 # dense 27B private-c1 row is separately qualified at the measured 128-token
 # campaign horizon; wider speculative rows remain HIP graph until measured.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
-    ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
         "transport": "pm4",
         "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
     },
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         "transport": "pm4",
         "min_replay_steps_by_physical_rows": {1: 128},
     },
@@ -204,7 +209,7 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = False
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
-# Dense Qwen3.6 rank-2 Q4 projections use one compact T16 owner for c1,
+# The qualified dense H5120 geometry uses one compact T16 owner for rank-2 Q4 c1,
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
@@ -215,16 +220,22 @@ GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
 # explicit host override remains strict and reports the unsupported tensor.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q4_K",)
 # Pack bounded immutable weights into one private-c1 allocation owner only for
-# measured model/quant identities. Each policy freezes its screened cutoff;
+# measured geometry/quant identities. Each policy freezes its screened cutoff;
 # larger tensors remain dedicated and the planner fails closed before upload.
 GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         "enabled": True,
         "max_allocation_bytes": 80 * 1024 * 1024,
     },
 }
+# The dense private-c1 decode workspace exposes 188 logical state/KV/temporary
+# views through one physical owner. The environment rollback remains available
+# only while the complete four-shape memory/performance gate accumulates evidence.
+GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {"enabled": True},
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
-# Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
+# H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
 # Q5T16 row reuse is measured only for native rows 2-4. Other T16 quants retain
@@ -239,7 +250,7 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
 }
-# Byte-neutral planar qmicro owns the measured Qwen3.6 wide rank-2 Q6 family
+# Byte-neutral planar qmicro owns the measured dense-H5120 rank-2 Q6 family
 # and K5,120/N248,320 root head on W7900. Exact actual-weight c1, rows2-4,
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
@@ -250,7 +261,10 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # but bulk rows now use the operation-complete dual-WMMA+SiLU owner; wider input
 # projections retain this bounded source-F16 policy and exact fallbacks.
 GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES = {
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): True,
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+}
+GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
 }
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (17_408, 5_120): {512: 1_024, 768: 512, 1_024: 512, 4_096: 512},
@@ -697,13 +711,24 @@ GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS = 4096
 # single-launch serial reducer because the extra prepare launch is neutral/down.
 GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
-# LCP-M1 validates an aligned phase-liveness arena for the production Qwen3.6
+# LCP-M1 validates an aligned phase-liveness arena for the production Qwen35
 # MoE prefill route. Diagnostic/F32 layouts retain dedicated allocations.
 GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
-# Dense Qwen3.6 has no MoE/shared-expert route, so those fields are omitted and
-# the remaining linear/full-attention/FFN phases reuse the proven arena plan.
+# The qualified dense H5120 geometry has no MoE/shared-expert route, so those
+# fields are omitted and the remaining phases reuse the proven arena plan.
 GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"min_rows": 1},
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        "min_rows": 1,
+        # Short verifier/NextN arenas retain size-first coloring: moving the
+        # long-row priority fields there corrupts the second target-logit row.
+        "priority_min_rows": 4_096,
+        # Long-row bulk layers consume the source hidden plane before writing
+        # final FFN output, so one physical plane can serve both roles.
+        "hidden_inplace_min_rows": 4_096,
+        # Prefix-8 production oracle: duration>=5 reaches 372.375 MiB while
+        # preserving root+128 IDs. Moving the next field (attn_out) diverges.
+        "priority_min_live_stages": 5,
+    },
 }
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.
@@ -782,8 +807,10 @@ __all__ = [
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+    "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",

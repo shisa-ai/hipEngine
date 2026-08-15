@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "retained_default_memory_improvement_cross_engine_floor_open",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B compact GDN Q/K scratch right-sizing",
+  "repo_revision": "3cdba83f4f79e34d55fdf641583878b3d969f0ed",
+  "git_dirty": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "primary": "AMD Radeon RX 7900 XTX / gfx1100 / HIP_VISIBLE_DEVICES=1 / PCI 0000:10:00.0 / sysfs card0 / 23.984375 GiB VRAM",
+    "safeguard": "AMD Radeon Pro W7900 / gfx1100 / HIP_VISIBLE_DEVICES=0 / PCI 0000:0d:00.0 / sysfs card1 / 44.984375 GiB VRAM"
+  },
+  "implementation": {
+    "problem": "The promoted compact peer-GDN kernels index normalized Q/K as [token, k_head, 128], but session planning still reserved each plane as [token, v_head, 128]. Qwen3.6-27B has 16 K heads and 48 V heads.",
+    "change": "Size prefill_query and prefill_key from the effective construction-time GDN mode. chain_compact_peer_wave32 owns K-head capacity; explicit chain_peer_wave32 retains V-head capacity; value remains per V head.",
+    "mode_change_guard": "A peer route that needs more Q/K heads than the session allocation fails before launch and instructs the caller to construct a new session after setting HIPENGINE_GGUF_GDN_PREFILL_MODE.",
+    "kernel_math_changed": false,
+    "weight_layout_changed": false,
+    "kv_layout_changed": false,
+    "persistent_payload_added_bytes": 0,
+    "commit": "3cdba83f4f79e34d55fdf641583878b3d969f0ed"
+  },
+  "profile_selection": {
+    "protocol": "Cache-only rocprofv3 eager decode, eight ROCTX-bounded timed steps after bulk prefill; 4K and 8K run serially on the XTX.",
+    "rows": [
+      {
+        "prompt_length": 4096,
+        "kernels_per_token": 953.0,
+        "gpu_us_per_token": 29810.3625,
+        "full_attention_core_us_per_token": 4740.32525,
+        "attributed_weight_projection_us_per_token": 22254.302375
+      },
+      {
+        "prompt_length": 8192,
+        "kernels_per_token": 953.0,
+        "gpu_us_per_token": 31312.95875,
+        "full_attention_core_us_per_token": 6588.293375,
+        "attributed_weight_projection_us_per_token": 21985.42725
+      }
+    ],
+    "conclusion": "The depth-dependent decode increase is full-attention traffic; weight traffic is depth-flat. Sole-T16/raw-sidecar alternatives and default INT8 KV were already rejected. The non-duplicative residency candidate was the compact GDN Q/K planning mismatch.",
+    "sources": [
+      {
+        "path": "/tmp/qwen36-27b-memory-goal/eager-decode4k-summary.json",
+        "sha256": "b1a764c4fe684cd82a4430d4cac6ef7888c6203d929cbdbc877c6c7c7aa45e70"
+      },
+      {
+        "path": "/tmp/qwen36-27b-memory-goal/eager-decode8k-summary.json",
+        "sha256": "0c2169f1582f11e1b21e3f8e1adcc5f3e796c7c4a2ec3d08cf8210912da804b8"
+      }
+    ]
+  },
+  "red_green": {
+    "red": "At 768 rows the current default exposed 18,874,368-byte normalized Q/K views; the compact ABI requires 6,291,456 bytes per plane.",
+    "green": "The default owns 16-head Q/K, explicit chain_peer_wave32 owns 48-head Q/K, all simultaneously-live views remain disjoint, and post-allocation widening is rejected.",
+    "tests": "uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_gguf_gdn_prefill_routing.py",
+    "result": "74 passed"
+  },
+  "same_process_screen": {
+    "protocol": "One process per shape, forced old full-Q/K allocation followed by package candidate allocation; both execute the same compact kernels, one warmup plus three measured graph reset/replays.",
+    "rows": [
+      {
+        "prompt_length": 4096,
+        "tracked_gib_control": 16.367618195712566,
+        "tracked_gib_candidate": 16.262759797275066,
+        "saved_bytes": 112590848,
+        "prefill_tok_s_control": 993.6727857719329,
+        "prefill_tok_s_candidate": 996.239000065629,
+        "prefill_delta_percent": 0.2582554670351067,
+        "decode_tok_s_control": 31.420818488459098,
+        "decode_tok_s_candidate": 31.421197057518793,
+        "decode_delta_percent": 0.0012048351313076466,
+        "source": "/tmp/qwen36-27b-memory-goal/qk-scratch-ab-4k.json",
+        "source_sha256": "2af3586941525fecc8b7665ec09cdefefa1da872c3131ba89f51aec491c883c1"
+      },
+      {
+        "prompt_length": 8192,
+        "tracked_gib_control": 16.626089744269848,
+        "tracked_gib_candidate": 16.521231345832348,
+        "saved_bytes": 112590848,
+        "prefill_tok_s_control": 819.7235398256116,
+        "prefill_tok_s_candidate": 819.8638373696755,
+        "prefill_delta_percent": 0.017115226932928884,
+        "decode_tok_s_control": 29.35476323829886,
+        "decode_tok_s_candidate": 29.388415439998298,
+        "decode_delta_percent": 0.11463966316556107,
+        "source": "/tmp/qwen36-27b-memory-goal/qk-scratch-ab-8k.json",
+        "source_sha256": "f588f43cf538f5f93babfc7cc2694fee45e3094c2f1c56a257c9858e4abea5f7"
+      }
+    ],
+    "all_final_token_ids_exact": true,
+    "all_final_logits_finite": true,
+    "all_tracked_bytes_after_close_zero": true
+  },
+  "protocol": {
+    "hipengine": "Clean selector-unset commit, package-default sole-T16 session, repeated token 9707, one discarded warmup plus three measured persistent reset/replays, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, cached compiler artifacts.",
+    "whole_device_memory": "5 ms sysfs VRAM samples around the complete child process. Peak delta is peak minus pre-process baseline; this is the cross-engine memory scope.",
+    "serial_shapes": true,
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE -u HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS -u HIPENGINE_GGUF_PREFILL_DEVICE_METADATA HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096|8192> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>"
+  },
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "prefill_tok_s_samples": [974.862130285441, 974.8138175843076, 972.3752766025764],
+      "prefill_tok_s_median": 974.8138175843076,
+      "decode_tok_s_samples": [33.52855735497882, 33.52215268767052, 33.51547624435687],
+      "decode_tok_s_median": 33.52215268767052,
+      "tracked_peak_gib_before": 15.605462968349457,
+      "tracked_peak_gib_after": 15.595880448818207,
+      "tracked_saved_mib": 9.8125,
+      "whole_device_peak_delta_gib_before": 16.095378875732422,
+      "whole_device_peak_delta_gib_after": 16.094017028808594,
+      "whole_device_saved_mib": 1.39453125,
+      "lower_llamacpp_peak_delta_gib": 15.689502716064453,
+      "remaining_memory_gap_gib": 0.4045143127441406,
+      "bulk_prefill_scratch_bytes": 108566568,
+      "prefill_q_bytes": 6291456,
+      "prefill_k_bytes": 6291456,
+      "prefill_value_bytes": 18874368,
+      "prefill_delta_vs_before_percent": -0.26424356444186836,
+      "decode_delta_vs_before_percent": -0.36503019282598803
+    },
+    {
+      "workload": "1024/128",
+      "prompt_length": 1024,
+      "prefill_tok_s_samples": [1009.9786481941777, 1008.0498426866842, 1010.8298654166068],
+      "prefill_tok_s_median": 1009.9786481941777,
+      "decode_tok_s_samples": [34.55322989461532, 34.53027723063879, 34.524735835121064],
+      "decode_tok_s_median": 34.53027723063879,
+      "tracked_peak_gib_before": 15.720211334526539,
+      "tracked_peak_gib_after": 15.699459381401539,
+      "tracked_saved_mib": 21.25,
+      "whole_device_peak_delta_gib_before": 16.320484161376953,
+      "whole_device_peak_delta_gib_after": 16.304569244384766,
+      "whole_device_saved_mib": 16.296875,
+      "lower_llamacpp_peak_delta_gib": 15.699958801269531,
+      "remaining_memory_gap_gib": 0.6046104431152344,
+      "bulk_prefill_scratch_bytes": 175427624,
+      "prefill_q_bytes": 10485760,
+      "prefill_k_bytes": 10485760,
+      "prefill_value_bytes": 31457280,
+      "prefill_delta_vs_before_percent": -0.23018221736889055,
+      "decode_delta_vs_before_percent": -0.1051120797599947
+    },
+    {
+      "workload": "4096/128",
+      "prompt_length": 4096,
+      "prefill_tok_s_samples": [988.3875695245277, 988.961104119925, 988.4053425098139],
+      "prefill_tok_s_median": 988.4053425098139,
+      "decode_tok_s_samples": [31.402467481996656, 31.401323585006377, 31.388693117991192],
+      "decode_tok_s_median": 31.401323585006377,
+      "tracked_peak_gib_before": 16.367618195712566,
+      "tracked_peak_gib_after": 16.262759797275066,
+      "tracked_saved_mib": 107.375,
+      "whole_device_peak_delta_gib_before": 17.118637084960938,
+      "whole_device_peak_delta_gib_after": 17.02214813232422,
+      "whole_device_saved_mib": 98.8046875,
+      "lower_llamacpp_peak_delta_gib": 15.912158966064453,
+      "remaining_memory_gap_gib": 1.1099891662597656,
+      "bulk_prefill_scratch_bytes": 519375912,
+      "prefill_q_bytes": 33554432,
+      "prefill_k_bytes": 33554432,
+      "prefill_value_bytes": 100663296,
+      "prefill_delta_vs_before_percent": 0.060400434152474425,
+      "decode_delta_vs_before_percent": -0.06204719398982261
+    },
+    {
+      "workload": "8192/128",
+      "prompt_length": 8192,
+      "prefill_tok_s_samples": [820.690955892668, 820.0614946207406, 819.903633598756],
+      "prefill_tok_s_median": 820.0614946207406,
+      "decode_tok_s_samples": [29.397946299810464, 29.38060960868631, 29.358982806590074],
+      "decode_tok_s_median": 29.38060960868631,
+      "tracked_peak_gib_before": 16.626089744269848,
+      "tracked_peak_gib_after": 16.521231345832348,
+      "tracked_saved_mib": 107.375,
+      "whole_device_peak_delta_gib_before": 17.38248062133789,
+      "whole_device_peak_delta_gib_after": 17.276763916015625,
+      "whole_device_saved_mib": 108.25390625,
+      "lower_llamacpp_peak_delta_gib": 16.16606903076172,
+      "remaining_memory_gap_gib": 1.1106948852539062,
+      "bulk_prefill_scratch_bytes": 525978664,
+      "prefill_q_bytes": 33554432,
+      "prefill_k_bytes": 33554432,
+      "prefill_value_bytes": 100663296,
+      "prefill_delta_vs_before_percent": 0.06138178348606971,
+      "decode_delta_vs_before_percent": -0.06390266048172943
+    }
+  ],
+  "growth_after": {
+    "tracked_512_to_4096_gib": 0.6668793484568596,
+    "tracked_4096_to_8192_gib": 0.2584715485572815,
+    "interpretation": "Right-sizing removes 0.0953 GiB of avoidable short-to-mid-context growth. Above the 4096-row scratch cap, the remaining 4K-to-8K tracked growth is unchanged and remains expected BF16 full-attention KV plus small metadata, not a leak."
+  },
+  "cross_engine": {
+    "memory_gate": "failed_all_shapes",
+    "memory_floor_backend": "llama.cpp Vulkan",
+    "remaining_gap_gib_512_1k_4k_8k": [0.4045143127441406, 0.6046104431152344, 1.1099891662597656, 1.1106948852539062],
+    "llamacpp_hip_memory_status": "hipEngine remains below llama.cpp HIP whole-device peak at 512 and 1K, but above it at 4K and standardized 8K.",
+    "speed_status": "All candidate throughput changes versus the frozen current hipEngine matrix are within 0.37%. The frozen 512/1K/4K prefill gates and 512/1K decode gates retain their prior pass/fail status; 4K decode remains open. The 8K llama.cpp rows are standardized llama-bench diagnostics, not context-matched server decode."
+  },
+  "safeguards": {
+    "xtx_final_ids": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+    "xtx_all_final_logits_finite": true,
+    "xtx_tracked_bytes_after_each_close": [0, 0, 0, 0],
+    "w7900_512": {
+      "prefill_tok_s_median": 870.5169918076452,
+      "decode_tok_s_median": 28.322562106898665,
+      "tracked_peak_gib": 15.595880448818207,
+      "whole_device_peak_delta_gib": 16.093700408935547,
+      "all_ids_exact": true,
+      "all_logits_finite": true,
+      "tracked_bytes_after_close": 0,
+      "source_sha256": "75b1c7639f936492e94d1b37648d033aaa945e9b400fe2c4508101581e47e2e2",
+      "vram_source_sha256": "460de086ed157ec2246203f18b03e3a46771cb925795d79a528febb2223784ea"
+    },
+    "dense_nextn_transaction_provider_gate": "passed",
+    "dense_nextn_command": "HIP_VISIBLE_DEVICES=1 ... uv run pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar"
+  },
+  "raw_sources": {
+    "512": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/compact-qk-final-512.json",
+      "benchmark_sha256": "c43363a50fe08f38d684dfe0a0735c58cc4bd6402d9f249fa5b895417a134cca",
+      "vram_sha256": "371e858939f4aeb0c03e2f0b0af1cfc826cdcd3c7686b11285a081bd0e2e5cce"
+    },
+    "1024": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/compact-qk-final-1024.json",
+      "benchmark_sha256": "9881839d0023f1d42043bbc3312d47634bb8f1dbad10702cb06e98abcc078094",
+      "vram_sha256": "8d4f1aeb3c489c0356e19dd9c78defeba40baf09f32fbc45e2ff3199c36c0148"
+    },
+    "4096": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/compact-qk-final-4096.json",
+      "benchmark_sha256": "1094321f8dffd0084aa5759f5281b426246fba69fd412e8b112af701b64fbff4",
+      "vram_sha256": "9813cf605d83a5d0f40030d979aa9b52209590251310b1be7a29b8d3495192a5"
+    },
+    "8192": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/compact-qk-final-8192.json",
+      "benchmark_sha256": "98da01864399bcc319c00b3dd70337dfd1b82c08c99e0c599c90998fb0e0a276",
+      "vram_sha256": "4fb8806a1cbaef5a40313a0299ebbce5062d2f6f4054eb00b9ff6c141edf3e1a"
+    }
+  },
+  "decision": "Retain the exact route-shaped Q/K allocation. It removes 9.8125/21.25/107.375/107.375 MiB tracked at 512/1K/4K/8K and up to 108.254 MiB whole-device peak without a prefill, decode, token, NextN transaction, lifecycle, or W7900 regression. This is a real memory improvement, not cross-engine memory closure: the lower Vulkan floors still lead by 0.405/0.605/1.110/1.111 GiB."
+}

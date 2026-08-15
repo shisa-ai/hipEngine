@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "rejected_correctness_candidate_removed",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B live-duration liveness placement rejection",
+  "base_revision": "52e64e172",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "candidate": {
+    "mechanism": "Factor the existing liveness placement into a pure planner, evaluate both descending allocation size and descending total declared live-stage duration, and select the smaller arena with size-first tie-breaking.",
+    "unchanged_surfaces": [
+      "logical allocations and sizes",
+      "declared route/stage lifetimes",
+      "dense SiLU and split-GDN aliases",
+      "64-KiB color gaps and 256-byte alignment",
+      "kernel bodies, launches, arithmetic, and raw-pointer ABI",
+      "decode and MTP paths"
+    ],
+    "declared_liveness_tests": "3/3 compact-peer tests and 75/75 routing/liveness tests passed, including an exact 372.375-MiB long-row arena and pairwise declared-lifetime overlap validation."
+  },
+  "clean_results": [
+    {
+      "prompt_length": 512,
+      "control": {"prefill_tok_s": 974.5361284349411, "decode_tok_s": 33.56839714982413, "tracked_peak_gib": 15.586668975651264, "whole_device_peak_delta_gib": 16.03020477294922, "final_ids": [9707, 9707, 9707]},
+      "candidate": {"prefill_tok_s": 974.4308562445373, "decode_tok_s": 33.51073570236117, "tracked_peak_gib": 15.586668975651264, "whole_device_peak_delta_gib": 16.02938461303711, "final_ids": [9707, 9707, 9707]},
+      "delta": {"prefill_percent": -0.010802287091493668, "decode_percent": -0.171773013783183, "tracked_mib": 0.0, "whole_device_mib": -0.83984375},
+      "decision": "screen pass; the 92.875-MiB size-first tie preserves established addresses"
+    },
+    {
+      "prompt_length": 8192,
+      "control": {"prefill_tok_s": 821.6909531096464, "decode_tok_s": 29.375112779496664, "tracked_peak_gib": 16.436152942478657, "whole_device_peak_delta_gib": 17.09880828857422, "final_ids": [9707, 9707, 9707]},
+      "candidate": {"prefill_tok_s": 820.6063732096693, "decode_tok_s": 29.358929508252892, "tracked_peak_gib": 16.408137805759907, "whole_device_peak_delta_gib": 17.070640563964844, "final_ids": [248046, 248046, 248046]},
+      "delta": {"prefill_percent": -0.13199365234247695, "decode_percent": -0.05509177569887891, "tracked_mib": -28.6875, "whole_device_mib": -28.84375},
+      "modeled_arena_mib": {"control": 401.0625, "candidate": 372.375, "saved": 28.6875},
+      "decision": "reject; every measured final ID diverges even though logits remain finite"
+    }
+  ],
+  "correctness_analysis": {
+    "declared_pairwise_conflicts": "pass",
+    "finite_logits": true,
+    "end_to_end_exact_ids": false,
+    "interpretation": "The declared interval model is not sufficient authority for arbitrary recoloring. A hidden lifetime, asynchronous consumer, pointer-layout requirement, or equivalent undeclared dependency exists on the long-row production route. The deterministic 9707-to-248046 divergence is a hard correctness failure regardless of the memory reduction.",
+    "follow_up_constraint": "Do not add alternate global placement orders until the hidden dependency is localized with an end-to-end exact oracle. Preserve the established size-first address plan."
+  },
+  "cleanup": {
+    "planner_helper_removed": true,
+    "alternate_order_removed": true,
+    "candidate_test_expectations_removed": true,
+    "runtime_and_tests_match_base_revision": true,
+    "default_unchanged": true
+  },
+  "sources": {
+    "control_512_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-512.json", "sha256": "00a5a5f40e7fa60e0cda26b5b971447604dcbe541d9ed546cc5bb724de4d1407"},
+    "control_512_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-512-vram.json", "sha256": "538399f7525f983a80302434341bbf51c49c689b803cb7cc6dacfc857dd40a15"},
+    "candidate_512_json": {"path": "/tmp/qwen36-27b-memory-goal/live-duration-order-512.json", "sha256": "639e4367d1616c8ece9f542de04a0c110efccef2f8d3ab746ec3c888922ba464"},
+    "candidate_512_vram": {"path": "/tmp/qwen36-27b-memory-goal/live-duration-order-512-vram.json", "sha256": "d87ddbb3624521d6e9d5b52d16b6f2c2dd646a985b8c461815bfe5d88d8a09cc"},
+    "control_8192_json": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-8192.json", "sha256": "87e12efdea647fe7df0234a01fc6490abd65647cdaef24ce91382f66e7dc2bab"},
+    "control_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/split-conv-lifetime-8192-vram.json", "sha256": "f9f5af2b48d4a42ddfc4f2747bd271ae08d4fe6fe190198d1d54bab0b3e686d0"},
+    "candidate_8192_json": {"path": "/tmp/qwen36-27b-memory-goal/live-duration-order-8192.json", "sha256": "d30b19fbf7e5be0dda8f07c9f5738c03e8ae071fe616a493574d2a485b2ac751"},
+    "candidate_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/live-duration-order-8192-vram.json", "sha256": "bf9b6e94f01a15fb6c5acf4b26c2063e0b5572bfd1c8b0726e1c9aff7da2c64d"}
+  },
+  "decision": "Reject and remove the live-duration planner. Keep the retained size-first 401.0625-MiB long-row arena and the 59fd48631 memory matrix. Vulkan parity remains open."
+}

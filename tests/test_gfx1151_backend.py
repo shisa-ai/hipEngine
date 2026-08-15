@@ -17,6 +17,7 @@ from hipengine.kernels.backends import (
     resolve_backend,
     select_backend,
 )
+from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
@@ -222,13 +223,31 @@ def test_gfx1151_hip_process_environment_preserves_explicit_queue_override() -> 
     assert env["GPU_MAX_HW_QUEUES"] == "4"
 
 
-def test_gfx1100_hip_process_environment_does_not_change_queue_policy() -> None:
+def test_gfx1100_hip_process_environment_caps_reclaimable_scratch() -> None:
     env: dict[str, str] = {}
 
     applied = configure_hip_process_environment(detected_arches=["gfx1100"], env=env)
 
-    assert applied == {}
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
+    assert env["HSA_SCRATCH_SINGLE_LIMIT"] == "8388608"
     assert "GPU_MAX_HW_QUEUES" not in env
+
+
+def test_gfx1100_hip_process_environment_preserves_explicit_scratch_override() -> None:
+    env = {"HSA_SCRATCH_SINGLE_LIMIT": "67108864"}
+
+    applied = configure_hip_process_environment(detected_arches=["gfx1100"], env=env)
+
+    assert applied == {}
+    assert env["HSA_SCRATCH_SINGLE_LIMIT"] == "67108864"
+
+
+def test_explicit_gfx1100_arch_hint_applies_scratch_default() -> None:
+    env = {"HIPENGINE_HIP_ARCH": "gfx1100"}
+
+    applied = configure_hip_process_environment(env=env)
+
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
 
 
 def test_mixed_hip_arches_do_not_receive_a_process_wide_queue_default() -> None:
@@ -241,6 +260,7 @@ def test_mixed_hip_arches_do_not_receive_a_process_wide_queue_default() -> None:
 
     assert applied == {}
     assert "GPU_MAX_HW_QUEUES" not in env
+    assert "HSA_SCRATCH_SINGLE_LIMIT" not in env
 
 
 def test_explicit_gfx1151_backend_hint_applies_when_arch_detection_is_empty() -> None:
@@ -249,6 +269,14 @@ def test_explicit_gfx1151_backend_hint_applies_when_arch_detection_is_empty() ->
     applied = configure_hip_process_environment(detected_arches=[], env=env)
 
     assert applied == {"GPU_MAX_HW_QUEUES": "2"}
+
+
+def test_explicit_gfx1100_backend_hint_applies_when_arch_detection_is_empty() -> None:
+    env = {"HIPENGINE_BACKEND": "hip_gfx1100"}
+
+    applied = configure_hip_process_environment(detected_arches=[], env=env)
+
+    assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
 
 
 def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
@@ -1155,6 +1183,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {
         ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+        # D08-X2-K2: fresh five-block gate admitted Q8_0 after P2's 0.0108%
+        # rejection was superseded by exact-core graph-decode evidence.
+        ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
     }
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
@@ -1312,7 +1343,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         "hip_gfx1151",
         "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     ) == {
-        ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {"transport": "hipgraph"}
+        (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            "transport": "hipgraph"
+        }
     }
     assert (
         backend_package_capability(

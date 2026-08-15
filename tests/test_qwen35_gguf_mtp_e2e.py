@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import dflash_accept_chain_i32
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kvcache import KVTransaction
@@ -972,6 +973,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     rounded_next_rms_calls: list[tuple[int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
+
+    if resolve_backend("auto") != "hip_gfx1100":
+        pytest.skip("dense sole-T16/PM4 product gate is gfx1100-specific")
 
     # The package-default sole-layout target+NextN route peaks below 18 GiB on
     # the 24-GiB XTX.  The old 32-GiB guard reflected the removed pack8+T16

@@ -1381,6 +1381,8 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     return {
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
+        "allocation_mode": str(getattr(scratch, "allocation_mode", "dedicated")),
+        "physical_owner_count": len(buffers),
         "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
@@ -1414,6 +1416,8 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
             "allocation_offsets": {},
             "allocation_lifetimes": {},
             "allocation_groups": {},
+            "allocation_inplace_aliases": {},
+            "allocation_subranges": {},
         }
 
     head_major_names = {"head_major_key_cache", "head_major_value_cache"}
@@ -1457,6 +1461,30 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
         str(name): str(group)
         for name, group in sorted(raw_groups.items())
     }
+    raw_inplace_aliases = getattr(scratch, "allocation_inplace_aliases", {}) or {}
+    allocation_inplace_aliases = {
+        str(name): str(source)
+        for name, source in sorted(raw_inplace_aliases.items())
+    }
+    raw_subranges = getattr(scratch, "allocation_subranges", {}) or {}
+    allocation_subranges = {
+        str(name): [
+            {
+                "relative_offset_bytes": int(relative_offset),
+                "nbytes": int(nbytes),
+                "lifetimes": [
+                    {
+                        "route": str(route),
+                        "start_stage": int(start),
+                        "end_stage": int(end),
+                    }
+                    for route, start, end in lifetimes
+                ],
+            }
+            for relative_offset, nbytes, lifetimes in subranges
+        ]
+        for name, subranges in sorted(raw_subranges.items())
+    }
     rows = _maybe_int(getattr(scratch, "rows", None))
     return {
         "allocation_mode": getattr(scratch, "allocation_mode", None),
@@ -1475,6 +1503,8 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
         "allocation_offsets": allocation_offsets,
         "allocation_lifetimes": allocation_lifetimes,
         "allocation_groups": allocation_groups,
+        "allocation_inplace_aliases": allocation_inplace_aliases,
+        "allocation_subranges": allocation_subranges,
         "notes": [
             "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
             "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency.",
@@ -1546,7 +1576,18 @@ def _sum_named_buffers(owner: object, names: tuple[str, ...]) -> int:
 
 
 def _sum_buffers(buffers) -> int:
-    return sum(_buffer_nbytes(buffer) for buffer in buffers if buffer is not None)
+    total = 0
+    seen_ptrs: set[int] = set()
+    for buffer in buffers:
+        if buffer is None:
+            continue
+        ptr = int(getattr(buffer, "ptr", 0))
+        if ptr != 0 and ptr in seen_ptrs:
+            continue
+        if ptr != 0:
+            seen_ptrs.add(ptr)
+        total += _buffer_nbytes(buffer)
+    return total
 
 
 def _buffer_nbytes(buffer: object | None) -> int:

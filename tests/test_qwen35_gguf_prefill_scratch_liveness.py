@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
 from hipengine.core.memory import DeviceBuffer
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
 
@@ -67,7 +69,8 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
         ssm_value_dim=128,
         weights=SimpleNamespace(
             config=cfg,
-            model_name="Qwen3.6-27B",
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            model_name="arbitrary-finetune-name",
             file_type_name="MOSTLY_Q4_K_M",
         ),
     )
@@ -118,15 +121,20 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
-def test_unequal_q4_pair_owner_is_model_backend_scoped(monkeypatch) -> None:
+def test_unequal_q4_pair_owner_is_geometry_backend_scoped(monkeypatch) -> None:
     runner = _fake_dense_qwen36_runner()
     assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.backend = "hip_gfx1151"
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.backend = "hip_gfx1100"
     runner.weights.model_name = "other"
+    assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.geometry = replace(
+        QWEN35_DENSE_H5120_GEOMETRY,
+        head_count=23,
+    )
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
-    runner.weights.model_name = "Qwen3.6-27B"
+    runner.weights.geometry = QWEN35_DENSE_H5120_GEOMETRY
     runner.weights.config.is_moe = True
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.weights.config.is_moe = False
@@ -428,14 +436,24 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     # planes while preserving each sole resident T16 weight allocation. Q5
     # recurrent output and dense FFN down cast their dead BF16 inputs in place,
     # so K6,144 admission does not grow the K5,120 activation workspace.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 115 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 113 * _MIB
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 104 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 103 * _MIB
     assert scratch.q6_f16_x.ptr != 0
     assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
     assert scratch.q6_f16_weight.ptr != 0
     assert scratch.q6_f16_out.ptr != 0
+    # The package-default compact-peer GDN route stores normalized Q/K once
+    # per K head, while V remains per V head.
+    compact_qk_bytes = 768 * 16 * 128 * 4
+    value_bytes = 768 * 48 * 128 * 4
+    assert scratch.prefill_query.nbytes == compact_qk_bytes
+    assert scratch.prefill_key.nbytes == compact_qk_bytes
+    assert scratch.prefill_value.nbytes == value_bytes
     assert scratch.ffn_gate_up.ptr != 0
-    assert scratch.ffn_intermediate.ptr != 0
+    # Dense SiLU reads gate/up before replacing the gate half in place, so the
+    # down-projection input reuses the dead gate plane exactly.
+    assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
+    assert scratch.ffn_intermediate.nbytes * 2 == scratch.ffn_gate_up.nbytes
     assert scratch.ffn_down.ptr != 0
     assert scratch.moe_q8_1 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.moe_shared_gate == DeviceBuffer(ptr=0, nbytes=0)
@@ -444,8 +462,16 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     offsets = dict(scratch.allocation_offsets)
     lifetimes = dict(scratch.allocation_lifetimes)
     assert offsets
+    gate_up_offset, gate_up_size = offsets["ffn_gate_up"]
     intermediate_offset, intermediate_size = offsets["ffn_intermediate"]
     down_offset, down_size = offsets["ffn_down"]
+    assert (intermediate_offset, intermediate_size) == (
+        gate_up_offset,
+        gate_up_size // 2,
+    )
+    assert dict(scratch.allocation_inplace_aliases) == {
+        "ffn_intermediate": "ffn_gate_up"
+    }
     assert (
         intermediate_offset + intermediate_size <= down_offset
         or down_offset + down_size <= intermediate_offset
@@ -461,18 +487,120 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
-            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
-                lifetimes[name_a],
-                lifetimes[name_b],
+            allocations_conflict = gguf_runner._prefill_scratch_allocations_conflict(
+                name_a,
+                offset_a,
+                size_a,
+                name_b,
+                offset_b,
+                size_b,
+                lifetimes=lifetimes,
+                allocation_subranges=scratch.allocation_subranges,
             )
-            ranges_overlap = (
-                offset_a < offset_b + size_b
-                and offset_b < offset_a + size_a
+            inplace_aliases = dict(scratch.allocation_inplace_aliases)
+            intentional_inplace_alias = (
+                inplace_aliases.get(name_a) == name_b
+                or inplace_aliases.get(name_b) == name_a
             )
-            assert not (lifetimes_overlap and ranges_overlap), (
+            assert not (allocations_conflict and not intentional_inplace_alias), (
                 f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
                 f"{name_b}={offsets[name_b]}"
             )
+
+
+def test_gfx1100_dense_qwen36_hidden_reuse_is_long_row_only(monkeypatch) -> None:
+    allocations = _install_fake_device(monkeypatch)
+    runner = _fake_dense_qwen36_runner()
+
+    short_a, short_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=64,
+        nbytes=64 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert short_a.ptr != short_b.ptr
+    assert len(allocations) == 2
+
+    long_a, long_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=4_096,
+        nbytes=4_096 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert long_a.ptr == long_b.ptr
+    assert len(allocations) == 3
+
+
+def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:
+    runner = _fake_dense_qwen36_runner()
+
+    assert (
+        gguf_runner._gguf_prefill_scratch_priority_min_live_stages(
+            runner,
+            rows=64,
+        )
+        is None
+    )
+    assert gguf_runner._gguf_prefill_scratch_priority_min_live_stages(
+        runner,
+        rows=4_096,
+    ) == 5
+
+
+def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
+    monkeypatch,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=4_096,
+        capacity=4_352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.rows == 4_096
+    assert scratch.linear_qkv_f32.nbytes == 4_096 * 10_240 * 4
+    assert scratch.full_query_raw.nbytes == 4_096 * 6_144 * 4
+    assert scratch.ffn_gate_up.nbytes == 2 * 4_096 * 17_408 * 2
+    assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
+    value_bytes = 4_096 * 48 * 128 * 4
+    assert scratch.prefill_value.nbytes == value_bytes
+    assert scratch.recurrent_out.nbytes == value_bytes
+    assert scratch.allocation_lifetimes["conv_out"] == (("linear", 2, 4),)
+    conv_offset, conv_bytes = scratch.allocation_offsets["conv_out"]
+    recurrent_offset, recurrent_bytes = scratch.allocation_offsets["recurrent_out"]
+    assert max(conv_offset, recurrent_offset) < min(
+        conv_offset + conv_bytes,
+        recurrent_offset + recurrent_bytes,
+    )
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 380 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 372 * _MIB + 384 * 1_024
+    assert scratch.allocation_offsets["attn_out"] == (
+        48 * _MIB + 64 * 1_024,
+        40 * _MIB,
+    )
+
+
+def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_peer_wave32")
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    full_qkv_bytes = 768 * 48 * 128 * 4
+    assert scratch.prefill_query.nbytes == full_qkv_bytes
+    assert scratch.prefill_key.nbytes == full_qkv_bytes
+    assert scratch.prefill_value.nbytes == full_qkv_bytes
 
 
 @pytest.mark.parametrize(

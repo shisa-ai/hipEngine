@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "retained_default_memory_improvement_cross_engine_floor_open",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B dense SiLU gate-plane scratch alias",
+  "repo_revision": "c0a263782",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "primary": "AMD Radeon RX 7900 XTX / gfx1100 / HIP_VISIBLE_DEVICES=1 / PCI 0000:10:00.0 / sysfs card0 / 23.984375 GiB VRAM",
+    "safeguard": "AMD Radeon Pro W7900 / gfx1100 / HIP_VISIBLE_DEVICES=0 / PCI 0000:0d:00.0 / sysfs card1 / 44.984375 GiB VRAM"
+  },
+  "implementation": {
+    "problem": "Dense prefill reserved an independent BF16 FFN intermediate even though SiLU consumes gate/up elementwise and the gate plane is dead after that operation.",
+    "change": "Make separate SiLU gate/output alias-safe, view ffn_intermediate over the first half of ffn_gate_up, and teach the single-arena planner the distinct gate-half and up-half physical lifetimes.",
+    "scope": "The alias is admitted only by an existing model-scoped dense liveness policy using the single-arena grouping. MoE, diagnostics, peer GDN modes, and owner-slot arenas retain their prior layouts.",
+    "kernel_math_changed": false,
+    "weight_layout_changed": false,
+    "kv_layout_changed": false,
+    "query_chunk_geometry_changed": false,
+    "persistent_payload_added_bytes": 0,
+    "commit": "c0a263782"
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json",
+    "sha256": "8cb390274012909f6ac916c621f0bba885651f1de6727966354b332be065f0a1"
+  },
+  "red_green": {
+    "red": "The dense 768-row fixture gave ffn_intermediate a distinct pointer; direct 4096-row planning retained a 495.315-MiB physical bulk-prefill scratch.",
+    "green": "ffn_intermediate is the exact first-half view of ffn_gate_up, subrange-aware conflict checks reject every undeclared live overlap, and the direct 4096-row physical scratch is 474.690 MiB.",
+    "hip_exact_bit_oracle": "A live gfx1100 test writes BF16 SiLU(gate)*up back over gate for 7x259 elements and matches the host BF16-bit oracle exactly.",
+    "tests": "uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_paged_kv_head_major.py tests/test_paro_silu_plan.py tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_resident_batch_layout.py",
+    "result": "passed"
+  },
+  "protocol": {
+    "hipengine": "Selector-unset package-default sole-T16 session, repeated token 9707, one discarded warmup plus three measured persistent reset/replays, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, cached compiler artifacts.",
+    "whole_device_memory": "5 ms sysfs VRAM samples around the complete child process. Peak delta is peak minus pre-process baseline.",
+    "serial_shapes": true,
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE -u HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS -u HIPENGINE_GGUF_PREFILL_DEVICE_METADATA HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096|8192> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json <output>"
+  },
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "prefill_tok_s_samples": [975.8763925696497, 975.5631917329234, 977.0662544037485],
+      "prefill_tok_s_median": 975.8763925696497,
+      "prefill_delta_percent": 0.10900286456498876,
+      "decode_tok_s_samples": [33.56151627399559, 33.53323044721986, 33.519656726883774],
+      "decode_tok_s_median": 33.53323044721986,
+      "decode_delta_percent": 0.03304608642693552,
+      "tracked_peak_gib_before": 15.595880448818207,
+      "tracked_peak_gib_after": 15.587152421474457,
+      "tracked_saved_mib": 8.9375,
+      "hip_used_peak_gib": 15.93896484375,
+      "whole_device_peak_delta_gib_before": 16.094017028808594,
+      "whole_device_peak_delta_gib_after": 16.083118438720703,
+      "whole_device_saved_mib": 11.16015625,
+      "llamacpp_hip_peak_delta_gib": 16.348358154296875,
+      "lower_llamacpp_vulkan_peak_delta_gib": 15.689502716064453,
+      "remaining_vulkan_gap_gib": 0.39361572265625,
+      "bulk_prefill_scratch_bytes": 99194920
+    },
+    {
+      "workload": "1024/128",
+      "prompt_length": 1024,
+      "prefill_tok_s_samples": [1009.4013942657548, 1008.040001941449, 1008.2536894978892],
+      "prefill_tok_s_median": 1008.2536894978892,
+      "prefill_delta_percent": -0.1707916003345855,
+      "decode_tok_s_samples": [34.53400436589097, 34.537589894386684, 34.54315486470489],
+      "decode_tok_s_median": 34.537589894386684,
+      "decode_delta_percent": 0.021177541376382614,
+      "tracked_peak_gib_before": 15.699459381401539,
+      "tracked_peak_gib_after": 15.681148834526539,
+      "tracked_saved_mib": 18.75,
+      "hip_used_peak_gib": 16.0751953125,
+      "whole_device_peak_delta_gib_before": 16.304569244384766,
+      "whole_device_peak_delta_gib_after": 16.287025451660156,
+      "whole_device_saved_mib": 17.96484375,
+      "llamacpp_hip_peak_delta_gib": 16.372692108154297,
+      "lower_llamacpp_vulkan_peak_delta_gib": 15.699958801269531,
+      "remaining_vulkan_gap_gib": 0.587066650390625,
+      "bulk_prefill_scratch_bytes": 155766824
+    },
+    {
+      "workload": "4096/128",
+      "prompt_length": 4096,
+      "prefill_tok_s_samples": [987.858347329762, 988.2682061591074, 987.5437708550625],
+      "prefill_tok_s_median": 987.858347329762,
+      "prefill_delta_percent": -0.05534118003277522,
+      "decode_tok_s_samples": [31.426867432603824, 31.418528178753604, 31.376519848879038],
+      "decode_tok_s_median": 31.418528178753604,
+      "decode_delta_percent": 0.054789390328258136,
+      "tracked_peak_gib_before": 16.262759797275066,
+      "tracked_peak_gib_after": 16.242618195712566,
+      "tracked_saved_mib": 20.625,
+      "hip_used_peak_gib": 16.6328125,
+      "whole_device_peak_delta_gib_before": 17.02214813232422,
+      "whole_device_peak_delta_gib_after": 17.00090789794922,
+      "whole_device_saved_mib": 21.75,
+      "llamacpp_hip_peak_delta_gib": 16.56165313720703,
+      "lower_llamacpp_vulkan_peak_delta_gib": 15.912158966064453,
+      "remaining_vulkan_gap_gib": 1.0887489318847656,
+      "bulk_prefill_scratch_bytes": 497749032
+    },
+    {
+      "workload": "8192/128 diagnostic",
+      "prompt_length": 8192,
+      "prefill_tok_s_samples": [821.8136994299572, 821.0281768122427, 820.2746440161457],
+      "prefill_tok_s_median": 821.0281768122427,
+      "prefill_delta_percent": 0.11787923196528993,
+      "decode_tok_s_samples": [29.38358057998469, 29.380253484844797, 29.357645398866783],
+      "decode_tok_s_median": 29.380253484844797,
+      "decode_delta_percent": -0.0012121050116276066,
+      "tracked_peak_gib_before": 16.521231345832348,
+      "tracked_peak_gib_after": 16.501089744269848,
+      "tracked_saved_mib": 20.625,
+      "hip_used_peak_gib": 16.884765625,
+      "whole_device_peak_delta_gib_before": 17.276763916015625,
+      "whole_device_peak_delta_gib_after": 17.255722045898438,
+      "whole_device_saved_mib": 21.546875,
+      "llamacpp_hip_peak_delta_gib": 16.81658935546875,
+      "lower_llamacpp_vulkan_peak_delta_gib": 16.16606903076172,
+      "remaining_vulkan_gap_gib": 1.0896530151367188,
+      "bulk_prefill_scratch_bytes": 504351784
+    }
+  ],
+  "rejected_subcandidate": {
+    "change": "Also size linear-attention route-exclusive scratch to 1024 rows and subchunk outer 4096-row linear layers.",
+    "first_failure": "The initial 8K guard rejected a 4096-row linear launch against 1024-row scratch before launch.",
+    "repaired_8k": {
+      "prefill_tok_s": 795.9888298648042,
+      "decode_tok_s": 29.396118920833793,
+      "tracked_peak_gib": 16.388357810676098,
+      "whole_device_peak_delta_gib": 17.146034240722656,
+      "tracked_saved_mib": 136.0625,
+      "whole_device_saved_mib": 133.8671875,
+      "prefill_delta_percent": -2.935470682850372,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "tracked_bytes_after_close": 0,
+      "source_sha256": "75a29f5d23606fe5ae1127e19c9602073c7ea9311055a5c8aaeee023edf306d9",
+      "vram_source_sha256": "9dc4a49d7acf869bab7e584c48d9cd4994299a2ce4b888505b286cd3e9167e41"
+    },
+    "decision": "removed because the 2.94% 8K prefill regression violates the no-regression gate; existing outer-chunk scheduling and full-sized linear scratch remain unchanged"
+  },
+  "safeguards": {
+    "xtx_final_ids": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+    "xtx_all_final_logits_finite": true,
+    "xtx_tracked_bytes_after_each_close": [0, 0, 0, 0],
+    "w7900_512": {
+      "prefill_tok_s_samples": [877.6595443303055, 875.9210104682344, 872.1380970248234],
+      "prefill_tok_s_median": 875.9210104682344,
+      "decode_tok_s_samples": [28.485252145974464, 28.40511768539589, 28.339148171453598],
+      "decode_tok_s_median": 28.40511768539589,
+      "tracked_peak_gib": 15.587152421474457,
+      "whole_device_peak_delta_gib": 16.083114624023438,
+      "all_ids_exact": true,
+      "all_logits_finite": true,
+      "tracked_bytes_after_close": 0,
+      "source_sha256": "e8ce6bb29a40e2caceb8bd19791a989ee5e472ca59bb11800a8160a64db6ac92",
+      "vram_source_sha256": "aa35cfc6ae38867fef73e4065b6873041ed77fc9ae686817c8cabc97e0bda445"
+    },
+    "dense_nextn_transaction_provider_gate": "passed",
+    "dense_nextn_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar"
+  },
+  "raw_sources": {
+    "512": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/gate-plane-alias-512.json",
+      "benchmark_sha256": "e635be487928b97c55fb5de7f6d65baea605399d0a826c2fc12ef2620fb6a233",
+      "vram_sha256": "2857b84c720e3c28ebcbab6eef75a0aeb4fa6d2415e856f0d136ae91c5128b86"
+    },
+    "1024": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/gate-plane-alias-1024.json",
+      "benchmark_sha256": "7b37eda0717a46d9500af3b93631fdc0b3d7bdf985a9d382271de0291674769d",
+      "vram_sha256": "624e82e93945ca8a50ac4a41f557407ed0b9ea2fd517abbfbe3b7124e5ca44de"
+    },
+    "4096": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/gate-plane-alias-4096.json",
+      "benchmark_sha256": "a014538e0a8607b9ec4c007ec2b2b2431d8f0dc3720d1d38e658a5d51bc8946e",
+      "vram_sha256": "7d42ec22f31e1e93988aea628e83d71fbc12c9fe6f59cbf55e78b8e08c2fb1c8"
+    },
+    "8192": {
+      "benchmark": "/tmp/qwen36-27b-memory-goal/gate-plane-alias-8192.json",
+      "benchmark_sha256": "d50012e9a436ed79707aaec55045206236349e8700733af88985d09c216a6e83",
+      "vram_sha256": "4016b39f935e272ec4dac04665ba06db159bb1677ca88e7f63412139e2f365c7"
+    }
+  },
+  "cross_engine": {
+    "memory_gate": "failed_all_shapes",
+    "memory_floor_backend": "llama.cpp Vulkan",
+    "remaining_gap_gib_512_1k_4k_8k": [0.39361572265625, 0.587066650390625, 1.0887489318847656, 1.0896530151367188],
+    "llamacpp_hip_memory_status": "hipEngine remains below llama.cpp HIP at 512 and 1K, but above HIP by 0.439 GiB at 4K and the standardized 8K diagnostic.",
+    "speed_status": "All final prefill/decode changes versus the prior compact-QK matrix are within 0.171%; frozen 512/1K/4K gate status is unchanged."
+  },
+  "decision": "Retain the exact gate-plane alias. It removes 8.9375/18.75/20.625/20.625 MiB tracked and 11.160/17.965/21.750/21.547 MiB whole-device peak at 512/1K/4K/8K without a throughput, token, NextN transaction, lifecycle, or W7900 regression. Do not claim memory parity: Vulkan still leads by 0.394/0.587/1.089/1.090 GiB, so the objective remains open."
+}

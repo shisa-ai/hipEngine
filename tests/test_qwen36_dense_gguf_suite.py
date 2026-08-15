@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +12,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _TimedDraftProvider,
     _TimedVerifier,
     _borrowed_nextn_fallback_weights,
+    _resolved_target_identity,
     aggregate_scopes,
     build_parser,
     parse_candidate_budgets,
@@ -92,6 +94,22 @@ def test_dense_suite_borrows_effective_mapped_embedding_without_rehydration() ->
     }
     assert borrowed["token_embedding"] is not placeholder_embedding
     assert calls == [runtime]
+
+
+def test_dense_suite_records_concrete_target_backend_identity() -> None:
+    target = SimpleNamespace(
+        backend="hip_gfx1151",
+        runner=SimpleNamespace(backend="hip_gfx1151", target_arch="gfx1151"),
+    )
+
+    assert _resolved_target_identity(target) == ("hip_gfx1151", "gfx1151")
+    with pytest.raises(ValueError, match="does not match runner backend"):
+        _resolved_target_identity(
+            SimpleNamespace(
+                backend="hip_gfx1151",
+                runner=SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100"),
+            )
+        )
 
 
 def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> None:

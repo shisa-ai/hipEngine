@@ -12,6 +12,7 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
@@ -640,12 +641,15 @@ LAGUNA_SWA_LOCAL1024 = True
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # gfx1100 PM4 evidence does not admit architecture-specific packets on gfx1151.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
-    ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {"transport": "hipgraph"},
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        "transport": "hipgraph"
+    },
 }
 # SH3-M1 admits loader-time host ownership only for private c1 sessions. Any
 # shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
 # or transactionally restores the exact resident Q8_0 table.
 GGUF_HOST_TOKEN_EMBEDDING_C1 = True
+GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q8_0",)
 # gfx1151 retains its qualified CPU-copy Q8_0 route; mapped host kernel reads
 # require an independent lifecycle/performance gate on that device.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = False
@@ -706,10 +710,10 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = True
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
-# Dense Qwen3.6 sole-Q4 ownership is gfx1100-only until gfx1151 receives its
+# Dense H5120 sole-Q4 ownership is gfx1100-only until gfx1151 receives its
 # own c1/verifier/prefill and complete-model gate.
 GGUF_DENSE_Q4_T16 = False
-# Dense Qwen3.6 Q5T16 recurrent-output ownership is W7900-only until gfx1151
+# Dense H5120 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
 # D08-P6 admits the same sole-resident family independently for the exact
@@ -757,10 +761,11 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
-# Dense Qwen3.6 planar-qmicro projection/root ownership is W7900-only until
+# Dense H5120 planar-qmicro projection/root ownership is W7900-only until
 # gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
 # gates.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = False
+GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -858,14 +863,14 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
-        # Qwen3.6 narrow/selective Q4T16 col4 rowtiles are W7900-only until
+        # Dense-H5120 narrow/selective Q4T16 col4 rowtiles are W7900-only until
         # gfx1151 receives an independent shape crossover and full-model gate.
         (
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         ),
-        # Qwen3.6 dense F32 alpha/beta pair is W7900-only pending an
+        # Dense-H5120 F32 alpha/beta pair is W7900-only pending an
         # independent gfx1151 occupancy and full-model gate.
         (
             "linear_pair",
@@ -886,7 +891,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "f32+gguf_q5_k_t16_v1",
             "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # Qwen3.6 dense down+residual and rounded next-input RMSNorm fusions
+        # Dense-H5120 down+residual and rounded next-input RMSNorm fusions
         # are W7900-only pending independent gfx1151 boundary/model gates.
         (
             "linear+residual",
@@ -899,7 +904,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "rounded_bf16_out",
         ),
         # Shared-cache verifier KV batching is qualified only for the W7900
-        # dense Qwen3.6 N1 graph; gfx1151 retains scalar append aliases.
+        # dense-H5120 N1 graph; gfx1151 retains scalar append aliases.
         (
             "paged_kv_write",
             "gguf_q4_k_m",
@@ -1827,6 +1832,7 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
@@ -1855,6 +1861,7 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
