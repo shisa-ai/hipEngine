@@ -40,7 +40,7 @@ from hipengine.speculative import (
     TargetVerifyBuffers,
 )
 
-_GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3)
+_GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3, 4)
 _GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
 
 
@@ -536,7 +536,7 @@ class Qwen35GGUFTransactionalVerifier:
         target_verify_mode: str = "serial_exact",
     ) -> None:
         if int(max_candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
-            raise ValueError("max_candidate_budget must be 1, 2, or 3")
+            raise ValueError("max_candidate_budget must be 1, 2, 3, or 4")
         if target.runner is None or target.runtime is None:
             raise RuntimeError("GGUF target session is closed")
         selected_verify_mode = str(target_verify_mode).strip().lower().replace("-", "_")
@@ -1128,7 +1128,7 @@ class Qwen35GGUFMTPDecodeSession:
         owns_verifier: bool = True,
     ) -> None:
         if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
-            raise ValueError("candidate_budget must be 1, 2, or 3")
+            raise ValueError("candidate_budget must be 1, 2, 3, or 4")
         selected_quant = str(quant).strip()
         if not selected_quant:
             raise ValueError("quant must be non-empty")
