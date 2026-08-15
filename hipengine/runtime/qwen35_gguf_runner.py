@@ -9738,10 +9738,9 @@ def _gguf_dense_pair_silu_decode_variant(
         return None
     if not isinstance(policies, Mapping):
         return None
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return None
     shapes = policies.get(identity, {})
     if not isinstance(shapes, Mapping):
         return None
@@ -9767,10 +9766,9 @@ def _gguf_dense_down_residual_decode_fused(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return False
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return False
     shape = (int(rows), int(in_features), int(out_features))
     cache_key = (backend, identity, shape)
     cached = getattr(runner, "_dense_down_residual_decode_policy_cache", None)
@@ -9819,10 +9817,9 @@ def _gguf_norm_residual_decode_kernel(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return fallback
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return fallback
     shape = (int(rows), int(hidden_size))
     policy_key = (backend, identity, shape)
     cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
