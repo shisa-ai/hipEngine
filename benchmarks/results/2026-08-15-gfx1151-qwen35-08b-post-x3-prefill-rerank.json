@@ -1,0 +1,354 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained_diagnostic_rerank",
+  "task": "D08-X4 post-X3 Q4 semantic prefill rerank and next-owner selection",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "commit": "abd7e5a9cf0a04dac1629ccc957098bd0b70c5f1",
+    "clean_tree": true,
+    "branch": "main"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+      "size_bytes": 532517120,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        265734272,
+        531468544
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "tensor_inventory_sha256": "c2a338f6f9c459327244d7ed53b954de6647e12d04220458889fc2ee1c93bb69"
+  },
+  "protocol": {
+    "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-x3-post/q4-current-stage.json",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "persistent_session": true,
+    "prompt_length": 512,
+    "bulk_attention_mode": "bulk",
+    "method": "same-stream device wall-clock stage markers; medians of three persistent-session runs after one warmup",
+    "raw_path": "/tmp/d08-x3-post/q4-current-stage.json",
+    "raw_sha256": "973a802bdc92b49cefcce42a48e56477bf78bb3709fdb19b7d9e5b9a55e8c1c6",
+    "exact_wall_source": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json",
+    "historical_vulkan_attribution_source": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json"
+  },
+  "measurement": {
+    "marker_prefill_tok_s_samples": [
+      4663.6104113468,
+      4818.792099415216,
+      4814.849929558795
+    ],
+    "marker_prefill_tok_s_median": 4814.849929558795,
+    "marker_wall_ms_samples": [
+      109.78618598892353,
+      106.25069300294854,
+      106.33768601110205
+    ],
+    "marker_wall_ms_median": 106.33768601110205,
+    "fresh_exact_core_wall_ms": 104.57472667996731,
+    "marker_over_exact": 1.0168583690065953,
+    "semantic_role_median_sum_ms": 106.42560865644725,
+    "semantic_coverage": 1.0008268248881778,
+    "normalization_scale": 0.9834211238059978,
+    "roles": [
+      {
+        "role": "dense_ffn_projections",
+        "stage_keys": [
+          "prefill_linear_attn_ffn_gate_up",
+          "prefill_linear_attn_ffn_down_residual",
+          "prefill_full_attn_ffn_gate_up",
+          "prefill_full_attn_ffn_down_residual"
+        ],
+        "samples_ms": [
+          34.5250776475303,
+          33.53451557960125,
+          34.00669271616071
+        ],
+        "median_ms": 34.00669271616071,
+        "exact_wall_normalized_ms": 33.442899967852,
+        "pre_x3_median_ms": 44.54102795311091,
+        "movement_vs_pre_x3_ms": -10.534335236950206,
+        "historical_vulkan_logger_ms": 24.49522,
+        "historical_attribution_gap_ms": 8.947679967852,
+        "marker_wall_share": 0.3197990664627617
+      },
+      {
+        "role": "linear_attention_projections",
+        "stage_keys": [
+          "prefill_linear_attn_attn_qkv_gate",
+          "prefill_linear_attn_alpha_beta",
+          "prefill_linear_attn_qkv_bf16_to_f32",
+          "prefill_linear_attn_ssm_out"
+        ],
+        "samples_ms": [
+          33.1245366195772,
+          31.760815549544134,
+          31.81523895401262
+        ],
+        "median_ms": 31.81523895401262,
+        "exact_wall_normalized_ms": 31.28777804631145,
+        "pre_x3_median_ms": 33.87708646428214,
+        "movement_vs_pre_x3_ms": -2.0618475102695157,
+        "historical_vulkan_logger_ms": 17.82819,
+        "historical_attribution_gap_ms": 13.459588046311449,
+        "marker_wall_share": 0.29919062702465604
+      },
+      {
+        "role": "gdn_recurrence",
+        "stage_keys": [
+          "prefill_linear_attn_prefill_gdn"
+        ],
+        "samples_ms": [
+          23.716661657148578,
+          23.617232742210202,
+          22.598537220719365
+        ],
+        "median_ms": 23.617232742210202,
+        "exact_wall_normalized_ms": 23.225685564532164,
+        "pre_x3_median_ms": 29.26632601943693,
+        "movement_vs_pre_x3_ms": -5.649093277226729,
+        "historical_vulkan_logger_ms": 12.585055,
+        "historical_attribution_gap_ms": 10.640630564532163,
+        "marker_wall_share": 0.22209654571328996
+      },
+      {
+        "role": "full_attention_projections_rope",
+        "stage_keys": [
+          "prefill_full_attn_qkv_head_norm_rope",
+          "prefill_full_attn_output"
+        ],
+        "samples_ms": [
+          7.86366095581605,
+          7.55058611361587,
+          7.808636409177437
+        ],
+        "median_ms": 7.808636409177437,
+        "exact_wall_normalized_ms": 7.679177992905706,
+        "pre_x3_median_ms": 8.243582807333935,
+        "movement_vs_pre_x3_ms": -0.43494639815649805,
+        "historical_vulkan_logger_ms": 4.38531,
+        "historical_attribution_gap_ms": 3.2938679929057066,
+        "marker_wall_share": 0.07343244622007467
+      },
+      {
+        "role": "full_attention_core_kv",
+        "stage_keys": [
+          "prefill_full_attn_kv_write",
+          "prefill_full_attn_core_gate"
+        ],
+        "samples_ms": [
+          2.6674681895601644,
+          2.485883178038273,
+          2.70289550145276
+        ],
+        "median_ms": 2.6674681895601644,
+        "exact_wall_normalized_ms": 2.6232445646940072,
+        "pre_x3_median_ms": 2.8201983769161405,
+        "movement_vs_pre_x3_ms": -0.1527301873559761,
+        "historical_vulkan_logger_ms": 1.765358,
+        "historical_attribution_gap_ms": 0.8578865646940073,
+        "marker_wall_share": 0.025084880907429854
+      },
+      {
+        "role": "linear_attention_conv",
+        "stage_keys": [
+          "prefill_linear_attn_prefill_conv"
+        ],
+        "samples_ms": [
+          2.5734896302975656,
+          2.538102394549644,
+          2.531690211401663
+        ],
+        "median_ms": 2.538102394549644,
+        "exact_wall_normalized_ms": 2.496023509182705,
+        "pre_x3_median_ms": 2.7460975854122833,
+        "movement_vs_pre_x3_ms": -0.2079951908626394,
+        "historical_vulkan_logger_ms": 6.85906,
+        "historical_attribution_gap_ms": -4.363036490817295,
+        "marker_wall_share": 0.02386832448361399
+      },
+      {
+        "role": "lm_head_sampler_transport",
+        "stage_keys": [
+          "prefill_lm_head_sample"
+        ],
+        "samples_ms": [
+          1.250776475303076,
+          1.1951507864943391,
+          1.164823164011622
+        ],
+        "median_ms": 1.1951507864943391,
+        "exact_wall_normalized_ms": 1.1753365295718852,
+        "pre_x3_median_ms": 1.2484119827672577,
+        "movement_vs_pre_x3_ms": -0.05326119627291859,
+        "historical_vulkan_logger_ms": 2.28526,
+        "historical_attribution_gap_ms": -1.109923470428115,
+        "marker_wall_share": 0.01123920250032111
+      },
+      {
+        "role": "residual_norm_glue",
+        "stage_keys": [
+          "prefill_linear_attn_ffn_post_norm_residual",
+          "prefill_full_attn_ffn_post_norm_residual",
+          "prefill_linear_attn_ffn_total"
+        ],
+        "samples_ms": [
+          1.0094780082156096,
+          1.0136058511171224,
+          1.0943192064923355
+        ],
+        "median_ms": 1.0136058511171224,
+        "exact_wall_normalized_ms": 0.9968014052019354,
+        "pre_x3_median_ms": 1.0985272016831982,
+        "movement_vs_pre_x3_ms": -0.08492135056607575,
+        "historical_vulkan_logger_ms": 1.363423,
+        "historical_attribution_gap_ms": -0.36662159479806466,
+        "marker_wall_share": 0.009531953243850897
+      },
+      {
+        "role": "input_setup",
+        "stage_keys": [
+          "prefill_reset",
+          "prefill_embedding",
+          "prefill_chunk_metadata"
+        ],
+        "samples_ms": [
+          1.0741909628293758,
+          0.6392145075643723,
+          0.8249373810239455
+        ],
+        "median_ms": 0.8249373810239455,
+        "exact_wall_normalized_ms": 0.8112608463161451,
+        "pre_x3_median_ms": 0.8766255886183749,
+        "movement_vs_pre_x3_ms": -0.05168820759442938,
+        "historical_vulkan_logger_ms": 0.246531,
+        "historical_attribution_gap_ms": 0.5647298463161452,
+        "marker_wall_share": 0.00775771424006555
+      },
+      {
+        "role": "attention_norm",
+        "stage_keys": [
+          "prefill_linear_attn_attn_norm",
+          "prefill_full_attn_attn_norm"
+        ],
+        "samples_ms": [
+          0.7060615168820759,
+          0.7840597134555656,
+          0.7799619276625588
+        ],
+        "median_ms": 0.7799619276625588,
+        "exact_wall_normalized_ms": 0.7670310354278059,
+        "pre_x3_median_ms": 0.7764352269311692,
+        "movement_vs_pre_x3_ms": 0.0035267007313896093,
+        "historical_vulkan_logger_ms": 0.46143,
+        "historical_attribution_gap_ms": 0.3056010354278059,
+        "marker_wall_share": 0.007334764907157448
+      },
+      {
+        "role": "dense_ffn_activation",
+        "stage_keys": [
+          "prefill_linear_attn_ffn_silu",
+          "prefill_full_attn_ffn_silu"
+        ],
+        "samples_ms": [
+          0.09654343252179141,
+          0.12872457669572185,
+          0.121871555956317
+        ],
+        "median_ms": 0.121871555956317,
+        "exact_wall_normalized_ms": 0.11985106251854681,
+        "pre_x3_median_ms": 1.4396553451557959,
+        "movement_vs_pre_x3_ms": -1.3177837891994788,
+        "historical_vulkan_logger_ms": 1.32827,
+        "historical_attribution_gap_ms": -1.2084189374814533,
+        "marker_wall_share": 0.0011460805715068237
+      },
+      {
+        "role": "final_norm",
+        "stage_keys": [
+          "prefill_output_norm"
+        ],
+        "samples_ms": [
+          0.02677086464282136,
+          0.009938883879370804,
+          0.02448652439635307
+        ],
+        "median_ms": 0.02448652439635307,
+        "exact_wall_normalized_ms": 0.02408056533996452,
+        "pre_x3_median_ms": 0.016150686303977556,
+        "movement_vs_pre_x3_ms": 0.008335838092375515,
+        "historical_vulkan_logger_ms": 0.019226,
+        "historical_attribution_gap_ms": 0.00485456533996452,
+        "marker_wall_share": 0.00023027136770492246
+      },
+      {
+        "role": "state_finalize",
+        "stage_keys": [
+          "prefill_state_finalize"
+        ],
+        "samples_ms": [
+          0.01338543232141068,
+          0.006332030858631399,
+          0.012223224125839094
+        ],
+        "median_ms": 0.012223224125839094,
+        "exact_wall_normalized_ms": 0.012020576806365266,
+        "pre_x3_median_ms": 0.0094980462879471,
+        "movement_vs_pre_x3_ms": 0.002725177837891994,
+        "historical_vulkan_logger_ms": 0.0,
+        "historical_attribution_gap_ms": 0.012020576806365266,
+        "marker_wall_share": 0.00011494724574468306
+      }
+    ],
+    "linear_attention_projection_detail_ms": {
+      "prefill_linear_attn_attn_qkv_gate": 17.628003206091574,
+      "prefill_linear_attn_alpha_beta": 4.664662859432923,
+      "prefill_linear_attn_qkv_bf16_to_f32": 1.5545937280833584,
+      "prefill_linear_attn_ssm_out": 8.060114217012321
+    },
+    "finite_final_logits_all": true,
+    "final_token_ids": [
+      9707,
+      9707,
+      9707
+    ],
+    "owned_session_bytes": 1067067204
+  },
+  "x3_reconciliation": {
+    "pre_x3_dense_projection_plus_activation_ms": 45.98068329826671,
+    "post_x3_dense_projection_plus_activation_ms": 34.128564272117025,
+    "marker_movement_ms": -11.852119026149687,
+    "note": "Marker movement is attribution only; the five-block paired X3 A/B remains the 14.299-ms optimization authority."
+  },
+  "next_owner": {
+    "selected_package": "Q4 linear-attention heterogeneous QKV+gate operation-complete prefill",
+    "reason": "Linear-attention projections now have the largest normalized historical attribution gap (13.460 ms). Their 17.628-ms Q5_K QKV plus Q4_K gate stage still reports the explicit fallback route; Q5 SSM-out is already retained/exhausted.",
+    "current_stage_ms": 17.628003206091574,
+    "architecture": "One 128-thread, 32-column x 256-row schedule consumes the resident Q5T16 QKV and pack8-Q4 gate weights. It stages decoded K256 panels, reuses each activation fragment across QKV and gate in the overlapping 2,048-column region, handles the remaining QKV columns in the same owner, and preserves separate BF16 outputs/fallbacks without new resident bytes.",
+    "scope": "gfx1151 Qwen3.5-0.8B Q4_K_M rows512/K1024, QKV N6144 plus gate N2048 only",
+    "hard_budget": "One schedule, one actual-weight leaf screen, and at most five paired complete-model blocks. No tile ladder.",
+    "continue_gate": "Byte-exact outputs, leaf >=1.10x for combined QKV+gate, no scratch/spill, and >=1% exact-core pp512 projected or measured saving.",
+    "accept_gate": "Exact cumulative semantics; >=1% paired core/public pp512; decode and Q8 >=0.98x; no resident-byte increase.",
+    "fallback": "Existing Q5T16 and pack8-Q4 registered singleton WMMA paths."
+  },
+  "decision": "Post-X3 rerank is complete. Admit exactly one heterogeneous QKV+gate operation-complete screen; dense FFN is closed and GDN remains second.",
+  "caveats": [
+    "Historical Vulkan role rows are attribution-only and not additive; the fresh synchronized total Q4 core gap is 11.657 ms.",
+    "Independent marker runs moved GDN and other unchanged roles with system variance. Use current absolute ownership for ranking and paired A/B for any optimization claim."
+  ]
+}
