@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q5t16_fixed_meta_decode",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "c7c3db5cfe6f9f4d1b80eca20b401d4c50023106",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "graph_kernel_wall_ms": 10449.636114,
+    "affected_q5t16_ssm_out_ms": 696.793,
+    "family_share_percent": 6.668107792447096,
+    "required_saved_ms": 104.49636114,
+    "required_family_saving_percent": 14.996758167777232,
+    "advance_threshold_percent": 1.0
+  },
+  "candidate": {
+    "control": "retained local128 dense Q5T16 BF16 projection",
+    "path": "wave-uniform fixed coefficient publication over the same Q5T16 payload",
+    "hypothesis": "replace redundant per-lane d/dmin/scale/min loads and products with one exact lane publisher plus wave32 shuffles",
+    "preserved_boundary": "same quant reconstruction, per-thread K/FMA order, four-wave reduction, and BF16 store",
+    "resident_layout": "gguf_q5_k_t16_v1",
+    "new_resident_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "actual_layers": [0, 16, 32, 48, 62],
+    "shape": [5120, 6144],
+    "source_bytes_per_weight": 21626880,
+    "resident_bytes_per_weight": 22118400,
+    "eviction_peer_resident_bytes": 88473600,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "timing": "counterbalanced single-launch HIP events",
+    "cache_contract": "four independent peer weights (84.375 MiB) are read before every timed target, exceeding 2x the 32-MiB MALL"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "control_us": 122.308001,
+      "candidate_us": 126.075000,
+      "candidate_delta_percent": 3.079928,
+      "candidate_wins": "2/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 16,
+      "control_us": 121.786997,
+      "candidate_us": 123.870999,
+      "candidate_delta_percent": 1.711186,
+      "candidate_wins": "2/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 32,
+      "control_us": 122.629002,
+      "candidate_us": 126.435995,
+      "candidate_delta_percent": 3.104480,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 48,
+      "control_us": 121.347003,
+      "candidate_us": 125.113994,
+      "candidate_delta_percent": 3.104313,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 62,
+      "control_us": 122.509003,
+      "candidate_us": 126.717001,
+      "candidate_delta_percent": 3.434848,
+      "candidate_wins": "3/15",
+      "bf16_mismatches": 0
+    }
+  ],
+  "family": {
+    "control_ms": 0.6105800047516823,
+    "candidate_ms": 0.6282129883766174,
+    "candidate_speedup": 0.9719315201194725,
+    "candidate_delta_percent": 2.8879071518410404,
+    "projected_saved_ms": -20.12273488052774,
+    "projected_complete_graph_percent": -0.1925687618305494,
+    "all_layers_positive": false
+  },
+  "correctness": {
+    "red_collection_failed_before_wrapper_existed": true,
+    "green_synthetic_bit_exact": true,
+    "all_actual_bf16_exact": true,
+    "all_finite": true,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q5-fixed-meta-leaf/leaf.json",
+      "sha256": "8f3d4b48b15b483a887d59ae68ea95f77bc2afe3c23268b3386f18d9b7a9337f",
+      "bytes": 10724
+    },
+    "profile": {
+      "path": "/tmp/qwen38-task22-post-q8x2-rerank/rocprof-selected/gfx1151/1117555_kernel_trace.csv",
+      "sha256": "f39c0143cc477b173932a38bc55863d101a6a734a662886b20bdf805154b7f60"
+    }
+  },
+  "validation": {
+    "diagnostic_source_and_test_removed": true,
+    "production_paths_match_base": true,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject and restore the exact Q5T16 fixed-metadata specialization. Every actual recurrent-output layer regresses 1.71-3.43%; the 2.888% family regression projects -20.123 ms / -0.193% selected graph wall. Retain the local128 dense Q5T16 owner."
+}
