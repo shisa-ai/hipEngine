@@ -104,6 +104,38 @@ def test_resolver_availability_fallback(monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    ("requested_mode", "message"),
+    [
+        ("exact", "backend GGUF GDN prefill exact mode is unavailable"),
+        (
+            "chain_peer_cluster8",
+            "explicit GGUF GDN prefill mode 'chain_peer_cluster8' is unavailable",
+        ),
+    ],
+)
+def test_resolver_explicit_unavailable_mode_fails_before_freeze(
+    monkeypatch, requested_mode, message
+):
+    """A session must never freeze an unavailable exact or explicit route."""
+
+    _with_env(monkeypatch, mode=requested_mode)
+    unavailable = qgr._GGUFGDNPrefillPlan(
+        None,
+        None,
+        None,
+        lambda *args, **kwargs: None,
+        lambda *args, **kwargs: None,
+    )
+    with pytest.raises(RuntimeError, match=message):
+        qgr._gguf_gdn_prefill_session_mode(
+            "hip_gfx1151",
+            weights=_weights("MOSTLY_Q8_0"),
+            cfg=_weights("MOSTLY_Q8_0").config,
+            plan=unavailable,
+        )
+
+
 def test_dense_gfx1151_08b_liveness_remains_dedicated(monkeypatch):
     """Today's contract: dense 0.8B gfx1151 has no liveness alias admission."""
 
@@ -175,23 +207,6 @@ def test_dispatch_consumes_frozen_mode(monkeypatch):
         "segments_peer_cluster8",
         "rmsnorm_gate",
     ]
-
-
-def test_diagnostic_scratch_still_follows_env(monkeypatch):
-    """Verify-gate superset scratch keeps in-session mode alternation."""
-
-    weights = _weights("MOSTLY_Q4_K_M")
-    frozen = qgr._gguf_gdn_prefill_session_mode(
-        "hip_gfx1151", weights=weights, cfg=weights.config
-    )
-    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE", "1")
-    _with_env(monkeypatch, mode="chain_lds32_direct_nonvolatile")
-    assert qgr._gguf_gdn_prefill_scratch_diagnostic() is True
-    alternate = qgr._gguf_gdn_prefill_session_mode(
-        "hip_gfx1151", weights=weights, cfg=weights.config
-    )
-    assert alternate != frozen
-    assert alternate == "chain_lds32_direct_nonvolatile"
 
 
 def test_diagnostic_scratch_still_follows_env(monkeypatch):
