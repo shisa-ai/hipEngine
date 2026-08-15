@@ -9,6 +9,7 @@ from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading import qwen35_gguf_nextn_materialize as nextn_materialize
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     Qwen35GGUFWeightSpec,
 )
 from hipengine.loading.qwen35_gguf_nextn_materialize import (
@@ -92,6 +93,12 @@ def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(model: Path) ->
     assert all(spec.layout == LAYOUT_GGUF_Q4_K_T16 for spec in q4_specs)
     assert all(spec.quant_key == "gguf_q4_k_t16_v1" for spec in q4_specs)
     assert all(spec.allocation_names == ("tiles",) for spec in q4_specs)
+    assert plan.layer_specs["attn_v"].layout == "raw_gguf"
+    assert plan.layer_specs["ffn_down"].layout == "raw_gguf"
+    lm_head = plan.fallback_specs["lm_head"]
+    assert lm_head.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+    assert lm_head.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+    assert lm_head.allocation_names == ("tiles",)
 
 
 def test_nextn_materialization_borrows_compatible_target_fallbacks_without_owning_them(

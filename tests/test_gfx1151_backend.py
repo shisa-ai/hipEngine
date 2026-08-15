@@ -38,6 +38,9 @@ from hipengine.kernels.hip_gfx1100.norm import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+    register_gguf_q6_k_t16_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
@@ -391,14 +394,21 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
     ]
 
 
-def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
-    register_gfx1151_kernels()
+def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
+    register_gguf_q6_k_t16_gemv_kernels(replace=True)
+    register_gguf_k_t16_selected_prefill_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
 
-    assert not backend_package_capability(
+    assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
         False,
     )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
+        (),
+    ) == ("attn_qkv",)
     for layer, variant in (
         ("linear", "t16_gemv_decode_bf16_bf16_out"),
         ("linear", "t16_gemv_decode_bf16_f32_out"),
@@ -409,7 +419,7 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
         ("linear+argmax", "t16_gemv_decode_bf16_f32_top1_stage1"),
         ("linear+argmax", "proposal_top1_exact_bf16"),
     ):
-        assert not is_registered(
+        assert is_registered(
             KernelKey(
                 "hip_gfx1151",
                 layer,
@@ -419,7 +429,7 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
         )
 
 
-def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> None:
+def test_gfx1151_backend_excludes_losing_dense_down_residual_fusions() -> None:
     register_gfx1151_kernels()
 
     for quant, variant in (

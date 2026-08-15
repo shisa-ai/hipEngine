@@ -783,10 +783,14 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
-# Dense H5120 planar-qmicro projection/root ownership is W7900-only until
-# gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
-# gates.
-GGUF_DENSE_Q6_T16_QMICRO_PLANAR = False
+# Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local
+# exactness and speed gates retain it; slot exclusions below keep one alternate
+# layout only where gfx1151 measurements reject planar ownership.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# The K5120/N10240 recurrent QKV shape is 8.72% slower under planar c1 on
+# gfx1151 (0/11 paired wins). Keep exactly one standard-T16 resident for those
+# 24 tensors while planar remains the sole owner for down, narrow V, and root.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
@@ -967,31 +971,20 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k_t16_v1",
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
-        *(
-            (
-                layer,
-                "gguf_q6_k_t16_qmicro_planar_v1",
-                variant,
-            )
-            for layer, variant in (
-                ("linear", "t16_gemv_decode_bf16_bf16_out"),
-                ("linear", "t16_gemv_decode_bf16_f32_out"),
-                ("linear", "t16_gemv_rowtile_bf16_bf16_out"),
-                ("linear", "t16_gemv_rowtile_col8_bf16_bf16_out"),
-                ("linear", "t16_gemv_rowtile_bf16_f32_out"),
-                ("linear", "t16_wmma_prefill_bf16_bf16_out"),
-                (
-                    "linear",
-                    "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
-                ),
-                (
-                    "linear+residual",
-                    "t16_gemv_rowtile_bf16_residual_bf16_out",
-                ),
-                ("linear+argmax", "t16_gemv_decode_bf16_f32_top1_stage1"),
-                ("linear+argmax", "proposal_top1_exact_bf16"),
-            )
+        # P2 admits the exact native planar-qmicro Q6 leaves on gfx1151. The
+        # changed-math source-F16 library route remains independently excluded.
+        (
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+        ),
+        # Qwen3.8-27B actual down weights reject the exact fused rowtile at
+        # rows2/3/4 by 17.35%/11.44%/11.15%; retain planar projection plus
+        # primitive BF16 add as the exact, faster chain on gfx1151.
+        (
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_residual_bf16_out",
         ),
         (
             "linear_q8_1",
@@ -1883,6 +1876,7 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
