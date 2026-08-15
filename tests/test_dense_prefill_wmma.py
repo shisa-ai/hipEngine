@@ -39,6 +39,22 @@ from hipengine.quant.gguf import bf16_to_float32  # noqa: E402
 _COMPILER = Path("/tmp/d08-c0/hipcc-version.txt")
 
 
+def test_dense_prefill_wmma_rejects_unaligned_k_before_launch() -> None:
+    """The BK32 kernel cannot safely consume a partial final K tile."""
+
+    with pytest.raises(ValueError, match="in_features % 32"):
+        dense_prefill_wmma_out_bf16(
+            1,
+            2,
+            3,
+            16,
+            1000,
+            128,
+            library=object(),
+            runtime=object(),
+        )
+
+
 @pytest.mark.parametrize(
     ("n", "k", "rows"),
     [
