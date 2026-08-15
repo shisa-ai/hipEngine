@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_int8_kv_quality_frontier_runtime_blocked",
+  "status": "quality_accepted_peak_memory_and_prefill_rejected",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "support_decision": "Keep BF16 KV as the only supported/default Qwen3.8-27B server route. Pure FP32-scale per-token/head INT8 and tail-four Hadamard-group32 INT8 both pass the measured quality gates through a bounded 32K prompt, but neither creates worst-case 32K memory headroom: chunk-outer BF16 prefill oracles raise tracked peak by 1.023560 GiB and 0.267700 GiB respectively. Pure INT8 eager decode is faster than BF16 graph, but both candidates have a small reproducible prefill regression, and the no-oracle direct tail-four prefill screen produces non-finite logits.",
+  "source": {
+    "tested_commit": "9d194c57d89808b3ca3faab731c7dd333ac3f65d",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "tracked_source_clean_before_measurement": true,
+    "native_24q_4kv_consumer_commit": "9113d29b574e0bd0d2135585ac1cc6c856d13697",
+    "tail4_hadamard_policy_commit": "28b37356e"
+  },
+  "hardware": {
+    "pure_quality_and_runtime": {
+      "device": "AMD Radeon RX 7900 XTX",
+      "hip_visible_devices": "1",
+      "arch": "gfx1100",
+      "total_vram_gib": 23.984375
+    },
+    "tail4_quality": {
+      "device": "AMD Radeon Pro W7900",
+      "hip_visible_devices": "0",
+      "arch": "gfx1100"
+    },
+    "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "file_type": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "geometry": "QWEN35_DENSE_H5120_GEOMETRY",
+    "layers": 64,
+    "full_attention_layers": 16,
+    "query_heads": 24,
+    "kv_heads": 4,
+    "head_dim": 256
+  },
+  "quality_protocol": {
+    "teacher": "same-model BF16 KV with reference-token teacher forcing",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl plus mixed_v1",
+    "complete_prompt_count": 11,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en", "mixed_synthetic"],
+    "heldout_prompt_count": 4,
+    "thresholds": {
+      "mean_kl_max": 0.05,
+      "minimum_prompt_top1_agreement_min": 0.9,
+      "every_prompt_must_pass": true
+    },
+    "layout_requirements": {
+      "bf16_mirror_bytes": 0,
+      "complete_layer_partition": true,
+      "capacity_tokens": 32786,
+      "rounded_max_positions": 33024
+    }
+  },
+  "candidates": {
+    "pure_fp32_scale_int8": {
+      "storage_layout": "uniform",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "bf16_full_attention_indices": [],
+      "int8_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      "rows": [
+        {
+          "workload": "512/8 complete suite",
+          "hardware": "AMD Radeon RX 7900 XTX",
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.00011314782308733389,
+          "max_kl": 0.0022928143639333906,
+          "aggregate_top1_agreement": 1.0,
+          "minimum_prompt_top1_agreement": 1.0,
+          "passed": true
+        },
+        {
+          "workload": "4K/16 complete suite",
+          "hardware": "AMD Radeon RX 7900 XTX",
+          "prompt_count": 11,
+          "positions": 187,
+          "mean_kl": 0.0001463653051917355,
+          "max_kl": 0.01430839581077192,
+          "aggregate_top1_agreement": 0.9946524064171123,
+          "minimum_prompt_top1_agreement": 0.9411764705882353,
+          "passed": true
+        },
+        {
+          "workload": "32K/16 bounded mixed_v1",
+          "hardware": "AMD Radeon RX 7900 XTX",
+          "prompt_count": 1,
+          "positions": 17,
+          "mean_kl": 0.0031769997872904614,
+          "max_kl": 0.03684867721871794,
+          "top1_agreement": 1.0,
+          "passed": true
+        }
+      ]
+    },
+    "tail4_hadamard_group32": {
+      "storage_layout": "tail4_hadamard_group32",
+      "scale_dtype": "fp16",
+      "scale_granularity": "hadamard_group32",
+      "bf16_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "int8_full_attention_indices": [12, 13, 14, 15],
+      "rows": [
+        {
+          "workload": "512/8 complete suite",
+          "hardware": "AMD Radeon Pro W7900",
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.000018985279000256226,
+          "max_kl": 0.0003871391905054375,
+          "aggregate_top1_agreement": 1.0,
+          "minimum_prompt_top1_agreement": 1.0,
+          "passed": true
+        },
+        {
+          "workload": "4K/16 complete suite",
+          "hardware": "AMD Radeon Pro W7900",
+          "prompt_count": 11,
+          "positions": 187,
+          "mean_kl": 0.000024355417217663405,
+          "max_kl": 0.0010840553727691816,
+          "aggregate_top1_agreement": 1.0,
+          "minimum_prompt_top1_agreement": 1.0,
+          "passed": true
+        },
+        {
+          "workload": "32K/16 bounded mixed_v1",
+          "hardware": "AMD Radeon Pro W7900",
+          "prompt_count": 1,
+          "positions": 17,
+          "mean_kl": 0.000021416445229881944,
+          "max_kl": 0.0003611566978983481,
+          "top1_agreement": 1.0,
+          "passed": true
+        }
+      ]
+    }
+  },
+  "memory_at_33024_positions": {
+    "bf16": {
+      "retained_kv_bytes": 2164260864,
+      "retained_kv_gib": 2.015625
+    },
+    "pure_fp32_scale_int8": {
+      "retained_payload_bytes": 1082130432,
+      "scale_bytes": 16908288,
+      "retained_total_bytes": 1099038720,
+      "retained_total_gib": 1.0235595703125,
+      "live_saving_vs_bf16_bytes": 1065222144,
+      "live_saving_vs_bf16_gib": 0.9920654296875,
+      "chunk_outer_prefill_oracle_bytes": 2164260864,
+      "chunk_outer_prefill_oracle_gib": 2.015625,
+      "net_peak_increase_vs_bf16_bytes": 1099038720,
+      "net_peak_increase_vs_bf16_gib": 1.0235595703125
+    },
+    "tail4_hadamard_group32": {
+      "retained_payload_bytes": 1893728256,
+      "scale_bytes": 16908288,
+      "retained_total_bytes": 1910636544,
+      "retained_total_gib": 1.7794189453125,
+      "live_saving_vs_bf16_bytes": 253624320,
+      "live_saving_vs_bf16_gib": 0.2362060546875,
+      "chunk_outer_prefill_oracle_bytes": 541065216,
+      "chunk_outer_prefill_oracle_gib": 0.50390625,
+      "net_peak_increase_vs_bf16_bytes": 287440896,
+      "net_peak_increase_vs_bf16_gib": 0.2677001953125
+    },
+    "interpretation": "Both layouts reduce retained decode-time ownership, but current chunk-outer prefill holds one full-length BF16 K/V oracle pair per INT8 layer until prefill exits. The oracle bytes exceed the retained savings, so neither layout increases worst-case request headroom."
+  },
+  "runtime_screen": {
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "workload": "4K prompt / 128 decode / 32786 capacity / one discarded warmup / three measured persistent-session runs / GPU_MAX_HW_QUEUES=1",
+    "rows": [
+      {
+        "route": "BF16 KV graph",
+        "prefill_tok_s_samples": [982.9396296338289, 981.3653596616978, 981.8055528683526],
+        "prefill_tok_s_median": 981.8055528683526,
+        "decode_tok_s_samples": [31.777687619822885, 31.741059332746225, 31.73647874928633],
+        "decode_tok_s_median": 31.741059332746225,
+        "tracked_peak_gib": 17.919904716312885,
+        "tracked_current_gib": 17.919904716312885,
+        "graph_replay": true
+      },
+      {
+        "route": "tail4 Hadamard KV graph",
+        "prefill_tok_s_samples": [978.8086255762894, 978.4472542477538, 977.9885942588164],
+        "prefill_tok_s_median": 978.4472542477538,
+        "decode_tok_s_samples": [32.57041160356698, 32.55943180141764, 32.52904385558946],
+        "decode_tok_s_median": 32.55943180141764,
+        "tracked_peak_gib": 18.187604911625385,
+        "tracked_current_gib": 17.683698661625385,
+        "graph_replay": true,
+        "prefill_change_vs_bf16_percent": -0.3420533333497122,
+        "decode_change_vs_bf16_percent": 2.57827711448535
+      },
+      {
+        "route": "pure FP32-scale INT8 KV eager",
+        "prefill_tok_s_samples": [980.2986979766367, 978.5732092946494, 978.3345654067449],
+        "prefill_tok_s_median": 978.5732092946494,
+        "decode_tok_s_samples": [34.00760931496079, 34.23577985707755, 34.10760611399879],
+        "decode_tok_s_median": 34.10760611399879,
+        "tracked_peak_gib": 18.943464286625385,
+        "tracked_current_gib": 16.927839286625385,
+        "graph_replay": false,
+        "prefill_change_vs_bf16_percent": -0.32922441355723864,
+        "decode_change_vs_bf16_percent": 7.455790168953413
+      }
+    ],
+    "all_final_logits_finite": true,
+    "all_repeated_control_final_ids_equal": true,
+    "interpretation": "Pure INT8 eager decode is already 7.46% faster than the supported BF16 graph route, and tail4 graph decode is 2.58% faster. Both prefill sample bands are entirely below BF16 by about 0.33-0.34%, and tracked peak rises by the exact oracle-minus-retained deltas. The phase-sampled HIP value is not a continuous high-water measurement and misses the transient; tracked allocator peak controls this decision."
+  },
+  "existing_32k_server_projection": {
+    "source_artifact": "benchmarks/results/2026-08-15-qwen38-27b-xtx-geometry-32k-validation.json",
+    "bf16_measured_whole_device_peak_gib": 21.86943817138672,
+    "bf16_measured_headroom_gib": 2.1149368286132812,
+    "pure_projected_peak_gib": 22.89299774169922,
+    "pure_projected_peak_headroom_gib": 1.0913772583007812,
+    "tail4_projected_peak_gib": 22.13713836669922,
+    "tail4_projected_peak_headroom_gib": 1.8472366333007812,
+    "projection_method": "Add the byte-exact measured tracked peak delta at the same 33024-position allocation to the prior measured BF16 whole-device peak. These are explicit projections, not fresh whole-device candidate-server measurements."
+  },
+  "no_oracle_direct_prefill_screen": {
+    "candidate": "tail4_hadamard_group32 with retained INT8 cache bound directly to the existing Hadamard-group32 streaming prefill kernel",
+    "scope": "temporary monkeypatch; mixed_ja_en_translate and mixed_v1 narrow 512/8 screen; no tracked source change",
+    "result": "rejected before the first scored candidate row",
+    "failure": "FloatingPointError: GGUF resident lm-head logits contain NaN or Inf",
+    "first_candidate_prompt": "mixed_ja_en_translate",
+    "landed": false,
+    "interpretation": "The existing direct no-oracle arithmetic is not a quality-safe substitute for exact BF16 prefill. Do not expose it for Qwen3.8."
+  },
+  "commands": {
+    "pure_complete_512": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 512 --decode-steps 8 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-fp32-suite-512x8-cap32k.json",
+    "pure_complete_4k": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 4096 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-fp32-suite-4kx16-cap32k.json",
+    "pure_bounded_32k": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 /tmp/qwen38_mixed_v1_only.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 32768 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-fp32-mixed-v1-32kx16.json",
+    "tail4_complete_512": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 512 --decode-steps 8 --candidate-kv-storage tail4_hadamard_group32 --kv-scale-dtype fp16 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers 0-11 --expected-int8-full-layers 12-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-tail4-hadamard-suite-512x8-cap32k.json",
+    "tail4_complete_4k": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 4096 --decode-steps 16 --candidate-kv-storage tail4_hadamard_group32 --kv-scale-dtype fp16 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers 0-11 --expected-int8-full-layers 12-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-tail4-hadamard-suite-4kx16-cap32k.json",
+    "tail4_bounded_32k": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 /tmp/qwen38_mixed_v1_only.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 32768 --decode-steps 16 --candidate-kv-storage tail4_hadamard_group32 --kv-scale-dtype fp16 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers 0-11 --expected-int8-full-layers 12-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-tail4-hadamard-mixed-v1-32kx16.json",
+    "runtime_screen": "bash /tmp/qwen38_int8_runtime_screen.sh",
+    "direct_prefill_narrow": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 /tmp/qwen38_uniform_hadamard_direct_narrow.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 512 --decode-steps 8 --candidate-kv-storage tail4_hadamard_group32 --kv-scale-dtype fp16 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers 0-11 --expected-int8-full-layers 12-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-tail4-hadamard-direct-prefill-narrow-512x8-cap32k.json"
+  },
+  "source_artifacts": [
+    {"path": "/tmp/qwen38-27b-pure-int8-fp32-suite-512x8-cap32k.json", "sha256": "cca8b03a8a526798cda2ffde19cf417f93c3518777c40df0298217feafc26647"},
+    {"path": "/tmp/qwen38-27b-pure-int8-fp32-suite-4kx16-cap32k.json", "sha256": "b65e44d74dfbc3e68602bd65500f231ab008d7d98bdfcd794f937a28e2c79a2b"},
+    {"path": "/tmp/qwen38-27b-pure-int8-fp32-mixed-v1-32kx16.json", "sha256": "e8c7bfe661aac69a50a16805974173b13311448da05b52e43f5522044fc7e2ba"},
+    {"path": "/tmp/qwen38-27b-tail4-hadamard-suite-512x8-cap32k.json", "sha256": "b491e84c74169679b7c085324040291a60e7fdbcd71afdf788bc98c52b4534bb"},
+    {"path": "/tmp/qwen38-27b-tail4-hadamard-suite-4kx16-cap32k.json", "sha256": "a58a7d9634fa2fb719a7076ea7d58cbec061c75b92401292f5a9269785d665d8"},
+    {"path": "/tmp/qwen38-27b-tail4-hadamard-mixed-v1-32kx16.json", "sha256": "bc4d117afacef372f0e395cb35c6d0947555ba11cea3c751effb302b8d6e1458"},
+    {"path": "/tmp/qwen38-xtx-bf16-kv-cap32k-4kx128-r3.json", "sha256": "1408bbb0e983264c39ce26965d3f0adf4269489d12e35f3773f1ad5bd1784123"},
+    {"path": "/tmp/qwen38-xtx-tail4-hadamard-kv-cap32k-4kx128-r3.json", "sha256": "ac767249551f40165cce035df900b52d4c9beab353362ca3370845b27077403c"},
+    {"path": "/tmp/qwen38-xtx-pure-int8-fp32-kv-cap32k-4kx128-r3.json", "sha256": "2f0195244567da664386c2ac3996b21e203c752022498b9c0a9014cfad2ab619"},
+    {"path": "/tmp/vstack-pi-bg/bg-843-1786780558865.log", "sha256": "adb1b324e22c3af3f15583a2ae63107865957c5282e051e0ae26af15bac7efce"},
+    {"path": "/tmp/qwen38_uniform_hadamard_direct_narrow.py", "sha256": "4b948b39221865c49e44e653046cbd7ceeceb4fe15516ef20005d210e69069e8"},
+    {"path": "/tmp/qwen38_mixed_v1_only.py", "sha256": "c469b5234f7cd2d7d139004b11d40966cba69c373b73a4be798f5005c43f479a"},
+    {"path": "/tmp/qwen38_int8_runtime_screen.sh", "sha256": "4f4caae79715289419f924688b09b448263735b8e82359c052ad3daed5ef4888"},
+    {"path": "benchmarks/results/2026-08-15-qwen38-27b-xtx-geometry-32k-validation.json", "sha256": "f56a1257b39a4b220df4c12f803c8bc1c2113f2745b950e93a900f300eeec18c"}
+  ],
+  "limitations": [
+    "The 32K quality row is a bounded mixed_v1 prompt, not the complete eleven-prompt suite.",
+    "Quality rows intentionally ran pure INT8 on RX 7900 XTX and tail4 on W7900; both are gfx1100, and timings from quality harnesses are not performance evidence.",
+    "Runtime uses repeated token 9707 only for fixed-shape throughput and memory. Quality uses the complete natural/category/heldout suite plus mixed_v1.",
+    "No MTP gate was run because neither candidate passed peak-memory and prefill non-regression admission.",
+    "Projected candidate server peaks are additive projections from byte-exact tracked deltas, not measured candidate server high-water rows."
+  ],
+  "next_if_revisited": "Preserve exact BF16 prefill while replacing the chunk-outer per-INT8-layer full-length oracle lifetime, most plausibly with a bounded layer-outer/shared-oracle owner and an independently memory-gated hidden plane. Then rerun complete 512/8 and 4K/16, bounded/full 32K, actual server whole-device high water, prefill/decode, and full natural MTP. Do not expose the existing direct INT8 prefill path."
+}
