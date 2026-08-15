@@ -692,8 +692,9 @@ full 747/748-record provenance serialization from each packed replay, clean
 p512/d128 PM4 beats HIP graph by **7.104%/6.626%/4.126%/2.466%** at physical
 c1/c2/c4/c8, with 5/5 wins and non-regressive capture/request wall at every
 packed width. The gfx1100 backend package therefore owns a PM4 policy only for
-the measured Qwen3.6-35B-A3B `MOSTLY_Q4_K_M` identity, physical c1/c2/c4/c8,
-one-step graph tapes, and replay windows of at least **160/64/96/80** steps.
+the measured Qwen35-MoE H2048/E256 architecture geometry plus
+`MOSTLY_Q4_K_M`, physical c1/c2/c4/c8, one-step graph tapes, and replay windows
+of at least **160/64/96/80** steps.
 The c1 floor preserves >10% margin above the clean p4096 143-step capture
 break-even; packed-width floors retain their independent margins. Shorter
 windows, unknown model/quants or widths, unrelated graph families, and
@@ -938,6 +939,10 @@ Each model plugin owns:
 - **Optional speculative capability**: MTP layer spec (Qwen3.5 MTP), Medusa heads, EAGLE3 features, and draft-model hookup (sansho's DFlash). The model plugin advertises capabilities; the speculative plugin owns proposal/verification policy.
 
 The model plugin does **not** know about backends or quant. Those are dispatched at layer granularity.
+Backend tuning policies identify validated models by immutable architecture
+geometry plus quant metadata, never by `general.name` or a model-path string;
+renamed exports and finetunes with unchanged execution geometry inherit the
+same policy, while geometry drift fails closed to registered fallbacks.
 
 ### Quant Plugin
 

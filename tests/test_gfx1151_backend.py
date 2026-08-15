@@ -17,6 +17,7 @@ from hipengine.kernels.backends import (
     resolve_backend,
     select_backend,
 )
+from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
@@ -1176,7 +1177,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         "hip_gfx1151",
         "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     ) == {
-        ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {"transport": "hipgraph"}
+        (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            "transport": "hipgraph"
+        }
     }
     assert (
         backend_package_capability(
