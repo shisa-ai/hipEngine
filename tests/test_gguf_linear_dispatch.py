@@ -4456,8 +4456,16 @@ def test_gfx1151_q4_k_pack8_decode_pair_silu_t128_uses_registered_owner() -> Non
     ]
 
 
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+        "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+    ],
+)
 def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
     monkeypatch: pytest.MonkeyPatch,
+    variant: str,
 ) -> None:
     """The qualified dense route packs two Q8_1 planes before its T16 owner."""
 
@@ -4476,7 +4484,7 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
         "hip_gfx1151",
         "linear_pair_silu",
         "gguf_q4_k_t16_v1",
-        "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+        variant,
     )
     original = resolve(
         backend=fused_key.backend,
@@ -4508,9 +4516,7 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
             out_features=17_408,
             backend="hip_gfx1151",
             use_gemv_decode=True,
-            registered_decode_variant=(
-                "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
-            ),
+            registered_decode_variant=variant,
         )
         assert launch_gguf_linear_pair_silu(
             weight_a,
@@ -4524,9 +4530,7 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
             stream=7,
             runtime="runtime-sentinel",
             use_gemv_decode=True,
-            registered_decode_variant=(
-                "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
-            ),
+            registered_decode_variant=variant,
             q8_1_workspace_ptr=900,
         )
     finally:
@@ -4548,6 +4552,101 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
+
+
+def test_gfx1151_q4_t16_split_weight_keeps_native_b1_on_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native B1-B3 keeps the exact non-regressive Q8_1x2 control owner."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    control_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (control_key, candidate_key)
+    }
+    quantize_calls: list[tuple[tuple, dict]] = []
+    control_calls: list[tuple[tuple, dict]] = []
+    candidate_calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1x2",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    register(
+        control_key,
+        lambda *args, **kwargs: control_calls.append((args, kwargs)),
+        replace=True,
+    )
+    register(
+        candidate_key,
+        lambda *args, **kwargs: candidate_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with native_batch_decode_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=1,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_gemv_decode=True,
+                registered_decode_variant=candidate_key.variant,
+                q8_1_workspace_ptr=900,
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert quantize_calls == [
+        (
+            (100, 900, 1, 5_120),
+            {
+                "stream": 7,
+                "library": None,
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+    assert control_calls == [
+        (
+            (900, 14, 14, 400, 1, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert candidate_calls == []
 
 
 def test_gfx1151_q4_k_decode_sidecar_pair_silu_uses_t16_owner() -> None:

@@ -7971,7 +7971,10 @@ class Qwen35GGUFFullStackRunner:
             self.hidden_size,
             enabled=(
                 dense_decode_variant
-                == "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+                in {
+                    "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+                    "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+                }
             ),
             planes=2,
         )

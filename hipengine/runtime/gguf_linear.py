@@ -157,8 +157,17 @@ _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
+_Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT = (
+    "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+)
+_Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT = (
+    "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+)
 _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS = frozenset(
-    {"dense_dual_q8_1x2_dp4a_bf16_bf16_out"}
+    {
+        _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT,
+        _Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT,
+    }
 )
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
@@ -3988,11 +3997,20 @@ def launch_gguf_linear_pair_silu(
         "gguf_q4_k_t16_v1",
         "dense_single_local32_bf16_bf16_out",
     )
+    q4_t16_pair_variant = (
+        registered_decode_variant or "dense_dual_local32_bf16_bf16_out"
+    )
+    if (
+        _native_batch_decode_session_enabled
+        and q4_t16_pair_variant
+        == _Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT
+    ):
+        q4_t16_pair_variant = _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT
     q4_t16_pair_silu = KernelKey(
         resolved_backend,
         "linear_pair_silu",
         "gguf_q4_k_t16_v1",
-        registered_decode_variant or "dense_dual_local32_bf16_bf16_out",
+        q4_t16_pair_variant,
     )
     _ensure_linear_kernel_registered(q4_t16_pair_silu)
     if (

@@ -204,7 +204,7 @@ def test_q8_t16_dual_wmma_prefill_is_model_quant_request_scoped() -> None:
 def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
     dense_27b = _fake_dense_qwen36_runner()
     dense_27b.backend = "hip_gfx1151"
-    expected_27b = "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+    expected_27b = "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
         dense_27b, rows=1, in_features=5_120, out_features=17_408
     ) == expected_27b

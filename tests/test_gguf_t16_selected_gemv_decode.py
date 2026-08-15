@@ -29,6 +29,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
@@ -1134,6 +1136,51 @@ def _run_direct_dual_silu_q8x2_dp4a(
         return out_arr
     finally:
         for buf in (x_buf, sel_buf, ta_buf, tb_buf, xq_buf, out_buf):
+            free(buf)
+
+
+def _run_dense_dual_silu_q8x2_dp4a(
+    fn,
+    x_dev,
+    ta,
+    tb,
+    out_features,
+    out_dtype,
+    t16_library,
+    q4_library,
+) -> np.ndarray:
+    rows, in_features = x_dev.shape
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    xq_buf = malloc(2 * rows * (in_features // 32) * 36)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        gguf_q4_k_quantize_bf16_q8_1x2(
+            x_buf.ptr,
+            xq_buf.ptr,
+            rows,
+            in_features,
+            library=q4_library,
+        )
+        fn(
+            xq_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=t16_library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, ta_buf, tb_buf, xq_buf, out_buf):
             free(buf)
 
 
@@ -2735,6 +2782,44 @@ def test_t16_q4_direct_dual_silu_q8_1x2_dp4a_repairs_quality(
     assert np.mean(np.abs(two_plane - reference)) < np.mean(
         np.abs(one_plane - reference)
     )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_t16_q4_dense_dual_q8_1x2_split_weight_is_bit_exact(
+    t16_selected_library,
+    q4_library,
+) -> None:
+    rng = np.random.default_rng(20260816)
+    in_features, out_features = 1024, 512
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=11, axis=0).copy()
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(1, in_features)).astype(np.float32)
+    )
+
+    control = _run_dense_dual_silu_q8x2_dp4a(
+        gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out,
+        x_bf16,
+        tiles_a,
+        tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    candidate = _run_dense_dual_silu_q8x2_dp4a(
+        gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
+        x_bf16,
+        tiles_a,
+        tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
