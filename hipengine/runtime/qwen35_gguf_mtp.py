@@ -1494,9 +1494,24 @@ class Qwen35GGUFMTPDecodeSession:
         owner = self.target._target_scratch_owner
         if owner is None:
             raise RuntimeError("GGUF target scratch is closed")
+        storage_dtype = DType.parse(owner.kv_storage_dtype)
+        scale_metadata = None
+        if storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+            scale_metadata = next(
+                (
+                    metadata
+                    for metadata in owner.full_kv_scale_metadata
+                    if metadata is not None
+                ),
+                None,
+            )
+            if scale_metadata is None:
+                raise RuntimeError(
+                    "GGUF INT8 MTP target has no full-attention scale metadata"
+                )
         policy = FixedPagedKVPolicy(
             block_size=int(owner.block_size),
-            storage_dtype=owner.kv_storage_dtype,
+            storage_dtype=storage_dtype,
         )
         policy.register(
             int(request_id),
@@ -1504,6 +1519,7 @@ class Qwen35GGUFMTPDecodeSession:
             live_counts=owner.context_tensor,
             max_live_count=int(self.target.position),
             capacity_tokens=int(owner.max_positions),
+            scale_metadata=scale_metadata,
         )
         return policy
 
