@@ -2,11 +2,12 @@
 """Find safe Qwen3.8-27B INT8-KV server context at c=1/2/4/8.
 
 The harness starts a real OpenAI-compatible hipEngine server on an otherwise
-idle RX 7900 XTX, presizes the dynamic KV pool for every simultaneous request,
-and drives deterministic multi-turn ShareGPT conversations.  A natural corpus
-fills each request to the same near-capacity token shape; as conversation
-history grows, only the filler prefix is shortened.  This keeps every turn at
-the memory frontier without using repeated-token prompts.
+idle RX 7900 XTX, requests enough dynamic KV for the offered client width, and
+drives deterministic multi-turn ShareGPT conversations.  It records the lower
+registry-selected physical residency when the public width queues in waves.  A
+natural corpus fills each request to the same near-capacity token shape; as
+conversation history grows, only the filler prefix is shortened.  This keeps
+every turn at the memory frontier without using repeated-token prompts.
 """
 
 from __future__ import annotations
@@ -127,6 +128,22 @@ def selected_lane_indices(lane_count: int, *, concurrency: int, cycle: int) -> t
     return tuple((start + offset) % int(lane_count) for offset in range(int(concurrency)))
 
 
+def effective_resident_capacity(
+    *,
+    current_pool_pages: int,
+    pages_per_request: int,
+    offered_concurrency: int,
+) -> int:
+    if min(current_pool_pages, pages_per_request, offered_concurrency) <= 0:
+        raise ValueError("pool pages, per-request pages, and concurrency must be positive")
+    if int(current_pool_pages) % int(pages_per_request):
+        raise ValueError("initial pool pages do not cover an integral resident width")
+    capacity = int(current_pool_pages) // int(pages_per_request)
+    if capacity <= 0 or capacity > int(offered_concurrency):
+        raise ValueError("effective resident capacity is outside the offered width")
+    return capacity
+
+
 def extract_chat_response(
     response: Mapping[str, Any],
     *,
@@ -146,6 +163,7 @@ def extract_chat_response(
         raise ValueError("chat response is missing choices, usage, or hipengine accounting")
     accounting = root.get("token_accounting")
     rows = accounting.get("choice_generated_token_ids") if isinstance(accounting, Mapping) else None
+    generation_shape = root.get("generation_shape")
     if (
         not isinstance(rows, list)
         or len(rows) != 1
@@ -153,6 +171,8 @@ def extract_chat_response(
         or not all(isinstance(token, int) and not isinstance(token, bool) for token in rows[0])
     ):
         raise ValueError("chat response is missing authoritative generated token IDs")
+    if not isinstance(generation_shape, Mapping):
+        raise ValueError("chat response is missing authoritative generation shape")
     generated = [int(token) for token in rows[0]]
     prompt_tokens = int(usage.get("prompt_tokens", -1))
     completion_tokens = int(usage.get("completion_tokens", -1))
@@ -180,6 +200,50 @@ def extract_chat_response(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "exact_accounting": True,
+        "generation_shape": dict(generation_shape),
+    }
+
+
+def summarize_generation_shapes(requests: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    queue_group_ids: list[str] = []
+    queue_group_request_counts: list[int] = []
+    backend_input_rows: list[int] = []
+    backend_actual_group_rows: list[int] = []
+    for request in requests:
+        shape = request.get("generation_shape")
+        if not isinstance(shape, Mapping):
+            continue
+        queue = shape.get("queue_group")
+        if isinstance(queue, Mapping):
+            group_id = str(queue.get("id") or "")
+            if group_id:
+                queue_group_ids.append(group_id)
+            count = queue.get("request_count")
+            if isinstance(count, int) and not isinstance(count, bool):
+                queue_group_request_counts.append(int(count))
+        groups = shape.get("backend_groups")
+        if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray)):
+            for group in groups:
+                if not isinstance(group, Mapping):
+                    continue
+                input_rows = group.get("input_rows")
+                if isinstance(input_rows, int) and not isinstance(input_rows, bool):
+                    backend_input_rows.append(int(input_rows))
+                actual = group.get("actual_group_rows")
+                if isinstance(actual, Sequence) and not isinstance(actual, (str, bytes, bytearray)):
+                    backend_actual_group_rows.extend(
+                        int(value)
+                        for value in actual
+                        if isinstance(value, int) and not isinstance(value, bool)
+                    )
+    return {
+        "request_count": len(requests),
+        "shape_count": sum(isinstance(row.get("generation_shape"), Mapping) for row in requests),
+        "queue_group_count": len(set(queue_group_ids)),
+        "queue_group_request_counts": sorted(set(queue_group_request_counts)),
+        "backend_input_rows": sorted(set(backend_input_rows)),
+        "backend_actual_group_rows": sorted(set(backend_actual_group_rows)),
+        "maximum_backend_group_rows": max(backend_actual_group_rows, default=None),
     }
 
 
@@ -602,8 +666,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "target_prompt_tokens": target_prompt_tokens,
             "max_tokens": int(args.max_tokens),
             "reserved_context_slots": 1,
-            "concurrency": int(args.concurrency),
-            "aggregate_live_context_tokens": int(args.context_tokens) * int(args.concurrency),
+            "offered_client_concurrency": int(args.concurrency),
+            "aggregate_offered_context_tokens": int(args.context_tokens) * int(args.concurrency),
             "cycles": int(args.cycles),
             "turns_per_lane_per_cycle": int(args.turns),
             "prefix_cache": "off",
@@ -612,7 +676,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "kv_storage": "int8_per_token_head",
             "kv_scale_dtype": "fp32",
             "kv_scale_granularity": "per_token_head",
-            "pool_initial_low_high_pages": pages,
+            "requested_pool_initial_low_high_pages": pages,
             "pool_chunk_pages": per_request_pages,
             "whole_card_poll_ms": float(args.memory_poll_ms),
             "minimum_headroom_mib": int(args.minimum_headroom_mib),
@@ -669,6 +733,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             process,
             log_path,
             timeout_s=float(args.startup_timeout_s),
+        )
+        ready_pool = ready_before.get("kv_capacity", {}).get("pool", {})
+        current_pool_pages = int(ready_pool.get("current_pages", 0))
+        resident_capacity = effective_resident_capacity(
+            current_pool_pages=current_pool_pages,
+            pages_per_request=per_request_pages,
+            offered_concurrency=int(args.concurrency),
+        )
+        artifact["protocol"].update(
+            {
+                "effective_pool_initial_pages": current_pool_pages,
+                "effective_physical_resident_capacity": resident_capacity,
+                "maximum_simultaneously_resident_context_tokens": (
+                    resident_capacity * int(args.context_tokens)
+                ),
+                "offered_width_requires_queue_waves": resident_capacity < int(args.concurrency),
+            }
         )
         artifact["server"].update(
             {
@@ -785,6 +866,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "error": error,
             "request_count": len(requests),
+            "execution_shape": summarize_generation_shapes(requests),
             "ready_after": ready_after,
             "final_ownership": ownership,
             "memory": memory,
@@ -800,8 +882,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             {
                 "passed": artifact["passed"],
                 "context_tokens_per_request": args.context_tokens,
-                "concurrency": args.concurrency,
-                "aggregate_live_context_tokens": args.context_tokens * args.concurrency,
+                "offered_client_concurrency": args.concurrency,
+                "aggregate_offered_context_tokens": args.context_tokens * args.concurrency,
+                "effective_physical_resident_capacity": artifact["protocol"].get(
+                    "effective_physical_resident_capacity"
+                ),
                 "requests": len(requests),
                 "peak_vram_gib": memory["peak_gib"],
                 "headroom_gib": gate["headroom_gib"],
