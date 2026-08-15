@@ -22309,23 +22309,35 @@ def _gguf_gdn_prefill_session_mode(
                 int(cfg.ssm_inner_size) // int(cfg.ssm_time_step_rank),
             )
             mode = quant_shape_modes.get(quant_shape, mode)
-        try:
-            if plan is None:
-                plan = _resolve_gguf_gdn_prefill_plan(backend)
-            if not _gguf_gdn_prefill_plan_has_mode(plan, mode):
-                if plan.has_fused:
-                    return "fused"
-                if plan.has_chain:
-                    return "chain"
-                return "auto"
-        except ValueError:
-            # Unvalidated/exotic backends keep the pre-fallback selection;
-            # availability fallback requires a registered kernel plan.
-            pass
+    elif requested_mode == "exact":
+        mode = _gguf_gdn_prefill_backend_exact_mode(backend)
+    else:
+        mode = requested_mode
+
+    try:
+        if plan is None:
+            plan = _resolve_gguf_gdn_prefill_plan(backend)
+    except ValueError:
+        # Unvalidated/exotic backends keep the pre-fallback selection;
+        # availability checks require a registered kernel plan.
         return mode
+    if _gguf_gdn_prefill_plan_has_mode(plan, mode):
+        return mode
+    if requested_mode == "auto":
+        if plan.has_fused:
+            return "fused"
+        if plan.has_chain:
+            return "chain"
+        return "auto"
     if requested_mode == "exact":
-        return _gguf_gdn_prefill_backend_exact_mode(backend)
-    return requested_mode
+        raise RuntimeError(
+            "backend GGUF GDN prefill exact mode is unavailable; "
+            f"required route {mode!r} is not fully registered for {backend!r}"
+        )
+    raise RuntimeError(
+        f"explicit GGUF GDN prefill mode {mode!r} is unavailable; "
+        f"the complete route is not registered for {backend!r}"
+    )
 
 
 def _gguf_gdn_prefill_scratch_diagnostic() -> bool:
