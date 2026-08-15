@@ -480,7 +480,10 @@ rejected on performance. Same-Q4 QKV+gate Q8_1x2 reuse is also rejected: only
 24/48 pairs are homogeneous Q4/Q4, and its 1.01892x actual-pair win projects to
 just 0.121% of selected graph wall. Re-rank the remaining profile for a
 materially larger operation-complete boundary; heterogeneous Q6-QKV/Q4-gate
-requires an independent design rather than the same-Q4 dual body.
+requires an independent design rather than the same-Q4 dual body. Q8_1x2
+thread geometry is closed too: t32 regresses 4.85%, while t128 improves the
+family 1.01774x but projects only 0.676% complete wall and changes the reduction
+boundary, below the 1% admission threshold for another full natural gate.
 
 ### P6 — Exact B3 MTP
 

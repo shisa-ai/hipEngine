@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_thread_geometry",
+  "status": "rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "85993bb08a5f1d4a278cc85dec539c2d50d5e416",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "trace": "/tmp/qwen38-task22-post-q8x2-rerank/rocprof-selected/gfx1151/1117555_kernel_trace.csv",
+    "trace_sha256": "f39c0143cc477b173932a38bc55863d101a6a734a662886b20bdf805154b7f60",
+    "graph_kernel_wall_ms": 10449.636114,
+    "q8x2_quantizer_plus_consumer_ms": 4051.105035,
+    "family_share_percent": 38.76790532038233,
+    "required_family_saving_percent": 2.5794532661382847
+  },
+  "protocol": {
+    "actual_layers": [0, 8, 63],
+    "shape": [17408, 5120],
+    "source_pool_mib_per_pair": 95.625,
+    "resident_t16_mib_per_pair": 98.28125,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP events",
+    "control": "retained residual-Q8_1x2 Q4T16 gate/up+SiLU at 64 threads",
+    "candidates": [32, 128],
+    "cache_contract": "each actual source pair exceeds 64 MiB and 2x the 32-MiB MALL"
+  },
+  "threads32": {
+    "status": "rejected_regression",
+    "layers": [
+      {
+        "layer": 0,
+        "control_ms": 0.4820609986782074,
+        "candidate_ms": 0.5074332356452942,
+        "speedup": 0.949998866481772,
+        "candidate_wins": "0/15"
+      },
+      {
+        "layer": 8,
+        "control_ms": 0.48168298602104187,
+        "candidate_ms": 0.5050870180130005,
+        "speedup": 0.9536633665936821,
+        "candidate_wins": "0/15"
+      },
+      {
+        "layer": 63,
+        "control_ms": 0.48420825600624084,
+        "candidate_ms": 0.5091952681541443,
+        "speedup": 0.9509284282265966,
+        "candidate_wins": "0/15"
+      }
+    ],
+    "family": {
+      "control_ms": 1.4479522407054901,
+      "candidate_ms": 1.521715521812439,
+      "speedup": 0.951526234667638,
+      "candidate_over_control": 1.0509431727326926,
+      "projected_complete_graph_percent": -1.974960097220908
+    },
+    "quality": {
+      "finite": true,
+      "max_abs": 0.00006103515625,
+      "max_kl": 2.4892996620953165e-13,
+      "top1_agreement": 1.0,
+      "bf16_mismatches": 29
+    }
+  },
+  "threads128": {
+    "status": "rejected_below_advance_gate",
+    "layers": [
+      {
+        "layer": 0,
+        "control_ms": 0.4807177484035492,
+        "candidate_ms": 0.47216200828552246,
+        "speedup": 1.0181203484564412,
+        "candidate_wins": "15/15"
+      },
+      {
+        "layer": 8,
+        "control_ms": 0.481774240732193,
+        "candidate_ms": 0.4735490083694458,
+        "speedup": 1.017369337106351,
+        "candidate_wins": "13/15"
+      },
+      {
+        "layer": 63,
+        "control_ms": 0.48147323727607727,
+        "candidate_ms": 0.47308748960494995,
+        "speedup": 1.0177255747729237,
+        "candidate_wins": "15/15"
+      }
+    ],
+    "family": {
+      "control_ms": 1.4439652264118195,
+      "candidate_ms": 1.4187985062599182,
+      "speedup": 1.0177380509218628,
+      "candidate_over_control": 0.9825711037277267,
+      "projected_saved_ms": 70.60628944309904,
+      "projected_complete_graph_percent": 0.6756818005222553,
+      "advance_threshold_percent": 1.0
+    },
+    "quality": {
+      "finite": true,
+      "max_abs": 0.00006103515625,
+      "max_kl": 1.110168820716251e-13,
+      "top1_agreement": 1.0,
+      "bf16_mismatches": 11,
+      "bf16_bit_exact_to_t64": false
+    }
+  },
+  "memory": {
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "teardown_exact": true,
+    "resident_or_workspace_change": 0
+  },
+  "evidence": {
+    "threads32": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-threads/t32.json",
+      "sha256": "a1d50dd045fd2e00b0339367f68bd317b1b50f30c734148db35dd82d4715581a",
+      "bytes": 7910
+    },
+    "threads128": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-threads/t128.json",
+      "sha256": "b19a3bce751bff153a3f9bc0c2d56561f665a580bbcb75ddcb534747790e3969",
+      "bytes": 7959
+    }
+  },
+  "decision": "Keep the retained 64-thread launch. Threads32 regresses every pair and projects -1.975% complete graph wall. Threads128 wins 43/45 pairs and projects +0.676%, but remains below the campaign's 1% advancement gate and changes 11 BF16 outputs through a different reduction order, so it cannot be promoted without another expensive full natural trajectory gate. No source or policy change is retained."
+}
