@@ -107,6 +107,7 @@ int main(int argc, char ** argv) {
         llama_memory_clear(llama_get_memory(context), true);
         const auto prompt_start = clock_type::now();
         decode_or_die(context, prompt.data(), prompt_tokens);
+        llama_synchronize(context);
         const double prompt_ms = ms_since(prompt_start);
         bool finite = true;
         if (collect) {
@@ -119,6 +120,7 @@ int main(int argc, char ** argv) {
                 top1_ids->push_back(top1(context, vocab_size, finite));
             }
         }
+        llama_synchronize(context);
         const double decode_ms = ms_since(decode_start);
         if (!finite) {
             std::cerr << "non-finite logits\n";
