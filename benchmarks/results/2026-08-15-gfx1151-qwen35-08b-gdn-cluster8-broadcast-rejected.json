@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "rejected",
+  "task": "D08-X5 GDN cluster8 wave-broadcast recurrence screen",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "base_commit": "d5b445b1d8538ac0f24ecde8082bc01a99dbc94c",
+    "measurement_tree_clean": false,
+    "transient_diff_removed": true,
+    "transient_patch_path": "/tmp/d08-x5-gdn-broadcast-rejected.patch",
+    "transient_patch_sha256": "53bf412971a7a7e265a72b9266702adf139524ea45ccb0b9be5a9b9d1ffe3316"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15 / package 7.2.0"
+  },
+  "geometry": {
+    "tokens": 512,
+    "num_k_heads": 16,
+    "num_v_heads": 16,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "input": "deterministic synthetic peer-normalized FP32 Q/K, FP32 value/beta/decay and recurrent state at exact production geometry"
+  },
+  "mechanism": {
+    "control": "retained 256-thread cluster8 recurrence",
+    "candidate": "same block and eight-lane arithmetic; wave-shuffle Q/K shared by four columns, beta/decay shared by each wave, and value shared by each eight-lane column",
+    "fallback": "existing registered normalized cluster8 and segmented cluster8",
+    "resident_bytes_added": 0,
+    "scratch_bytes_added": 0
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt uv run python -u /tmp/gdn_cluster8_broadcast_screen.py",
+    "script_sha256": "b728dd794e980d2ea5b20ad4a39711ff8539f671c81b4d68cace3b30305df7f1",
+    "method": "five counter-rotated blocks; 20 recurrent calls per sample; state reset outside each synchronized timing window",
+    "continue_gate": {
+      "exact_or_established_correctness": true,
+      "minimum_recurrent_speedup": 1.15,
+      "expected_symbol_and_scratch0": true
+    },
+    "cleanup_note": "The script raised after printing all synchronized results because DeviceBuffer has no free() method; process teardown released temporary buffers and no measured region was affected."
+  },
+  "measurement": {
+    "control_ms_samples": [0.8203293502447195, 0.7745268987491727, 0.6018072992446832, 0.7263309496920556, 0.828536250628531],
+    "candidate_ms_samples": [1.20942549983738, 1.1942971497774124, 1.1876581993419677, 1.1946683007408865, 1.436424998973962],
+    "control_median_ms": 0.7745268987491727,
+    "candidate_median_ms": 1.1946683007408865,
+    "speedup": 0.648319619988947,
+    "candidate_regression_fraction": 0.5424490778438087,
+    "output_bit_exact": true,
+    "state_bit_exact": true,
+    "output_max_abs": 0.0,
+    "state_max_abs": 0.0
+  },
+  "gates": {
+    "correctness_passed": true,
+    "speedup_passed": false,
+    "rocprof_run": false,
+    "complete_model_run": false,
+    "cumulative_semantic_run": false,
+    "reason_later_gates_not_run": "The candidate delivered 35.17% less throughput, regressed latency 54.24%, and missed the predeclared 1.15x recurrence gate."
+  },
+  "validation": {
+    "red": "Focused test collection failed because the broadcast wrappers did not exist.",
+    "green_transient": "Registered single-sequence and segmented wrappers compiled; focused GPU outputs and states were bit-exact to cluster8; registry test passed.",
+    "final_tree": "All transient kernel, wrapper, registration, and test changes removed."
+  },
+  "decision": "Reject and remove. Wave-shuffle input sharing regresses the exact production-geometry recurrence by 54.24% despite bit-exact outputs and state.",
+  "revisit_trigger": "None for wave-shuffle load sharing in this schedule; require a different GDN algorithm or operation boundary."
+}
