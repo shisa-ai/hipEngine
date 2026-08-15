@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.norm import (
     register_qwen35_rmsnorm_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
@@ -1295,6 +1296,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear_pair",
+            quant="gguf_q8_0_t16_v1",
+            variant="t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out
     )
     assert (
         resolve(

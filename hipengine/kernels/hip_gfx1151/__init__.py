@@ -844,6 +844,14 @@ GGUF_PREFILL_ROUTER_SELECT_THREADS = 128
 # available as the first rollback schedule during its release window.
 GGUF_Q8_T16_PREFILL_FOUR_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
+# D08-X8: the 18 alpha/beta pairs are same-shape Q8T16 N16 projections.
+# One two-wave block shares each activation tile and preserves singleton order.
+GGUF_Q8_T16_DUAL_WMMA_PREFILL = True
+GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES = frozenset({(512, 1_024, 16, 16)})
+GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): frozenset({512}),
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q8_0"): frozenset({512}),
+}
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
@@ -1909,6 +1917,9 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

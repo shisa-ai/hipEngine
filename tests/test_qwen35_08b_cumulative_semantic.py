@@ -34,6 +34,7 @@ def test_role_environment_restores_every_selector(monkeypatch: pytest.MonkeyPatc
             "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
         ] == "0"
         assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_BULK"] == "0"
+        assert os.environ["HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"] == "0"
         assert os.environ["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "exact"
         assert os.environ["HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"] == "0"
 
@@ -52,6 +53,17 @@ def test_x6_rollback_environment_isolates_dense_residual(
         assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"] == "0"
         assert "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL" not in os.environ
     assert "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL" not in os.environ
+
+
+def test_x8_rollback_environment_isolates_q8_t16_dual_wmma(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"
+    monkeypatch.delenv(selector, raising=False)
+    for quant in ("q4", "q8"):
+        with cumulative.role_environment(quant, "current_x8_rollback"):
+            assert os.environ[selector] == "0"
+        assert selector not in os.environ
 
 
 def test_trajectory_digest_covers_tokens_and_logits() -> None:

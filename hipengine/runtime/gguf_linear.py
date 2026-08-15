@@ -857,6 +857,9 @@ _q4_t16_unequal_pair_prefill_enabled: ContextVar[bool] = ContextVar(
 _q4_pack8_dual_wmma_silu_prefill_enabled: ContextVar[bool] = ContextVar(
     "q4_pack8_dual_wmma_silu_prefill_enabled", default=False
 )
+_q8_t16_dual_wmma_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q8_t16_dual_wmma_prefill_enabled", default=False
+)
 
 
 @contextlib.contextmanager
@@ -868,6 +871,17 @@ def q4_pack8_dual_wmma_silu_prefill_session(enabled: bool) -> Iterator[None]:
         yield
     finally:
         _q4_pack8_dual_wmma_silu_prefill_enabled.reset(token)
+
+
+@contextlib.contextmanager
+def q8_t16_dual_wmma_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified narrow Q8T16 pair for one request."""
+
+    token = _q8_t16_dual_wmma_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q8_t16_dual_wmma_prefill_enabled.reset(token)
 
 
 @contextlib.contextmanager
@@ -3301,13 +3315,10 @@ def launch_gguf_linear_pair(
 
     The pair fast paths cover registered exact raw decode pairs (including
     unequal-width F32 output), Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
-    and the P8.2 raw-Q4_K dual WMMA prefill. Populated resident-pack8 pairs
-    decline the legacy dual owner when the exact tile8x8 singleton is registered.
-    There is still no Q8_0 dual WMMA
-    prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
-    the WMMA family, the pair function returns ``False`` so the caller falls
-    back to two singletons that each take the WMMA path via
-    :func:`launch_gguf_linear`.
+    and raw-Q4/Q8T16 dual WMMA prefill. Populated resident-pack8 pairs decline
+    the legacy dual owner when the exact tile8x8 singleton is registered.
+    Q8T16 WMMA pairing is architecture/shape-qualified; every miss falls back
+    to two singleton WMMA projections via :func:`launch_gguf_linear`.
 
     When ``use_gemv_decode`` is enabled (kwarg / session / env opt-in) and
     ``rows == 1`` with a registered Q8_0 dual gate+up GEMV decode kernel,
@@ -3339,6 +3350,8 @@ def launch_gguf_linear_pair(
         resolved_backend,
         use_wmma,
         use_gemv,
+        os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1"),
+        _q8_t16_dual_wmma_prefill_enabled.get(),
         _q4_t16_unequal_pair_prefill_enabled.get(),
         (
             None
@@ -3367,6 +3380,36 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q8_t16_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
 
     if pair_kind == "q4_t16_unequal_dual_wmma":
         pair_key = KernelKey(
@@ -4214,6 +4257,38 @@ def _resolve_gguf_linear_pair_kind(
             # ABI. Decline unless an explicit ordered pair-only policy matched.
             return "none"
     if use_wmma and rows > 1:
+        q8_t16_dual_wmma = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        q8_t16_shapes = backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
+            (),
+        )
+        if (
+            os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1")
+            != "0"
+            and _q8_t16_dual_wmma_prefill_enabled.get()
+            and bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
+                    False,
+                )
+            )
+            and (rows, in_features, out_features, out_features_b)
+            in q8_t16_shapes
+            and activation_dtype == GGUF_ACTIVATION_BF16
+            and output_dtype == GGUF_OUTPUT_BF16
+            and dispatch_a.abi == dispatch_b.abi == "t16"
+            and dispatch_a.key.quant == dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+            and is_registered(q8_t16_dual_wmma)
+        ):
+            return "q8_t16_dual_wmma"
+
         q4_t16_unequal_dual = KernelKey(
             backend,
             "linear_pair",
@@ -5571,6 +5646,7 @@ __all__ = [
     "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",
+    "q8_t16_dual_wmma_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
     "raw_k_prefill_variant",
