@@ -537,6 +537,16 @@ keeps the prior Q8_1x2 owner; the final policy changes serial true AR only.
 Evidence:
 [`Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
+Fresh graph/API census is closed as a P5 route. A compiler-clean selected-region
+trace assigns 96.01% of measured wall to kernels, but widening the existing
+exact device-feedback graph from one step to 2/4/8 steps reduces launches
+**128 -> 64/32/16** while changing complete p512 AR only
+**-0.018%/+0.032%/-0.005%**. IDs, peaks, graph ownership, and teardown remain
+exact; the apparent trace residual is not removable launch/synchronize wall.
+Keep one-step replay and require a new runtime/driver or host-wall premise before
+reopening submission width. Evidence:
+[`multistep graph rejection`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-multistep-graph-replay-rejected.json).
+
 ### P6 — Exact B3 MTP
 
 B3 remains the production budget. Serial-exact B4 is a correctness route only:
