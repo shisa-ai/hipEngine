@@ -1,0 +1,328 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen36_qwen38_dense_b3_b4_diagnostic",
+  "status": "complete_exact_b4_rejected_for_performance",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "decision": "retain_b3_default_keep_b4_exact_diagnostic",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host": "AMD Ryzen AI MAX+ 395",
+    "memory": "128 GiB unified GTT aperture"
+  },
+  "software": {
+    "hipengine_commit": "62e73e8c925af0d7c907bb9072bdd3e614033f76",
+    "clean_detached_worktree": true,
+    "rocm": "HIP 7.15.0"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_count": 4,
+    "visible_outputs": 25,
+    "timed_transitions": 24,
+    "sampling": "greedy seed 12345",
+    "kv_dtype": "bf16",
+    "target_verify_requested": "native",
+    "effective_b4_target_verify": "serial_exact for rows=5; native graphs for tail B1-B3 cycles",
+    "warmups": 1,
+    "runs": 1
+  },
+  "rejected_precursor": {
+    "commit": "880c594f706b38dac1ff739869a3a6a162575889",
+    "result": "native eager rows=5 diverged from AR on Qwen3.6 general_ja_plan and general_ja_explain; run stopped before Qwen3.8",
+    "publishable": false
+  },
+  "models": {
+    "qwen36": {
+      "path": "/home/lhl/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "ar": {
+        "tok_s": 7.107887679624877,
+        "decode_seconds": 33.76530564600398
+      },
+      "b3": {
+        "full": {
+          "tok_s": 22.20746230587858,
+          "speedup_vs_ar": 3.124340634917094,
+          "acceptance": 0.7567567567567568,
+          "accepted": 168,
+          "proposed": 222,
+          "decode_seconds": 10.807178087001375
+        },
+        "heldout": {
+          "tok_s": 20.111006420477167,
+          "speedup_vs_ar": 2.8288612551195707,
+          "acceptance": 0.6464646464646465,
+          "accepted": 64,
+          "proposed": 99,
+          "decode_seconds": 4.773505511999247
+        },
+        "categories": {
+          "code": {
+            "tok_s": 24.22858841521919,
+            "speedup_vs_ar": 3.4085112052485895,
+            "acceptance": 0.8641975308641975,
+            "accepted": 70,
+            "proposed": 81,
+            "decode_seconds": 3.9622613730025478
+          },
+          "general_en": {
+            "tok_s": 23.119241871077083,
+            "speedup_vs_ar": 3.2538390975019844,
+            "acceptance": 0.75,
+            "accepted": 33,
+            "proposed": 44,
+            "decode_seconds": 2.0761926479972317
+          },
+          "general_ja": {
+            "tok_s": 20.576958593798288,
+            "speedup_vs_ar": 2.893186318437234,
+            "acceptance": 0.6875,
+            "accepted": 33,
+            "proposed": 48,
+            "decode_seconds": 2.3327062539974577
+          },
+          "mixed_ja_en": {
+            "tok_s": 19.704289419998073,
+            "speedup_vs_ar": 2.773108921336441,
+            "acceptance": 0.6530612244897959,
+            "accepted": 32,
+            "proposed": 49,
+            "decode_seconds": 2.4360178120041382
+          }
+        }
+      },
+      "b4": {
+        "full": {
+          "tok_s": 5.09481726548412,
+          "speedup_vs_ar": 0.7167835924150396,
+          "acceptance": 0.6819923371647509,
+          "accepted": 178,
+          "proposed": 261,
+          "decode_seconds": 47.10669441000937
+        },
+        "heldout": {
+          "tok_s": 4.365116365269238,
+          "speedup_vs_ar": 0.6140074893131844,
+          "acceptance": 0.5365853658536586,
+          "accepted": 66,
+          "proposed": 123,
+          "decode_seconds": 21.99254085499706
+        },
+        "categories": {
+          "code": {
+            "tok_s": 6.033199463991281,
+            "speedup_vs_ar": 0.8487588143433336,
+            "acceptance": 0.8735632183908046,
+            "accepted": 76,
+            "proposed": 87,
+            "decode_seconds": 15.911955269002647
+          },
+          "general_en": {
+            "tok_s": 5.295540167569364,
+            "speedup_vs_ar": 0.7453027973718176,
+            "acceptance": 0.72,
+            "accepted": 36,
+            "proposed": 50,
+            "decode_seconds": 9.064231123003992
+          },
+          "general_ja": {
+            "tok_s": 4.203438500282785,
+            "speedup_vs_ar": 0.59101692332101,
+            "acceptance": 0.5238095238095238,
+            "accepted": 33,
+            "proposed": 63,
+            "decode_seconds": 11.419222618998901
+          },
+          "mixed_ja_en": {
+            "tok_s": 4.481254883234098,
+            "speedup_vs_ar": 0.6306752621521423,
+            "acceptance": 0.5409836065573771,
+            "accepted": 33,
+            "proposed": 61,
+            "decode_seconds": 10.711285399003827
+          }
+        },
+        "vs_b3_percent": -77.05808437132656,
+        "heldout_vs_b3_percent": -78.29488851028039
+      },
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true,
+        "b4_full_budget_cycles": 62,
+        "b4_full_budget_effective_modes": {
+          "serial_exact": 62
+        },
+        "b4_all_cycle_budgets": {
+          "4": 62,
+          "1": 2,
+          "2": 4,
+          "3": 1
+        },
+        "b4_full_budget_native_graph_submissions": 0
+      },
+      "memory": {
+        "tracked_peak_gib": 33.1917118281126,
+        "tracked_after_close_bytes": 0
+      },
+      "provenance": {
+        "commit": "62e73e8c925af0d7c907bb9072bdd3e614033f76",
+        "dirty": false,
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3,4 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/hipcc-version-gfx1151.txt --output /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/hipengine-qwen36-natural25-native-b3-b4.json --max-new-tokens 25 --require-cached-build"
+      }
+    },
+    "qwen38": {
+      "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "ar": {
+        "tok_s": 7.098862207366567,
+        "decode_seconds": 33.808234754993464
+      },
+      "b3": {
+        "full": {
+          "tok_s": 19.807958099238768,
+          "speedup_vs_ar": 2.79030040598391,
+          "acceptance": 0.6309523809523809,
+          "accepted": 159,
+          "proposed": 252,
+          "decode_seconds": 12.116342269990128
+        },
+        "heldout": {
+          "tok_s": 19.496152696822072,
+          "speedup_vs_ar": 2.7465811230794177,
+          "acceptance": 0.6464646464646465,
+          "accepted": 64,
+          "proposed": 99,
+          "decode_seconds": 4.924048426008085
+        },
+        "categories": {
+          "code": {
+            "tok_s": 24.793851182173476,
+            "speedup_vs_ar": 3.4931897849599474,
+            "acceptance": 0.8875,
+            "accepted": 71,
+            "proposed": 80,
+            "decode_seconds": 3.8719277329946635
+          },
+          "general_en": {
+            "tok_s": 16.605742848456504,
+            "speedup_vs_ar": 2.337570609431441,
+            "acceptance": 0.45901639344262296,
+            "accepted": 28,
+            "proposed": 61,
+            "decode_seconds": 2.8905662600009236
+          },
+          "general_ja": {
+            "tok_s": 16.59149569811409,
+            "speedup_vs_ar": 2.3367046412683004,
+            "acceptance": 0.45901639344262296,
+            "accepted": 28,
+            "proposed": 61,
+            "decode_seconds": 2.893048394995276
+          },
+          "mixed_ja_en": {
+            "tok_s": 19.505852690874903,
+            "speedup_vs_ar": 2.749412519682417,
+            "acceptance": 0.64,
+            "accepted": 32,
+            "proposed": 50,
+            "decode_seconds": 2.4607998819992645
+          }
+        }
+      },
+      "b4": {
+        "full": {
+          "tok_s": 4.586169232599925,
+          "speedup_vs_ar": 0.6460428585077771,
+          "acceptance": 0.5675675675675675,
+          "accepted": 168,
+          "proposed": 296,
+          "decode_seconds": 52.33125683500839
+        },
+        "heldout": {
+          "tok_s": 4.6223390524929595,
+          "speedup_vs_ar": 0.6511863844869962,
+          "acceptance": 0.5726495726495726,
+          "accepted": 67,
+          "proposed": 117,
+          "decode_seconds": 20.768705823997152
+        },
+        "categories": {
+          "code": {
+            "tok_s": 6.085040297132392,
+            "speedup_vs_ar": 0.8573174232123931,
+            "acceptance": 0.8152173913043478,
+            "accepted": 75,
+            "proposed": 92,
+            "decode_seconds": 15.77639511199959
+          },
+          "general_en": {
+            "tok_s": 3.7128727116215523,
+            "speedup_vs_ar": 0.5226566620025238,
+            "acceptance": 0.4305555555555556,
+            "accepted": 31,
+            "proposed": 72,
+            "decode_seconds": 12.927995040001406
+          },
+          "general_ja": {
+            "tok_s": 3.5422551763708134,
+            "speedup_vs_ar": 0.49888233476884114,
+            "acceptance": 0.38666666666666666,
+            "accepted": 29,
+            "proposed": 75,
+            "decode_seconds": 13.550689493007667
+          },
+          "mixed_ja_en": {
+            "tok_s": 4.763711385270042,
+            "speedup_vs_ar": 0.671460403724994,
+            "acceptance": 0.5789473684210527,
+            "accepted": 33,
+            "proposed": 57,
+            "decode_seconds": 10.076177189999726
+          }
+        },
+        "vs_b3_percent": -76.84683494571722,
+        "heldout_vs_b3_percent": -76.29101944176702
+      },
+      "correctness": {
+        "all_exact_greedy": true,
+        "all_gpu_accept_match_cpu": true,
+        "b4_full_budget_cycles": 68,
+        "b4_full_budget_effective_modes": {
+          "serial_exact": 68
+        },
+        "b4_all_cycle_budgets": {
+          "4": 68,
+          "3": 4,
+          "2": 5,
+          "1": 2
+        },
+        "b4_full_budget_native_graph_submissions": 0
+      },
+      "memory": {
+        "tracked_peak_gib": 33.1917118281126,
+        "tracked_after_close_bytes": 0
+      },
+      "provenance": {
+        "commit": "62e73e8c925af0d7c907bb9072bdd3e614033f76",
+        "dirty": false,
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "command": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3,4 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/hipcc-version-gfx1151.txt --output /tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058/hipengine-qwen38-natural25-native-b3-b4.json --max-new-tokens 25 --require-cached-build"
+      }
+    }
+  },
+  "run_script_sha256": "ddd93a3f359b133650bf5882e9043312080880c3d51672bd3ee67176c6d92d6a",
+  "raw_root": "/tmp/hipengine-qwen36-qwen38-b3-b4-serial-20260815-030058"
+}
