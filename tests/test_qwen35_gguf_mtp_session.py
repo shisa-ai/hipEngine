@@ -2,9 +2,40 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
+from hipengine.core.tensor import Tensor
+from hipengine.kvcache import KVScaleMetadata
 from hipengine.runtime import qwen35_gguf_mtp as mtp_module
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
+
+
+def test_mtp_int8_target_policy_registration_keeps_scale_metadata() -> None:
+    device = Device("hip", 0)
+    block_table = Tensor.from_handle(0x1000, (4,), DType.INT32, device)
+    live_counts = Tensor.from_handle(0x2000, (1,), DType.INT64, device)
+    metadata = KVScaleMetadata(
+        k_scale=Tensor.from_handle(0x3000, (4, 256, 2), DType.FP32, device),
+        v_scale=Tensor.from_handle(0x4000, (4, 256, 2), DType.FP32, device),
+        scale_dtype=DType.FP32,
+    )
+    owner = SimpleNamespace(
+        block_size=256,
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        block_table_tensor=block_table,
+        context_tensor=live_counts,
+        max_positions=1024,
+        full_kv_scale_metadata=(None, metadata, None),
+    )
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = SimpleNamespace(_target_scratch_owner=owner, position=9)
+
+    policy = decoder._register_kv_policy(7)
+
+    reservation = policy.reservations[7]
+    assert reservation.storage_dtype is DType.INT8_PER_TOKEN_HEAD
+    assert reservation.scale_metadata is metadata
 
 
 def test_mtp_prompt_admission_bulk_prefills_target_then_catches_up_shifted_draft(
