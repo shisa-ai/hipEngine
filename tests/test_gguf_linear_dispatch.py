@@ -4373,6 +4373,100 @@ def test_gfx1151_q4_k_pack8_decode_pair_silu_t128_uses_registered_owner() -> Non
     ]
 
 
+def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The qualified dense route packs two Q8_1 planes before its T16 owner."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    fused_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    quantize_calls: list[tuple[tuple, dict]] = []
+    fused_calls: list[tuple[tuple, dict]] = []
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1x2",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    register(
+        fused_key,
+        lambda *args, **kwargs: fused_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        assert not launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=400,
+            rows=1,
+            in_features=5_120,
+            out_features=17_408,
+            backend="hip_gfx1151",
+            use_gemv_decode=True,
+            registered_decode_variant=(
+                "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+            ),
+        )
+        assert launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_ptr=400,
+            rows=1,
+            in_features=5_120,
+            out_features=17_408,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+            use_gemv_decode=True,
+            registered_decode_variant=(
+                "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+            ),
+            q8_1_workspace_ptr=900,
+        )
+    finally:
+        register(fused_key, original, replace=True)
+
+    assert quantize_calls == [
+        (
+            (100, 900, 1, 5_120),
+            {
+                "stream": 7,
+                "library": None,
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+    assert fused_calls == [
+        (
+            (900, 14, 14, 400, 1, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
 def test_gfx1151_q4_k_decode_sidecar_pair_silu_uses_t16_owner() -> None:
     """A decode-only T16 sidecar overrides pack8 without changing its layout."""
 

@@ -1,8 +1,9 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership complete on 2026-08-15; the bounded P4
-prefill ladder is closed below G2, and P5 true-AR decode is next.** The working
-performance set is `512/128`, `1024/128`, and `4096/128`. The model is
+prefill ladder is closed below G2, and P5 has retained its first exact-
+trajectory decode win but remains open.** The working performance set is
+`512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
@@ -19,6 +20,13 @@ before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
 planar-Q6 row80, and standard-Q6 48x64 tiling are rejected. AOTriton attention
 is active but nonmaterial, and the remaining primitive add boundary is below
 the >=1% request gate.
+
+P5 now retains primary-plus-residual Q8_1 dp4a only for rows1 dense gate/up.
+Development graph AR improves 0.454%/0.534%/0.271% at 512/1K/4K, natural AR
+improves 0.706-0.785% against two controls to 12.1095 tok/s, and all natural
+AR/B1-B3 tokens and acceptance trajectories remain exact. This is the default
+path with exact local32 rollback, but it does not close the remaining clean
+Vulkan AR gap.
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -461,6 +469,15 @@ Candidate classes:
 A decode candidate must improve both repeated-shape AR and natural true AR or
 have an explicitly bounded context-specific policy that leaves every other
 shape unchanged.
+
+P5's first retain is the rows1 H5120/N17408 dense gate/up Q8_1x2 dp4a+SiLU
+owner. Its actual-weight family improves 1.03427x, clears the 1% projection
+screen, improves all three graph-AR rows and every natural full/train/heldout/
+category scope, and preserves all tested trajectories. Single-plane Q8_1 is
+rejected because it changes heldout `general_ja_explain`; exact dual fusion,
+Q6 residual fusion, local64, K coalescing, static-K, and packed quant loads are
+rejected on performance. Re-rank the post-keep graph before the next bounded
+screen; same-input linear-attention QKV+gate row reuse is the next candidate.
 
 ### P6 — Exact B3 MTP
 

@@ -192,11 +192,17 @@ and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-x
 For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
 plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
 `gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
-absent. The existing local32 c1, exact rows-2-4 rowtile, same-T16 residual and
-unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal attention-pair owners
-cover the complete operation set. The raw token embedding remains raw GGUF and
-peer geometries retain their prior policy. No kernel body or `KVLiveSpans` ABI
-changes are involved. The same gfx1151 model policy also gives the 48 exact
+absent. The rows1 H=5,120/N=17,408 gate/up pair uses a model/quant/shape-
+qualified primary-plus-residual Q8_1 producer and same-resident dual-Q4T16
+dp4a+SiLU consumer. It adds only an 11,520-byte rows1 workspace, preserves all
+tested natural AR/B1-B3 trajectories, and leaves the exact two-local32-plus-
+primitive-SiLU chain as the policy-miss rollback. Exact rows-2-4 rowtile,
+same-T16 residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
+attention-pair owners cover the remaining operation set. The raw token
+embedding remains raw GGUF, peer geometries retain prior policy, and no
+`KVLiveSpans` ABI changes are involved. Evidence:
+[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json).
+The same gfx1151 model policy also gives the 48 exact
 K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
 `gguf_q5_k_t16_v1/tiles` payload each. Existing direct c1, exact rows-2-4
 rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the role; the

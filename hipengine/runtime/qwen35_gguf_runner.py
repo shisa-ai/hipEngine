@@ -7965,6 +7965,16 @@ class Qwen35GGUFFullStackRunner:
             in_features=self.hidden_size,
             out_features=self.ffn_size,
         )
+        dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+            scratch,
+            rows,
+            self.hidden_size,
+            enabled=(
+                dense_decode_variant
+                == "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+            ),
+            planes=2,
+        )
         dense_silu_fused = (
             rows > 1 or dense_decode_variant is not None
         ) and launch_gguf_linear_pair_silu(
@@ -7978,6 +7988,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
             registered_decode_variant=dense_decode_variant,
+            q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
@@ -11159,7 +11170,14 @@ def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     return rows * (in_features // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
 
 
-def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enabled: bool | None = None) -> int | None:
+def _optional_q8_1_workspace_ptr(
+    scratch,
+    rows: int,
+    in_features: int,
+    *,
+    enabled: bool | None = None,
+    planes: int = 1,
+) -> int | None:
     if enabled is None:
         enabled = (
             _gguf_q4k_selected_dual_dp4a_enabled()
@@ -11168,10 +11186,12 @@ def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enable
         )
     if not enabled:
         return None
+    if int(planes) <= 0:
+        raise ValueError("q8_1 workspace planes must be positive")
     workspace = getattr(scratch, "moe_q8_1", None)
     if workspace is None:
         return None
-    required = _q8_1_workspace_bytes(rows, in_features)
+    required = int(planes) * _q8_1_workspace_bytes(rows, in_features)
     if int(getattr(workspace, "nbytes", required)) < required:
         raise ValueError(
             f"GGUF q8_1 workspace is too small: need {required} bytes, "
