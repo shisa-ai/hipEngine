@@ -14,6 +14,7 @@ from importlib import import_module
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.policy import (
     QWEN35_DENSE_H1024_GEOMETRY,
+    QWEN35_DENSE_H5120_GEOMETRY,
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -705,12 +706,20 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # after a 0.0108% guard miss; X2-K2's fresh five-block gate superseded it.
 GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+    # Qwen3.8-27B P3: compact per-K-head Q/K plus wave32/XOR is bit exact to
+    # the peer-wave oracle and 1.42-1.52x faster than direct LDS32 at
+    # 512/1K/4K when recurrence chunks are capped at 1K rows.
+    ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
     # D08-X2-K2 (2026-08-15): the exact-core gate measures the Vulkan-shaped
     # cluster8 recurrence at +16.70% Q8_0 pp512 with neutral core-graph tg128,
     # so the same one-V-head-per-K-head geometry now uses cluster8 for Q8_0 too.
     # HIPENGINE_GGUF_GDN_PREFILL_MODE remains the explicit override.
     ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
 }
+# The 4K unchunked compact recurrence loses 8.26% to direct LDS32. Four
+# state-carrying 1K recurrence launches are peer-bit-exact and win 1.422x;
+# prepare and RMSNorm remain one complete-chain launch each.
+GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS = 1024
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -749,12 +758,14 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = True
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
-# Dense H5120 sole-Q4 ownership is gfx1100-only until gfx1151 receives its
-# own c1/verifier/prefill and complete-model gate.
-GGUF_DENSE_Q4_T16 = False
-# Dense H5120 Q5T16 recurrent-output ownership is W7900-only until gfx1151
-# receives independent rotating-cache, quality, and complete-model gates.
-GGUF_DENSE_Q5_T16_SSM_OUT = False
+# Qwen3.8-27B P1 candidate: dense H5120 sole-Q4 ownership reuses the existing
+# operation-complete T16 family. Architecture-local primitive, actual-weight,
+# full-state, natural-suite, memory, and performance gates decide retention.
+GGUF_DENSE_Q4_T16 = True
+# Qwen3.8-27B P2 retains the 48 K6144/N5120 recurrent outputs as sole
+# Q5T16 after architecture-local actual-weight, GDN-handoff, full-state,
+# natural-suite, memory, and performance gates.
+GGUF_DENSE_Q5_T16_SSM_OUT = True
 # D08-P6 admits the same sole-resident family independently for the exact
 # Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
 GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
@@ -800,11 +811,34 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
-# Dense H5120 planar-qmicro projection/root ownership is W7900-only until
-# gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
-# gates.
-GGUF_DENSE_Q6_T16_QMICRO_PLANAR = False
-GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+# Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local
+# exactness and speed gates retain it; slot exclusions below keep one alternate
+# layout only where gfx1151 measurements reject planar ownership.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# The K5120/N10240 recurrent QKV shape is 8.72% slower under planar c1 on
+# gfx1151 (0/11 paired wins). Keep exactly one standard-T16 resident for those
+# 24 tensors while planar remains the sole owner for down, narrow V, and root.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
+GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+}
+# P4 retains changed-arithmetic source-F16 only for the sole-Q5T16 recurrent
+# output. Q6 and Q4 complete pp512 screens lose wall and/or memory, so their
+# exact T16/WMMA owners remain production. The Q5 octet producer consumes one
+# bounded dead-input cast and temporary tile; sole T16 residency is unchanged.
+GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+}
+GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE = {}
+GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
+    "gguf_q5_k_t16_v1": {
+        (6_144, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+        },
+    },
+}
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -992,31 +1026,20 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k_t16_v1",
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
-        *(
-            (
-                layer,
-                "gguf_q6_k_t16_qmicro_planar_v1",
-                variant,
-            )
-            for layer, variant in (
-                ("linear", "t16_gemv_decode_bf16_bf16_out"),
-                ("linear", "t16_gemv_decode_bf16_f32_out"),
-                ("linear", "t16_gemv_rowtile_bf16_bf16_out"),
-                ("linear", "t16_gemv_rowtile_col8_bf16_bf16_out"),
-                ("linear", "t16_gemv_rowtile_bf16_f32_out"),
-                ("linear", "t16_wmma_prefill_bf16_bf16_out"),
-                (
-                    "linear",
-                    "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
-                ),
-                (
-                    "linear+residual",
-                    "t16_gemv_rowtile_bf16_residual_bf16_out",
-                ),
-                ("linear+argmax", "t16_gemv_decode_bf16_f32_top1_stage1"),
-                ("linear+argmax", "proposal_top1_exact_bf16"),
-            )
+        # P2 admits the exact native planar-qmicro Q6 leaves on gfx1151. The
+        # changed-math source-F16 library route remains independently excluded.
+        (
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+        ),
+        # Qwen3.8-27B actual down weights reject the exact fused rowtile at
+        # rows2/3/4 by 17.35%/11.44%/11.15%; retain planar projection plus
+        # primitive BF16 add as the exact, faster chain on gfx1151.
+        (
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_residual_bf16_out",
         ),
         (
             "linear_q8_1",
@@ -1877,6 +1900,7 @@ __all__ = [
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
+    "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
@@ -1908,7 +1932,13 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
+    "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",

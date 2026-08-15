@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "status": "leaf_rejected",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "title": "Qwen3.8-27B gfx1151 dual-Q4T16 32-column x 128-row screen",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "repo_revision": "b872c667e94221bf17b8929733839703a4ab2162",
+    "rocm_version": "7.15.0",
+    "compiler": "AMD clang 23.0.0git",
+    "development_worktree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "sampled_bytes": 3145728
+    },
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "leaf": {
+    "weights": [
+      "blk.0.ffn_gate.weight",
+      "blk.0.ffn_up.weight"
+    ],
+    "source_pool_bytes": 100270080,
+    "shape": {
+      "k": 5120,
+      "n": 17408
+    },
+    "control": "retained zero-spill 32-column x 256-row dual-Q4T16 projection plus exact SiLU",
+    "candidate": "32-column x 128-row dual-Q4T16 projection plus exact SiLU",
+    "candidate_change": "Reduce ROW_TILES_PER_WAVE from 4 to 2 and the matching launch grid from 256 to 128 rows per workgroup while preserving the same K16 WMMA order and BF16 epilogue.",
+    "protocol": {
+      "warmups": 3,
+      "samples_per_shape": 15,
+      "timing": "counterbalanced HIP events",
+      "admission": ">=1.10x control/candidate speedup and >=12/15 candidate wins at every required row",
+      "environment": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task20-gdn-hipcc-version.txt PYTHONPATH=/home/lhl/hipEngine-main",
+      "command": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-q4-dual-row128-screen.py"
+    },
+    "results": {
+      "512": {
+        "control_median_ms": 6.764956951141357,
+        "candidate_median_ms": 7.6990580558776855,
+        "speedup": 0.878673326274867,
+        "candidate_delta_percent": 13.807938638526451,
+        "candidate_wins": "0/15",
+        "bf16_mismatches": 0,
+        "output_sha256": "09a10f67e680fa33782e5cb4f7e0e899b2c77393b7993757040e649c767d060b"
+      },
+      "1024": {
+        "control_median_ms": 13.460453987121582,
+        "candidate_median_ms": 15.097599029541016,
+        "speedup": 0.8915625564557595,
+        "candidate_delta_percent": 12.162628719549783,
+        "candidate_wins": "0/15",
+        "bf16_mismatches": 0,
+        "output_sha256": "b88ce12f6ac2928ae78d3a8390112bec01e24d7acea6c9d3eecd00aa564142fc"
+      },
+      "4096": {
+        "control_median_ms": 53.68216323852539,
+        "candidate_median_ms": 59.60126876831055,
+        "speedup": 0.9006882629832154,
+        "candidate_delta_percent": 11.026205303025627,
+        "candidate_wins": "0/15",
+        "bf16_mismatches": 0,
+        "output_sha256": "f8cc08444d51d6254f93321827928eceb27ad15e1d1a452a1f8899ac839da336"
+      }
+    }
+  },
+  "validation": {
+    "all_bf16_exact": true,
+    "all_finite": true,
+    "tracked_teardown_bytes": 0,
+    "candidate_wins": "0/45",
+    "source_restored_byte_exact": true
+  },
+  "raw_artifact": {
+    "path": "/tmp/qwen38-task21-q4t16-rowtile/leaf.json",
+    "sha256": "a17079d74c8fac6f2bcbc53590266ea3ce88c2f4272ef5cd7bf2d47322e92329",
+    "bytes": 5588
+  },
+  "decision": "Reject the 32-column x 128-row candidate. It is exact but loses 9.9-12.1% in retained/candidate speedup terms at all required rows and wins no pair. Restore the 32-column x 256-row production kernel byte-for-byte; do not spend a full-model gate."
+}

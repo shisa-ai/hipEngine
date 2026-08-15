@@ -1,0 +1,575 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_p2a_role_qualified_q6",
+  "created_at": "2026-08-15T10:27:00Z",
+  "status": "retained_development_clean_control_bracketed",
+  "publishable": false,
+  "performance_claim": false,
+  "reason_not_publishable": "retained from exact development candidate bracketed by a clean post-candidate Q5 control; no clean candidate performance repeat",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "7.15.0-0000000",
+    "commit": "28178a44e5ec6873cb446c1d3e3da1bc5df80bf3"
+  },
+  "ownership": {
+    "planar_slots": [
+      "ffn_down",
+      "attn_v",
+      "lm_head"
+    ],
+    "standard_slots": [
+      "attn_qkv"
+    ],
+    "planar_bytes": 3416985600,
+    "standard_bytes": 1032192000,
+    "dense_bf16_bytes": 0,
+    "duplicate_bytes": 0,
+    "weight_total_bytes": 17121478656
+  },
+  "actual_operation_gate": {
+    "status": "exact_quality_gated",
+    "kind": "qwen38_q6_role_qualified_actual_operation_gate",
+    "source_pool_mib": 1109.47265625,
+    "operation_verdicts": 43,
+    "cpu_quality": {
+      "max_kl": 1.2086058135820687e-07,
+      "top1_matches": 16,
+      "top1_total": 16,
+      "top1_agreement": 1.0,
+      "max_abs": 0.004004359245300293,
+      "finite": true,
+      "passed": true
+    },
+    "ownership": {
+      "planar_slots": [
+        "ffn_down",
+        "attn_v",
+        "lm_head"
+      ],
+      "standard_slots": [
+        "attn_qkv"
+      ],
+      "planar_resident_bytes": 3416985600,
+      "standard_resident_bytes": 1032192000,
+      "duplicate_q6_payload_bytes": 0,
+      "dense_bf16_candidate_shadow_bytes": 0,
+      "gate_only_alternates": "standard Q6T16 for planar roles and planar Q6 for rejected QKV are freed before teardown"
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-q6-hybrid-col16-actual/gate.json",
+      "sha256": "a6bb65705066e8e53a1224f299cdf6f16092e34bdaf925f84903107af0934c02",
+      "bytes": 18583
+    }
+  },
+  "rejected_all_planar": {
+    "status": "rejected_performance",
+    "shape_gate": {
+      "path": "/tmp/qwen38-task20-q6-shapes/validated-summary.json",
+      "sha256": "6d1d4014362d92741a67bfe76aac0329a6fd5670fc1c448f983e411634f9f910",
+      "bytes": 4097
+    },
+    "natural_gate": {
+      "path": "/tmp/qwen38-task20-q6-natural/validated-summary.json",
+      "sha256": "fb9f835db4617fbb4414d4e13bb9e212a6bfde21b4f7584937554a70b2ef3521",
+      "bytes": 4057
+    },
+    "natural_ratios": {
+      "true_ar": 0.9985321317227152,
+      "1": 0.9829568447383458,
+      "2": 1.004409092608468,
+      "3": 0.9952049634843907
+    },
+    "kernel_trace": {
+      "root": "/tmp/qwen38-task20-q6-decode-diagnostic"
+    },
+    "reason": "attn_qkv c1 planar is 8.72% slower with 0/11 paired wins"
+  },
+  "paired_leaf_screen": {
+    "path": "/tmp/qwen38-q6-planar-micro.json",
+    "sha256": "01fa796f7e53bc31feadc8e71b72ca0aa06534f028bf7f7c5da9b1c17323d9b9",
+    "bytes": 2693
+  },
+  "role_qualified_smoke": {
+    "summary": {
+      "prefill_tok_s": {
+        "count": 1,
+        "median": 317.66939663172565,
+        "min": 317.66939663172565,
+        "max": 317.66939663172565,
+        "mean": 317.66939663172565,
+        "stdev": 0.0
+      },
+      "decode_tok_s": {
+        "count": 1,
+        "median": 11.841168959778686,
+        "min": 11.841168959778686,
+        "max": 11.841168959778686,
+        "mean": 11.841168959778686,
+        "stdev": 0.0
+      },
+      "tracked_peak_allocated_gib": {
+        "count": 1,
+        "median": 16.752851847559214,
+        "min": 16.752851847559214,
+        "max": 16.752851847559214,
+        "mean": 16.752851847559214,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "count": 1,
+        "median": 17.316905975341797,
+        "min": 17.316905975341797,
+        "max": 17.316905975341797,
+        "mean": 17.316905975341797,
+        "stdev": 0.0
+      },
+      "final_token_ids": [
+        9707
+      ],
+      "final_token_ids_stable": true
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-q6-hybrid-smoke/smoke.json",
+      "sha256": "ea05e43444fcf67c34c487197f4434e9e85971bdc57b1a17159f5d2e11a54db4",
+      "bytes": 239054
+    }
+  },
+  "role_qualified_shapes": {
+    "status": "passed",
+    "rows": {
+      "512/128": {
+        "control": {
+          "prefill_tok_s": 275.2996045808184,
+          "ar_tok_s": 11.790436380324836,
+          "tracked_peak_gib": 16.798933390527964,
+          "source": "/tmp/qwen38-task20-q5-shapes/candidate-512.json",
+          "sha256": "76df993aa66b87462200ff9870f619edbfef851a8e329248196b3bf3167a136e"
+        },
+        "candidate": {
+          "prefill_tok_s": 315.94793378472957,
+          "ar_tok_s": 11.839025193251757,
+          "tracked_peak_gib": 16.752851847559214,
+          "source": "/tmp/qwen38-task20-q6-hybrid-shapes/hybrid-512.json",
+          "sha256": "1abe9c9c193ed2c88a3356d101d41f9756adafa23561d9a8c7e62c9365393b72"
+        },
+        "ratios": {
+          "prefill": 1.1476512444171645,
+          "decode": 1.0041210360125434
+        },
+        "final_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "exact": true,
+        "native_fallbacks": 0,
+        "role_qualified_q6": true,
+        "teardown_bytes": 0
+      },
+      "1K/128": {
+        "control": {
+          "prefill_tok_s": 271.4457751983311,
+          "ar_tok_s": 11.64087830761363,
+          "tracked_peak_gib": 19.636907275766134,
+          "source": "/tmp/qwen38-task20-q5-shapes/candidate-1k4k.json",
+          "sha256": "71b21b8e03972283685b4ca8efc1a0a179f7fd762eb1a3e5c27be171c8a4fac5"
+        },
+        "candidate": {
+          "prefill_tok_s": 314.98926476356615,
+          "ar_tok_s": 11.68134936017606,
+          "tracked_peak_gib": 19.590825732797384,
+          "source": "/tmp/qwen38-task20-q6-hybrid-shapes/hybrid-1k4k.json",
+          "sha256": "9d692c93e1e49eef2bbe2b979bb9b8526f8fb1d0061228a62aaa973b10cdfb57"
+        },
+        "ratios": {
+          "prefill": 1.1604132152486815,
+          "decode": 1.003476632217344
+        },
+        "final_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "exact": true,
+        "native_fallbacks": 0,
+        "role_qualified_q6": true,
+        "teardown_bytes": 0
+      },
+      "4K/128": {
+        "control": {
+          "prefill_tok_s": 269.1930298800187,
+          "ar_tok_s": 10.904805342282547,
+          "tracked_peak_gib": 19.636907275766134,
+          "source": "/tmp/qwen38-task20-q5-shapes/candidate-1k4k.json",
+          "sha256": "71b21b8e03972283685b4ca8efc1a0a179f7fd762eb1a3e5c27be171c8a4fac5"
+        },
+        "candidate": {
+          "prefill_tok_s": 309.8801866748937,
+          "ar_tok_s": 10.941846896312175,
+          "tracked_peak_gib": 19.590825732797384,
+          "source": "/tmp/qwen38-task20-q6-hybrid-shapes/hybrid-1k4k.json",
+          "sha256": "9d692c93e1e49eef2bbe2b979bb9b8526f8fb1d0061228a62aaa973b10cdfb57"
+        },
+        "ratios": {
+          "prefill": 1.1511449119355341,
+          "decode": 1.0033968102012791
+        },
+        "final_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "exact": true,
+        "native_fallbacks": 0,
+        "role_qualified_q6": true,
+        "teardown_bytes": 0
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-q6-hybrid-shapes/validated-summary.json",
+      "sha256": "3c8f0e221dcb8f2e247f6413b001f0dc8ca3d35146efadc238ef8056fcf64768",
+      "bytes": 3124
+    }
+  },
+  "repaired_natural": {
+    "status": "passed_counterbalanced",
+    "note": "Candidate was not rerun after the strict historical B1 parser miss. Valid candidate output was bracketed by a clean post-candidate Q5 control."
+  },
+  "rollup_policy": "Development-only retained artifact. Do not add to benchmark README/CHANGELOG until a clean candidate performance repeat is approved and passes.",
+  "route_repairs": {
+    "q6_attn_qkv": {
+      "retained": "standard_t16_single_owner",
+      "reason": "planar c1 loses 8.72%, 0/11 paired wins",
+      "evidence": {
+        "path": "/tmp/qwen38-q6-planar-micro.json",
+        "sha256": "01fa796f7e53bc31feadc8e71b72ca0aa06534f028bf7f7c5da9b1c17323d9b9",
+        "bytes": 2693
+      }
+    },
+    "q6_down_residual": {
+      "retained": "planar_projection_plus_primitive_bf16_add",
+      "rejected": "exact fused planar residual",
+      "unfused_speedups": {
+        "rows2": 1.173459319499613,
+        "rows3": 1.1143704005222335,
+        "rows4": 1.111520337948709
+      },
+      "evidence": {
+        "path": "/tmp/qwen38-q6-planar-residual-micro.json",
+        "sha256": "8226ae15ddcd6c346cb8101ebcd1e38a8e316c669def54adc1d4da737979edda",
+        "bytes": 3567
+      }
+    },
+    "q6_root_rows2_f32": {
+      "retained": "exact_planar_col16",
+      "speedup_vs_standard": 1.0538582678346602,
+      "speedup_vs_prior_planar_col8": 1.0118276783259743,
+      "resources": {
+        "workgroup_x": 128,
+        "vgpr": 96,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      "micro_evidence": {
+        "path": "/tmp/qwen38-q6-planar-root-f32-micro.json",
+        "sha256": "1034abb1645cbf255dbbd58ef0aff63a07c8b40052dba27e4eaa951bdef083a1",
+        "bytes": 1608
+      },
+      "trace_root": "/tmp/qwen38-task20-q6-col16-rocprof"
+    }
+  },
+  "role_qualified_natural": {
+    "status": "passed_counterbalanced",
+    "candidate_tok_s": {
+      "true_ar": 12.032686138521472,
+      "1": 18.84877943282264,
+      "2": 23.079619979339814,
+      "3": 24.156135944109028
+    },
+    "historical_control_tok_s": {
+      "true_ar": 12.018392029756656,
+      "1": 18.850575987053887,
+      "2": 22.766167782800963,
+      "3": 24.05133800749262
+    },
+    "historical_ratios": {
+      "true_ar": 1.00118935284599,
+      "1": 0.9999046949953952,
+      "2": 1.0137683337630348,
+      "3": 1.0043572601484274
+    },
+    "post_candidate_clean_control_tok_s": {
+      "true_ar": 11.979809420483805,
+      "1": 18.722249402661042,
+      "2": 22.605957207845922,
+      "3": 23.891355671969094
+    },
+    "post_candidate_ratios": {
+      "true_ar": 1.0044138196344972,
+      "1": 1.006758270731273,
+      "2": 1.0209530066406343,
+      "3": 1.011082680940144
+    },
+    "bracket_mean_ratios": {
+      "true_ar": 1.0027989942055349,
+      "1": 1.0033197789795305,
+      "2": 1.0173479855350616,
+      "3": 1.007708749350366
+    },
+    "counterbalanced_adjudication": {
+      "order": [
+        "historical Q5 control",
+        "Q6 candidate",
+        "clean post-candidate Q5 control"
+      ],
+      "historical_b1_delta_percent": -0.0095305004604751,
+      "post_control_all_modes_non_regressive": true,
+      "bracket_mean_all_modes_non_regressive": true,
+      "direct_b1_evidence": "unfused route improves one-prompt B1 19.9583 -> 20.3527 tok/s and target verify 1.1674 -> 1.1449 s",
+      "verdict": "retain; the -0.00953% historical B1 comparison is flat within the measured Q5 control drift and is bounded by direct exact target-cycle wins plus positive post-control and bracket-mean comparisons"
+    },
+    "acceptance_trajectory_disclosures": [
+      {
+        "budget": 1,
+        "run": 0,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        "control": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "candidate_cycles": 14,
+        "control_cycles": 14,
+        "visible_token_sha_equal": true
+      },
+      {
+        "budget": 1,
+        "run": 1,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        "control": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "candidate_cycles": 14,
+        "control_cycles": 14,
+        "visible_token_sha_equal": true
+      },
+      {
+        "budget": 1,
+        "run": 2,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0
+        ],
+        "control": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "candidate_cycles": 14,
+        "control_cycles": 14,
+        "visible_token_sha_equal": true
+      },
+      {
+        "budget": 2,
+        "run": 0,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          2
+        ],
+        "control": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          2
+        ],
+        "candidate_cycles": 11,
+        "control_cycles": 12,
+        "visible_token_sha_equal": true
+      },
+      {
+        "budget": 2,
+        "run": 1,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          2
+        ],
+        "control": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          2
+        ],
+        "candidate_cycles": 11,
+        "control_cycles": 12,
+        "visible_token_sha_equal": true
+      },
+      {
+        "budget": 2,
+        "run": 2,
+        "prompt_id": "general_ja_plan",
+        "candidate": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          2
+        ],
+        "control": [
+          2,
+          2,
+          2,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          2
+        ],
+        "candidate_cycles": 11,
+        "control_cycles": 12,
+        "visible_token_sha_equal": true
+      }
+    ],
+    "candidate_evidence": {
+      "path": "/tmp/qwen38-task20-q6-unfused-natural/validated-summary.json",
+      "sha256": "a334d84c5831d7f6fbd7ce1f0ea013f7f11f19c3dc7efe7a63345f53468ad502",
+      "bytes": 6625
+    },
+    "clean_post_control_evidence": {
+      "path": "/tmp/qwen38-task20-q6-counterbalanced-q5-control/validated-summary.json",
+      "sha256": "a09d14e0e0b0a66243162959941546088a080b50df78fbf4e383646888b3cb1d",
+      "bytes": 723
+    }
+  }
+}

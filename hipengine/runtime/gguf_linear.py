@@ -474,8 +474,18 @@ class T16F16RocblasPrefillSession:
                 raise ValueError("T16 F16/rocBLAS requires at least one shape policy")
             return MappingProxyType(normalized)
 
-        normalized = normalize_policy(self.tile_out_features_by_shape, required=True)
+        normalized = normalize_policy(self.tile_out_features_by_shape, required=False)
+        q4_normalized = normalize_policy(
+            self.q4_tile_out_features_by_shape or {}, required=False
+        )
+        q5_normalized = normalize_policy(
+            self.q5_tile_out_features_by_shape or {}, required=False
+        )
+        if not (normalized or q4_normalized or q5_normalized):
+            raise ValueError("T16 F16/rocBLAS requires at least one shape policy")
         object.__setattr__(self, "tile_out_features_by_shape", normalized)
+        object.__setattr__(self, "q4_tile_out_features_by_shape", q4_normalized)
+        object.__setattr__(self, "q5_tile_out_features_by_shape", q5_normalized)
         solution_indices: dict[tuple[int, int, int], int] = {}
         for raw_shape, raw_index in (self.solution_indices_by_gemm_shape or {}).items():
             if len(raw_shape) != 3:
@@ -494,15 +504,6 @@ class T16F16RocblasPrefillSession:
             "solution_indices_by_gemm_shape",
             MappingProxyType(solution_indices),
         )
-        q4_normalized = normalize_policy(
-            self.q4_tile_out_features_by_shape or {}, required=False
-        )
-        q5_normalized = normalize_policy(
-            self.q5_tile_out_features_by_shape or {}, required=False
-        )
-        object.__setattr__(self, "q4_tile_out_features_by_shape", q4_normalized)
-        object.__setattr__(self, "q5_tile_out_features_by_shape", q5_normalized)
-
         def normalize_inplace(
             raw_shapes: frozenset[tuple[int, ...]],
             policy: Mapping[tuple[int, ...], int],

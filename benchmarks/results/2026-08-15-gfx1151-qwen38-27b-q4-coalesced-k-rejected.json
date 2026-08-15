@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "status": "leaf_rejected",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "title": "Qwen3.8-27B gfx1151 Q4T16 c1 coalesced-K screens",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "repo_revision": "894730aea",
+    "rocm_version": "7.15.0",
+    "compiler": "AMD clang 23.0.0git",
+    "development_worktree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "sampled_bytes": 3145728
+    },
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "leaf": {
+    "source_pool_bytes": 203489280,
+    "source_pool_mib": 194.0625,
+    "control": "retained local32 contiguous-eight-K lane ownership",
+    "candidates": {
+      "full_wave_strided_k": "Each lane owns K=lane+j*32, coalescing the complete wave but visiting all eight metadata subblocks per lane.",
+      "subgroup4_transpose": "Each four-lane metadata subgroup transposes its 4x8 K tile, preserving one metadata subblock per lane while issuing four adjacent K values."
+    },
+    "protocol": {
+      "weights": [
+        "blk.0.ffn_gate.weight",
+        "blk.0.attn_gate.weight",
+        "blk.8.ffn_down.weight",
+        "blk.8.attn_qkv.weight",
+        "blk.3.attn_q.weight",
+        "blk.3.attn_k.weight",
+        "blk.3.attn_output.weight"
+      ],
+      "request_call_weights": [16384, 6144, 4096, 3072, 2048, 3072, 2048],
+      "warmups": 5,
+      "samples_per_shape": 21,
+      "launches_per_sample": 20,
+      "timing": "counterbalanced HIP events",
+      "admission": "all seven production shapes non-regressive and >=1% projected complete 512/128 request saving",
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-p4-chunk-screen/hipcc-version.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-coalesced-k-leaf.py"
+    },
+    "results": {
+      "full_wave_strided_k": {
+        "speedup_by_role": {
+          "ffn_gate_up": 0.974736338196314,
+          "linear_attn_gate": 0.6623216185069576,
+          "ffn_down": 0.9932425895240419,
+          "linear_attn_qkv": 0.6744787909813655,
+          "full_attn_q": 0.8803497391752677,
+          "full_attn_kv": 0.8240551234652471,
+          "full_attn_output": 0.6695647149933144
+        },
+        "candidate_wins": "7/147",
+        "bf16_mismatches_by_role": [6, 4, 2, 4, 3, 0, 1],
+        "max_abs_vs_control": 0.0009765625,
+        "max_kl_vs_control": 5.7363500392566865e-11,
+        "top1_agreement": 1.0,
+        "all_finite": true,
+        "leaf_weighted_control_ms": 5399.938829040528,
+        "leaf_weighted_candidate_ms": 5723.446398925781,
+        "projected_saving_ms": -323.50756988525336,
+        "projected_complete_wall_percent": -2.917786655619031
+      },
+      "subgroup4_transpose": {
+        "speedup_by_role": {
+          "ffn_gate_up": 0.9864270848230939,
+          "linear_attn_gate": 0.9609467439314364,
+          "ffn_down": 0.9976195274889826,
+          "linear_attn_qkv": 0.9487144948936309,
+          "full_attn_q": 0.8975607760871216,
+          "full_attn_kv": 0.8025264361067035,
+          "full_attn_output": 0.9370230134951423
+        },
+        "candidate_wins": "19/147",
+        "bf16_mismatches_by_role": [5, 3, 3, 4, 3, 1, 2],
+        "max_abs_vs_control": 0.0009765625,
+        "max_kl_vs_control": 1.2898962702572176e-10,
+        "top1_agreement": 1.0,
+        "all_finite": true,
+        "leaf_weighted_control_ms": 5374.284262084961,
+        "leaf_weighted_candidate_ms": 5475.468296813965,
+        "projected_saving_ms": -101.18403472900445,
+        "projected_complete_wall_percent": -0.9126012921388508
+      }
+    }
+  },
+  "validation": {
+    "red": "The coalesced-K CPU-quality test failed because the candidate wrapper did not exist.",
+    "green": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_single_coalesced_k_meets_cpu_quality_gate => 1 passed for both dataflows",
+    "cpu_fixture_gate": {
+      "kl_mean_le_0_05": true,
+      "kl_max_le_0_10": true,
+      "top1_agreement_ge_0_90": true
+    },
+    "actual_all_kl_le_0_05": true,
+    "actual_top1_agreement": 1.0,
+    "tracked_teardown_bytes": 0,
+    "source_restored_byte_exact": true
+  },
+  "raw_artifacts": [
+    {
+      "variant": "full_wave_strided_k",
+      "path": "/tmp/qwen38-task22-q4-coalesced-k-leaf/leaf.stdout",
+      "sha256": "05bcba72feae8f8b1ffe31c3832fd6bf68f1fcc25a52c1b292f44b33685bcbab",
+      "bytes": 17009
+    },
+    {
+      "variant": "subgroup4_transpose",
+      "path": "/tmp/qwen38-task22-q4-coalesced-k-leaf-subgroup/leaf.json",
+      "sha256": "a9987594d0d13e7285015ffca071d716275958339ab5c6172108bd673f6a5e63",
+      "bytes": 17068
+    }
+  ],
+  "decision": "Reject both changed-association coalesced-K dataflows. Numerical quality is comfortably gated, but full-wave ownership projects a 2.918% request regression because each lane repeats all metadata work; preserving metadata reuse with a four-lane transpose still regresses every production shape and projects -0.913%. Restore retained local32 source byte-for-byte and stop this dataflow."
+}

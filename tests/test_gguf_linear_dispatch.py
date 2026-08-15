@@ -209,7 +209,9 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "hip_gfx1151",
         "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
         None,
-    ) is None
+    ) == {
+        (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+    }
     assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
@@ -240,7 +242,13 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
         "hip_gfx1151",
         "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
         None,
-    ) is None
+    ) == {
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+            },
+        },
+    }
     assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
@@ -757,7 +765,7 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
         weight_f16_nbytes=1280 * 6_144 * 2,
         out_f16_ptr=0x50000000,
         out_f16_nbytes=4096 * 1280 * 2,
-        tile_out_features_by_shape={(512, 5_120, 10_240): 2_048},
+        tile_out_features_by_shape={},
         q5_tile_out_features_by_shape={
             (512, 6_144, 5_120): 1_280,
             (1_024, 6_144, 5_120): 1_280,
