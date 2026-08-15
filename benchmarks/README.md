@@ -121,6 +121,10 @@ parity. Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+The fresh semantic rerank assigns 99.1%/99.0% of marker-prefill wall and all
+286/288 public graph nodes. Same-session graph replay leaves only **0.114/0.127
+ms/token Q4/Q8** outside device stages, closing the prior ~2.3-ms isolated-owner
+estimate as microbenchmark undercount rather than API overhead.
 
 ## Current single-request scoreboards
 
