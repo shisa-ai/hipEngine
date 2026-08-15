@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "status": "leaf_rejected",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "title": "Qwen3.8-27B gfx1151 planar-Q6 48-column x 80-row WMMA screen",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "repo_revision": "2ec97924d594c542aa7d74d601a24e935fd902fc",
+    "rocm_version": "7.15.0",
+    "compiler": "AMD clang 23.0.0git",
+    "development_worktree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "sampled_bytes": 3145728
+    },
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "leaf": {
+    "source_pool_bytes": 77414400,
+    "control": "retained planar-Q6 48-column x 64-row WMMA",
+    "candidate": "planar-Q6 48-column x 80-row WMMA",
+    "candidate_change": "Increase ROW_TILES_PER_BLOCK from 4 to 5 and the matching launch grid from 64 to 80 rows while preserving the same planar bytes, K16 WMMA order, and BF16 boundary.",
+    "protocol": {
+      "warmups": 3,
+      "samples_per_shape": 15,
+      "timing": "counterbalanced HIP events",
+      "admission": ">=1.10x control/candidate speedup and >=12/15 candidate wins at every role and required row",
+      "environment": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task20-gdn-hipcc-version.txt PYTHONPATH=/home/lhl/hipEngine-main",
+      "command": "/home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-q6-planar-row80-screen.py"
+    },
+    "cases": {
+      "wide_ffn_down": {
+        "weight": "blk.0.ffn_down.weight",
+        "shape": {
+          "k": 17408,
+          "n": 5120
+        },
+        "source_nbytes": 73113600,
+        "results": {
+          "512": {
+            "control_median_ms": 7.220623016357422,
+            "candidate_median_ms": 7.9878621101379395,
+            "speedup": 0.9039493817993225,
+            "candidate_delta_percent": 10.625663354012982,
+            "candidate_wins": "0/15",
+            "bf16_mismatches": 0
+          },
+          "1024": {
+            "control_median_ms": 13.383956909179688,
+            "candidate_median_ms": 12.870509147644043,
+            "speedup": 1.039893352752842,
+            "candidate_delta_percent": -3.836292697442001,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          },
+          "4096": {
+            "control_median_ms": 55.092872619628906,
+            "candidate_median_ms": 52.46296691894531,
+            "speedup": 1.0501288023749547,
+            "candidate_delta_percent": -4.773586084067416,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          }
+        }
+      },
+      "narrow_v": {
+        "weight": "blk.3.attn_v.weight",
+        "shape": {
+          "k": 5120,
+          "n": 1024
+        },
+        "source_nbytes": 4300800,
+        "results": {
+          "512": {
+            "control_median_ms": 0.7094510197639465,
+            "candidate_median_ms": 0.7116950154304504,
+            "speedup": 0.9968469700955448,
+            "candidate_delta_percent": 0.3163002947335958,
+            "candidate_wins": "6/15",
+            "bf16_mismatches": 0
+          },
+          "1024": {
+            "control_median_ms": 1.0259250402450562,
+            "candidate_median_ms": 1.0975799560546875,
+            "speedup": 0.9347155390235087,
+            "candidate_delta_percent": 6.984420206033337,
+            "candidate_wins": "0/15",
+            "bf16_mismatches": 0
+          },
+          "4096": {
+            "control_median_ms": 5.3721208572387695,
+            "candidate_median_ms": 4.616864204406738,
+            "speedup": 1.1635864992760991,
+            "candidate_delta_percent": -14.05881723257112,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          }
+        }
+      }
+    },
+    "request_projection": {
+      "basis": "32 wide FFN-down plus 8 narrow-V calls and retained Q5-source-F16 complete-prefill wall",
+      "512": {
+        "candidate_saved_ms": -24.569602966308594,
+        "complete_prefill_wall_ms": 1491.3201910094358,
+        "projected_request_percent": -1.6475068945239768
+      },
+      "1024": {
+        "candidate_saved_ms": 15.857089042663574,
+        "complete_prefill_wall_ms": 3029.248249004013,
+        "projected_request_percent": 0.5234661453671626
+      },
+      "4096": {
+        "candidate_saved_ms": 90.19903564453125,
+        "complete_prefill_wall_ms": 12312.293946000864,
+        "projected_request_percent": 0.7325932603633838
+      }
+    }
+  },
+  "validation": {
+    "all_bf16_exact": true,
+    "all_finite": true,
+    "tracked_teardown_bytes": 0,
+    "candidate_wins": "45/90",
+    "source_restored_byte_exact": true
+  },
+  "raw_artifact": {
+    "path": "/tmp/qwen38-task21-q6-planar-row80/leaf.json",
+    "sha256": "7ff2b8f34042ceb89355c4d68386a40aa9357e3433818a523ff5122b915e9605",
+    "bytes": 11447
+  },
+  "decision": "Reject the global row80 geometry. It regresses the required M512 wide owner by 10.63% and M1024 narrow-V by 6.98%. A role/row-qualified wide-only route at M>=1024 would project only 0.52-0.68% complete-request saving before added dispatch policy complexity, below the >=1% gate. Restore row64 byte-for-byte and do not spend a full-model gate."
+}
