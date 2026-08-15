@@ -217,8 +217,14 @@ bool make_tensor(const HipengineAotritonTensor4* desc, TensorView<4>* out) {
 
 }  // namespace
 
-extern "C" int hipengine_aotriton_check_gpu(void* stream) {
-  return static_cast<int>(AOTRITON_NS::v2::flash::check_gpu(Stream(reinterpret_cast<hipStream_t>(stream))));
+extern "C" int hipengine_aotriton_check_gpu(void* stream) noexcept {
+  // ctypes cannot transport a C++ exception.  AOTriton's image/solution lookup
+  // may throw, so convert every vendor failure at this C ABI to a HIP error.
+  try {
+    return static_cast<int>(AOTRITON_NS::v2::flash::check_gpu(Stream(reinterpret_cast<hipStream_t>(stream))));
+  } catch (...) {
+    return static_cast<int>(hipErrorUnknown);
+  }
 }
 
 extern "C" int hipengine_aotriton_gate_mul_fp16_inplace(
@@ -281,7 +287,7 @@ extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
     const HipengineAotritonTensor4* out,
     float sm_scale,
     int32_t is_causal,
-    void* stream) {
+    void* stream) noexcept {
   if (max_seqlen_q <= 0 || max_seqlen_k <= 0) {
     return static_cast<int>(kInvalidValue);
   }
@@ -339,29 +345,37 @@ extern "C" int hipengine_aotriton_attn_fwd_compact_varlen(
       ? TensorView<0>(reinterpret_cast<intptr_t>(atomic_buf), AOTRITON_NS::kInt32)
       : TensorView<0>(0, AOTRITON_NS::kInt32);
 
-  hipError_t aot_err = AOTRITON_NS::v2::flash::attn_fwd_compact_varlen(
-      q_view,
-      k_view,
-      v_view,
-      null_bias,
-      cu_q_view,
-      cu_k_view,
-      max_seqlen_q,
-      max_seqlen_k,
-      sm_scale,
-      lse_view,
-      out_view,
-      0.0f,
-      null_seed,
-      null_offset,
-      0,
-      null_seed,
-      null_offset,
-      null_encoded_softmax,
-      is_causal != 0,
-      atomic_view,
-      Stream(hip_stream),
-      nullptr);
+  hipError_t aot_err = hipErrorUnknown;
+  try {
+    aot_err = AOTRITON_NS::v2::flash::attn_fwd_compact_varlen(
+        q_view,
+        k_view,
+        v_view,
+        null_bias,
+        cu_q_view,
+        cu_k_view,
+        max_seqlen_q,
+        max_seqlen_k,
+        sm_scale,
+        lse_view,
+        out_view,
+        0.0f,
+        null_seed,
+        null_offset,
+        0,
+        null_seed,
+        null_offset,
+        null_encoded_softmax,
+        is_causal != 0,
+        atomic_view,
+        Stream(hip_stream),
+        nullptr);
+  } catch (...) {
+    if (atomic_buf != nullptr) {
+      (void)hipFree(atomic_buf);
+    }
+    return static_cast<int>(hipErrorUnknown);
+  }
   if (atomic_buf != nullptr) {
     (void)hipFree(atomic_buf);
   }
@@ -381,7 +395,7 @@ extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
     void* persistent_atomic_counter,
     float sm_scale,
     int32_t is_causal,
-    void* stream) {
+    void* stream) noexcept {
   if (max_seqlen_q <= 0 || max_seqlen_k <= 0) {
     return static_cast<int>(kInvalidValue);
   }
@@ -446,11 +460,15 @@ extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
   params.window_left = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
   params.window_right = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
 
-  return static_cast<int>(AOTRITON_NS::v3::flash::attn_fwd(
-      params,
-      AOTRITON_NS::v3::flash::attn_fwd_params::kVersion,
-      Stream(hip_stream),
-      nullptr));
+  try {
+    return static_cast<int>(AOTRITON_NS::v3::flash::attn_fwd(
+        params,
+        AOTRITON_NS::v3::flash::attn_fwd_params::kVersion,
+        Stream(hip_stream),
+        nullptr));
+  } catch (...) {
+    return static_cast<int>(hipErrorUnknown);
+  }
 }
 
 extern "C" int hipengine_aotriton_attn_fwd_compact_varlen_gqa_per_q_head(

@@ -600,6 +600,13 @@ class _RoctxProfilerRegion:
             self.control.pause()
 
 
+def _reset_existing_session(session: Any, runtime: HipRuntime) -> None:
+    """Drain prior benchmark work before reusing and zeroing resident state."""
+
+    runtime.stream_synchronize(0)
+    session.reset()
+
+
 def _rearm_reused_decode_graph(session: Any, graph: Any, runtime: HipRuntime) -> None:
     """Rearm a retained graph after reset+identical prefill restored its start state."""
 
@@ -772,7 +779,7 @@ def _run_existing_session_once(
         "after_load": _memory_snapshot("after_load", runtime, session),
         "before_reset": _memory_snapshot("before_reset", runtime, session),
     }
-    session.reset()
+    _reset_existing_session(session, runtime)
     memory_snapshots["after_reset"] = _memory_snapshot("after_reset", runtime, session)
 
     generated_token_ids: list[int] = []
