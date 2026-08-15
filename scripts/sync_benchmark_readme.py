@@ -13,6 +13,23 @@ from pathlib import Path
 BEGIN_RE = re.compile(r"^<!-- BEGIN TOPLINE:([A-Z0-9_]+) -->$")
 END_RE = re.compile(r"^<!-- END TOPLINE:([A-Z0-9_]+) -->$")
 DEFAULT_BLOCKS = ("README_HIGHLIGHTS",)
+PUBLIC_README_MAX_LINES = 325
+
+
+@dataclass(frozen=True)
+class PublicExportBudget:
+    max_lines: int
+    max_prose_paragraphs: int
+    max_prose_chars: int
+
+
+PUBLIC_EXPORT_BUDGETS = {
+    "README_HIGHLIGHTS": PublicExportBudget(
+        max_lines=80,
+        max_prose_paragraphs=2,
+        max_prose_chars=600,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -66,6 +83,63 @@ def _blocks(text: str, path: Path) -> dict[str, Block]:
     return found
 
 
+def _prose_paragraphs(body: str) -> list[str]:
+    paragraphs: list[str] = []
+    active: list[str] = []
+
+    def finish() -> None:
+        if active:
+            paragraphs.append(" ".join(active))
+            active.clear()
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "|", "<!--")):
+            finish()
+        else:
+            active.append(stripped)
+    finish()
+    return paragraphs
+
+
+def _validate_public_export(block: Block, source: Path) -> None:
+    budget = PUBLIC_EXPORT_BUDGETS.get(block.name)
+    if budget is None:
+        return
+
+    line_count = len(block.body.splitlines())
+    if line_count > budget.max_lines:
+        raise ValueError(
+            f"{source}: TOPLINE block {block.name} exceeds the public README "
+            f"line budget ({line_count}/{budget.max_lines}); move detail to the "
+            "benchmark artifacts or worklog"
+        )
+
+    paragraphs = _prose_paragraphs(block.body)
+    prose_chars = sum(len(paragraph) for paragraph in paragraphs)
+    if (
+        len(paragraphs) > budget.max_prose_paragraphs
+        or prose_chars > budget.max_prose_chars
+    ):
+        raise ValueError(
+            f"{source}: TOPLINE block {block.name} exceeds the public README "
+            f"prose budget ({len(paragraphs)}/{budget.max_prose_paragraphs} "
+            f"paragraphs, {prose_chars}/{budget.max_prose_chars} characters); "
+            "move implementation and evidence detail to the benchmark artifacts "
+            "or worklog"
+        )
+
+
+def _validate_public_readme(text: str, target: Path) -> None:
+    line_count = len(text.splitlines())
+    if line_count > PUBLIC_README_MAX_LINES:
+        raise ValueError(
+            f"{target}: exceeds the public README document budget "
+            f"({line_count}/{PUBLIC_README_MAX_LINES} lines); move detailed "
+            "history or evidence to the benchmark artifacts or worklog"
+        )
+
+
 def _synchronized(
     source_text: str,
     target_text: str,
@@ -86,6 +160,8 @@ def _synchronized(
             f"missing in source={missing_source}, missing in target={missing_target}, "
             f"unselected in target={extra_target}"
         )
+    for name in block_names:
+        _validate_public_export(source_blocks[name], source)
 
     lines = target_text.splitlines(keepends=True)
     selected_blocks = (target_blocks[name] for name in block_names)
@@ -125,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         source_text = source.read_text(encoding="utf-8")
         target_text = target.read_text(encoding="utf-8")
         synchronized = _synchronized(source_text, target_text, source, target)
+        _validate_public_readme(synchronized, target)
     except (OSError, ValueError) as error:
         print(f"benchmark README sync error: {error}", file=sys.stderr)
         return 2
