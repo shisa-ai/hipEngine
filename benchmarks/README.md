@@ -232,6 +232,15 @@ because its output ledger differs from Vulkan AR. Evidence:
 [`Qwen3.8 cross-engine comparison`](results/2026-08-15-qwen38-27b-xtx-hip-vulkan-comparison.json) and
 [`clean-idle hipEngine correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json).
 
+A separate INT8 KV screen finds a quality-passing but non-promotable frontier.
+Pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus bounded 32K/16,
+saves **0.992 GiB** live at 32K capacity, and runs eager decode **7.46%** faster
+than BF16 graph. Its 16 exact-prefill oracle pairs instead raise tracked peak
+**1.024 GiB**, while prefill falls **0.329%**. Tail-four Hadamard also passes
+quality and improves graph decode **2.58%**, but raises peak **0.268 GiB** and
+lowers prefill **0.342%**. BF16 remains the supported/default server route.
+Evidence: [`Qwen3.8 INT8 KV frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a

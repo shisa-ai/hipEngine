@@ -372,8 +372,16 @@ train prompt, GGUF prefill-oracle peak rises, graph capture is unsafe, and no
 256K capacity gate exists. Any successor must rerun 512/8 before 4K/16, include
 all category/heldout prompts, require no BF16 mirror, audit the exact layer
 partition, then pass graph/eager safety and a 24GB long-context capacity gate.
-The `4K` forced-long gate below is a quick 35B guard; promotion of a 24GB
-`128K/128` row also requires the same gate at `--prompt-lengths 128K`,
+Qwen3.8-27B must also be gated independently from Qwen3.6 despite identical
+24Q/4KV geometry. The current pure FP32-scale INT8 and tail-four Hadamard
+frontiers pass complete 512/8 and 4K/16 plus bounded `mixed_v1` 32K/16, but are
+not promoted: at a 33,024-position allocation their per-layer BF16 prefill
+oracles raise tracked peak by `1.023560/0.267700 GiB`, and the no-oracle direct
+screen is non-finite. Any Qwen3.8 successor must preserve those quality rows,
+show a lower actual server high-water than BF16, pass prefill/decode
+non-regression, and run the full natural MTP gate before support/default status
+changes. The `4K` forced-long gate below is a quick 35B guard; promotion of a
+24GB `128K/128` row also requires the same gate at `--prompt-lengths 128K`,
 `--decode-steps 128`, and `--max-sequence-length 131202`.
 
 ```bash
