@@ -164,6 +164,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE,
+    GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS,
     GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     TARGET_ARCH,
@@ -1212,10 +1213,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {
         ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+        ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
         # D08-X2-K2: fresh five-block gate admitted Q8_0 after P2's 0.0108%
         # rejection was superseded by exact-core graph-decode evidence.
         ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
     }
+    assert GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS == 1024
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768

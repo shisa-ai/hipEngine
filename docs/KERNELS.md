@@ -127,9 +127,22 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641; fixed256 and unsupported shapes/backends remain fallbacks. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 `(16K,16V,128,128)` selects cluster8; Q8 and all other gfx1151 shapes retain exact nonvolatile LDS32. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 `(16K,16V,128,128)` selects cluster8; Q4 `(16K,48V,128,128)` selects 1K-chunked compact-peer wave32; Q8 and all other gfx1151 shapes retain exact nonvolatile LDS32. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
+
+Qwen3.8-27B Q4_K_M is the independent 16K/48V/128x128 gfx1151 GDN
+exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
+head and carries one FP32 recurrent state across at most 1,024 rows per launch;
+prepare and RMSNorm still cover the complete prefill once. This chunk is
+required because unchunked 4K loses 8.26% to direct LDS32, while the repaired
+route is peer-bit-exact and wins the production complete chain
+1.517x/1.479x/1.422x at 512/1K/4K. Scalar-exact output/state deltas are bounded
+at 0.001953125/2.24e-8. Integrated pp512 improves 316.258 to 330.069
+tok/s and drops 24 MiB; 512/1K/4K peak falls 24/128/128 MiB. rocprof confirms
+48/192 compact recurrence launches at pp512/pp4K (local128, 40 VGPR, zero LDS
+or scratch). Exact direct LDS32 remains the explicit rollback. Evidence:
+[`Qwen3.8 compact-peer GDN`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p3-compact-peer-gdn.json).
 
 ### GGUF / Qwen / Laguna path
 
