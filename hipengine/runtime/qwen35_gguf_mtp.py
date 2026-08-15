@@ -44,6 +44,14 @@ _GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3, 4)
 _GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
 
 
+def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
+    """Keep unproven root-plus-four target rows on the scalar exact oracle."""
+
+    if str(requested) == "native" and int(rows) > 4:
+        return "serial_exact"
+    return str(requested)
+
+
 @dataclass
 class Qwen35GGUFVerifyGraphBucket:
     """Stable shared-ABI buffers for one scheduler verify shape.
@@ -334,11 +342,16 @@ class _StateJournal:
     def hidden_nbytes(self) -> int:
         return int(self.initial_hidden.nbytes)
 
-    def capture_initial(self, *, stream: int = 0) -> None:
+    def capture_initial(
+        self,
+        *,
+        stream: int = 0,
+        force_consumer_state: bool = False,
+    ) -> None:
         self.initial_state_captured = False
         hidden = self.target.last_target_hidden
         self._copy_d2d(self.initial_hidden.ptr, hidden.ptr, self.hidden_nbytes, stream=stream)
-        if self.producer_capture_initial_state:
+        if self.producer_capture_initial_state and not bool(force_consumer_state):
             return
         if not self._copy_initial_state(restore=False, stream=stream):
             self._capture_state_index(0, stream=stream)
@@ -653,7 +666,14 @@ class Qwen35GGUFTransactionalVerifier:
             raise ValueError("device proposal identity does not match the target batch")
 
         initial_position = int(self.target.position)
-        self.journal.capture_initial(stream=stream)
+        effective_verify_mode = _effective_target_verify_mode(
+            self.target_verify_mode,
+            rows=batch.rows,
+        )
+        self.journal.capture_initial(
+            stream=stream,
+            force_consumer_state=(effective_verify_mode == "serial_exact"),
+        )
         logits: list[np.ndarray] = []
         top1: list[int] = []
         native_graph_submitted = False
@@ -668,7 +688,7 @@ class Qwen35GGUFTransactionalVerifier:
         buffers: TargetVerifyBuffers | None = None
         gpu_summary: TargetAcceptSummary | None = None
         try:
-            if self.target_verify_mode == "native":
+            if effective_verify_mode == "native":
                 native_kwargs = {
                     "bulk_attention_mode": "native",
                     "use_wmma_prefill": False,
@@ -930,7 +950,7 @@ class Qwen35GGUFTransactionalVerifier:
                 initial_position=initial_position,
                 kv_journal_positions=tuple(int(position) for position in batch.positions),
                 gpu_accept_match_cpu=gpu_match,
-                target_verify_mode=self.target_verify_mode,
+                target_verify_mode=effective_verify_mode,
                 native_graph_submitted=native_graph_submitted,
                 native_graph_capture_ms=native_graph_capture_ms,
                 native_graph_submit_ms=native_graph_submit_ms,

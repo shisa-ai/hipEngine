@@ -90,10 +90,12 @@ should be removed or collapsed.
 ## Dense-H5120 B4 exact eager-MTP seam
 
 - Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step
-  NextN chain without claiming unproven graph ownership. B4 is opt-in and uses
-  the exact eager proposal plus root+four-row transactional target fallback;
-  the retained device graph ladder remains B1-B3 / rows 2-4. B3 remains the
-  default while clean full-suite evidence is pending.
+  NextN chain without claiming unproven graph ownership. The first root+four
+  native-row fallback failed scalar-AR exactness on two Japanese prompts and is
+  superseded. B4 is opt-in and now uses eager proposal plus serial-exact target
+  rows; only tail cycles whose effective budget falls to B1-B3 use native
+  graphs. The retained device graph ladder remains B1-B3 / rows 2-4, and B3
+  remains the default while clean full-suite evidence is pending.
 - Removal trigger: admit B4 to both proposal and target device graphs only after
   rows=5 target state/KV/hidden commits pass reject/partial/full, category,
   heldout, long-context, GPU/CPU acceptance, and teardown gates. Promote B4 by
