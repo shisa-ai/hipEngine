@@ -373,15 +373,20 @@ train prompt, GGUF prefill-oracle peak rises, graph capture is unsafe, and no
 all category/heldout prompts, require no BF16 mirror, audit the exact layer
 partition, then pass graph/eager safety and a 24GB long-context capacity gate.
 Qwen3.8-27B must also be gated independently from Qwen3.6 despite identical
-24Q/4KV geometry. The current pure FP32-scale INT8 and tail-four Hadamard
-frontiers pass complete 512/8 and 4K/16 plus bounded `mixed_v1` 32K/16, but are
-not promoted: at a 33,024-position allocation their per-layer BF16 prefill
-oracles raise tracked peak by `1.023560/0.267700 GiB`, and the no-oracle direct
-screen is non-finite. Any Qwen3.8 successor must preserve those quality rows,
-show a lower actual server high-water than BF16, pass prefill/decode
-non-regression, and run the full natural MTP gate before support/default status
-changes. The `4K` forced-long gate below is a quick 35B guard; promotion of a
-24GB `128K/128` row also requires the same gate at `--prompt-lengths 128K`,
+24Q/4KV geometry. Pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus
+bounded `mixed_v1` 64K/16. Its retained layer-outer/shared-oracle successor
+lowers the 33,024-position tracked peak `18.943 -> 17.330 GiB`, runs matched
+prefill within `-0.050%` of BF16 graph with overlapping sample ranges, improves
+AR decode `+6.499%`, and completes real 64K/96K/112K single-request server rows.
+Those facts qualify explicit AR capacity use, not a default/support transfer:
+112K leaves only `0.662 GiB`, representative long quality stops at 64K, pure
+INT8 graph capture fails closed, and exact natural B3 MTP reaches only `0.6423x`
+true AR. Any successor that changes support/default status must preserve the
+complete and long quality rows, prove graph/eager safety for its claimed
+transport, retain actual server headroom, and make every enabled AR/MTP mode
+same-suite non-regressive. The `4K` forced-long gate below is a quick 35B guard;
+promotion of a 24GB `128K/128` row also requires the same gate at
+`--prompt-lengths 128K`,
 `--decode-steps 128`, and `--max-sequence-length 131202`.
 
 ```bash

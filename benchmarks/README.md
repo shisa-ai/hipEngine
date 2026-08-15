@@ -240,14 +240,20 @@ pre-sized contiguous KV pool reaches an observed **52K** ceiling
 The 52K row is a physical-roof diagnostic, not a reliable serving setting, so
 32K remains recommended. Evidence: [`Qwen3.8 BF16 context roof`](results/2026-08-15-qwen38-27b-xtx-bf16-context-roof.json).
 
-A separate INT8 KV screen finds a quality-passing but non-promotable frontier.
-Pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus bounded 32K/16,
-saves **0.992 GiB** live at 32K capacity, and runs eager decode **7.46%** faster
-than BF16 graph. Its 16 exact-prefill oracle pairs instead raise tracked peak
-**1.024 GiB**, while prefill falls **0.329%**. Tail-four Hadamard also passes
-quality and improves graph decode **2.58%**, but raises peak **0.268 GiB** and
-lowers prefill **0.342%**. BF16 remains the supported/default server route.
-Evidence: [`Qwen3.8 INT8 KV frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json).
+The pure FP32-scale INT8 route now has a bounded exact-prefill owner. Reusing
+one BF16 K/V oracle pair instead of 16 lowers 32K-capacity tracked peak
+**18.943 -> 17.330 GiB**, which is also **0.590 GiB below BF16**. On matched
+4K/128 runs, prefill is within **-0.050%** of BF16 graph with overlapping
+sample ranges, while eager INT8 decode is **6.50% faster**. Real single-request
+server rows complete at **64K/96K/112K** with **3.420/1.570/0.662 GiB** sampled
+headroom; 120K fails the 1-GiB startup guard and 128K OOMs. Complete 512/8 and
+4K/16 quality plus bounded `mixed_v1` 64K/16 pass with no BF16 mirror. This is
+an explicit AR capacity route, not a new default: long pure INT8 still uses the
+unverified gate, graph capture rejects it, and exact natural B3 is only
+**0.6423x** true AR. Use **96K** for practical capacity; **112K** is the highest
+observed pass. BF16 remains supported/default. Evidence:
+[`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json) and
+[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

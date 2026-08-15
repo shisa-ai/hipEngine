@@ -3,15 +3,18 @@
 _Status: K1 dense per-token/per-head INT8 K/V is implemented, but support is
 model- and runtime-gated. Qwen3.6 W4-PARO still fails its final 128K/16 quality
 gate, and dense Qwen3.6-27B pure FP32-scale INT8 fails the complete 512/8 suite.
-The exact Qwen3.8-27B `Q4_K_M` file is a measured quality exception: pure
-FP32-scale INT8 and tail-four Hadamard INT8 pass complete 512/8 and 4K/16 suites
-plus bounded 32K/16. Neither is promoted because chunk-outer BF16 prefill
-oracles raise 32K tracked peak by `1.024/0.268 GiB`; direct no-oracle prefill is
-non-finite, and fixed-shape prefill regresses about `0.33%`. BF16 therefore
-remains the only supported/default dense-27B server cache. On the 24-GiB XTX,
-its observed pre-sized single-request roof is 52K with only `0.025 GiB`
-headroom; 53K fails, so 32K with `2.115 GiB` headroom remains the operational
-setting. K2 compact DMS remains planned. Last updated: 2026-08-15._
+The exact Qwen3.8-27B `Q4_K_M` file is a measured quality exception. Its pure
+FP32-scale route now uses layer-outer exact prefill with one reusable BF16 K/V
+oracle pair, passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16,
+and lowers the matched 32K-capacity tracked peak `17.920 -> 17.330 GiB` while
+running eager AR decode `6.50%` above BF16 graph. On the 24-GiB XTX, real
+single-request HTTP rows complete at 64K/96K/112K with
+`3.420/1.570/0.662 GiB` sampled request-high-water headroom; 120K fails the
+1-GiB startup guard and 128K exhausts memory. This qualifies an explicit
+single-request AR capacity route, not a new default: long pure INT8 still needs
+the unverified-long gate, graph capture rejects it, and exact natural B3 MTP is
+only `0.6423x` true AR. BF16 remains supported/default. K2 compact DMS remains
+planned. Last updated: 2026-08-15._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -32,11 +35,12 @@ long-context evidence controls the support decision.
 | Can dense Qwen3.6-27B run native INT8 decode? | **Yes, diagnostically.** The 24Q/4KV/head-256 split-K specialization is CPU-reference gated and appears in `rocprofv3` at `73,321 ns`. |
 | Does pure Qwen3.6-27B INT8 pass quality? | **No.** FP32 scales improve numerical fidelity, and the 4K/16 suite passes, but the required 512/8 suite fails `mixed_ja_en_translate` at `77.78%` top-1. |
 | Does mixed BF16/INT8 solve Qwen3.6-27B? | **Quality only, not product constraints.** A selected 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16 suites plus bounded mixed 8K/16K/32K rows. It raises 32K tracked peak by `0.448 GiB`, projects `7 GiB` of prefill oracles at 256K, cannot use the supported graph route safely, and executes `10.52%` slower than BF16 graph decode. |
-| What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable setting. |
-| Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 32K/16 with no BF16 mirror. Tail-four Hadamard passes the same gates with still lower KL. |
-| Does Qwen3.8 INT8 create 32K server headroom? | **Not at request high water.** Pure/tail-four retained ownership falls `0.992/0.236 GiB`, but current prefill oracles raise tracked peak `1.024/0.268 GiB`; both fixed-shape prefill bands also regress about `0.33%`. |
+| What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable BF16 setting. |
+| Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 64K/16 with no BF16 mirror. Tail-four Hadamard passed the earlier 512/4K/32K gates but was not rerun in this qualification. |
+| Does bounded Qwen3.8 INT8 save memory? | **Yes.** Layer-outer exact prefill reuses one oracle pair instead of 16, lowering the 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16. A real 64K server request peaks at `20.564 GiB`, `1.305 GiB` below the BF16 32K request. |
+| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K observed, 96K recommended for capacity use.** 64K/96K/112K return HTTP 200 with `3.420/1.570/0.662 GiB` sampled request-high-water headroom. 120K fails the configured 1-GiB startup guard and 128K OOMs. Only 64K has a non-repeated-token long-context quality row. |
 | Did a recent-token BF16 tail solve 27B? | **No.** The earlier host screen favored pure INT8 over recent 4K/8K BF16 tails, and the native result identifies non-monotonic layer interactions instead. Do not add two-arena temporal storage. |
-| Product status | BF16 K/V remains the only supported dense-27B route. Qwen3.6 pure INT8 is quality-rejected; Qwen3.8 pure/tail-four INT8 are quality-accepted diagnostics blocked by prefill peak ownership and non-regression, not supported/default cache modes. |
+| Product status | BF16 remains supported/default. Qwen3.6 pure INT8 is quality-rejected. Qwen3.8 pure FP32-scale INT8 is qualified only as an explicit single-request AR capacity route behind the unverified-long gate; pure-INT8 graph capture is fail-closed and exact natural B3 MTP is slower than AR. |
 
 The retained implementation and memory reduction are still valuable. The
 product boundary is simply explicit: **capacity evidence is not quality
@@ -64,35 +68,53 @@ materially differently despite sharing the same geometry:
    a 32,786-token allocation, the complete 512/8 and 4K/16 suites pass at
    mean/max KL `0.000113/0.002293` and `0.000146/0.014308`; minimum-prompt top-1
    is `100%/94.12%`. Bounded `mixed_v1` 32K/16 also passes at mean/max KL
-   `0.003177/0.036849` and 100% top-1.
+   `0.003177/0.036849` and 100% top-1; the bounded-lifetime rerun extends that
+   prompt to 64K/16 at `0.000033/0.000416` and 100% top-1.
 2. **Tail-four Hadamard is an even lower-error control.** BF16 full-attention
    indices `0..11` plus Hadamard-group32 INT8 indices `12..15` pass the same
    complete short/medium suites and bounded 32K row. Mean/max KL is
    `0.000019/0.000387` at 512, `0.000024/0.001084` at 4K, and
    `0.000021/0.000361` at bounded 32K, with 100% minimum-prompt top-1.
-3. **Retained savings do not survive request high water.** At the rounded
-   33,024-position allocation, pure INT8 reduces live ownership by
-   `0.992065 GiB`, but 16 full-length BF16 prefill-oracle pairs add
-   `2.015625 GiB`, so tracked peak rises `1.023560 GiB`. Tail-four saves
-   `0.236206 GiB` live but four oracles add `0.503906 GiB`, raising peak
-   `0.267700 GiB`. Measured 4K/128 rows reproduce those byte-exact deltas.
-4. **Decode is already attractive; prefill ownership is the blocker.** On RX
-   7900 XTX at 32K capacity, BF16 graph is `981.806/31.741 tok/s`
-   prefill/decode. Pure INT8 eager is `978.573/34.108` (`-0.329%/+7.456%`), and
-   tail-four graph is `978.447/32.559` (`-0.342%/+2.578%`). Both prefill sample
-   bands are wholly below BF16. More importantly, their tracked peaks are
-   `18.943/18.188 GiB` versus BF16 `17.920 GiB`, despite lower post-prefill live
-   ownership.
-5. **The existing no-oracle shortcut is invalid.** A disposable binding of
-   tail-four retained K/V directly to the Hadamard streaming-prefill kernel
-   produces NaN/Inf logits on the first narrow candidate prompt. No direct
-   prefill route is retained or exposed.
+3. **The first lifetime was memory-negative at request high water.** At the
+   rounded 33,024-position allocation, pure INT8 reduced live ownership by
+   `0.992065 GiB`, but 16 full-length BF16 prefill-oracle pairs added
+   `2.015625 GiB`, so tracked peak rose `1.023560 GiB`. Tail-four saved
+   `0.236206 GiB` live but four oracles raised peak `0.267700 GiB`. The direct
+   no-oracle Hadamard shortcut was non-finite and remains rejected.
+4. **Bounded exact prefill fixes that ownership.** A geometry/policy byte
+   planner selects the existing layer-outer schedule only when full-prompt
+   hidden ownership plus one reusable BF16 K/V oracle pair is smaller than the
+   old chunk-outer/per-layer-oracle route. At 33,024 positions, the modeled and
+   measured peak saving is exactly `1.613554 GiB`; tracked peak becomes
+   `17.330 GiB`, `0.590 GiB` below matched BF16. The route retains all 16
+   full-attention layers as INT8 with FP32 per-token/head scales and no BF16
+   mirror. BF16, short mirrored INT8, and memory-negative hybrids keep their
+   prior schedule.
+5. **Fixed-shape AR is non-regressive against the supported route.** On the RX
+   7900 XTX at 32K capacity, matched BF16 graph is `979.118/31.701 tok/s`
+   prefill/decode and bounded INT8 eager is `978.626/33.761`:
+   `-0.050%/+6.499%`. Prefill sample ranges overlap, final IDs are identical,
+   and tracked peak/current ownership falls `0.590/0.716 GiB`.
+6. **Real server capacity more than doubles the physical BF16 roof.** Pre-sized
+   pure-INT8 pools complete one-token HTTP requests at 64K, 96K, and 112K with
+   peaks/headroom of `20.564/3.420`, `22.414/1.570`, and
+   `23.322/0.662 GiB`. The 120K row is rejected by the configured 1-GiB startup
+   guard and 128K OOMs during eager warmup. Therefore 112K is the highest
+   observed pass, 96K is the practical explicit capacity setting, and 64K is
+   the highest context with a non-repeated-token quality row.
+7. **The remaining blockers are transport and MTP, not AR memory.** Pure INT8
+   graph capture fails closed because only BF16 and tail-four are admitted.
+   The full natural25 B3 suite is transaction-exact with matching GPU/CPU
+   acceptance, but target verification makes B3 `22.472 tok/s / 0.6423x` true
+   AR. Long pure INT8 also remains behind
+   `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` because Qwen3.6 shares the
+   geometry but fails quality.
 
-This is a useful model-specific quality result, not a product admission. Keep
-Qwen3.8 on BF16 until exact prefill uses a bounded/shared oracle owner (for
-example a separately gated layer-outer owner) and then repeat actual server
-high-water, prefill/decode, and full natural MTP gates. Compact evidence:
-[`Qwen3.8 INT8 KV frontier`](../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json).
+The bounded route is retained and qualified for explicit single-request AR
+capacity use; BF16 remains supported/default and owns the public MTP row.
+Compact evidence:
+[`initial Qwen3.8 INT8 frontier`](../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json) and
+[`bounded INT8 serving qualification`](../benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json).
 
 ## Qwen3.6-27B scope refresh
 
