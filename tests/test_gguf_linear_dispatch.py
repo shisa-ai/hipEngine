@@ -1714,6 +1714,57 @@ def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
     assert calls[0][0] == (100, 11, 12, 13, 200, 512, 1024, 3584)
 
 
+def test_gfx1151_dense_bf16_bulk_prefill_rejects_unaligned_k() -> None:
+    """The BK32 WMMA leaf must not own a K-tail it cannot load safely."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
+    fallback_key = KernelKey("hip_gfx1151", "dense_gemv", "bf16", "prefill_out")
+    candidate_key = KernelKey(
+        "hip_gfx1151", "dense_gemv", "bf16", "prefill_wmma_out"
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (fallback_key, candidate_key)
+    }
+    calls: list[str] = []
+    register(
+        fallback_key,
+        lambda *args, **kwargs: calls.append("fallback"),
+        replace=True,
+    )
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append("wmma"),
+        replace=True,
+    )
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=16,
+            in_features=1000,
+            out_features=128,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == ["fallback"]
+
+
 def test_qwen35_dense_pack8_wmma_tile_policy_covers_ffn_shapes() -> None:
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
         _default_q4_pack8_tiles,
@@ -3670,6 +3721,101 @@ def test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill() -> None:
         gl.gguf_q4_k_pack8_dual_prefill_bf16_bf16_out = original  # type: ignore[assignment]
     assert fused is True
     assert len(pair_calls) == 1
+
+
+def test_gfx1151_pack8_bulk_pair_invokes_registered_wmma_owner(monkeypatch) -> None:
+    """Bulk pair routing must execute the function behind its four-axis key."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    import hipengine.runtime.gguf_linear as gl
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k",
+        "pack8_wmma_prefill_bf16_bf16_out",
+    )
+    exact_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k",
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    exact_original = resolve(
+        backend=exact_key.backend,
+        layer=exact_key.layer,
+        quant=exact_key.quant,
+        variant=exact_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def registered(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    def unexpected_direct(*args, **kwargs):
+        raise AssertionError("pair route bypassed the registered WMMA owner")
+
+    register(key, registered, replace=True)
+    # A populated exact singleton normally makes the pair owner decline so the
+    # caller launches two registered singletons. Remove it to exercise the
+    # pair function's capability fallback, which must still honor the registry.
+    unregister(exact_key)
+    monkeypatch.setattr(
+        gl,
+        "gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out",
+        unexpected_direct,
+        raising=False,
+    )
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=512,
+            in_features=1024,
+            out_features=3584,
+            backend="hip_gfx1151",
+            stream=7,
+            libraries={
+                "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out": "wmma-library"
+            },
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+    finally:
+        register(key, original, replace=True)
+        register(exact_key, exact_original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 11, 12, 13, 200, 512, 1024, 3584),
+            {
+                "stream": 7,
+                "runtime": "runtime-sentinel",
+                "library": "wmma-library",
+            },
+        ),
+        (
+            (100, 11, 12, 13, 300, 512, 1024, 3584),
+            {
+                "stream": 7,
+                "runtime": "runtime-sentinel",
+                "library": "wmma-library",
+            },
+        ),
+    ]
 
 
 def test_gfx1151_q4_k_pack8_decode_pair_uses_registered_dual_owner() -> None:

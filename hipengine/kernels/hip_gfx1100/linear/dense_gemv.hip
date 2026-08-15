@@ -1338,7 +1338,7 @@ extern "C" int hipengine_dense_prefill_wmma_out_bf16(
   constexpr int BN = 64;
   constexpr int BK = 32;
   if (rows <= 0 || in_features <= 0 || out_features <= 0 ||
-      (out_features % BM) != 0) {
+      (in_features % BK) != 0 || (out_features % BM) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(

@@ -664,6 +664,8 @@ def dense_prefill_wmma_out_bf16(
 
     if rows <= 0 or in_features <= 0 or out_features <= 0:
         raise ValueError("shape must be positive")
+    if in_features % 32:
+        raise ValueError("dense WMMA prefill requires in_features % 32 == 0")
     if out_features % 128:
         raise ValueError("dense WMMA prefill requires out_features % 128 == 0")
     library = library or build_dense_gemv(load=True)

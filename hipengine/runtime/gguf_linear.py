@@ -28,7 +28,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
-    gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
@@ -1412,14 +1411,17 @@ def _dense_bf16_wmma_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
-    enabled: bool,
+    in_features: int,
     out_features: int,
+    enabled: bool,
 ) -> GGUFLinearDispatch:
     """Prefer the D08-X2-K5 LDS-staged WMMA dense-BF16 bulk consumer."""
 
     if (
         not enabled
         or rows < 16
+        or in_features <= 0
+        or in_features % 32
         or out_features <= 0
         or out_features % 128
         or dispatch.abi != "dense_bf16"
@@ -2209,6 +2211,7 @@ def launch_gguf_linear(
         dispatch = _dense_bf16_wmma_dispatch(
             dispatch,
             rows=rows,
+            in_features=in_features,
             out_features=out_features,
             enabled=(
                 use_wmma
@@ -3461,27 +3464,32 @@ def launch_gguf_linear_pair(
         # D08-X2-K5a: bulk rows prefer the routed pack8 WMMA leaf per side
         # over the per-row base dual kernel (same registry route the single
         # projection path takes; the base dual stays the fallback).
+        wmma_key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k",
+            "pack8_wmma_prefill_bf16_bf16_out",
+        )
         if (
             use_wmma
             and rows >= 16
             and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
             and backend_package_capability(
-                _weight_backend(weight_a, backend=backend),
+                resolved_backend,
                 "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
                 False,
             )
-            and is_registered(
-                KernelKey(
-                    _weight_backend(weight_a, backend=backend),
-                    "linear",
-                    "gguf_q4_k",
-                    "pack8_wmma_prefill_bf16_bf16_out",
-                )
-            )
+            and is_registered(wmma_key)
         ):
+            wmma_fn = resolve(
+                backend=wmma_key.backend,
+                layer=wmma_key.layer,
+                quant=wmma_key.quant,
+                variant=wmma_key.variant,
+            )
             pair_library = None if libraries is None else libraries.get(
-                "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out",
-                libraries.get("gguf_q4_k"),
+                f"{wmma_key.quant}:{wmma_key.variant}",
+                libraries.get(wmma_key.quant),
             )
             common_kwargs = {
                 "stream": stream,
@@ -3489,7 +3497,7 @@ def launch_gguf_linear_pair(
                 "library": pair_library,
             }
             for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
-                gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out(
+                wmma_fn(
                     x_ptr,
                     weight.allocation("qweight").tensor.ptr,
                     weight.allocation("scales").tensor.ptr,
