@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "rejected",
+  "task": "D08-X7 exact resident-pack8 Q4 WMMA FFN down plus residual prefill",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "base_commit": "c23a70998d73fc604013c377ca149a42c4d06563",
+    "measurement_tree_clean": false,
+    "candidate_code_and_test_diff_sha256": "752a458d925d5e6fd2a67c62a0acc9436f81b28d13af11911881533429d7a79b",
+    "candidate_removed": true
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15 / package 7.2.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "candidate": {
+    "owner": "12 resident-pack8 Q4_K FFN-down p512 projections",
+    "shape": {
+      "rows": 512,
+      "in_features": 3584,
+      "out_features": 1024
+    },
+    "mechanism": "round the WMMA projection to BF16, load/add the BF16 residual in the output store, and round the sum to BF16",
+    "intended_removed_work": "12 standalone gguf_bf16_add launches",
+    "resident_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "rollback": "HIPENGINE_GGUF_Q4_PACK8_WMMA_RESIDUAL=0"
+  },
+  "leaf_correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q4_k_wmma_prefill.py -k pack8_wmma_residual_preserves",
+    "result": "1 passed",
+    "oracle": "ordinary resident-pack8 WMMA projection, explicit rounded BF16 residual add",
+    "output_byte_exact": true,
+    "note": "The focused GPU test was removed with the rejected candidate."
+  },
+  "complete_model_screen": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u /tmp/run_pack8_residual_ab.py",
+    "protocol": "fresh process per role; one child warmup plus one measure; alternating candidate/control order; stop after two complete paired Q4 blocks because both core and public prefill lost both blocks",
+    "harness_sha256": "cf462de9a57e6c315c8a26e08ed8b8750b84324f69f6f5a3987c2eb63c0b60d2",
+    "driver": "scripts/qwen35_08b_exact_core.py",
+    "driver_sha256": "4369db461393ff27dd4dad49c6e98b81480f4b4dca308366690d850d48bd8156",
+    "candidate": {
+      "core_prefill_tok_s": [4961.977875393494, 4854.32433403861],
+      "core_decode_tok_s": [142.70485193419503, 142.80988872257933],
+      "public_prefill_tok_s": [4904.851720297229, 4853.144648630289],
+      "public_decode_tok_s": [122.96773364135983, 121.02439667180148]
+    },
+    "control": {
+      "core_prefill_tok_s": [5099.285021478697, 5149.6193229407245],
+      "core_decode_tok_s": [143.01314561862839, 145.195463125006],
+      "public_prefill_tok_s": [5169.134014473757, 5080.6270204237135],
+      "public_decode_tok_s": [121.4315079297488, 124.1672927858992]
+    },
+    "median_candidate_over_control": {
+      "core_prefill": 0.9577904017395897,
+      "core_decode": 0.9906530616881877,
+      "public_prefill": 0.9520218408706664,
+      "public_decode": 0.9934581504559264
+    },
+    "candidate_paired_wins": {
+      "core_prefill": 0,
+      "core_decode": 0,
+      "public_prefill": 0,
+      "public_decode": 1
+    },
+    "blocks": 2,
+    "correctness": {
+      "all_finite": true,
+      "all_deterministic": true,
+      "core_top1_exact_between_roles": true,
+      "public_top1_exact_between_roles": true,
+      "final_id": 9707
+    },
+    "owned_session_bytes": {
+      "candidate": 1067067204,
+      "control": 1067067204
+    },
+    "raw_sha256": {
+      "q4_b00_candidate": "23b4fc74f744ecbd2b9d96e043f4158b0163deedea34e2864b1fba3bb27fa2d1",
+      "q4_b00_control": "8d6875468f453040ef7d86ee2e67082946437f1aebcf46086d6e2ce43faee0cf",
+      "q4_b01_candidate": "c2a251e2e1a9df219b3fabd1d005b2b0ae4137124b207729ff76b6374a81b9a8",
+      "q4_b01_control": "c80aba8e01939ae47695085eaf6fcab7f46c3d78c59fa35b21fb8280b96a05d6"
+    }
+  },
+  "stopped_gates": {
+    "q8_complete_model_guard": "not run because the Q4 target lost both paired blocks materially",
+    "cumulative_semantic": "not run because the exact candidate failed the target performance gate",
+    "kernel_trace": "not run because the complete-model performance gate already rejected the candidate"
+  },
+  "interpretation": "Folding a residual load and two BF16 conversions into the small-tile pack8 WMMA output path lengthens the critical projection enough to overwhelm the 12-launch add saving. This is not the dense-BF16 X6 result: the pack8 producer is substantially more sensitive to output-store work.",
+  "decision": "Reject and remove the pack8 WMMA residual sibling, registry/capability route, tests, and rollback selector. Keep the ordinary pack8 WMMA projection plus gguf_bf16_add chain. Do not retry this output-store fusion without a materially different schedule that first beats the complete-model control."
+}

@@ -138,11 +138,15 @@ also exact but regressed **0.775 -> 1.195 ms (0.648x)**. Both transient routes
 were removed. The next dense-FFN package retained exact WMMA down+residual:
 its 12-owner leaf is **9.959 -> 9.804 ms (1.0158x)**, while five paired Q4
 blocks observe **+3.09% core / +1.68% public pp512** with all guards passing.
-The causal retained claim is the 0.155-ms leaf saving. Evidence:
+The causal retained claim is the 0.155-ms leaf saving. Applying the same exact
+rounded-residual store to the remaining 12 pack8-Q4 down owners instead loses
+both paired screens at **-4.22% core / -4.80% public pp512**; that candidate is
+removed and the pack8 projection+add chain remains current. Evidence:
 [`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json),
 [`projection rejection`](results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json),
 [`GDN rejection`](results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json),
-and [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
+[`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json),
+and [`pack8 residual rejection`](results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
 The prior same-session graph replay census, whose decode route is unchanged by
 X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
 fresh-process p16-p4096 threshold diagnostic then completes all **187** children
