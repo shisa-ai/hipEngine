@@ -185,18 +185,22 @@ Each value is the total tokens per second across all active requests:
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
 
-### Radeon RX 7900 XTX (`gfx1100`)
+### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
-| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **973.457** | **33.521** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **959.416** | **34.060** |
+| Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | **959.4** | 965.0 | -0.6% | 865.7 | +10.8% |
+| 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
+| 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
-#### MTP
+#### Decode / MTP
 
-| Model and mode | Text generation | Speed compared with AR |
-| --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **62.440 tok/s** | **1.7695x** |
+| Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AR decode 512 | **34.06** | 32.86 | +3.6% | 13.39 | 2.54x |
+| AR decode 1K | **34.91** | 32.75 | +6.6% | 13.38 | 2.61x |
+| AR decode 4K | **31.79** | 32.41 | -1.9% | 13.31 | 2.39x |
+| MTP natural | **62.44 B3** | 44.33 B2 | +40.9% | 73.33 B2 | -14.8% |
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -224,11 +228,12 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-These rows use different models and tests. Compare results only when their
-protocols match. MTP-2 and MTP-3 use two and three draft tokens per cycle. The
-35B-A3B MTP-2 path matches llama.cpp's MTP output on the validated prompt suite.
-It remains opt-in because that output can differ from normal autoregressive
-generation.
+Rows use different models and tests; compare only matching protocols. The RX
+7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
+llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
+hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
+draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated
+suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness

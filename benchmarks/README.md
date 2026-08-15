@@ -36,18 +36,22 @@ Each value is the total tokens per second across all active requests:
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
 
-### Radeon RX 7900 XTX (`gfx1100`)
+### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
-| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **973.457** | **33.521** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **959.416** | **34.060** |
+| Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | **959.4** | 965.0 | -0.6% | 865.7 | +10.8% |
+| 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
+| 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
-#### MTP
+#### Decode / MTP
 
-| Model and mode | Text generation | Speed compared with AR |
-| --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **62.440 tok/s** | **1.7695x** |
+| Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AR decode 512 | **34.06** | 32.86 | +3.6% | 13.39 | 2.54x |
+| AR decode 1K | **34.91** | 32.75 | +6.6% | 13.38 | 2.61x |
+| AR decode 4K | **31.79** | 32.41 | -1.9% | 13.31 | 2.39x |
+| MTP natural | **62.44 B3** | 44.33 B2 | +40.9% | 73.33 B2 | -14.8% |
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -75,11 +79,12 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-These rows use different models and tests. Compare results only when their
-protocols match. MTP-2 and MTP-3 use two and three draft tokens per cycle. The
-35B-A3B MTP-2 path matches llama.cpp's MTP output on the validated prompt suite.
-It remains opt-in because that output can differ from normal autoregressive
-generation.
+Rows use different models and tests; compare only matching protocols. The RX
+7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
+llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
+hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
+draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated
+suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Where detailed evidence lives
@@ -199,18 +204,33 @@ drift, not a single-layout regression. Evidence:
 The superseded dual-layout publication remains in the
 [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
 
-### Radeon RX 7900 XTX: Qwen3.8-27B Dense GGUF
+### RX 7900 XTX: Qwen3.8-27B Dense GGUF cross-engine comparison
 
-| Workload | Prefill | Autoregressive decode | Tracked peak | Status |
-| --- | ---: | ---: | ---: | --- |
-| 512/128 | **959.416 tok/s** | **34.060 tok/s** | **15.587 GiB** | Geometry-qualified sole T16 + c1 fused gate/up SiLU |
+#### Prefill
 
-The clean idle-card exact natural25 suite measures true AR **35.287 tok/s** and
-native B3 **62.440 tok/s / 1.7695x**. A matched pre-fusion control measures
-**34.007 / 62.167 tok/s**, so the retained fusion improves AR **3.764%** and
-B3 **0.439%**, with every category non-regressive. Exact outputs, acceptance,
-and teardown pass. Evidence: [`clean-idle correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) and
-[`fusion implementation`](results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json).
+| Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512 | **959.4** | 965.0 | -0.6% | 865.7 | +10.8% |
+| 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
+| 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
+
+#### Decode / MTP
+
+| Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AR decode 512 | **34.06** | 32.86 | +3.6% | 13.39 | 2.54x |
+| AR decode 1K | **34.91** | 32.75 | +6.6% | 13.38 | 2.61x |
+| AR decode 4K | **31.79** | 32.41 | -1.9% | 13.31 | 2.39x |
+| MTP natural | **62.44 B3** | 44.33 B2 | +40.9% | 73.33 B2 | -14.8% |
+
+Fixed-shape rows use token 9707 and 128 timed transitions. Prefill is a
+three-run hipEngine median versus llama-bench's five-sample mean. MTP uses all
+ten category prompts plus the heldout split; B1-B5 were swept independently
+for each llama.cpp backend. hipEngine B3 is exact, and llama.cpp HIP B2 matches
+its AR output ledger. llama.cpp Vulkan B2 is a labeled speed-only comparator
+because its output ledger differs from Vulkan AR. Evidence:
+[`Qwen3.8 cross-engine comparison`](results/2026-08-15-qwen38-27b-xtx-hip-vulkan-comparison.json) and
+[`clean-idle hipEngine correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
