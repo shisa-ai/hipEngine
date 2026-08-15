@@ -19,6 +19,7 @@ from hipengine.kernels.backends import (
 )
 from hipengine.kernels.policy import (
     QWEN35_DENSE_H1024_GEOMETRY,
+    QWEN35_DENSE_H5120_GEOMETRY,
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -161,12 +162,18 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_SELECTED_DOWN_MODE,
     LAGUNA_SELECTED_GATE_UP_MODE,
     LAGUNA_SWA_PREFILL_VARIANT,
+    GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES,
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE,
     GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS,
     GGUF_GDN_PREFILL_EXACT_MODE,
+    GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
+    GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES,
+    GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES,
+    GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE,
+    GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES,
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
@@ -393,6 +400,25 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
         ),
     ]
+
+
+def test_gfx1151_backend_admits_only_q5_source_f16_prefill() -> None:
+    assert GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+    }
+    assert GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES == {}
+    assert GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES == {}
+    assert GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES == {
+        (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+    }
+    assert GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE == {}
+    assert GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES == {
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): {
+                (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+            },
+        },
+    }
 
 
 def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:

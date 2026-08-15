@@ -756,7 +756,7 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
         weight_f16_nbytes=1280 * 6_144 * 2,
         out_f16_ptr=0x50000000,
         out_f16_nbytes=4096 * 1280 * 2,
-        tile_out_features_by_shape={(512, 5_120, 10_240): 2_048},
+        tile_out_features_by_shape={},
         q5_tile_out_features_by_shape={
             (512, 6_144, 5_120): 1_280,
             (1_024, 6_144, 5_120): 1_280,
