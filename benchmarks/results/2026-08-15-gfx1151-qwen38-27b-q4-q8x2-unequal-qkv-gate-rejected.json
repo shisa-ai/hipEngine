@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_unequal_qkv_gate",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "483f2671832eac9d52249bfe6d51507ca0dd6dd7",
+    "compiler": "AMD clang 23.0.0git",
+    "development_worktree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "trace": "/tmp/qwen38-task22-post-q8x2-rerank/rocprof-selected/gfx1151/1117555_kernel_trace.csv",
+    "trace_sha256": "f39c0143cc477b173932a38bc55863d101a6a734a662886b20bdf805154b7f60",
+    "graph_kernel_wall_ms": 10449.636114,
+    "q4_qkv_owner_ms": 426.426955,
+    "q4_gate_all_layers_ms": 510.362268,
+    "q4_gate_affected_half_ms": 255.181134,
+    "affected_owner_ms": 681.608089,
+    "affected_share_percent": 6.5227925792249275,
+    "required_family_saving_percent": 15.33085695818378,
+    "quant_inventory": {
+      "linear_attention_qkv_q4_pairs": 24,
+      "linear_attention_qkv_q6_gate_q4_pairs": 24,
+      "candidate_scope": "only the 24 homogeneous Q4/Q4 pairs"
+    }
+  },
+  "candidate": {
+    "scope": "rows1 H5120 -> N10240 Q4T16 QKV plus N6144 Q4T16 gate",
+    "producer": "one BF16 primary-plus-residual Q8_1 pack",
+    "consumer": "one unequal dual-Q4T16 dp4a launch sharing both activation planes and dots over overlapping output tiles",
+    "tail": "QKV-only N10240 minus N6144 output tiles",
+    "new_resident_bytes": 0,
+    "workspace_bytes": 11520,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "actual_layers": [8, 24, 54],
+    "shape_a": [10240, 5120],
+    "shape_b": [6144, 5120],
+    "source_bytes_per_pair": 47185920,
+    "resident_t16_bytes_per_pair": 48496640,
+    "warmups": 3,
+    "samples_per_layer": 15,
+    "timing": "counterbalanced HIP events, one target launch per sample",
+    "cache_contract": "all three pairs resident; each timed target is preceded by exact reads of both peer pairs, evicting 90 MiB and exceeding 2x the 32-MiB MALL",
+    "control": "two exact sole-Q4T16 local32 projections",
+    "candidate_path": "Q8_1x2 pack plus unequal same-resident dual dp4a"
+  },
+  "results": [
+    {
+      "layer": 8,
+      "control_ms": 0.23500099778175354,
+      "candidate_ms": 0.23055200278759003,
+      "speedup": 1.019297143118997,
+      "candidate_wins": "14/15",
+      "max_abs": 0.00390625,
+      "max_kl": 4.301452072593455e-09,
+      "top1": "2/2"
+    },
+    {
+      "layer": 24,
+      "control_ms": 0.2350810021162033,
+      "candidate_ms": 0.23075300455093384,
+      "speedup": 1.0187559749165223,
+      "candidate_wins": "15/15",
+      "max_abs": 0.00390625,
+      "max_kl": 2.9901934021969994e-09,
+      "top1": "2/2"
+    },
+    {
+      "layer": 54,
+      "control_ms": 0.23556199669837952,
+      "candidate_ms": 0.23123300075531006,
+      "speedup": 1.0187213586682222,
+      "candidate_wins": "15/15",
+      "max_abs": 0.001953125,
+      "max_kl": 1.8350585741830297e-09,
+      "top1": "2/2"
+    }
+  ],
+  "family": {
+    "control_ms": 0.7056439965963364,
+    "candidate_ms": 0.6925380080938339,
+    "speedup": 1.0189245764843662,
+    "candidate_over_control": 0.9814269113522981,
+    "all_layers_positive": true,
+    "candidate_wins": "44/45"
+  },
+  "projection": {
+    "affected_owner_ms": 681.608089,
+    "family_saved_percent": 1.8573088647701902,
+    "projected_saved_ms": 12.659567459987693,
+    "projected_complete_graph_percent": 0.12114840480451673,
+    "advance_threshold_percent": 1.0,
+    "advance": false,
+    "conservative_all_qkv_plus_all_gate_upper_bound_percent": 0.2867384828062347
+  },
+  "correctness": {
+    "finite": true,
+    "max_abs": 0.00390625,
+    "max_kl": 4.301452072593455e-09,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "validation": {
+    "red": "focused test failed collection because the unequal Q8_1x2 wrapper did not exist",
+    "green": "focused synthetic GPU quality test passed after one test-only seed API repair",
+    "actual_weight_gate": "passed correctness and all-layer positivity but failed the 1% request projection gate",
+    "source_restored": true,
+    "worktree_code_diff_after_restore": false
+  },
+  "evidence": {
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-unequal-leaf/leaf.json",
+      "sha256": "bdf61c2ec3daf80eea93cb4481664d9532b081ccc42a138051f29ff63cd9bad6",
+      "bytes": 8325
+    },
+    "red_stdout": "/tmp/qwen38-task22-q4-q8x2-unequal-validation/red.stdout",
+    "green_log": "/tmp/qwen38-task22-q4-q8x2-unequal-validation/green-rerun.log"
+  },
+  "decision": "Reject and restore the unequal residual-Q8_1x2 QKV+gate diagnostic. The candidate is correct and wins 44/45 actual-weight pairs, but its 1.892% family speedup projects to only 12.660 ms / 0.121% of complete selected graph wall because only 24 of 48 QKV/gate pairs are homogeneous Q4/Q4. This is more than 8x below the 1% advancement gate; do not spend repeated-shape or natural-suite gates."
+}
