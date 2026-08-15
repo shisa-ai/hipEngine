@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X6 exact dense-BF16 WMMA FFN down plus residual prefill",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "source": {
+    "base_commit": "544692c48",
+    "measurement_tree_clean": false,
+    "code_and_test_diff_sha256": "a4ffdf1b24da4ac83001938ce63329f032b7ce74a5705d75952bc4a4e23ab27a"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15 / package 7.2.0"
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "quant": "MOSTLY_Q4_K_M"
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "quant": "MOSTLY_Q8_0"
+    }
+  },
+  "mechanism": {
+    "owner": "12 Q4_K_M dense-BF16 FFN-down residents",
+    "shape": {
+      "rows": 512,
+      "in_features": 3584,
+      "out_features": 1024
+    },
+    "kernel": "dense_prefill_wmma_out_kernel<128,64,32,true>",
+    "semantics": "round FP32 WMMA projection to BF16, add BF16 residual, round the result to BF16",
+    "removed_work": "12 standalone gguf_bf16_add launches and projection-temporary traffic",
+    "resident_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "fallback": "registered dense_prefill_wmma_out plus gguf_bf16_add primitive chain",
+    "default_scope": "hip_gfx1151; dense_bf16; rows512/K3584/N1024",
+    "rollback": "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0",
+    "non_dense_fast_miss": "pack8/raw/T16 owners return before registry and capability resolution"
+  },
+  "leaf_screen": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt uv run python -u /tmp/dense_wmma_residual_actual_screen.py",
+    "script_sha256": "0720d8787ff17f9bde5c57c7e65c76594ca207cb294e6840e8897cacea1a6053",
+    "method": "all 12 actual dense-BF16 FFN-down residents; five counter-rotated blocks; five complete 12-owner calls per sample",
+    "control_ms_samples": [9.86562860198319, 10.202239401405677, 10.013059998163953, 9.959283599164337, 9.914247400593013],
+    "candidate_ms_samples": [9.189700003480539, 10.454151994781569, 9.845485002733767, 9.803979401476681, 9.660519601311535],
+    "control_median_ms": 9.959283599164337,
+    "candidate_median_ms": 9.803979401476681,
+    "saving_ms": 0.1553041976876557,
+    "speedup": 1.0158409347192492,
+    "candidate_paired_wins": 4,
+    "blocks": 5,
+    "output_byte_exact": true,
+    "max_output_bit_difference": 0
+  },
+  "profile": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt rocprofv3 --kernel-trace --output-directory /tmp/d08-x6-dense-residual-trace --output-file dense-residual --output-format csv -- uv run pytest -q tests/test_dense_prefill_wmma.py -k residual_preserves_rounded_bf16_boundary",
+    "trace_sha256": "d4e161e01ee47cbbdc1c9a9d57993876669efb2f6017545326a29893832d264f",
+    "kernel_observed": true,
+    "workgroup_size": 256,
+    "lds_bytes": 15360,
+    "scratch_bytes": 0,
+    "vgpr": 96,
+    "sgpr": 128,
+    "duration_note": "Start/end timestamps are equal under the documented gfx1151 rocprof blocker; the synchronized leaf screen is the timing authority."
+  },
+  "complete_model_ab": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u /tmp/run_dense_residual_ab.py; then focused Q8 blocks 3-4 with /tmp/extend_dense_residual_q8_ab.py",
+    "harness_sha256": "41feb08add2b3f5fbc3c96d2618c97844b019580b6ce222349fd958a6b42a0e3",
+    "q8_extension_sha256": "a2d5d8713a5cadcea5aa66332dc0b7bd51795867060b6f11363c6ce54fbea51d",
+    "driver_sha256": "4369db461393ff27dd4dad49c6e98b81480f4b4dca308366690d850d48bd8156",
+    "aggregate_sha256": "f55fba25a69d3783c22a68e4ccda0d8ec2cef17c36ffe647cafa8599d8899b55",
+    "protocol": "fresh process per role; one child warmup plus one measure; alternating role order; five blocks per quant after focused Q8 extension",
+    "q4": {
+      "candidate": {
+        "core_prefill_tok_s": [5178.943419476695, 5454.421839061873, 5070.334602174665, 4890.8511985842815, 5091.717697628284],
+        "core_decode_tok_s": [144.5200799315271, 174.32483094114087, 154.0373666130422, 143.31339721191378, 153.10114417293372],
+        "public_prefill_tok_s": [5104.789564821077, 5353.787646342047, 5065.190535600469, 4994.424729527271, 5109.519251920076],
+        "public_decode_tok_s": [124.58884403944657, 123.76272362622475, 125.9412297750401, 124.8998364298081, 122.10436835780379]
+      },
+      "control": {
+        "core_prefill_tok_s": [5031.000692175295, 4909.429841064113, 4942.608114291325, 4785.440118983987, 4938.948471439339],
+        "core_decode_tok_s": [144.99110494863172, 143.10398509314408, 178.71801773704283, 144.94557335618805, 144.02119739988632],
+        "public_prefill_tok_s": [5020.344554091035, 4935.40071357026, 5113.444359792971, 5064.769999990306, 4963.628046034082],
+        "public_decode_tok_s": [121.75799528109006, 121.39924032206038, 127.98576503925504, 120.87171441501033, 121.22738851595977]
+      },
+      "median_candidate_over_control": {
+        "core_prefill": 1.0309315286588572,
+        "core_decode": 1.0562664359311218,
+        "public_prefill": 1.0168205607842649,
+        "public_decode": 1.0262736711442715
+      },
+      "paired_wins": {
+        "core_prefill": 5,
+        "core_decode": 2,
+        "public_prefill": 3,
+        "public_decode": 4
+      }
+    },
+    "q8_guard": {
+      "median_candidate_over_control": {
+        "core_prefill": 0.981458360554716,
+        "core_decode": 0.9925151461896816,
+        "public_prefill": 0.9879215867663292,
+        "public_decode": 1.007965163602024
+      },
+      "paired_wins": {
+        "core_prefill": 2,
+        "core_decode": 2,
+        "public_prefill": 1,
+        "public_decode": 4
+      },
+      "blocks": 5,
+      "route_active": false,
+      "final_tree_note": "A post-A/B focused repair returns non-dense layouts before registry work; the completed five-block guard already passes and was not repeated."
+    },
+    "correctness": {
+      "all_finite": true,
+      "all_deterministic": true,
+      "core_trajectories_exact": true,
+      "public_trajectories_exact": true
+    },
+    "owned_session_bytes": {
+      "q4_candidate": 1067067204,
+      "q4_control": 1067067204,
+      "q8_candidate": 1029470788,
+      "q8_control": 1029470788
+    },
+    "interpretation": "The full-wall ratios are binding non-regression evidence. The causal retained performance claim is the exact 0.155304-ms leaf saving, not the entire observed aggregate change."
+  },
+  "cumulative_semantic": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u scripts/qwen35_08b_cumulative_semantic.py",
+    "harness_sha256": "854062e4ff5f5377ccc5790928a652b006eadf9b6a33b5cd9f0b88d4929c59ac",
+    "raw_sha256": "721385e50085a12fb6cfc8a6f0db671c33e2ece2cb96f0e34891ea9d73446cd8",
+    "prompt_count": 18,
+    "profiles": ["natural", "category_p512"],
+    "decode_steps": 24,
+    "gate_passed": true,
+    "current_top1_matches": 1794,
+    "current_transitions": 1800,
+    "max_current_kl": 0.005930369204291595,
+    "all_role_deterministic": true,
+    "all_state_finite": true,
+    "recorded_graph_prompt_role_pairs": 72,
+    "all_recorded_graph_trajectories_exact": true,
+    "min_recorded_graph_top1": 1.0,
+    "q4_candidate_vs_x6_rollback": {
+      "prompt_profile_pairs": 36,
+      "teacher_forced_digest_matches": 36,
+      "state_digest_matches": 36,
+      "correctness_record_matches": 36
+    },
+    "prompt_suite_sha256": {
+      "mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+    }
+  },
+  "validation": {
+    "red_green": "Focused import/registry/route tests failed before implementation and pass after it.",
+    "dense_wmma_test_file": "7 passed",
+    "dispatch_focus": "bulk residual, rollback, c1/small-row fallback, capability, and non-dense fast miss pass",
+    "ruff": "not run: ruff executable is absent from this environment"
+  },
+  "decision": "Retain as the gfx1151 default only for exact dense-BF16 rows512/K3584/N1024 down+residual. Keep the primitive chain and temporary env rollback."
+}

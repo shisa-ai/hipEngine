@@ -43,6 +43,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+    gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
 )
@@ -489,7 +490,11 @@ def test_gfx1151_backend_excludes_losing_dense_down_residual_fusions() -> None:
         "hip_gfx1151",
         "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
         None,
-    ) is None
+    ) == {
+        "gguf_q4_k_t16_v1": 4,
+        "gguf_q6_k_t16_qmicro_planar_v1": 3,
+        "bf16": 512,
+    }
 
 
 def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
@@ -644,7 +649,7 @@ def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None
     ]
 
 
-def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
+def test_gfx1151_08b_dense_down_residual_policies_are_exact() -> None:
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
         register_dense_gemv_kernels,
     )
@@ -666,9 +671,13 @@ def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
     ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT", {}
+    )["bf16"] == 512
     for quant, variant in (
         ("gguf_q4_k", "pack8_bf16_residual_bf16_out"),
         ("bf16", "out_bf16_residual_bf16_out"),
+        ("bf16", "prefill_wmma_out_bf16_residual_bf16_out"),
     ):
         assert is_registered(
             KernelKey("hip_gfx1151", "linear+residual", quant, variant)
@@ -1344,6 +1353,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             variant="t16_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear_pair",
+            quant="gguf_q8_0_t16_v1",
+            variant="t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out
     )
     assert (
         resolve(

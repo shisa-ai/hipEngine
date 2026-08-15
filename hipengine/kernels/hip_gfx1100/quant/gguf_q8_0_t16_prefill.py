@@ -259,6 +259,59 @@ def _make_wrapper(
     return wrapper
 
 
+def gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the narrow Q8T16 dual-WMMA alpha/beta prefill leaf."""
+
+    if rows <= 0 or in_features <= 0 or in_features % _Q8_0_QK:
+        raise ValueError("rows must be positive and in_features divisible by 32")
+    if out_features != _T16_COLS:
+        raise ValueError("dual Q8T16 WMMA prefill requires out_features == 16")
+    library = library or build_gguf_q8_0_t16_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        "hipengine_gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out",
+    )
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 _WRAPPER_CACHE: dict[str, object] = {variant: _make_wrapper(variant) for variant in _VARIANTS}
 
 gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out = _make_wrapper(
@@ -442,6 +495,16 @@ def register_gguf_q8_0_t16_prefill_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        ),
+        gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q8_0_t16_v1",
             _TWO_WAVE_VARIANT,
@@ -496,6 +559,7 @@ register_gguf_q8_0_t16_prefill_kernels()
 
 __all__ = [
     "build_gguf_q8_0_t16_prefill",
+    "gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out",
     "plan_gguf_q8_0_t16_prefill_build",
     "register_gguf_q8_0_t16_prefill_kernels",
     "q8_t16_two_wave_prefill_session",

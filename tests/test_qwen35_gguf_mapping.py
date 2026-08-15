@@ -299,7 +299,10 @@ def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
     assert model_map.config.architecture == "qwen35"
     assert not model_map.config.is_moe
     assert model_map.config.block_count == 64
-    assert model_map.config.ignored_block_ids == (64,)
+    has_trailing_nextn = any(
+        tensor.name.startswith("blk.64.nextn.") for tensor in info.tensors
+    )
+    assert model_map.config.ignored_block_ids == ((64,) if has_trailing_nextn else ())
     assert model_map.config.lm_head_tensor_name == "output.weight"
     assert model_map.root("token_embedding").name == "token_embd.weight"
     assert model_map.root("lm_head").name == "output.weight"

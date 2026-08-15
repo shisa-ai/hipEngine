@@ -111,20 +111,49 @@ backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
-full Vulkan-parity campaign (D08) to a blocked closure, then the
-human-approved D08-X extension retained three additional prefill routes:
-Q8_0 cluster8 GDN, pack8-WMMA bulk, and dense-BF16 WMMA. Together with D08's
-Q5T16 QKV and Q4 cluster8 routes, they move exact-core pp512 to **4314/4976
-tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic)** on the fresh
-post-review six-block baseline, with public decode remaining near llama-HIP
-parity. Full per-package evidence and history live in
+full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
+Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
+pack8 gate+up+SiLU. That X3 route measures **4344 -> 4944 exact-core pp512
+(+13.81%)** over five paired blocks. A fresh six-block clean-HEAD external
+packet now measures hipEngine / same-source llama HIP / Vulkan exact-core
+pp512 at **4896 / 4848 / 5510 Q4** and **4997 / 4640 / 5704 Q8 tok/s**.
+hipEngine therefore reaches **1.010x llama HIP / 0.889x Vulkan Q4** and
+**1.077x / 0.876x Q8**. The Q4 core gap to Vulkan falls from **21.458 to 11.657
+ms**; public prefill remains 0.867x Vulkan. hipEngine still beats llama HIP
+decode, while public decode is **0.959x Vulkan Q4 / 1.047x Vulkan Q8**. All 36
+children are finite/deterministic/cross-engine exact and every metric CV is
+below 5%. Core Vulkan parity stays open. Evidence: [`post-X3 three-way`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json)
+and [`operation-complete Q4 prefill`](results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
+Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
-The fresh semantic rerank assigns 99.1%/99.0% of marker-prefill wall and all
-286/288 public graph nodes. Same-session graph replay leaves only **0.114/0.127
-ms/token Q4/Q8** outside device stages, closing the prior ~2.3-ms isolated-owner
-estimate as microbenchmark undercount rather than API overhead. The clean
+The post-X3 Q4 marker rerank reconciles **100.08%** of its 106.338-ms wall.
+That profile's owners are dense FFN **34.007 ms**, linear-attention projections
+**31.815 ms**, and GDN **23.617 ms**; normalized historical-attribution gaps
+rerank linear projections first at **13.460 ms**. Its explicit 17.628-ms
+Q5-QKV + Q4-gate fallback screen was byte-exact but only **1.0059x / 0.114 ms**
+faster across all 18 pairs. The next GDN cluster8 wave-broadcast screen was
+also exact but regressed **0.775 -> 1.195 ms (0.648x)**. Both transient routes
+were removed. The next dense-FFN package retained exact WMMA down+residual:
+its 12-owner leaf is **9.959 -> 9.804 ms (1.0158x)**, while five paired Q4
+blocks observe **+3.09% core / +1.68% public pp512** with all guards passing.
+The causal retained claim is the 0.155-ms leaf saving. Applying the same exact
+rounded-residual store to the remaining 12 pack8-Q4 down owners instead loses
+both paired screens at **-4.22% core / -4.80% public pp512**; that candidate is
+removed and the pack8 projection+add chain remains current. Evidence:
+[`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json),
+[`projection rejection`](results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json),
+[`GDN rejection`](results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json),
+[`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json),
+and [`pack8 residual rejection`](results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
+The next same-resident operation-complete owner shares each exact activation
+tile across the 18 Q8T16 alpha/beta pairs. Its byte-exact leaf is **2.113 ->
+0.422 ms (5.010x)**; Q4/Q8 paired core pp512 improves **3.64%/2.45%** and
+public pp512 **5.05%/2.13%**, all with 5/5 and 3/3 wins. Evidence:
+[`Q8T16 alpha/beta dual WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
+The prior same-session graph replay census, whose decode route is unchanged by
+X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
 fresh-process p16-p4096 threshold diagnostic then completes all **187** children
 with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
 p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
@@ -133,8 +162,12 @@ see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-0
 The final natural+category-p512 cumulative packet then passes at **1794/1800
 current top-1 (99.667%), max KL 0.005930**, deterministic finite state, and
 **72/72 exact eager/recorded-graph trajectories**; this closes post-review
-validation without changing the blocked Vulkan-parity status. Evidence:
-[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
+validation without changing the blocked Vulkan-parity status. The post-X6
+rerun preserves the same **1794/1800** current top-1 and max KL, keeps all
+**72/72** recorded-graph pairs exact, and matches candidate/rollback teacher and
+state digests on **36/36** Q4 prompt/profile pairs. Evidence:
+[`cumulative baseline`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json)
+and [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
 
 ## Current single-request scoreboards
 
