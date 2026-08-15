@@ -69,13 +69,18 @@ def test_dense_prefill_wmma_matches_reference(n: int, k: int, rows: int) -> None
     rng = np.random.default_rng(20260815)
     weights = rng.normal(0, 0.08, size=(n, k)).astype(np.float32)
     x = rng.normal(0, 0.35, size=(rows, k)).astype(np.float32)
-    expected = x @ weights.T
+    # Independent CPU oracle for the candidate's arithmetic contract: both BF16
+    # inputs are narrowed to F16 before F32-accumulating WMMA. Use float64 for
+    # the host contraction so the GPU candidate is not its own oracle.
+    weights_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(weights))
+    x_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(x))
+    cpu_weights = bf16_to_float32(weights_bf16).astype(np.float16).astype(np.float64)
+    cpu_x = bf16_to_float32(x_bf16).astype(np.float16).astype(np.float64)
+    expected = cpu_x @ cpu_weights.T
 
     runtime = get_hip_runtime()
     compiler = _COMPILER.read_text() if _COMPILER.exists() else None
     library = build_dense_gemv(load=True, compiler_version=compiler)
-    weights_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(weights))
-    x_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(x))
     host_ref = np.empty((rows, n), dtype=np.uint16)
     host_got = np.empty((rows, n), dtype=np.uint16)
     buffers = []
@@ -113,5 +118,8 @@ def test_dense_prefill_wmma_matches_reference(n: int, k: int, rows: int) -> None
     # f16 WMMA operands round both inputs; scale-aware tolerance matches the
     # accepted quant WMMA prefill class.
     scale = max(float(np.abs(expected).max()), 1e-6)
+    candidate_error = np.abs(got.astype(np.float64) - expected)
+    assert candidate_error.max() <= 0.035 * scale
+    assert float(np.mean(np.argmax(expected, 1) == np.argmax(got, 1))) >= 0.90
     assert np.abs(got.astype(np.float64) - ref.astype(np.float64)).max() <= 0.035 * scale
     assert float(np.mean(np.argmax(ref, 1) == np.argmax(got, 1))) >= 0.99
