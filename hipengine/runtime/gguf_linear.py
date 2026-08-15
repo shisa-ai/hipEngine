@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_rowtile_bf16_bf16_out,
     gguf_q4_k_quantize_bf16_q8_1,
+    gguf_q4_k_quantize_bf16_q8_1x2,
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
@@ -156,6 +157,9 @@ _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
+_Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS = frozenset(
+    {"dense_dual_q8_1x2_dp4a_bf16_bf16_out"}
+)
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
@@ -3800,8 +3804,9 @@ def launch_gguf_linear_pair_silu(
     use_q4_t16_sidecar: bool = True,
     use_q4_t16_dual_interleaved: bool = True,
     registered_decode_variant: str | None = None,
+    q8_1_workspace_ptr: int | None = None,
 ) -> bool:
-    """Launch an exact registered gate/up pair plus SiLU, or return False."""
+    """Launch a registered gate/up pair plus SiLU, or return False."""
 
     resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
     dispatch_a = resolve_gguf_linear_dispatch(
@@ -3981,7 +3986,7 @@ def launch_gguf_linear_pair_silu(
         resolved_backend,
         "linear_pair_silu",
         "gguf_q4_k_t16_v1",
-        "dense_dual_local32_bf16_bf16_out",
+        registered_decode_variant or "dense_dual_local32_bf16_bf16_out",
     )
     _ensure_linear_kernel_registered(q4_t16_pair_silu)
     if (
@@ -4003,8 +4008,25 @@ def launch_gguf_linear_pair_silu(
         )
         if library is not None:
             kwargs["library"] = library
+        launch_x_ptr = int(x_ptr)
+        if q4_t16_pair_silu.variant in _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS:
+            if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
+                return False
+            q4_library = (
+                None if libraries is None else libraries.get("gguf_q4_k")
+            )
+            gguf_q4_k_quantize_bf16_q8_1x2(
+                x_ptr,
+                int(q8_1_workspace_ptr),
+                rows,
+                in_features,
+                stream=stream,
+                library=q4_library,
+                runtime=runtime,
+            )
+            launch_x_ptr = int(q8_1_workspace_ptr)
         fn(
-            x_ptr,
+            launch_x_ptr,
             weight_a.allocation("tiles").tensor.ptr,
             weight_b.allocation("tiles").tensor.ptr,
             out_ptr,

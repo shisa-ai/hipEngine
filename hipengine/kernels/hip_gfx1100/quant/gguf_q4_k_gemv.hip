@@ -443,6 +443,63 @@ __global__ void gguf_quantize_q8_1_kernel(
   }
 }
 
+// Two-plane residual Q8_1 packer. Plane 0 is byte-identical to the
+// ordinary Q8_1 quantizer. Plane 1 quantizes the BF16 input minus the exact
+// FP16-scale reconstruction consumed by the dp4a projection.
+template <typename scalar_t>
+__launch_bounds__(32, 8)
+__global__ void gguf_quantize_q8_1x2_kernel(
+    const scalar_t* __restrict__ x,
+    gguf_q8_1_block* __restrict__ xq,
+    int rows,
+    int in_features,
+    int q8_blocks_per_row) {
+  const int q8_block = blockIdx.x;
+  const int row = blockIdx.y;
+  const int lane = threadIdx.x;
+  if (q8_block >= q8_blocks_per_row || row >= rows || lane >= Q8_1_BLOCK) return;
+
+  const int k = q8_block * Q8_1_BLOCK + lane;
+  const float xv = (k < in_features)
+      ? scalar_to_float<scalar_t>(x[static_cast<int64_t>(row) * in_features + k])
+      : 0.0f;
+  float amax0 = warp_reduce_max(fabsf(xv));
+  float sum0 = warp_reduce_sum(xv);
+  amax0 = __shfl(amax0, 0);
+  sum0 = __shfl(sum0, 0);
+  const float d0 = amax0 / 127.0f;
+  int q0 = (amax0 == 0.0f) ? 0 : static_cast<int>(roundf(xv / d0));
+  q0 = max(-128, min(127, q0));
+  const half_t d0_half = static_cast<half_t>(d0);
+  const float residual =
+      xv - static_cast<float>(d0_half) * static_cast<float>(q0);
+
+  float amax1 = warp_reduce_max(fabsf(residual));
+  float sum1 = warp_reduce_sum(residual);
+  amax1 = __shfl(amax1, 0);
+  sum1 = __shfl(sum1, 0);
+  const float d1 = amax1 / 127.0f;
+  int q1 = (amax1 == 0.0f)
+      ? 0
+      : static_cast<int>(roundf(residual / d1));
+  q1 = max(-128, min(127, q1));
+
+  const int64_t plane_stride =
+      static_cast<int64_t>(rows) * q8_blocks_per_row;
+  const int64_t block_index =
+      static_cast<int64_t>(row) * q8_blocks_per_row + q8_block;
+  gguf_q8_1_block* block0 = xq + block_index;
+  gguf_q8_1_block* block1 = xq + plane_stride + block_index;
+  block0->qs[lane] = static_cast<int8_t>(q0);
+  block1->qs[lane] = static_cast<int8_t>(q1);
+  if (lane == 0) {
+    block0->d = d0_half;
+    block0->s = static_cast<half_t>(sum0);
+    block1->d = static_cast<half_t>(d1);
+    block1->s = static_cast<half_t>(sum1);
+  }
+}
+
 template <typename out_t>
 __launch_bounds__(256, 2)
 __global__ void gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel(
@@ -650,6 +707,31 @@ int launch_gguf_quantize_q8_1(
       static_cast<unsigned int>(q8_blocks_per_row),
       static_cast<unsigned int>(rows));
   gguf_quantize_q8_1_kernel<scalar_t><<<grid, block, 0, stream>>>(
+      x,
+      xq,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(q8_blocks_per_row));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t>
+int launch_gguf_quantize_q8_1x2(
+    const scalar_t* x,
+    gguf_q8_1_block* xq,
+    int64_t rows,
+    int64_t in_features,
+    hipStream_t stream) {
+  if (x == nullptr || xq == nullptr || rows <= 0 || in_features <= 0 ||
+      (in_features % Q8_1_BLOCK) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  const dim3 block(Q8_1_BLOCK);
+  const dim3 grid(
+      static_cast<unsigned int>(q8_blocks_per_row),
+      static_cast<unsigned int>(rows));
+  gguf_quantize_q8_1x2_kernel<scalar_t><<<grid, block, 0, stream>>>(
       x,
       xq,
       static_cast<int>(rows),
@@ -1923,6 +2005,16 @@ extern "C" int hipengine_gguf_q4_k_quantize_bf16_q8_1(
     int64_t in_features,
     hipStream_t stream) {
   return launch_gguf_quantize_q8_1<uint16_t>(
+      x, reinterpret_cast<gguf_q8_1_block*>(xq), rows, in_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_quantize_bf16_q8_1x2(
+    const uint16_t* x,
+    void* xq,
+    int64_t rows,
+    int64_t in_features,
+    hipStream_t stream) {
+  return launch_gguf_quantize_q8_1x2<uint16_t>(
       x, reinterpret_cast<gguf_q8_1_block*>(xq), rows, in_features, stream);
 }
 

@@ -281,6 +281,28 @@ open campaign gaps. Evidence:
 [`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
+#### Retained development state
+
+These rows are dirty-development gates, not replacement clean publication
+toplines. Single-layout ownership plus bounded P4 raises prefill to
+343.320/338.038/332.676 tok/s. P5's first retained rows1 Q4T16 Q8_1x2 dp4a
+owner improves exact graph AR at all required shapes without changing tracked
+peaks or repeated-token IDs:
+
+| Shape | Prior retained AR | Current AR | Delta | llama HIP | llama Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 11.79322 | **11.84670** | **+0.454%** | 12.1506 | 12.7629 |
+| 1K/128 | 11.65199 | **11.71418** | **+0.534%** | 12.0645 | 12.7197 |
+| 4K/128 | 10.91800 | **10.94755** | **+0.271%** | 11.5081 | 12.5683 |
+
+The complete natural suite moves true AR **12.02451/12.01511 -> 12.10945
+tok/s (+0.706%/+0.785%)** versus historical/post controls and B1/B2/B3 to
+**18.96475/23.16953/24.24116 tok/s**. All 120 current trajectories, all token
+and acceptance comparisons against both controls, GPU/CPU acceptance, and 56
+per-control scope guards pass. Clean Vulkan AR remains faster, so P5 and the
+campaign stay open. Evidence:
+[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a
