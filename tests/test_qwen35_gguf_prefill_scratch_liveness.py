@@ -576,6 +576,40 @@ def test_gfx1100_dense_qwen36_hidden_reuse_is_long_row_only(monkeypatch) -> None
     assert len(allocations) == 3
 
 
+def test_verify_hidden_scratch_recycles_after_bounded_prefill_capacity() -> None:
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=2_048,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 2_048
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=4_096,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 0
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=4_094,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 0
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=2_048,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=True,
+    ) == 0
+    with pytest.raises(ValueError, match="exceed hidden scratch capacity"):
+        gguf_runner._gguf_verify_hidden_scratch_row_start(
+            start=0,
+            rows=4_097,
+            hidden_capacity_rows=4_096,
+            prebuilt=False,
+        )
+
+
 def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:
     runner = _fake_dense_qwen36_runner()
 
