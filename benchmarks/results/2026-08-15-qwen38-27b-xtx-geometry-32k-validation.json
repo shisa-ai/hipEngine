@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_xtx_geometry_policy_32k_validation",
+  "created_at": "2026-08-15T04:47:23Z",
+  "status": "complete_diagnostic",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "decision": "geometry_policy_transfer_validated",
+  "decision_reason": "The pulled geometry-keyed policy tree passes a real 32K server request with 2.115 GiB headroom, improves both 512/128 prefill and decode against an in-process pre-geometry policy control, and passes the full natural25 native-B3 no-regression gate. The A/B control is synthetic and the model lacks a separate quality/topline gate, so this result remains diagnostic.",
+  "source": {
+    "tested_commit": "30aa69246c758be18fe1b4dc13885e9aa60aaec8",
+    "geometry_policy_commit": "1a35bc34cd5050928064f3a8c6c8b19d761268a5",
+    "tracked_source_clean": true,
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "total_vram_bytes": 25753026560,
+    "total_vram_gib": 23.984375,
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "file_type": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "geometry": "QWEN35_DENSE_H5120_GEOMETRY"
+  },
+  "focused_tests": {
+    "command": "uv run pytest -q tests/test_qwen35_gguf_geometry_policy.py tests/test_qwen35_gguf_decode_scratch_arena.py tests/test_qwen35_gguf_prefill_scratch_liveness.py -q",
+    "passed": 38,
+    "failed": 0
+  },
+  "server_32k": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/hipengine serve --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --max-context-tokens 32768 --max-active-requests 1 --startup-min-free-mib 1024 --port 8018",
+    "request_shape": {
+      "prompt_token_ids": 32766,
+      "max_tokens": 1,
+      "reserved_context_slots": 1,
+      "total_context_tokens": 32768
+    },
+    "http_status": 200,
+    "elapsed_seconds": 70.57452997704968,
+    "peak_whole_device_vram_bytes": 23482130432,
+    "peak_whole_device_vram_gib": 21.86943817138672,
+    "headroom_gib": 2.1149368286132812,
+    "ready_after": true,
+    "kv_pool_bytes": 2147483648,
+    "kv_pool_grow_failures": 0,
+    "teardown_vram_bytes": 65589248,
+    "raw_result": "/tmp/qwen38-current-32k-capacity-result.json"
+  },
+  "geometry_policy_ab_512_128": {
+    "protocol": "one warmup plus three measured persistent-session runs; 512 prompt, 128 decode, graph replay; same current source and process environment",
+    "control_definition": "Before model construction, remove QWEN35_DENSE_H5120_GEOMETRY/MOSTLY_Q4_K_M entries from the six maps re-keyed by the geometry-policy commit; this reproduces pre-geometry Qwen3.8 policy misses without changing kernel sources or caches.",
+    "control_command": "/tmp/qwen38_pregeometry_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build",
+    "candidate_command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build",
+    "control": {
+      "prefill_tok_s_median": 162.89921979287433,
+      "decode_tok_s_median": 32.86757885799017,
+      "tracked_peak_gib": 16.059837702661753,
+      "sampled_hip_peak_gib": 16.59716796875,
+      "graph_transport": "hipgraph",
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "geometry_current": {
+      "prefill_tok_s_median": 954.9686326833279,
+      "decode_tok_s_median": 33.541906587328015,
+      "tracked_peak_gib": 15.586668975651264,
+      "sampled_hip_peak_gib": 15.75146484375,
+      "graph_transport": "pm4",
+      "final_token_ids": [9707, 9707, 9707]
+    },
+    "changes_percent": {
+      "prefill_tok_s": 486.2327848454808,
+      "decode_tok_s": 2.0516501451214086,
+      "tracked_peak_gib": -2.946285857746034,
+      "sampled_hip_peak_gib": -5.095466447000674
+    },
+    "finite_final_logits": true,
+    "raw_control": "/tmp/qwen38-xtx-pregeometry_control-512x128.json",
+    "raw_candidate": "/tmp/qwen38-xtx-geometry_current-512x128.json"
+  },
+  "mtp_full_natural25": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 10 --warmup --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen38-xtx-current-full-native-b3.json",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "train_prompt_count": 6,
+    "heldout_prompt_count": 4,
+    "visible_outputs": 250,
+    "timed_transitions": 240,
+    "true_ar_tok_s": 19.123027951764392,
+    "mtp_b3_tok_s": 60.503057246577065,
+    "mtp_vs_true_ar": 3.1638847884963077,
+    "draft_acceptance": 0.6309523809523809,
+    "heldout_mtp_vs_true_ar": 3.2543399830621738,
+    "category_mtp_vs_true_ar": {
+      "code": 3.73909254744266,
+      "general_en": 2.781465512196086,
+      "general_ja": 2.7948192310065942,
+      "mixed_ja_en": 3.0580758026923793
+    },
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_bytes_after_close": 0,
+    "raw_artifact": "/tmp/qwen38-xtx-current-full-native-b3.json"
+  },
+  "limitations": [
+    "The 512/128 control mutates policy maps in-process and is not a separate clean-tree benchmark revision.",
+    "Repeated token 9707 is used only for the fixed-shape direct and capacity controls; MTP economics use the complete natural prompt suite.",
+    "This validates one active BF16 server request at 32K. It does not admit higher concurrency or INT8 KV."
+  ]
+}
