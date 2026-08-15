@@ -320,6 +320,7 @@ from hipengine.runtime.gguf_linear import (
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
+    q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
@@ -9692,6 +9693,30 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q8_t16_dual_wmma_prefill_applies(
+    runner: object,
+    prompt_tokens: int,
+) -> bool:
+    """Return whether this exact model/quant/request owns the narrow Q8 pair."""
+
+    weights = getattr(runner, "weights", None)
+    backend = getattr(runner, "backend", None)
+    if not isinstance(backend, str):
+        return False
+    policies = backend_package_capability(
+        backend,
+        "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = _gguf_policy_identity(weights)
+    admitted_rows = None if identity is None else policies.get(identity)
+    return isinstance(admitted_rows, (set, frozenset, tuple)) and int(
+        prompt_tokens
+    ) in admitted_rows
+
+
 def _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
     runner: object,
     prompt_tokens: int,
@@ -14700,6 +14725,12 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q8_t16_dual_wmma_prefill_session(
+                    _gguf_q8_t16_dual_wmma_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_pack8_dual_wmma_silu_prefill_session(
                     _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
                         self.runner,
@@ -14798,6 +14829,12 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q8_t16_dual_wmma_prefill_session(
+                    _gguf_q8_t16_dual_wmma_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_pack8_dual_wmma_silu_prefill_session(
                     _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
                         self.runner,

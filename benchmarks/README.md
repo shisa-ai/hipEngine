@@ -147,6 +147,11 @@ removed and the pack8 projection+add chain remains current. Evidence:
 [`GDN rejection`](results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json),
 [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json),
 and [`pack8 residual rejection`](results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
+The next same-resident operation-complete owner shares each exact activation
+tile across the 18 Q8T16 alpha/beta pairs. Its byte-exact leaf is **2.113 ->
+0.422 ms (5.010x)**; Q4/Q8 paired core pp512 improves **3.64%/2.45%** and
+public pp512 **5.05%/2.13%**, all with 5/5 and 3/3 wins. Evidence:
+[`Q8T16 alpha/beta dual WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
 The prior same-session graph replay census, whose decode route is unchanged by
 X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
 fresh-process p16-p4096 threshold diagnostic then completes all **187** children

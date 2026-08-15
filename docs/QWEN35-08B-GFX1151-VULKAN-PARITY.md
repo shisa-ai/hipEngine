@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. The subsequent GDN cluster8 wave-broadcast screen was exact but 0.6483x and was also removed. D08-X6 then retained exact dense-BF16 WMMA down+residual fusion: the 12-owner leaf saves 0.155 ms and five paired Q4 blocks improve core/public pp512 3.09%/1.68%. D08-X7 tested the same rounded boundary in the remaining 12 pack8-Q4 down owners, but two paired blocks lost 4.22%/4.80% core/public pp512; all candidate code was removed. Core Vulkan parity and G3 remain open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. The subsequent GDN cluster8 wave-broadcast screen was exact but 0.6483x and was also removed. D08-X6 then retained exact dense-BF16 WMMA down+residual fusion: the 12-owner leaf saves 0.155 ms and five paired Q4 blocks improve core/public pp512 3.09%/1.68%. D08-X7 tested the same rounded boundary in the remaining 12 pack8-Q4 down owners, but two paired blocks lost 4.22%/4.80% core/public pp512; all candidate code was removed. D08-X8 then retained a byte-exact two-wave Q8T16 alpha/beta owner: its 18-pair leaf is 5.010x and paired Q4/Q8 core pp512 improves 3.64%/2.45%. Core Vulkan parity and G3 remain open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -119,6 +119,7 @@ not a synthetic leaf projection.
 | 38 | **D08-X5 GDN cluster8 wave broadcast** | **rejected: 0.6483x leaf; no production change** | Wave-sharing Q/K/value/beta/decay preserves every output/state bit but regresses the exact rows512 recurrence 0.77453 -> 1.19467 ms. | Stop before profile/full-model gates and remove all transient code. Do not revisit this load-sharing mechanism; dense FFN is next. |
 | 39 | **D08-X6 dense-BF16 WMMA down+residual** | **accepted: 1.0158x 12-owner leaf; +3.09%/+1.68% core/public Q4 pp512** | Exact intermediate/output BF16 boundaries remove 12 standalone residual-add launches and save 0.155 ms in the causal leaf. | Retain for gfx1151 rows512/K3584/N1024 dense-BF16 only; primitive chain and temporary env rollback remain. Q8/decode/memory guards pass. |
 | 40 | **D08-X7 pack8-Q4 WMMA down+residual** | **rejected: 0.9578x/0.9520x core/public Q4 pp512** | The exact rounded-residual store removes 12 add launches but lengthens the pack8 WMMA critical output path; both paired blocks lose in both prefill windows. | Remove the kernel/registry/capability/selector candidate. Keep pack8 WMMA projection + `gguf_bf16_add`; do not retry without a materially different producer schedule. |
+| 41 | **D08-X8 Q8T16 alpha/beta dual WMMA** | **accepted: 5.010x 18-pair leaf; +3.64%/+2.45% Q4/Q8 core pp512** | Two waves share one exact BF16-to-F16 activation tile while independently preserving each N16 Q8T16 projection's WMMA order and BF16 store. | Retain for gfx1151 rows512/K1024/N16+N16 only; singleton WMMAs and temporary env rollback remain. Public pp512 improves 5.05%/2.13%. |
 
 ### 1.2 Bounded task contract
 
@@ -1957,6 +1958,35 @@ producer schedule that first beats the complete-model control.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
+
+### 2.54 D08-X8 Q8T16 alpha/beta dual WMMA (2026-08-15)
+
+All eighteen linear-attention blocks project one shared BF16 normalized input
+through same-shape resident Q8T16 alpha and beta weights at
+rows512/K1024/N16. The prior path launches two 16x32 singleton WMMAs. The
+retained 64-thread owner assigns one matrix to each wave and stages each exact
+BF16-to-F16 activation K16 tile once in 1 KiB LDS. Weight decode, WMMA K-order,
+FP32 accumulation, and BF16 output stores are unchanged per matrix.
+
+Five alternating all-actual-weight blocks are byte-exact and measure the 18
+pairs **2.11263 -> 0.42168 ms (5.010x)**, saving 1.69095 ms with no resident or
+hot-scratch bytes. Five fresh-process Q4 pairs improve exact-core/public pp512
+**4912.861 -> 5091.743 (+3.64%, 5/5)** / **4899.499 -> 5147.088 (+5.05%,
+5/5)**. Three Q8 pairs improve **5010.260 -> 5132.988 (+2.45%, 3/3)** /
+**4955.990 -> 5061.490 (+2.13%, 3/3)**. Q8 decode medians are positive; Q4
+public decode is 0.994x and the inactive core window retains its known
+bimodality, so no decode-speed claim is made. Every completed child is finite,
+deterministic, cross-role top-1 exact, and byte-neutral.
+
+Production is scoped by the gfx1151 capability to exactly
+rows512/K1024/N16+N16. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores
+two registered singleton WMMAs for one release window; every shape/backend/key
+miss uses the same fallback. The full natural/category-p512 cumulative gate
+passes, with all 72 current/rollback teacher-forced and state digests exact and
+all recorded graph trajectories exact.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
 
 ## 3. Comparison contracts
 

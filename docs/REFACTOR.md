@@ -14,6 +14,17 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
+
+- Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta
+  promotion. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores the two
+  singleton registered Q8T16 WMMA projections. Shape/backend/registry misses
+  also fail closed to those primitives; no resident or scratch allocation
+  depends on the pair owner.
+- Removal trigger: after one release window with Q4/Q8 p512, decode, cumulative
+  semantic, and lifecycle gates stable, remove the selector/cache dimension.
+  Keep the singleton kernels as required numerical and peer-backend fallbacks.
+
 ## gfx1151 dense-BF16 WMMA residual rollback seam
 
 - Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.

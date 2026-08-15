@@ -3815,6 +3815,62 @@ def test_wmma_prefill_pair_declines_fusion_when_q8_0_rows_gt_1() -> None:
     assert fused is False
 
 
+def test_gfx1151_q8_t16_dual_wmma_prefill_routes_exact_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair",
+        "gguf_q8_0_t16_v1",
+        "t16_dual_wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant
+    )
+    calls = []
+
+    def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, capture, replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1"
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1"
+    )
+    try:
+        with gguf_linear_module.q8_t16_dual_wmma_prefill_session(True):
+            assert launch_gguf_linear_pair(
+                weight_a, weight_b, 100, 200, 300, 512, 1_024, 16,
+                backend="hip_gfx1151", use_wmma_prefill=True, stream=7,
+                runtime="runtime-sentinel",
+            )
+            monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "0")
+            assert not launch_gguf_linear_pair(
+                weight_a, weight_b, 100, 200, 300, 512, 1_024, 16,
+                backend="hip_gfx1151", use_wmma_prefill=True,
+            )
+            monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL")
+            assert not launch_gguf_linear_pair(
+                weight_a, weight_b, 100, 200, 300, 511, 1_024, 16,
+                backend="hip_gfx1151", use_wmma_prefill=True,
+            )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 14, 200, 300, 512, 1_024, 16),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
 def test_wmma_prefill_pair_fuses_raw_q4_k_dual_prefill_when_opted_in() -> None:
     """Raw Q4_K gate+up pair routes to the P8.2 dual WMMA path."""
 
