@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -42,3 +44,33 @@ def test_trajectory_digest_covers_tokens_and_logits() -> None:
 
     assert cumulative.trajectory_digest(baseline) == cumulative.trajectory_digest(baseline)
     assert cumulative.trajectory_digest(baseline) != cumulative.trajectory_digest(changed)
+
+
+def test_cumulative_semantic_artifact_closes_the_packet() -> None:
+    artifact = (
+        Path(__file__).parents[1]
+        / "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json"
+    )
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+    assert payload["status"] == "retained_correctness"
+    assert payload["gate_passed"] is True
+    assert payload["source"]["tracked_source_clean"] is True
+    assert payload["decision"]["current_top1_matches"] == 1794
+    assert payload["decision"]["current_transitions"] == 1800
+    assert payload["decision"]["max_current_kl"] < 0.01
+    assert payload["decision"]["all_role_deterministic"] is True
+    assert payload["decision"]["all_state_finite"] is True
+    assert payload["decision"]["recorded_graph_prompt_role_pairs"] == 72
+    assert payload["decision"]["all_recorded_graph_trajectories_exact"] is True
+    assert payload["decision"]["min_recorded_graph_top1"] == 1.0
+
+    for quant in payload["results"].values():
+        for profile in quant["prompts"].values():
+            assert len(profile) == 18
+            for row in profile:
+                for role in row["roles"].values():
+                    assert role["correctness"]["passed"] is True
+                    assert role["teacher_forced_deterministic"] is True
+                    assert role["state_deterministic"] is True
+                    assert role["state_finite"] is True
