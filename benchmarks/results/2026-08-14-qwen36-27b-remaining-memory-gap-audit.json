@@ -1,0 +1,237 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic_goal_open_next_candidate_selected",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B remaining 512-to-8K memory-gap audit",
+  "repo_revision": "1bb2ca01b",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "protocol": {
+    "hipengine": "Current selector-unset sole-T16 package, token 9707, one discarded warmup plus three measured persistent resets, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, cached builds, and 5 ms whole-device sysfs VRAM sampling.",
+    "llamacpp_512_4k": "Frozen clean same-commit llama.cpp c8e03ce81 packet. Prefill and memory are standardized llama-bench; decode is the context-matched 128-transition server row.",
+    "llamacpp_8k": "Clean same-commit standardized llama-bench split-phase 8K/128 rows for both HIP and Vulkan. The 8K decode values are not context-matched server values.",
+    "memory_scope": "Tracked is hipEngine allocator/session ownership. Whole-device peak delta is sysfs VRAM peak minus the pre-process baseline. Cross-engine acceptance uses whole-device peak delta."
+  },
+  "current_matrix": [
+    {
+      "prompt_length": 512,
+      "hipengine_prefill_tok_s": 976.7594549783943,
+      "hipengine_decode_tok_s": 33.62680768174212,
+      "hipengine_tracked_peak_gib": 15.587157256901264,
+      "hipengine_whole_device_peak_delta_gib": 16.02845001220703,
+      "llamacpp_hip_prefill_tok_s": 964.60567,
+      "llamacpp_hip_decode_tok_s": 33.02528653306218,
+      "llamacpp_hip_peak_delta_gib": 16.348358154296875,
+      "llamacpp_vulkan_prefill_tok_s": 870.871574,
+      "llamacpp_vulkan_decode_tok_s": 13.390800791856636,
+      "llamacpp_vulkan_peak_delta_gib": 15.689502716064453,
+      "gap_vs_vulkan_gib": 0.3389472961425781,
+      "whole_minus_tracked_gib": 0.44129275530576706
+    },
+    {
+      "prompt_length": 1024,
+      "hipengine_prefill_tok_s": 1006.7710020442482,
+      "hipengine_decode_tok_s": 34.52109723887031,
+      "hipengine_tracked_peak_gib": 15.681153304874897,
+      "hipengine_whole_device_peak_delta_gib": 16.19493865966797,
+      "llamacpp_hip_prefill_tok_s": 981.039726,
+      "llamacpp_hip_decode_tok_s": 32.92428340811604,
+      "llamacpp_hip_peak_delta_gib": 16.372692108154297,
+      "llamacpp_vulkan_prefill_tok_s": 836.898285,
+      "llamacpp_vulkan_decode_tok_s": 13.379484191616791,
+      "llamacpp_vulkan_peak_delta_gib": 15.699958801269531,
+      "gap_vs_vulkan_gib": 0.4949798583984375,
+      "whole_minus_tracked_gib": 0.5137853547930717
+    },
+    {
+      "prompt_length": 4096,
+      "hipengine_prefill_tok_s": 987.9299693848109,
+      "hipengine_decode_tok_s": 31.4252117955534,
+      "hipengine_tracked_peak_gib": 16.24262285977602,
+      "hipengine_whole_device_peak_delta_gib": 16.905216217041016,
+      "llamacpp_hip_prefill_tok_s": 946.733397,
+      "llamacpp_hip_decode_tok_s": 32.5601236674197,
+      "llamacpp_hip_peak_delta_gib": 16.56165313720703,
+      "llamacpp_vulkan_prefill_tok_s": 835.76463,
+      "llamacpp_vulkan_decode_tok_s": 13.308504654337584,
+      "llamacpp_vulkan_peak_delta_gib": 15.912158966064453,
+      "gap_vs_vulkan_gib": 0.9930572509765625,
+      "whole_minus_tracked_gib": 0.6625933572649956
+    },
+    {
+      "prompt_length": 8192,
+      "hipengine_prefill_tok_s": 821.4961309201531,
+      "hipengine_decode_tok_s": 29.392601039902637,
+      "hipengine_tracked_peak_gib": 16.501094348728657,
+      "hipengine_whole_device_peak_delta_gib": 17.15999984741211,
+      "llamacpp_hip_prefill_tok_s": 906.647772,
+      "llamacpp_hip_decode_tok_s": 32.779072,
+      "llamacpp_hip_peak_delta_gib": 16.81658935546875,
+      "llamacpp_vulkan_prefill_tok_s": 829.630459,
+      "llamacpp_vulkan_decode_tok_s": 37.669371,
+      "llamacpp_vulkan_peak_delta_gib": 16.16606903076172,
+      "gap_vs_vulkan_gib": 0.9939308166503906,
+      "whole_minus_tracked_gib": 0.6589054986834526,
+      "comparison_note": "All 8K speed values are standardized llama-bench-style phase values; they are diagnostic rather than the 512-4K context-matched decode protocol."
+    }
+  ],
+  "owned_session_breakdown": [
+    {
+      "prompt_length": 512,
+      "weights_gib": 15.279573440551758,
+      "decode_scratch_gib": 0.19899678230285645,
+      "full_attention_bf16_kv_gib": 0.046875,
+      "linear_attention_state_gib": 0.14794921875,
+      "session_buffers_gib": 0.107986219227314,
+      "full_sequence_hidden_gib": 0.0146484375,
+      "bulk_prefill_scratch_gib": 0.09238246828317642
+    },
+    {
+      "prompt_length": 1024,
+      "weights_gib": 15.279573440551758,
+      "decode_scratch_gib": 0.23053669929504395,
+      "full_attention_bf16_kv_gib": 0.078125,
+      "linear_attention_state_gib": 0.14794921875,
+      "session_buffers_gib": 0.1704423502087593,
+      "full_sequence_hidden_gib": 0.0244140625,
+      "bulk_prefill_scratch_gib": 0.1450691595673561
+    },
+    {
+      "prompt_length": 4096,
+      "weights_gib": 15.279573440551758,
+      "decode_scratch_gib": 0.41977858543395996,
+      "full_attention_bf16_kv_gib": 0.265625,
+      "linear_attention_state_gib": 0.14794921875,
+      "session_buffers_gib": 0.5426700189709663,
+      "full_sequence_hidden_gib": 0.078125,
+      "bulk_prefill_scratch_gib": 0.4635649099946022
+    },
+    {
+      "prompt_length": 8192,
+      "weights_gib": 15.279573440551758,
+      "decode_scratch_gib": 0.6721007823944092,
+      "full_attention_bf16_kv_gib": 0.515625,
+      "linear_attention_state_gib": 0.14794921875,
+      "session_buffers_gib": 0.5488193109631538,
+      "full_sequence_hidden_gib": 0.078125,
+      "bulk_prefill_scratch_gib": 0.4697142019867897
+    }
+  ],
+  "growth_reconciliation": {
+    "hipengine_whole_growth_512_to_4096_gib": 0.8767662048339844,
+    "vulkan_whole_growth_512_to_4096_gib": 0.22265625,
+    "excess_growth_512_to_4096_gib": 0.6541099548339844,
+    "hipengine_owned_growth_512_to_4096_gib": 0.6554656028747559,
+    "hipengine_kv_growth_512_to_4096_gib": 0.21875,
+    "hipengine_session_buffer_growth_512_to_4096_gib": 0.43468379974365234,
+    "hipengine_whole_growth_4096_to_8192_gib": 0.25478363037109375,
+    "vulkan_whole_growth_4096_to_8192_gib": 0.2539100646972656,
+    "hipengine_kv_growth_4096_to_8192_gib": 0.25,
+    "conclusion": "The 4K-to-8K slope is fixed: hipEngine and Vulkan both grow by about 0.254 GiB, almost entirely the expected BF16 KV cache. The unresolved problem is the approximately 0.654-GiB excess 512-to-4K growth from full-row prefill scratch/hidden ownership, plus a roughly fixed 0.44-to-0.66-GiB whole-device-minus-tracked gap. This is not an 8K leak, but the 17.160-vs-16.166-GiB gap is real."
+  },
+  "phase_attribution": {
+    "eager_8k_whole_device_peak_delta_gib": 17.03006362915039,
+    "graph_8k_whole_device_peak_delta_gib": 17.15999984741211,
+    "graph_increment_mib": 133.0546875,
+    "eager_8k_prefill_tok_s": 822.1270995333915,
+    "eager_8k_decode_tok_s": 23.882003370514834,
+    "graph_8k_decode_tok_s": 29.392601039902637,
+    "graph_disable_decode_delta_percent": -18.748247771290327,
+    "instrumented_8k_eager_peak_delta_gib": 17.029342651367188,
+    "instrumented_prefill_tok_s": 811.2214418872735,
+    "first_linear_start_peak_delta_gib": 16.73410415649414,
+    "first_full_attention_end_peak_delta_gib": 17.029163360595703,
+    "first_full_attention_growth_mib": 302.140625,
+    "interpretation": "The eager peak becomes resident by the first full-attention layer and then stays flat. The synchronized stage probe localizes commitment, not unique ownership: the single bulk arena is allocated before execution and different route pages are touched lazily. Graph capture/replay adds another measured 133.055 MiB, but disabling it loses 18.75% decode and is not retainable."
+  },
+  "rejected_drop_in_routes": [
+    {
+      "route": "fused",
+      "shape": "512 prefill-only single screen",
+      "prefill_tok_s": 313.32606709399516,
+      "delta_vs_current_percent": -67.92188030563514,
+      "tracked_peak_gib": 16.127337884157896,
+      "decision": "reject_without_escalation",
+      "reason": "The old fused decode-order GDN is drastically slower and the current allocator correctly keeps its diagnostic scratch dedicated."
+    },
+    {
+      "route": "chain_lds32_direct_nonvolatile",
+      "shape": "512/128, one warmup plus three measurements",
+      "prefill_tok_s_samples": [911.2534176902462, 913.0291620979673, 912.589715595506],
+      "prefill_tok_s_median": 912.589715595506,
+      "delta_vs_current_percent": -6.569656332050311,
+      "decode_tok_s_median": 33.55326860430653,
+      "tracked_peak_gib": 15.586668975651264,
+      "modeled_bulk_scratch_savings_mib": {
+        "512": 0.5,
+        "1024": 13.390625,
+        "4096": 98.5625,
+        "8192": 98.5625
+      },
+      "final_ids": [9707, 9707, 9707],
+      "finite_logits": true,
+      "decision": "reject_without_4k_or_8k_escalation",
+      "reason": "The exact route gives negligible short-shape memory leverage and violates the no-prefill-regression requirement by 6.57% at 512."
+    }
+  ],
+  "post_load_module_probe": {
+    "max_sequence_length": 640,
+    "tracked_bytes": 16710334472,
+    "hip_used_bytes": 16947085312,
+    "hip_used_minus_tracked_mib": 225.78319549560547,
+    "hipengine_jit_shared_object_count": 2,
+    "hipengine_jit_shared_object_file_bytes": 166664,
+    "shared_objects": [
+      "lm_head.so",
+      "runtime_state.so"
+    ],
+    "conclusion": "The fixed post-load gap is not caused by dozens of stale one-time hipEngine JIT modules. A module-unload campaign is not selected."
+  },
+  "next_candidate": {
+    "name": "direct compact-peer GDN output path",
+    "scope": "Add a model/backend-qualified compact-peer wave32 kernel path that consumes conv_out and the existing alpha/beta inputs, preserves the current normalized peer/XOR reduction and FP32 recurrent-state update, and writes the final BF16 RMSNorm-gated output without persistent prefill_query, prefill_key, prefill_value, or recurrent_out planes. Keep the current split compact-peer chain as the unfused fallback.",
+    "modeled_4096_row_arena_before_mib": 467.5625,
+    "modeled_floor_after_mib": 352.0,
+    "modeled_max_savings_mib": 115.5625,
+    "why_selected": "It is materially larger than the rejected 65.984-MiB value/recurrent alias, avoids the rejected outer query/linear chunking paths, retains current peer arithmetic rather than falling back to the 6.57%-slower scalar-exact direct route, and should remove intermediate global-memory traffic rather than merely repack addresses.",
+    "acceptance": "Keep only if the compact peer output/state oracle passes, full category quality remains within KL <= 0.05 and top-1 >= 90%, and selector-unset 512 plus 8K prefill/decode do not regress. It is incremental and cannot by itself claim Vulkan parity."
+  },
+  "sources": {
+    "current_matrix": "benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json",
+    "llamacpp_floors": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json",
+    "stage_json": {
+      "path": "/tmp/qwen36-27b-memory-goal/stage-memory-8192.json",
+      "sha256": "26a9e37cf86135c89dbd036852b5211706311e5ffb6c20e78e7acda783a675b8"
+    },
+    "stage_vram": {
+      "path": "/tmp/qwen36-27b-memory-goal/stage-memory-8192-vram.json",
+      "sha256": "3714aa8728818b16254c87624dfcc33e7d0294380a15186def498c3c08192d0d"
+    },
+    "stage_events": {
+      "path": "/tmp/qwen36-27b-memory-goal/stage-memory-8192-events.jsonl",
+      "sha256": "8ff812890e2e316d26b6a81014cdadd35ba3b4fbe7b4468465ad3f6318622c5b"
+    },
+    "fused_screen": {
+      "path": "/tmp/qwen36-27b-memory-goal/fused-gdn-512-prefill-screen.json",
+      "sha256": "3bb007e5beaf3d56e22c2b259714d148600b4c4b0d2b6e54696366da0ff6072c"
+    },
+    "direct_screen": {
+      "path": "/tmp/qwen36-27b-memory-goal/direct-nonvolatile-512-screen.json",
+      "sha256": "0d9a4e8530b727dcf269ce836f195264e2a5451127495019f050e1c73d94c60c"
+    }
+  },
+  "decision": "The memory objective remains open. Do not call the 17.160-GiB row fixed or stop on the retained 98-MiB owner-packing win. Proceed to a direct compact-peer output candidate; even a successful 115.6-MiB contraction is only the next incremental step toward the remaining 0.339/0.495/0.993/0.994-GiB Vulkan gaps."
+}
