@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_q4t16_col16_prefill_rejected",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "repo_revision": "c4d1058091135d8fb7727ec23ca4667e16ec5f23",
+    "tracked_tree_dirty_during_measurement": false,
+    "production_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "Q4_K_M",
+    "weights": [
+      "blk.0.ffn_gate.weight",
+      "blk.0.ffn_up.weight"
+    ],
+    "source_pool_bytes": 100270080,
+    "shape": {
+      "k": 5120,
+      "n": 17408
+    }
+  },
+  "hypothesis": {
+    "control": "retained 32-column x 256-row operation-complete dual-Q4T16 WMMA gate/up+SiLU",
+    "candidate": "16-column x 256-row operation-complete dual-Q4T16 WMMA gate/up+SiLU",
+    "premise": "Halve output-tile accumulator and LDS live ranges to reduce the traced 248-VGPR one-block owner and potentially increase occupancy while preserving K16 WMMA order and exact rounded-BF16 SiLU boundaries.",
+    "request_admission": ">=1.10x and >=12/15 paired wins at every required row, with >=1% projected complete-prefill saving"
+  },
+  "protocol": {
+    "rows": [512, 1024, 4096],
+    "warmups": 3,
+    "counterbalanced_pairs_per_row": 15,
+    "timing": "HIP events",
+    "environment": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151",
+    "command": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-task21-q4t16-col16/leaf.py"
+  },
+  "results": {
+    "512": {
+      "control_median_ms": 6.787360191345215,
+      "candidate_median_ms": 10.204569816589355,
+      "control_over_candidate": 0.6651294776102316,
+      "candidate_regression_percent": 50.34666687649106,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0,
+      "projected_64_call_saving_ms": -218.701416015625,
+      "projected_complete_prefill_saving_percent": -14.664955610843078
+    },
+    "1024": {
+      "control_median_ms": 13.530502319335938,
+      "candidate_median_ms": 21.191587448120117,
+      "control_over_candidate": 0.6384846039712903,
+      "candidate_regression_percent": 56.6208478293966,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0,
+      "projected_64_call_saving_ms": -490.3094482421875,
+      "projected_complete_prefill_saving_percent": -16.18584705650338
+    },
+    "4096": {
+      "control_median_ms": 53.88895034790039,
+      "candidate_median_ms": 88.0015640258789,
+      "control_over_candidate": 0.612363552221107,
+      "candidate_regression_percent": 63.301685146494236,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0,
+      "projected_64_call_saving_ms": -2183.207275390625,
+      "projected_complete_prefill_saving_percent": -17.731929365808067
+    }
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task21-q4t16-col16/rocprof/gfx1151/1260321_kernel_trace.csv",
+    "sha256": "0f4e6c798c5c376a425c72696caf5a9cdb2130963809ee1dae8dd114325786f7",
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel",
+    "control_resources": {
+      "workgroup_x": 128,
+      "vgpr": 248,
+      "lds_bytes": 32768,
+      "scratch_bytes": 0
+    },
+    "candidate_resources": {
+      "workgroup_x": 128,
+      "vgpr": 224,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0
+    },
+    "candidate_resource_interpretation": "The candidate halved LDS but only reduced VGPR 248 -> 224, leaving the high-register occupancy boundary while doubling output workgroups and activation traffic."
+  },
+  "validation": {
+    "all_required_rows_bf16_bit_exact": true,
+    "all_outputs_finite": true,
+    "candidate_wins": "0/45",
+    "tracked_teardown_exact": true,
+    "repo_source_modified": false,
+    "full_model_gate_run": false,
+    "full_model_gate_reason": "The actual-weight leaf is decisively negative and fails the campaign admission gate."
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task21-q4t16-col16/leaf-unprofiled.json",
+      "sha256": "68914f5c2d367eac21cb84cb3c1939f3aa84c5abc8b3c54a8ed35995a0ccb969",
+      "bytes": 6025
+    },
+    "control_source_sha256": "33e8ae9ebf291af6f413b4c31e554a19f392ae5c3839844c90fad57576dea752",
+    "candidate_source_sha256": "8bcb3478f10f22044ad59a92a0f9996ccb537f8cfe891fea1a67795aa6385b3f",
+    "control_library_sha256": "a7dfb591212ca59e939dd2e1bcd2f13d7462bb0f3e64fac097438840e5932796",
+    "candidate_library_sha256": "e57105c43d32e5767c929681ce944b592e2b86b134966901c7bdb13d061fa035"
+  },
+  "decision": "Reject 16-column output subdivision and leave production unchanged. Lower accumulator/LDS pressure does not compensate for duplicated workgroups and activation transport; do not reopen Q4T16 prefill output geometry without a new reuse/occupancy premise."
+}
