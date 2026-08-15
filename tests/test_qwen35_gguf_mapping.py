@@ -31,6 +31,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DENSE_UNTIED_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+QWEN38_DENSE_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 
 
 def _info() -> GGUFModelInfo:
@@ -113,6 +114,33 @@ def test_qwen35_08b_dense_q4_attn_q_policy_uses_single_t16_resident() -> None:
         if spec.source.ggml_type_name == "Q4_K"
         and not spec.slot_path.endswith(".attn_q")
         and spec.slot_path != "root.token_embedding"
+    )
+
+
+def test_qwen35_08b_ignores_dense_h5120_q4_policy() -> None:
+    reader = GGUFReader(MODEL) if MODEL.exists() else None
+    if reader is None:
+        pytest.skip(f"local GGUF fixture not found: {MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    expected = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16_attn_q_08b=True,
+    )
+    candidate = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q4_t16_attn_q_08b=True,
+    )
+
+    assert tuple(
+        (spec.slot_path, spec.layout, spec.quant_key, spec.allocation_names)
+        for spec in candidate.specs
+    ) == tuple(
+        (spec.slot_path, spec.layout, spec.quant_key, spec.allocation_names)
+        for spec in expected.specs
     )
 
 
@@ -432,6 +460,63 @@ def test_qwen36_dense_q4_materializes_sole_t16_owner() -> None:
         selected_slots=("layers.0.attn_gate",),
         decode_repack=True,
         backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    try:
+        weight = resident.layer(0).weight("attn_gate")
+        assert weight.spec.layout == LAYOUT_GGUF_Q4_K_T16
+        assert weight.spec.quant_key == "gguf_q4_k_t16_v1"
+        assert tuple(weight.allocations) == ("tiles",)
+        assert weight.allocation("tiles").tensor.dtype == DType.INT8
+        assert weight.allocation("tiles").buffer.nbytes == 18_186_240
+    finally:
+        resident.free(runtime=runtime)
+
+
+def test_qwen38_dense_q4_plan_uses_one_t16_payload_for_every_rank2_owner() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16=True,
+    )
+    q4_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.slot_path.startswith("layers.")
+        and spec.source.ggml_type_name == "Q4_K"
+        and len(spec.source.shape) == 2
+    )
+
+    assert len(q4_specs) == 288
+    assert all(spec.layout == LAYOUT_GGUF_Q4_K_T16 for spec in q4_specs)
+    assert all(spec.quant_key == "gguf_q4_k_t16_v1" for spec in q4_specs)
+    assert all(spec.allocation_names == ("tiles",) for spec in q4_specs)
+    assert all(
+        "pack8" not in name and not name.startswith("decode_")
+        for spec in q4_specs
+        for name in spec.allocation_names
+    )
+    token_embedding = plan.root_specs["token_embedding"]
+    assert token_embedding.layout == "raw_gguf"
+    assert token_embedding.allocation_names == ("raw",)
+
+
+def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        QWEN38_DENSE_MODEL,
+        selected_slots=("layers.0.attn_gate",),
+        decode_repack=True,
+        backend="hip_gfx1151",
         runtime=runtime,
     )
     try:

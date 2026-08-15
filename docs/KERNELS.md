@@ -176,12 +176,21 @@ dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12
 [`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
+For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
+plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
+`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
+absent. The existing local32 c1, exact rows-2-4 rowtile, same-T16 residual and
+unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal attention-pair owners
+cover the complete operation set. The raw token embedding remains raw GGUF and
+peer geometries retain their prior policy. No kernel body or `KVLiveSpans` ABI
+changes are involved.
+
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
 K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,
 physical c8 is split into two exact c4 launches by backend capability, and the
-existing T16 WMMA owner handles bulk rows. Every other Q4 role, Qwen3.6-27B,
-and peer backends retain their prior residents. No attention kernel or
+existing T16 WMMA owner handles bulk rows. Every other 0.8B Q4 role and peer
+geometry retains its prior residents. No attention kernel or
 `KVLiveSpans` ABI changes. Evidence:
 [`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
 

@@ -730,9 +730,10 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = True
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
-# Dense H5120 sole-Q4 ownership is gfx1100-only until gfx1151 receives its
-# own c1/verifier/prefill and complete-model gate.
-GGUF_DENSE_Q4_T16 = False
+# Qwen3.8-27B P1 candidate: dense H5120 sole-Q4 ownership reuses the existing
+# operation-complete T16 family. Architecture-local primitive, actual-weight,
+# full-state, natural-suite, memory, and performance gates decide retention.
+GGUF_DENSE_Q4_T16 = True
 # Dense H5120 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
