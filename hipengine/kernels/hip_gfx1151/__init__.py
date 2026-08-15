@@ -14,6 +14,7 @@ from importlib import import_module
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.policy import (
     QWEN35_DENSE_H1024_GEOMETRY,
+    QWEN35_DENSE_H5120_GEOMETRY,
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
@@ -799,7 +800,26 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # gfx1151 (0/11 paired wins). Keep exactly one standard-T16 resident for those
 # 24 tensors while planar remains the sole owner for down, narrow V, and root.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
-GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+}
+# P4 retains changed-arithmetic source-F16 only for the sole-Q5T16 recurrent
+# output. Q6 and Q4 complete pp512 screens lose wall and/or memory, so their
+# exact T16/WMMA owners remain production. The Q5 octet producer consumes one
+# bounded dead-input cast and temporary tile; sole T16 residency is unchanged.
+GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
+GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
+    (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+}
+GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE = {}
+GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
+    "gguf_q5_k_t16_v1": {
+        (6_144, 5_120): {
+            (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
+        },
+    },
+}
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -1887,6 +1907,11 @@ __all__ = [
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
+    "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",

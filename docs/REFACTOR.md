@@ -87,6 +87,22 @@ should be removed or collapsed.
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
 
+## gfx1151 Qwen3.8 Q5 source-F16 rollback and workspace seam
+
+- Added 2026-08-15 for the 48 sole-Q5T16 K6,144/N5,120 recurrent outputs.
+  Keep exact Q5T16 WMMA registered and selectable through one release window;
+  source-F16 changes arithmetic even though the octet producer is byte-exact,
+  the CPU quality gate passes, and every retained natural token/acceptance
+  trajectory is identical.
+- The source-F16 context adds bounded activation/tile/output scratch, raising
+  tracked peak 24.375 MiB at 512 and 65 MiB at 1K/4K. P8 must re-run owner-slot
+  liveness and attempt safe dead-input/in-place or arena reuse. Remove any
+  redundant standalone field after a proven alias, but do not trade the sole
+  Q5T16 payload for persistent F16 weights.
+- Q4/Q6 source-F16 maps are explicit empty denials after complete pp512 losses.
+  Remove those declarations only when package capability defaults are made
+  fail-closed per quant; do not interpret absence as inheriting gfx1100 policy.
+
 ## gfx1151 Qwen3.8 compact-peer GDN rollback seam
 
 - Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route

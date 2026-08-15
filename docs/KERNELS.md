@@ -220,6 +220,17 @@ at rows2/3/4 and remains a peer-backend/diagnostic leaf. Complete actual-weight,
 gates retain the role-qualified route. Evidence:
 [`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
 
+Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
+K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
+octet producer expands four bounded tiles per layer into temporary F16,
+zero-workspace rocBLAS publishes BF16, and exact Q5T16 WMMA remains the policy
+miss/rollback. Q4 and Q6 source-F16 are explicitly empty after pp512 wall and
+memory losses. Q5 improves prefill 3.978%/2.498%/2.650% at 512/1K/4K while
+adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
+teardown. All natural tokens/acceptance are identical; every full/train/
+heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
+[`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
+
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
 K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,
