@@ -3559,8 +3559,10 @@ should be boring.
   bulk-prefill pack8 route back to the exact tile8x8 leaf without touching
   Laguna's `wmma_pack8` mode. Added with the D08-X parity campaign route
   (2026-08-15): pack8 WMMA measures 1.97x/2.33x tile8x8 on the Qwen3.5-0.8B
-  dense-FFN pp512 shapes. Remove the env branch once the parity campaign closes
-  and no A/B bisection still needs the tile8x8 control.
+  dense-FFN pp512 shapes. The backend default now fails closed outside the five
+  p512 pack8 shapes exercised by the complete-model campaign A/B. Remove the
+  env branch once the parity campaign closes and no A/B bisection still needs
+  the tile8x8 control; expand the shape policy only with matched evidence.
 
 ## gfx1151 pack8 wmma64 diagnostic kernel
 
@@ -3585,5 +3587,7 @@ should be boring.
 
 - `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16
   bulk prefill back to the naive 32x8 scalar tile (D08-X2-K5, 2026-08-15).
-  Remove the env branch when the parity campaign closes and no A/B still
-  needs the naive control.
+  The backend default is limited to the two Qwen3.5-0.8B p512 shapes exercised
+  by the complete-model campaign A/B; other shapes fail closed. Remove the env
+  branch when the parity campaign closes and no A/B still needs the naive
+  control; expand the shape policy only with matched evidence.

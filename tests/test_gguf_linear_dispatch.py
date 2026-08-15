@@ -1673,6 +1673,72 @@ def test_gfx1151_q4_pack8_bulk_prefill_prefers_wmma_over_exact_tile8x8() -> None
     assert kwargs["runtime"] == "runtime-sentinel"
 
 
+def test_gfx1151_q4_pack8_bulk_prefill_keeps_exact_outside_qualified_shapes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The campaign route must fail closed beyond its p512 shape matrix."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    exact_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k",
+        "pack8_wmma_prefill_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (exact_key, candidate_key)
+    }
+
+    def exact(*args, **kwargs):
+        return None
+
+    def wmma(*args, **kwargs):
+        return None
+
+    calls: list[object] = []
+    register(exact_key, exact, replace=True)
+    register(candidate_key, wmma, replace=True)
+    monkeypatch.setitem(
+        gguf_linear_module._LAUNCH_ABI,
+        "pack8",
+        lambda fn, *args, **kwargs: calls.append(fn),
+    )
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=256,
+            in_features=1024,
+            out_features=3584,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [exact]
+
+
 def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
     weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
     key = KernelKey(
@@ -1714,8 +1780,23 @@ def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
     assert calls[0][0] == (100, 11, 12, 13, 200, 512, 1024, 3584)
 
 
-def test_gfx1151_dense_bf16_bulk_prefill_rejects_unaligned_k() -> None:
-    """The BK32 WMMA leaf must not own a K-tail it cannot load safely."""
+@pytest.mark.parametrize(
+    ("rows", "in_features", "out_features", "expected"),
+    [
+        (16, 1_000, 128, "fallback"),
+        (256, 3_584, 1_024, "fallback"),
+        (512, 2_048, 1_024, "fallback"),
+        (512, 1_024, 512, "wmma"),
+        (512, 3_584, 1_024, "wmma"),
+    ],
+)
+def test_gfx1151_dense_bf16_bulk_prefill_honors_qualified_shapes(
+    rows: int,
+    in_features: int,
+    out_features: int,
+    expected: str,
+) -> None:
+    """The WMMA leaf owns only safe campaign-qualified p512 shapes."""
 
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -1750,9 +1831,9 @@ def test_gfx1151_dense_bf16_bulk_prefill_rejects_unaligned_k() -> None:
             weight,
             x_ptr=100,
             out_ptr=200,
-            rows=16,
-            in_features=1000,
-            out_features=128,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
             backend="hip_gfx1151",
             runtime="runtime-sentinel",
             use_wmma_prefill=True,
@@ -1762,7 +1843,33 @@ def test_gfx1151_dense_bf16_bulk_prefill_rejects_unaligned_k() -> None:
             register(key, original, replace=True)
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
-    assert calls == ["fallback"]
+    assert calls == [expected]
+
+
+def test_gfx1151_bulk_wmma_policy_matches_qwen35_08b_campaign_shapes() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
+        frozenset(),
+    ) == frozenset(
+        {
+            (512, 1_024, 512),
+            (512, 1_024, 2_048),
+            (512, 1_024, 3_584),
+            (512, 2_048, 1_024),
+            (512, 3_584, 1_024),
+        }
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+        frozenset(),
+    ) == frozenset(
+        {
+            (512, 1_024, 512),
+            (512, 3_584, 1_024),
+        }
+    )
 
 
 def test_qwen35_dense_pack8_wmma_tile_policy_covers_ffn_shapes() -> None:
