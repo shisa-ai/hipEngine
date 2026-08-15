@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_outer_chunk_screen",
+  "status": "rejected_all",
+  "performance_claim": false,
+  "commit": "fdb3791e7",
+  "model": "Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": {
+    "chunks": [
+      128,
+      256,
+      512
+    ],
+    "workloads": [
+      "512/128",
+      "1K/128",
+      "4K/128"
+    ],
+    "samples": 1,
+    "cache_only": true
+  },
+  "results": {
+    "128": {
+      "512/128": {
+        "candidate_prefill_tok_s": 191.14044440845393,
+        "control_prefill_tok_s": 343.3199678289345,
+        "ratio": 0.5567414141891484,
+        "decode_tok_s": 11.781810771541942,
+        "peak_gib": 16.50510525330901,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "1K/128": {
+        "candidate_prefill_tok_s": 171.6657050209668,
+        "control_prefill_tok_s": 338.03766341589244,
+        "ratio": 0.507830113621878,
+        "decode_tok_s": 11.63171966593124,
+        "peak_gib": 16.50510525330901,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "4K/128": {
+        "candidate_prefill_tok_s": 89.93462001101452,
+        "control_prefill_tok_s": 332.67561820438954,
+        "ratio": 0.2703372747796636,
+        "decode_tok_s": 10.902358229626685,
+        "peak_gib": 16.50510525330901,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      }
+    },
+    "256": {
+      "512/128": {
+        "candidate_prefill_tok_s": 272.20632438849225,
+        "control_prefill_tok_s": 343.3199678289345,
+        "ratio": 0.7928648196894975,
+        "decode_tok_s": 11.779733989513467,
+        "peak_gib": 16.60265999659896,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "1K/128": {
+        "candidate_prefill_tok_s": 232.15149475802872,
+        "control_prefill_tok_s": 338.03766341589244,
+        "ratio": 0.6867622158197487,
+        "decode_tok_s": 11.635800458332632,
+        "peak_gib": 16.60265999659896,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "4K/128": {
+        "candidate_prefill_tok_s": 103.59527290935904,
+        "control_prefill_tok_s": 332.67561820438954,
+        "ratio": 0.3114002567080587,
+        "decode_tok_s": 10.90220837621538,
+        "peak_gib": 16.60265999659896,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      }
+    },
+    "512": {
+      "512/128": {
+        "candidate_prefill_tok_s": 307.7080509165553,
+        "control_prefill_tok_s": 343.3199678289345,
+        "ratio": 0.8962719321640985,
+        "decode_tok_s": 11.779345436909304,
+        "peak_gib": 16.797769483178854,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "1K/128": {
+        "candidate_prefill_tok_s": 329.67337762193716,
+        "control_prefill_tok_s": 338.03766341589244,
+        "ratio": 0.9752563495161053,
+        "decode_tok_s": 11.63035734554967,
+        "peak_gib": 16.797769483178854,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      },
+      "4K/128": {
+        "candidate_prefill_tok_s": 320.14303593202874,
+        "control_prefill_tok_s": 332.67561820438954,
+        "ratio": 0.9623279206934214,
+        "decode_tok_s": 10.905900879479775,
+        "peak_gib": 16.797769483178854,
+        "final_id": 9707,
+        "native_fallbacks": 0
+      }
+    }
+  },
+  "correctness": {
+    "all_finite": true,
+    "all_final_id_9707": true,
+    "native_graph_launches_per_row": 128,
+    "native_fallbacks": 0
+  },
+  "decision": "Keep unchunked. Every candidate regresses every prefill shape; memory savings defer to P8.",
+  "evidence": {
+    "path": "/tmp/qwen38-task21-p4-chunk-screen/validated-summary.json",
+    "sha256": "9d9876e678721cc834a959f7981f6c6637bd9fc98e5aa1bc2d1b9c9102c2797d",
+    "bytes": 3480
+  }
+}
