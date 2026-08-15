@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_gfx1151_q4_t16_dense_dual_decode_leaf",
+  "status": "rejected_performance",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "hipengine_commit": "e3aaa9d4d3f9c21d22763ed2086c5eedb9a92fe4",
+    "rocm_hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M"
+  },
+  "profile_selection": {
+    "source": "/tmp/qwen38-task21-p4-postprofile/profile-summary.json",
+    "source_commit": "fdb3791e7",
+    "production_graph_kernel_sum_ms": 10465.95763,
+    "q4_single_calls": 36864,
+    "q4_single_total_ms": 6486.395578,
+    "q4_single_share": 0.619768,
+    "eager_512_128_wall_ms": 11087.430579,
+    "eager_gate_up_plus_silu_ms": 4181.033072,
+    "eager_gate_up_plus_silu_share": 0.377097
+  },
+  "protocol": {
+    "layers": [0, 8, 63],
+    "warmups": 4,
+    "samples": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "control": "two sole-Q4T16 local32 projections plus primitive BF16 SiLU",
+    "candidate": "same-resident sole-Q4T16 dual local32 plus BF16 SiLU",
+    "cache_contract": "each actual gate/up source pair is 95.625 MiB, exceeding both 64 MiB and 2x the 32-MiB MALL",
+    "require_cached_build": true
+  },
+  "results": [
+    {
+      "layer": 0,
+      "shape": [17408, 5120],
+      "source_pool_mib": 95.625,
+      "control_ms": 0.49436673521995544,
+      "candidate_ms": 0.5058885216712952,
+      "candidate_over_control": 1.0233061523571432,
+      "candidate_wins": 0,
+      "pairs": 15,
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 8,
+      "shape": [17408, 5120],
+      "source_pool_mib": 95.625,
+      "control_ms": 0.4930819869041443,
+      "candidate_ms": 0.5049017667770386,
+      "candidate_over_control": 1.0239712262601717,
+      "candidate_wins": 0,
+      "pairs": 15,
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 63,
+      "shape": [17408, 5120],
+      "source_pool_mib": 95.625,
+      "control_ms": 0.4927142560482025,
+      "candidate_ms": 0.5057287216186523,
+      "candidate_over_control": 1.0264138197965529,
+      "candidate_wins": 0,
+      "pairs": 15,
+      "bf16_mismatches": 0
+    }
+  ],
+  "family": {
+    "control_ms": 1.4801629781723022,
+    "candidate_ms": 1.516519010066986,
+    "candidate_over_control": 1.0245621816183892,
+    "candidate_delta_percent": 2.456218161838919,
+    "candidate_wins": 0,
+    "pairs": 45,
+    "projected_request_saving_percent": -0.9262316722998414
+  },
+  "correctness": {
+    "all_bf16_exact": true,
+    "all_finite": true,
+    "tracked_teardown_bytes": 0
+  },
+  "ownership": {
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "raw_evidence": {
+    "path": "/tmp/qwen38-task22-q4-dual-leaf/leaf.json",
+    "sha256": "7e366e9bcef6d17d83d9792a566c6c5a0f5c0b48e12723ed3657b26535546137",
+    "bytes": 7423
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen38_q4_t16_dense_dual_decode_leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task20-q6-hybrid-smoke/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-dual-leaf/leaf.json",
+  "decision": "Reject the existing same-T16 dual gate/up+SiLU c1 owner for Qwen3.8-27B gfx1151. It is BF16-bit exact and byte-neutral, but loses all 45 counterbalanced pairs by 2.46% in aggregate and projects a 0.93% complete-request regression. Keep the current two single projections plus primitive SiLU and rerank Q4 down+residual."
+}
