@@ -476,8 +476,11 @@ screen, improves all three graph-AR rows and every natural full/train/heldout/
 category scope, and preserves all tested trajectories. Single-plane Q8_1 is
 rejected because it changes heldout `general_ja_explain`; exact dual fusion,
 Q6 residual fusion, local64, K coalescing, static-K, and packed quant loads are
-rejected on performance. Re-rank the post-keep graph before the next bounded
-screen; same-input linear-attention QKV+gate row reuse is the next candidate.
+rejected on performance. Same-Q4 QKV+gate Q8_1x2 reuse is also rejected: only
+24/48 pairs are homogeneous Q4/Q4, and its 1.01892x actual-pair win projects to
+just 0.121% of selected graph wall. Re-rank the remaining profile for a
+materially larger operation-complete boundary; heterogeneous Q6-QKV/Q4-gate
+requires an independent design rather than the same-Q4 dual body.
 
 ### P6 — Exact B3 MTP
 
