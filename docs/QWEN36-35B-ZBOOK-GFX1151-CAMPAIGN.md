@@ -85,7 +85,7 @@ engine comparisons.
 
 | Role | Artifact | Pinned identity | Admission state |
 | --- | --- | --- | --- |
-| BF16 oracle | `Qwen/Qwen3.6-35B-A3B` | HF revision `995ad96eacd98c81ed38be0c5b274b04031597b0`; Apache-2.0 | Transfer active when this plan was written. Resolve and record the local snapshot; use as the primary quality oracle, not a throughput comparator. |
+| BF16 oracle | `Qwen/Qwen3.6-35B-A3B` | HF revision `995ad96eacd98c81ed38be0c5b274b04031597b0`; 26 shards / 71,903,776,776 file bytes / 71,903,645,408 tensor bytes; Apache-2.0 | **Admitted 2026-08-15 UTC:** every shard SHA-256, safetensors index/header map, 1,045 BF16 tensors, CPU Transformers full-logit forward, and greedy smoke passed. hipEngine can ingest its metadata but has no BF16 Qwen generation registration; this remains an external CPU quality oracle. Evidence: [`2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json`](../benchmarks/results/2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json). |
 | GGUF baseline | `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` | `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` revision `5bc3e238d916f48a861bac2f8a1990a0e9b7e98d`; 22,663,387,424 bytes; SHA-256 `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b` | **Admitted 2026-08-15 UTC:** local hash passed; 753-tensor MTP-bearing file; strict AR map, MTP inventory, all-type CPU dequant smoke, ten-prompt tokenizer roundtrip, and a llama.cpp exact-ID spot check passed. Evidence: [`2026-08-15-zbook-qwen36-35b-q4km-admission.json`](../benchmarks/results/2026-08-15-zbook-qwen36-35b-q4km-admission.json). |
 | PARO W4 | `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` | HF revision `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `model.safetensors` 20,474,495,512 bytes, SHA-256 `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`; Apache-2.0 | Queued after the other transfers. This is the canonical hipEngine packed-PARO model. |
 | ROCmFP4 | `gsrunion/Qwen3.6-35B-A3B-ROCmFP4-STRIX_LEAN-GGUF` | HF revision `f3be5a9c166640f973213d9077ec637ef0875da0`; 19,046,930,720-byte GGUF, SHA-256 `703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b`; Apache-2.0 | Queued after the BF16 transfer, with its 192,223,904-byte imatrix. It is the closest public stock-Qwen match to ROCmFPX's documented 19.05-GB STRIX_LEAN row. |
@@ -110,6 +110,36 @@ Render the ten committed category prompts once with the BF16 tokenizer and
 store raw token IDs plus hashes in a compact fixture. Every engine consumes the
 same IDs; no engine is allowed to independently reinterpret chat text for a
 binding comparison.
+
+### 2.2 Initial cross-runtime load smoke
+
+The first representative smoke is retained in
+[`2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json`](../benchmarks/results/2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json).
+It is an intake checkpoint, not the full ten-prompt quality gate or a speed
+claim.
+
+- Every runtime consumed the same 40 token IDs rendered by the official BF16
+  template for `general_en_explain`. The native official and Unsloth GGUF chat
+  templates differ, so the comparison did not let each runtime render text
+  independently.
+- The BF16 CPU oracle, hipEngine Q4_K_M, llama.cpp HIP, and llama.cpp Vulkan all
+  selected token `44812` on the first row. hipEngine Q4_K_M's one-row
+  `KL(BF16 || Q4_K_M)` was `0.00385084`, with finite full-vocabulary logits.
+- hipEngine's public GGUF route was deterministic across fresh processes and
+  matched llama.cpp HIP on all eight generated IDs.
+- llama.cpp Vulkan matched the first six generated IDs, then selected a close
+  alternative. On that shared context Vulkan preferred `45239` over `10813` by
+  `0.17485` log-prob; llama.cpp HIP server preferred the same token by only
+  `0.00378`, while HIP completion and hipEngine selected `10813`. Close argmax
+  changes also occurred between llama.cpp HIP execution shapes.
+- The HIP and Vulkan llama.cpp smoke binaries were eight upstream commits apart
+  (`a94d563ed` versus `1d2869c6e`); those intervening commits do not touch the
+  tested kernels, but the binding gate must rebuild both at one revision.
+
+Verdict: **preliminary pass with Vulkan numerical follow-up**. This rules out a
+gross load/tokenizer/state failure and strongly supports the hipEngine HIP GGUF
+path, but does not replace teacher-forced full-logit rows over the complete
+category suite.
 
 ---
 
