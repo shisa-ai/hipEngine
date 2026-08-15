@@ -15837,7 +15837,16 @@ class Qwen35GGUFResidentSession:
             else int(_pre_staged_token_ids_ptr)
         )
         add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
-        scratch_row_start = 0 if _prebuilt_bulk_scratch is not None else start
+        hidden_capacity_rows = min(
+            int(self._prefill_hidden_a.nbytes),
+            int(self._prefill_hidden_b.nbytes),
+        ) // row_nbytes
+        scratch_row_start = _gguf_verify_hidden_scratch_row_start(
+            start=start,
+            rows=rows,
+            hidden_capacity_rows=hidden_capacity_rows,
+            prebuilt=_prebuilt_bulk_scratch is not None,
+        )
         try:
             t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
@@ -22514,6 +22523,32 @@ def _allocate_prefill_hidden_buffers(
     if min_rows > 0 and int(rows) >= min_rows:
         return hidden_a, hidden_a
     return hidden_a, malloc(int(nbytes), runtime=runtime)
+
+
+def _gguf_verify_hidden_scratch_row_start(
+    *,
+    start: int,
+    rows: int,
+    hidden_capacity_rows: int,
+    prebuilt: bool,
+) -> int:
+    """Select a bounded hidden-scratch offset for one target verifier block."""
+
+    start = int(start)
+    rows = int(rows)
+    hidden_capacity_rows = int(hidden_capacity_rows)
+    if start < 0:
+        raise ValueError("target verifier start must be non-negative")
+    if rows <= 0:
+        raise ValueError("target verifier rows must be positive")
+    if hidden_capacity_rows <= 0 or rows > hidden_capacity_rows:
+        raise ValueError(
+            f"target verifier rows {rows} exceed hidden scratch capacity "
+            f"{hidden_capacity_rows}"
+        )
+    if bool(prebuilt) or start + rows > hidden_capacity_rows:
+        return 0
+    return start
 
 
 @dataclass(frozen=True)
