@@ -7937,6 +7937,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.ffn_size,
             stream=stream,
             runtime=runtime,
+            use_gemv_decode=(True if dense_decode_variant is not None else None),
             registered_decode_variant=dense_decode_variant,
         )
         if not dense_silu_fused:
@@ -9724,11 +9725,18 @@ def _gguf_dense_pair_silu_decode_variant(
         return None
     if not isinstance(policies, Mapping):
         return None
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
-    shapes = policies.get(identity, {})
+    identity = _gguf_policy_identity(weights)
+    shapes = policies.get(identity, {}) if identity is not None else {}
+    if not isinstance(shapes, Mapping):
+        shapes = {}
+    if not shapes:
+        # Legacy narrow-model policies remain provenance-name keyed until those
+        # model families acquire immutable geometry identities.
+        legacy_identity = (
+            getattr(weights, "model_name", None),
+            getattr(weights, "file_type_name", None),
+        )
+        shapes = policies.get(legacy_identity, {})
     if not isinstance(shapes, Mapping):
         return None
     variant = shapes.get((int(rows), int(in_features), int(out_features)))

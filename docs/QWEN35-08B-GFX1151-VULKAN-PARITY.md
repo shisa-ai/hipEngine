@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and the broad D08-T1 campaign remain blocked. A human-approved narrow 27B transfer audit retained only the existing Q4T16 c1 dual+SiLU owner on 2026-08-15.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -1496,6 +1496,30 @@ at campaign open).
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json).
 
+### 2.42 Human-approved narrow Qwen3.8-27B transfer audit (2026-08-15)
+
+The audit compared every retained 0.8B package with Qwen3.8's actual
+H5120/64-layer sole-T16 path on gfx1100. It did not copy 0.8B speed ratios or
+shape-specific policies. Q5T16 SSM-out and sole-Q4T16 ownership are already
+subsumed by the 27B route. Cluster8 GDN (16K/16V), short split-K3 attention
+(8Q/2KV at contexts 514-641), fixed-hidden-1024 norms, pack8 WMMA, and
+dense-BF16 WMMA fail hard geometry/layout checks. The 0.8B down-residual bodies
+also cannot consume 27B's Q4T16/qmicro-planar c1 owners without new kernels.
+
+One operation does transfer: D3's gate/up+SiLU fusion. The exact 0.8B pack8
+t128 body is not reused, but the already registered gfx1100
+`gguf_q4_k_t16_v1/dense_dual_local32_bf16_bf16_out` sibling matches the 27B
+sole layout and `[1,5120,17408]` shape. Geometry-keyed admission removes 128
+PM4 nodes (950 -> 822) without adding bytes. On RX 7900 XTX Qwen3.8-27B,
+512/128 graph decode improves **33.542 -> 33.964 tok/s (+1.259%)**, prefill is
+**+0.169%**, and tracked peak is byte-identical. The complete natural25 suite
+improves true AR **19.123 -> 21.679 tok/s (+13.364%)** and native B3
+**60.503 -> 60.925 (+0.697%)** with unchanged 63.095% draft acceptance, exact
+greedy outputs, GPU/CPU acceptance agreement, and zero teardown ownership.
+
+Artifact:
+[`2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json`](../benchmarks/results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json).
+
 ## 3. Comparison contracts
 
 ### 3.1 Two timing scopes, not one misleading ratio
@@ -1723,7 +1747,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | **D08-G1** | Full correctness and regression packet. | **D08-scoped pass:** CPU/D5 category/state/determinism/Q8/focused gates pass. **Milestone-wide block:** broad suite attempt exposed unrelated existing failures and was not completed. | scoped pass / broad blocked |
 | **D08-G2** | Same-session interleaved Q4/Q8 final comparison. | **Failed:** exact Q4 core is 0.424x pp / 0.734x tg and public is 0.463x / 0.942x; every required Q4 measure loses 0/5 blocks. | blocked-parity |
 | **D08-G3** | Publish retained artifact/scoreboard/changelog and close campaign. | Blocked by G2 and the missing all-green milestone suite; exact commands/module ledger are published without claiming closure. | blocked |
-| **D08-T1** | Open 27B transfer campaign and re-profile from zero. | D08-G3 complete; no 0.8B ratio is copied as 27B evidence. | blocked by D08-G3 |
+| **D08-T1** | Open broad 27B transfer campaign and re-profile from zero. | D08-G3 complete; no 0.8B ratio is copied as 27B evidence. A human-approved narrow audit retained one independently measured existing T16 fusion in section 2.42. | broad campaign blocked by D08-G3; narrow audit complete |
 
 ## 7. First-pass decision tree
 
@@ -1787,7 +1811,7 @@ potential band, then measured upper bound.
 | Blanket non-temporal weight loads | rejected prior family | low | Prior gfx1151 cold-leaf improvement regressed/flattened complete decode by defeating useful MALL reuse. | New profile proves the exact production owner is cold-streaming, cache-polluting, and has a >=1% whole-request bound. |
 | Generic wave64/reduction sweep | rejected/parked prior family | low | Cross-backend and GGUF campaigns already found no broad recovery; wave32 is the production contract. | A minimized hot kernel shows a specific wave32 occupancy/reduction bottleneck and a wave64-correct oracle. |
 | Hand ISA or production Vulkan backend | parked | unknown/high cost | Current production-shaped combined HIP kernels often match or beat Vulkan micros; engine gap is not yet attributed. | A matched production semantic slice wins after route/layout/submission controls and projects >=10% request saving. |
-| 27B dense transfer | blocked by D08-G3 | **critical future** | 0.8B must first establish route, module tools, and parity without copying shape-specific conclusions. | D08-G3 closes; begin with a fresh 27B C0/M ledger. |
+| 27B dense transfer | broad campaign blocked by D08-G3; narrow audit complete | **critical future** | The approved audit retained only an independently gated existing T16 fusion; all shape-specific 0.8B routes were rejected or already subsumed. | D08-G3 closes for a broad campaign, or a new human-approved bounded audit names a matching 27B owner and full gate. |
 
 ## 10. Update protocol
 

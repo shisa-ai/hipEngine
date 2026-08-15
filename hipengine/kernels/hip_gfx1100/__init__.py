@@ -234,6 +234,14 @@ GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
 GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {"enabled": True},
 }
+# The sole-Q4T16 dense gate/up owners already expose an exact c1 dual+SiLU
+# sibling. The complete Qwen3.8 512/128 and natural25 gates admit it for the
+# validated H5120 geometry, removing 128 decode-graph nodes without a sidecar.
+GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+    },
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -808,6 +816,7 @@ __all__ = [
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
+    "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",

@@ -75,6 +75,7 @@ def test_dense_backend_policies_are_geometry_keyed() -> None:
         "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
         "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
         "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
         "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
         "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
         "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
@@ -104,6 +105,12 @@ def test_dense_policy_admission_ignores_finetune_name_but_rejects_geometry_drift
         geometry=runner.weights.geometry,
         file_type_name=runner.weights.file_type_name,
     ) == (True, "private_c1_geometry_policy")
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner,
+        rows=1,
+        in_features=5_120,
+        out_features=17_408,
+    ) == "dense_dual_local32_bf16_bf16_out"
 
     runner.weights.model_name = "totally-different-name"
     assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
@@ -111,6 +118,12 @@ def test_dense_policy_admission_ignores_finetune_name_but_rejects_geometry_drift
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     assert gguf_runner._gguf_t16_f16_rocblas_prefill_policy(runner) is None
     assert gguf_runner._gguf_dense_prefill_scratch_policy(runner) is None
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner,
+        rows=1,
+        in_features=5_120,
+        out_features=17_408,
+    ) is None
 
 
 def test_verifier_inherits_target_backend_and_rejects_cross_backend_override() -> None:

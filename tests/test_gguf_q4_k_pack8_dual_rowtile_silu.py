@@ -567,6 +567,7 @@ def test_dense_runner_qualified_c1_consumes_registered_fused_schedule(
 
     assert [name for name, _args, _kwargs in calls] == ["pair_silu", "linear", "add"]
     assert calls[0][2]["registered_decode_variant"] == "pack8_dual_decode_t128_bf16_bf16_out"
+    assert calls[0][2]["use_gemv_decode"] is True
 
 
 def test_dense_runner_qualified_c1_fuses_down_residual(
