@@ -204,12 +204,16 @@ embedding remains raw GGUF, peer geometries retain prior policy, and no
 [`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json).
 The same gfx1151 model policy also gives the 48 exact
 K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
-`gguf_q5_k_t16_v1/tiles` payload each. Existing direct c1, exact rows-2-4
-rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the role; the
-GDN and residual boundaries remain separate registered primitives. Dense BF16
-stays available as a numerical oracle and policy-miss fallback but is not a
+`gguf_q5_k_t16_v1/tiles` payload each. Serial c1 uses the exact eight-column
+output-ownership sibling after five actual layers and every repeated/natural AR
+scope improve with BF16-bit identity; the registered local128 direct owner
+remains the policy-miss and `native_batch_decode_session` fallback. Exact
+rows-2-4 rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the
+rest of the role; GDN and residual boundaries remain separate registered
+primitives. Dense BF16 stays available as a numerical oracle but is not a
 resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
-independently shape-qualified.
+independently shape-qualified. Evidence:
+[`Qwen3.8 Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow

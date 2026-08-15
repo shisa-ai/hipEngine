@@ -21,12 +21,13 @@ planar-Q6 row80, and standard-Q6 48x64 tiling are rejected. AOTriton attention
 is active but nonmaterial, and the remaining primitive add boundary is below
 the >=1% request gate.
 
-P5 now retains primary-plus-residual Q8_1 dp4a only for rows1 dense gate/up.
-Development graph AR improves 0.454%/0.534%/0.271% at 512/1K/4K, natural AR
-improves 0.706-0.785% against two controls to 12.1095 tok/s, and all natural
-AR/B1-B3 tokens and acceptance trajectories remain exact. This is the default
-path with exact local32 rollback, but it does not close the remaining clean
-Vulkan AR gap.
+P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up and an exact
+serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs. The first unit improves
+development graph AR 0.454%/0.534%/0.271% at 512/1K/4K and natural AR to
+12.1095 tok/s. The second adds 0.594%/0.692%/0.531% against fresh controls and
+raises natural AR to 12.1578 tok/s (+0.541% fresh / +0.399% post-Q8_1x2), with
+every natural scope positive. All tested trajectories remain exact. Native rows
+and MTP retain their prior owners; neither unit closes the clean Vulkan AR gap.
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -495,7 +496,17 @@ metadata shuffles regress all five actual recurrent-output layers by 1.71-3.43%
 and project -0.193% selected wall. The existing generic split-K3 attention
 transfer is closed at the p512 decode window too: graph AR regresses both fresh
 controls by 0.124-0.134% and changes the fixed-token final logit, far from the
-48.071% attention-package saving required for a 1% request advance.
+48.071% attention-package saving required for a 1% request advance. One
+sub-threshold exact micro-win is retained under the repository's non-regressive
+micro-win rule: splitting each serial-c1 Q5T16 K6144/N5120 recurrent output
+across two eight-column owners improves five cache-cold actual layers
+**0.609500 -> 0.570542 ms (1.06828x, 74/75)**. Reverse-order p512 graph pairs
+improve **+0.586%/+0.602%**, fresh 1K/4K controls improve **+0.692%/+0.531%**,
+and natural true AR improves every full/train/heldout/category scope to
+**12.157751 tok/s**. Outputs are BF16-bit exact, residency and tracked peaks are
+unchanged, and the final policy excludes `native_batch_decode_session`, leaving
+B1-B3 and all native rows on the direct owner. Evidence:
+[`Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
 ### P6 — Exact B3 MTP
 

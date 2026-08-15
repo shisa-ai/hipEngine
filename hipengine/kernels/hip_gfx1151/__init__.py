@@ -815,6 +815,15 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
+# Qwen3.8-27B P5: split each exact serial-c1 recurrent-output tile across two
+# eight-column workgroups after all five actual-weight layers improved with
+# BF16-bit identity. Native rows/MTP and policy misses retain the ordinary
+# local128 direct owner.
+GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
+    "gguf_q5_k_t16_v1": {
+        (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+    },
+}
 # Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local
 # exactness and speed gates retain it; slot exclusions below keep one alternate
 # layout only where gfx1151 measurements reject planar ownership.
@@ -1945,6 +1954,7 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",

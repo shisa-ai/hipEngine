@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q5_dense_tile8_decode",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "ce35e9e3889fab2aa4485dab25c6722f5ca3d267",
+    "development_worktree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "gfx1151 serial rows1 Q5T16 K6144/N5120 recurrent-output projections",
+    "producer": "existing BF16 recurrent output",
+    "consumer": "same-resident exact Q5T16 tile8 GEMV with two eight-column workgroups per T16 tile",
+    "resident_layout": "gguf_q5_k_t16_v1",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "native_batch_and_mtp_owner": "unchanged local128 direct Q5T16",
+    "fallback": "registered local128 direct Q5T16 projection",
+    "peer_backends_and_shapes_changed": false
+  },
+  "actual_weight_leaf": {
+    "layers": [0, 16, 32, 48, 62],
+    "protocol": "15 counterbalanced HIP-event pairs per layer after four warmups; four peer T16 weights exceed 64 MiB before every timed launch",
+    "control_ms": 0.609499990940094,
+    "candidate_ms": 0.570542000234127,
+    "speedup": 1.0682824238881277,
+    "candidate_wins": "74/75",
+    "all_layers_positive": true,
+    "projected_selected_graph_saving_percent": 0.42621178878749544,
+    "quality": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "top1_agreement": 1.0
+    }
+  },
+  "shape_ar": {
+    "protocol": "token 9707 repeated to prompt length, BF16 KV, one warmup, three measured graph-replay runs, 128 decode tokens",
+    "rows": {
+      "512/128": {
+        "control_process_medians_tok_s": [11.889878883775543, 11.88051270761686],
+        "candidate_process_medians_tok_s": [11.959558824709278, 11.952025446838727],
+        "control_mean_tok_s": 11.885195795696202,
+        "candidate_mean_tok_s": 11.955792135774002,
+        "speedup": 1.0059398550340555,
+        "candidate_delta_percent": 0.5939855034055475,
+        "process_orders": ["control,candidate", "candidate,control"],
+        "tracked_peak_gib": 16.753218058496714,
+        "final_ids_identical": true
+      },
+      "1K/128": {
+        "control_tok_s": 11.703291627891245,
+        "candidate_tok_s": 11.784304601947735,
+        "speedup": 1.006922238343905,
+        "candidate_delta_percent": 0.692223834390493,
+        "tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true
+      },
+      "4K/128": {
+        "control_tok_s": 10.94624665063205,
+        "candidate_tok_s": 11.004410830594937,
+        "speedup": 1.0053136186146079,
+        "candidate_delta_percent": 0.5313618614607885,
+        "tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true
+      }
+    }
+  },
+  "natural_suite": {
+    "protocol": "all ten mtp-bench prompts, four categories, six train/four heldout, 25 visible outputs, three runs",
+    "true_ar": {
+      "fresh_same_source_control_tok_s": 12.092274383584707,
+      "candidate_tok_s": 12.157750832958628,
+      "candidate_over_fresh_control": 1.0054147340108992,
+      "candidate_delta_percent": 0.5414734010899203,
+      "post_q8x2_control_tok_s": 12.109450877598773,
+      "candidate_over_post_q8x2_control": 1.0039886164821235,
+      "minimum_full_train_heldout_category_ratio_vs_fresh": 1.0046586123728936,
+      "minimum_full_train_heldout_category_ratio_vs_post_q8x2": 1.0030054156871837,
+      "all_30_candidate_tokens_match_both_controls": true
+    },
+    "native_b1_diagnostic_before_final_scope": {
+      "fresh_control_tok_s": 18.871094959313965,
+      "candidate_tok_s": 18.884630162148202,
+      "candidate_delta_percent": 0.07172452294590403,
+      "all_30_tokens_and_acceptance_trajectories_match_both_controls": true,
+      "all_gpu_accept_match_cpu": true,
+      "final_policy": "tile8 is disabled whenever native_batch_decode_session is active, so B1-B3 retain the exact control owner"
+    },
+    "zero_tracked_bytes_after_close": true
+  },
+  "memory": {
+    "resident_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "tracked_peaks_unchanged": true,
+    "whole_process_gtt": "not resampled; no allocation or residency change",
+    "teardown_bytes": 0
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task22-q5-dense-tile8-trace/rocprof/gfx1151/1231207_kernel_trace.csv",
+    "sha256": "dccab0c9f4402c6f752831118415f0ad9b5ae4786d19da43a53be5701feae169",
+    "bytes": 33989,
+    "kernel": "q5_k_t16_dense_tile8_gemv_kernel<unsigned short>",
+    "calls": 10,
+    "median_duration_ns": 106078,
+    "duration_range_ns": [104395, 137777],
+    "workgroup_x": 128,
+    "grid_size_x_threads": 81920,
+    "vgpr": 56,
+    "lds_bytes": 512,
+    "scratch_bytes": 0
+  },
+  "validation": {
+    "focused_tests": "145 passed",
+    "correctness_gate": "synthetic CPU Q5_K allclose plus BF16-bit identity to production; actual-weight 5/5 top-1 and zero mismatches",
+    "shape_exactness": "12/12 measured final IDs equal token 9707",
+    "natural_exactness": "30/30 AR and 30/30 diagnostic B1 trajectories match both controls",
+    "native_scope_guard": "dispatch test resolves native-session rows1 to the direct fallback",
+    "all_shape_non_regression": true,
+    "all_natural_ar_scopes_positive": true,
+    "zero_tracked_bytes_after_close": true
+  },
+  "commands": {
+    "leaf": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/qwen38-task22-q5-dense-tile8-leaf.py --layers 0,16,32,48,62 --warmups 4 --samples 15 --compiler-version-file /tmp/qwen38-task22-post-q8x2-rerank/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q5-dense-tile8-leaf/leaf.json",
+    "shape_512": "python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "shape_1k4k": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 1024/128 4096/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "natural": "python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "tests": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py tests/test_gguf_t16_selected_gemv_decode.py::test_q5_t16_dense_tile8_matches_production_bits tests/test_gguf_t16_selected_gemv_decode.py::test_p9_h3d_registry_keys_resolve"
+  },
+  "evidence": {
+    "actual_weight_leaf": {"path": "/tmp/qwen38-task22-q5-dense-tile8-leaf/leaf.json", "sha256": "6db49fa3831935c11e802c8794a70ca116e5ef5ba73c285b04d80fbd030803f1", "bytes": 10734},
+    "shape_512_control_1": {"path": "/tmp/qwen38-task22-q5-dense-tile8-integration/control-c1-p512-d128.json", "sha256": "9bd5869c721d792be74f6b0f0fbd30bfb074355830f40fa3506c17d2e3c43c56", "bytes": 454710},
+    "shape_512_candidate_1": {"path": "/tmp/qwen38-task22-q5-dense-tile8-integration/candidate-a1-p512-d128.json", "sha256": "4f00543b14d32b76b66838e097bec77af0b0e49452a576d2e66e849456bdc816", "bytes": 454633},
+    "shape_512_candidate_2": {"path": "/tmp/qwen38-task22-q5-dense-tile8-integration/candidate-a2-p512-d128.json", "sha256": "cfbbb9a8ce60ab6558762e3942d2e45ad50cd68cfc79012bfc089281e4546085", "bytes": 454639},
+    "shape_512_control_2": {"path": "/tmp/qwen38-task22-q5-dense-tile8-integration/control-c2-p512-d128.json", "sha256": "672b2cb94face290d0f7165b326ec24c9622f1d8f976b5e69cd2134ae51a0cc6", "bytes": 454698},
+    "shape_1k4k_candidate": {"path": "/tmp/qwen38-task22-q5-dense-tile8-shapes/candidate-a1-1k4k.json", "sha256": "c01bd4926c6b811bd5ced84dcaddb5e43316aab3b8449bdb7630bcfd945b14a4", "bytes": 867250},
+    "shape_1k4k_control": {"path": "/tmp/qwen38-task22-q5-dense-tile8-shapes/control-c1-1k4k.json", "sha256": "4cc40a5992634c13289d55e4c3e21a2a51ef389ff3673ec592143d830dbf18de", "bytes": 867269},
+    "natural_candidate": {"path": "/tmp/qwen38-task22-q5-dense-tile8-natural/natural.json", "sha256": "fa213dbefec22784ae39d983724e4abc3e5448d3f7ab9c3e87de53955748abf3", "bytes": 840768},
+    "natural_control": {"path": "/tmp/qwen38-task22-q5-dense-tile8-natural/control.json", "sha256": "5fa16f68596f3f7ff83d184a253b4c3c7ee7a96ad640cad689f7c4f875cff6fa", "bytes": 840641}
+  },
+  "decision": "Retain and default only the gfx1151 serial-c1 Q5T16 K6144/N5120 tile8 owner. It is BF16-bit exact, wins both 512 process orders plus 1K/4K, improves every natural AR scope, adds no bytes, and leaves native rows/MTP and all policy misses on the registered direct fallback. This is development evidence, not a clean publication topline; P5 remains open because Vulkan AR is still faster."
+}
