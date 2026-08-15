@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_q4_d8_mmq_prefill_rejected",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "software": {
+    "repo_revision": "e3568efb630556993d9d847c39a4baa2751a988d",
+    "tracked_tree_dirty_during_measurement": false,
+    "production_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "weights": [
+      "blk.0.ffn_gate.weight",
+      "blk.0.ffn_up.weight"
+    ],
+    "shape": {
+      "k": 5120,
+      "n_gate": 17408,
+      "n_up": 17408,
+      "dense_layer_count": 64
+    }
+  },
+  "hypothesis": {
+    "control": "retained exact BF16-input dual-Q4T16 WMMA gate/up+SiLU owner",
+    "candidate": "D8-Q8_1 activation pack plus byte-neutral dual-interleaved Q4T16 MMQ128x32 plus primitive BF16 SiLU",
+    "premise": "Transfer the existing gfx1151-qualified Laguna dual-interleaved D8-MMQ dataflow to the structurally dominant dense Qwen3.8 K5120/N17408 gate/up family. It replaces, rather than duplicates, the two Q4 payloads and previously improved Laguna K3072/N1024 selected-expert prefill by 1.19-2.46%.",
+    "request_admission": ">=1.10x leaf with robust paired wins and >=1% projected complete-prefill saving"
+  },
+  "layout": {
+    "control": "two ordinary Q4T16 payloads",
+    "candidate": "one dual-interleaved Q4T16 payload",
+    "control_pair_bytes": 103055360,
+    "candidate_pair_bytes": 103055360,
+    "resident_delta_bytes": 0
+  },
+  "protocol": {
+    "rows": [512, 1024, 4096],
+    "warmups": 2,
+    "counterbalanced_pairs_per_row": 7,
+    "timing": "HIP events",
+    "candidate_scope": "D8 pack + both projections + SiLU",
+    "control_scope": "both projections + fused SiLU",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 -u /tmp/qwen38-task37-q4-d8-mmq-leaf.py --compiler-version-file /tmp/qwen38-task37-hipcc-version.txt --require-cached-build --rows 512,1024,4096 --warmups 2 --samples 7 --output /tmp/qwen38-task37-q4-d8-mmq-leaf.json"
+  },
+  "results": {
+    "512": {
+      "control_median_ms": 6.851029872894287,
+      "candidate_median_ms": 21.171640396118164,
+      "control_over_candidate": 0.32359466459436126,
+      "candidate_regression_percent": 209.02858094200644,
+      "candidate_wins": "0/7",
+      "projected_64_layer_regression_ms": 916.5190734863281,
+      "projected_complete_prefill_regression_percent": 61.456900060415265,
+      "quality": {
+        "finite": true,
+        "bf16_mismatches": 7259267,
+        "bf16_elements": 8912896,
+        "max_abs_error": 0.0029296875,
+        "relative_rmse": 0.0074912876951583425,
+        "row_argmax_agreement": 0.9921875,
+        "hidden_softmax_kl_max_diagnostic": 4.133478429283909e-09
+      },
+      "candidate_transient_bytes": 56754176
+    },
+    "1024": {
+      "control_median_ms": 13.753522872924805,
+      "candidate_median_ms": 41.14091110229492,
+      "control_over_candidate": 0.3343028266614544,
+      "candidate_regression_percent": 199.12998642176944,
+      "candidate_wins": "0/7",
+      "projected_64_layer_regression_ms": 1752.7928466796875,
+      "projected_complete_prefill_regression_percent": 57.862362139248845,
+      "quality": {
+        "finite": true,
+        "bf16_mismatches": 14520308,
+        "bf16_elements": 17825792,
+        "max_abs_error": 0.00390625,
+        "relative_rmse": 0.007484825676596243,
+        "row_argmax_agreement": 0.9853515625,
+        "hidden_softmax_kl_max_diagnostic": 4.322336691830391e-09
+      },
+      "candidate_transient_bytes": 113508352
+    },
+    "4096": {
+      "control_median_ms": 54.238128662109375,
+      "candidate_median_ms": 164.29273986816406,
+      "control_over_candidate": 0.3301310131271321,
+      "candidate_regression_percent": 202.91004487206536,
+      "candidate_wins": "0/7",
+      "projected_64_layer_regression_ms": 7043.4951171875,
+      "projected_complete_prefill_regression_percent": 57.20707474622726,
+      "quality": {
+        "finite": true,
+        "bf16_mismatches": 58067916,
+        "bf16_elements": 71303168,
+        "max_abs_error": 0.0078125,
+        "relative_rmse": 0.007479454127424363,
+        "row_argmax_agreement": 0.988037109375,
+        "hidden_softmax_kl_max_diagnostic": 4.76357960676248e-09
+      },
+      "candidate_transient_bytes": 454033408
+    }
+  },
+  "validation": {
+    "all_outputs_finite": true,
+    "all_required_rows_bf16_bit_exact": false,
+    "candidate_wins": "0/21",
+    "tracked_teardown_exact": true,
+    "resident_bytes_neutral": true,
+    "repo_source_modified": false,
+    "full_model_gate_run": false,
+    "full_model_gate_reason": "The operation-complete actual-weight leaf is approximately 3x slower at every required row and fails the campaign admission gate. Hidden-activation KL/argmax are diagnostic only and are not substituted for the model-level correctness gate."
+  },
+  "lineage": {
+    "source_artifact": "benchmarks/results/2026-07-31-gfx1151-laguna-q4-t16-dual-interleaved-prefill-retained.json",
+    "source_shape": "Laguna selected experts K3072/N1024",
+    "source_trace_resources": {
+      "workgroup_size": 128,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 3072,
+      "scratch_bytes": 0
+    }
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task37-q4-d8-mmq-leaf.json",
+      "sha256": "87efb77cbb3292ecba6491da8286c5e93c191d633bb148cdc44a87fbd5f491db",
+      "bytes": 6485
+    },
+    "leaf_script": {
+      "path": "/tmp/qwen38-task37-q4-d8-mmq-leaf.py",
+      "sha256": "e6ceb97fb262a40d1b73648c79ea837d1de5bf1227a76e3f85709f056eb2f0d2",
+      "bytes": 13806
+    },
+    "compiler_version_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+    "candidate_python_source_sha256": "30e827a6e4d3eee3f5d695414bc4f542d8df824f3c0e8aa38f08ed9b2ffe7815",
+    "candidate_hip_source_sha256": "d939c48680e23bbd1e5c907bc02810fb8ffe43c47b366a1b9564eff15314135f",
+    "control_hip_source_sha256": "33e8ae9ebf291af6f413b4c31e554a19f392ae5c3839844c90fad57576dea752",
+    "silu_hip_source_sha256": "e538cc237b2d23875ab39930f1e9f9411d474ec51f27e411d87dbe8cdead25aa"
+  },
+  "decision": "Reject the dense Qwen3.8 D8-MMQ transfer and leave production unchanged. The Laguna-selected sparse/expert primitive does not scale to the K5120/N17408 dense family: activation packing, non-WMMA projection, and separate SiLU make the complete boundary 2.99-3.09x slower despite byte-neutral residency. Do not reopen this dataflow without a new large-dense MMQ premise."
+}
