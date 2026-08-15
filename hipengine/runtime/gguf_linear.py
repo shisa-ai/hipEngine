@@ -2593,6 +2593,8 @@ def _linear_residual_variant(variant: str) -> str | None:
 
     if variant == "out":
         return "out_bf16_residual_bf16_out"
+    if variant == "prefill_wmma_out":
+        return "prefill_wmma_out_bf16_residual_bf16_out"
     suffix = "_bf16_bf16_out"
     if not variant.endswith(suffix):
         return None
@@ -2838,17 +2840,90 @@ def launch_gguf_linear_residual(
     runtime=None,
     registered_decode: bool = False,
 ) -> bool:
-    """Launch an exact small-row projection plus rounded-BF16 residual.
+    """Launch an exact projection plus rounded-BF16 residual composite.
 
     Registry-qualified native rows 2-4 use their existing session policy. A
     caller may independently admit one model/shape-qualified c1 owner through
-    ``registered_decode``; ABI and sibling registry misses still fail closed to
-    the ordinary projection plus ``gguf_bf16_add`` chain.
+    ``registered_decode``. Qualified bulk dense-BF16 WMMA shapes may own the
+    same rounded boundary; every ABI, shape, registry, and policy miss fails
+    closed to the ordinary projection plus ``gguf_bf16_add`` chain.
     """
 
-    if rows < 1 or rows > 4 or _resolve_use_wmma_prefill(None):
+    if rows < 1:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
+    if rows > 4:
+        # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail
+        # closed before registry/capability work for pack8/raw/T16 owners; their
+        # primitive chain remains the route and pays no candidate dispatch tax.
+        if weight.spec.layout != LAYOUT_DENSE_BF16:
+            return False
+        if (
+            not _resolve_use_wmma_prefill(None)
+            or os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "1") == "0"
+        ):
+            return False
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch = _dense_bf16_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            enabled=(
+                os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and bool(
+                    backend_package_capability(
+                        resolved_backend,
+                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+                        False,
+                    )
+                )
+                and _backend_prefill_shape_is_qualified(
+                    resolved_backend,
+                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+            ),
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return False
+        fused_key, fn = resolved
+        kwargs = {"stream": stream, "runtime": runtime}
+        if libraries is not None:
+            library = libraries.get(
+                f"{fused_key.quant}:{fused_key.variant}",
+                libraries.get(
+                    f"{dispatch.key.quant}:{dispatch.key.variant}",
+                    libraries.get(fused_key.quant),
+                ),
+            )
+            if library is not None:
+                kwargs["library"] = library
+        launcher(
+            fn,
+            weight,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
+        return True
+    if _resolve_use_wmma_prefill(None):
+        return False
     if rows == 1:
         if not registered_decode:
             return False

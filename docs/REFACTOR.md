@@ -14,6 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## gfx1151 dense-BF16 WMMA residual rollback seam
+
+- Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.
+  `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` preserves the already-retained WMMA
+  projection plus standalone `gguf_bf16_add` chain for paired bisection. Registry
+  and shape misses also fail closed to that primitive chain; no resident or
+  scratch bytes depend on the fused owner.
+- Removal trigger: after one release window with Q4/Q8 p512, eager/graph decode,
+  cumulative semantic, and lifecycle gates stable, remove the environment
+  selector and dead default-off branch. Keep the registered primitive chain as
+  the required numerical and peer-backend fallback.
+
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.

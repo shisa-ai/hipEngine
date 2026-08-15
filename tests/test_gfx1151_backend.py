@@ -593,7 +593,7 @@ def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None
     ]
 
 
-def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
+def test_gfx1151_08b_dense_down_residual_policies_are_exact() -> None:
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
         register_dense_gemv_kernels,
     )
@@ -615,9 +615,13 @@ def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
     ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT", {}
+    )["bf16"] == 512
     for quant, variant in (
         ("gguf_q4_k", "pack8_bf16_residual_bf16_out"),
         ("bf16", "out_bf16_residual_bf16_out"),
+        ("bf16", "prefill_wmma_out_bf16_residual_bf16_out"),
     ):
         assert is_registered(
             KernelKey("hip_gfx1151", "linear+residual", quant, variant)

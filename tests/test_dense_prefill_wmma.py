@@ -32,11 +32,27 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (  # noqa: E402
     build_dense_gemv,
     dense_prefill_gemm_out_bf16,
     dense_prefill_wmma_out_bf16,
+    dense_prefill_wmma_out_bf16_residual_bf16_out,
+    register_dense_gemv_kernels,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits  # noqa: E402
 from hipengine.quant.gguf import bf16_to_float32  # noqa: E402
+from hipengine.kernels.registry import resolve  # noqa: E402
 
 _COMPILER = Path("/tmp/d08-c0/hipcc-version.txt")
+
+
+def test_dense_prefill_wmma_residual_sibling_is_registered() -> None:
+    register_dense_gemv_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear+residual",
+            quant="bf16",
+            variant="prefill_wmma_out_bf16_residual_bf16_out",
+        )
+        is dense_prefill_wmma_out_bf16_residual_bf16_out
+    )
 
 
 def test_dense_prefill_wmma_rejects_unaligned_k_before_launch() -> None:
@@ -53,6 +69,73 @@ def test_dense_prefill_wmma_rejects_unaligned_k_before_launch() -> None:
             library=object(),
             runtime=object(),
         )
+
+
+@requires_rocm
+def test_dense_prefill_wmma_residual_preserves_rounded_bf16_boundary() -> None:
+    rng = np.random.default_rng(20260816)
+    rows, k, n = 16, 256, 128
+    weights = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.08, size=(n, k)).astype(np.float32))
+    )
+    x = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.35, size=(rows, k)).astype(np.float32))
+    )
+    residual = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.2, size=(rows, n)).astype(np.float32))
+    )
+    projection = np.empty((rows, n), dtype=np.uint16)
+    candidate = np.empty((rows, n), dtype=np.uint16)
+    runtime = get_hip_runtime()
+    compiler = _COMPILER.read_text() if _COMPILER.exists() else None
+    library = build_dense_gemv(load=True, compiler_version=compiler)
+    buffers = []
+
+    def upload(array):
+        buf = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buf)
+        copy_host_to_device(buf, host_array_ptr(array), runtime=runtime)
+        return buf
+
+    try:
+        x_dev = upload(x)
+        weight_dev = upload(weights)
+        residual_dev = upload(residual)
+        projection_dev = malloc(projection.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        buffers.extend((projection_dev, candidate_dev))
+        dense_prefill_wmma_out_bf16(
+            x_dev.ptr,
+            weight_dev.ptr,
+            projection_dev.ptr,
+            rows,
+            k,
+            n,
+            library=library,
+            runtime=runtime,
+        )
+        dense_prefill_wmma_out_bf16_residual_bf16_out(
+            x_dev.ptr,
+            weight_dev.ptr,
+            residual_dev.ptr,
+            candidate_dev.ptr,
+            rows,
+            k,
+            n,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(projection), projection_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(candidate), candidate_dev, runtime=runtime)
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+    expected = float_array_to_bf16_bits(
+        bf16_to_float32(projection) + bf16_to_float32(residual)
+    )
+    assert np.array_equal(candidate, expected)
 
 
 @pytest.mark.parametrize(

@@ -395,6 +395,14 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
         (512, 3_584, 1_024),
     }
 )
+# D08-X6: exact rounded-boundary down+residual fusion is admitted only through
+# the already-qualified dense-BF16 WMMA shape above. Existing small-row
+# residual limits remain unchanged for their quant families.
+GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
+    "gguf_q4_k_t16_v1": 4,
+    "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    "bf16": 512,
+}
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
