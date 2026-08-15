@@ -1,0 +1,400 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-M8 mandatory post-P4 Q4 semantic replacement capture and rerank",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "a34e7b9228fa45705e282a4038ffc775f194f461",
+  "method": {
+    "name": "same_stream_device_wall_clock_markers",
+    "scope": "one untimed warmup followed by one measured pp512 and four eager decode steps after one warmup token",
+    "builder": "/tmp/d08-m8/build_post_p4_ledger.py",
+    "builder_sha256": "339e1c4c48d17119bc87c8280657a7c2c0b0cb0b3fd4e75e356b12c4fadf7b72",
+    "capture": "/tmp/d08-m8/q4-post-p4-wall-clock.json",
+    "capture_sha256": "e45e30a4f83fef98f69d34d24ff11757c2b6469503aac9225d8581880b06e178",
+    "baseline_capture": "/tmp/d08-m7/q4-post-p6-wall-clock.json",
+    "baseline_capture_sha256": "b00ef1f462534a511110c7344fcd721b18431a032b45bb7262926f2de2fbdabe",
+    "direct_split": "/tmp/d08-m8/full-attention-split-post-p4.json",
+    "direct_split_sha256": "8a541c7d4a74175847336b8f54fb4ba216c2a4f408cb1ef4d3639ca36246d7a9",
+    "direct_split_baseline": "/tmp/d08-p4/full-attention-split-r1.json",
+    "direct_split_baseline_sha256": "03c69d82615cdef4eb2052cf1af066dffb691b81d800bb7b5b834c24466f7cc5",
+    "timing_status": "diagnostic, not topline; retained P4 full-model A/B remains binding"
+  },
+  "prefill": {
+    "instrumented_wall_ms": 223.288099,
+    "stage_sum_ms": 222.077277,
+    "coverage": 0.99457731,
+    "throughput_tok_s": 2293.001742,
+    "roles": [
+      {
+        "role": "dense_ffn_projections",
+        "ms": 115.629777,
+        "share_percent": 51.785015
+      },
+      {
+        "role": "linear_attention_projections",
+        "ms": 47.960675,
+        "share_percent": 21.47928
+      },
+      {
+        "role": "gdn_recurrence",
+        "ms": 32.011662,
+        "share_percent": 14.336484
+      },
+      {
+        "role": "full_attention_projections_rope",
+        "ms": 12.701413,
+        "share_percent": 5.688352
+      },
+      {
+        "role": "linear_attention_conv",
+        "ms": 3.429476,
+        "share_percent": 1.535897
+      },
+      {
+        "role": "full_attention_core_kv",
+        "ms": 3.39489,
+        "share_percent": 1.520408
+      },
+      {
+        "role": "dense_ffn_activation",
+        "ms": 2.422723,
+        "share_percent": 1.085021
+      },
+      {
+        "role": "lm_head_sampler_transport",
+        "ms": 1.413245,
+        "share_percent": 0.632925
+      },
+      {
+        "role": "residual_norm_glue",
+        "ms": 1.184571,
+        "share_percent": 0.530512
+      },
+      {
+        "role": "attention_norm",
+        "ms": 1.003867,
+        "share_percent": 0.449584
+      },
+      {
+        "role": "input_setup",
+        "ms": 0.874882,
+        "share_percent": 0.391818
+      },
+      {
+        "role": "final_norm",
+        "ms": 0.034586,
+        "share_percent": 0.015489
+      },
+      {
+        "role": "state_finalize",
+        "ms": 0.015509,
+        "share_percent": 0.006946
+      }
+    ],
+    "post_p4_structural_delta": {
+      "wall_ms": {
+        "pre_p4": 233.605324,
+        "post_p4": 223.288099,
+        "delta_percent": -4.41652
+      },
+      "stage_sum_ms": {
+        "pre_p4": 232.627793,
+        "post_p4": 222.077277,
+        "delta_percent": -4.535363
+      },
+      "full_attention_qkv_head_norm_rope_ms": {
+        "pre_p4": 13.630778,
+        "post_p4": 8.681254,
+        "delta_percent": -36.311382
+      },
+      "full_attention_package_ms": {
+        "pre_p4": 21.622603,
+        "post_p4": 16.096303,
+        "delta_percent": -25.557977
+      }
+    }
+  },
+  "p4_route_confirmation": {
+    "count": 6,
+    "layout": "gguf_q4_k_t16_v1",
+    "quant_key": "gguf_q4_k_t16_v1",
+    "shape": [
+      4096,
+      1024
+    ],
+    "q_projection_direct_ms": {
+      "pre_p4": 7.538443,
+      "post_p4": 2.709749,
+      "delta_percent": -64.054268
+    },
+    "bulk_dispatch": {
+      "abi": "t16",
+      "quant_key": "gguf_q4_k_t16_v1",
+      "variant": "t16_wmma_prefill_bf16_bf16_out",
+      "function": "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
+    },
+    "weight_bytes": {
+      "pre_p4": 843160832,
+      "post_p4": 838835456,
+      "saving": 4325376
+    },
+    "finite": true,
+    "measured_token": 9707
+  },
+  "decode_eager_diagnostic": {
+    "instrumented_wall_ms_per_token": 18.295599,
+    "stage_sum_ms_per_token": 17.627309,
+    "coverage": 0.963472684,
+    "throughput_tok_s": 54.657955,
+    "pre_p4_wall_ms_per_token": 18.998382,
+    "roles": [
+      {
+        "role": "dense_ffn_projections",
+        "ms": 4.454942,
+        "share_percent": 24.349801
+      },
+      {
+        "role": "linear_attention_projections",
+        "ms": 3.935758,
+        "share_percent": 21.512048
+      },
+      {
+        "role": "full_attention_core_kv",
+        "ms": 1.804596,
+        "share_percent": 9.863554
+      },
+      {
+        "role": "full_attention_projections_rope",
+        "ms": 1.684368,
+        "share_percent": 9.20641
+      },
+      {
+        "role": "lm_head_sampler_transport",
+        "ms": 1.61076,
+        "share_percent": 8.804087
+      },
+      {
+        "role": "gdn_recurrence",
+        "ms": 1.380298,
+        "share_percent": 7.544424
+      },
+      {
+        "role": "attention_norm",
+        "ms": 0.991096,
+        "share_percent": 5.417126
+      },
+      {
+        "role": "residual_norm_glue",
+        "ms": 0.746699,
+        "share_percent": 4.081303
+      },
+      {
+        "role": "linear_attention_conv",
+        "ms": 0.685202,
+        "share_percent": 3.745173
+      },
+      {
+        "role": "dense_ffn_activation",
+        "ms": 0.197054,
+        "share_percent": 1.077059
+      },
+      {
+        "role": "input_setup",
+        "ms": 0.12234,
+        "share_percent": 0.668685
+      },
+      {
+        "role": "final_norm",
+        "ms": 0.014197,
+        "share_percent": 0.077598
+      }
+    ],
+    "note": "Production graph ownership remains blocked on D08-M2; do not select decode arithmetic from this eager marker ledger."
+  },
+  "joined_prefill": [
+    {
+      "role": "dense_ffn_projections",
+      "hip_ms": 115.629777,
+      "vulkan_ms": 26.07074,
+      "hip_over_vulkan": 4.435232,
+      "projected_request_saving_percent": 40.109185
+    },
+    {
+      "role": "linear_attention_projections",
+      "hip_ms": 47.960675,
+      "vulkan_ms": 18.1484,
+      "hip_over_vulkan": 2.642694,
+      "projected_request_saving_percent": 13.351484
+    },
+    {
+      "role": "gdn_recurrence",
+      "hip_ms": 32.011662,
+      "vulkan_ms": 13.388165,
+      "hip_over_vulkan": 2.391042,
+      "projected_request_saving_percent": 8.340569
+    },
+    {
+      "role": "full_attention_projections_rope",
+      "hip_ms": 12.701413,
+      "vulkan_ms": 5.642646,
+      "hip_over_vulkan": 2.250967,
+      "projected_request_saving_percent": 3.161282
+    },
+    {
+      "role": "full_attention_core_kv",
+      "hip_ms": 3.39489,
+      "vulkan_ms": 1.822932,
+      "hip_over_vulkan": 1.862324,
+      "projected_request_saving_percent": 0.704005
+    },
+    {
+      "role": "dense_ffn_activation",
+      "hip_ms": 2.422723,
+      "vulkan_ms": 1.41592,
+      "hip_over_vulkan": 1.711059,
+      "projected_request_saving_percent": 0.450899
+    },
+    {
+      "role": "input_setup",
+      "hip_ms": 0.874882,
+      "vulkan_ms": 0.297464,
+      "hip_over_vulkan": 2.941137,
+      "projected_request_saving_percent": 0.258598
+    },
+    {
+      "role": "attention_norm",
+      "hip_ms": 1.003867,
+      "vulkan_ms": 0.493112,
+      "hip_over_vulkan": 2.03578,
+      "projected_request_saving_percent": 0.228743
+    },
+    {
+      "role": "lm_head_sampler_transport",
+      "hip_ms": 1.413245,
+      "vulkan_ms": 0.983308,
+      "hip_over_vulkan": 1.437236,
+      "projected_request_saving_percent": 0.192548
+    },
+    {
+      "role": "final_norm",
+      "hip_ms": 0.034586,
+      "vulkan_ms": 0.020546,
+      "hip_over_vulkan": 1.683331,
+      "projected_request_saving_percent": 0.006288
+    },
+    {
+      "role": "residual_norm_glue",
+      "hip_ms": 1.184571,
+      "vulkan_ms": 1.465003,
+      "hip_over_vulkan": 0.808579,
+      "projected_request_saving_percent": 0.0
+    },
+    {
+      "role": "linear_attention_conv",
+      "hip_ms": 3.429476,
+      "vulkan_ms": 7.34265,
+      "hip_over_vulkan": 0.467062,
+      "projected_request_saving_percent": 0.0
+    }
+  ],
+  "package_rerank": [
+    {
+      "rank": 1,
+      "package": "D08-P3 dense FFN projections",
+      "hip_ms": 115.629777,
+      "vulkan_ms": 26.07074,
+      "matched_gap_ms": 89.559037,
+      "projected_request_saving_percent": 40.109185,
+      "disposition": "closed/rejected",
+      "reason": "All bounded sole-resident candidates failed an operational guard."
+    },
+    {
+      "rank": 2,
+      "package": "D08-P7 residual linear-attention projections",
+      "hip_ms": 37.796764,
+      "vulkan_ms": 14.439,
+      "matched_gap_ms": 23.357764,
+      "projected_request_saving_percent": 10.460819,
+      "disposition": "closed/rejected",
+      "reason": "The selected Q4 gate route failed c1; the frozen one-owner package is exhausted."
+    },
+    {
+      "rank": 3,
+      "package": "D08-P2 GDN recurrence",
+      "hip_ms": 32.011662,
+      "vulkan_ms": 13.388165,
+      "matched_gap_ms": 18.623497,
+      "projected_request_saving_percent": 8.340569,
+      "disposition": "accepted/exhausted",
+      "reason": "Q4 cluster8 is retained and complete-model gated."
+    },
+    {
+      "rank": 4,
+      "package": "D08-P4 full attention projections/core",
+      "hip_ms": 16.096303,
+      "vulkan_ms": 7.465578,
+      "matched_gap_ms": 8.630725,
+      "projected_request_saving_percent": 3.865287,
+      "disposition": "accepted/exhausted",
+      "reason": "Sole Q4T16 Q is retained after the package's one route and one full-model A/B."
+    },
+    {
+      "rank": 5,
+      "package": "D08-P6 SSM-out residual",
+      "hip_ms": 10.163911,
+      "vulkan_ms": 3.7094,
+      "matched_gap_ms": 6.454511,
+      "projected_request_saving_percent": 2.890665,
+      "disposition": "accepted/exhausted",
+      "reason": "Sole Q5T16 SSM-out is retained and complete-model gated."
+    },
+    {
+      "rank": 6,
+      "package": "D08-P5 glue/norm/activation/input",
+      "hip_ms": 5.520629,
+      "vulkan_ms": 3.692045,
+      "matched_gap_ms": 1.828584,
+      "projected_request_saving_percent": 0.818935,
+      "disposition": "parked-below-1-percent",
+      "reason": "Combined current matched upper bound remains below one percent."
+    }
+  ],
+  "correctness": {
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "final_logit": 26.86212158203125,
+    "generated_preview_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "generated_tail_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "generated_count_including_prefill_sample_and_warmup": 6
+  },
+  "exact_commands": {
+    "capture": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-m8/q4-post-p4-wall-clock.json",
+    "direct_split": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-m8/split_full_attention_post_p4.py"
+  },
+  "decision": "M8 closes the named prefill package ladder: every >=1% package is accepted/exhausted or rejected under its frozen budget, while P5 remains below one percent. D08-M2 graph/direct census is next before campaign closure.",
+  "next": "Run D08-M2 production graph/direct API, synchronization, and copy census; do not select decode arithmetic from eager markers."
+}

@@ -42,17 +42,25 @@ _WEIGHT_NAMES = (
 )
 
 
-def _runner(*, is_moe: bool = True, backend: str = "hip_gfx1100") -> Qwen35GGUFFullStackRunner:
+def _runner(
+    *,
+    is_moe: bool = True,
+    backend: str = "hip_gfx1100",
+    head_count: int = 16,
+    hidden_size: int = 2048,
+    block_count: int = 40,
+) -> Qwen35GGUFFullStackRunner:
     runner = object.__new__(Qwen35GGUFFullStackRunner)
     cfg = SimpleNamespace(
         is_moe=is_moe,
         rms_norm_eps=1.0e-6,
-        head_count=16,
+        head_count=head_count,
         head_count_kv=2,
         key_length=256,
         value_length=256,
         rope_dimension_count=64,
-        hidden_size=2048,
+        hidden_size=hidden_size,
+        block_count=block_count,
     )
     layer = _Layer()
     runner.weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
@@ -417,6 +425,91 @@ def test_gfx1151_fixed256_batch_leaf_stops_before_1024(monkeypatch) -> None:
     assert "split_k_gqa_gate" not in names
     context_args = next(args for name, args, _ in calls if name == "attention_context")
     assert context_args[5] == 1024
+
+
+def test_gfx1151_08b_graph_cap_routes_short_attention_through_split_k3(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(
+        is_moe=False,
+        backend="hip_gfx1151",
+        head_count=8,
+        hidden_size=1024,
+        block_count=24,
+    )
+    scratch = _scratch(position=513, max_positions=768)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(
+        0,
+        0x3000,
+        0x4000,
+        scratch,
+        position=513,
+        attention_max_context_len=641,
+        stream=5,
+    )
+
+    names = [name for name, _, _ in calls]
+    assert "split_k_gate" in names
+    assert "attention_context" not in names
+    assert "attention_context_batch" not in names
+    assert "attention_gate" not in names
+    split_args = next(args for name, args, _ in calls if name == "split_k_gate")
+    assert split_args[9:18] == (256, 3, 256, 8, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_gfx1151_08b_short_split_policy_preserves_boundaries_and_fallbacks(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(
+        is_moe=False,
+        backend="hip_gfx1151",
+        head_count=8,
+        hidden_size=1024,
+        block_count=24,
+    )
+    cfg = runner.weights.config
+
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        cfg, backend="hip_gfx1151", block_size=256, active_context=513
+    )
+    assert qwen_runtime._use_gguf_short_full_attention_split_decode(
+        cfg, backend="hip_gfx1151", block_size=256, active_context=514
+    )
+    assert qwen_runtime._use_gguf_short_full_attention_split_decode(
+        cfg, backend="hip_gfx1151", block_size=256, active_context=641
+    )
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        cfg, backend="hip_gfx1151", block_size=256, active_context=642
+    )
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        cfg, backend="hip_gfx1100", block_size=256, active_context=576
+    )
+
+    runner.weights.config.head_count = 16
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        runner.weights.config,
+        backend="hip_gfx1151",
+        block_size=256,
+        active_context=576,
+    )
+
+    runner.weights.config.head_count = 8
+    runner.weights.config.value_length = 128
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        runner.weights.config,
+        backend="hip_gfx1151",
+        block_size=256,
+        active_context=576,
+    )
+
+    runner.weights.config.value_length = 256
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "0")
+    assert not qwen_runtime._use_gguf_short_full_attention_split_decode(
+        runner.weights.config,
+        backend="hip_gfx1151",
+        block_size=256,
+        active_context=576,
+    )
 
 
 def test_decode_repack_flag_does_not_change_split_k_routing(monkeypatch) -> None:

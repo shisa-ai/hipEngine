@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-11
+Last updated: 2026-08-14
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -17,6 +17,7 @@ working on.
 | [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Active cross-path gfx1151/gfx1100 PARO, GGUF, concurrency, MTP/DFlash, and HIP/Vulkan optimization ledger. |
 | [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
 | [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
+| [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Active Radeon 8060S campaign to profile every Qwen3.5-0.8B dense GGUF module and match or beat llama.cpp Vulkan before 27B transfer. |
 | [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) | RX 7900 XTX campaign to eliminate GGUF weight-layout duplication and beat same-card llama.cpp HIP/Vulkan in speed and memory. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 | [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |

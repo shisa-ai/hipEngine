@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "retained-default-q4-only",
+  "task": "D08-P4 Qwen3.5-0.8B gfx1151 sole Q4T16 full-attention Q route",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "sha256-sampled-v1:533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+    "full_attention_layers": 6,
+    "attn_q_source": "Q4_K",
+    "attn_q_shape_gguf": [4096, 1024],
+    "attn_q_shape_runtime": {"in_features": 1024, "out_features": 4096}
+  },
+  "candidate_base_commit": "922872dc6",
+  "audit": {
+    "package_hip_ms": 21.622603,
+    "package_vulkan_ms": 7.465578,
+    "package_request_bound_percent": 6.060232,
+    "selected_role": "full-attention Q projection",
+    "selected_role_hip_median_ms": 7.566617,
+    "selected_role_vulkan_ms": 2.198050,
+    "selected_role_gap_ms": 5.368567,
+    "selected_role_request_bound_percent": 2.298044,
+    "control": "6 sole q4_k_pack8 residents",
+    "candidate": "6 sole source-faithful Q4T16 residents",
+    "production_policy": {
+      "c1": "dense_single_local32",
+      "c2_c4": "dense_rowtile",
+      "c8": "two exact c4 rowtiles through backend shape policy",
+      "bulk": "T16 WMMA"
+    },
+    "other_q4_roles_unchanged": true,
+    "qwen36_27b_policy_unchanged": true,
+    "q8_policy_unchanged": true,
+    "kv_live_spans_unchanged": true
+  },
+  "actual_shape_leaf": {
+    "artifact": "/tmp/d08-p4/q4-q-t16-native-screen.json",
+    "script": "/tmp/d08-p4/q4_q_t16_native_screen.py",
+    "script_sha256": "904e21070b5b899f31e7dfaa512e944164cecf2c7fef44e67cb38941b7fc5c96",
+    "raw_sha256": "b4ebfe533e752352346546277840b7117510ac7dc8e839a2ac8dbbaaa199549f",
+    "method": "actual blk.3.attn_q.weight; seven counterbalanced same-stream wall_clock64 samples after warmup; each sample averages repeated launches",
+    "rows": [
+      {"rows": 1, "control_ms": 0.012989, "candidate_ms": 0.009206, "speedup": 1.410975, "candidate": "direct", "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 2, "control_ms": 0.014531, "candidate_ms": 0.011501, "speedup": 1.263380, "candidate": "rowtile", "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 4, "control_ms": 0.019750, "candidate_ms": 0.014602, "speedup": 1.352601, "candidate": "rowtile", "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 8, "control_ms": 0.042254, "candidate_ms": 0.031065, "speedup": 1.360158, "candidate": "split_rowtile_c4x2", "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 8, "control_ms": 0.042254, "candidate_ms": 0.120090, "speedup": 0.351852, "candidate": "generic_wmma_rejected", "top1_agreement": 1.0, "max_abs": 0.00390625},
+      {"rows": 512, "control_ms": 1.227404, "candidate_ms": 0.478197, "speedup": 2.566735, "candidate": "WMMA", "top1_agreement": 1.0, "max_abs": 0.0078125}
+    ],
+    "projected_family_candidate_ms": 2.947954,
+    "projected_family_saving_ms": 4.618663,
+    "projected_request_saving_percent": 1.977044,
+    "all_outputs_finite": true
+  },
+  "full_model_ab": {
+    "artifact": "/tmp/d08-p4/q4-q-full-ab.json",
+    "script": "/tmp/d08-p4/q4_q_full_ab.py",
+    "script_sha256": "d769e351b80787dd217c5b69c9bdf1e9b44bc61ecd5599c954745484f5f29dec",
+    "raw_sha256": "a35baf10328d871e351883409fe4eced2702e19f57654e8928659484eb98a6a0",
+    "protocol": "two simultaneously resident sessions; all 18 category and heldout prompts at 24 teacher-forced decode transitions; one warmup then five counterbalanced 512/128 pairs in eager and production-graph scopes",
+    "correctness": {
+      "prompts": 18,
+      "transitions": 450,
+      "top1_matches": 447,
+      "top1_agreement": 0.993333,
+      "kl_max": 0.003573625,
+      "thresholds": {"top1_agreement_min": 0.90, "kl_max": 0.05},
+      "passed": true
+    },
+    "eager": {
+      "control_prefill_tok_s": [2383.554650, 2353.631182, 2414.486265, 2404.569923, 2359.765540],
+      "candidate_prefill_tok_s": [2487.133444, 2481.688736, 2481.631961, 2469.930180, 2444.493735],
+      "control_decode_tok_s": [67.881100, 67.195710, 68.696473, 68.678272, 67.979894],
+      "candidate_decode_tok_s": [67.405111, 67.334869, 69.149048, 66.968231, 67.118828],
+      "median_prefill_tok_s": {"control": 2383.554650, "candidate": 2481.631961, "delta_percent": 4.114750},
+      "median_decode_tok_s": {"control": 67.979894, "candidate": 67.334869, "delta_percent": -0.948846},
+      "candidate_pair_wins": {"prefill": 5, "decode": 2},
+      "trajectories_exact": true,
+      "classification": "prefill binding; eager decode diagnostic disclosed, production graph gate binding"
+    },
+    "production_graph": {
+      "control_prefill_tok_s": [2348.091752, 2421.776890, 2359.226172, 2396.415636, 2380.517503],
+      "candidate_prefill_tok_s": [2514.153222, 2480.229783, 2494.519001, 2458.889894, 2504.853361],
+      "control_decode_tok_s": [103.377191, 100.583316, 99.512443, 100.884119, 99.323121],
+      "candidate_decode_tok_s": [103.170686, 102.607525, 101.570119, 101.920228, 101.999063],
+      "median_prefill_tok_s": {"control": 2380.517503, "candidate": 2494.519001, "delta_percent": 4.788938},
+      "median_decode_tok_s": {"control": 100.583316, "candidate": 101.999063, "delta_percent": 1.407536},
+      "candidate_pair_wins": {"prefill": 5, "decode": 4},
+      "trajectories_exact": true,
+      "passed": true
+    }
+  },
+  "memory": {
+    "attn_q_bytes": {"control": 18874368, "candidate": 14548992, "saving": 4325376, "saving_mib": 4.125, "reduction_percent": 22.916667},
+    "all_weight_bytes": {"control": 843160832, "candidate": 838835456, "reduction_percent": 0.512975},
+    "duplicate_layouts": false
+  },
+  "validation": {
+    "red": "three focused policy/capability/dispatch tests failed before implementation",
+    "green": "three focused tests pass",
+    "affected_bundle": {"passed": 155, "failed_unrelated_local_fixture_drift": 4, "skipped": 8},
+    "unrelated_failures": "local Qwen3.6 fixtures no longer carry the trailing NextN/ignored block expected by tests; route-sensitive nodes and all other completed nodes pass",
+    "new_kernel_body": false,
+    "kv_live_spans_changed": false
+  },
+  "exact_commands": {
+    "leaf": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p4/q4_q_t16_native_screen.py",
+    "full_model_ab": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p4/q4_q_full_ab.py",
+    "focused_tests": "python3 -m pytest -q tests/test_qwen35_gguf_mapping.py::test_qwen35_08b_dense_q4_attn_q_policy_uses_single_t16_resident tests/test_gfx1151_backend.py::test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles tests/test_gguf_linear_dispatch.py::test_gfx1151_q4_t16_attn_q_splits_c8_into_exact_c4_rowtiles"
+  },
+  "decision": "Retain sole Q4T16 as the gfx1151 default only for Qwen3.5-0.8B full-attention Q4_K [N4096,K1024] attn_q. Preserve pack8 for every other Q4 role, preserve 27B and peer backends, and use backend policy to split physical c8 into two exact c4 launches.",
+  "next": "Complete mandatory post-P4 semantic replacement capture and rerank before selecting another prefill owner; D08-M2 graph/direct census remains open."
+}

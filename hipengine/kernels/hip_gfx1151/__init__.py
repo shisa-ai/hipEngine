@@ -51,6 +51,15 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+
+
+def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
+    """Bind the qualified 0.8B fused gate/up schedule to 128 threads."""
+
+    kwargs["threads"] = 128
+    return gguf_q4_k_pack8_dual_silu_bf16_bf16_out(*args, **kwargs)
+
+
 # Clean AR-O2 three-repeat category/quality gates admit compensated source-F16
 # WMMA only for SWA QKV/gate/O from 16 rows. Full-attention layers and M2-15
 # retain the exact LPF-1 tile; decode retains the separately registered GEMV.
@@ -346,6 +355,15 @@ LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY = True
 # Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
 # for dense/shared rows while preserving the exact low-row fallback.
 LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
+# D08-X (2026-08-15): on Qwen3.5-0.8B dense-FFN pack8 shapes the registered
+# pack8 WMMA bulk consumer measures 1.97x ([3584,1024], 16x32) and 2.33x
+# ([1024,3584], 64x16) versus the exact tile8x8 leaf at rows=512, within one
+# BF16 ULP. Bulk prefill sessions on this backend therefore prefer it.
+GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
+# D08-X2-K5 (2026-08-15): dense-BF16 bulk prefill (expanded Q6_K down owners)
+# prefers the registered LDS-staged 128x64 WMMA consumer over the naive
+# 32x8 scalar tile; rows 1-15 and unaligned shapes keep the exact fallback.
+GGUF_DENSE_BF16_WMMA_BULK_PREFILL = True
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
@@ -641,6 +659,19 @@ GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
+# Qwen3.5-0.8B has one V head per K head and only 64 exact-LDS32 blocks at
+# pp512. The complete 18-prompt semantic/decode gate and paired full-engine
+# screen admit the existing Vulkan-shaped cluster8 recurrence only for its
+# exact quant and (K heads, V heads, K dim, V dim) geometry. Q8_0 retains the
+# exact route after its strict graph-decode guard missed by 0.0108%.
+GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
+    ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+    # D08-X2-K2 (2026-08-15): the exact-core five-block gate measures the
+    # Vulkan-shaped cluster8 recurrence at +18% Q8_0 pp512 with neutral
+    # core-graph tg128, so the same one-V-head-per-K-head geometry now uses
+    # cluster8 for Q8_0 too. HIPENGINE_GGUF_GDN_PREFILL_MODE overrides.
+    ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
+}
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -685,8 +716,50 @@ GGUF_DENSE_Q4_T16 = False
 # Dense H5120 Q5T16 recurrent-output ownership is W7900-only until gfx1151
 # receives independent rotating-cache, quality, and complete-model gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = False
+# D08-P6 admits the same sole-resident family independently for the exact
+# Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
+GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
+# D08-P4 admits sole compact Q4T16 only for the six Qwen3.5-0.8B full-attention
+# K1,024/N4,096 Q projections; other Q4 roles and 27B keep their prior owners.
+GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
+# D08-D3 keeps every Qwen3.5-0.8B Q4 gate/up pair in its sole pack8 layout and
+# selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
+# Q8, other models/shapes, native batches, and peer backends retain prior owners.
+GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
+    },
+}
+# D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
+# exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
+# Q8, native batches, other models/shapes, and peer backends remain unfused.
+GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 3_584, 1_024): True,
+    },
+}
+# D08-D5 admits both fixed-hidden wave-reduction leaves as one inseparable C
+# route for the exact dense-0.8B Q4 decode owner. Q8, native batches, output
+# norm, other shapes/models, and peer backends keep the generic primitives.
+GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
+    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+        (1, 1_024): "bf16_out_fixed1024_wave256",
+    },
+}
+# The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
+GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
+    "gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4},
+}
+# D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
+# exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
+GGUF_DENSE_Q5_T16_QKV = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    "gguf_q5_k_t16_v1": 0,
+    "gguf_q5_k_t16_v1": 4,
+}
+# The narrow 0.8B SSM-out shape wins with the direct leaf at c5-c8; QKV and
+# bulk rows retain the independently measured WMMA route.
+GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
+    "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
 # Dense H5120 planar-qmicro projection/root ownership is W7900-only until
 # gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
@@ -767,6 +840,13 @@ GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 # F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
 # keeps the established direct/split routes.
 GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
+# D08-D4 independently qualifies the existing generic split-K3 plus fused-gate
+# chain for Qwen3.5-0.8B's private-c1 8Q/2KV/D256 graph cap. The exact model/
+# attention shape and measured 514-641 window preserve fixed256 at the 513 warm
+# boundary and for every unqualified model, context, backend, and batch route.
+GGUF_SHORT_C1_SPLIT_ATTN_POLICIES = {
+    (1_024, 24, 8, 2, 256, 256, 256): (514, 641),
+}
 # Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
@@ -830,19 +910,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_m",
             "mixed_bf16_shared_batch_spans",
         ),
-        # Dense Q5T16 ssm_out is W7900-only pending a separate gfx1151 gate.
-        *(
-            (
-                "linear",
-                "gguf_q5_k_t16_v1",
-                variant,
-            )
-            for variant in (
-                "t16_gemv_decode_bf16_bf16_out",
-                "t16_gemv_rowtile_bf16_bf16_out",
-                "t16_wmma_prefill_bf16_bf16_out",
-            )
-        ),
+        # Dense Q5T16 ssm_out fusions remain W7900-only; D08-P1 aliases the
+        # generic direct/rowtile/WMMA leaves for its independently gated QKV.
         (
             "gdn_recurrent_rmsnorm_gate+cast",
             "gguf_q5_k_t16_v1",
@@ -1709,6 +1778,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
             replace=replace,
         )
+    q4_pack8_decode_pair_silu_t128_key = KernelKey(
+        BACKEND,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_decode_t128_bf16_bf16_out",
+    )
+    if replace or not is_registered(q4_pack8_decode_pair_silu_t128_key):
+        register(
+            q4_pack8_decode_pair_silu_t128_key,
+            _qwen35_08b_q4_pack8_dual_silu_t128,
+            replace=replace,
+        )
     q4_t16_sidecar_pair_silu_key = KernelKey(
         BACKEND,
         "linear_pair_silu",
@@ -1748,6 +1829,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
@@ -1757,6 +1839,7 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+    "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",
@@ -1769,11 +1852,19 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
+    "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",
+    "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
+    "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+    "GGUF_DENSE_Q5_T16_QKV",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",

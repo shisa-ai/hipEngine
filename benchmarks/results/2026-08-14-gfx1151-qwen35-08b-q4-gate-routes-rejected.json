@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "rejected-no-production-change",
+  "task": "D08-P7 Qwen3.5-0.8B gfx1151 Q4 linear-attention gate route screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "sha256-sampled-v1:533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "d7d3605fd",
+  "selected_owner": {
+    "tensor": "blk.0.attn_gate.weight",
+    "layers": 18,
+    "source_quant": "Q4_K",
+    "shape": {"in_features": 1024, "out_features": 2048},
+    "control_layout": "q4_k_pack8",
+    "control_prefill_family_ms": 11.741349,
+    "vulkan_prefill_family_ms": 3.378570,
+    "matched_gap_ms": 8.362779,
+    "matched_request_bound_percent": 3.579875
+  },
+  "protocol": {
+    "method": "actual blk.0.attn_gate.weight; seven counterbalanced same-stream wall_clock64 samples after warmup; each sample averages repeated launches",
+    "widths": [1, 2, 4, 8, 512],
+    "correctness": "finite BF16 output, >=90% row top-1, max/mean absolute difference",
+    "continue": ">=1.10x pp512, >=1% projected request saving, and no c1/c2/c4/c8 regression from one resident payload",
+    "full_model_budget": "only the best operationally qualifying candidate; none qualified"
+  },
+  "q4_t16_native": {
+    "script": "/tmp/d08-p7/q4_gate_t16_native_screen.py",
+    "script_sha256": "d81d96c54db6706cfdb491d10f13dd1ab000a898402544ab4993826d0fa36fd6",
+    "raw": "/tmp/d08-p7/q4-gate-t16-native-screen.json",
+    "raw_sha256": "6de79f7f7796d9765a46dfdec510edc544428e9dfa1e6c7a8dcbc0e34b2e5fe8",
+    "resident_bytes_per_weight": {"control": 1572864, "candidate": 1212416},
+    "potential_family_residency_saving_bytes": 6488064,
+    "potential_prefill_saving_ms": 5.886886,
+    "potential_request_saving_percent": 2.520014,
+    "rows": [
+      {"rows": 1, "control_ms": 0.006614, "candidate_ms": 0.007493, "candidate": "direct_c1", "speedup": 0.882655, "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 2, "control_ms": 0.007872, "candidate_ms": 0.007823, "candidate": "rowtile_c2", "speedup": 1.006250, "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 4, "control_ms": 0.011333, "candidate_ms": 0.009408, "candidate": "rowtile_c4", "speedup": 1.204601, "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 8, "control_ms": 0.025323, "candidate_ms": 0.018219, "candidate": "split_rowtile_c4x2", "speedup": 1.389969, "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 8, "control_ms": 0.025323, "candidate_ms": 0.096594, "candidate": "wmma", "speedup": 0.262163, "top1_agreement": 1.0, "max_abs": 0.001953125},
+      {"rows": 512, "control_ms": 0.523172, "candidate_ms": 0.260864, "candidate": "wmma", "speedup": 2.005538, "top1_agreement": 1.0, "max_abs": 0.00390625}
+    ],
+    "decision": "reject: c1 regresses 11.73%; the valid Q4 direct wrapper enforces rows==1, while the exact c8 split fixes the prior WMMA regression but cannot repair c1"
+  },
+  "raw_q4_native": {
+    "script": "/tmp/d08-p7/q4_gate_raw_native_screen.py",
+    "script_sha256": "5c4df364e7bd5814812cdb6f2e51a615016f1e5bc66c53c7d9544882d608e1bc",
+    "raw": "/tmp/d08-p7/q4-gate-raw-native-screen.json",
+    "raw_sha256": "e15c6dda5803edde0352d0dc0e3ae59cbf56cc7640eed2eb430fd1326a2ebdcc",
+    "resident_bytes_per_weight": {"control": 1572864, "candidate": 1179648},
+    "potential_family_residency_saving_bytes": 7077888,
+    "potential_prefill_saving_ms": 3.826473,
+    "potential_request_saving_percent": 1.638008,
+    "rows": [
+      {"rows": 1, "control_ms": 0.008404, "candidate_ms": 0.033444, "speedup": 0.251276, "top1_agreement": 1.0, "max_abs": 0.0000019073486328125},
+      {"rows": 2, "control_ms": 0.010494, "candidate_ms": 0.036615, "speedup": 0.286612, "top1_agreement": 1.0, "max_abs": 0.000003814697265625},
+      {"rows": 4, "control_ms": 0.020574, "candidate_ms": 0.040712, "speedup": 0.505354, "top1_agreement": 1.0, "max_abs": 0.0},
+      {"rows": 8, "control_ms": 0.039324, "candidate_ms": 0.076924, "speedup": 0.511209, "top1_agreement": 1.0, "max_abs": 0.0001220703125},
+      {"rows": 512, "control_ms": 0.533550, "candidate_ms": 0.359667, "speedup": 1.483453, "top1_agreement": 1.0, "max_abs": 0.00390625}
+    ],
+    "decision": "reject: every c1/c2/c4/c8 operational width regresses despite the pp512 win"
+  },
+  "source_f16_rocblas": {
+    "status": "not-screened-by-frozen-condition",
+    "reason": "This third route was eligible only when exact Q4T16 c1-c8 guards passed but native bulk missed continuation. Q4T16 c1 regressed, so changed-association source-F16 cannot repair the binding guard and is not run."
+  },
+  "correctness": {
+    "all_outputs_finite": true,
+    "all_top1_agreement": 1.0,
+    "max_abs": 0.00390625,
+    "full_model_ab_run": false,
+    "production_changed": false
+  },
+  "exact_commands": {
+    "q4_t16": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p7/q4_gate_t16_native_screen.py",
+    "raw_q4": "LD_LIBRARY_PATH=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-p7/q4_gate_raw_native_screen.py"
+  },
+  "decision": "Close D08-P7 rejected without a full-model A/B or source change. Preserve sole pack8. D08-P4 full attention is the next non-exhausted prefill package at the corrected 6.06% bound.",
+  "revisit": "A sole-resident Q4 family that keeps the measured pp512 win while matching pack8 at c1/c2/c4/c8, or a genuinely new operation-complete pair/fusion that removes the c1 regression without duplicate weights."
+}

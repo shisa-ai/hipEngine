@@ -1,0 +1,1169 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "blocked-parity",
+  "task": "D08-C1/C2 and G1-G3 Qwen3.5-0.8B gfx1151 Vulkan-parity closure gate",
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "compute_units": 40,
+    "mall_bytes": 33554432,
+    "uma": true,
+    "kernel": "7.1.8-1-cachyos",
+    "kernel_cmdline": "quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=817f5179-0f09-4520-8b81-3eac2685a080 resume=UUID=7453e720-4049-469c-8efa-9dac410ce7a7",
+    "power_dpm_force_performance_level": "auto",
+    "sclk_snapshot_mhz": {
+      "active": 600,
+      "available": [
+        600,
+        1100,
+        2900
+      ]
+    },
+    "iommu": "no explicit kernel cmdline override"
+  },
+  "software": {
+    "hipengine_commit": "f5ed09463050c96893b2b11994621022147b824a",
+    "hip_runtime": "TheRock 7.15.0",
+    "llamacpp_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "llamacpp_tracked_clean": true,
+    "llamacpp_build": 10415,
+    "mesa": "26.1.6-1",
+    "radv_driver": "Mesa 26.1.6-arch3.1",
+    "vulkan_loader": "1.4.357.0-1.1",
+    "vulkan_device_id": "0x1586"
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c"
+    }
+  },
+  "c1_shared_fixture": {
+    "status": "passed",
+    "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json",
+    "fixture_sha256": "86af62a7c081cdb16994a92ab2e5c89ab1a214f11cbc20fb4582a18c1c980030",
+    "tokenizer_validation": {
+      "schema": 1,
+      "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json",
+      "rows": {
+        "q4": {
+          "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+          "hip_count": 512,
+          "llama_count": 512,
+          "expected_match": true,
+          "cross_engine_exact": true,
+          "token_ids_i64le_sha256": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d",
+          "llama_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-tokenize -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --stdin --ids --no-bos",
+          "llama_stderr_tail": [
+            "0.00.289.201 W llama_context: n_ctx_seq (512) > n_ctx_train (0) -- possible training context overflow"
+          ]
+        },
+        "q8": {
+          "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+          "hip_count": 512,
+          "llama_count": 512,
+          "expected_match": true,
+          "cross_engine_exact": true,
+          "token_ids_i64le_sha256": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d",
+          "llama_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-tokenize -m /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --stdin --ids --no-bos",
+          "llama_stderr_tail": [
+            "0.00.286.113 W llama_context: n_ctx_seq (512) > n_ctx_train (0) -- possible training context overflow"
+          ]
+        }
+      },
+      "passed": true
+    },
+    "prompt_ids": "9707 x512",
+    "continuation_ids": "9707 x128",
+    "combined_i64le_sha256": "768fd6433093ffc6e8000223bebdbd28e62cbc7f828b6e63d8f47b133ed2b528"
+  },
+  "c2_reproducibility": {
+    "status": "passed",
+    "builder": "/tmp/d08-g/build_closure.py",
+    "builder_sha256": "c55b4667362a0a9c9ffb7b2ddc237a670faed20cfd9a55ea48edc8a8beb80f0b",
+    "protocol": "five counter-rotated serial engine blocks per quant on one idle GPU; every child performs one internal warmup plus one measured exact-fixture core and public row",
+    "index": "/tmp/d08-g/interleaved-exact-index.json",
+    "index_sha256": "e116492a6398ddfebfe4fbe62fb6cc353273bf0eb413b14c4b0c2d2d134efa1e",
+    "hip_harness": "/home/lhl/hipEngine/scripts/qwen35_08b_exact_core.py",
+    "hip_harness_sha256": "77cd2461caac5ef414e8725a6f020dc945351f93ef6cf1ba5d187758628f405e",
+    "llama_harness": "/home/lhl/hipEngine/benchmarks/llama.cpp/qwen35_08b_exact_core.cpp",
+    "llama_harness_sha256": "cb4de6722358ae86111a9721fe8a092cff9aaa37adf7b69f39c1ba2a3738c845",
+    "raw_rows": [
+      {
+        "quant": "q4",
+        "block": 0,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q4-b0-hip.json",
+        "sha256": "fbaa1d20918b6d648277b3689da2fd5ef0fc05f3142e43dcee3e7d8a59cb6680"
+      },
+      {
+        "quant": "q4",
+        "block": 0,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q4-b0-llama.json",
+        "sha256": "036e436c0b513ff0a84eb8b6b41cf7ed3efeba7d91c3dfc3847db1a829fd088a"
+      },
+      {
+        "quant": "q4",
+        "block": 1,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q4-b1-llama.json",
+        "sha256": "c6ae0c7cbf6aefd5501eadf1a010f1a6eaeb1a9614a948574920e83e36912e12"
+      },
+      {
+        "quant": "q4",
+        "block": 1,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q4-b1-hip.json",
+        "sha256": "2f0f1fe6200d91edff2cf206fea41916a71bf49d6fb1e35de047f8a36ff21460"
+      },
+      {
+        "quant": "q4",
+        "block": 2,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q4-b2-hip.json",
+        "sha256": "259c882abced8ab051d2c6226b6788d5b213d1668cbdd60c1f84c9b452be4fb6"
+      },
+      {
+        "quant": "q4",
+        "block": 2,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q4-b2-llama.json",
+        "sha256": "c62387e30a3b87938b607d0496495555a76ed5cfc2bca7c7d6bf6e459308d0ca"
+      },
+      {
+        "quant": "q4",
+        "block": 3,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q4-b3-llama.json",
+        "sha256": "d568eefc3f5d0b77a2c95157776cd528921ed4493332325429244f81a41e5838"
+      },
+      {
+        "quant": "q4",
+        "block": 3,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q4-b3-hip.json",
+        "sha256": "274d25b7bd9bf153e55f0f8268d4b6e2d5e64bd60e043ef42a0c74d90e3a7fd2"
+      },
+      {
+        "quant": "q4",
+        "block": 4,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q4-b4-hip.json",
+        "sha256": "34da77617ff7448a87efd96d50ac372dd2306bb75c6da61764b2458a1a8280cc"
+      },
+      {
+        "quant": "q4",
+        "block": 4,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q4-b4-llama.json",
+        "sha256": "919835e0f4c812a4479294d7f75e5d6cf29203b452e891dd7ac94d30f4490732"
+      },
+      {
+        "quant": "q8",
+        "block": 0,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q8-b0-hip.json",
+        "sha256": "077e6c266e2297e1db15db866f61bc619b1c9df37ac747985cf5a040d5d0345c"
+      },
+      {
+        "quant": "q8",
+        "block": 0,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q8-b0-llama.json",
+        "sha256": "fd6bcaaafdb8857f333a217ea7b47342283c3e4df887f0fa0229ec76eed4ccdf"
+      },
+      {
+        "quant": "q8",
+        "block": 1,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q8-b1-llama.json",
+        "sha256": "9c1de87f15fa1332966c44f40c4f66b9deab9e5a19c760755240cd0dece321d2"
+      },
+      {
+        "quant": "q8",
+        "block": 1,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q8-b1-hip.json",
+        "sha256": "8978ce9fa1a9b238aff907cbc3b74e6ec2a22a3fd00920ccf0237f7d7ce3538d"
+      },
+      {
+        "quant": "q8",
+        "block": 2,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q8-b2-hip.json",
+        "sha256": "961d82a40b6d43ce0ada8e3ea8e2bfd0f6a5c4c878be068ab75365bea8040589"
+      },
+      {
+        "quant": "q8",
+        "block": 2,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q8-b2-llama.json",
+        "sha256": "0e68043fdfe09559c6d8d1e10d5ceb8bf17ea973d61e9673667bc550153d50fe"
+      },
+      {
+        "quant": "q8",
+        "block": 3,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q8-b3-llama.json",
+        "sha256": "8075fe7b09ee22b9dd8621f993243e78618b0012669c30cd728c2a4abb8aa858"
+      },
+      {
+        "quant": "q8",
+        "block": 3,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q8-b3-hip.json",
+        "sha256": "1d3acf01011dbd067bb59e7bf51e6884ded3b6ee84a335dc14a402ba1d434a77"
+      },
+      {
+        "quant": "q8",
+        "block": 4,
+        "engine": "hipengine",
+        "path": "/tmp/d08-g/interleaved/q8-b4-hip.json",
+        "sha256": "faa6886144c4faa9216a16ae6e214e8116b09474fc1f0a139d783c395d3a8754"
+      },
+      {
+        "quant": "q8",
+        "block": 4,
+        "engine": "llamacpp_vulkan",
+        "path": "/tmp/d08-g/interleaved/q8-b4-llama.json",
+        "sha256": "6439f223db8470b2fe61b44a1cc4b9b58c004c060096f2fafb72afcd529c467d"
+      }
+    ],
+    "commands": {
+      "build_llama_helper": "LLAMA=/home/lhl/llama.cpp/llama.cpp-vulkan; g++ -std=c++17 -O2 -I$LLAMA/include -I$LLAMA/ggml/include benchmarks/llama.cpp/qwen35_08b_exact_core.cpp -L$LLAMA/build/bin -Wl,-rpath,$LLAMA/build/bin -lllama -lggml -o /tmp/d08-g/qwen35_08b_exact_core",
+      "interleaved": "python3 /tmp/d08-g/run_interleaved_exact.py",
+      "hip_child": "LD_LIBRARY_PATH=<TheRock libs> HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_08b_exact_core.py --model <model> --repetitions 1 --output <row.json>",
+      "llama_child": "/tmp/d08-g/qwen35_08b_exact_core <model> 9707 512 9707 128 1"
+    }
+  },
+  "g1_correctness": {
+    "d08_scoped_passed": true,
+    "category_heldout": {
+      "transitions": 900,
+      "top1_matches": 900,
+      "top1_agreement": 1.0,
+      "kl_max": 0.0017453615837434142
+    },
+    "exact_fixture": {
+      "q4": {
+        "forced_top1_matches": 645,
+        "public_top1_matches": 645,
+        "rows": 645,
+        "all_finite": true,
+        "all_deterministic": true
+      },
+      "q8": {
+        "forced_top1_matches": 645,
+        "public_top1_matches": 645,
+        "rows": 645,
+        "all_finite": true,
+        "all_deterministic": true
+      }
+    },
+    "m12": {
+      "q4_trajectory_exact": true,
+      "q8_trajectory_exact": true,
+      "all_kl_zero": true,
+      "all_top1_exact": true
+    },
+    "d5_cpu_reference": {
+      "kl_max": 2.8449512243836214e-05,
+      "top1_min": 1.0,
+      "rows": 48,
+      "passed": true
+    },
+    "focused_tests": {
+      "d5_affected": "72 passed",
+      "closure_fixture": "2 passed",
+      "build": "8 passed",
+      "generation_batch_scheduler": "320 passed"
+    },
+    "milestone_suite": {
+      "passed": false,
+      "command": "LD_LIBRARY_PATH=<TheRock libs> HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -v",
+      "result": "stopped at 16% after concurrent closure benchmarking invalidated the run; prior to stop it exposed unrelated existing failures in benchmark scoreboard compactness/links and a local Qwen3.6-27B MTP fixture assumption",
+      "policy": "not repeated automatically; preserved broad partial result plus focused nodes"
+    }
+  },
+  "g2_exact_interleaved": {
+    "passed": false,
+    "quants": {
+      "q4": {
+        "performance": {
+          "hipengine": {
+            "core_prefill_tok_s": {
+              "samples": [
+                2537.724375663919,
+                2527.6919015298913,
+                2533.4443351412756,
+                2499.09853074239,
+                2524.3578966586547
+              ],
+              "median": 2527.6919015298913,
+              "mean": 2524.463407947226,
+              "min": 2499.09853074239,
+              "max": 2537.724375663919
+            },
+            "core_decode_tok_s": {
+              "samples": [
+                140.42759408104098,
+                139.62410753374914,
+                140.61803635177938,
+                146.54578062480408,
+                140.47045297412592
+              ],
+              "median": 140.47045297412592,
+              "mean": 141.5371943130999,
+              "min": 139.62410753374914,
+              "max": 146.54578062480408
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                2571.785735348309,
+                2580.9605093936907,
+                2485.5691713341034,
+                2530.5831476299654,
+                2521.9210972358546
+              ],
+              "median": 2530.5831476299654,
+              "mean": 2538.1639321883845,
+              "min": 2485.5691713341034,
+              "max": 2580.9605093936907
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                120.06035471550408,
+                117.83543154079307,
+                119.09203421797731,
+                118.4038590718566,
+                118.36304438549712
+              ],
+              "median": 118.4038590718566,
+              "mean": 118.75094478632563,
+              "min": 117.83543154079307,
+              "max": 120.06035471550408
+            }
+          },
+          "llamacpp_vulkan": {
+            "core_prefill_tok_s": {
+              "samples": [
+                6070.925484132593,
+                5957.104195802568,
+                6499.49920850825,
+                5920.793201264181,
+                5860.799152015623
+              ],
+              "median": 5957.104195802568,
+              "mean": 6061.824248344643,
+              "min": 5860.799152015623,
+              "max": 6499.49920850825
+            },
+            "core_decode_tok_s": {
+              "samples": [
+                190.82205545169666,
+                191.8091498958536,
+                191.66123876049082,
+                191.38527051111828,
+                190.63618870599728
+              ],
+              "median": 191.38527051111828,
+              "mean": 191.26278066503133,
+              "min": 190.63618870599728,
+              "max": 191.8091498958536
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5497.821273561708,
+                5463.524570921244,
+                5981.427201241147,
+                5466.9197964426585,
+                5379.784409342752
+              ],
+              "median": 5466.9197964426585,
+              "mean": 5557.895450301902,
+              "min": 5379.784409342752,
+              "max": 5981.427201241147
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                127.11401531326653,
+                128.1205614483229,
+                125.25810018690858,
+                125.31573691527481,
+                125.73673870333988
+              ],
+              "median": 125.73673870333988,
+              "mean": 126.30903051342254,
+              "min": 125.25810018690858,
+              "max": 128.1205614483229
+            }
+          }
+        },
+        "hip_over_llama": {
+          "core_prefill_tok_s": 0.4243155429967008,
+          "core_decode_tok_s": 0.7339668961931188,
+          "public_prefill_tok_s": 0.4628901176264967,
+          "public_decode_tok_s": 0.9416806916808595
+        },
+        "hip_block_wins": {
+          "core_prefill_tok_s": 0,
+          "core_decode_tok_s": 0,
+          "public_prefill_tok_s": 0,
+          "public_decode_tok_s": 0
+        },
+        "blocks": [
+          {
+            "block": 0,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q4-b0-hip.json",
+                "elapsed_s": 16.20672917366028
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q4-b0-llama.json",
+                "elapsed_s": 8.619559526443481
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              283
+            ],
+            "hip_public_graph_nodes": [
+              286
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 1,
+            "order": [
+              "llamacpp_vulkan",
+              "hipengine"
+            ],
+            "execution": [
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q4-b1-llama.json",
+                "elapsed_s": 8.639402389526367
+              },
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q4-b1-hip.json",
+                "elapsed_s": 16.298362016677856
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              283
+            ],
+            "hip_public_graph_nodes": [
+              286
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 2,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q4-b2-hip.json",
+                "elapsed_s": 16.297000408172607
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q4-b2-llama.json",
+                "elapsed_s": 8.602465391159058
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              283
+            ],
+            "hip_public_graph_nodes": [
+              286
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 3,
+            "order": [
+              "llamacpp_vulkan",
+              "hipengine"
+            ],
+            "execution": [
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q4-b3-llama.json",
+                "elapsed_s": 8.647776126861572
+              },
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q4-b3-hip.json",
+                "elapsed_s": 16.24481749534607
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              283
+            ],
+            "hip_public_graph_nodes": [
+              286
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 4,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q4-b4-hip.json",
+                "elapsed_s": 16.179714679718018
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q4-b4-llama.json",
+                "elapsed_s": 8.639930963516235
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              283
+            ],
+            "hip_public_graph_nodes": [
+              286
+            ],
+            "finite": true,
+            "deterministic": true
+          }
+        ],
+        "correctness": {
+          "forced_top1_matches": 645,
+          "public_top1_matches": 645,
+          "rows": 645,
+          "all_finite": true,
+          "all_deterministic": true
+        },
+        "hip_memory": {
+          "owned_session_bytes": [
+            1067067204
+          ],
+          "tracked_peak_bytes": [
+            1067067204
+          ],
+          "hip_used_bytes_samples": [
+            1355743232,
+            1355743232,
+            1355743232,
+            1355743232,
+            1355743232
+          ]
+        }
+      },
+      "q8": {
+        "performance": {
+          "hipengine": {
+            "core_prefill_tok_s": {
+              "samples": [
+                4199.7364124028945,
+                4106.720215303791,
+                4110.959122493294,
+                4152.269260972062,
+                4249.636143580365
+              ],
+              "median": 4152.269260972062,
+              "mean": 4163.864230950481,
+              "min": 4106.720215303791,
+              "max": 4249.636143580365
+            },
+            "core_decode_tok_s": {
+              "samples": [
+                141.51039693801218,
+                138.03415462339697,
+                137.82055779095774,
+                136.5245120295294,
+                137.13990349218568
+              ],
+              "median": 137.82055779095774,
+              "mean": 138.2059049748164,
+              "min": 136.5245120295294,
+              "max": 141.51039693801218
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                4228.714866957279,
+                4064.6879527547344,
+                4030.9769556841716,
+                4074.0988829314215,
+                4200.927231612339
+              ],
+              "median": 4074.0988829314215,
+              "mean": 4119.881177987989,
+              "min": 4030.9769556841716,
+              "max": 4228.714866957279
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                113.71264206454626,
+                114.24900189907457,
+                114.71721756858983,
+                113.95078748584973,
+                113.730606467064
+              ],
+              "median": 113.95078748584973,
+              "mean": 114.07205109702488,
+              "min": 113.71264206454626,
+              "max": 114.71721756858983
+            }
+          },
+          "llamacpp_vulkan": {
+            "core_prefill_tok_s": {
+              "samples": [
+                6255.177014179216,
+                6218.490048594099,
+                6295.045848097593,
+                6257.615775058268,
+                6290.227664470411
+              ],
+              "median": 6257.615775058268,
+              "mean": 6263.311270079917,
+              "min": 6218.490048594099,
+              "max": 6295.045848097593
+            },
+            "core_decode_tok_s": {
+              "samples": [
+                157.81427232825368,
+                158.50882819872055,
+                158.11155511361181,
+                157.4531945777056,
+                158.2299996662336
+              ],
+              "median": 158.11155511361181,
+              "mean": 158.02356997690504,
+              "min": 157.4531945777056,
+              "max": 158.50882819872055
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5629.411033865525,
+                5701.800298899063,
+                5549.630169177008,
+                5580.746424834321,
+                5591.2470774267595
+              ],
+              "median": 5591.2470774267595,
+              "mean": 5610.567000840535,
+              "min": 5549.630169177008,
+              "max": 5701.800298899063
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                110.8925987853795,
+                111.02533632870437,
+                111.51574288651531,
+                110.75538634593752,
+                110.74772015435464
+              ],
+              "median": 110.8925987853795,
+              "mean": 110.98735690017827,
+              "min": 110.74772015435464,
+              "max": 111.51574288651531
+            }
+          }
+        },
+        "hip_over_llama": {
+          "core_prefill_tok_s": 0.6635545246357664,
+          "core_decode_tok_s": 0.8716665754879592,
+          "public_prefill_tok_s": 0.7286565638244751,
+          "public_decode_tok_s": 1.027577933369467
+        },
+        "hip_block_wins": {
+          "core_prefill_tok_s": 0,
+          "core_decode_tok_s": 0,
+          "public_prefill_tok_s": 0,
+          "public_decode_tok_s": 5
+        },
+        "blocks": [
+          {
+            "block": 0,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q8-b0-hip.json",
+                "elapsed_s": 9.899748086929321
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q8-b0-llama.json",
+                "elapsed_s": 9.76176381111145
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              285
+            ],
+            "hip_public_graph_nodes": [
+              288
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 1,
+            "order": [
+              "llamacpp_vulkan",
+              "hipengine"
+            ],
+            "execution": [
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q8-b1-llama.json",
+                "elapsed_s": 9.722349166870117
+              },
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q8-b1-hip.json",
+                "elapsed_s": 9.77418065071106
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              285
+            ],
+            "hip_public_graph_nodes": [
+              288
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 2,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q8-b2-hip.json",
+                "elapsed_s": 9.843925952911377
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q8-b2-llama.json",
+                "elapsed_s": 9.715988874435425
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              285
+            ],
+            "hip_public_graph_nodes": [
+              288
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 3,
+            "order": [
+              "llamacpp_vulkan",
+              "hipengine"
+            ],
+            "execution": [
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q8-b3-llama.json",
+                "elapsed_s": 9.730741739273071
+              },
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q8-b3-hip.json",
+                "elapsed_s": 9.893630266189575
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              285
+            ],
+            "hip_public_graph_nodes": [
+              288
+            ],
+            "finite": true,
+            "deterministic": true
+          },
+          {
+            "block": 4,
+            "order": [
+              "hipengine",
+              "llamacpp_vulkan"
+            ],
+            "execution": [
+              {
+                "engine": "hipengine",
+                "artifact": "/tmp/d08-g/interleaved/q8-b4-hip.json",
+                "elapsed_s": 9.829343557357788
+              },
+              {
+                "engine": "llamacpp_vulkan",
+                "artifact": "/tmp/d08-g/interleaved/q8-b4-llama.json",
+                "elapsed_s": 9.744447469711304
+              }
+            ],
+            "forced_top1_matches": 129,
+            "public_top1_matches": 129,
+            "top1_rows": 129,
+            "hip_core_graph_nodes": [
+              285
+            ],
+            "hip_public_graph_nodes": [
+              288
+            ],
+            "finite": true,
+            "deterministic": true
+          }
+        ],
+        "correctness": {
+          "forced_top1_matches": 645,
+          "public_top1_matches": 645,
+          "rows": 645,
+          "all_finite": true,
+          "all_deterministic": true
+        },
+        "hip_memory": {
+          "owned_session_bytes": [
+            1029470788
+          ],
+          "tracked_peak_bytes": [
+            1029470788
+          ],
+          "hip_used_bytes_samples": [
+            1253699584,
+            1253699584,
+            1253699584,
+            1253699584,
+            1253699584
+          ]
+        }
+      }
+    },
+    "acceptance": "Q4 hipEngine median must match or exceed llama Vulkan in p512 and tg128 for both core and public scopes; Q8 route/correctness/memory must not regress"
+  },
+  "g2_canonical_shape_supplement": {
+    "q4": {
+      "hipengine": {
+        "prefill_tok_s": {
+          "samples": [
+            2296.8093617456702,
+            2321.0234453323737,
+            2318.793311142629,
+            2274.6020724722703,
+            2316.516121305777
+          ],
+          "median": 2316.516121305777,
+          "p95": 2318.793311142629,
+          "min": 2274.6020724722703,
+          "max": 2321.0234453323737,
+          "stdev": 19.806827016533013,
+          "stdev_pct_of_median": 0.8550265130625673
+        },
+        "decode_tok_s": {
+          "samples": [
+            118.45684374589422,
+            118.18171453083278,
+            118.53749604197264,
+            121.83695012719947,
+            121.76943663226207
+          ],
+          "median": 118.53749604197264,
+          "p95": 121.76943663226207,
+          "min": 118.18171453083278,
+          "max": 121.83695012719947,
+          "stdev": 1.8731799779382765,
+          "stdev_pct_of_median": 1.5802425734343224
+        },
+        "tracked_peak_gib": {
+          "samples": [
+            0.99378377571702,
+            0.99378377571702,
+            0.99378377571702,
+            0.99378377571702,
+            0.99378377571702
+          ],
+          "median": 0.99378377571702,
+          "p95": 0.99378377571702,
+          "min": 0.99378377571702,
+          "max": 0.99378377571702,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "llamacpp_vulkan": {
+        "prefill_tok_s": {
+          "samples": [
+            5950.36,
+            6119.39,
+            6159.13,
+            6166.57,
+            6147.63
+          ],
+          "median": 6147.63,
+          "mean": 6108.616,
+          "min": 5950.36,
+          "max": 6166.57
+        },
+        "decode_tok_s": {
+          "samples": [
+            199.327,
+            196.674,
+            201.74,
+            197.453,
+            199.381
+          ],
+          "median": 199.327,
+          "mean": 198.915,
+          "min": 196.674,
+          "max": 201.74
+        },
+        "backends": [
+          "Vulkan",
+          "Vulkan"
+        ]
+      },
+      "hip_over_llama": {
+        "prefill": 0.3768144994584542,
+        "decode": 0.5946886073736757
+      },
+      "raw": {
+        "hipengine": "/tmp/d08-g/public/hip-q4.json",
+        "hipengine_sha256": "b23504d66baccd63563b456158355e155b8e91e874d4eb75f3f2f574db86bc80",
+        "llamacpp": "/tmp/d08-g/public/llama-q4.json",
+        "llamacpp_sha256": "25fdfc4fd91a918597234a5add117ecc7a10d4c0c72678b96413e085ab952a2b"
+      }
+    },
+    "q8": {
+      "hipengine": {
+        "prefill_tok_s": {
+          "samples": [
+            4104.959089342358,
+            4183.788671707988,
+            4121.20880774326,
+            4126.722891264605,
+            4132.438854200376
+          ],
+          "median": 4126.722891264605,
+          "p95": 4132.438854200376,
+          "min": 4104.959089342358,
+          "max": 4183.788671707988,
+          "stdev": 29.75373478836296,
+          "stdev_pct_of_median": 0.7210015203915263
+        },
+        "decode_tok_s": {
+          "samples": [
+            116.75507281588173,
+            117.8276126387691,
+            114.54312316008217,
+            113.70983347427077,
+            113.9129840863343
+          ],
+          "median": 114.54312316008217,
+          "p95": 116.75507281588173,
+          "min": 113.70983347427077,
+          "max": 117.8276126387691,
+          "stdev": 1.8384099672873757,
+          "stdev_pct_of_median": 1.6049937495750546
+        },
+        "tracked_peak_gib": {
+          "samples": [
+            0.9587693847715855,
+            0.9587693847715855,
+            0.9587693847715855,
+            0.9587693847715855,
+            0.9587693847715855
+          ],
+          "median": 0.9587693847715855,
+          "p95": 0.9587693847715855,
+          "min": 0.9587693847715855,
+          "max": 0.9587693847715855,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ]
+      },
+      "llamacpp_vulkan": {
+        "prefill_tok_s": {
+          "samples": [
+            5545.69,
+            5735.45,
+            5979.53,
+            6058.14,
+            6052.25
+          ],
+          "median": 5979.53,
+          "mean": 5874.2119999999995,
+          "min": 5545.69,
+          "max": 6058.14
+        },
+        "decode_tok_s": {
+          "samples": [
+            161.523,
+            164.255,
+            164.168,
+            164.695,
+            165.2
+          ],
+          "median": 164.255,
+          "mean": 163.9682,
+          "min": 161.523,
+          "max": 165.2
+        },
+        "backends": [
+          "Vulkan",
+          "Vulkan"
+        ]
+      },
+      "hip_over_llama": {
+        "prefill": 0.6901416819155695,
+        "decode": 0.697349384555004
+      },
+      "raw": {
+        "hipengine": "/tmp/d08-g/public/hip-q8.json",
+        "hipengine_sha256": "47db4d85c925f24661bc75c1ed783d182905012aed9b5ef7fdaccf063da53b5a",
+        "llamacpp": "/tmp/d08-g/public/llama-q8.json",
+        "llamacpp_sha256": "654811ad6a8ed8b1e80da2d8fb698a5ae34b8e00d5f54daa91b366221455ef03"
+      }
+    }
+  },
+  "memory": {
+    "hipengine": {
+      "q4": {
+        "owned_session_bytes": [
+          1067067204
+        ],
+        "tracked_peak_bytes": [
+          1067067204
+        ],
+        "hip_used_bytes_samples": [
+          1355743232,
+          1355743232,
+          1355743232,
+          1355743232,
+          1355743232
+        ]
+      },
+      "q8": {
+        "owned_session_bytes": [
+          1029470788
+        ],
+        "tracked_peak_bytes": [
+          1029470788
+        ],
+        "hip_used_bytes_samples": [
+          1253699584,
+          1253699584,
+          1253699584,
+          1253699584,
+          1253699584
+        ]
+      }
+    },
+    "llamacpp_declared_buffers": {
+      "q4": {
+        "device_mib": 1015.43,
+        "host_mib": 203.71
+      },
+      "q8": {
+        "device_mib": 1281.82,
+        "host_mib": 262.44
+      },
+      "scope": "sum of model, KV, recurrent-state, and reserved compute buffers printed by the pinned exact-core process; not whole-card peak"
+    },
+    "comparison": {
+      "q4": "hipEngine owned 1017.6 MiB versus llama declared device buffers 1015.4 MiB (near equal)",
+      "q8": "hipEngine owned 981.8 MiB versus llama declared device buffers 1281.8 MiB (23.4% lower)",
+      "caveat": "hipEngine tracked-owned and llama declared-buffer scopes are close but not identical whole-card peaks"
+    }
+  },
+  "g3": {
+    "passed": false,
+    "status": "blocked-by-g2-and-milestone-suite",
+    "parity_blockers": {
+      "q4_core_prefill_gap_percent": 57.56844570032992,
+      "q4_core_decode_gap_percent": 26.603310380688118,
+      "q4_public_prefill_gap_percent": 53.710988237350335,
+      "q4_public_decode_gap_percent": 5.831930831914045,
+      "q8_core_prefill_gap_percent": 33.64454753642336,
+      "q8_core_decode_gap_percent": 12.833342451204077,
+      "q8_public_prefill_gap_percent": 27.134343617552492,
+      "q8_public_decode_delta_percent": 2.757793336946701
+    },
+    "decision": "Do not mark the campaign complete and do not open D08-T1/27B. C1/C2 and D08-scoped correctness pass, but fresh exact Q4 misses Vulkan in every required scope. All bounded D08 packages are exhausted; any new production Vulkan backend/hand-ISA or reopened arithmetic family is an architectural campaign extension requiring human approval and a new complete-package contract."
+  },
+  "excluded_invalid_rows": [
+    {
+      "row": "transient llama Q4 public command with VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json",
+      "reason": "path does not exist; output identified backends=CPU and was immediately discarded/replaced by the correct radeon_icd.json Vulkan row"
+    }
+  ],
+  "passed": false
+}

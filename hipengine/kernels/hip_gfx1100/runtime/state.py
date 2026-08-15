@@ -20,6 +20,8 @@ _SYMBOL_EMBEDDING_LOOKUP_BATCH_FP16 = "hipengine_embedding_lookup_batch_fp16_i64
 _SYMBOL_EMBEDDING_LOOKUP_BATCH_MAPPED_FP16 = "hipengine_embedding_lookup_batch_mapped_fp16_i64"
 _SYMBOL_SET_I64 = "hipengine_set_i64_scalar"
 _SYMBOL_PREFILL_FLIGHT_RECORDER_MARK_I64 = "hipengine_prefill_flight_recorder_mark_i64"
+_SYMBOL_WALL_CLOCK_MARK_U64 = "hipengine_wall_clock_mark_u64"
+_SYMBOL_WALL_CLOCK_RATE_KHZ = "hipengine_wall_clock_rate_khz"
 _SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
 _SYMBOL_COPY_I32_TO_I64 = "hipengine_copy_i32_to_i64"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
@@ -340,6 +342,49 @@ def flight_recorder_mark_i64(
     fn.restype = ctypes.c_int
     err = fn(ctypes.c_void_p(out_i64_ptr), ctypes.c_int64(value), ctypes.c_void_p(stream))
     _check_launch(runtime, err)
+
+
+def wall_clock_mark_u64(
+    out_u64_ptr: int,
+    index: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Record the device constant-frequency wall clock into ``out[index]``."""
+
+    if out_u64_ptr <= 0:
+        raise ValueError("out_u64_ptr must be positive")
+    if index < 0:
+        raise ValueError("index must be non-negative")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_WALL_CLOCK_MARK_U64)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(ctypes.c_void_p(out_u64_ptr), ctypes.c_int64(index), ctypes.c_void_p(stream))
+    _check_launch(runtime, err)
+
+
+def wall_clock_rate_khz(
+    *,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> int:
+    """Return the device steady wall-clock frequency in kilohertz."""
+
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_WALL_CLOCK_RATE_KHZ)
+    fn.argtypes = [ctypes.POINTER(ctypes.c_int)]
+    fn.restype = ctypes.c_int
+    rate_khz = ctypes.c_int()
+    err = fn(ctypes.byref(rate_khz))
+    _check_launch(runtime, err)
+    if rate_khz.value <= 0:
+        raise RuntimeError(f"HIP reported invalid wall-clock rate {rate_khz.value} kHz")
+    return int(rate_khz.value)
 
 
 def set_i64_vector(

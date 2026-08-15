@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
+    gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
@@ -1407,6 +1408,36 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
         _raw_k_prefill_variant.reset(token)
 
 
+def _dense_bf16_wmma_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    enabled: bool,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Prefer the D08-X2-K5 LDS-staged WMMA dense-BF16 bulk consumer."""
+
+    if (
+        not enabled
+        or rows < 16
+        or out_features <= 0
+        or out_features % 128
+        or dispatch.abi != "dense_bf16"
+        or dispatch.key.variant != "prefill_out"
+        or dispatch.key.layer != "dense_gemv"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "prefill_wmma_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
 def _dense_bf16_rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -1941,6 +1972,40 @@ def clear_gguf_linear_dispatch_cache() -> None:
     _Q8_1_DISPATCH_RESOLVE_CACHE.clear()
 
 
+def _native_split_row_chunk(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> int | None:
+    """Resolve one backend-qualified exact-row split or fail closed."""
+
+    if not _native_batch_decode_session_enabled:
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
+        {},
+    )
+    quant_policy = (
+        policies.get(weight.spec.quant_key, {})
+        if isinstance(policies, Mapping)
+        else {}
+    )
+    if not isinstance(quant_policy, Mapping):
+        return None
+    raw_chunk = quant_policy.get((int(rows), int(in_features), int(out_features)))
+    try:
+        chunk = int(raw_chunk)
+    except (TypeError, ValueError):
+        return None
+    if chunk <= 1 or rows <= chunk or rows % chunk:
+        return None
+    return chunk
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -1982,6 +2047,41 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    split_row_chunk = (
+        _native_split_row_chunk(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
+    if split_row_chunk is not None:
+        element_nbytes = DType.BF16.itemsize
+        for row_start in range(0, rows, split_row_chunk):
+            launch_gguf_linear(
+                weight,
+                x_ptr + row_start * in_features * element_nbytes,
+                out_ptr + row_start * out_features * element_nbytes,
+                split_row_chunk,
+                in_features,
+                out_features,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=resolved_backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+            )
+        return
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
@@ -2033,6 +2133,7 @@ def launch_gguf_linear(
         raw_k_rowbatch,
         raw_k_variant,
         bool(use_q4_pack8_wmma),
+        os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
@@ -2071,7 +2172,12 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
-        dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
+        dispatch = _native_batch_decode_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         # The small-B row-tile path is the weight-amortized replacement for the
         # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
         # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
@@ -2099,6 +2205,22 @@ def launch_gguf_linear(
             out_features=out_features,
             enabled=not use_wmma,
             native_batch=_native_batch_decode_session_enabled,
+        )
+        dispatch = _dense_bf16_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            out_features=out_features,
+            enabled=(
+                use_wmma
+                and os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and bool(
+                    backend_package_capability(
+                        resolved_backend,
+                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+                        False,
+                    )
+                )
+            ),
         )
         dispatch = _pack8_rowtile_dispatch(
             dispatch,
@@ -2141,7 +2263,23 @@ def launch_gguf_linear(
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
             rows=rows,
-            enabled=use_q4_pack8_wmma,
+            enabled=(
+                use_q4_pack8_wmma
+                or (
+                    use_wmma
+                    and bool(
+                        backend_package_capability(
+                            resolved_backend,
+                            "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
+                            False,
+                        )
+                    )
+                    and os.environ.get(
+                        "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1"
+                    )
+                    != "0"
+                )
+            ),
         )
         _ensure_linear_kernel_registered(dispatch.key)
         fn = resolve(
@@ -2355,10 +2493,61 @@ def launch_gguf_q4_t16_sidecar_decode(
 def _linear_residual_variant(variant: str) -> str | None:
     """Return the same-ABI rounded-BF16 residual sibling name."""
 
+    if variant == "out":
+        return "out_bf16_residual_bf16_out"
     suffix = "_bf16_bf16_out"
     if not variant.endswith(suffix):
         return None
     return f"{variant[: -len(suffix)]}_bf16_residual_bf16_out"
+
+
+def _resolve_registered_linear_residual(
+    normal_key: KernelKey,
+    *,
+    rows: int,
+):
+    """Resolve one composite only when its exact primitive sibling exists."""
+
+    fused_variant = _linear_residual_variant(normal_key.variant)
+    if fused_variant is None:
+        return None
+    residual_max_rows = 4
+    residual_limits = backend_package_capability(
+        normal_key.backend,
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        {},
+    )
+    if isinstance(residual_limits, Mapping):
+        try:
+            residual_max_rows = int(
+                residual_limits.get(normal_key.quant, residual_max_rows)
+            )
+        except (TypeError, ValueError):
+            residual_max_rows = 0
+    if rows > residual_max_rows:
+        return None
+    _ensure_linear_kernel_registered(normal_key)
+    if not is_registered(normal_key):
+        return None
+    fused_key = KernelKey(
+        normal_key.backend,
+        "linear+residual",
+        normal_key.quant,
+        fused_variant,
+    )
+    # Ensuring the primitive restores its whole owning module after registry
+    # tests clear global state, including any supported composite siblings.
+    # Do not bootstrap again for an unsupported composite: dense models with a
+    # different quant must fail closed without re-registering every kernel.
+    if not is_registered(fused_key):
+        return None
+    fn = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    return fused_key, fn
 
 
 def _launch_registered_linear_residual(
@@ -2377,46 +2566,10 @@ def _launch_registered_linear_residual(
 ) -> bool:
     """Launch one exact composite only when its primitive owner also exists."""
 
-    fused_variant = _linear_residual_variant(normal_key.variant)
-    if fused_variant is None:
+    resolved = _resolve_registered_linear_residual(normal_key, rows=rows)
+    if resolved is None:
         return False
-    residual_max_rows = 4
-    residual_limits = backend_package_capability(
-        normal_key.backend,
-        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
-        {},
-    )
-    if isinstance(residual_limits, Mapping):
-        try:
-            residual_max_rows = int(
-                residual_limits.get(normal_key.quant, residual_max_rows)
-            )
-        except (TypeError, ValueError):
-            residual_max_rows = 0
-    if rows > residual_max_rows:
-        return False
-    _ensure_linear_kernel_registered(normal_key)
-    if not is_registered(normal_key):
-        return False
-    fused_key = KernelKey(
-        normal_key.backend,
-        "linear+residual",
-        normal_key.quant,
-        fused_variant,
-    )
-    # Ensuring the primitive restores its whole owning module after registry
-    # tests clear global state, including any supported composite siblings.
-    # Do not bootstrap again for an unsupported composite: dense models with a
-    # different T16 quant must fail closed without re-registering every kernel
-    # on every layer/pass.
-    if not is_registered(fused_key):
-        return False
-    fn = resolve(
-        backend=fused_key.backend,
-        layer=fused_key.layer,
-        quant=fused_key.quant,
-        variant=fused_key.variant,
-    )
+    fused_key, fn = resolved
     kwargs = {"stream": stream, "runtime": runtime}
     if libraries is not None:
         library = libraries.get(
@@ -2585,23 +2738,60 @@ def launch_gguf_linear_residual(
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
+    registered_decode: bool = False,
 ) -> bool:
     """Launch an exact small-row projection plus rounded-BF16 residual.
 
-    Only registry-qualified native rows 2-4 can own this boundary. Any shape,
-    backend, WMMA-policy, allocation, primitive-key, or composite-key miss
-    returns ``False`` so callers execute the ordinary projection plus
-    ``gguf_bf16_add`` chain.
+    Registry-qualified native rows 2-4 use their existing session policy. A
+    caller may independently admit one model/shape-qualified c1 owner through
+    ``registered_decode``; ABI and sibling registry misses still fail closed to
+    the ordinary projection plus ``gguf_bf16_add`` chain.
     """
 
-    if (
-        not _native_batch_decode_session_enabled
-        or rows < 2
-        or rows > 4
-        or _resolve_use_wmma_prefill(None)
-    ):
+    if rows < 1 or rows > 4 or _resolve_use_wmma_prefill(None):
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
+    if rows == 1:
+        if not registered_decode:
+            return False
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return False
+        fused_key, fn = resolved
+        kwargs = {"stream": stream, "runtime": runtime}
+        if libraries is not None:
+            library = libraries.get(
+                f"{fused_key.quant}:{fused_key.variant}",
+                libraries.get(
+                    f"{dispatch.key.quant}:{dispatch.key.variant}",
+                    libraries.get(fused_key.quant),
+                ),
+            )
+            if library is not None:
+                kwargs["library"] = library
+        launcher(
+            fn,
+            weight,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
+        return True
+    if not _native_batch_decode_session_enabled:
+        return False
 
     # Legacy compact-Q4 weights expose T16 as a sidecar. Try those registered
     # sibling keys first; sole-T16 owners continue through the canonical route.
@@ -2653,7 +2843,12 @@ def launch_gguf_linear_residual(
         in_features=in_features,
         out_features=out_features,
     )
-    dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
+    dispatch = _native_batch_decode_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
     allocation_name = {"t16": "tiles"}.get(dispatch.abi)
     if allocation_name is None:
         return False
@@ -3263,6 +3458,49 @@ def launch_gguf_linear_pair(
                 **common_kwargs,
             )
             return True
+        # D08-X2-K5a: bulk rows prefer the routed pack8 WMMA leaf per side
+        # over the per-row base dual kernel (same registry route the single
+        # projection path takes; the base dual stays the fallback).
+        if (
+            use_wmma
+            and rows >= 16
+            and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
+            and backend_package_capability(
+                _weight_backend(weight_a, backend=backend),
+                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
+                False,
+            )
+            and is_registered(
+                KernelKey(
+                    _weight_backend(weight_a, backend=backend),
+                    "linear",
+                    "gguf_q4_k",
+                    "pack8_wmma_prefill_bf16_bf16_out",
+                )
+            )
+        ):
+            pair_library = None if libraries is None else libraries.get(
+                "gguf_q4_k:pack8_wmma_prefill_bf16_bf16_out",
+                libraries.get("gguf_q4_k"),
+            )
+            common_kwargs = {
+                "stream": stream,
+                "runtime": runtime,
+                "library": pair_library,
+            }
+            for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+                gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out(
+                    x_ptr,
+                    weight.allocation("qweight").tensor.ptr,
+                    weight.allocation("scales").tensor.ptr,
+                    weight.allocation("mins").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **common_kwargs,
+                )
+            return True
         gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("qweight").tensor.ptr,
@@ -3332,6 +3570,7 @@ def launch_gguf_linear_pair_silu(
     use_gemv_decode: bool | None = None,
     use_q4_t16_sidecar: bool = True,
     use_q4_t16_dual_interleaved: bool = True,
+    registered_decode_variant: str | None = None,
 ) -> bool:
     """Launch an exact registered gate/up pair plus SiLU, or return False."""
 
@@ -3520,7 +3759,7 @@ def launch_gguf_linear_pair_silu(
         resolved_backend,
         "linear_pair_silu",
         "gguf_q4_k",
-        "pack8_dual_decode_bf16_bf16_out",
+        registered_decode_variant or "pack8_dual_decode_bf16_bf16_out",
     )
     t16_sidecar_key = KernelKey(
         resolved_backend,
@@ -4121,6 +4360,54 @@ def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, k
     )
 
 
+def _launch_pack8_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("qweight").tensor.ptr,
+        weight.allocation("scales").tensor.ptr,
+        weight.allocation("mins").tensor.ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def _launch_dense_bf16_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("raw").tensor.ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
@@ -4549,6 +4836,8 @@ def _native_batch_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
+    in_features: int,
+    out_features: int,
 ) -> GGUFLinearDispatch:
     """Select registered compact c=2..8 native projection families."""
 
@@ -4572,14 +4861,44 @@ def _native_batch_decode_dispatch(
             t16_rowtile_max_rows = 0
     if (
         dispatch.abi == "t16"
-        and rows <= t16_rowtile_max_rows
         and dispatch.key.variant == "t16_gemv_decode_bf16_bf16_out"
     ):
+        if rows <= t16_rowtile_max_rows:
+            rewritten_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "t16_gemv_rowtile_bf16_bf16_out",
+            )
+            if is_registered(rewritten_key):
+                return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+        direct_shapes = backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
+            {},
+        )
+        quant_direct_shapes = (
+            direct_shapes.get(dispatch.key.quant, ())
+            if isinstance(direct_shapes, Mapping)
+            else ()
+        )
+        try:
+            use_direct = (
+                int(in_features),
+                int(out_features),
+            ) in quant_direct_shapes
+        except TypeError:
+            use_direct = False
+        if use_direct:
+            return dispatch
+        # Native widths above a backend's measured rowtile bound normally use
+        # the same-ABI WMMA sibling. Backends can retain the direct leaf for
+        # independently measured exact shapes through the policy above.
         rewritten_key = KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,
             dispatch.key.quant,
-            "t16_gemv_rowtile_bf16_bf16_out",
+            "t16_wmma_prefill_bf16_bf16_out",
         )
         if is_registered(rewritten_key):
             return GGUFLinearDispatch(rewritten_key, dispatch.abi)
@@ -4795,8 +5114,16 @@ def _q4_pack8_wmma_dispatch(
     if (
         dispatch.abi == "pack8"
         and dispatch.key.quant == "gguf_q4_k"
-        and dispatch.key.variant == "pack8_prefill_bf16_bf16_out"
+        and dispatch.key.variant
+        in (
+            "pack8_prefill_bf16_bf16_out",
+            "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+        )
     ):
+        # D08-X2-K1 note: the LDS-staged 128x64 large-tile consumer
+        # (pack8_wmma64_prefill_bf16_bf16_out) measured at parity-or-worse
+        # versus the small-tile leaf on gfx1151 wave32 (see the retained
+        # screen); it stays registered as a diagnostic and is not routed.
         key = KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,
@@ -4960,6 +5287,12 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
+
+
+_LAUNCH_RESIDUAL_ABI = {
+    "dense_bf16": _launch_dense_bf16_residual,
+    "pack8": _launch_pack8_residual,
+}
 
 
 _LAUNCH_ABI = {

@@ -1,0 +1,75 @@
+{
+  "schema": "hipengine.qwen35_08b.vulkan_semantic_ledger.v1",
+  "date": "2026-08-14",
+  "status": "diagnostic",
+  "hardware": {"gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "vulkan_device": "RADV STRIX_HALO"},
+  "llama_cpp": {"commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d", "build": 10415, "backend": "Vulkan", "flash_attention": true},
+  "protocol": {
+    "command_template": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 build/bin/llama-bench -fa 1 -m <model> -p 512 -n 128 -r 1",
+    "block_selection": "131 logger blocks per file: block 0 prefill warmup, block 1 measured prefill, block 2 decode warmup, blocks 3-130 measured decode tokens",
+    "decode_aggregation": "arithmetic mean of operation totals across 128 measured decode blocks",
+    "units": "prefill ms/request and decode ms/token",
+    "mapping_rules": [
+      "matrix m/k shapes join to GGUF tensor-role inventory",
+      "RMS_NORM(1024) splits 24 attention, 24 post-attention, and 1 final call",
+      "ADD splits 18 GDN calls and remaining residual calls",
+      "SIGMOID splits 18 GDN and 6 full-attention-gate calls",
+      "MUL splits 36 GDN and 6 full-attention-gate calls",
+      "Q8 prefill m=1024,k=2048 splits 18 linear-attention output and 6 full-attention output calls",
+      "all printed operation totals are assigned; <=0.0003 ms reconciliation error is logger decimal rounding"
+    ]
+  },
+  "raw_logs": {
+    "q4_k_m": {"path": "/tmp/d08-m3/q4-vulkan-perf.log", "sha256": "ff1d609978325575c47930693ca7f511a6750fd0665c9b2cf690165673a25614", "bytes": 259372, "lines": 4597},
+    "q8_0": {"path": "/tmp/d08-m3/q8-vulkan-perf.log", "sha256": "af15a7ced2baa086d816d8c68b897b68d04f32704b2256c13c86d68d9e6a15a7", "bytes": 237070, "lines": 4333}
+  },
+  "role_columns": ["role", "ms", "percent_of_logger_total"],
+  "vulkan_rows": {
+    "q4_k_m": {
+      "model_fingerprint": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735",
+      "logger_throughput_tok_s": {"pp512": 6323.61, "tg128": 166.27},
+      "canonical_c0_throughput_tok_s": {"pp512": 6492.02, "tg128": 201.17},
+      "logger_perturbation_percent": {"pp512": -2.594, "tg128": -17.349},
+      "prefill": {"logger_total_ms": 77.0908, "benchmark_wall_ms": 80.966410, "wall_residual_ms": 3.875610, "coverage": 0.952133},
+      "decode": {"logger_mean_ms_per_token": 4.884859, "benchmark_wall_ms_per_token": 6.014314, "wall_residual_ms_per_token": 1.129455, "coverage": 0.812206},
+      "prefill_roles": [["dense_ffn_projections", 26.070740, 33.818], ["linear_attention_projections", 19.345790, 25.095], ["gdn_recurrence", 13.388165, 17.367], ["linear_attention_conv", 7.342650, 9.525], ["full_attention_projections_rope", 4.445256, 5.766], ["full_attention_core_kv", 1.822932, 2.365], ["residual_norm_glue", 1.465003, 1.900], ["dense_ffn_activation", 1.415920, 1.837], ["lm_head_sampler_transport", 0.983308, 1.276], ["attention_norm", 0.493112, 0.640], ["input_setup", 0.297464, 0.386], ["final_norm", 0.020546, 0.027]],
+      "decode_roles_per_token": [["dense_ffn_projections", 1.096217, 22.441], ["linear_attention_projections", 1.050735, 21.510], ["lm_head_sampler_transport", 0.928033, 18.998], ["gdn_recurrence", 0.716228, 14.662], ["full_attention_projections_rope", 0.253003, 5.179], ["input_setup", 0.221467, 4.534], ["residual_norm_glue", 0.163005, 3.337], ["full_attention_core_kv", 0.158398, 3.243], ["linear_attention_conv", 0.115152, 2.357], ["attention_norm", 0.108623, 2.224], ["dense_ffn_activation", 0.069472, 1.422], ["final_norm", 0.004526, 0.093]]
+    },
+    "q8_0": {
+      "model_fingerprint": "4f43821574f5137d61d3e070af433e3ee9c72c1e95330be0e8151d0216e45c57",
+      "logger_throughput_tok_s": {"pp512": 5576.93, "tg128": 140.08},
+      "canonical_c0_throughput_tok_s": {"pp512": 6123.47, "tg128": 165.32},
+      "logger_perturbation_percent": {"pp512": -8.925, "tg128": -15.267},
+      "prefill": {"logger_total_ms": 87.8723, "benchmark_wall_ms": 91.806783, "wall_residual_ms": 3.934483, "coverage": 0.957144},
+      "decode": {"logger_mean_ms_per_token": 5.991979, "benchmark_wall_ms_per_token": 7.138778, "wall_residual_ms_per_token": 1.146799, "coverage": 0.839356},
+      "prefill_roles": [["dense_ffn_projections", 30.160400, 34.323], ["linear_attention_projections", 20.621013, 23.467], ["gdn_recurrence", 15.568552, 17.717], ["linear_attention_conv", 8.379990, 9.537], ["full_attention_projections_rope", 6.386348, 7.268], ["full_attention_core_kv", 1.937212, 2.205], ["dense_ffn_activation", 1.372990, 1.562], ["residual_norm_glue", 1.349565, 1.536], ["lm_head_sampler_transport", 1.272180, 1.448], ["attention_norm", 0.448474, 0.510], ["input_setup", 0.356903, 0.406], ["final_norm", 0.018686, 0.021]],
+      "decode_roles_per_token": [["dense_ffn_projections", 1.565013, 26.118], ["linear_attention_projections", 1.328228, 22.167], ["lm_head_sampler_transport", 1.184923, 19.775], ["gdn_recurrence", 0.736251, 12.287], ["full_attention_projections_rope", 0.320207, 5.344], ["input_setup", 0.223490, 3.730], ["residual_norm_glue", 0.166442, 2.778], ["full_attention_core_kv", 0.163071, 2.721], ["linear_attention_conv", 0.118737, 1.982], ["attention_norm", 0.109832, 1.833], ["dense_ffn_activation", 0.071210, 1.188], ["final_norm", 0.004576, 0.076]]
+    }
+  },
+  "join_columns": ["role", "hip_ms", "vulkan_ms", "hip_over_vulkan", "projected_hip_stage_saving_percent"],
+  "joined_rows": {
+    "q4_k_m_prefill": [["linear_attention_projections", 157.792846, 19.345790, 8.156, 38.422], ["dense_ffn_projections", 100.905841, 26.070740, 3.870, 20.768], ["gdn_recurrence", 67.506402, 13.388165, 5.042, 15.019], ["full_attention_projections_rope", 15.770243, 4.445256, 3.548, 3.143], ["full_attention_core_kv", 5.245046, 1.822932, 2.877, 0.950], ["attention_norm", 2.223034, 0.493112, 4.508, 0.480], ["input_setup", 1.753181, 0.297464, 5.894, 0.404], ["dense_ffn_activation", 1.880413, 1.415920, 1.328, 0.129], ["lm_head_sampler_transport", 1.415750, 0.983308, 1.440, 0.120], ["linear_attention_conv", 4.752870, 7.342650, 0.647, 0.000], ["residual_norm_glue", 1.073119, 1.465003, 0.733, 0.000], ["final_norm", 0.017674, 0.020546, 0.860, 0.000], ["submission_unattributed", 1.789761, 3.875610, 0.462, 0.000]],
+    "q8_0_prefill": [["gdn_recurrence", 50.490542, 15.568552, 3.243, 26.764], ["full_attention_core_kv", 8.478479, 1.937212, 4.377, 5.013], ["linear_attention_projections", 24.516792, 20.621013, 1.189, 2.986], ["attention_norm", 2.191905, 0.448474, 4.887, 1.336], ["input_setup", 1.083599, 0.356903, 3.036, 0.557], ["full_attention_projections_rope", 7.087136, 6.386348, 1.110, 0.537], ["lm_head_sampler_transport", 1.398056, 1.272180, 1.099, 0.096], ["final_norm", 0.020279, 0.018686, 1.085, 0.001], ["dense_ffn_projections", 27.733574, 30.160400, 0.920, 0.000], ["linear_attention_conv", 5.501122, 8.379990, 0.656, 0.000], ["dense_ffn_activation", 1.065945, 1.372990, 0.776, 0.000], ["residual_norm_glue", 0.913095, 1.349565, 0.677, 0.000], ["submission_unattributed", 1.567863, 3.934483, 0.399, 0.000]],
+    "q4_k_m_decode": [["linear_attention_projections", 4.985372, 1.050735, 4.745, 20.319], ["dense_ffn_projections", 4.743921, 1.096217, 4.328, 18.838], ["full_attention_core_kv", 1.828597, 0.158398, 11.544, 8.625], ["full_attention_projections_rope", 1.906986, 0.253003, 7.537, 8.542], ["attention_norm", 1.467581, 0.108623, 13.511, 7.018], ["residual_norm_glue", 0.799068, 0.163005, 4.902, 3.285], ["gdn_recurrence", 1.298021, 0.716228, 1.812, 3.005], ["linear_attention_conv", 0.537363, 0.115152, 4.667, 2.180], ["lm_head_sampler_transport", 1.288315, 0.928033, 1.388, 1.861], ["dense_ffn_activation", 0.267047, 0.069472, 3.844, 1.020], ["final_norm", 0.036064, 0.004526, 7.968, 0.163], ["input_setup", 0.205571, 0.221467, 0.928, 0.000], ["submission_unattributed", 0.683279, 1.129455, 0.605, 0.000]],
+    "q8_0_decode": [["dense_ffn_projections", 4.640880, 1.565013, 2.965, 17.641], ["linear_attention_projections", 3.287712, 1.328228, 2.475, 11.238], ["full_attention_core_kv", 1.798006, 0.163071, 11.026, 9.377], ["attention_norm", 1.381532, 0.109832, 12.579, 7.293], ["full_attention_projections_rope", 1.343165, 0.320207, 4.195, 5.867], ["gdn_recurrence", 1.446331, 0.736251, 1.964, 4.072], ["residual_norm_glue", 0.874534, 0.166442, 5.254, 4.061], ["linear_attention_conv", 0.752244, 0.118737, 6.335, 3.633], ["lm_head_sampler_transport", 1.413415, 1.184923, 1.193, 1.310], ["dense_ffn_activation", 0.265156, 0.071210, 3.724, 1.112], ["final_norm", 0.018445, 0.004576, 4.031, 0.080], ["input_setup", 0.214673, 0.223490, 0.961, 0.000], ["submission_unattributed", 0.433129, 1.146799, 0.378, 0.000]]
+  },
+  "accounting": {"all_backend_operation_rows_assigned": true, "submission_unattributed_is_explicit": true, "other_ms": 0.0},
+  "disposition": [
+    {"rank": 1, "package": "D08-P1", "status": "admitted-next", "potential": "critical; Q4 linear projections expose 38.42% stage saving to Vulkan", "bound": "audit intended rows>1 projection routes; at most one route repair, then rerun C0 and invalidate this ledger"},
+    {"rank": 2, "package": "D08-P3", "status": "future-after-reprofile", "potential": "Q4 dense projections expose 20.77% stage saving; Q8 is already faster than Vulkan", "bound": "only if still >=20% after P1; at most three leaf variants"},
+    {"rank": 3, "package": "D08-P2", "status": "future-after-reprofile", "potential": "GDN exposes 15.02% Q4 and 26.76% Q8 stage saving", "bound": "audit retained schedule first; at most three shape variants"},
+    {"rank": 4, "package": "D08-D3", "status": "blocked-by-D08-M2-census", "potential": "eager projection deltas sum to 47.70% Q4 and 34.75% Q8", "bound": "do not treat eager marker gaps as graph GPU time; complete graph/direct submission census first"},
+    {"rank": 5, "package": "D08-P4/D4", "status": "future", "potential": "full-attention roles are material but below P1/P3/P2 prefill leverage", "bound": "one route/layout or semantic owner after structural reprofile"},
+    {"rank": 6, "package": "D08-D2", "status": "parked", "potential": "LM head exposes only 1.86% Q4 and 1.31% Q8 eager stage saving", "bound": "reopen only if graph census changes ownership"}
+  ],
+  "caveats": [
+    "HIP and Vulkan instrumentation perturb wall differently; ratios rank packages but are not topline speed claims",
+    "Vulkan decode logger totals cover 81.2-83.9% of benchmark wall; the residual is submission/queue/host work",
+    "HIP eager stage timings cannot be assigned directly to the production graph path",
+    "fused or aggregated Vulkan operations are split only by exact architecture call inventory"
+  ],
+  "related_artifacts": [
+    "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-vulkan-parity-c0.json",
+    "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-stage-attribution.json"
+  ]
+}

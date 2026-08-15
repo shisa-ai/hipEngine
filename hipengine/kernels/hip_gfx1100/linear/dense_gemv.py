@@ -15,6 +15,11 @@ _ARGTYPES_DENSE_GEMV_SINGLE = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
     ctypes.c_void_p,                                          # stream
 )
+_ARGTYPES_DENSE_GEMV_RESIDUAL = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, weight, residual, out
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
+    ctypes.c_void_p,
+)
 _ARGTYPES_DENSE_GEMV_F32W_PAIR = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, w_a, w_b, out_a, out_b
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
@@ -44,6 +49,7 @@ _ARGTYPES_DENSE_GEMV_DUAL_WMMA = (
 _SOURCE = Path(__file__).with_name("dense_gemv.hip")
 _OUTPUT_NAME = "dense_gemv.so"
 _SYMBOL_BF16_OUT = "hipengine_dense_gemv_out_bf16"
+_SYMBOL_BF16_RESIDUAL_OUT = "hipengine_dense_gemv_out_bf16_residual_bf16_out"
 _SYMBOL_BF16_VIRTUAL256_OUT = "hipengine_dense_gemv_virtual256_out_bf16"
 _SYMBOL_BF16_VIRTUAL256_ROWTILE_OUT = "hipengine_dense_gemv_virtual256_rowtile_out_bf16"
 _SYMBOL_BF16_ROWTILE_OUT = "hipengine_dense_gemv_rowtile_out_bf16"
@@ -55,6 +61,7 @@ _SYMBOL_BF16_F32W_PAIR_ROWTILE2_BF16_OUT = (
 _SYMBOL_FP16_OUT = "hipengine_dense_gemv_out_fp16"
 _SYMBOL_F32_OUT = "hipengine_dense_gemv_out_f32"
 _SYMBOL_DENSE_PREFILL_BF16_OUT = "hipengine_dense_prefill_gemm_out_bf16"
+_SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16 = "hipengine_dense_prefill_wmma_out_bf16"
 _SYMBOL_DUAL_BF16_OUT = "hipengine_dense_dual_gemv_out_bf16"
 _SYMBOL_DUAL_FP16_OUT = "hipengine_dense_dual_gemv_out_fp16"
 _SYMBOL_DUAL_SEPARATE_BF16_OUT = "hipengine_dense_dual_gemv_separate_out_bf16"
@@ -123,6 +130,46 @@ def dense_gemv_out_bf16(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_gemv_out_bf16_residual_bf16_out(
+    x_ptr: int,
+    weight_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run dense BF16 GEMV plus an exact rounded-BF16 residual boundary."""
+
+    _check_shape(rows, in_features, out_features, threads)
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_BF16_RESIDUAL_OUT,
+        _ARGTYPES_DENSE_GEMV_RESIDUAL,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        weight_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -601,6 +648,50 @@ def dense_dual_gemv_out_fp16_wmma(
         runtime.check(int(err))
 
 
+def dense_prefill_wmma_out_bf16(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the D08-X2-K5 LDS-staged 128x64 WMMA dense BF16 bulk GEMM."""
+
+    if rows <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("shape must be positive")
+    if out_features % 128:
+        raise ValueError("dense WMMA prefill requires out_features % 128 == 0")
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_dense_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("bf16", "w4_paro"):
         register(
@@ -611,6 +702,11 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "dense_gemv", quant, "prefill_out"),
             dense_prefill_gemm_out_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey("hip_gfx1100", "dense_gemv", quant, "prefill_wmma_out"),
+            dense_prefill_wmma_out_bf16,
             replace=replace,
         )
         register(
@@ -673,6 +769,16 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
             dense_dual_gemv_out_fp16_wmma,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+residual",
+            "bf16",
+            "out_bf16_residual_bf16_out",
+        ),
+        dense_gemv_out_bf16_residual_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
         dense_gemv_bf16_f32w_bf16_out,

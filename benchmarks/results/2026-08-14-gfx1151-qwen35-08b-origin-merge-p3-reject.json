@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained-no-production-change",
+  "task": "D08 origin/main merge reprofile and P3 dense-FFN route screen",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint_sha256_sampled_v1": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "41c29b30b",
+  "merge": {
+    "local_parent": "fa46c9d56",
+    "origin_main_parent": "841f639c6",
+    "validation": "focused overlapping bundle passed with 3 skipped; 98 worklog entries valid"
+  },
+  "canonical_1_plus_5": {
+    "artifact": "/tmp/d08-merge/q4-fast-eager.json",
+    "prefill_tok_s_median": 1938.002696,
+    "decode_tok_s_median": 69.024193,
+    "tracked_peak_allocated_gib": 1.043405,
+    "finite_final_logits_all": true,
+    "final_token_ids": [9707, 9707, 9707, 9707, 9707],
+    "delta_vs_pre_merge_percent": {
+      "prefill_tok_s": 1.563227,
+      "decode_tok_s": -1.034154,
+      "tracked_peak_allocated_gib": 0.0
+    },
+    "note": "The decode delta is inside the observed five-run spread; no decode regression is attributed to the merge."
+  },
+  "merged_stage_capture": {
+    "artifact": "/tmp/d08-merge/q4-wall-clock.json",
+    "method": "same-stream device wall-clock markers; one untimed request warmup then one measured pp512 plus four eager decode steps",
+    "prefill_wall_ms": 278.699808,
+    "prefill_stage_sum_ms": 277.500361,
+    "prefill_coverage": 0.995696,
+    "prefill_roles": [
+      {"role": "dense_ffn_projections", "ms": 108.558181, "share_percent": 39.120},
+      {"role": "linear_attention_projections", "ms": 70.013556, "share_percent": 25.230},
+      {"role": "gdn_recurrence", "ms": 67.599279, "share_percent": 24.360},
+      {"role": "full_attention_projections_rope", "ms": 17.471716, "share_percent": 6.296},
+      {"role": "full_attention_core_kv", "ms": 4.041839, "share_percent": 1.457},
+      {"role": "linear_attention_conv", "ms": 3.485663, "share_percent": 1.256}
+    ],
+    "decode_wall_ms_per_token": 18.375663,
+    "decode_stage_sum_ms_per_token": 17.741053,
+    "decode_coverage": 0.965465
+  },
+  "p3_pp512_leaf_screen": {
+    "artifact": "/tmp/d08-p3/p3-pp512-screen.json",
+    "rule": "five alternating same-stream device-clock samples; current production route is the oracle/control",
+    "candidates": [
+      {"candidate": "Q6T16 down", "tensor": "blk.0.ffn_down.weight", "control_ms": 3.146178, "candidate_ms": 1.096383, "speedup": 2.869597, "max_abs": 0.0078125, "top1_agreement": 0.992188},
+      {"candidate": "Q4T16 gate/up", "tensor": "blk.0.ffn_gate.weight", "control_ms": 1.000822, "candidate_ms": 0.449464, "speedup": 2.226700, "max_abs": 0.00390625, "top1_agreement": 0.996094},
+      {"candidate": "raw Q4 WMMA gate/up", "tensor": "blk.0.ffn_gate.weight", "control_ms": 1.000822, "candidate_ms": 0.389821, "speedup": 2.567390, "max_abs": 0.00390625, "top1_agreement": 0.996094},
+      {"candidate": "Q4T16 down", "tensor": "blk.3.ffn_down.weight", "control_ms": 0.775554, "candidate_ms": 0.631770, "speedup": 1.227588, "max_abs": 0.00390625, "top1_agreement": 1.0},
+      {"candidate": "raw Q4 WMMA down", "tensor": "blk.3.ffn_down.weight", "control_ms": 0.775554, "candidate_ms": 0.535828, "speedup": 1.447393, "max_abs": 0.00390625, "top1_agreement": 1.0}
+    ]
+  },
+  "p3_operational_guards": {
+    "rule": "sole-resident layout must remain non-regressive at c1/c2/c4/c8; duplicate weight layouts are disallowed",
+    "raw_q4_speedup_vs_pack8": {
+      "gate": {"c1": 0.243382, "c2": 0.222765, "c4": 0.272652, "c8": 0.489682},
+      "down": {"c1": 0.255476, "c2": 0.341408, "c4": 0.362288, "c8": 0.452142}
+    },
+    "q4_t16_speedup_vs_pack8": {
+      "gate": {"c1": 1.124313, "c2": 1.254843, "c4": 1.249659, "c8": 0.342030},
+      "down": {"c1": 1.144469, "c2": 1.316955, "c4": 1.562530, "c8": 0.099305}
+    },
+    "q6_t16_speedup_vs_dense_bf16": {
+      "down": {"c1": 0.900400, "c2": 1.646917, "c4": 1.854753, "c8": 1.102897}
+    },
+    "correctness": "all finite; top-1 agreement 100% at c1/c2/c4/c8; max_abs <= 0.00390625",
+    "disposition": "reject all three sole-resident candidates before full-model A/B"
+  },
+  "joined_rerank_after_p3": [
+    {"rank": 1, "package": "D08-P3", "role": "dense_ffn_projections", "hip_ms": 108.558181, "vulkan_ms": 26.072176, "projected_request_saving_percent": 29.596721, "disposition": "exhausted-rejected"},
+    {"rank": 2, "package": "D08-P2", "role": "gdn_recurrence", "hip_ms": 67.599279, "vulkan_ms": 13.390707, "projected_request_saving_percent": 19.450524, "disposition": "admitted-next"},
+    {"rank": 3, "package": "remaining linear projections", "role": "linear_attention_projections", "hip_ms": 70.013556, "vulkan_ms": 19.349841, "projected_request_saving_percent": 18.178597, "disposition": "future"}
+  ],
+  "exact_commands": {
+    "canonical": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-merge/q4-fast-eager.json",
+    "stage_capture": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-merge/q4-wall-clock.json",
+    "leaf_screens": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt python3 /tmp/d08-p3/{p3_pp512_screen,q4_raw_operational_screen,q4_t16_operational_screen,q6_t16_operational_screen}.py"
+  }
+}

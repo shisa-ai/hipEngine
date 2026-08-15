@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X2-K2 route gfx1151 Q8_0 GDN prefill through the cluster8 recurrence",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "source_commit": "f3d08448b",
+  "mechanism": "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE gains (\"MOSTLY_Q8_0\",16,16,128,128) -> chain_peer_cluster8; rollback HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile",
+  "kernel_screen": {
+    "recurrent_per_layer_ms_512tok": {
+      "wave32_xor": 0.000953638579968607,
+      "cluster8": 0.0005106235180175666
+    },
+    "stage_composition_per_call_ms": {
+      "prepare_256": 5.4e-05,
+      "recurrent_seg_256": 0.000193,
+      "gate_256": 3.1e-05,
+      "recurrent_512": 0.000736,
+      "stage_chunked_2x256": 0.000836,
+      "stage_single_512": 0.001145
+    },
+    "note": "isolated production composition (prepare+segments-recurrent+gate, 2x256 chunks) is 0.836 ms/layer; the exact lds32 route launches 64 one-wave blocks, cluster8 512 waves, wave32_xor 2048 waves"
+  },
+  "binding_ab": {
+    "protocol": "5 counter-rotated env-pair exact-core blocks Q8_0",
+    "performance": {
+      "pp": {
+        "candidate_median": 4949.415140566386,
+        "control_median": 4230.623691847981,
+        "ratio": 1.167019528728003,
+        "wins": 5
+      },
+      "tg": {
+        "candidate_median": 142.99316861978542,
+        "control_median": 141.2920303789831,
+        "ratio": 1.0092417337554374,
+        "wins": 3
+      },
+      "pub_pp": {
+        "candidate_median": 4953.912791415976,
+        "control_median": 4179.467476253461,
+        "ratio": 1.1938466996367245,
+        "wins": 5
+      },
+      "pub_tg": {
+        "candidate_median": 115.48665110280739,
+        "control_median": 116.23960849003275,
+        "ratio": 0.9908725928842457,
+        "wins": 1
+      }
+    },
+    "all_finite_and_deterministic": true
+  },
+  "correctness": {
+    "protocol": "18 category+heldout prompts x 24 teacher-forced steps, control-route trajectory vs candidate logits",
+    "top1_matches": 448,
+    "transitions": 450,
+    "top1_agreement": 0.9955555555555555,
+    "kl_max": 0.003259258404580838
+  },
+  "history": "P2 first measured this candidate at +18.00% pp but rejected it when a strict graph-decode guard missed by 0.0108% under the bounded contract; the fresh exact-core gate shows core tg 1.0092x (3/5) and public tg 0.9909x, both inside the 1% guard",
+  "decision": "Retained as the gfx1151 Q8_0 default for the exact one-V-head-per-K-head geometry."
+}

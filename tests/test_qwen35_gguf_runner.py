@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -105,6 +106,11 @@ def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkey
         return SimpleNamespace(token_id=42, logit=1.0, logits=None)
 
     monkeypatch.setattr(Qwen35GGUFResidentSession, "_run_bulk_prefill_and_sample", fake_bulk_prefill)
+    monkeypatch.setattr(
+        Qwen35GGUFResidentSession,
+        "_q8_mmq_prefill_context",
+        lambda _self: nullcontext(),
+    )
 
     default = session.prefill([760, 4087, 369, 220], return_logits=False)
     native = session.prefill([760, 4087, 369, 220], bulk_attention_mode="native", return_logits=True)

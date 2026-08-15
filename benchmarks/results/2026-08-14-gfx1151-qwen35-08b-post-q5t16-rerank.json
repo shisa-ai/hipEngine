@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08 post-P1 mandatory semantic rerank",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "fingerprint_sha256_sampled_v1": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "8b23aabf7",
+  "method": {
+    "name": "same_stream_device_wall_clock_markers",
+    "scope": "one untimed warmup followed by one measured pp512 and four eager decode steps after one warmup token",
+    "timing_status": "diagnostic, not topline",
+    "alias_rule": "Count route-specific qkv/gate and alpha/beta keys; omit their equal generic aliases. The qkv/gate route remains named fallback because the group still launches independent QKV and gate projections, although QKV now uses Q5T16.",
+    "first_capture_replaced": {
+      "path": "/tmp/d08-p1/q4-wall-clock-post.json",
+      "reason": "47.834 ms first-use/power-ramp interval around embedding versus the approximately 1 ms established owner; campaign permits one replacement for a corrupt/incomplete capture"
+    },
+    "accepted_capture": "/tmp/d08-p1/q4-wall-clock-post-warm.json"
+  },
+  "prefill": {
+    "instrumented_wall_ms": 275.842198,
+    "stage_sum_ms": 274.746248,
+    "coverage": 0.996027,
+    "roles": [
+      {"role": "dense_ffn_projections", "ms": 107.222643, "share_percent": 39.026},
+      {"role": "linear_attention_projections", "ms": 68.976135, "share_percent": 25.105},
+      {"role": "gdn_recurrence", "ms": 66.874461, "share_percent": 24.340},
+      {"role": "full_attention_projections_rope", "ms": 17.505941, "share_percent": 6.372},
+      {"role": "linear_attention_conv", "ms": 3.860134, "share_percent": 1.405},
+      {"role": "full_attention_core_kv", "ms": 3.858451, "share_percent": 1.404},
+      {"role": "dense_ffn_activation", "ms": 1.845667, "share_percent": 0.672},
+      {"role": "lm_head_sampler_transport", "ms": 1.602986, "share_percent": 0.583},
+      {"role": "residual_norm_glue", "ms": 1.159323, "share_percent": 0.422},
+      {"role": "attention_norm", "ms": 0.946338, "share_percent": 0.344},
+      {"role": "input_setup", "ms": 0.849564, "share_percent": 0.309},
+      {"role": "final_norm", "ms": 0.029015, "share_percent": 0.011},
+      {"role": "state_finalize", "ms": 0.015590, "share_percent": 0.006}
+    ],
+    "structural_delta": {
+      "pre_p1_instrumented_wall_ms": 362.126180,
+      "post_p1_instrumented_wall_ms": 275.842198,
+      "pre_p1_stage_sum_ms": 360.336419,
+      "post_p1_stage_sum_ms": 274.746248,
+      "pre_p1_linear_attention_projection_ms": 157.792846,
+      "post_p1_linear_attention_projection_ms": 68.976135,
+      "pre_p1_qkv_gate_group_ms": 118.590201,
+      "post_p1_qkv_gate_group_ms": 28.681214
+    }
+  },
+  "decode": {
+    "instrumented_wall_ms_per_token": 18.524309,
+    "stage_sum_ms_per_token": 17.828447,
+    "coverage": 0.962435,
+    "roles": [
+      {"role": "dense_ffn_projections", "ms_per_token": 4.360968, "share_percent": 24.461},
+      {"role": "linear_attention_projections", "ms_per_token": 4.085783, "share_percent": 22.917},
+      {"role": "full_attention_core_kv", "ms_per_token": 1.814044, "share_percent": 10.175},
+      {"role": "full_attention_projections_rope", "ms_per_token": 1.722295, "share_percent": 9.660},
+      {"role": "lm_head_sampler_transport", "ms_per_token": 1.515607, "share_percent": 8.501},
+      {"role": "gdn_recurrence", "ms_per_token": 1.450847, "share_percent": 8.138},
+      {"role": "attention_norm", "ms_per_token": 1.011159, "share_percent": 5.672},
+      {"role": "residual_norm_glue", "ms_per_token": 0.768806, "share_percent": 4.312},
+      {"role": "linear_attention_conv", "ms_per_token": 0.704218, "share_percent": 3.950},
+      {"role": "dense_ffn_activation", "ms_per_token": 0.251658, "share_percent": 1.412},
+      {"role": "input_setup", "ms_per_token": 0.123585, "share_percent": 0.693},
+      {"role": "final_norm", "ms_per_token": 0.019477, "share_percent": 0.109}
+    ],
+    "note": "Projection families still own 57.21% of the measured stage sum, but production graph ownership remains blocked on D08-M2."
+  },
+  "vulkan_joined_rerank": [
+    {"rank": 1, "package": "D08-P3", "role": "dense_ffn_projections", "hip_ms": 107.222643, "vulkan_ms": 26.072176, "hip_over_vulkan": 4.112531, "projected_request_saving_percent": 29.419163, "disposition": "admitted-next"},
+    {"rank": 2, "package": "D08-P2", "role": "gdn_recurrence", "hip_ms": 66.874461, "vulkan_ms": 13.390707, "hip_over_vulkan": 4.994095, "projected_request_saving_percent": 19.389258, "disposition": "future after P3"},
+    {"rank": 3, "package": "remaining linear projection work", "role": "linear_attention_projections", "hip_ms": 68.976135, "vulkan_ms": 19.349841, "hip_over_vulkan": 3.564687, "projected_request_saving_percent": 17.990827, "disposition": "future after P3/P2 or fold into bounded role-specific route audit"}
+  ],
+  "correctness": {
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "final_logit": 26.918378829956055
+  },
+  "exact_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --gpu-stage-timings --compiler-version-file /tmp/d08-c0/hipcc-version.txt --require-cached-build --json /tmp/d08-p1/q4-wall-clock-post-warm.json"
+}

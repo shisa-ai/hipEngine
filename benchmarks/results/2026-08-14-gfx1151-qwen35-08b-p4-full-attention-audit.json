@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-P4 Qwen3.5-0.8B gfx1151 full-attention sub-role audit",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "sha256-sampled-v1:533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+  },
+  "source_commit": "208a885c9",
+  "protocol": {
+    "scope": "six full-attention layers at pp512 after one complete warmup",
+    "method": "three independent same-stream wall_clock64 direct-leaf marker runs; use median family totals; join exact Vulkan quant/shape operation rows and the corrected M7 package",
+    "prompt": "token 9707 repeated 512 times",
+    "full_attention_layers": [3, 7, 11, 15, 19, 23],
+    "script": "/tmp/d08-p4/split_full_attention.py",
+    "script_sha256": "15d7906f493a1aa50602b1290e59f9c3045a7c1ea09e9a1f613ddaea1c82debc",
+    "raw_runs": [
+      {"path": "/tmp/d08-p4/full-attention-split-r1.json", "sha256": "03c69d82615cdef4eb2052cf1af066dffb691b81d800bb7b5b834c24466f7cc5"},
+      {"path": "/tmp/d08-p4/full-attention-split-r2.json", "sha256": "7e857ed5fd7b0c61454e6b6f75565ab44a2a22e0a5532f55dea69bbb0c4ff003"},
+      {"path": "/tmp/d08-p4/full-attention-split-r3.json", "sha256": "c47ec29e1f5dcf3074c09562b911a0507a550ca3f60e83c98ff1ea16d491080d"}
+    ]
+  },
+  "package": {
+    "hip_ms": 21.622603,
+    "vulkan_ms": 7.465578,
+    "hip_over_vulkan": 2.896307,
+    "matched_gap_ms": 14.157025,
+    "matched_request_bound_percent": 6.060232,
+    "note": "Corrected M7 projection+RoPE and core+KV package; excludes the separately-accounted 0.202224-ms HIP attention norm."
+  },
+  "direct_leaf_runs_ms": {
+    "q_projection": [7.538443, 7.566617, 7.674461],
+    "k_plus_v_projection": [3.659473, 3.680192, 3.671336],
+    "output_projection": [3.685402, 3.733814, 3.747240],
+    "split_qgate": [0.437952, 0.475664, 0.407975],
+    "head_norm_partial_rope": [0.831139, 0.942912, 0.711592]
+  },
+  "matched_subroles": [
+    {
+      "rank": 1,
+      "role": "Q projection",
+      "inventory": "6 x source Q4_K [N4096,K1024], sole q4_k_pack8",
+      "hip_median_ms": 7.566617,
+      "vulkan_ms": 2.198050,
+      "hip_over_vulkan": 3.442423,
+      "matched_gap_ms": 5.368567,
+      "matched_request_bound_percent": 2.298044,
+      "disposition": "selected"
+    },
+    {
+      "rank": 2,
+      "role": "output projection",
+      "inventory": "6 x source Q4_K [N1024,K2048], sole q4_k_pack8",
+      "hip_median_ms": 3.733814,
+      "vulkan_ms": 1.197390,
+      "hip_over_vulkan": 3.118294,
+      "matched_gap_ms": 2.536424,
+      "matched_request_bound_percent": 1.085730,
+      "disposition": "not-selected-by-one-owner-budget"
+    },
+    {
+      "rank": 3,
+      "role": "K and V projections",
+      "inventory": "6 Q4_K K projections plus 2 Q4_K and 4 dense-BF16-from-Q6_K V projections, all [N512,K1024]",
+      "hip_median_ms": 3.671336,
+      "vulkan_ms": 1.239628,
+      "hip_over_vulkan": 2.961643,
+      "matched_gap_ms": 2.431708,
+      "matched_request_bound_percent": 1.040906,
+      "disposition": "not-selected-by-one-owner-budget"
+    },
+    {
+      "rank": 4,
+      "role": "attention core and KV write",
+      "inventory": "six complete AOTriton core/gate plus paged-KV write boundaries; KVLiveSpans retained",
+      "hip_ms": 3.677548,
+      "vulkan_ms": 1.822932,
+      "hip_over_vulkan": 2.017381,
+      "matched_gap_ms": 1.854616,
+      "matched_request_bound_percent": 0.793879,
+      "disposition": "below-one-percent-and-not-selected"
+    },
+    {
+      "rank": 5,
+      "role": "remaining QKV split, casts, head normalization, and partial RoPE",
+      "hip_m7_residual_ms": 2.432862,
+      "direct_split_qgate_median_ms": 0.437952,
+      "direct_head_norm_partial_rope_median_ms": 0.831139,
+      "vulkan_ms": 1.007578,
+      "matched_gap_ms": 1.425284,
+      "matched_request_bound_percent": 0.610101,
+      "disposition": "below-one-percent-and-not-selected",
+      "note": "M7 residual subtracts measured Q/K/V projection totals from its 13.630778-ms broad QKV/head-norm/RoPE stage; direct markers expose split and head-normalization/RoPE but intentionally leave cast/boundary work in the residual."
+    }
+  ],
+  "selected_owner": {
+    "role": "Q projection",
+    "tensor_suffix": ".attn_q.weight",
+    "layers": 6,
+    "source_quant": "Q4_K",
+    "shape": {"in_features": 1024, "out_features": 4096},
+    "current_layout": "q4_k_pack8",
+    "candidate": "sole native Q4T16",
+    "candidate_budget": 1,
+    "screen": "actual blk.3.attn_q.weight at pp512 and c1/c2/c4/c8; direct c1, rowtile c2/c4, exact split-c4x2 or WMMA c8, WMMA pp512",
+    "continue": ">=1.10x pp512, >=1% projected request saving, and no c1/c2/c4/c8 regression from one resident payload; then at most one full-model A/B"
+  },
+  "correctness": {
+    "all_runs_finite": true,
+    "warmup_and_measured_token": 9707,
+    "production_changed": false
+  },
+  "decision": "Select the six Q4_K [N4096,K1024] full-attention Q projections for one sole-native-Q4T16 screen. They carry a 5.37-ms / 2.30% matched request gap, more than twice either remaining eligible projection owner. Do not edit source or screen another owner before this route passes the frozen operational gate."
+}

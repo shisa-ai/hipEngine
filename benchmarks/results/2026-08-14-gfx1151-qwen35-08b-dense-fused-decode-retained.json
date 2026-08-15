@@ -1,0 +1,845 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "retained-default",
+  "task": "D08-D3 Qwen3.5-0.8B gfx1151 Q4 dense gate/up fused-SiLU t128 route",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0",
+    "mall_bytes": 33554432
+  },
+  "base_commit": "66a67f01a",
+  "source_state": "base commit plus the scoped D08-D3 runtime/registry changes retained in the same logical-unit commit as this artifact",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "candidate": "gfx1151 Qwen3.5-0.8B Q4 pack8 dense gate/up fused-SiLU t128 c1 registry owner",
+  "protocol": {
+    "resident_sessions": "simultaneous control and candidate",
+    "correctness_prompts": 18,
+    "correctness_decode_steps": 24,
+    "correctness_rule": "candidate consumes baseline token prefix",
+    "performance": "one warmup each then five counterbalanced pairs per eager/graph scope",
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "gdn_mode": "chain_peer_cluster8",
+    "control_isolation": "simultaneous identical session with file-type identity sentinel after materialization; disables only the new request-scoped decode policy",
+    "binding_gate": "production graph decode improves; eager decode is diagnostic; prefill same-route median must remain within 1%"
+  },
+  "implementation": {
+    "backend_capability": "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "registry_key": [
+      "hip_gfx1151",
+      "linear_pair_silu",
+      "gguf_q4_k",
+      "pack8_dual_decode_t128_bf16_bf16_out"
+    ],
+    "scope": {
+      "model_name": "Qwen3.5-0.8B",
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "rows": 1,
+      "in_features": 1024,
+      "out_features": 3584
+    },
+    "schedule": "existing q4_k pack8 dual SiLU body, 128 threads",
+    "fallback": "generic c1 keeps dual-t32 plus separate BF16 SiLU; rows>1 keeps existing fused/unfused policy",
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0
+  },
+  "inventory": {
+    "control": {
+      "model_name": "Qwen3.5-0.8B",
+      "file_type_name": "CONTROL_MOSTLY_Q4_K_M",
+      "gate_up_count": 48,
+      "gate_up_layouts": [
+        "q4_k_pack8"
+      ],
+      "gate_up_quant_keys": [
+        "gguf_q4_k"
+      ],
+      "gate_up_allocation_bytes": 132120576,
+      "all_weight_physical_bytes": 838835456
+    },
+    "candidate": {
+      "model_name": "Qwen3.5-0.8B",
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "gate_up_count": 48,
+      "gate_up_layouts": [
+        "q4_k_pack8"
+      ],
+      "gate_up_quant_keys": [
+        "gguf_q4_k"
+      ],
+      "gate_up_allocation_bytes": 132120576,
+      "all_weight_physical_bytes": 838835456
+    }
+  },
+  "correctness": {
+    "summary": {
+      "passed": true,
+      "prompts": 18,
+      "transitions": 450,
+      "top1_matches": 446,
+      "top1_agreement": 0.9911111111111112,
+      "kl_max": 0.0028434183546496797
+    },
+    "prompts": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+        "prompt_token_sha256_i64": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+        "prompt_tokens": 40,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0009004978115586332,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+        "prompt_token_sha256_i64": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+        "prompt_tokens": 50,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0003337882023792148,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+        "prompt_token_sha256_i64": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+        "prompt_tokens": 47,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0007967963572502935,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+        "prompt_token_sha256_i64": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e",
+        "prompt_tokens": 52,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.001370163931195399,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+        "prompt_token_sha256_i64": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+        "prompt_tokens": 39,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.000991577351253601,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+        "prompt_token_sha256_i64": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+        "prompt_tokens": 40,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0007670218659965044,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+        "prompt_token_sha256_i64": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+        "prompt_tokens": 43,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0007674692662494251,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+        "prompt_token_sha256_i64": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814",
+        "prompt_tokens": 43,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0015505221154444686,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+        "prompt_token_sha256_i64": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467",
+        "prompt_tokens": 64,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0007792143507765579,
+          "top1_matches": 24,
+          "top1_agreement": 0.96,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+        "prompt_token_sha256_i64": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6",
+        "prompt_tokens": 71,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0006128735794197127,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+        "prompt_token_sha256_i64": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413",
+        "prompt_tokens": 55,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0010700564911369996,
+          "top1_matches": 24,
+          "top1_agreement": 0.96,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+        "prompt_token_sha256_i64": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5",
+        "prompt_tokens": 52,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.00029980515611247336,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+        "prompt_token_sha256_i64": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c",
+        "prompt_tokens": 45,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0010275715991495038,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+        "prompt_token_sha256_i64": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4",
+        "prompt_tokens": 56,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0006032431436593533,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+        "prompt_token_sha256_i64": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+        "prompt_tokens": 53,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0008197711709173171,
+          "top1_matches": 23,
+          "top1_agreement": 0.92,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+        "prompt_token_sha256_i64": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e",
+        "prompt_tokens": 45,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0028434183546496797,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+        "prompt_token_sha256_i64": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7",
+        "prompt_tokens": 52,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0009585733900659178,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+        "prompt_token_sha256_i64": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11",
+        "prompt_tokens": 56,
+        "summary": {
+          "passed": true,
+          "kl_max": 0.0009552790386595841,
+          "top1_matches": 25,
+          "top1_agreement": 1.0,
+          "transitions_total": 25
+        }
+      }
+    ]
+  },
+  "performance": {
+    "eager": {
+      "control_summary": {
+        "prefill_ms": 209.31966,
+        "prefill_tok_s": 2446.0196428753993,
+        "decode_ms": 1961.395001,
+        "decode_tok_s": 65.25967484098834
+      },
+      "candidate_summary": {
+        "prefill_ms": 208.321269,
+        "prefill_tok_s": 2457.7423249087446,
+        "decode_ms": 1917.699912,
+        "decode_tok_s": 66.74662662236176
+      },
+      "speedup": {
+        "prefill_wall": 1.0047925543310703,
+        "decode_wall": 1.022785154614952
+      },
+      "candidate_pair_wins": {
+        "prefill": 3,
+        "decode": 5
+      },
+      "trajectory_pairs_exact": true,
+      "order": [
+        {
+          "pair": 0,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        },
+        {
+          "pair": 1,
+          "order": [
+            "candidate",
+            "control"
+          ]
+        },
+        {
+          "pair": 2,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        },
+        {
+          "pair": 3,
+          "order": [
+            "candidate",
+            "control"
+          ]
+        },
+        {
+          "pair": 4,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        }
+      ],
+      "control": [
+        {
+          "prefill_ms": 209.31966,
+          "prefill_tok_s": 2446.0196428753993,
+          "decode_ms": 1989.834259,
+          "decode_tok_s": 64.32696563598567,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 207.147259,
+          "prefill_tok_s": 2471.671614056935,
+          "decode_ms": 1941.866833,
+          "decode_tok_s": 65.91595150850388,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 212.349297,
+          "prefill_tok_s": 2411.1217095293705,
+          "decode_ms": 1961.395001,
+          "decode_tok_s": 65.25967484098834,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 213.420416,
+          "prefill_tok_s": 2399.0207197422014,
+          "decode_ms": 1969.926845,
+          "decode_tok_s": 64.977032180096,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 206.044954,
+          "prefill_tok_s": 2484.894631294878,
+          "decode_ms": 1951.368187,
+          "decode_tok_s": 65.59500193389184,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        }
+      ],
+      "candidate": [
+        {
+          "prefill_ms": 206.578212,
+          "prefill_tok_s": 2478.4801603375286,
+          "decode_ms": 1945.38398,
+          "decode_tok_s": 65.79677910167636,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 212.504698,
+          "prefill_tok_s": 2409.3584980412998,
+          "decode_ms": 1917.699912,
+          "decode_tok_s": 66.74662662236176,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 208.321269,
+          "prefill_tok_s": 2457.7423249087446,
+          "decode_ms": 1921.230423,
+          "decode_tok_s": 66.62397100714661,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 207.341964,
+          "prefill_tok_s": 2469.3505845251857,
+          "decode_ms": 1897.717591,
+          "decode_tok_s": 67.44944590651686,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 208.484025,
+          "prefill_tok_s": 2455.8236536348527,
+          "decode_ms": 1909.175268,
+          "decode_tok_s": 67.04465647833858,
+          "graph_capture_ms": 0.0,
+          "graph_effective": false,
+          "final_token_id": 9707,
+          "finite": true
+        }
+      ],
+      "final_quality": [
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        }
+      ]
+    },
+    "graph": {
+      "control_summary": {
+        "prefill_ms": 205.403593,
+        "prefill_tok_s": 2492.653573007362,
+        "decode_ms": 1256.588007,
+        "decode_tok_s": 101.86313993684327
+      },
+      "candidate_summary": {
+        "prefill_ms": 206.001764,
+        "prefill_tok_s": 2485.4156103245796,
+        "decode_ms": 1160.345484,
+        "decode_tok_s": 110.3119732570959
+      },
+      "speedup": {
+        "prefill_wall": 0.9970962821463994,
+        "decode_wall": 1.0829429892450895
+      },
+      "candidate_pair_wins": {
+        "prefill": 1,
+        "decode": 5
+      },
+      "trajectory_pairs_exact": true,
+      "order": [
+        {
+          "pair": 0,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        },
+        {
+          "pair": 1,
+          "order": [
+            "candidate",
+            "control"
+          ]
+        },
+        {
+          "pair": 2,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        },
+        {
+          "pair": 3,
+          "order": [
+            "candidate",
+            "control"
+          ]
+        },
+        {
+          "pair": 4,
+          "order": [
+            "control",
+            "candidate"
+          ]
+        }
+      ],
+      "control": [
+        {
+          "prefill_ms": 205.403593,
+          "prefill_tok_s": 2492.653573007362,
+          "decode_ms": 1213.816208,
+          "decode_tok_s": 105.45253816548149,
+          "graph_capture_ms": 18.545004,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 204.137821,
+          "prefill_tok_s": 2508.109460029947,
+          "decode_ms": 1264.254613,
+          "decode_tok_s": 101.24542847920776,
+          "graph_capture_ms": 18.144824,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 205.408652,
+          "prefill_tok_s": 2492.592181560103,
+          "decode_ms": 1256.588007,
+          "decode_tok_s": 101.86313993684327,
+          "graph_capture_ms": 17.93467,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 207.338489,
+          "prefill_tok_s": 2469.3919709234497,
+          "decode_ms": 1219.583832,
+          "decode_tok_s": 104.95383477664863,
+          "graph_capture_ms": 17.474157,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 203.595756,
+          "prefill_tok_s": 2514.787194287095,
+          "decode_ms": 1262.414488,
+          "decode_tok_s": 101.39300619306582,
+          "graph_capture_ms": 17.977119,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        }
+      ],
+      "candidate": [
+        {
+          "prefill_ms": 206.51161,
+          "prefill_tok_s": 2479.279494261848,
+          "decode_ms": 1160.345484,
+          "decode_tok_s": 110.3119732570959,
+          "graph_capture_ms": 17.52387,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 205.32208,
+          "prefill_tok_s": 2493.643158105548,
+          "decode_ms": 1162.069133,
+          "decode_tok_s": 110.14835207743187,
+          "graph_capture_ms": 17.581408,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 207.534627,
+          "prefill_tok_s": 2467.0581839819915,
+          "decode_ms": 1156.161154,
+          "decode_tok_s": 110.71120972812066,
+          "graph_capture_ms": 17.331991,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 203.049091,
+          "prefill_tok_s": 2521.5577054713335,
+          "decode_ms": 1157.31697,
+          "decode_tok_s": 110.60064210412467,
+          "graph_capture_ms": 17.550099,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        },
+        {
+          "prefill_ms": 206.001764,
+          "prefill_tok_s": 2485.4156103245796,
+          "decode_ms": 1162.258062,
+          "decode_tok_s": 110.13044708826463,
+          "graph_capture_ms": 17.561671,
+          "graph_effective": true,
+          "final_token_id": 9707,
+          "finite": true
+        }
+      ],
+      "final_quality": [
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        },
+        {
+          "kl_max": 1.0303402068356404e-06,
+          "top1_match": true,
+          "max_abs": 0.16528654098510742
+        }
+      ]
+    }
+  },
+  "graph_mechanical": {
+    "control_nodes": [
+      335,
+      335,
+      335,
+      335,
+      335
+    ],
+    "candidate_nodes": [
+      311,
+      311,
+      311,
+      311,
+      311
+    ],
+    "node_reduction": [
+      24,
+      24,
+      24,
+      24,
+      24
+    ],
+    "expected_reduction": 24,
+    "representative_inventory": {
+      "control": {
+        "nodes": 335,
+        "kernel_nodes": 335,
+        "node_types": {
+          "0": 335
+        },
+        "kernel_name_counts": {
+          "_Z20gguf_bf16_add_kernelPKtS0_Ptl": 24,
+          "_Z35gguf_q6_k_embedding_bf16_out_kernelPKlPKhPtiii": 1,
+          "_Z35gguf_rmsnorm_bf16_f32_weight_kernelPKtPKfPtfl": 25,
+          "_Z39gguf_add_rmsnorm_bf16_f32_weight_kernelPKtS0_PKfPtS3_fl": 24,
+          "_Z59gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernelPKfS0_S0_S0_S0_S0_PKlPfS3_flllll": 6,
+          "_ZN12_GLOBAL__N_118bf16_to_f32_kernelEPKtPfl": 6,
+          "_ZN12_GLOBAL__N_118f32_to_bf16_kernelEPKfPtl": 18,
+          "_ZN12_GLOBAL__N_120argmax_stage1_kernelEPKfPfPll": 1,
+          "_ZN12_GLOBAL__N_120argmax_stage2_kernelEPKfPKllPlPf": 1,
+          "_ZN12_GLOBAL__N_120q6_k_t16_gemv_kernelItfEEvPKT_PKhPT0_lll": 1,
+          "_ZN12_GLOBAL__N_121dense_gemv_out_kernelItEEvPKT_S3_PS1_lll": 16,
+          "_ZN12_GLOBAL__N_128silu_mul_separate_out_kernelItEEvPKT_S3_PS1_ll": 24,
+          "_ZN12_GLOBAL__N_130qwen35_split_qgate_bf16_kernelEPKtPfPtlll": 6,
+          "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttLb1EEEvPKT_PKhS5_PT0_S7_llll": 18,
+          "_ZN12_GLOBAL__N_132record_i64_scalar_indexed_kernelEPKlPlS2_l": 1,
+          "_ZN12_GLOBAL__N_134advance_decode_position_i64_kernelEPlS0_": 1,
+          "_ZN12_GLOBAL__N_134gguf_q4_k_pack8_prefill_out_kernelIttEEvPKT_PKiPKfS7_PT0_iiii": 40,
+          "_ZN12_GLOBAL__N_134qk_t16_selected_direct_gemv_kernelItLi5ELb0ELb0ELb1EEEvPKT_PKlPKhPS1_lllll": 36,
+          "_ZN12_GLOBAL__N_137qwen35_full_attn_gate_mul_bf16_kernelEPKfPKtPtl": 6,
+          "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb0EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 26,
+          "_ZN12_GLOBAL__N_141q4_k_t16_dense_single_local32_gemv_kernelItEEvPKT_PKhPS1_ll": 6,
+          "_ZN12_GLOBAL__N_142qwen35_linear_attn_conv_decode_lowp_kernelItEEvPKT_PfPKfS4_ll": 18,
+          "_ZN12_GLOBAL__N_145qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernelItLb0EEEvPKfPKT_S5_S5_S2_S2_S2_PfS6_Ptfllll": 18,
+          "_ZN12_GLOBAL__N_156qwen35_write_paged_kv_mixed_value_position_tensor_kernelItEEvPKfPKT_PtS6_PKiPKlllll": 6,
+          "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EEEvPKfPKtS4_PKiPKlPflllllllf": 6
+        }
+      },
+      "candidate": {
+        "nodes": 311,
+        "kernel_nodes": 311,
+        "node_types": {
+          "0": 311
+        },
+        "kernel_name_counts": {
+          "_Z20gguf_bf16_add_kernelPKtS0_Ptl": 24,
+          "_Z35gguf_q6_k_embedding_bf16_out_kernelPKlPKhPtiii": 1,
+          "_Z35gguf_rmsnorm_bf16_f32_weight_kernelPKtPKfPtfl": 25,
+          "_Z39gguf_add_rmsnorm_bf16_f32_weight_kernelPKtS0_PKfPtS3_fl": 24,
+          "_Z59gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernelPKfS0_S0_S0_S0_S0_PKlPfS3_flllll": 6,
+          "_ZN12_GLOBAL__N_118bf16_to_f32_kernelEPKtPfl": 6,
+          "_ZN12_GLOBAL__N_118f32_to_bf16_kernelEPKfPtl": 18,
+          "_ZN12_GLOBAL__N_120argmax_stage1_kernelEPKfPfPll": 1,
+          "_ZN12_GLOBAL__N_120argmax_stage2_kernelEPKfPKllPlPf": 1,
+          "_ZN12_GLOBAL__N_120q6_k_t16_gemv_kernelItfEEvPKT_PKhPT0_lll": 1,
+          "_ZN12_GLOBAL__N_121dense_gemv_out_kernelItEEvPKT_S3_PS1_lll": 16,
+          "_ZN12_GLOBAL__N_130qwen35_split_qgate_bf16_kernelEPKtPfPtlll": 6,
+          "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttLb1EEEvPKT_PKhS5_PT0_S7_llll": 18,
+          "_ZN12_GLOBAL__N_132record_i64_scalar_indexed_kernelEPKlPlS2_l": 1,
+          "_ZN12_GLOBAL__N_134advance_decode_position_i64_kernelEPlS0_": 1,
+          "_ZN12_GLOBAL__N_134gguf_q4_k_pack8_prefill_out_kernelIttEEvPKT_PKiPKfS7_PT0_iiii": 40,
+          "_ZN12_GLOBAL__N_134qk_t16_selected_direct_gemv_kernelItLi5ELb0ELb0ELb1EEEvPKT_PKlPKhPS1_lllll": 36,
+          "_ZN12_GLOBAL__N_137qwen35_full_attn_gate_mul_bf16_kernelEPKfPKtPtl": 6,
+          "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb0EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 2,
+          "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb1EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 24,
+          "_ZN12_GLOBAL__N_141q4_k_t16_dense_single_local32_gemv_kernelItEEvPKT_PKhPS1_ll": 6,
+          "_ZN12_GLOBAL__N_142qwen35_linear_attn_conv_decode_lowp_kernelItEEvPKT_PfPKfS4_ll": 18,
+          "_ZN12_GLOBAL__N_145qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernelItLb0EEEvPKfPKT_S5_S5_S2_S2_S2_PfS6_Ptfllll": 18,
+          "_ZN12_GLOBAL__N_156qwen35_write_paged_kv_mixed_value_position_tensor_kernelItEEvPKfPKT_PtS6_PKiPKlllll": 6,
+          "_ZN12_GLOBAL__N_157qwen35_paged_full_attn_decode_context_tensor_batch_kernelILb1ELi2ELb0EEEvPKfPKtS4_PKiPKlPflllllllf": 6
+        }
+      }
+    }
+  },
+  "result": {
+    "passed": true,
+    "graph_decode_old_tok_s": 101.86313993684327,
+    "graph_decode_new_tok_s": 110.3119732570959,
+    "graph_decode_percent": 8.294298924508947,
+    "graph_decode_wins": 5,
+    "eager_decode_percent": 2.278515461495201,
+    "eager_decode_wins": 5,
+    "graph_prefill_percent": -0.29037178536005515,
+    "eager_prefill_percent": 0.47925543310702867,
+    "nodes_old": 335,
+    "nodes_new": 311
+  },
+  "validation": {
+    "red_nodes": "three expected failures before implementation: missing registry variant, runner retained unfused c1, and missing model/backend/shape resolver",
+    "green_nodes": "six focused policy/registry/runner/fallback tests pass",
+    "affected_bundle": "154 passed; one directly affected expected-registration-list failure, then repaired node plus t128 binding node pass. No broad rerun per focused-repair rule.",
+    "full_model_gate": true
+  },
+  "provenance": {
+    "script": "/tmp/d08-d3-gate/q4_dense_fused_full_ab.py",
+    "script_sha256": "872e00cc9e7640ca991f02f5310f098caaf26bdc7e8ea9d2185a696d5d6411c8",
+    "raw": "/tmp/d08-d3-gate/q4-dense-fused-full-ab.json",
+    "raw_sha256": "f8d275a6356bcdb61b098fd528e379b8314afdf4974e2c855bece1d9f4950485",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d3-gate/q4_dense_fused_full_ab.py"
+  },
+  "next": "Mandatory current graph/direct rerank after D3 before selecting D4."
+}

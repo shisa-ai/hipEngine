@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -10,6 +11,7 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
+    build_runtime_state,
     commit_packed_decode_graph_step,
     copy_i32_to_i64,
     embedding_lookup_batch_bf16_i64,
@@ -31,6 +33,8 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_scalar,
     set_i64_vector,
     unpack_verify_chain_dynamic_metadata_i64,
+    wall_clock_mark_u64,
+    wall_clock_rate_khz,
 )
 from hipengine.kernels.registry import resolve
 
@@ -190,6 +194,31 @@ def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert artifact.output_path.name == "runtime_state.so"
     assert any(str(path).endswith("state.hip") for path in artifact.sources)
     assert "hipcc" in artifact.command[0]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_wall_clock_marker_matches_cpu_sleep_interval() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_runtime_state(load=True)
+    ticks = np.empty(3, dtype=np.uint64)
+    device_ticks = malloc(ticks.nbytes, runtime=runtime)
+    try:
+        wall_clock_mark_u64(device_ticks.ptr, 0, library=library, runtime=runtime)
+        runtime.device_synchronize()
+        time.sleep(0.02)
+        wall_clock_mark_u64(device_ticks.ptr, 1, library=library, runtime=runtime)
+        wall_clock_mark_u64(device_ticks.ptr, 2, library=library, runtime=runtime)
+        copy_device_to_host(host_array_ptr(ticks), device_ticks, runtime=runtime)
+    finally:
+        free(device_ticks, runtime=runtime)
+
+    rate_khz = wall_clock_rate_khz(library=library, runtime=runtime)
+    slept_ms = (int(ticks[1]) - int(ticks[0])) / rate_khz
+    adjacent_ms = (int(ticks[2]) - int(ticks[1])) / rate_khz
+    assert 15.0 <= slept_ms <= 250.0
+    assert 0.0 < adjacent_ms < 20.0
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
