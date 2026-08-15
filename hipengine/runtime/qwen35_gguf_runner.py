@@ -2631,22 +2631,36 @@ class Qwen35GGUFFullStackRunner:
         """
 
         plan = self._gdn_prefill_plan()
-        requested_mode = _gguf_gdn_prefill_mode()
-        if requested_mode == "auto":
-            quant_shape = (
-                str(getattr(self.weights, "file_type_name", "")).strip().lower(),
-                int(cfg.ssm_group_count),
-                int(cfg.ssm_time_step_rank),
-                int(cfg.ssm_state_size),
-                int(self.ssm_value_dim),
-            )
-            mode = (plan.auto_modes_by_quant_shape or {}).get(
-                quant_shape, plan.auto_mode
-            )
-        elif requested_mode == "exact":
-            mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
+        frozen_mode = getattr(scratch, "gdn_effective_mode", None)
+        scratch_diagnostic = bool(
+            getattr(scratch, "gdn_mode_diagnostic", False)
+        )
+        if frozen_mode is not None and not scratch_diagnostic:
+            # Session-frozen route (design review 2026-08-15): the scratch was
+            # sized and liveness-planned for exactly this mode at allocation;
+            # later environment mutations cannot redirect a production
+            # session. Verify-gate superset scratch keeps the alternation
+            # path below. ``requested_mode`` is synthetic so no env-derived
+            # explicit-unavailable error path fires for a frozen session.
+            requested_mode = "frozen"
+            mode = frozen_mode
         else:
-            mode = requested_mode
+            requested_mode = _gguf_gdn_prefill_mode()
+            if requested_mode == "auto":
+                quant_shape = (
+                    str(getattr(self.weights, "file_type_name", "")).strip().lower(),
+                    int(cfg.ssm_group_count),
+                    int(cfg.ssm_time_step_rank),
+                    int(cfg.ssm_state_size),
+                    int(self.ssm_value_dim),
+                )
+                mode = (plan.auto_modes_by_quant_shape or {}).get(
+                    quant_shape, plan.auto_mode
+                )
+            elif requested_mode == "exact":
+                mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
+            else:
+                mode = requested_mode
         if requested_mode == "auto" and not _gguf_gdn_prefill_plan_has_mode(
             plan, mode
         ):
@@ -22263,9 +22277,26 @@ def _allocate_prefill_scratch_liveness_arenas(
     )
 
 
-def _gguf_gdn_prefill_effective_mode(backend: str, *, weights=None, cfg=None) -> str:
+def _gguf_gdn_prefill_session_mode(
+    backend: str,
+    *,
+    weights=None,
+    cfg=None,
+    plan=None,
+) -> str:
+    """Resolve the final effective GDN prefill mode for one session.
+
+    Single source of truth for Q/K sizing, scratch liveness, conv_out
+    lifetime planning, and dispatch: environment selection (``auto`` /
+    ``exact`` / explicit), the architecture's quant-shape plugin keys, and
+    kernel-availability fallback all resolve here. Session-scratch allocation
+    calls this once and freezes the result; dispatch consumes the frozen
+    value unless the diagnostic superset-scratch flag is set.
+    """
+
     requested_mode = _gguf_gdn_prefill_mode()
     if requested_mode == "auto":
+        mode = _gguf_gdn_prefill_backend_auto_mode(backend)
         if weights is not None and cfg is not None:
             quant_shape_modes = _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
                 backend
@@ -22277,13 +22308,34 @@ def _gguf_gdn_prefill_effective_mode(backend: str, *, weights=None, cfg=None) ->
                 int(cfg.ssm_state_size),
                 int(cfg.ssm_inner_size) // int(cfg.ssm_time_step_rank),
             )
-            return quant_shape_modes.get(
-                quant_shape, _gguf_gdn_prefill_backend_auto_mode(backend)
-            )
-        return _gguf_gdn_prefill_backend_auto_mode(backend)
+            mode = quant_shape_modes.get(quant_shape, mode)
+        try:
+            if plan is None:
+                plan = _resolve_gguf_gdn_prefill_plan(backend)
+            if not _gguf_gdn_prefill_plan_has_mode(plan, mode):
+                if plan.has_fused:
+                    return "fused"
+                if plan.has_chain:
+                    return "chain"
+                return "auto"
+        except ValueError:
+            # Unvalidated/exotic backends keep the pre-fallback selection;
+            # availability fallback requires a registered kernel plan.
+            pass
+        return mode
     if requested_mode == "exact":
         return _gguf_gdn_prefill_backend_exact_mode(backend)
     return requested_mode
+
+
+def _gguf_gdn_prefill_scratch_diagnostic() -> bool:
+    """True when verify-gate superset scratch permits in-session mode flips."""
+
+    return any(
+        _env_flag(name, False)
+        for name in os.environ
+        if name.startswith("HIPENGINE_GGUF_VERIFY_")
+    )
 
 
 def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
@@ -22298,7 +22350,7 @@ def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
     if not isinstance(backend, str):
         return value_heads
     try:
-        mode = _gguf_gdn_prefill_effective_mode(backend, weights=weights, cfg=cfg)
+        mode = _gguf_gdn_prefill_session_mode(backend, weights=weights, cfg=cfg)
     except ValueError:
         return value_heads
     if mode == "chain_compact_peer_wave32":
@@ -22358,7 +22410,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
             return None
     if int(rows) < max(1, min_rows):
         return None
-    effective_mode = _gguf_gdn_prefill_effective_mode(
+    effective_mode = _gguf_gdn_prefill_session_mode(
         backend, weights=weights, cfg=cfg
     )
     if effective_mode in {
@@ -22561,7 +22613,12 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
-    runtime_state_library: object | None = None
+    runtime_state_library: object
+    # Session-frozen GDN prefill route (design review 2026-08-15): the final
+    # effective mode resolved once at scratch allocation; dispatch consumes it
+    # unless gdn_mode_diagnostic admits verify-gate alternation.
+    gdn_effective_mode: str = "auto"
+    gdn_mode_diagnostic: bool = False
     metadata_prepare_path: str = "host_upload"
     allocation_mode: str = "dedicated"
     allocation_offsets: Mapping[str, tuple[int, int]] = field(
@@ -22826,7 +22883,7 @@ class _GGUFFullAttentionPrefillScratch:
         )
         if liveness_disabled_fields is not None:
             if (
-                _gguf_gdn_prefill_effective_mode(
+                _gguf_gdn_prefill_session_mode(
                     runner.backend,
                     weights=getattr(runner, "weights", None),
                     cfg=getattr(getattr(runner, "weights", None), "config", None),
@@ -23006,10 +23063,22 @@ class _GGUFFullAttentionPrefillScratch:
             row_positions=positions_tensor,
             span_role="prefill",
         )
+        weights = getattr(runner, "weights", None)
+        cfg = getattr(weights, "config", None)
+        try:
+            gdn_mode = _gguf_gdn_prefill_session_mode(
+                runner.backend, weights=weights, cfg=cfg
+            )
+        except ValueError:
+            # Unvalidated/exotic backends have no capability policy; keep the
+            # neutral frozen marker so dispatch still resolves env-side.
+            gdn_mode = "auto"
         return cls(
             **fields,
             rows=rows,
             backend=runner.backend,
+            gdn_effective_mode=gdn_mode,
+            gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
             block_table_tensor=block_table_tensor,
             positions_tensor=positions_tensor,
             context_counts_tensor=context_tensor,
