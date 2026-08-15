@@ -94,8 +94,10 @@ should be removed or collapsed.
   native-row fallback failed scalar-AR exactness on two Japanese prompts and is
   superseded. B4 is opt-in and now uses eager proposal plus serial-exact target
   rows; only tail cycles whose effective budget falls to B1-B3 use native
-  graphs. The retained device graph ladder remains B1-B3 / rows 2-4, and B3
-  remains the default while clean full-suite evidence is pending.
+  graphs. The retained device graph ladder remains B1-B3 / rows 2-4. The clean
+  full suite is exact but rejects B4 for performance: Qwen3.6 B3/B4 is
+  **22.207/5.095 tok/s**, and Qwen3.8 is **19.808/4.586 tok/s**. B3 remains
+  default; exact B4 is diagnostic-only.
 - Removal trigger: admit B4 to both proposal and target device graphs only after
   rows=5 target state/KV/hidden commits pass reject/partial/full, category,
   heldout, long-context, GPU/CPU acceptance, and teardown gates. Promote B4 by
