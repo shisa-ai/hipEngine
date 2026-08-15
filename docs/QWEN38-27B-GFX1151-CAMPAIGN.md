@@ -492,7 +492,10 @@ Existing planar-Q6 one-plane Q8_1/dp4a is closed at t64/t128/t256 too: every
 actual FFN-down layer regresses, with best t256 projecting -0.103% wall. The
 exact dense-Q5T16 coefficient-publication screen is closed as well: wave-uniform
 metadata shuffles regress all five actual recurrent-output layers by 1.71-3.43%
-and project -0.193% selected wall.
+and project -0.193% selected wall. The existing generic split-K3 attention
+transfer is closed at the p512 decode window too: graph AR regresses both fresh
+controls by 0.124-0.134% and changes the fixed-token final logit, far from the
+48.071% attention-package saving required for a 1% request advance.
 
 ### P6 — Exact B3 MTP
 
