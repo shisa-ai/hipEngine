@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "rejected",
+  "task": "D08-X4 heterogeneous Q5T16 QKV plus pack8-Q4 gate operation-complete prefill screen",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "source": {
+    "base_commit": "3c80d0c49799cdd4534bccbbf960df377806611f",
+    "measurement_tree_clean": false,
+    "transient_diff_removed": true,
+    "transient_patch_path": "/tmp/d08-x4-rejected.patch",
+    "transient_patch_sha256": "60a0cfac87a60eba8be9e4bde9b3c1ed874e738218cfa865fe215571b3f7502d"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15 / package 7.2.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+    "quant": "MOSTLY_Q4_K_M",
+    "layers_screened": [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22]
+  },
+  "mechanism": {
+    "owner": "linear-attention QKV plus gate prefill",
+    "shape": {
+      "rows": 512,
+      "in_features": 1024,
+      "qkv_out_features": 6144,
+      "gate_out_features": 2048
+    },
+    "weights": "resident Q5T16 QKV plus resident pack8-Q4 gate; no added resident bytes",
+    "schedule": "128 threads, 32 columns x 256 rows, K256 panels, 32-KiB LDS; QKV-only tail remains under the same owner",
+    "reuse": "activation fragments reused across QKV and gate in the overlapping 2,048 output columns",
+    "fallback": "registered Q5T16 and pack8-Q4 singleton WMMA prefill",
+    "boundary": "separate BF16 QKV and gate outputs"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt uv run python -u /tmp/q5t16_q4pack8_qkv_gate_screen.py",
+    "script_sha256": "876dde1ca0c1f84f03764a1e556efa52996006342dd7b53f97b25bc5afcd5acb",
+    "method": "actual resident weights from all 18 linear-attention layers; five counter-rotated blocks; 10 complete 18-pair calls per sample after warmup",
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "continue_gate": {
+      "byte_exact": true,
+      "minimum_combined_leaf_speedup": 1.1,
+      "no_scratch_or_spill": true
+    }
+  },
+  "measurement": {
+    "control_ms_samples": [21.619730300153606, 19.577510000090115, 19.48013410146814, 19.84262479818426, 19.596339200506918],
+    "candidate_ms_samples": [20.0058334012283, 19.727236099424772, 19.19492550077848, 19.063834298867732, 19.481938501121476],
+    "control_median_ms": 19.596339200506918,
+    "candidate_median_ms": 19.481938501121476,
+    "saving_ms": 0.11440069938544184,
+    "speedup": 1.0058721414903786,
+    "projected_fraction_of_fresh_exact_core_wall": 0.001093951474122023,
+    "qkv_byte_exact": true,
+    "gate_byte_exact": true,
+    "qkv_max_bit_difference": 0,
+    "gate_max_bit_difference": 0,
+    "finite": true
+  },
+  "gates": {
+    "correctness_passed": true,
+    "speedup_passed": false,
+    "scratch_profile_run": false,
+    "complete_model_run": false,
+    "cumulative_semantic_run": false,
+    "reason_later_gates_not_run": "The candidate missed the predeclared 1.10x leaf continuation threshold; the protocol stops before expensive downstream gates."
+  },
+  "validation": {
+    "red": "Focused registry test failed collection because the wrapper did not exist.",
+    "green_transient": "Synthetic dual-output kernel test was byte-exact; focused registry, dispatch, and model-policy tests passed before rollback.",
+    "final_tree": "All transient kernel, wrapper, route, policy, and test changes removed; only rejection evidence and rollups remain."
+  },
+  "decision": "Reject and remove. The exact 0.59% combined-leaf gain is far below the 1.10x continuation gate and projects only 0.11% of complete exact wall.",
+  "revisit_trigger": "A materially different schedule with a pre-measured or modeled >=1.10x combined QKV+gate leaf, not another tile ladder."
+}
