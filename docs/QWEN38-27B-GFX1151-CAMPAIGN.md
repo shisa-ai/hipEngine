@@ -1,16 +1,17 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership complete on 2026-08-15; the bounded P4
-prefill ladder is closed below G2, and P5 has retained its first exact-
-trajectory decode win but remains open.** The working performance set is
+prefill ladder is closed below G2, P5 has retained its first exact-trajectory
+decode wins but remains open, and the K0-K3 native INT8 K/V ladder is closed
+below K4 on model-level correctness.** The working performance set is
 `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
-valid exact MTP, while minimizing resident and whole-process memory. A separate
-lane will determine whether native INT8 K/V can meet the repository quality
-contract without losing the production graph path or hiding a BF16 cache.
+valid exact MTP, while minimizing resident and whole-process memory. The
+separate native INT8 K/V lane found no representation that transfers through
+1K/8 under the quality contract; BF16 therefore remains the supported route.
 
 The retained-path P4 development gate is `343.320/338.038/332.676` prefill
 tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
@@ -664,6 +665,23 @@ If pure INT8 fails, use this bounded order:
    category heldouts and full suite. A map selected from the one failing prompt
    cannot be promoted.
 
+K0-K3 closed on 2026-08-15 without a supported Qwen3.8 route. Pure per-token/
+head INT8 passes native 512/8 but rejects at 1K/8; fixed tail-four Hadamard
+rejects at 512/8 on one prompt. All-layer Hadamard passes its host screen and
+native 512/8, then rejects native 1K/8. The only frozen map was selected from
+six train prompts as BF16 ordinals `[3,6,8,9,10,12,13,14,15]` and Hadamard
+INT8 ordinals `[0,1,2,4,5,7,11]`; its one allowed host transfer and native
+512/8 pass, but native 1K/8 rejects at aggregate mean/max KL
+**0.053384/5.173312** because `mixed_v1` reaches **0.586860/5.173312**, despite
+100% top-1. Every native audit reports the exact fixed map, zero persistent
+BF16 mirror bytes, and zero retained prefill-oracle buffers. A cached gfx1151
+CPU-reference trace confirms the expected 24Q/4KV INT8 split-K producer and
+reducer with zero scratch. The shape stop rule
+therefore prevents every 4K, graph, MTP, capacity, and long-context promotion
+gate. Temporary all-layer/frozen runtime surfaces were removed; BF16 remains
+the only supported campaign route. Full evidence is in
+[`2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json).
+
 Do not reopen recent-token two-arena tails, key-only, block16, clipping, or
 simple prefix masks without a materially new representation signal; those
 families are already rejected in `KVCACHE.md`.
@@ -736,7 +754,7 @@ Do not start or repeat these without a new measured complete-owner premise:
 | **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
 | **G5 Memory win** | Matched process GTT delta is <= the lower llama backend at all shapes and selected B3; tracked teardown is zero. |
-| **K-G1 INT8 working-set support** | 512/1K/4K quality, no-shadow, bounded peak, graph, lifecycle, and memory gates pass for an explicit INT8 mode. |
+| **K-G1 INT8 working-set support — blocked 2026-08-15** | No bounded representation passes the required native 512 -> 1K quality transfer; BF16 remains supported. |
 | **K-G2 INT8 long support** | Independent 32K/128K natural quality and real 256K capacity/runtime gates pass. |
 | **G6 Closure** | G2-G5 pass, applicable INT8 status is accurately published, no unresolved campaign refactor debt, final tests/rollups committed and pushed. |
 
