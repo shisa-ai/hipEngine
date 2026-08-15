@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen36_qwen38_dense_native_b3_mtp_diagnostic",
+  "created_at": "2026-08-15T01:59:12.609117+00:00",
+  "status": "complete_exact_diagnostic",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "speed_claim_eligible": false,
+  "decision": "diagnostic_only",
+  "decision_reason": "The dense suite intentionally grants speed-claim eligibility only on the W7900. These gfx1151 rows are exact cross-model diagnostics for a future matched llama.cpp comparison.",
+  "source": {
+    "hipengine_commit": "777dcf4595de6a45eb7902d0eb30545f088b5ba9",
+    "tracked_source_clean": true,
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "raw_artifact_directory": "/tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546",
+    "related_prefill_artifact": "benchmarks/results/2026-08-14-gfx1151-qwen36-qwen38-27b-speed-equivalence-diagnostic.json"
+  },
+  "workload": {
+    "protocol": "natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompt_count": 6,
+    "heldout_prompt_count": 4,
+    "visible_outputs_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "candidate_budget": 3,
+    "target_verify_mode": "native",
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "warmups": 1,
+    "runs": 1
+  },
+  "environment": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_GGUF_DECODE_REPACK": "1",
+    "require_cached_build": true
+  },
+  "models": {
+    "qwen36": {
+      "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773120,
+      "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+      "file_type": "MOSTLY_Q4_K_M",
+      "tensor_count": 866,
+      "load_seconds": 123.00018917399939,
+      "true_ar_tok_s": 7.155186833677255,
+      "mtp_b3_tok_s": 22.101865217719567,
+      "mtp_vs_true_ar": 3.0889291546788007,
+      "draft_acceptance": 0.7567567567567568,
+      "accepted_per_transition": 0.7,
+      "visible_transitions_per_cycle": 3.116883116883117,
+      "cycles": 77,
+      "client_transition_tok_s": 2.9825058955126886,
+      "peak_allocated_bytes": 35480131373,
+      "current_allocated_bytes_after_close": 0,
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "splits": {
+        "train": {
+          "mtp_b3_tok_s": 23.612332074770052,
+          "mtp_vs_true_ar": 3.2997173449518122,
+          "draft_acceptance": 0.8455284552845529
+        },
+        "heldout": {
+          "mtp_b3_tok_s": 20.16677982798654,
+          "mtp_vs_true_ar": 2.818884734027248,
+          "draft_acceptance": 0.6464646464646465
+        },
+        "categories": {
+          "code": {
+            "mtp_b3_tok_s": 24.296511430493243,
+            "mtp_vs_true_ar": 3.395733592976473,
+            "draft_acceptance": 0.8641975308641975
+          },
+          "general_en": {
+            "mtp_b3_tok_s": 23.193521458789267,
+            "mtp_vs_true_ar": 3.240583371336,
+            "draft_acceptance": 0.75
+          },
+          "general_ja": {
+            "mtp_b3_tok_s": 19.89641366631433,
+            "mtp_vs_true_ar": 2.7801519728397603,
+            "draft_acceptance": 0.6875
+          },
+          "mixed_ja_en": {
+            "mtp_b3_tok_s": 19.789007948184164,
+            "mtp_vs_true_ar": 2.766874385151926,
+            "draft_acceptance": 0.6530612244897959
+          }
+        }
+      }
+    },
+    "qwen38": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106775008,
+      "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "tensor_inventory_sha256": "d32f336dc4f35a7ea84bac6c0c611b91c9918d05866638c8ceb30d1e891be69a",
+      "file_type": "MOSTLY_Q4_K_M",
+      "tensor_count": 866,
+      "load_seconds": 125.78182801100047,
+      "true_ar_tok_s": 7.146396670177233,
+      "mtp_b3_tok_s": 19.412249281569427,
+      "mtp_vs_true_ar": 2.716368846775475,
+      "draft_acceptance": 0.6309523809523809,
+      "accepted_per_transition": 0.6625,
+      "visible_transitions_per_cycle": 2.727272727272727,
+      "cycles": 88,
+      "client_transition_tok_s": 2.9258337237887604,
+      "peak_allocated_bytes": 35480459522,
+      "current_allocated_bytes_after_close": 0,
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "splits": {
+        "train": {
+          "mtp_b3_tok_s": 19.349307093858474,
+          "mtp_vs_true_ar": 2.7089282292058376,
+          "draft_acceptance": 0.6209150326797386
+        },
+        "heldout": {
+          "mtp_b3_tok_s": 19.507434130425285,
+          "mtp_vs_true_ar": 2.727620982815179,
+          "draft_acceptance": 0.6464646464646465
+        },
+        "categories": {
+          "code": {
+            "mtp_b3_tok_s": 23.742820146432255,
+            "mtp_vs_true_ar": 3.3262161290086447,
+            "draft_acceptance": 0.8875
+          },
+          "general_en": {
+            "mtp_b3_tok_s": 16.635379878119192,
+            "mtp_vs_true_ar": 2.3276186307278035,
+            "draft_acceptance": 0.45901639344262296
+          },
+          "general_ja": {
+            "mtp_b3_tok_s": 16.618877883040845,
+            "mtp_vs_true_ar": 2.322309098088075,
+            "draft_acceptance": 0.45901639344262296
+          },
+          "mixed_ja_en": {
+            "mtp_b3_tok_s": 18.850867124069545,
+            "mtp_vs_true_ar": 2.6354866446490126,
+            "draft_acceptance": 0.64
+          }
+        }
+      }
+    }
+  },
+  "qwen38_vs_qwen36": {
+    "true_ar_percent": -0.12285023025043751,
+    "mtp_b3_percent": -12.169180789292911,
+    "mtp_speedup_ratio_percent": -12.06114770677108,
+    "draft_acceptance_percentage_points": -12.580437580437585,
+    "client_transition_tok_s_percent": -1.900152881816397
+  },
+  "commands": {
+    "qwen36": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/hipcc-version-gfx1151.txt PYTHONPATH=/tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/hipcc-version-gfx1151.txt --output /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/qwen36-full-native-b3.json --max-new-tokens 25 --require-cached-build",
+    "qwen38": "env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/hipcc-version-gfx1151.txt PYTHONPATH=/tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546-src/benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budgets 3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/hipcc-version-gfx1151.txt --output /tmp/hipengine-qwen36-qwen38-mtp-bench-20260815-014546/qwen38-full-native-b3.json --max-new-tokens 25 --require-cached-build"
+  },
+  "postprocess_note": "Both benchmark JSON files completed before the wrapper's final display-only formatter raised KeyError('commit'); provenance stores the field as hipengine_commit. No measured process failed and no rerun is required."
+}
