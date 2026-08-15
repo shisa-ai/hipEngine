@@ -7,6 +7,37 @@ from hipengine.runtime import qwen35_gguf_mtp as mtp_module
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
 
 
+def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
+    assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
+    assert mtp_module._effective_target_verify_mode("native", rows=5) == "serial_exact"
+    assert mtp_module._effective_target_verify_mode("serial_exact", rows=5) == "serial_exact"
+
+
+def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
+    journal = mtp_module._StateJournal.__new__(mtp_module._StateJournal)
+    journal.target = SimpleNamespace(last_target_hidden=SimpleNamespace(ptr=0x2000))
+    journal.initial_hidden = DeviceBuffer(0x1000, 8)
+    journal.producer_capture_initial_state = True
+    journal.initial_state_captured = False
+    copies: list[tuple[int, int, int, int]] = []
+    state_copies: list[tuple[bool, int]] = []
+    journal._copy_d2d = lambda dst, src, nbytes, *, stream: copies.append(
+        (int(dst), int(src), int(nbytes), int(stream))
+    )
+    journal._copy_initial_state = lambda *, restore, stream: (
+        state_copies.append((bool(restore), int(stream))) or True
+    )
+    journal._capture_state_index = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("pair-copy snapshot should own this fixture")
+    )
+
+    journal.capture_initial(stream=9, force_consumer_state=True)
+
+    assert copies == [(0x1000, 0x2000, 8, 9)]
+    assert state_copies == [(False, 9)]
+    assert journal.initial_state_captured
+
+
 def test_mtp_prompt_admission_bulk_prefills_target_then_catches_up_shifted_draft(
     monkeypatch,
 ) -> None:

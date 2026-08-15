@@ -4,7 +4,7 @@
 
 The suite loads one target and one trailing-NextN provider, warms each route,
 then runs the committed natural-prompt category fixture through true scalar AR
-and exact B1/B2/B3 MTP. Throughput is transition-normalized: the first visible
+and exact B1/B2/B3/B4 MTP. Throughput is transition-normalized: the first visible
 sample comes from prefill, so a 25-output request has 24 timed decode
 transitions. Optional ROCTX markers make proposal/verify/commit windows usable
 as a rocprofv3 leaf without profiling a parent process.
@@ -75,8 +75,8 @@ FULL_PROMPT_IDS = (
 
 def parse_candidate_budgets(value: str) -> tuple[int, ...]:
     budgets = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
-    if not budgets or any(item not in {1, 2, 3} for item in budgets):
-        raise ValueError("candidate budgets must be a comma-separated subset of 1,2,3")
+    if not budgets or any(item not in {1, 2, 3, 4} for item in budgets):
+        raise ValueError("candidate budgets must be a comma-separated subset of 1,2,3,4")
     if len(set(budgets)) != len(budgets):
         raise ValueError("candidate budgets must not contain duplicates")
     return budgets

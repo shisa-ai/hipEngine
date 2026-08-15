@@ -87,6 +87,23 @@ should be removed or collapsed.
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
 
+## Dense-H5120 B4 exact eager-MTP seam
+
+- Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step
+  NextN chain without claiming unproven graph ownership. The first root+four
+  native-row fallback failed scalar-AR exactness on two Japanese prompts and is
+  superseded. B4 is opt-in and now uses eager proposal plus serial-exact target
+  rows; only tail cycles whose effective budget falls to B1-B3 use native
+  graphs. The retained device graph ladder remains B1-B3 / rows 2-4. The clean
+  full suite is exact but rejects B4 for performance: Qwen3.6 B3/B4 is
+  **22.207/5.095 tok/s**, and Qwen3.8 is **19.808/4.586 tok/s**. B3 remains
+  default; exact B4 is diagnostic-only.
+- Removal trigger: admit B4 to both proposal and target device graphs only after
+  rows=5 target state/KV/hidden commits pass reject/partial/full, category,
+  heldout, long-context, GPU/CPU acceptance, and teardown gates. Promote B4 by
+  model policy only if that same suite is non-regressive versus B3; otherwise
+  retain exact eager B4 as an explicit diagnostic and do not widen the default.
+
 ## Dense Qwen3.6 bulk-prefill MTP native-verifier gap
 
 - Added 2026-08-12 after public dense MTP was aligned with public AR prompt
