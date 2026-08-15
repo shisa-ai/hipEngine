@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The fresh post-review six-block exact-core pp512 baseline is 4314/4976 tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic), so parity remains open. The p16-p4096 threshold matrix and final 18-prompt cumulative semantic packet now pass; they close post-review route validation without changing the blocked G2/G3 parity disposition.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The p16-p4096 threshold matrix and final 18-prompt cumulative semantic packet pass. A fresh synchronized, same-source llama HIP/Vulkan comparison corrects the old asynchronous core-prefill boundary: hipEngine reaches **0.818x/0.744x Q4 and 0.880x/0.881x Q8 Vulkan core pp/tg**, while public decode reaches **0.976x Q4 / 1.047x Q8**. Core parity and G3 remain blocked; Q4 prefill is the remaining engine-specific priority.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -111,6 +111,7 @@ not a synthetic leaf projection.
 | 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
 | 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. |
 | 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
+| 33 | **Synchronized exact HIP/Vulkan three-way** | **completed: Q4/Q8 core pp 0.818x/0.880x Vulkan; public tg 0.976x/1.047x** | Six serial blocks use one llama.cpp source revision and explicit backend synchronization; all 36 child rows are finite/deterministic with exact cross-engine core/public top-1 trajectories. | Keep G3 blocked on core scopes. Prioritize Q4 prefill; hipEngine already beats llama HIP decode and Vulkan Q8 public decode. |
 
 ### 1.2 Bounded task contract
 
@@ -1637,6 +1638,77 @@ blocked absent a separately approved architectural extension.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
+
+### 2.46 Synchronized exact hipEngine / llama HIP / Vulkan comparison (2026-08-15)
+
+The final comparison uses six serial cyclic blocks per quant. Every engine
+occupies every order position twice, every child performs one warmup plus one
+measured core/public pair, and both llama backends are clean builds from
+`1d2869c6e`. The committed p512/tg128 fixture supplies identical prompt and
+forced-continuation IDs. Explicit `llama_synchronize()` now closes each core
+timing boundary; the first incomplete llama HIP pilot exposed and discarded
+impossible 70-71K pp512 rows before this packet began.
+
+| Engine | Q4 core pp / tg | Q4 public pp / tg | Q8 core pp / tg | Q8 public pp / tg |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | **4354.16 / 144.18** | **4376.18 / 123.30** | **5002.83 / 140.59** | **5038.64 / 117.04** |
+| llama.cpp HIP | 4876.15 / 119.47 | 5016.51 / 89.22 | 4667.43 / 109.48 | 5073.18 / 83.96 |
+| llama.cpp Vulkan | 5326.06 / 193.88 | 5595.94 / 126.31 | 5684.88 / 159.54 | 5790.96 / 111.81 |
+
+All values are tok/s medians over six fresh processes. Standard production
+cache defaults remain explicit: hipEngine stores BF16 KV, while these pinned
+llama builds store F16 KV; both are 16-bit, and RADV reports no native BF16
+capability. The exact comparison is therefore engine-default parity, not a
+single-kernel same-storage microbenchmark.
+
+| Quant/scope | hipEngine / llama HIP pp / tg | hipEngine / Vulkan pp / tg | Paired result |
+| --- | ---: | ---: | --- |
+| Q4 core | **0.893x / 1.207x** | **0.818x / 0.744x** | hipEngine loses both pp peers 0/6, beats HIP tg 6/6, loses Vulkan tg 0/6 |
+| Q4 public | **0.872x / 1.382x** | **0.782x / 0.976x** | hipEngine beats HIP tg 6/6; Vulkan narrowly wins tg 6/6 |
+| Q8 core | **1.072x / 1.284x** | **0.880x / 0.881x** | hipEngine beats HIP pp/tg 6/6, loses Vulkan pp/tg 0/6 |
+| Q8 public | **0.993x / 1.394x** | **0.870x / 1.047x** | HIP pp is effectively parity; hipEngine beats both decode peers 6/6 |
+
+The synchronized wall decomposition separates the residual to llama HIP from
+the same-source HIP-to-Vulkan delta. Q4 core prefill is **117.589 / 105.001 /
+96.131 ms** for hipEngine/HIP/Vulkan: the 21.458-ms total gap consists of
+**12.588 ms hipEngine-to-HIP plus 8.870 ms HIP-to-Vulkan**. Q8 core prefill is
+**102.342 / 109.696 / 90.063 ms**: hipEngine recovers 7.354 ms over llama HIP,
+but Vulkan's 19.633-ms backend advantage leaves a 12.279-ms gap. Q4/Q8 core
+decode similarly recover **1.435/2.021 ms/token** over llama HIP while remaining
+**1.778/0.845 ms/token** behind Vulkan. On the public path, Q4 is only **0.193
+ms/token** behind Vulkan and Q8 is **0.399 ms/token ahead**.
+
+The Q4 llama HIP rocprof census records **712,685 dispatches / 44 names**, but
+all 712,685 start/end timestamps are equal under the known gfx1151 profiler
+blocker. Names and resources still expose the structure: **166,920 separate
+Q8_1 activation quantizers pair one-for-one with 166,920 wave32 GEMVs** (46.84%
+of all dispatches), Q4 prefill MMQ bodies use local256 with VGPR240-248, and
+flash-attention uses a VGPR240/LDS19,456-B tile plus a separate reducer. No
+per-op llama HIP duration is claimed.
+
+Current hipEngine marker attribution therefore remains the operation-ranking
+authority: Q4 prefill is led by dense FFN, GDN, and linear projections; Q8 by
+linear projections, GDN, and dense FFN. Those historical Vulkan-joined gaps are
+attribution-only and not additive. API/Python residual remains only
+0.114/0.127 ms/token, so the next architecture campaign should prioritize a new
+Q4 prefill dataflow rather than graph submission or the exhausted small
+full-attention rewrite. Q8 prefill and core decode are now predominantly a
+HIP-versus-Vulkan backend/codegen gap, while hipEngine's graph and device sampler
+already outperform llama HIP decode and close public Vulkan decode.
+
+All 36 children are finite and deterministic. Core and public 129-row top-1
+trajectories are exact across all three engines and both quants. Variance is
+below 5% for every metric. hipEngine owned memory remains **1017.63/981.78 MiB
+Q4/Q8** versus llama-declared device buffers near **1015/1281 MiB**, preserving
+Q8's ~23% memory advantage.
+
+This result supersedes the old shape-only three-way diagnostic and the old G2
+**core-prefill gap magnitude**, whose llama helper lacked an explicit asynchronous
+backend drain. It does not change the historical G2/G3 disposition: current Q4
+still loses every required core scope, so Vulkan parity remains open.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json).
 
 ## 3. Comparison contracts
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from scripts import qwen35_08b_three_way as three_way
@@ -114,3 +117,51 @@ def test_summarize_reports_ratios_and_cross_engine_correctness() -> None:
     assert result["correctness"]["all_deterministic"] is True
     assert result["correctness"]["cross_engine_core_top1_exact"] is True
     assert result["correctness"]["cross_engine_public_top1_exact"] is True
+
+
+def test_current_exact_three_way_artifact_contract() -> None:
+    artifact = (
+        Path(__file__).parents[1]
+        / "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json"
+    )
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+    assert payload["status"] == "retained_diagnostic"
+    assert payload["source"]["hipengine"]["tracked_clean"] is True
+    assert payload["source"]["llamacpp_commit"] == (
+        "1d2869c6e54d5003f3927a79efbca0fefa034a6d"
+    )
+    assert payload["correctness"]["q4"]["cross_engine_core_top1_exact"] is True
+    assert payload["correctness"]["q4"]["cross_engine_public_top1_exact"] is True
+    assert payload["correctness"]["q8"]["cross_engine_core_top1_exact"] is True
+    assert payload["correctness"]["q8"]["cross_engine_public_top1_exact"] is True
+
+    q4 = payload["results"]["q4"]["summary"]
+    q8 = payload["results"]["q8"]["summary"]
+    assert q4["engines"]["hipengine"]["prefill_tok_s"]["median"] == pytest.approx(
+        4354.1617
+    )
+    assert q8["engines"]["hipengine"]["prefill_tok_s"]["median"] == pytest.approx(
+        5002.8348
+    )
+    assert q4["comparisons"]["llamacpp_vulkan"]["public_decode_tok_s"][
+        "hipengine_over_peer"
+    ] == pytest.approx(0.976154)
+    assert q8["comparisons"]["llamacpp_vulkan"]["public_decode_tok_s"][
+        "hipengine_over_peer"
+    ] == pytest.approx(1.046712)
+    assert q4["comparisons"]["llamacpp_hip"]["public_decode_tok_s"][
+        "hipengine_paired_wins"
+    ] == 6
+    assert q8["comparisons"]["llamacpp_hip"]["public_decode_tok_s"][
+        "hipengine_paired_wins"
+    ] == 6
+    assert payload["llamacpp_hip_profile"]["nonzero_durations"] == 0
+
+    for quant in payload["results"].values():
+        for engine in quant["summary"]["engines"].values():
+            for metric in three_way.METRICS:
+                assert len(engine[metric]["samples"]) == 6
+                assert engine[metric]["stdev_pct_of_median"] < 5.0
+        for row in quant["wall_decomposition"].values():
+            assert row["identity_check"] == pytest.approx(0.0, abs=1e-12)

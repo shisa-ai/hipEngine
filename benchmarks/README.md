@@ -113,11 +113,15 @@ diagnostic never replaces a retained row.
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then the
 human-approved D08-X extension retained three additional prefill routes:
-Q8_0 cluster8 GDN, pack8-WMMA bulk, and dense-BF16 WMMA. Together with D08's
-Q5T16 QKV and Q4 cluster8 routes, they move exact-core pp512 to **4314/4976
-tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic)** on the fresh
-post-review six-block baseline, with public decode remaining near llama-HIP
-parity. Full per-package evidence and history live in
+Q8_0 cluster8 GDN, pack8-WMMA bulk, and dense-BF16 WMMA. A fresh synchronized
+shared-token three-way now measures hipEngine exact-core pp512/tg128 at
+**4354/144.18 Q4 and 5003/140.59 Q8 tok/s**, versus same-source llama.cpp HIP
+**4876/119.47 and 4667/109.48** and Vulkan **5326/193.88 and 5685/159.54**.
+Vulkan still leads core pp/tg, but hipEngine beats llama HIP decode and public
+decode is **0.976x Vulkan Q4 / 1.047x Vulkan Q8**. This supersedes the old
+shape-only three-way diagnostic while leaving core Vulkan parity open. Evidence:
+[`2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json`](results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json).
+Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
