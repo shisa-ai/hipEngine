@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The fresh post-review six-block exact-core pp512 baseline is 4314/4976 tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic), so parity remains open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The fresh post-review six-block exact-core pp512 baseline is 4314/4976 tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic), so parity remains open. The p16-p4096 threshold matrix and final 18-prompt cumulative semantic packet now pass; they close post-review route validation without changing the blocked G2/G3 parity disposition.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -109,7 +109,8 @@ not a synthetic leaf projection.
 | 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
 | 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
 | 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
-| 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. Final cumulative semantic packet remains. |
+| 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. |
+| 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
 
 ### 1.2 Bounded task contract
 
@@ -1597,6 +1598,45 @@ required.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+
+### 2.45 Final cumulative semantic packet (2026-08-15)
+
+The versioned clean-tree harness runs all **18 category+heldout prompts** in two
+profiles per quant: unmodified natural chat-token sequences and category-derived
+sequences repeated and truncated to exactly p512. Each candidate consumes the
+strict-X2 free-running token prefix for **24 teacher-forced transitions** after
+prefill, preventing greedy divergence from changing the comparison context.
+
+| Quant / role | Natural top-1 / max KL | Category p512 top-1 / max KL |
+| --- | ---: | ---: |
+| Q4 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q4 pre-X2 | 449/450 / 0.004529 | 449/450 / 0.004846 |
+| Q4 current | 449/450 / 0.004529 | 449/450 / **0.005930** |
+| Q8 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q8 current | 448/450 / **0.003259** | 448/450 / 0.002205 |
+
+Current defaults total **1794/1800 top-1 (99.667%)** with maximum KL
+**0.005930**, comfortably inside the 90%/0.05 gate. Every strict/pre/current
+repeat is trajectory+logit deterministic. All Conv/GDN and live full-attention
+KV fingerprints are repeat-deterministic and finite. Candidate bytes differ
+from strict on the accepted reassociated math routes (0 exact candidate profile
+states), which is diagnostic; repeat determinism, finiteness, KL, and top-1 are
+the binding state/math checks.
+
+All **72** category-p512 strict/current recorded-graph prompt-role trajectories
+exactly match same-role eager. Final graph top-1 is 100%, maximum graph KL is
+**0.000475**, and the recording graphs contain **287 Q4 / 289 Q8 nodes**.
+Current free-running trajectories match strict on **66/72** prompt profiles;
+the six expected greedy divergences remain outside the same-context correctness
+criterion.
+
+This closes the post-review baseline/profile/threshold/semantic sequence and
+retains every current route unchanged. It does not claim Vulkan parity: D08-G2
+still fails the published same-session cross-engine target, so G3/T1 remain
+blocked absent a separately approved architectural extension.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
 
 ## 3. Comparison contracts
 

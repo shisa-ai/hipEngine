@@ -130,6 +130,11 @@ with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
 p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
 every Q4/Q8 length. This keeps the p512-only WMMA scope and current GDN policies;
 see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+The final natural+category-p512 cumulative packet then passes at **1794/1800
+current top-1 (99.667%), max KL 0.005930**, deterministic finite state, and
+**72/72 exact eager/recorded-graph trajectories**; this closes post-review
+validation without changing the blocked Vulkan-parity status. Evidence:
+[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
 
 ## Current single-request scoreboards
 
