@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "retained_memory_improvement_goal_open",
+  "performance_claim": true,
+  "title": "Qwen3.6-27B long-row prefill hidden-owner reuse",
+  "base_revision": "42eb30d94",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "primary_device": "AMD Radeon RX 7900 XTX",
+    "primary_hip_visible_device": 1,
+    "primary_pci": "0000:10:00.0",
+    "primary_sysfs_card": "card0",
+    "primary_vram_total_gib": 23.984375,
+    "safeguard_device": "AMD Radeon Pro W7900",
+    "safeguard_hip_visible_device": 0,
+    "safeguard_pci": "0000:0d:00.0",
+    "safeguard_sysfs_card": "card1",
+    "arch": "gfx1100"
+  },
+  "protocol": {
+    "workload": "token 9707 repeated to prompt length; one discarded warmup plus three measured persistent resets; bulk prefill; BF16 KV; HIP graph decode; 128 timed transitions; cached builds",
+    "memory": "5-ms whole-device sysfs VRAM sampling around each complete process; tracked memory is unique allocator ownership",
+    "control": "retained constrained long-row recoloring at revision 42eb30d94 with two prefill hidden owners",
+    "candidate": "selector-unset package default with one physical prefill hidden owner only for model-policy scratch rows>=4096",
+    "command_template": "env -u HIPENGINE_GGUF_GDN_PREFILL_MODE -u HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE -u HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE -u HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS -u HIPENGINE_GGUF_PREFILL_DEVICE_METADATA -u HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {4096|8192} --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --json OUT.json"
+  },
+  "implementation": {
+    "kernel_or_pointer_abi_changed": false,
+    "persistent_payload_added": false,
+    "decode_changed": false,
+    "mtp_math_changed": false,
+    "policy": "For the Qwen3.6-27B MOSTLY_Q4_K_M policy only, scratch rows>=4096 assign prefill_hidden_a and prefill_hidden_b to one DeviceBuffer. Short-row sessions retain two owners.",
+    "lifecycle": "The session owner tuple and benchmark accounting deduplicate equal nonzero pointers, so the shared DeviceBuffer is freed and counted once.",
+    "tracked_4096_row_hidden_mib": {
+      "before": 80.0,
+      "after": 40.0,
+      "saved": 40.0,
+      "delta_percent": -50.0
+    },
+    "modeled_4096_row_bulk_prefill_scratch_mib": 372.375
+  },
+  "xtx_four_shape_matrix": [
+    {
+      "prompt_length": 512,
+      "prefill_tok_s": 974.4813428431047,
+      "decode_tok_s": 33.51585763717368,
+      "tracked_peak_gib": 15.586668975651264,
+      "whole_device_peak_delta_gib": 16.02920913696289,
+      "gap_vs_llamacpp_vulkan_gib": 0.3397064208984375,
+      "final_ids": [9707, 9707, 9707],
+      "note": "Inherited retained row: scratch rows<4096 keep two hidden owners and the route is unchanged."
+    },
+    {
+      "prompt_length": 1024,
+      "prefill_tok_s": 1006.7558645273568,
+      "decode_tok_s": 34.493741911606584,
+      "tracked_peak_gib": 15.668076522648335,
+      "whole_device_peak_delta_gib": 16.18209457397461,
+      "gap_vs_llamacpp_vulkan_gib": 0.4821357727050781,
+      "final_ids": [9707, 9707, 9707],
+      "note": "Inherited retained row: scratch rows<4096 keep two hidden owners and the route is unchanged."
+    },
+    {
+      "prompt_length": 4096,
+      "control_prefill_tok_s": 987.1926251685289,
+      "candidate_prefill_tok_s": 987.812358089512,
+      "prefill_delta_percent": 0.06277730456882846,
+      "control_decode_tok_s": 31.414001658367695,
+      "candidate_decode_tok_s": 31.389098653062085,
+      "decode_delta_percent": -0.07927358499701942,
+      "control_tracked_peak_gib": 16.14966631680727,
+      "candidate_tracked_peak_gib": 16.11060381680727,
+      "tracked_delta_mib": -40.0,
+      "control_whole_device_peak_delta_gib": 16.813255310058594,
+      "candidate_whole_device_peak_delta_gib": 16.776813507080078,
+      "whole_device_peak_delta_mib": -37.31640625,
+      "absolute_whole_device_peak_delta_mib": -39.84765625,
+      "gap_vs_llamacpp_vulkan_gib": 0.864654541015625,
+      "finite_logits": true,
+      "final_ids": [9707, 9707, 9707]
+    },
+    {
+      "prompt_length": 8192,
+      "control_prefill_tok_s": 820.280566664048,
+      "candidate_prefill_tok_s": 819.4323687499077,
+      "prefill_delta_percent": -0.10340339008515498,
+      "control_decode_tok_s": 29.37678608198346,
+      "candidate_decode_tok_s": 29.35683012413946,
+      "decode_delta_percent": -0.06793104524200899,
+      "control_tracked_peak_gib": 16.408137805759907,
+      "candidate_tracked_peak_gib": 16.369075305759907,
+      "tracked_delta_mib": -40.0,
+      "control_whole_device_peak_delta_gib": 17.06808090209961,
+      "candidate_whole_device_peak_delta_gib": 17.029155731201172,
+      "whole_device_peak_delta_mib": -39.859375,
+      "absolute_whole_device_peak_delta_mib": -39.921875,
+      "gap_vs_llamacpp_hip_gib": 0.21256637573242188,
+      "gap_vs_llamacpp_vulkan_gib": 0.8630867004394531,
+      "finite_logits": true,
+      "final_ids": [9707, 9707, 9707]
+    }
+  ],
+  "w7900_safeguard": {
+    "workload": "4096/128 with the same selector-unset protocol and graph_steps_per_replay=1",
+    "control_prefill_tok_s": 882.1923148270787,
+    "candidate_prefill_tok_s": 883.0241447610362,
+    "prefill_delta_percent": 0.09429122425765879,
+    "control_decode_tok_s": 26.514962792090657,
+    "candidate_decode_tok_s": 26.545154940336655,
+    "decode_delta_percent": 0.11386834099198495,
+    "control_tracked_peak_gib": 16.14966631680727,
+    "candidate_tracked_peak_gib": 16.11060381680727,
+    "tracked_delta_mib": -40.0,
+    "control_whole_device_peak_delta_gib": 16.815662384033203,
+    "candidate_whole_device_peak_delta_gib": 16.776782989501953,
+    "whole_device_peak_delta_mib": -39.8125,
+    "absolute_whole_device_peak_delta_mib": -39.96875,
+    "finite_logits": true,
+    "final_ids": [9707, 9707, 9707]
+  },
+  "correctness": {
+    "production_oracle": "4K prefill root plus 128 ordinary decode steps: all 129 IDs exactly 9707 with equal hidden pointers and clean teardown",
+    "mechanical": "3/3 compact-peer tests and 77/77 routing/liveness tests pass",
+    "dense_nextn": "The full dense Q4_K_M B1-B3 scalar-logit and reject/partial/full transaction test passes while a process-local policy override forces hidden owner reuse even for its short-row session.",
+    "red_green": "Focused allocation coverage proves two short-row allocations and one long-row owner; the first production oracle exposed duplicate-owner teardown, then owner deduplication made the exact oracle exit cleanly.",
+    "quality_inheritance": "No kernel, pointer ABI, or launch-order change; compact-peer category quality applies transitively.",
+    "finite_logits": true,
+    "final_ids_stable": true
+  },
+  "sources": {
+    "candidate_4096_json": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-4096.json", "sha256": "6aedeb4098cde374bcbbe2ce4c32527f373a31c9da8eaf90d33282fa4d540a7b"},
+    "candidate_4096_vram": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-4096-vram.json", "sha256": "f3f7603e1e9689b85e5f3738b60be8067fb727b71bc421882f80edda0a477bee"},
+    "candidate_8192_json": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-8192.json", "sha256": "bfb70b83388a3426fc7ecf37fba930f36dd4c245ede15ddc22d6e2159f8aa25e"},
+    "candidate_8192_vram": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-8192-vram.json", "sha256": "4e3c78884a008cbff6f526ed9dc4550db6da8ffd1ebc5808661bf68c007d94e6"},
+    "w7900_4096_json": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-w7900-4096.json", "sha256": "eb896848d9ad8bb7551df79b925a1e8d8d654dcec1a86f921f3db1d8ebeca243"},
+    "w7900_4096_vram": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-w7900-4096-vram.json", "sha256": "0fe9f5feb89cb28a9aea91f762ab9719f2c5462efb223a046e93bde271834b8b"},
+    "production_oracle": {"path": "/tmp/qwen36-27b-memory-goal/hidden-inplace-production-oracle.json", "sha256": "87a04c7c353a4fa6ff8f38153e78e30ae55ab5ef00f5480a1728e5882aef329e"},
+    "short_rows_512_json": {"path": "/tmp/qwen36-27b-memory-goal/constrained-prefix8-512.json", "sha256": "fb7f47561fd9730d3388641b512ff5dedc7a1f1c0ac070d861d5f7abc1e8fc50"},
+    "short_rows_1024_json": {"path": "/tmp/qwen36-27b-memory-goal/constrained-prefix8-1024.json", "sha256": "6255f078e4e34490cb8f0b078b0744a463e9ad0c02246f315b04b870431d89f5"},
+    "control_artifact": "benchmarks/results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json",
+    "llamacpp_floors": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json"
+  },
+  "decision": "Retain the model-policy-scoped rows>=4096 hidden owner reuse. It removes exactly 40 MiB tracked at 4K/8K, transfers cleanly to W7900, preserves ordinary decode and forced-alias dense NextN transactions, and moves all throughput medians by at most 0.114%. Continue the memory campaign: Vulkan still leads by 0.340/0.482/0.865/0.863 GiB at 512/1K/4K/8K."
+}

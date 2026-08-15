@@ -218,6 +218,12 @@ GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
         "max_allocation_bytes": 80 * 1024 * 1024,
     },
 }
+# The dense private-c1 decode workspace exposes 188 logical state/KV/temporary
+# views through one physical owner. The environment rollback remains available
+# only while the complete four-shape memory/performance gate accumulates evidence.
+GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"enabled": True},
+}
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -698,7 +704,18 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 # Dense Qwen3.6 has no MoE/shared-expert route, so those fields are omitted and
 # the remaining linear/full-attention/FFN phases reuse the proven arena plan.
 GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
-    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"min_rows": 1},
+    ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {
+        "min_rows": 1,
+        # Short verifier/NextN arenas retain size-first coloring: moving the
+        # long-row priority fields there corrupts the second target-logit row.
+        "priority_min_rows": 4_096,
+        # Long-row bulk layers consume the source hidden plane before writing
+        # final FFN output, so one physical plane can serve both roles.
+        "hidden_inplace_min_rows": 4_096,
+        # Prefix-8 production oracle: duration>=5 reaches 372.375 MiB while
+        # preserving root+128 IDs. Moving the next field (attn_out) diverges.
+        "priority_min_live_stages": 5,
+    },
 }
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.
@@ -776,6 +793,7 @@ __all__ = [
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+    "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",

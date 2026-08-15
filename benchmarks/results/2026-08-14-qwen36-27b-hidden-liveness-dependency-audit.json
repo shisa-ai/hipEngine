@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic_dependency_localized_safe_subset_selected",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B hidden long-row liveness dependency localization",
+  "base_revision": "60b47d89d",
+  "protocol": {
+    "model": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "hardware": "AMD Radeon RX 7900 XTX gfx1100",
+    "workload": "8192 repeated token-9707 prompt plus root and 128 eager decode outputs",
+    "oracle": "One retained size-first control session plus sequential shared-runner candidate sessions. Each candidate moves a prefix of the total-live-duration order ahead of the unchanged size order; compare all 129 output IDs exactly.",
+    "note": "Shared-runner sessions deliberately avoid repeated model loads. This is a localization oracle, not final production qualification."
+  },
+  "coarse_results": [
+    {"prefix_count": 1, "arena_mib": 401.0625, "first_divergence": null, "exact_129_tokens": true},
+    {"prefix_count": 2, "arena_mib": 403.0625, "first_divergence": null, "exact_129_tokens": true},
+    {"prefix_count": 4, "arena_mib": 403.0625, "first_divergence": null, "exact_129_tokens": true},
+    {"prefix_count": 8, "arena_mib": 372.375, "first_divergence": null, "exact_129_tokens": true},
+    {"prefix_count": 12, "arena_mib": 372.375, "first_divergence": 0, "root_control": 9707, "root_candidate": 17},
+    {"prefix_count": 18, "arena_mib": 372.375, "first_divergence": 0},
+    {"prefix_count": 24, "arena_mib": 372.375, "first_divergence": 0},
+    {"prefix_count": 35, "arena_mib": 372.375, "first_divergence": 0}
+  ],
+  "narrow_results": [
+    {"prefix_count": 9, "added_field": "full_gate", "arena_mib": 372.375, "first_divergence": null, "exact_129_tokens": true},
+    {"prefix_count": 10, "added_field": "attn_out", "arena_mib": 372.375, "first_divergence": 0, "root_control": 9707, "root_candidate": 17},
+    {"prefix_count": 11, "added_field": "full_v", "arena_mib": 372.375, "first_divergence": 0, "root_control": 9707, "root_candidate": 17}
+  ],
+  "localization": {
+    "first_unsafe_move": "attn_out",
+    "declared_lifetime": "both routes [5,7)",
+    "interpretation": "Moving attn_out ahead of the established size order introduces a deterministic prefill-root divergence even though declared pairwise intervals pass. Its actual production dependency extends beyond the current recoloring authority or includes a pointer-layout constraint.",
+    "safe_subset": ["residual", "post_norm", "ffn_gate_up", "ffn_down", "q6_f16_weight", "q6_f16_out", "linear_z", "q6_f16_x"],
+    "safe_subset_rule": "Move only fields with total declared live-stage duration >= 5 ahead of the unchanged size order; keep attn_out and all shorter-lived fields in established order.",
+    "modeled_arena_mib": 372.375,
+    "shared_oracle_exact": true,
+    "production_qualification_required": true
+  },
+  "sources": {
+    "coarse_raw": {"path": "/tmp/qwen36-27b-memory-goal/liveness-prefix-oracle.json", "sha256": "f724e4c5bbc6402b9f5e67210e0a66f69b08eb244bb7ed84c51f14ad9bd1ed71"},
+    "narrow_raw": {"path": "/tmp/qwen36-27b-memory-goal/liveness-prefix-oracle-9-11.json", "sha256": "0b0a0d9d5a9ecfb8fbc0c944067ed14e5063c9e28e1fb65ab4ec93567962d3d4"},
+    "narrow_wrapper": {"path": "/tmp/qwen36_liveness_prefix_oracle.py", "sha256": "098e322df887ce1bc3d1572df502aafd2340c81be21e3506621ff5900a69b1ad"}
+  },
+  "decision": "Localize attn_out as the first unsafe move. Screen the exact prefix-8/total-duration>=5 order under the ordinary production session before any retention; keep defaults unchanged meanwhile."
+}

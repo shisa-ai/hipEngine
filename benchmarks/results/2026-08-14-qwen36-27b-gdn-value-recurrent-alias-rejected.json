@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "rejected_removed_prefill_regression",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B compact-GDN value/recurrent in-place scratch rejection",
+  "repo_revision": "working tree after 1f89a177b; candidate removed before commit",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": "AMD Radeon RX 7900 XTX / gfx1100 / HIP_VISIBLE_DEVICES=1 / PCI 0000:10:00.0 / sysfs card0 / 23.984375 GiB VRAM",
+  "hypothesis": "The compact peer-wave32 recurrent kernel consumes each FP32 value element before publishing the same-index recurrent output, so an alias-safe in-place value/output ABI could remove one full-row plane without changing math.",
+  "candidate": {
+    "change": "Remove no-alias promises from compact recurrence value/output pointers, prove exact in-place output/state, and model recurrent_out as a view over prefill_value only for the gfx1100 Qwen3.6-27B compact-peer policy.",
+    "kernel_math_changed": false,
+    "weight_layout_changed": false,
+    "kv_layout_changed": false,
+    "query_chunk_geometry_changed": false,
+    "persistent_payload_added_bytes": 0,
+    "planned_4096_row_bulk_scratch_mib_before": 480.98734283447266,
+    "planned_4096_row_bulk_scratch_mib_after": 414.48734283447266,
+    "planned_saved_mib": 66.5
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json",
+    "repo_revision": "d62ae30f1",
+    "8192_prefill_tok_s": 821.4961309201531,
+    "8192_decode_tok_s": 29.392601039902637,
+    "8192_tracked_peak_gib": 16.501094348728657,
+    "8192_whole_device_peak_delta_gib": 17.15999984741211
+  },
+  "correctness": {
+    "red": "The planner kept distinct prefill_value/recurrent_out pointers and the compact kernel declared both pointers restrict.",
+    "green": "The focused gfx1100 oracle passed with recurrent output overwriting the value buffer and matched separate-output BF16 output plus FP32 recurrent-state bits exactly.",
+    "tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_qwen35_gguf_gdn_compact_peer.py::test_compact_peer_matches_peer_wave32_output_and_state_bits",
+    "source_lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat; known parent drift only, no code ported"
+  },
+  "protocol": "Selector-unset package-default sole-T16 session, repeated token 9707, one discarded warmup plus three measured persistent reset/replays, bulk prefill, BF16 KV, HIP graph decode, 128 timed transitions, 5-ms whole-device VRAM sampling, shapes strictly serial.",
+  "rows": [
+    {
+      "workload": "512/128",
+      "prefill_tok_s_samples": [977.5222820055902, 975.0659004564269, 975.7768222239542],
+      "prefill_tok_s_median": 975.7768222239542,
+      "prefill_delta_percent_vs_retained": -0.10060130459261796,
+      "decode_tok_s_median": 33.59137083787266,
+      "decode_delta_percent_vs_retained": -0.1053827178745359,
+      "tracked_peak_gib": 15.586668975651264,
+      "tracked_saved_mib": 0.5,
+      "whole_device_peak_delta_gib": 16.02845001220703,
+      "whole_device_saved_mib": 0.0,
+      "final_ids": [9707, 9707, 9707],
+      "finite_logits": true,
+      "source_sha256": "1af839afa426edf94a678b870a638df47d108db875e138745fb6c354097da29c",
+      "vram_source_sha256": "63bf35c3adae869aee0d769e5e633d7f9ccb92ac264ff9fd4030aea9db8b3289"
+    },
+    {
+      "workload": "8192/128 diagnostic",
+      "prefill_tok_s_samples": [812.0766234247058, 811.3548605749532, 811.3989800994627],
+      "prefill_tok_s_median": 811.3989800994627,
+      "prefill_delta_percent_vs_retained": -1.229117270385749,
+      "prefill_delta_percent_vs_same_tree_noalias_control": -1.3209338057727726,
+      "decode_tok_s_median": 29.40298290366383,
+      "decode_delta_percent_vs_retained": 0.03532135093147204,
+      "tracked_peak_gib": 16.436152942478657,
+      "tracked_saved_mib": 66.5,
+      "whole_device_peak_delta_gib": 17.095561981201172,
+      "whole_device_saved_mib": 65.984375,
+      "final_ids": [9707, 9707, 9707],
+      "finite_logits": true,
+      "source_sha256": "8000da7d6d35fa00a60299d7750598cb28be512fb6f0beb1a3764b4a2c21c0e6",
+      "vram_source_sha256": "f4801a4cc9cc9d0d786893b0f469b8b22ae4b20bb56591853d66a56a42ee97aa"
+    }
+  ],
+  "same_tree_noalias_control_8192": {
+    "purpose": "Separate compiler qualifier effects from physical arena-layout effects.",
+    "prefill_tok_s_samples": [822.2604969755276, 822.4040758273989, 821.8993758909506],
+    "prefill_tok_s_median": 822.2604969755276,
+    "decode_tok_s_median": 29.422437368982916,
+    "tracked_peak_gib": 16.501094348728657,
+    "source_sha256": "476bfece1aa1a3550d1463158ccdaa160e34ed0dbcbefc358a6979b69b55e616",
+    "vram_source_sha256": "b68c0788814f9b3395f48f2f3138d89592f06b3d2fcc25dd98ae4c65734bc391"
+  },
+  "diagnosis": "The alias-safe kernel itself is not the loss: same-tree separate-output 8K improves 0.093% versus the retained baseline, and a counterbalanced M4096 complete prepare+recurrent+RMS leaf found in-place 1.275% faster. The full-row arena repack changes Q/K/scalar colors and regresses complete 8K prefill stably by 1.321% versus the same-tree no-alias control, overwhelming the 65.984-MiB whole-device saving.",
+  "decision": "Reject and remove the kernel/planner/policy/test candidate. The user requirement forbids prefill regressions; do not retain the 66.5-MiB tracked / 65.984-MiB whole-device 8K saving at a 1.321% same-tree prefill cost. Keep the prior single-owner decode-scratch matrix as current."
+}

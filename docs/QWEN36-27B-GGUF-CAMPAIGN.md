@@ -7,21 +7,36 @@ both W7900 and RX 7900 XTX, passes same-commit W7900 and dense-NextN safeguards,
 and fits the 24-GiB card. The compact peer-GDN route closes all frozen
 512/1K/4K prefill gates by materializing normalized Q/K once per K head rather
 than per value head while preserving peer-wave32 output/state bits. Persistent
-scratch follows that ABI instead of reserving V-head-sized Q/K planes, and dense
-SiLU now overwrites its dead BF16 gate plane. Tracked peak is
-**15.587/15.681/16.243/16.501 GiB** and whole-device peak is
-**16.083/16.287/17.001/17.256 GiB** at 512/1K/4K/8K. The latest alias saves an
-additional **8.9375/18.75/20.625/20.625 MiB** tracked and
-**11.160/17.965/21.750/21.547 MiB** whole-device peak with all throughput
-movement within **0.171%**, but does not claim cross-engine closure: Vulkan's
-lower memory floors still lead by **0.394/0.587/1.089/1.090 GiB**, 4K decode
-remains below HIP, and Vulkan MTP still wins. See
+scratch follows that ABI instead of reserving V-head-sized Q/K planes, dense
+SiLU overwrites its dead BF16 gate plane, split GDN reuses dead `conv_out` pages
+for its later recurrent output, one physical owner exposes all 188 private-c1
+decode-scratch ranges, a constrained rows>=4096 placement order reuses the
+remaining long-row holes without moving `attn_out`, and one physical 40-MiB
+hidden plane serves both long-row ping-pong roles. gfx1100 process metadata also
+lowers ROCr's reserved single-dispatch scratch threshold from 140 to 8 MiB
+without changing the 300-MiB use-once AOTriton path traced at 32 MiB. Tracked
+peak is **15.587/15.668/16.111/16.369 GiB** and whole-device process-delta peak
+is **15.901/16.054/16.649/16.904 GiB** at 512/1K/4K/8K. The latest threshold
+saves **128.6-131.1 MiB** versus the upstream-default controls with no
+tracked-byte change, XTX/W7900 throughput movement within **0.235%**, and
+stable finite outputs/token IDs. Explicit `HSA_SCRATCH_SINGLE_LIMIT` values
+remain user-owned. Rows below 4096 deliberately retain two hidden owners and
+the size-first arena order after RED coverage caught a short-row NextN NaN in
+the independent recoloring experiment. This does not claim cross-engine
+closure: Vulkan's lower memory floors still lead by
+**0.212/0.354/0.737/0.737 GiB**, 4K decode remains
+below HIP, and Vulkan MTP still wins. See
 [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md),
 [`same-commit W7900 evidence`](../benchmarks/results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json),
 [`compact peer-GDN retention`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-retained.json),
 [`independent XTX matrix`](../benchmarks/results/2026-08-14-qwen36-27b-gdn-compact-peer-independent-xtx.json),
-[`right-sized compact Q/K scratch`](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json), and
-[`dense SiLU gate-plane alias`](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json).
+[`right-sized compact Q/K scratch`](../benchmarks/results/2026-08-14-qwen36-27b-compact-gdn-qk-scratch-retained.json),
+[`dense SiLU gate-plane alias`](../benchmarks/results/2026-08-14-qwen36-27b-dense-silu-gate-plane-alias-retained.json),
+[`single-owner decode-scratch arena`](../benchmarks/results/2026-08-14-qwen36-27b-private-c1-decode-scratch-arena-retained.json),
+[`split-GDN lifetime reuse`](../benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json),
+[`constrained long-row recoloring`](../benchmarks/results/2026-08-14-qwen36-27b-constrained-liveness-recoloring-retained.json),
+[`long-row hidden-owner reuse`](../benchmarks/results/2026-08-14-qwen36-27b-long-row-hidden-owner-reuse-retained.json), and
+[`gfx1100 ROCr scratch reserve`](../benchmarks/results/2026-08-15-gfx1100-rocr-scratch-reserve-retained.json).
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /

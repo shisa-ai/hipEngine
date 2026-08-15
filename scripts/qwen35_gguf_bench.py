@@ -1332,6 +1332,8 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     return {
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
+        "allocation_mode": str(getattr(scratch, "allocation_mode", "dedicated")),
+        "physical_owner_count": len(buffers),
         "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
         "block_table_len": _maybe_int(getattr(getattr(scratch, "block_table_tensor", None), "numel", None)),
         "kv_storage_dtype": getattr(getattr(scratch, "kv_storage_dtype", None), "value", None),
@@ -1525,7 +1527,18 @@ def _sum_named_buffers(owner: object, names: tuple[str, ...]) -> int:
 
 
 def _sum_buffers(buffers) -> int:
-    return sum(_buffer_nbytes(buffer) for buffer in buffers if buffer is not None)
+    total = 0
+    seen_ptrs: set[int] = set()
+    for buffer in buffers:
+        if buffer is None:
+            continue
+        ptr = int(getattr(buffer, "ptr", 0))
+        if ptr != 0 and ptr in seen_ptrs:
+            continue
+        if ptr != 0:
+            seen_ptrs.add(ptr)
+        total += _buffer_nbytes(buffer)
+    return total
 
 
 def _buffer_nbytes(buffer: object | None) -> int:

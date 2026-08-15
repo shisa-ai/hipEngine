@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic_goal_open_next_candidate_selected",
+  "performance_claim": false,
+  "title": "Qwen3.6-27B post-GDN fixed-weight and untracked-memory audit",
+  "repo_revision": "59fd48631",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m sole-resident T16",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "protocol": {
+    "accepted_rows": "Retained selector-unset 59fd48631 package, token 9707, one warmup plus three measured persistent resets, bulk prefill, BF16 KV, graph decode, 128 transitions, cached builds, and 5-ms whole-device sampling.",
+    "tracked": "hipEngine allocator/session ownership.",
+    "hip_phase": "hipMemGetInfo at explicit phase boundaries; adjusted below by subtracting both tracked ownership and the clean 64913408-byte card baseline.",
+    "whole_device": "sysfs VRAM peak minus the same clean pre-process baseline.",
+    "planner": "Replay the production conflict, subrange, 64-KiB color-gap, and alignment predicates with both the existing descending-size order and a deterministic descending-total-live-stage-duration order. Select the latter only when its arena is smaller."
+  },
+  "current_matrix": [
+    {"prompt_length": 512, "tracked_peak_gib": 15.586668975651264, "whole_device_peak_delta_gib": 16.03020477294922, "gap_vs_vulkan_gib": 0.3407020568847656},
+    {"prompt_length": 1024, "tracked_peak_gib": 15.668076522648335, "whole_device_peak_delta_gib": 16.183029174804688, "gap_vs_vulkan_gib": 0.48307037353515625},
+    {"prompt_length": 4096, "tracked_peak_gib": 16.17768145352602, "whole_device_peak_delta_gib": 16.843997955322266, "gap_vs_vulkan_gib": 0.9318389892578125},
+    {"prompt_length": 8192, "tracked_peak_gib": 16.436152942478657, "whole_device_peak_delta_gib": 17.09880828857422, "gap_vs_vulkan_gib": 0.9327392578125}
+  ],
+  "fixed_weight_ownership": {
+    "logical_bytes": 16406317056,
+    "logical_gib": 15.279573440551758,
+    "physical_owner_bytes": 16406962176,
+    "physical_owner_gib": 15.280174255371094,
+    "physical_owner_count": 2,
+    "selected_arena_allocation_count": 849,
+    "dedicated_allocation_count": 1,
+    "alignment_padding_bytes": 645120,
+    "alignment_padding_mib": 0.615234375,
+    "alignment_padding_percent": 0.003932143928451458,
+    "by_quant_key_bytes": {
+      "f32": 104953856,
+      "gguf_q4_k_t16_v1": 10790502400,
+      "gguf_q5_k_t16_v1": 1061683200,
+      "gguf_q6_k_t16_qmicro_planar_v1": 4449177600
+    },
+    "conclusion": "The fixed payload is real model data, not allocator fragmentation. It is already packed into one 849-view immutable arena plus one deliberately aligned large owner; only 0.615 MiB is padding. Reopening dual/raw layouts, changing quantization, or sacrificing the large-owner alignment is not a byte-backed exact candidate."
+  },
+  "untracked_reconciliation": [
+    {"prompt_length": 512, "after_load_process_overhead_mib": 163.34471893310547, "phase_peak_process_overhead_mib": 240.84471893310547, "whole_device_minus_tracked_mib": 454.18065643310547, "whole_peak_above_phase_sample_mib": 213.3359375},
+    {"prompt_length": 1024, "after_load_process_overhead_mib": 165.98339080810547, "phase_peak_process_overhead_mib": 242.98339080810547, "whole_device_minus_tracked_mib": 527.3115158081055, "whole_peak_above_phase_sample_mib": 284.328125},
+    {"prompt_length": 4096, "after_load_process_overhead_mib": 162.14794158935547, "phase_peak_process_overhead_mib": 238.14794158935547, "whole_device_minus_tracked_mib": 682.3080978393555, "whole_peak_above_phase_sample_mib": 444.16015625},
+    {"prompt_length": 8192, "after_load_process_overhead_mib": 165.47313690185547, "phase_peak_process_overhead_mib": 231.47313690185547, "whole_device_minus_tracked_mib": 678.5590744018555, "whole_peak_above_phase_sample_mib": 447.0859375}
+  ],
+  "untracked_owner_exclusions": {
+    "aotriton": "Already isolated at 512: disabling AOTriton saved only 1.156 MiB whole-device with identical tracked/steady HIP use.",
+    "rocblas_4096": {
+      "default_prefill_tok_s": 986.262209481733,
+      "disabled_prefill_tok_s": 834.1423434865989,
+      "prefill_delta_percent": -15.423876585017993,
+      "default_whole_device_peak_delta_gib": 16.843997955322266,
+      "disabled_whole_device_peak_delta_gib": 16.83658218383789,
+      "whole_device_saved_mib": 7.59375,
+      "tracked_peak_gib_both": 16.17768145352602,
+      "decision": "not the owner and not retainable"
+    },
+    "graph_transport": "The prior paired 8K eager diagnostic saved 133.055 MiB but lost 18.75% decode; it remains required.",
+    "loaded_hipengine_modules_after_4096_prefill": {
+      "shared_object_count": 17,
+      "mapped_file_bytes": 4101160,
+      "conclusion": "The loaded hipEngine JIT file set is too small to explain a 444-447-MiB long-row transient gap; module-unload work remains unselected."
+    },
+    "conclusion": "The stable 162-166-MiB post-load process cost and phase/transient driver-library residency are real, but the tested removable surfaces contribute only single-digit MiB or violate the speed gate. No honest fixed-owner contraction large enough for parity is currently identified."
+  },
+  "liveness_order_candidate": {
+    "mechanism": "Keep every allocation, pointer ABI, lifetime, subrange, color gap, and kernel unchanged. Compute both the existing size-first greedy placement and a live-stage-duration-first placement, retaining the smaller deterministic plan.",
+    "rows": [
+      {"prompt_length": 512, "scratch_rows": 768, "current_arena_mib": 92.875, "candidate_arena_mib": 92.875, "saved_mib": 0.0},
+      {"prompt_length": 1024, "scratch_rows": 1280, "current_arena_mib": 133.109375, "candidate_arena_mib": 131.875, "saved_mib": 1.234375},
+      {"prompt_length": 4096, "scratch_rows": 4096, "current_arena_mib": 401.0625, "candidate_arena_mib": 372.375, "saved_mib": 28.6875},
+      {"prompt_length": 8192, "scratch_rows": 4096, "current_arena_mib": 401.0625, "candidate_arena_mib": 372.375, "saved_mib": 28.6875}
+    ],
+    "long_row_delta_percent": -7.152875175315565,
+    "long_row_live_clique_floor_mib": 371.75,
+    "candidate_over_floor_mib": 0.625,
+    "why_selected": "This is the only newly identified exact, byte-backed, non-duplicative owner. It is allocator-only, reaches within 0.625 MiB of the measured long-row live-clique floor, and needs no new kernel or persistent payload.",
+    "acceptance": "Retain only if deterministic overlap tests pass and clean selector-unset 512/8K prefill/decode plus whole-device memory are non-regressive. It is incremental and cannot close the remaining Vulkan gap alone."
+  },
+  "sources": {
+    "retained_result": "benchmarks/results/2026-08-14-qwen36-27b-split-gdn-conv-lifetime-retained.json",
+    "aotriton_diagnostic": "benchmarks/results/2026-08-14-qwen36-27b-aotriton-memory-ownership-diagnostic.json",
+    "prior_owner_audit": "benchmarks/results/2026-08-14-qwen36-27b-remaining-memory-gap-audit.json",
+    "planner_raw": {"path": "/tmp/qwen36-27b-memory-goal/liveness-live-duration-order-audit.json", "sha256": "ae4bd2a958622e7d8b29c32c7ab4916fef1197163f646f914b9c48c8375d2be4"},
+    "no_rocblas_4096_json": {"path": "/tmp/qwen36-27b-memory-goal/no-rocblas-current-4096.json", "sha256": "03ad2c2ea0d2e0995c0d6e022808f565da385f495d716e1e7a3365d3f826b014"},
+    "no_rocblas_4096_vram": {"path": "/tmp/qwen36-27b-memory-goal/no-rocblas-current-4096-vram.json", "sha256": "8ce47bc1bd978d3bba84060318e29571de0b6235dc6e3241841e05263746f6ad"},
+    "module_inventory_wrapper": {"path": "/tmp/qwen36_module_inventory_bench.py", "sha256": "2176baca52c4fde7d4e94c038ddbec20876e459af1823bf3dcc3d0657d76978f"},
+    "module_inventory_log": {"path": "/tmp/vstack-pi-bg/bg-758-1786729557378.log", "sha256": "28ba15755e25766557fbad824ddbb67f62a7418a8efa7f686d8a8359d466022c"}
+  },
+  "decision": "Keep the Vulkan memory objective open. Do not reopen fixed-weight layout, AOTriton, rocBLAS-disable, graph-disable, or module-unload lanes. Implement and screen the deterministic lower-of-size-first/live-duration-first liveness planner next; its modeled 28.6875-MiB long-row reduction is incremental, not parity."
+}

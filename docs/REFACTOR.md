@@ -287,6 +287,25 @@ should be removed or collapsed.
   state arena or compact-Q4 stack to this package; 4K still needs a separately
   admitted structural owner.
 
+## Qwen3.6-27B gfx1100 private-c1 decode-scratch arena
+
+- Added 2026-08-14 as a model/quant/backend-policy-scoped default plus the
+  disable-only `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA=0` comparison
+  seam. One 256-byte-aligned owner exposes the same 188 logical c1 state, BF16
+  KV, metadata, and operation-workspace views; shared runners, c>N, peer
+  models/backends, explicit opt-out, and owner-allocation denial keep dedicated
+  allocation.
+- Full-engine XTX qualification saves **55.98/94.30/97.99/98.02 MiB** of
+  whole-device peak at 512/1K/4K/8K without changing requested bytes. All
+  prefill/decode movement is within **0.279%**; the W7900 512 safeguard is
+  within **0.046%** and saves **55.99 MiB**. This does not waive the prior
+  gfx1151 SH15 rejection or close the Vulkan parity objective.
+- Removal trigger: delete the environment seam after one release window if the
+  complete four-shape, dense-NextN, W7900, lifecycle, and memory gates remain
+  stable. If a later binding gate fails, remove the capability, resolver,
+  arena path, telemetry, tests, and this open entry together; retain dedicated
+  allocation unchanged.
+
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
 - Added 2026-08-06 as default-off
