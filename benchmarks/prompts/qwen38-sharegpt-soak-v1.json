@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "kind": "pinned_sharegpt_server_soak_prompts",
+  "source": {
+    "dataset": "Aeala/ShareGPT_Vicuna_unfiltered",
+    "dataset_commit": "8b0048ad6ae8c22f46a78c15559dec98feef5539",
+    "dataset_license": "apache-2.0",
+    "url": "https://datasets-server.huggingface.co/first-rows?dataset=Aeala%2FShareGPT_Vicuna_unfiltered&config=default&split=train",
+    "split": "train",
+    "selection": "fixed first-row indices 0,3,7,15,24,26,28,30",
+    "fetched_first_rows_sha256": "3199daa0b546498a8d36252fc633f6a748baba699fd3ad39ae8144979c61d8cf"
+  },
+  "lanes": [
+    {
+      "lane": 0,
+      "source_row_index": 0,
+      "source_id": "QWJhYvA_0",
+      "user_turns": [
+        "Summarize the main ideas of Jeff Walker's Product Launch Formula into bullet points as it pertains to a growth marketing agency implementing these strategies and tactics for their clients...",
+        "Summarize the main ideas of Brendon Burchard's Experts Academy into bullet points as it pertains to a growth marketing agency implementing these strategies and tactics for their clients...",
+        "What are the mental triggers in Jeff Walker's Product Launch Formula and \"Launch\" book?",
+        "Write a summary of why scarcity and urgency are the strongest mental triggers and have been the driving force behind many of our best performing campaigns over the last 8 years.",
+        "Summarize Russell Brunson's Perfect Webinar Script...",
+        "Summarize the 6 human needs as Tony Robbins explains..."
+      ]
+    },
+    {
+      "lane": 1,
+      "source_row_index": 3,
+      "source_id": "hRPPgZT_11",
+      "user_turns": [
+        "More verbose and details",
+        "Explain it more in that style",
+        "double the length"
+      ]
+    },
+    {
+      "lane": 2,
+      "source_row_index": 7,
+      "source_id": "wNBG8Gp_0",
+      "user_turns": [
+        "Java add to the arraylist of a class type",
+        "Do the code above with for loop for number of instances",
+        "Do the code above for the class with properties:\npublic class SeatExtended {\n public String row;\n public String column;\n public String availablity;\n}",
+        "Convert char to string in Java",
+        "Convert int to string Java",
+        "Java call function of class",
+        "Java call class method from another file",
+        "Java read class properties from arraylist"
+      ]
+    },
+    {
+      "lane": 3,
+      "source_row_index": 15,
+      "source_id": "idMLILF_0",
+      "user_turns": [
+        "how could i implement a minesweeper algorithm that utilises algebraic topology to solve boards?",
+        "could you give me the gist of how it could though?",
+        "give me a specific example",
+        "assuming i was someone with a deep understanding of both, could you explain the same concept to me with that assumption?",
+        "how would i do it with persistent homology or any of the other topological invariants?",
+        "how could i implement this in python?"
+      ]
+    },
+    {
+      "lane": 4,
+      "source_row_index": 24,
+      "source_id": "sUO0XFL_0",
+      "user_turns": [
+        "trying to connect grapgql-engine with dogital ocean database i linux server,\nbut I am gettin this error. In my local machine it is working\n\n{\"detail\":{\"info\":{\"database_url\":\"postgresql://doadmin:...@ips-backend-db-do-user-13678898-0.b.db.ondigitalocean.com:25060/Verlagg?sslmode=require\",\"retries\":1},\"kind\":\"postgres_connection\"},\"level\":\"info\",\"timestamp\":\"2023-03-27T10:40:29.956+0000\",\"type\":\"startup\"}\nbackend-graphql-engine-1 | {\"timestamp\":\"2023-03-27T10:41:29.000+0000\",\"level\":\"info\",\"type\":\"startup\",\"detail\":{\"kind\":\"migrations-startup\",\"info\":\"failed waiting for 9691, try increasing HASURA_GRAPHQL_MIGRATIONS_SERVER_TIMEOUT (default: 30)\"}",
+        "You may need to configure the firewall to allow incoming traffic on that port.\nhow in linux server?"
+      ]
+    },
+    {
+      "lane": 5,
+      "source_row_index": 26,
+      "source_id": "6YMEjv4_0",
+      "user_turns": [
+        "Damage to which nerve causes numbness of the palmar surface of the 5th digit/little finger",
+        "Damage to which nerve would cause inability to flex the distal interphalangeal joint of the index finger (2nd digit)",
+        "Fracture in midshaft of humerus may give rise to what symptoms?",
+        "Would a fracture in the midshaft of the humerus result in inability to extend, flex, or abduct any of the digits?",
+        "Which nerve can midshaft humerus fracture injure?",
+        "True or False. Extension of the thumb occurs at right angles (90 degrees) to the plane of the palm."
+      ]
+    },
+    {
+      "lane": 6,
+      "source_row_index": 28,
+      "source_id": "UQWWfNB_0",
+      "user_turns": [
+        "what is the photograph filter called where the only part of the image is greyscale",
+        "what about if only the background is greyscale while the subject of the photograph is in color?",
+        "is there a name for that style?"
+      ]
+    },
+    {
+      "lane": 7,
+      "source_row_index": 30,
+      "source_id": "BmS3AX0_0",
+      "user_turns": [
+        "Rewrite and improve this story: Well, I have always liked helping people since I was a small child, I have been accused many times of giving too much away for free, but I find joy in helping others put the pieces together to reach their goals. As a Licensed Professional Counselor and Life Coach that is my job to impact individuals and help clients work through emotional difficulties and reach goals. But I will be honest with you I was selling the dream but not always living the dream. I had issues I had not worked completely through like childhood trauma, heartbreak, disappointments, and frustrations with life. Don't get me wrong I had the husband, the kids, the house and the 6 figure job but I was not happy inside, but I didn't change because I hate change, most of us hate change, right? Then I lost my sister, my friend, and it slapped me in the face that I need to take care of myself. I saw the addiction, I saw her not taking care of herself and I could not save her. One thing I know for sure, if you do not make your wellness a priority illness will find you. I remember the moment we lost her, the earth stood still and then my heart broke into pieces, what was I going to do, I have loved her my whole life! It was months later that I made a decision that I would be the change I hope to see, I would create a space for women of color to move past the obstacles that keep us from creating the life we want and Brown Suga Wellness was born. I am on this journey and I invite you to be on this journey with me! I love this quote by Oludara Adeeyo: \"When you heal yourself, you create an earth shattering legacy. The lineage of women who come after you will be healed. Your inner circle of Black women around you, healed.\" When you choose yourself you break generational trauma and curses. You activate your ancestral strength. I invite you to activate that strength!",
+        "Rewrite: I am the founder of Brown Suga Wellness and we provide women of color the mental clarity they need to create their unique wellness lifeplan to create the life they want.",
+        "Rewrite and improve the following: Brown Suga Wellness know that you want to live a fulfilled life. To do that you need mental clarity and a well-crafted plan. The problem is you don’t have time to evaluate hundreds of coaches and companies to piece together a wellness plan that bring you questionable results or don’t cater to your unique needs as a woman of color which makes you feel stuck, overwhelmed, frustrated, invisible, dissatisfied, or unrepresented. We believe you deserve to be fulfilled in your life so we co-create your unique wellness plan. As a black entrepreneur & corporate woman I understand how you feel, I have been exactly where you are and know how frustrating it is to be overwhelmed, underrepresented and invisible without a plan to get better. This is why I am bringing over 20 year’s experience as a Licensed Professional Counselor and Life Coach to help you create the life you want with a well-crafted wellness plan.",
+        "rewrite and improve: Holistic Wellness is crutual for us as women of color – did you know that black women are 7 1/2 years older that non women of color according to xxxxx. So even though we are looking fierce on the outside we are dying inside. We need to be well for our life, but wellness also brings out the very best in us so we can be fulfilled and reach our full potential, this alone is enough to get well. I would to share with you why this subject is so close to my heart, even though I was working in the wellness field, I still loss my sister at the young age of 60 and even though the deaf certificate gives the physical cause of death, I believe her death had more to do with unresolved wellness, the holding of pain and trauma, a battle field in the mind that went unresolved and I tried but I could not save her so I am trying to save myself and I hope you take this journey with me. Healthier communities so we can do the work we were born to do. How much money is your mindset casing you?",
+        "Rewrite and improve: Opening Script: Hello everyone and welcome to the show, Real Stories/Real Healing podcast. I am Daisy Jones-Brown, a Licensed Professional Counselor and Life Coach with over 20 years of experience in social service. I am the owner of Brown Suga Wellness, where we help women of color reset their wellness in 90 days using our boss model. Stories are a gateway to healing and sharing your story sets you free and someone else, there is power in the story:"
+      ]
+    }
+  ]
+}
