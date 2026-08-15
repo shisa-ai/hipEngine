@@ -35,16 +35,25 @@ ROLE_ENVS: dict[str, dict[str, dict[str, str | None]]] = {
     'q4': {
         'strict_x2': {
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': 'exact',
         },
         'pre_x2': {
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
+            'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
+        },
+        'current_x3_rollback': {
+            'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': None,
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
+            'HIPENGINE_GGUF_DENSE_WMMA_BULK': None,
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
         'current': {
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': None,
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': None,
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': None,
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
@@ -52,11 +61,13 @@ ROLE_ENVS: dict[str, dict[str, dict[str, str | None]]] = {
     'q8': {
         'strict_x2': {
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': 'exact',
         },
         'current': {
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': None,
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': None,
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': None,
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
@@ -279,7 +290,9 @@ def role_summary(
     comparison = compact_comparison(strict['trajectory'], first['trajectory'])
     result: dict[str, Any] = {
         'correctness': comparison,
+        'teacher_forced_digest': first['digest'],
         'teacher_forced_deterministic': first['digest'] == second['digest'],
+        'state_digest': first['state']['digest'],
         'state_deterministic': first['state']['digest'] == second['state']['digest'],
         'state_finite': bool(first['state']['finite'] and second['state']['finite']),
         'state_exact_vs_strict_diagnostic': first['state']['digest'] == strict['state']['digest'],

@@ -854,6 +854,20 @@ _t16_f16_rocblas_prefill_session: ContextVar[
 _q4_t16_unequal_pair_prefill_enabled: ContextVar[bool] = ContextVar(
     "q4_t16_unequal_pair_prefill_enabled", default=False
 )
+_q4_pack8_dual_wmma_silu_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q4_pack8_dual_wmma_silu_prefill_enabled", default=False
+)
+
+
+@contextlib.contextmanager
+def q4_pack8_dual_wmma_silu_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified operation-complete pack8 owner for one request."""
+
+    token = _q4_pack8_dual_wmma_silu_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q4_pack8_dual_wmma_silu_prefill_enabled.reset(token)
 
 
 @contextlib.contextmanager
@@ -1610,6 +1624,59 @@ def _pack8_dual_rowtile_silu_dispatch(
         "gguf_q4_k",
         "pack8_dual_rowtile_bf16_bf16_out",
     )
+    return candidate if is_registered(candidate) else None
+
+
+def _pack8_dual_wmma_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    use_wmma: bool,
+) -> KernelKey | None:
+    """Resolve the shape-qualified operation-complete pack8 bulk FFN owner."""
+
+    expected = KernelKey(
+        dispatch_a.key.backend,
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    if (
+        not use_wmma
+        or not _q4_pack8_dual_wmma_silu_prefill_enabled.get()
+        or os.environ.get(
+            "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+            "1",
+        )
+        == "0"
+        or dispatch_a.abi != "pack8"
+        or dispatch_b.abi != "pack8"
+        or dispatch_a.key != expected
+        or dispatch_b.key != expected
+        or not backend_package_capability(
+            dispatch_a.key.backend,
+            "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+            False,
+        )
+        or not _backend_prefill_shape_is_qualified(
+            dispatch_a.key.backend,
+            "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES",
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_wmma_prefill_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(candidate)
     return candidate if is_registered(candidate) else None
 
 
@@ -3629,6 +3696,42 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            use_wmma=_resolve_use_wmma_prefill(None),
+        )
+        if pack8_wmma_key is not None:
+            fn = resolve(
+                backend=pack8_wmma_key.backend,
+                layer=pack8_wmma_key.layer,
+                quant=pack8_wmma_key.quant,
+                variant=pack8_wmma_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None if libraries is None else libraries.get(pack8_wmma_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("qweight").tensor.ptr,
+                weight_a.allocation("scales").tensor.ptr,
+                weight_a.allocation("mins").tensor.ptr,
+                weight_b.allocation("qweight").tensor.ptr,
+                weight_b.allocation("scales").tensor.ptr,
+                weight_b.allocation("mins").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         t16_wmma_key = _q4_t16_dual_wmma_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -5387,6 +5490,7 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
+    "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
     "q6_t16_f16_rocblas_prefill_session",

@@ -3564,6 +3564,17 @@ should be boring.
   env branch once the parity campaign closes and no A/B bisection still needs
   the tile8x8 control; expand the shape policy only with matched evidence.
 
+## gfx1151 Q4 operation-complete pack8 prefill rollback env
+
+- `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0` (default `1`) rolls the
+  exact Qwen3.5-0.8B Q4_K_M p512 dense gate/up owner back to two registered
+  singleton pack8 WMMAs plus standalone BF16 SiLU. Added with D08-X3
+  (2026-08-15): the fused leaf is byte-exact and 2.089x faster; five paired
+  complete-model blocks improve core/public prefill 13.81%/13.85% with neutral
+  decode and Q8 guards. Remove the env branch after one non-regressive release
+  window when no A/B bisection needs it. Do not broaden the model/quant/rows/
+  K/N policy without separate complete-model evidence.
+
 ## gfx1151 pack8 wmma64 diagnostic kernel
 
 - `pack8_wmma64_prefill_bf16_bf16_out` (LDS-staged 128x64 large-tile pack8
