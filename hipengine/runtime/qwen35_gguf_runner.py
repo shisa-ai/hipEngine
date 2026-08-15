@@ -257,6 +257,7 @@ from hipengine.kernels.backends import (
     load_backend_kernel_package,
     resolve_backend,
 )
+from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
@@ -267,7 +268,12 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.materialize import DeviceTensorAllocation, float_array_to_bf16_bits
-from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION, build_qwen35_gguf_tensor_map
+from hipengine.loading.qwen35_gguf import (
+    FULL_ATTENTION,
+    LINEAR_ATTENTION,
+    build_qwen35_gguf_tensor_map,
+    qwen35_gguf_config_from_metadata,
+)
 from hipengine.loading.qwen35_gguf_expert_sidecar import (
     GGUFExpertPackedTensor,
     build_packed_expert_tensor_from_reader,
@@ -2123,6 +2129,7 @@ class Qwen35GGUFFullStackRunner:
                 root_weights=MappingProxyType(root_weights),
                 layers=resident.layers,
                 backend=resident.backend,
+                geometry=resident.geometry,
                 model_name=resident.model_name,
                 file_type_name=resident.file_type_name,
                 allocation_arena=resident.allocation_arena,
@@ -9293,10 +9300,24 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     return raw.lower() not in {"0", "false", "off", "no"}
 
 
+def _gguf_policy_identity(
+    weights: object,
+) -> tuple[GGUFModelGeometry, str | None] | None:
+    geometry = getattr(weights, "geometry", None)
+    if geometry is None:
+        geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
+        if geometry is None:
+            return None
+    if not isinstance(geometry, GGUFModelGeometry):
+        return None
+    file_type_name = getattr(weights, "file_type_name", None)
+    return geometry, None if file_type_name is None else str(file_type_name)
+
+
 def _resolve_gguf_decode_graph_submission_transport(
     backend: str,
     *,
-    model_name: str | None = None,
+    geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     physical_rows: int = 1,
     replay_steps: int = 0,
@@ -9315,7 +9336,7 @@ def _resolve_gguf_decode_graph_submission_transport(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policies must be a mapping")
-    policy = package_policies.get((model_name, file_type_name), {})
+    policy = package_policies.get((geometry, file_type_name), {})
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policy must be a mapping")
     package_default = str(policy.get("transport", "hipgraph"))
@@ -9439,7 +9460,7 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
 
 
 def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
-    """Return whether this request owner is the qualified dense-27B model."""
+    """Return whether this request owner has the qualified dense geometry."""
 
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
@@ -9455,17 +9476,14 @@ def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
     )
     if not isinstance(policies, Mapping):
         return False
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
-    return bool(policies.get(identity, False))
+    identity = _gguf_policy_identity(weights)
+    return bool(identity is not None and policies.get(identity, False))
 
 
 def _gguf_t16_f16_rocblas_prefill_policy(
     runner: object,
 ) -> Mapping[str, object] | None:
-    """Resolve model/backend-qualified Q4/Q5/Q6 source-F16 prefill policies."""
+    """Resolve geometry/backend-qualified Q4/Q5/Q6 source-F16 policies."""
 
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
@@ -9474,8 +9492,18 @@ def _gguf_t16_f16_rocblas_prefill_policy(
         cfg is None
         or not isinstance(backend, str)
         or bool(getattr(cfg, "is_moe", False))
-        or getattr(weights, "model_name", None) != "Qwen3.6-27B"
-        or getattr(weights, "file_type_name", None) != "MOSTLY_Q4_K_M"
+    ):
+        return None
+    identity = _gguf_policy_identity(weights)
+    admissions = backend_package_capability(
+        backend,
+        "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
+        {},
+    )
+    if (
+        identity is None
+        or not isinstance(admissions, Mapping)
+        or not bool(admissions.get(identity, False))
     ):
         return None
     normalized_by_quant: dict[str, object] = {}
@@ -9799,7 +9827,7 @@ def _resolve_gguf_private_c1_small_weight_arena(
     backend: str,
     max_batch_size: int,
     has_shared_runner: bool,
-    model_name: str | None = None,
+    geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
 ) -> tuple[bool, str]:
@@ -9831,7 +9859,7 @@ def _resolve_gguf_private_c1_small_weight_arena(
         )
         if not isinstance(policies, Mapping):
             return False, "backend_capability_fallback"
-        policy = policies.get((model_name, file_type_name))
+        policy = policies.get((geometry, file_type_name))
         admitted = isinstance(policy, Mapping) and bool(
             policy.get("enabled", False)
         )
@@ -9845,11 +9873,11 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     backend: str,
     max_batch_size: int,
     has_shared_runner: bool,
-    model_name: str | None = None,
+    geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
 ) -> tuple[bool, str]:
-    """Select one physical owner for model-qualified private-c1 scratch."""
+    """Select one physical owner for geometry-qualified private-c1 scratch."""
 
     if requested is None:
         raw = _env_value(_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV)
@@ -9872,19 +9900,19 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     )
     if not isinstance(policies, Mapping):
         return False, "backend_capability_fallback"
-    policy = policies.get((model_name, file_type_name))
+    policy = policies.get((geometry, file_type_name))
     if not isinstance(policy, Mapping) or not bool(policy.get("enabled", False)):
         return False, "backend_capability_fallback"
-    return True, "private_c1_model_policy"
+    return True, "private_c1_geometry_policy"
 
 
 def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     *,
     backend: str,
-    model_name: str | None = None,
+    geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
 ) -> int:
-    """Resolve the model-scoped arena cutoff without changing peer defaults."""
+    """Resolve the geometry-scoped arena cutoff without changing peer defaults."""
 
     default = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
     policies = backend_package_capability(
@@ -9894,7 +9922,7 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     )
     if not isinstance(policies, Mapping):
         return default
-    policy = policies.get((model_name, file_type_name))
+    policy = policies.get((geometry, file_type_name))
     if not isinstance(policy, Mapping):
         return default
     parsed = int(policy.get("max_allocation_bytes", default))
@@ -11965,8 +11993,8 @@ class Qwen35GGUFResidentSession:
                 False,
             )
         )
-        small_weight_model_name = None
-        small_weight_file_type_name = None
+        model_geometry = None
+        model_file_type_name = None
         token_embedding_type_name = None
         small_weight_policies = backend_package_capability(
             resolved_backend,
@@ -11988,8 +12016,14 @@ class Qwen35GGUFResidentSession:
             )
         ):
             model_info = GGUFReader(self.model_path).info
-            small_weight_model_name = str(model_info.metadata.get("general.name", ""))
-            small_weight_file_type_name = str(model_info.file_type_name)
+            model_geometry = GGUFModelGeometry.from_config(
+                qwen35_gguf_config_from_metadata(model_info)
+            )
+            model_file_type_name = (
+                None
+                if model_info.file_type_name is None
+                else str(model_info.file_type_name)
+            )
             if host_embedding or mapped_host_embedding:
                 token_embedding_type_name = next(
                     (
@@ -12011,8 +12045,8 @@ class Qwen35GGUFResidentSession:
                 backend=resolved_backend,
                 max_batch_size=self.max_batch_size,
                 has_shared_runner=self.shared_runner is not None,
-                model_name=small_weight_model_name,
-                file_type_name=small_weight_file_type_name,
+                geometry=model_geometry,
+                file_type_name=model_file_type_name,
                 requested=self.use_small_weight_arena,
             )
         )
@@ -12020,8 +12054,8 @@ class Qwen35GGUFResidentSession:
             self.small_weight_arena_max_allocation_bytes = (
                 _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
                     backend=resolved_backend,
-                    model_name=small_weight_model_name,
-                    file_type_name=small_weight_file_type_name,
+                    geometry=model_geometry,
+                    file_type_name=model_file_type_name,
                 )
             )
         self.decode_scratch_arena_enabled, self.decode_scratch_arena_reason = (
@@ -12029,8 +12063,8 @@ class Qwen35GGUFResidentSession:
                 backend=resolved_backend,
                 max_batch_size=self.max_batch_size,
                 has_shared_runner=self.shared_runner is not None,
-                model_name=small_weight_model_name,
-                file_type_name=small_weight_file_type_name,
+                geometry=model_geometry,
+                file_type_name=model_file_type_name,
                 requested=self.use_decode_scratch_arena,
             )
         )
@@ -21052,7 +21086,7 @@ class Qwen35GGUFResidentSession:
             resident_weights = getattr(self.runner, "weights", None)
             selected_transport = _resolve_gguf_decode_graph_submission_transport(
                 self.runner.backend,
-                model_name=getattr(resident_weights, "model_name", None),
+                geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
                 physical_rows=1,
                 replay_steps=(
@@ -21122,7 +21156,7 @@ class Qwen35GGUFResidentSession:
             resident_weights = getattr(self.runner, "weights", None)
             selected_transport = _resolve_gguf_decode_graph_submission_transport(
                 self.runner.backend,
-                model_name=getattr(resident_weights, "model_name", None),
+                geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
                 physical_rows=(
                     len(token_ids) if physical_rows is None else int(physical_rows)
@@ -21851,12 +21885,8 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
             return None
         if not isinstance(policies, Mapping):
             return None
-        policy = policies.get(
-            (
-                getattr(weights, "model_name", None),
-                getattr(weights, "file_type_name", None),
-            )
-        )
+        identity = _gguf_policy_identity(weights)
+        policy = None if identity is None else policies.get(identity)
         if not isinstance(policy, Mapping):
             return None
         try:
@@ -21910,12 +21940,8 @@ def _gguf_dense_prefill_scratch_policy(runner: object) -> Mapping | None:
         return None
     if not isinstance(policies, Mapping):
         return None
-    policy = policies.get(
-        (
-            getattr(weights, "model_name", None),
-            getattr(weights, "file_type_name", None),
-        )
-    )
+    identity = _gguf_policy_identity(weights)
+    policy = None if identity is None else policies.get(identity)
     return policy if isinstance(policy, Mapping) else None
 
 

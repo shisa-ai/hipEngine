@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
 from hipengine.core.memory import DeviceBuffer
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
 
@@ -67,7 +69,8 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
         ssm_value_dim=128,
         weights=SimpleNamespace(
             config=cfg,
-            model_name="Qwen3.6-27B",
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            model_name="arbitrary-finetune-name",
             file_type_name="MOSTLY_Q4_K_M",
         ),
     )
@@ -105,15 +108,20 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
-def test_unequal_q4_pair_owner_is_model_backend_scoped(monkeypatch) -> None:
+def test_unequal_q4_pair_owner_is_geometry_backend_scoped(monkeypatch) -> None:
     runner = _fake_dense_qwen36_runner()
     assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.backend = "hip_gfx1151"
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.backend = "hip_gfx1100"
     runner.weights.model_name = "other"
+    assert gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
+    runner.weights.geometry = replace(
+        QWEN35_DENSE_H5120_GEOMETRY,
+        head_count=23,
+    )
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
-    runner.weights.model_name = "Qwen3.6-27B"
+    runner.weights.geometry = QWEN35_DENSE_H5120_GEOMETRY
     runner.weights.config.is_moe = True
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
     runner.weights.config.is_moe = False

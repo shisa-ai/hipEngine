@@ -50,29 +50,30 @@ should be removed or collapsed.
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they
   have conclusively failed to distinguish the lifecycle fault.
 
-## Qwen3.6 exact unequal-Q4 pair context seam
+## Dense-H5120 exact unequal-Q4 pair context seam
 
 - Added 2026-08-13 for the exact Q4T16 linear-attention QKV/gate bulk-prefill
-  owner. The model-scoped runner context prevents the shape-general registry
-  leaf from claiming unqualified models; rows below 512 and all misses retain
-  the two exact singleton projections. There is no environment selector,
-  workspace, sidecar, or alternate payload.
+  owner. The architecture/geometry-scoped runner context prevents the
+  shape-general registry leaf from claiming unqualified models; rows below 512
+  and all misses retain the two exact singleton projections. There is no
+  environment selector, workspace, sidecar, or alternate payload.
 - Removal trigger: after one release window with complete category, 512/1K/4K
   cross-board, and natural MTP safeguards stable, collapse the private boolean
   context into a quant-neutral model-policy object if more exact pair owners are
   admitted. Keep the separately registered singleton chain permanently as the
   required numerical/peer-backend fallback.
 
-## Qwen3.6 bounded Q4/Q5/Q6 source-F16 rollback seam
+## Dense-H5120 bounded Q4/Q5/Q6 source-F16 rollback seam
 
 - Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
   prefill owner; retained Q4 and Q5 extensions now share that owner and keep
   compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a whole-route
   exact rollback. The name is stale but the rollback remains useful while
   changed-arithmetic Q4/Q5/Q6 accumulates release evidence. Q5 is limited to
-  Qwen3.6-27B recurrent-output prefill at measured bulk-row anchors and casts its
-  dead K6,144 input in place. Exact Q4 pair-owned and Q5 natural-octet-owned
-  source-F16 production are selected through a generic quant/shape/inclusive-row
+  the qualified dense-H5120 recurrent-output geometry at measured anchors and
+  casts its dead K6,144 input in place. Exact Q4 pair-owned and Q5
+  natural-octet-owned source-F16 production are selected through a generic
+  quant/shape/inclusive-row
   variant policy; misses retain each scalar producer. An ordered pair-only
   policy can admit a second projection only when its already-qualified first
   peer owns the common activation, without exposing that shape to singleton or
@@ -269,17 +270,18 @@ should be removed or collapsed.
   MiB** while all **161 larger owners / 95.965% of weight bytes**, all
   state/scratch, c>N requests, unsupported layouts, and denied routes keep
   dedicated behavior.
-- The gfx1100 Qwen3.6-27B policy was added on 2026-08-12 and subsequently
-  widened to the first complete 80-MiB inventory crossover. It packs 849
-  allocations into one owner, leaves only the 1,042,944,000-byte untied head
+- The gfx1100 dense-H5120 geometry policy was added on 2026-08-12 and
+  subsequently widened to the first complete 80-MiB inventory crossover. It
+  packs 849 allocations into one owner, leaves only the 1,042,944,000-byte
+  untied head
   dedicated, reduces physical weight owners **370 -> 2**, and cuts the XTX
   512/128 process peak **16.171 -> 16.095 GiB** with exact output. The complete
   W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
   true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
   peak delta falls **45.50-47.03%**.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Its Qwen3.6 removal trigger is closed;
-  remove the shared environment seam after the next cumulative gfx1151 GGUF
+  disable-only rollback/bisection seam. Its dense-H5120 removal trigger is
+  closed; remove the shared environment seam after the next cumulative gfx1151 GGUF
   policy refresh confirms retained **3/4 fork-memory parity** and no supported
   gfx1151 private-c1 consumer requires rollback.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
@@ -287,10 +289,11 @@ should be removed or collapsed.
   state arena or compact-Q4 stack to this package; 4K still needs a separately
   admitted structural owner.
 
-## Qwen3.6-27B gfx1100 private-c1 decode-scratch arena
+## Dense-H5120 gfx1100 private-c1 decode-scratch arena
 
-- Added 2026-08-14 as a model/quant/backend-policy-scoped default plus the
-  disable-only `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA=0` comparison
+- Added 2026-08-14 as an architecture/geometry/quant/backend-policy-scoped
+  default plus the disable-only
+  `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA=0` comparison
   seam. One 256-byte-aligned owner exposes the same 188 logical c1 state, BF16
   KV, metadata, and operation-workspace views; shared runners, c>N, peer
   models/backends, explicit opt-out, and owner-allocation denial keep dedicated

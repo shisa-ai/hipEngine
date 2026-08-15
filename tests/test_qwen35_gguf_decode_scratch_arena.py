@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 from hipengine.core.memory import DeviceBuffer
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 
@@ -35,7 +37,8 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
         ssm_value_dim=128,
         weights=SimpleNamespace(
             config=cfg,
-            model_name="Qwen3.6-27B",
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            model_name="arbitrary-finetune-name",
             file_type_name="MOSTLY_Q4_K_M",
         ),
     )
@@ -156,9 +159,9 @@ def test_dense_qwen36_decode_scratch_owner_denial_falls_back(monkeypatch) -> Non
     assert len(scratch.buffers) == 188
 
 
-def test_private_c1_decode_scratch_arena_is_model_policy_scoped(monkeypatch) -> None:
+def test_private_c1_decode_scratch_arena_is_geometry_policy_scoped(monkeypatch) -> None:
     policy = {
-        ("Qwen3.6-27B", "MOSTLY_Q4_K_M"): {"enabled": True},
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {"enabled": True},
     }
     monkeypatch.delenv(
         "HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA",
@@ -172,42 +175,39 @@ def test_private_c1_decode_scratch_arena_is_model_policy_scoped(monkeypatch) -> 
         else default,
     )
 
+    common = {
+        "backend": "hip_gfx1100",
+        "geometry": QWEN35_DENSE_H5120_GEOMETRY,
+        "file_type_name": "MOSTLY_Q4_K_M",
+    }
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
-        backend="hip_gfx1100",
+        **common,
         max_batch_size=1,
         has_shared_runner=False,
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
-    ) == (True, "private_c1_model_policy")
+    ) == (True, "private_c1_geometry_policy")
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
-        backend="hip_gfx1100",
+        **common,
         max_batch_size=2,
         has_shared_runner=False,
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
         requested=True,
     ) == (False, "multi_row_fallback")
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
-        backend="hip_gfx1100",
+        **common,
         max_batch_size=1,
         has_shared_runner=True,
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
         requested=True,
     ) == (False, "shared_runner_fallback")
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
         backend="hip_gfx1100",
+        geometry=replace(QWEN35_DENSE_H5120_GEOMETRY, head_count=23),
+        file_type_name="MOSTLY_Q4_K_M",
         max_batch_size=1,
         has_shared_runner=False,
-        model_name="Other",
-        file_type_name="MOSTLY_Q4_K_M",
         requested=True,
     ) == (False, "backend_capability_fallback")
     monkeypatch.setenv("HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA", "0")
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
-        backend="hip_gfx1100",
+        **common,
         max_batch_size=1,
         has_shared_runner=False,
-        model_name="Qwen3.6-27B",
-        file_type_name="MOSTLY_Q4_K_M",
     ) == (False, "disabled")
