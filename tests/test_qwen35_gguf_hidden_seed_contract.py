@@ -271,6 +271,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
 
     session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
     session._q8_mmq_prefill_context = lambda: nullcontext()
+    session._q6_f16_rocblas_prefill_context = lambda **kwargs: nullcontext()
 
     result = session.prefill(
         [10, 11],
@@ -310,6 +311,7 @@ def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
 
     session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
     session._q8_mmq_prefill_context = lambda: nullcontext()
+    session._q6_f16_rocblas_prefill_context = lambda **kwargs: nullcontext()
 
     result = session.prefill(
         [10, 11],

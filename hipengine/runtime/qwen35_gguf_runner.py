@@ -9437,6 +9437,8 @@ class _GGUFInt8PrefillLifetimePlan:
     layer_local_oracle_bytes: int
     chunk_hidden_bytes: int
     layer_outer_hidden_bytes: int
+    chunk_token_bytes: int
+    layer_outer_token_bytes: int
     projected_peak_delta_bytes: int
     projected_peak_saving_bytes: int
     required_hidden_capacity: int
@@ -9490,6 +9492,8 @@ def _plan_gguf_int8_prefill_lifetime(
     hidden_element_bytes = DType.BF16.itemsize
     chunk_hidden_bytes = chunk_rows * hidden * hidden_element_bytes * hidden_buffers
     layer_outer_hidden_bytes = positions * hidden * hidden_element_bytes * hidden_buffers
+    chunk_token_bytes = chunk_rows * DType.INT64.itemsize
+    layer_outer_token_bytes = positions * DType.INT64.itemsize
     oracle_pair_bytes = (
         positions * kv_heads * head_dim * hidden_element_bytes * 2
         if int8_layers > 0
@@ -9505,6 +9509,8 @@ def _plan_gguf_int8_prefill_lifetime(
             layer_local_oracle_bytes=0,
             chunk_hidden_bytes=chunk_hidden_bytes,
             layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+            chunk_token_bytes=chunk_token_bytes,
+            layer_outer_token_bytes=layer_outer_token_bytes,
             projected_peak_delta_bytes=0,
             projected_peak_saving_bytes=0,
             required_hidden_capacity=chunk_rows,
@@ -9518,6 +9524,8 @@ def _plan_gguf_int8_prefill_lifetime(
             layer_local_oracle_bytes=0,
             chunk_hidden_bytes=chunk_hidden_bytes,
             layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+            chunk_token_bytes=chunk_token_bytes,
+            layer_outer_token_bytes=layer_outer_token_bytes,
             projected_peak_delta_bytes=0,
             projected_peak_saving_bytes=0,
             required_hidden_capacity=chunk_rows,
@@ -9526,8 +9534,10 @@ def _plan_gguf_int8_prefill_lifetime(
 
     projected_delta = (
         layer_outer_hidden_bytes
+        + layer_outer_token_bytes
         + oracle_pair_bytes
         - chunk_hidden_bytes
+        - chunk_token_bytes
         - layer_local_oracle_bytes
     )
     use_shared = projected_delta < 0
@@ -9542,10 +9552,56 @@ def _plan_gguf_int8_prefill_lifetime(
         layer_local_oracle_bytes=layer_local_oracle_bytes,
         chunk_hidden_bytes=chunk_hidden_bytes,
         layer_outer_hidden_bytes=layer_outer_hidden_bytes,
+        chunk_token_bytes=chunk_token_bytes,
+        layer_outer_token_bytes=layer_outer_token_bytes,
         projected_peak_delta_bytes=projected_delta,
         projected_peak_saving_bytes=max(0, -projected_delta) if use_shared else 0,
         required_hidden_capacity=positions if use_shared else chunk_rows,
         oracle_buffer_count=1 if use_shared else int8_layers,
+    )
+
+
+def _plan_gguf_int8_prefill_lifetime_for_session(
+    session: object,
+    *,
+    scratch_rows: int,
+) -> _GGUFInt8PrefillLifetimePlan:
+    """Build the geometry/policy plan for one initialized resident session."""
+
+    runner = getattr(session, "runner", None)
+    weights = None if runner is None else getattr(runner, "weights", None)
+    scratch = getattr(session, "scratch", None)
+    if runner is None or weights is None or scratch is None:
+        raise RuntimeError("GGUF resident session is not initialized for INT8 prefill planning")
+    cfg = weights.config
+    kv_storage_dtype = DType.parse(getattr(session, "kv_storage_dtype"))
+    max_positions = int(scratch.max_positions)
+    full_attention_layers = sum(
+        1 for layer_type in cfg.layer_types if layer_type == FULL_ATTENTION
+    )
+    bf16_full_attention_layers = len(
+        tuple(getattr(session, "int8_bf16_full_attention_layer_indices", ()))
+    )
+    has_bf16_mirror = (
+        kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        and str(getattr(session, "kv_scale_granularity", "per_token_head"))
+        != "hadamard_group32"
+        and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
+    )
+    return _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=kv_storage_dtype,
+        max_positions=max_positions,
+        scratch_rows=int(scratch_rows),
+        hidden_size=int(runner.hidden_size),
+        head_count_kv=int(cfg.head_count_kv),
+        key_length=int(cfg.key_length),
+        full_attention_layers=full_attention_layers,
+        bf16_full_attention_layers=bf16_full_attention_layers,
+        has_bf16_mirror=has_bf16_mirror,
+        hidden_buffer_count=_gguf_prefill_hidden_buffer_count(
+            runner,
+            rows=int(scratch_rows),
+        ),
     )
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
@@ -12414,6 +12470,7 @@ class Qwen35GGUFResidentSession:
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
+    _int8_prefill_lifetime_plan: _GGUFInt8PrefillLifetimePlan | None = field(default=None, init=False)
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
@@ -12829,7 +12886,18 @@ class Qwen35GGUFResidentSession:
         self._lm_out_value = malloc(self.max_batch_size * DType.FP32.itemsize, runtime=runtime)
         prefill_capacity = int(self.scratch.max_positions)
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
-        alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
+        self._int8_prefill_lifetime_plan = _plan_gguf_int8_prefill_lifetime_for_session(
+            self,
+            scratch_rows=prefill_rows,
+        )
+        self.prefill_chunk_tuning["int8_prefill_lifetime"] = asdict(
+            self._int8_prefill_lifetime_plan
+        )
+        alloc_capacity = (
+            prefill_capacity
+            if self.use_expert_sidecar
+            else int(self._int8_prefill_lifetime_plan.required_hidden_capacity)
+        )
         self._prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
         self._prefill_hidden_a, self._prefill_hidden_b = (
             _allocate_prefill_hidden_buffers(
@@ -14514,20 +14582,26 @@ class Qwen35GGUFResidentSession:
         )
 
     def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
-        """Return a per-layer BF16 oracle cache for INT8-retained GGUF prefill.
+        """Return the planned BF16 oracle owner for INT8-retained prefill.
 
-        Chunk-outer bulk prefill revisits each layer once per prompt chunk. A
-        single shared oracle cache is therefore unsafe when more than one
-        full-attention layer is INT8-retained: later layers overwrite earlier
-        layers' previous chunks before those earlier layers process the next
-        chunk. Keep the temporary BF16 oracle layer-local for the duration of
-        one prefill, then release it before decode.
+        Chunk-outer bulk prefill revisits each layer once per prompt chunk, so
+        it keeps one full-length pair per INT8 layer.  A memory-positive
+        layer-outer plan instead owns the full hidden plane and safely reuses
+        one pair after each layer completes.  Both lifetimes release before
+        decode.
         """
 
         if self.scratch is None or self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         layer = int(layer_id)
-        cached = self._int8_prefill_oracle_buffers.get(layer)
+        lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
+        cache_key = (
+            -1
+            if lifetime_plan is not None
+            and lifetime_plan.mode == "layer_outer_shared_oracle"
+            else layer
+        )
+        cached = self._int8_prefill_oracle_buffers.get(cache_key)
         if cached is not None:
             return cached
         cfg = self.runner.weights.config
@@ -14536,7 +14610,7 @@ class Qwen35GGUFResidentSession:
         key_cache = malloc(nbytes, runtime=runtime)
         value_cache = malloc(nbytes, runtime=runtime)
         cached = (key_cache, value_cache)
-        self._int8_prefill_oracle_buffers[layer] = cached
+        self._int8_prefill_oracle_buffers[cache_key] = cached
         return cached
 
     def _release_int8_prefill_oracle_buffers(self) -> None:
@@ -14995,6 +15069,15 @@ class Qwen35GGUFResidentSession:
             recorder.complete(reset_sequence, stream=stream)
         alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
         chunk_outer = alloc_capacity < rows
+        lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
+        if (
+            lifetime_plan is not None
+            and lifetime_plan.mode == "layer_outer_shared_oracle"
+            and chunk_outer
+        ):
+            raise RuntimeError(
+                "shared INT8 prefill oracle requires full-capacity layer-outer hidden ownership"
+            )
         if hidden_seed_buf is not None and chunk_outer:
             raise ValueError("capture_hidden_seed_fp32 is not supported with chunked outer GGUF prefill")
 
@@ -22571,6 +22654,17 @@ def _gguf_prefill_scratch_priority_min_live_stages(
     return value if value > 0 else None
 
 
+def _gguf_prefill_hidden_buffer_count(runner: object, *, rows: int) -> int:
+    policy = _gguf_dense_prefill_scratch_policy(runner)
+    if policy is None:
+        return 2
+    try:
+        min_rows = int(policy.get("hidden_inplace_min_rows", 0))
+    except (TypeError, ValueError):
+        min_rows = 0
+    return 1 if min_rows > 0 and int(rows) >= min_rows else 2
+
+
 def _allocate_prefill_hidden_buffers(
     runner: object,
     *,
@@ -22579,14 +22673,7 @@ def _allocate_prefill_hidden_buffers(
     runtime: HipRuntime,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     hidden_a = malloc(int(nbytes), runtime=runtime)
-    policy = _gguf_dense_prefill_scratch_policy(runner)
-    if policy is None:
-        return hidden_a, malloc(int(nbytes), runtime=runtime)
-    try:
-        min_rows = int(policy.get("hidden_inplace_min_rows", 0))
-    except (TypeError, ValueError):
-        min_rows = 0
-    if min_rows > 0 and int(rows) >= min_rows:
+    if _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
         return hidden_a, hidden_a
     return hidden_a, malloc(int(nbytes), runtime=runtime)
 
