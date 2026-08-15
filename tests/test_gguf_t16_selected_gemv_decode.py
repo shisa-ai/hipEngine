@@ -65,6 +65,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
     gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
     gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
@@ -994,6 +995,46 @@ def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
     )
 
 
+def test_q5_t16_dense_tile8_matches_production_bits(
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(0x38A58)
+    rows, in_features, out_features = 1, 512, 32
+    raw = make_q5_k_weight(out_features, in_features)
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    control = _run_dense_single(
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dense_single(
+        gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, control)
+    expected = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16),
+        raw,
+        GGMLQuantizationType.Q5_K,
+    )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(candidate),
+        expected,
+        **_TOL,
+    )
+
+
 def _run_direct_dual_silu_q8_dp4a(
     x_dev,
     selected,
@@ -1380,6 +1421,12 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q5_k_t16_v1",
         variant="t16_gemv_decode_bf16_bf16_out",
     ) is gguf_q5_k_t16_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_decode_tile8_bf16_bf16_out",
+    ) is gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",

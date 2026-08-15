@@ -3943,6 +3943,91 @@ __global__ __launch_bounds__(128, 2) void qk_t16_selected_direct_gemv_kernel(
   }
 }
 
+// Exact dense Q5T16 c=1 output-ownership screen. Each workgroup owns one
+// eight-column half of a resident 16-column tile while preserving production
+// K ownership, FMA order, wave32 tree, serial wave-0..3 reduction, and BF16
+// store for every output.
+template <typename scalar_t>
+__global__ __launch_bounds__(128, 4)
+void q5_k_t16_dense_tile8_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  constexpr int kGroupsPerTile = T16_COLS / kTileCols;
+  const int64_t out_group = blockIdx.x;
+  const int64_t out_tile = out_group / kGroupsPerTile;
+  const int col_base =
+      static_cast<int>(out_group % kGroupsPerTile) * kTileCols;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+
+  float acc[kTileCols];
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    acc[local_col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) * Q5_T16_BLOCK_BYTES;
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const int sb = k_in_block >> 5;
+      const int lane32 = k_in_block & 31;
+      const float xv = scalar_to_float<scalar_t>(x[k_base + k_in_block]);
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        const int col = col_base + local_col;
+        const float d = fp16_bytes_to_float(
+            tile + Q5_T16_D_OFFSET + col * 2);
+        const float dmin = fp16_bytes_to_float(
+            tile + Q5_T16_DMIN_OFFSET + col * 2);
+        const float scale = d * static_cast<float>(
+            tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+        const float minv = dmin * static_cast<float>(
+            tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+        const float q = static_cast<float>(
+            t16_q5_quant(tile, sb, lane32, col));
+        acc[local_col] += xv * (scale * q - minv);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_col = 0; local_col < kTileCols; ++local_col) {
+    GGUF_T16_WAVE_REDUCE(acc[local_col]);
+  }
+
+  __shared__ float xchg[4 * kTileCols];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      xchg[wave * kTileCols + local_col] = acc[local_col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_group_row =
+        out + out_tile * T16_COLS + col_base;
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      float total = 0.0f;
+#pragma unroll
+      for (int g = 0; g < 4; ++g) {
+        total += xchg[g * kTileCols + local_col];
+      }
+      out_group_row[local_col] = float_to_scalar<scalar_t>(total);
+    }
+  }
+}
+
 // Exact Qwen c=1/top8 selected-down ownership screen. Split each resident
 // 16-column Q5/Q6 T16 tile into independent four- or eight-column workgroups
 // while retaining the production local128 K ownership, FMA order, four-wave
@@ -5251,6 +5336,36 @@ int launch_q5_dense_direct(
 }
 
 template <typename scalar_t>
+int launch_q5_dense_tile8(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 1 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_tile8_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q5_dense_rowtile_col4(
     const void* x,
     const void* tiles,
@@ -6131,6 +6246,15 @@ hipengine_gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q5_dense_direct<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_tile8<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

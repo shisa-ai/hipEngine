@@ -285,23 +285,26 @@ open campaign gaps. Evidence:
 
 These rows are dirty-development gates, not replacement clean publication
 toplines. Single-layout ownership plus bounded P4 raises prefill to
-343.320/338.038/332.676 tok/s. P5's first retained rows1 Q4T16 Q8_1x2 dp4a
-owner improves exact graph AR at all required shapes without changing tracked
-peaks or repeated-token IDs:
+343.320/338.038/332.676 tok/s. P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up and
+an exact serial-c1 Q5T16 recurrent-output tile8 owner. The current exact graph
+AR rows, against fresh same-source direct-Q5 controls, are:
 
-| Shape | Prior retained AR | Current AR | Delta | llama HIP | llama Vulkan |
+| Shape | Same-source direct control | Current AR | Q5 tile8 delta | llama HIP | llama Vulkan |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 11.79322 | **11.84670** | **+0.454%** | 12.1506 | 12.7629 |
-| 1K/128 | 11.65199 | **11.71418** | **+0.534%** | 12.0645 | 12.7197 |
-| 4K/128 | 10.91800 | **10.94755** | **+0.271%** | 11.5081 | 12.5683 |
+| 512/128 | 11.88520 | **11.95579** | **+0.594%** | 12.1506 | 12.7629 |
+| 1K/128 | 11.70329 | **11.78430** | **+0.692%** | 12.0645 | 12.7197 |
+| 4K/128 | 10.94625 | **11.00441** | **+0.531%** | 11.5081 | 12.5683 |
 
-The complete natural suite moves true AR **12.02451/12.01511 -> 12.10945
-tok/s (+0.706%/+0.785%)** versus historical/post controls and B1/B2/B3 to
-**18.96475/23.16953/24.24116 tok/s**. All 120 current trajectories, all token
-and acceptance comparisons against both controls, GPU/CPU acceptance, and 56
-per-control scope guards pass. Clean Vulkan AR remains faster, so P5 and the
+Q8_1x2 first moved natural true AR **12.02451/12.01511 -> 12.10945 tok/s
+(+0.706%/+0.785%)**. Q5 tile8 then reaches **12.15775 tok/s**, or
+**+0.541%** versus its fresh direct control and **+0.399%** versus Q8_1x2,
+with every full/train/heldout/category scope positive and all trajectories
+exact. Native rows and MTP remain on their prior exact owners, preserving the
+current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows. Tracked peaks and
+resident bytes are unchanged. Clean Vulkan AR remains faster, so P5 and the
 campaign stay open. Evidence:
-[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json).
+[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json)
+and [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

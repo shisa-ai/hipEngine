@@ -1239,6 +1239,16 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
     assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
+    ) == {
+        "gguf_q5_k_t16_v1": {
+            (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+        },
+    }
     assert GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK == 6

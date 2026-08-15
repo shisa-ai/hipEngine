@@ -2274,6 +2274,12 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
+        dispatch = _t16_c1_variant_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         dispatch = _native_batch_decode_dispatch(
             dispatch,
             rows=rows,
@@ -5146,6 +5152,48 @@ def _registered_variant_dispatch(
         dispatch.key.quant,
         variant,
     )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
+def _t16_c1_variant_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select an architecture-qualified exact serial-c1 sibling by shape."""
+
+    if (
+        rows != 1
+        or dispatch.abi != "t16"
+        or _native_batch_decode_session_enabled
+    ):
+        return dispatch
+    policies = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
+        {},
+    )
+    quant_policies = (
+        policies.get(dispatch.key.quant, {})
+        if isinstance(policies, Mapping)
+        else {}
+    )
+    if not isinstance(quant_policies, Mapping):
+        return dispatch
+    variant = quant_policies.get((int(in_features), int(out_features)))
+    if not isinstance(variant, str) or not variant:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    _ensure_linear_kernel_registered(key)
     if not is_registered(key):
         return dispatch
     return GGUFLinearDispatch(key, dispatch.abi)

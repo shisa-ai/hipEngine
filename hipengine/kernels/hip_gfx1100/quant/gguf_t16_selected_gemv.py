@@ -112,6 +112,9 @@ _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_DENSE_DIRECT_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_decode_bf16_bf16_out"
 )
+_Q5_DENSE_TILE8_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out"
+)
 _Q5_DENSE_ROWTILE_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out"
 )
@@ -1120,6 +1123,37 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=False)
     _launch_dense_q5_t16(
         _Q5_DENSE_DIRECT_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact dense Q5T16 c1 with eight-column output ownership."""
+
+    if rows != 1:
+        raise ValueError("dense Q5T16 tile8 decode requires rows == 1")
+    _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=False)
+    _launch_dense_q5_t16(
+        _Q5_DENSE_TILE8_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -3368,6 +3402,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "linear",
             "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_tile8_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
             "t16_gemv_rowtile_bf16_bf16_out",
         ),
         gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
@@ -3764,6 +3808,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
