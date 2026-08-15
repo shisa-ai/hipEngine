@@ -48,9 +48,10 @@ def test_shared_chain_compiler_materializes_root_only_in_target_batch() -> None:
 
 def test_mtp_chain_compiler_uses_mtp_depth_buckets() -> None:
     assert MtpChainCompiler(candidate_budget=1).candidate_budget == 1
+    assert MtpChainCompiler(candidate_budget=4).candidate_budget == 4
     assert MtpChainCompiler(candidate_budget=5).candidate_budget == 5
     with pytest.raises(ValueError, match="candidate_budget"):
-        MtpChainCompiler(candidate_budget=4)
+        MtpChainCompiler(candidate_budget=6)
 
 
 def test_dflash_and_mtp_can_share_chain_request_shape() -> None:

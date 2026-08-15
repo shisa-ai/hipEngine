@@ -145,9 +145,12 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
         (42, 19, 30, 93),
         (42, 20, 31, 1003),
     ]
-    with pytest.raises(ValueError, match="one of 1, 2, 3, 5"):
-        provider.propose(context, candidate_budget=4)
-    assert len(executor.calls) == 4
+    draft_b4 = provider.propose(context, candidate_budget=4)
+    assert draft_b4.candidate_tokens == (10, 11, 12, 13, 20, 21, 22, 23)
+    assert draft_b4.draft_depths == (1, 2, 3, 4, 1, 2, 3, 4)
+    assert len(executor.calls) == 12
+    with pytest.raises(ValueError, match="one of 1, 2, 3, 4, 5"):
+        provider.propose(context, candidate_budget=6)
 
 
 def test_nextn_provider_prefers_an_executor_chain_without_changing_draft_abi() -> None:
