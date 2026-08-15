@@ -22,15 +22,25 @@ def test_expand_to_512_repeats_complete_prompt_tokens() -> None:
 
 def test_role_environment_restores_every_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "before")
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+        "before-dual",
+    )
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
 
     with cumulative.role_environment("q4", "strict_x2"):
         assert os.environ["HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK"] == "0"
+        assert os.environ[
+            "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
+        ] == "0"
         assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_BULK"] == "0"
         assert os.environ["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "exact"
         assert os.environ["HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"] == "0"
 
     assert os.environ["HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK"] == "before"
+    assert os.environ[
+        "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
+    ] == "before-dual"
     assert "HIPENGINE_GGUF_GDN_PREFILL_MODE" not in os.environ
 
 

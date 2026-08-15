@@ -39,6 +39,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
@@ -1860,6 +1861,11 @@ def test_gfx1151_bulk_wmma_policy_matches_qwen35_08b_campaign_shapes() -> None:
             (512, 3_584, 1_024),
         }
     )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES",
+        frozenset(),
+    ) == frozenset({(512, 1_024, 3_584)})
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
@@ -3922,6 +3928,97 @@ def test_gfx1151_pack8_bulk_pair_invokes_registered_wmma_owner(monkeypatch) -> N
                 "library": "wmma-library",
             },
         ),
+    ]
+
+
+def test_gfx1151_pack8_dual_wmma_silu_is_shape_scoped_and_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The operation-complete bulk owner must fail closed around p512 H1024."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    weight_b = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
+    try:
+        with (
+            wmma_prefill_session(True),
+            q4_pack8_dual_wmma_silu_prefill_session(True),
+        ):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=200,
+                rows=512,
+                in_features=1024,
+                out_features=3584,
+                backend="hip_gfx1151",
+                stream=7,
+                libraries={"gguf_q4_k": "wmma-library"},
+                runtime="runtime-sentinel",
+            )
+            assert not launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=200,
+                rows=511,
+                in_features=1024,
+                out_features=3584,
+                backend="hip_gfx1151",
+            )
+            assert not launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=200,
+                rows=512,
+                in_features=1024,
+                out_features=3584,
+                backend="hip_gfx1100",
+            )
+            monkeypatch.setenv(
+                "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+                "0",
+            )
+            assert not launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=200,
+                rows=512,
+                in_features=1024,
+                out_features=3584,
+                backend="hip_gfx1151",
+            )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 11, 12, 13, 11, 12, 13, 200, 512, 1024, 3584),
+            {
+                "stream": 7,
+                "runtime": "runtime-sentinel",
+                "library": "wmma-library",
+            },
+        )
     ]
 
 

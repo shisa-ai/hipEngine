@@ -185,6 +185,16 @@ and peer backends retain their prior residents. No attention kernel or
 `KVLiveSpans` ABI changes. Evidence:
 [`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
 
+The same model/quant/backend also owns one operation-complete p512 dense-FFN
+prefill route over the sole resident pack8 gate/up weights. A 128-thread,
+32-column x 256-row WMMA body decodes both matrices into one 32-KiB LDS union,
+reuses each activation fragment across gate and up, rounds both projection
+boundaries to BF16 in LDS, and emits the existing BF16 SiLU product directly.
+The route is qualified only for rows512/K1024/N3584 by model/quant plugin policy;
+two registered singleton WMMAs plus standalone SiLU remain the exact fallback.
+No resident bytes are added. Evidence:
+[`0.8B operation-complete pack8 prefill`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
+
 The same model/quant/backend has one separately qualified decode-only composite:
 `(hip_gfx1151, linear_pair_silu, gguf_q4_k,
 pack8_dual_decode_t128_bf16_bf16_out)` for c1 K=1,024/N=3,584 dense gate/up.

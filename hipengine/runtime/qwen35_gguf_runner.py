@@ -316,6 +316,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
@@ -9691,6 +9692,35 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+    runner: object,
+    prompt_tokens: int,
+) -> bool:
+    """Return whether this exact model/quant/request owns the pack8 composite."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return False
+    policies = backend_package_capability(
+        backend,
+        "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = _gguf_policy_identity(weights)
+    admitted_rows = None if identity is None else policies.get(identity)
+    return isinstance(admitted_rows, (set, frozenset, tuple)) and int(
+        prompt_tokens
+    ) in admitted_rows
+
+
 def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
     """Return whether this request owner has the qualified dense geometry."""
 
@@ -14670,6 +14700,12 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_pack8_dual_wmma_silu_prefill_session(
+                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_t16_unequal_pair_prefill_session(
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
@@ -14762,6 +14798,12 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q4_pack8_dual_wmma_silu_prefill_session(
+                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_t16_unequal_pair_prefill_session(
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),

@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The p16-p4096 threshold matrix and final 18-prompt cumulative semantic packet pass. A fresh synchronized, same-source llama HIP/Vulkan comparison corrects the old asynchronous core-prefill boundary: hipEngine reaches **0.818x/0.744x Q4 and 0.880x/0.881x Q8 Vulkan core pp/tg**, while public decode reaches **0.976x Q4 / 1.047x Q8**. Core parity and G3 remain blocked; Q4 prefill is the remaining engine-specific priority.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. The pre-X3 synchronized packet measures **0.818x/0.744x Q4 and 0.880x/0.881x Q8 Vulkan core pp/tg**; X3 adds **13.81%** Q4 core pp512 and reusing that same-day denominator projects **1.014x llama HIP / 0.928x Vulkan**. Core Vulkan parity and G3 remain open pending a fresh clean-tree external packet.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -112,6 +112,7 @@ not a synthetic leaf projection.
 | 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. |
 | 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
 | 33 | **Synchronized exact HIP/Vulkan three-way** | **completed: Q4/Q8 core pp 0.818x/0.880x Vulkan; public tg 0.976x/1.047x** | Six serial blocks use one llama.cpp source revision and explicit backend synchronization; all 36 child rows are finite/deterministic with exact cross-engine core/public top-1 trajectories. | Keep G3 blocked on core scopes. Prioritize Q4 prefill; hipEngine already beats llama HIP decode and Vulkan Q8 public decode. |
+| 34 | **D08-X3 operation-complete Q4 pack8 prefill** | **accepted: +13.81% core / +13.85% public pp512** | One 128-thread block owns same-resident gate+up+SiLU, reuses each A fragment, and preserves both BF16 projection boundaries; the leaf is byte-exact and 2.089x. | Five fresh-process Q4 blocks win 5/5; decode and Q8 guards stay within 1.1%. Retain for exact 0.8B/Q4/rows512/K1024/N3584 only. |
 
 ### 1.2 Bounded task contract
 
@@ -1709,6 +1710,54 @@ still loses every required core scope, so Vulkan parity remains open.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json).
+
+### 2.47 D08-X3 operation-complete Q4 pack8 prefill (2026-08-15)
+
+The bounded continuation changes one exact dense-FFN owner rather than adding a
+new resident format. One 128-thread block computes 32 output columns x 256
+rows for both existing pack8 gate/up matrices, stages one gate and one up panel
+in a 32-KiB LDS union, reuses each activation WMMA fragment, rounds both
+projection boundaries through BF16 LDS, and emits BF16 SiLU(gate)*up directly.
+Two registered singleton pack8 WMMAs plus standalone BF16 SiLU remain the exact
+fallback. Model/quant/request and backend-shape policy fail closed outside
+Qwen3.5-0.8B `MOSTLY_Q4_K_M`, rows512/K1024/N3584.
+
+The actual-shape five-block leaf is byte-exact and measures **0.99043 ->
+0.47409 ms (2.089x)**. Five cyclic fresh-process complete-model blocks then
+measure:
+
+| Scope | Rollback | Candidate | Ratio / paired wins |
+| --- | ---: | ---: | ---: |
+| Q4 exact-core pp512 | 4343.99 tok/s | **4943.76 tok/s** | **1.1381x / 5 of 5** |
+| Q4 public pp512 | 4324.92 tok/s | **4923.72 tok/s** | **1.1385x / 5 of 5** |
+| Q4 exact-core tg128 | 143.91 tok/s | 143.52 tok/s | 0.9973x |
+| Q4 public tg128 | 122.37 tok/s | 121.76 tok/s | 0.9950x |
+
+The candidate and rollback own identical **1,067,067,204-B** sessions. Three
+Q8 no-route blocks stay inside the 2% guard: core pp/tg **0.9899x/0.9968x**
+and public pp/tg **1.0059x/1.0019x**. All A/B trajectories are finite,
+deterministic, and exact.
+
+The full 18-prompt natural + 18-prompt category-derived-p512 packet passes for
+both quants. Q4 candidate and rollback have identical teacher-forced logits and
+persistent-state digests on **36/36** prompt profiles. Current Q4/Q8 remain
+**1794/1800** top-1 versus strict, max KL **0.005930**; every repeat/state is
+deterministic/finite and every current category-p512 recording trajectory
+matches eager. A cached rocprof trace records the expected candidate at
+local128, grid112x2, VGPR248, LDS32,768 B, and scratch0; gfx1151 timestamps are
+again unavailable, so the independent HIP-event leaf supplies duration.
+
+Reusing the synchronized same-day llama denominators only as a diagnostic puts
+candidate Q4 core prefill at **1.014x llama HIP and 0.928x Vulkan**, or
+**103.565 / 105.001 / 96.131 ms**. This is not a new interleaved external
+packet, but it shows that the retained 14.299-ms hipEngine saving removes the
+entire prior 12.588-ms hipEngine-to-HIP component and leaves about **7.434 ms**
+to the Vulkan result. The next useful evidence is therefore a fresh clean-tree
+three-way or a current marker rerank, not another variant in this closed
+package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
 
 ## 3. Comparison contracts
 

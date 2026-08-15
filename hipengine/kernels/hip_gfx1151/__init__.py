@@ -373,6 +373,17 @@ GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
         (512, 3_584, 1_024),
     }
 )
+# D08-X3 retained: reuse the Q4T16 operation-complete dual-WMMA dataflow over
+# the sole resident pack8 gate/up pair. The exact-model-shape route improves
+# core/public pp512 by 13.81%/13.85%; two singleton WMMAs plus standalone SiLU
+# remain the rollback and every other shape fails closed.
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL = True
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES = frozenset(
+    {(512, 1_024, 3_584)}
+)
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): frozenset({512}),
+}
 # D08-X2-K5 (2026-08-15): dense-BF16 bulk prefill (expanded Q6_K down owners)
 # prefers the registered LDS-staged 128x64 WMMA consumer over the naive
 # 32x8 scalar tile. Admit only the two Qwen3.5-0.8B p512 shapes covered by the
