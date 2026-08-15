@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_short_splitk3_attention",
+  "status": "shape_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "13bc23b51afc4b9e0dbf8fbabe6c70a0bc38cc1a",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "attention_shape": {
+      "query_heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256,
+      "full_attention_layers": 16
+    }
+  },
+  "selection": {
+    "graph_kernel_wall_ms": 10449.636114,
+    "direct_attention_ms": 214.79,
+    "primitive_gate_ms": 2.591,
+    "package_ms": 217.381,
+    "package_share_percent": 2.080273395441605,
+    "required_saved_ms": 104.49636114,
+    "required_package_saving_percent": 48.07060467106141,
+    "advance_threshold_percent": 1.0
+  },
+  "candidate": {
+    "control": "direct short-context BF16 paged attention",
+    "path": "existing generic split-K3 producer plus fused BF16 gated reducer",
+    "control_split_min_context": 1024,
+    "candidate_split_min_context": 1,
+    "environment": "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT",
+    "kv_abi": "KVLiveSpans",
+    "new_resident_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "shape": [512, 128],
+    "token_id": 9707,
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 0,
+    "measured_runs": 1,
+    "ordering": ["control_a", "candidate", "control_b"],
+    "process_contract": "fresh persistent-session process per row; cached gfx1151 builds required",
+    "decode_transport": "HIP graph replay; capture excluded from decode throughput",
+    "common_command": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-post-q8x2-rerank/hipcc-version.txt --require-cached-build"
+  },
+  "results": {
+    "control_a": {
+      "decode_tok_s": 11.87340870147674,
+      "decode_ms_per_token": 84.22181238279336,
+      "final_token_id": 9707,
+      "final_logit": 25.207847595214844,
+      "graph_native_fallbacks": 0,
+      "tracked_peak_gib": 16.753218058496714,
+      "tracked_after_close_bytes": 0
+    },
+    "candidate": {
+      "decode_tok_s": 11.858639784483259,
+      "decode_ms_per_token": 84.32670341403536,
+      "final_token_id": 9707,
+      "final_logit": 25.043851852416992,
+      "graph_native_fallbacks": 0,
+      "tracked_peak_gib": 16.753218058496714,
+      "tracked_after_close_bytes": 0
+    },
+    "control_b": {
+      "decode_tok_s": 11.874496144386153,
+      "decode_ms_per_token": 84.2140995155205,
+      "final_token_id": 9707,
+      "final_logit": 25.207847595214844,
+      "graph_native_fallbacks": 0,
+      "tracked_peak_gib": 16.753218058496714,
+      "tracked_after_close_bytes": 0
+    },
+    "candidate_vs_control_a_percent": -0.12438649561219428,
+    "candidate_vs_control_b_percent": -0.1335329070816238,
+    "candidate_vs_control_mean_percent": -0.12895991075906332
+  },
+  "correctness": {
+    "all_finite": true,
+    "fixed_token_final_id_equal": true,
+    "fixed_token_final_logit_equal": false,
+    "natural_trajectory_gate_run": false,
+    "reason_not_run": "candidate failed both complete-graph speed controls and changed the fixed-token final logit"
+  },
+  "evidence": {
+    "control_a": {
+      "path": "/tmp/qwen38-task22-short-splitk3/control-a.json",
+      "sha256": "e332bd174febf831e51d07f3f151b9d5a669c81d2db52ed70fbea4edac443615",
+      "bytes": 152433
+    },
+    "candidate": {
+      "path": "/tmp/qwen38-task22-short-splitk3/candidate.json",
+      "sha256": "6dff5b9adcea8d8a27dcd0d3493b67b505339def102da4c60c5fd77d4c276cdf",
+      "bytes": 152439
+    },
+    "control_b": {
+      "path": "/tmp/qwen38-task22-short-splitk3/control-b.json",
+      "sha256": "df6f3e053068a45702cc58a922310e2bb9d9c69c10a739a3ed5549d97482d060",
+      "bytes": 152434
+    }
+  },
+  "validation": {
+    "existing_registered_route_only": true,
+    "source_change": false,
+    "full_model_gate_run": true,
+    "all_shape_gate_run": false,
+    "natural_gate_run": false
+  },
+  "decision": "Reject the generic split-K3 transfer at Qwen3.8's 513-640 active-context decode window. It regresses both fresh controls by 0.124-0.134%, changes the fixed-token final logit, and cannot approach the 48.071% attention-package saving required for a 1% complete-wall advance. Retain direct short-context attention."
+}
