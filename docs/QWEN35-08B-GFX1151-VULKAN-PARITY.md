@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. The pre-X3 synchronized packet measures **0.818x/0.744x Q4 and 0.880x/0.881x Q8 Vulkan core pp/tg**; X3 adds **13.81%** Q4 core pp512 and reusing that same-day denominator projects **1.014x llama HIP / 0.928x Vulkan**. Core Vulkan parity and G3 remain open pending a fresh clean-tree external packet.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. Core Vulkan parity and G3 remain open; the next required evidence is a post-X3 Q4 owner rerank.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -113,6 +113,7 @@ not a synthetic leaf projection.
 | 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
 | 33 | **Synchronized exact HIP/Vulkan three-way** | **completed: Q4/Q8 core pp 0.818x/0.880x Vulkan; public tg 0.976x/1.047x** | Six serial blocks use one llama.cpp source revision and explicit backend synchronization; all 36 child rows are finite/deterministic with exact cross-engine core/public top-1 trajectories. | Keep G3 blocked on core scopes. Prioritize Q4 prefill; hipEngine already beats llama HIP decode and Vulkan Q8 public decode. |
 | 34 | **D08-X3 operation-complete Q4 pack8 prefill** | **accepted: +13.81% core / +13.85% public pp512** | One 128-thread block owns same-resident gate+up+SiLU, reuses each A fragment, and preserves both BF16 projection boundaries; the leaf is byte-exact and 2.089x. | Five fresh-process Q4 blocks win 5/5; decode and Q8 guards stay within 1.1%. Retain for exact 0.8B/Q4/rows512/K1024/N3584 only. |
+| 35 | **Post-X3 synchronized exact three-way** | **completed: Q4 core pp 1.010x HIP / 0.889x Vulkan** | Six clean-HEAD serial blocks confirm the retained route with unchanged same-source llama helpers; all 36 Q4/Q8 children and cross-engine trajectories pass. | The hipEngine-specific core-prefill gap to llama HIP is closed at current variance, but Vulkan retains 11.657 ms. Re-profile Q4 semantic owners before another package. |
 
 ### 1.2 Bounded task contract
 
@@ -1758,6 +1759,42 @@ package.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
+
+### 2.48 Post-X3 synchronized exact three-way (2026-08-15)
+
+The clean committed X3 default reruns the same six-block cyclic protocol with
+unchanged same-source llama.cpp `1d2869c6e` helpers. Every engine occupies every
+order position twice; each fresh child performs one warmup and one shared-token
+exact-core/public p512/tg128 measurement.
+
+| Engine | Q4 core pp / tg | Q4 public pp / tg | Q8 core pp / tg | Q8 public pp / tg |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine `5c33d9fdf` | **4896.02 / 145.80** | **4948.99 / 121.18** | **4997.25 / 141.19** | **4955.87 / 116.90** |
+| llama.cpp HIP | 4848.25 / 122.58 | 5037.20 / 88.96 | 4640.50 / 110.18 | 5059.94 / 84.16 |
+| llama.cpp Vulkan | 5510.21 / 194.15 | 5708.03 / 126.41 | 5703.85 / 159.05 | 5794.81 / 111.70 |
+
+All values are tok/s medians over six fresh processes. Q4 exact-core prefill is
+now **1.0099x llama HIP with 5/6 paired wins**, closing the measured
+hipEngine-specific HIP component. Vulkan remains **1.1255x** faster; core wall
+is **104.575 / 105.605 / 92.918 ms** for hipEngine/HIP/Vulkan, leaving **11.657
+ms** to Vulkan. Across the independent pre/post snapshots, hipEngine Q4 rises
+**4354.16 -> 4896.02 tok/s (+12.44%)** and the Vulkan wall gap falls **21.458 ->
+11.657 ms (-45.68%)**. The separately paired X3 artifact remains the
+optimization-delta authority.
+
+Q4 public prefill is **0.9825x HIP / 0.8670x Vulkan**. X3 does not route decode:
+hipEngine remains **1.189x/1.362x** llama HIP on core/public Q4 decode and
+**0.751x/0.959x** Vulkan. Q8 remains the no-route guard, at **1.077x HIP /
+0.876x Vulkan** core prefill and **1.047x Vulkan** public decode.
+
+All 36 children are finite and deterministic. Core and public top-1 digests are
+exact across engines and quants. Every metric CV is below 5%; the maximum is
+4.764% for Q8 hipEngine public prefill. The old marker owner ranking is now
+invalid because X3 materially moved dense FFN work; one current Q4 marker
+rerank is required before selecting any next architecture package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json).
 
 ## 3. Comparison contracts
 

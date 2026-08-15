@@ -111,20 +111,19 @@ backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
-full Vulkan-parity campaign (D08) to a blocked closure, then the
-human-approved D08-X extension retained Q8_0 cluster8 GDN, pack8-WMMA bulk,
-dense-BF16 WMMA, and an operation-complete Q4 pack8 gate+up+SiLU route. The
-last route measures **4344 -> 4944 exact-core pp512 (+13.81%)** and **4325 ->
-4924 public pp512 (+13.85%)** over five fresh-process blocks, with neutral
-decode, Q8 guards within 1.1%, and identical candidate/rollback semantics on
-36/36 natural/category-p512 prompt profiles. Reusing the synchronized same-day
-llama denominator as a diagnostic puts the new Q4 core result at **1.014x
-llama HIP and 0.928x Vulkan**; a fresh interleaved external rerun is still
-required to promote that projection. Q8 remains **5003/140.59 core pp/tg**;
-hipEngine beats llama HIP decode and public decode remains **0.976x Vulkan Q4 /
-1.047x Vulkan Q8** in the synchronized packet. Core Vulkan parity stays open.
-Evidence: [`operation-complete Q4 prefill`](results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json)
-and [`synchronized three-way`](results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json).
+full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
+Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
+pack8 gate+up+SiLU. The last route measures **4344 -> 4944 exact-core pp512
+(+13.81%)** over five paired blocks. A fresh six-block clean-HEAD external
+packet now measures hipEngine / same-source llama HIP / Vulkan exact-core
+pp512 at **4896 / 4848 / 5510 Q4** and **4997 / 4640 / 5704 Q8 tok/s**.
+hipEngine therefore reaches **1.010x llama HIP / 0.889x Vulkan Q4** and
+**1.077x / 0.876x Q8**. The Q4 core gap to Vulkan falls from **21.458 to 11.657
+ms**; public prefill remains 0.867x Vulkan. hipEngine still beats llama HIP
+decode, while public decode is **0.959x Vulkan Q4 / 1.047x Vulkan Q8**. All 36
+children are finite/deterministic/cross-engine exact and every metric CV is
+below 5%. Core Vulkan parity stays open. Evidence: [`post-X3 three-way`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json)
+and [`operation-complete Q4 prefill`](results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
 Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
