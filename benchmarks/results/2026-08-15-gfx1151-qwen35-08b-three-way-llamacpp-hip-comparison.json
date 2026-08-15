@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "diagnostic",
+  "task": "Three-way Qwen3.5-0.8B comparison on Radeon 8060S/gfx1151: hipEngine (fd009c4a7) vs llama.cpp Vulkan (pinned 1d2869c6 build 10415) vs llama.cpp HIP (a94d563ed, TheRock 7.15, newly built, fa=1)",
+  "protocol": {
+    "hipengine": "scripts/qwen35_08b_exact_core.py, exact shared-token fixture, 3 reps; public = greedy path incl. device sampler, core excludes sampler",
+    "llamacpp": "llama-bench -fa 1 -p 512 -n 128 -r 5..10 (own token protocol); tg uses CPU-side sampling loop",
+    "memory": "hipEngine owned-session tracked bytes vs llama declared device buffers (model+KV+RS+compute); scopes close but not identical whole-card peaks"
+  },
+  "prefill_pp512_tok_s": {
+    "q4": {
+      "hipengine_public": 4318.1,
+      "hipengine_core": 4344.8,
+      "llamacpp_vulkan": 6015.0,
+      "llamacpp_hip": [
+        5084.1,
+        5259.6
+      ]
+    },
+    "q8": {
+      "hipengine_public": 4960.3,
+      "hipengine_core": 4982.5,
+      "llamacpp_vulkan": 6035.8,
+      "llamacpp_hip": 5312.7
+    }
+  },
+  "decode_tg128_tok_s": {
+    "q4": {
+      "hipengine_public": 122.47,
+      "hipengine_core": 146.8,
+      "llamacpp_vulkan": 198.42,
+      "llamacpp_hip": 125.2
+    },
+    "q8": {
+      "hipengine_public": 116.56,
+      "hipengine_core": 143.18,
+      "llamacpp_vulkan": 162.91,
+      "llamacpp_hip": 117.08
+    }
+  },
+  "memory_mib": {
+    "q4": {
+      "hipengine_owned": 1017.6,
+      "hipengine_hip_process_used": 1294.7,
+      "llamacpp_vulkan_device": 1015.4,
+      "llamacpp_vulkan_host": 203.7,
+      "llamacpp_hip_device": 1014.7,
+      "llamacpp_hip_host": 202.7
+    },
+    "q8": {
+      "hipengine_owned": 981.8,
+      "hipengine_hip_process_used": 1195.6,
+      "llamacpp_vulkan_device": 1281.8,
+      "llamacpp_vulkan_host": 262.4,
+      "llamacpp_hip_device": 1281.1,
+      "llamacpp_hip_host": 261.4
+    }
+  },
+  "notes": [
+    "llama HIP decode is much slower than Vulkan on this iGPU (125.2/117.1 vs 198.4/162.9)",
+    "hipEngine public decode is at parity with llama HIP (0.98x Q4, 1.00x Q8)",
+    "llama HIP pp512 shows +-7-9% run variance (clock ramp); Vulkan rows are tighter",
+    "hipEngine Q8 uses 23% less device memory than either llama backend (native-quant residents vs expanded layouts drive the llama compute-buffer parity at Q4)"
+  ]
+}
