@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_tile8",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "0d8eeebdfdc98cde08644eb033f9b7884f96e821",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "graph_kernel_wall_ms": 10449.636114,
+    "q8x2_quantizer_plus_consumer_ms": 4051.105035,
+    "family_share_percent": 38.76790532038233,
+    "advance_threshold_percent": 1.0
+  },
+  "candidate": {
+    "control": "retained 64-thread tile16 residual-Q8_1x2 Q4T16 gate/up+SiLU",
+    "path": "64-thread tile8 sibling over each half of the same resident T16 tile",
+    "hypothesis": "halve accumulator and shared exchange pressure while preserving per-output K and reduction order",
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "workspace_change_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "actual_layers": [0, 8, 63],
+    "shape": [17408, 5120],
+    "source_pool_mib_per_pair": 95.625,
+    "resident_t16_mib_per_pair": 98.28125,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP events",
+    "cache_contract": "each source pair exceeds 64 MiB and 2x the 32-MiB MALL"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "control_ms": 0.4843767583370209,
+      "candidate_ms": 0.5065370202064514,
+      "speedup": 0.9562514466160863,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 8,
+      "control_ms": 0.48399800062179565,
+      "candidate_ms": 0.511519730091095,
+      "speedup": 0.9461961526598435,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 63,
+      "control_ms": 0.485819011926651,
+      "candidate_ms": 0.512491762638092,
+      "speedup": 0.9479547718501056,
+      "candidate_wins": "0/15",
+      "bf16_mismatches": 0
+    }
+  ],
+  "family": {
+    "control_ms": 1.4541937708854675,
+    "candidate_ms": 1.5305485129356384,
+    "speedup": 0.9501128246476028,
+    "candidate_over_control": 1.0525065803326046,
+    "candidate_wins": "0/45",
+    "projected_saved_ms": -212.70967195604638,
+    "projected_complete_graph_percent": -2.0355701350314637
+  },
+  "correctness": {
+    "red": "focused test failed collection because the tile8 wrapper did not exist",
+    "green": "focused synthetic GPU test passed BF16 bit identity against retained tile16",
+    "actual_weight_bf16_bit_exact": true,
+    "finite": true,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-tile8-leaf/leaf.json",
+      "sha256": "784bbbe6528c035617aedec18eb50b0a8befd7a147e36181633e9d73171dde06",
+      "bytes": 7975
+    },
+    "red_stdout": "/tmp/qwen38-task22-q4-q8x2-tile8-validation/red.stdout",
+    "green_log": "/tmp/qwen38-task22-q4-q8x2-tile8-validation/green.log"
+  },
+  "validation": {
+    "source_restored": true,
+    "worktree_code_diff_after_restore": false,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject and restore tile8. It is BF16-bit exact but loses every actual-weight pair, regresses family wall 5.251%, and projects -212.710 ms / -2.036% of selected graph wall. Duplicating T16 metadata/activation work across twice as many blocks outweighs lower accumulator pressure; keep the retained tile16 owner."
+}
