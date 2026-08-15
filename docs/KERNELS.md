@@ -109,9 +109,9 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
-| RMSNorm | `norm/rmsnorm.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. |
+| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus fixed c1/hidden-1024 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
 | Rotary/prelude | `rotary/paro_rotate.{hip,py}`, `rotary/qwen35_rotary.{hip,py}` | `paro_rotate1/2/3`, `paro_rmsnorm_rotate2`, `partial_rotary`, `head_rmsnorm+partial_rotary`, `split_qgate` | BF16/FP16 PARO rotation and Qwen partial-RoPE/head-normalization families. |
-| Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. |
+| Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. Includes an exact rounded-BF16 residual sibling; the unfused projection+add chain remains registered. |
 | PARO AWQ projection | `quant/paro_awq_gemv.{hip,py}` | `pack8_gemv`, `dual_pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm`, rotate/SiLU composites (`w4_paro`) | Strided/transposed, BF16/FP16, selected-expert, fused-W4 prefill, and small-row routes. |
 | PARO Marlin-K | `quant/paro_marlin_k.{hip,py}` | `marlin_k_gemv` (`w4_paro`) | c=1 replacement layout; pack8 alias remains available to prefill/fused projections. |
 | PARO compact WMMA | `wmma/paro_awq_wmma.{hip,py}` | `awq_wmma` (`w4_paro`, `bf16`) | Compact/non-compact selected gate/up and down prefill; exact GEMV routes remain fallback. |
@@ -124,11 +124,11 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | SiLU/rotation primitives | `fused/paro_silu.{hip,py}` | `silu_mul_dual`, `silu_mul_separate`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` | Primitive and fused activation/down-rotation boundaries coexist; separate BF16 SiLU permits exact in-place replacement of its gate plane. |
 | MoE combine/tail | `fused/paro_combine.{hip,py}` | `weighted_lanes_sum`, `weighted_sum`, `shared_gate_combine`, residual/RMSNorm composites | BF16/FP16/F32 values with FP32 route weights/gates; explicit primitive fallbacks are registered. |
 | Paged KV write/copy | `attention/paged_kv_write.{hip,py}` | `paged_kv_write`, `paged_kv_copy` (`bf16`, PARO/GGUF, INT8 layouts) | All attention-visible writes consume complete `KVLiveSpans`; includes BF16 and supported INT8 storage formats. |
-| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. |
+| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641; fixed256 and unsupported shapes/backends remain fallbacks. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. |
-| Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state | Device-side graph/verify bookkeeping, indexed row state, and token publication. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 `(16K,16V,128,128)` selects cluster8; Q8 and all other gfx1151 shapes retain exact nonvolatile LDS32. |
+| Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
 ### GGUF / Qwen / Laguna path
@@ -142,7 +142,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q4_K selected FFN megakernel | `quant/gguf_q4_k_moe_ffn_fused.{hip,py}` | `moe_ffn_selected` (`gguf_q4_k`) | Whole selected gate/up → SiLU → down projection; primitive selected projections remain fallback. |
 | Raw Q5_K/Q6_K/Q8_0 | `quant/gguf_k_gemv.{hip,py}` | `linear`, `linear_pair`, `attention_projection_quad` | Decode/prefill, BF16/F32 output, pair/quad launch contractions, rowbatch/coltile variants. |
 | Raw Q3_K selected | `quant/gguf_q3_k_gemv.{hip,py}` | `moe_linear` | Q3 selected-expert projection family. |
-| Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu` | Raw GGUF math and lossless pack8 layouts; pair/SiLU composites where registered. |
+| Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu`, `linear+residual` | Raw GGUF math and lossless pack8 layouts; pair/SiLU and exact rounded-BF16 residual composites where registered. Primitive projection+add fallbacks remain available. |
 | Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. |
 | Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. |
 | Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. |
@@ -175,6 +175,54 @@ dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12
 [`dual-WMMA SiLU keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
 [`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
+
+For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
+keeps one compact Q4T16 payload for the six full-attention Q projections at
+K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,
+physical c8 is split into two exact c4 launches by backend capability, and the
+existing T16 WMMA owner handles bulk rows. Every other Q4 role, Qwen3.6-27B,
+and peer backends retain their prior residents. No attention kernel or
+`KVLiveSpans` ABI changes. Evidence:
+[`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
+
+The same model/quant/backend has one separately qualified decode-only composite:
+`(hip_gfx1151, linear_pair_silu, gguf_q4_k,
+pack8_dual_decode_t128_bf16_bf16_out)` for c1 K=1,024/N=3,584 dense gate/up.
+It binds the existing sole-pack8 dual-SiLU body to 128 threads, replacing 24
+dual-t32 plus 24 standalone SiLU launches with 24 fused launches. Model/file
+identity and exact shape are backend capability data; Q8, other models/shapes,
+rows >1, and peer backends retain prior registered owners and the unfused
+fallback. No persistent bytes or hot scratch are added. Evidence:
+[`0.8B fused dense decode route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json).
+
+Its dense-down boundary has a second exact decode-only policy for c1
+K=3,584/N=1,024. Twelve existing Q4-pack8 t32 owners derive
+`linear+residual/gguf_q4_k/pack8_bf16_residual_bf16_out`; twelve existing
+dense-BF16 t256 owners derive
+`linear+residual/bf16/out_bf16_residual_bf16_out`. Both round the projection to
+BF16 before adding the BF16 residual in FP32 and rounding the sum to BF16. The
+model/file/shape policy is resolved once when the resident runner initializes.
+It adds no layout, persistent bytes, or hot scratch; Q8, rows >1, other models,
+and peer backends retain the primitive projection+add or their prior registered
+small-row composites. Evidence:
+[`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
+
+The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
+registry candidates:
+`rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and
+`add_rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256`. Each caches four
+values per local256 thread, reduces within wave32 using HIP shuffles, and uses
+eight shared wave sums plus two block barriers. The add form preserves the
+existing unrounded-F32 normalization and rounded-BF16 residual contract. Generic
+t256 primitives remain registered fallbacks; no layout, persistent bytes, hot
+scratch, or node count is added. The production capability selects both keys as
+one C route only for gfx1151 Qwen3.5-0.8B Q4_K_M c1/hidden-1,024
+attention/post-attention owners. Resident dispatch caches a prevalidated
+registry partial after exact capability resolution; public wrappers and HIP
+entry points retain their full validation contract. Q8, output norm, verifier
+F32, rows>1, other shapes/models, and peer backends stay generic. Evidence:
+[`0.8B retained norm/residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
+[`screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 

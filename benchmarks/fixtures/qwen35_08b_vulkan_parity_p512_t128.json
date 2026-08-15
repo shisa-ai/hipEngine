@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "qwen35_08b_vulkan_parity_token9707_p512_t128",
+  "model_family": "Qwen3.5-0.8B",
+  "prompt": {
+    "text": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q",
+    "text_utf8_sha256": "0b535ed1a78e15ab80587337d3e6b1e6a969d8a2bf5bfc8f13f42ea705c71621",
+    "token_ids_rle": [
+      [
+        9707,
+        512
+      ]
+    ],
+    "token_ids_i64le_sha256": "ee3d06c774483e0fdd2f63be95a0d87a47e04a6ee4a9dfcd4181baa01e3bc57d",
+    "count": 512
+  },
+  "teacher_forced_continuation": {
+    "token_ids_rle": [
+      [
+        9707,
+        128
+      ]
+    ],
+    "token_ids_i64le_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+    "count": 128
+  },
+  "combined_token_ids_i64le_sha256": "768fd6433093ffc6e8000223bebdbd28e62cbc7f828b6e63d8f47b133ed2b528",
+  "tokenizer_validation": {
+    "hipengine": "Qwen35GGUFTokenizer.encode(prompt text) without BOS",
+    "llamacpp": "llama-tokenize --stdin --ids --no-bos",
+    "q4_match": true,
+    "q8_match": true,
+    "decoded_piece": ".Q"
+  },
+  "timing_scopes": {
+    "core": "prompt and forced continuation IDs; excludes LM head/sampler from timed core where harness supports it",
+    "public": "same repeated-token prompt shape with native greedy sampling/token transport"
+  }
+}

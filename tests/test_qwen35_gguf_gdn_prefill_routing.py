@@ -266,9 +266,112 @@ def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     plan = qgr._resolve_gguf_gdn_prefill_plan("hip_gfx1151")
 
     assert plan.auto_mode == "chain_lds32_direct_nonvolatile"
+    assert plan.auto_modes_by_quant_shape == {
+        ("mostly_q4_k_m", 16, 16, 128, 128): "chain_peer_cluster8",
+        # D08-X2-K2: fresh five-block gate admitted Q8_0 on this geometry.
+        ("mostly_q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
+    }
     assert plan.has_exact_chain_lds32
     assert plan.has_exact_chain_lds32_direct
     assert plan.has_exact_chain_lds32_direct_nonvolatile
+
+
+def test_run_gdn_prefill_auto_uses_quant_shape_scoped_cluster8_override() -> None:
+    runner = _new_runner()
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(ssm_inner_size=2048, ssm_time_step_rank=16),
+        file_type_name="MOSTLY_Q4_K_M",
+    )
+    runner._gguf_prefill_quant = "gguf_q4_k_m"
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_peer_normalized=_recorder(calls, "peer_prepare"),
+        recurrent_peer_cluster8=_recorder(calls, "peer_cluster8"),
+        recurrent_segments_peer_cluster8=_recorder(calls, "segments_peer_cluster8"),
+        auto_mode="chain_lds32_direct_nonvolatile",
+        auto_modes_by_quant_shape={
+            ("mostly_q4_k_m", 16, 16, 128, 128): "chain_peer_cluster8",
+        },
+    )
+    cfg = SimpleNamespace(
+        ssm_group_count=16,
+        ssm_time_step_rank=16,
+        ssm_state_size=128,
+        rms_norm_eps=1.0e-6,
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=cfg,
+        rows=512,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "peer_prepare",
+        "segments_peer_cluster8",
+        "rmsnorm_gate",
+    ]
+
+
+def test_run_gdn_prefill_auto_keeps_q8_on_exact_default() -> None:
+    runner = _new_runner()
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(ssm_inner_size=2048, ssm_time_step_rank=16),
+        file_type_name="MOSTLY_Q8_0",
+    )
+    # A stale caller-selected quant label must not override the actual file type.
+    runner._gguf_prefill_quant = "gguf_q4_k_m"
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=None,
+        recurrent=None,
+        recurrent_segments=None,
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_peer_normalized=_recorder(calls, "peer_prepare"),
+        exact_prepare_compact=_recorder(calls, "exact_prepare_compact"),
+        exact_recurrent_lds32_direct_nonvolatile=_recorder(calls, "exact_direct"),
+        exact_recurrent_segments_lds32_direct_nonvolatile=_recorder(
+            calls, "exact_segments_direct"
+        ),
+        recurrent_peer_cluster8=_recorder(calls, "peer_cluster8"),
+        recurrent_segments_peer_cluster8=_recorder(calls, "segments_peer_cluster8"),
+        auto_mode="chain_lds32_direct_nonvolatile",
+        auto_modes_by_quant_shape={
+            ("mostly_q4_k_m", 16, 16, 128, 128): "chain_peer_cluster8",
+        },
+    )
+    cfg = SimpleNamespace(
+        ssm_group_count=16,
+        ssm_time_step_rank=16,
+        ssm_state_size=128,
+        rms_norm_eps=1.0e-6,
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=cfg,
+        rows=512,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "exact_prepare_compact",
+        "exact_segments_direct",
+        "rmsnorm_gate",
+    ]
 
 
 def test_run_gdn_prefill_prefers_fused_decode_order_when_available() -> None:

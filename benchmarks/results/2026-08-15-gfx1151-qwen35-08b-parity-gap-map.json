@@ -1,0 +1,963 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "diagnostic",
+  "task": "D08-X1 human-approved fine-grained cross-engine gap map at current commit 4e69152f4",
+  "protocol": {
+    "hip": "scripts/qwen35_gguf_bench.py --gpu-stage-timings, bulk prefill + WMMA + eager decode markers, one warmup + one measured run, M8 protocol; fallback-alias stage keys counted once",
+    "vulkan": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 llama-bench -fa 1 -p 512 -n 128 -r 1 on pinned 1d2869c6e54d5003f3927a79efbca0fefa034a6d build 10415; block 1 prefill, blocks 3-130 decode mean",
+    "decode_hip": "M12 production-graph census joined roles (commit 2cad5f2c2, current decode code path) versus fresh Vulkan decode logger",
+    "caveats": "hip rows are marker-perturbed and eager for decode; instrumented prefill wall runs ~13% above the exact-core production wall; Vulkan logger-on rows perturb pp by ~2.6-8.9%"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "compute_units": 40,
+    "mall_bytes": 33554432,
+    "uma": true,
+    "kernel": "7.1.8-1-cachyos",
+    "kernel_cmdline": "quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=817f5179-0f09-4520-8b81-3eac2685a080 resume=UUID=7453e720-4049-469c-8efa-9dac410ce7a7",
+    "power_dpm_force_performance_level": "auto",
+    "sclk_snapshot_mhz": {
+      "active": 600,
+      "available": [
+        600,
+        1100,
+        2900
+      ]
+    },
+    "iommu": "no explicit kernel cmdline override"
+  },
+  "quants": {
+    "q4_k_m": {
+      "hip_instrumented_prefill_wall_ms": 229.424,
+      "hip_instrumented_stage_sum_ms": 228.526,
+      "vulkan_prefill_logger_total_ms": 73.622,
+      "production_exact_core": {
+        "hip_prefill_tok_s": 2527.6919015298913,
+        "llama_prefill_tok_s": 5957.104195802568,
+        "hip_decode_tok_s": 140.47045297412592,
+        "llama_decode_tok_s": 191.38527051111828
+      },
+      "prefill_join": [
+        {
+          "role": "dense_ffn_projections",
+          "hip_instrumented_ms": 113.808155,
+          "vulkan_logger_ms": 24.49522,
+          "hip_over_vulkan": 4.646,
+          "matched_gap_ms": 89.312935,
+          "projected_instrumented_saving_percent": 38.9292
+        },
+        {
+          "role": "linear_attention_projections",
+          "hip_instrumented_ms": 47.697175,
+          "vulkan_logger_ms": 17.82819,
+          "hip_over_vulkan": 2.675,
+          "matched_gap_ms": 29.868985,
+          "projected_instrumented_saving_percent": 13.0191
+        },
+        {
+          "role": "gdn_recurrence",
+          "hip_instrumented_ms": 40.048372,
+          "vulkan_logger_ms": 12.585055,
+          "hip_over_vulkan": 3.182,
+          "matched_gap_ms": 27.463317,
+          "projected_instrumented_saving_percent": 11.9706
+        },
+        {
+          "role": "full_attention_projections_rope",
+          "hip_instrumented_ms": 12.552971,
+          "vulkan_logger_ms": 4.38531,
+          "hip_over_vulkan": 2.863,
+          "matched_gap_ms": 8.167661,
+          "projected_instrumented_saving_percent": 3.5601
+        },
+        {
+          "role": "full_attention_core_kv",
+          "hip_instrumented_ms": 3.746799,
+          "vulkan_logger_ms": 1.765358,
+          "hip_over_vulkan": 2.122,
+          "matched_gap_ms": 1.981441,
+          "projected_instrumented_saving_percent": 0.8637
+        },
+        {
+          "role": "input_setup",
+          "hip_instrumented_ms": 0.887126,
+          "vulkan_logger_ms": 0.246531,
+          "hip_over_vulkan": 3.598,
+          "matched_gap_ms": 0.640595,
+          "projected_instrumented_saving_percent": 0.2792
+        },
+        {
+          "role": "dense_ffn_activation",
+          "hip_instrumented_ms": 1.897325,
+          "vulkan_logger_ms": 1.32827,
+          "hip_over_vulkan": 1.428,
+          "matched_gap_ms": 0.569055,
+          "projected_instrumented_saving_percent": 0.248
+        },
+        {
+          "role": "attention_norm",
+          "hip_instrumented_ms": 0.95764,
+          "vulkan_logger_ms": 0.46143,
+          "hip_over_vulkan": 2.075,
+          "matched_gap_ms": 0.49621,
+          "projected_instrumented_saving_percent": 0.2163
+        },
+        {
+          "role": "state_finalize",
+          "hip_instrumented_ms": 0.006452,
+          "vulkan_logger_ms": 0.0,
+          "hip_over_vulkan": null,
+          "matched_gap_ms": 0.006452,
+          "projected_instrumented_saving_percent": 0.0028
+        },
+        {
+          "role": "final_norm",
+          "hip_instrumented_ms": 0.012343,
+          "vulkan_logger_ms": 0.019226,
+          "hip_over_vulkan": 0.642,
+          "matched_gap_ms": -0.006883,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "residual_norm_glue",
+          "hip_instrumented_ms": 1.225408,
+          "vulkan_logger_ms": 1.363423,
+          "hip_over_vulkan": 0.899,
+          "matched_gap_ms": -0.138014,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "lm_head_sampler_transport",
+          "hip_instrumented_ms": 1.6212,
+          "vulkan_logger_ms": 2.28526,
+          "hip_over_vulkan": 0.709,
+          "matched_gap_ms": -0.66406,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "linear_attention_conv",
+          "hip_instrumented_ms": 4.065284,
+          "vulkan_logger_ms": 6.85906,
+          "hip_over_vulkan": 0.593,
+          "matched_gap_ms": -2.793776,
+          "projected_instrumented_saving_percent": 0.0
+        }
+      ],
+      "decode_graph_join_m12": [
+        {
+          "role": "linear_attention_projections",
+          "hip_graph_ms_per_token": 2.035839,
+          "vulkan_logger_ms_per_token": 1.051429,
+          "matched_gap_ms": 0.98441
+        },
+        {
+          "role": "dense_ffn_projections",
+          "hip_graph_ms_per_token": 2.073228,
+          "vulkan_logger_ms_per_token": 1.102156,
+          "matched_gap_ms": 0.971072
+        },
+        {
+          "role": "full_attention_core_kv",
+          "hip_graph_ms_per_token": 1.120426,
+          "vulkan_logger_ms_per_token": 0.156845,
+          "matched_gap_ms": 0.963581
+        },
+        {
+          "role": "full_attention_projections_rope",
+          "hip_graph_ms_per_token": 0.590084,
+          "vulkan_logger_ms_per_token": 0.250669,
+          "matched_gap_ms": 0.339415
+        },
+        {
+          "role": "attention_norm",
+          "hip_graph_ms_per_token": 0.279248,
+          "vulkan_logger_ms_per_token": 0.108414,
+          "matched_gap_ms": 0.170834
+        },
+        {
+          "role": "linear_attention_conv",
+          "hip_graph_ms_per_token": 0.241043,
+          "vulkan_logger_ms_per_token": 0.114745,
+          "matched_gap_ms": 0.126298
+        },
+        {
+          "role": "residual_norm_glue",
+          "hip_graph_ms_per_token": 0.28256,
+          "vulkan_logger_ms_per_token": 0.162521,
+          "matched_gap_ms": 0.120039
+        },
+        {
+          "role": "gdn_recurrence",
+          "hip_graph_ms_per_token": 0.722266,
+          "vulkan_logger_ms_per_token": 0.711241,
+          "matched_gap_ms": 0.011025
+        },
+        {
+          "role": "final_norm",
+          "hip_graph_ms_per_token": 0.007736,
+          "vulkan_logger_ms_per_token": 0.004517,
+          "matched_gap_ms": 0.003219
+        },
+        {
+          "role": "dense_ffn_activation",
+          "hip_graph_ms_per_token": 0.057313,
+          "vulkan_logger_ms_per_token": 0.068271,
+          "matched_gap_ms": -0.010958
+        },
+        {
+          "role": "lm_head_sampler_transport",
+          "hip_graph_ms_per_token": 0.896715,
+          "vulkan_logger_ms_per_token": 0.928866,
+          "matched_gap_ms": -0.032151
+        },
+        {
+          "role": "input_setup",
+          "hip_graph_ms_per_token": 0.009724,
+          "vulkan_logger_ms_per_token": 0.220372,
+          "matched_gap_ms": -0.210648
+        }
+      ],
+      "eager_decode_diagnostic_ms_per_token": 18.982,
+      "vulkan_decode_logger_total_ms_per_token": 4.88,
+      "m12_graph_tok_s": 119.878119,
+      "vulkan_prefill_raw_rows": [
+        {
+          "label": "ADD",
+          "calls": 66,
+          "us": 1240.24
+        },
+        {
+          "label": "CONCAT",
+          "calls": 18,
+          "us": 5450.67
+        },
+        {
+          "label": "CONT",
+          "calls": 6,
+          "us": 213.924
+        },
+        {
+          "label": "CPY",
+          "calls": 36,
+          "us": 237.872
+        },
+        {
+          "label": "FLASH_ATTN_EXT dst(256,8,512,1),  q(256,512,8,1),  k(256,512,2,1),  v(256,512,2,1),  m(512,512,1,1)",
+          "calls": 6,
+          "us": 1404.99
+        },
+        {
+          "label": "GATED_DELTA_NET",
+          "calls": 18,
+          "us": 5188.17
+        },
+        {
+          "label": "GET_ROWS",
+          "calls": 37,
+          "us": 246.531
+        },
+        {
+          "label": "GLU",
+          "calls": 24,
+          "us": 1328.27
+        },
+        {
+          "label": "L2_NORM",
+          "calls": 36,
+          "us": 2814.77
+        },
+        {
+          "label": "MUL",
+          "calls": 42,
+          "us": 962.044
+        },
+        {
+          "label": "MUL_MAT q4_K m=1024 n=512 k=2048",
+          "calls": 6,
+          "us": 1123.93
+        },
+        {
+          "label": "MUL_MAT q4_K m=1024 n=512 k=3584",
+          "calls": 12,
+          "us": 3769.28
+        },
+        {
+          "label": "MUL_MAT q4_K m=2048 n=512 k=1024",
+          "calls": 18,
+          "us": 3181.64
+        },
+        {
+          "label": "MUL_MAT q4_K m=3584 n=512 k=1024",
+          "calls": 48,
+          "us": 15985.3
+        },
+        {
+          "label": "MUL_MAT q4_K m=4096 n=512 k=1024",
+          "calls": 6,
+          "us": 2153.29
+        },
+        {
+          "label": "MUL_MAT q4_K m=512 n=512 k=1024",
+          "calls": 8,
+          "us": 793.985
+        },
+        {
+          "label": "MUL_MAT q5_K m=1024 n=512 k=2048",
+          "calls": 18,
+          "us": 3476.51
+        },
+        {
+          "label": "MUL_MAT q5_K m=6144 n=512 k=1024",
+          "calls": 18,
+          "us": 8665.22
+        },
+        {
+          "label": "MUL_MAT q6_K m=1024 n=512 k=3584",
+          "calls": 12,
+          "us": 4740.64
+        },
+        {
+          "label": "MUL_MAT q6_K m=512 n=512 k=1024",
+          "calls": 4,
+          "us": 444.683
+        },
+        {
+          "label": "MUL_MAT q8_0 m=16 n=512 k=1024",
+          "calls": 36,
+          "us": 1380.89
+        },
+        {
+          "label": "MUL_MAT_VEC q6_K m=248320 n=1 k=1024",
+          "calls": 1,
+          "us": 2285.26
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(1024,512,1,1)",
+          "calls": 49,
+          "us": 942.086
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(128,16,512,1)",
+          "calls": 18,
+          "us": 1872.79
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(256,2,512,1)",
+          "calls": 6,
+          "us": 104.194
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(256,8,512,1)",
+          "calls": 6,
+          "us": 394.907
+        },
+        {
+          "label": "ROPE",
+          "calls": 12,
+          "us": 280.327
+        },
+        {
+          "label": "SCALE",
+          "calls": 36,
+          "us": 470.396
+        },
+        {
+          "label": "SET_ROWS",
+          "calls": 12,
+          "us": 159.216
+        },
+        {
+          "label": "SIGMOID",
+          "calls": 24,
+          "us": 254.869
+        },
+        {
+          "label": "SILU",
+          "calls": 18,
+          "us": 588.668
+        },
+        {
+          "label": "SOFTPLUS",
+          "calls": 18,
+          "us": 58.381
+        },
+        {
+          "label": "SSM_CONV_SILU SSM_CONV",
+          "calls": 18,
+          "us": 1408.39
+        }
+      ]
+    },
+    "q8_0": {
+      "hip_instrumented_prefill_wall_ms": 127.381,
+      "hip_instrumented_stage_sum_ms": 126.57,
+      "vulkan_prefill_logger_total_ms": 90.111,
+      "production_exact_core": {
+        "hip_prefill_tok_s": 4152.269260972062,
+        "llama_prefill_tok_s": 6257.615775058268,
+        "hip_decode_tok_s": 137.82055779095774,
+        "llama_decode_tok_s": 158.11155511361181
+      },
+      "prefill_join": [
+        {
+          "role": "gdn_recurrence",
+          "hip_instrumented_ms": 50.489891,
+          "vulkan_logger_ms": 16.751519,
+          "hip_over_vulkan": 3.014,
+          "matched_gap_ms": 33.738372,
+          "projected_instrumented_saving_percent": 26.4862
+        },
+        {
+          "role": "linear_attention_projections",
+          "hip_instrumented_ms": 25.654463,
+          "vulkan_logger_ms": 19.832127,
+          "hip_over_vulkan": 1.294,
+          "matched_gap_ms": 5.822336,
+          "projected_instrumented_saving_percent": 4.5708
+        },
+        {
+          "role": "dense_ffn_projections",
+          "hip_instrumented_ms": 31.022944,
+          "vulkan_logger_ms": 27.80216,
+          "hip_over_vulkan": 1.116,
+          "matched_gap_ms": 3.220784,
+          "projected_instrumented_saving_percent": 2.5285
+        },
+        {
+          "role": "input_setup",
+          "hip_instrumented_ms": 2.138784,
+          "vulkan_logger_ms": 0.285205,
+          "hip_over_vulkan": 7.499,
+          "matched_gap_ms": 1.853579,
+          "projected_instrumented_saving_percent": 1.4551
+        },
+        {
+          "role": "full_attention_projections_rope",
+          "hip_instrumented_ms": 7.620519,
+          "vulkan_logger_ms": 6.227453,
+          "hip_over_vulkan": 1.224,
+          "matched_gap_ms": 1.393066,
+          "projected_instrumented_saving_percent": 1.0936
+        },
+        {
+          "role": "full_attention_core_kv",
+          "hip_instrumented_ms": 2.655485,
+          "vulkan_logger_ms": 1.843347,
+          "hip_over_vulkan": 1.441,
+          "matched_gap_ms": 0.812138,
+          "projected_instrumented_saving_percent": 0.6376
+        },
+        {
+          "role": "attention_norm",
+          "hip_instrumented_ms": 0.735828,
+          "vulkan_logger_ms": 0.446965,
+          "hip_over_vulkan": 1.646,
+          "matched_gap_ms": 0.288863,
+          "projected_instrumented_saving_percent": 0.2268
+        },
+        {
+          "role": "state_finalize",
+          "hip_instrumented_ms": 0.016752,
+          "vulkan_logger_ms": 0.0,
+          "hip_over_vulkan": null,
+          "matched_gap_ms": 0.016752,
+          "projected_instrumented_saving_percent": 0.0132
+        },
+        {
+          "role": "final_norm",
+          "hip_instrumented_ms": 0.021761,
+          "vulkan_logger_ms": 0.018624,
+          "hip_over_vulkan": 1.168,
+          "matched_gap_ms": 0.003138,
+          "projected_instrumented_saving_percent": 0.0025
+        },
+        {
+          "role": "dense_ffn_activation",
+          "hip_instrumented_ms": 1.229576,
+          "vulkan_logger_ms": 1.46213,
+          "hip_over_vulkan": 0.841,
+          "matched_gap_ms": -0.232554,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "residual_norm_glue",
+          "hip_instrumented_ms": 0.950887,
+          "vulkan_logger_ms": 1.461351,
+          "hip_over_vulkan": 0.651,
+          "matched_gap_ms": -0.510464,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "lm_head_sampler_transport",
+          "hip_instrumented_ms": 1.499178,
+          "vulkan_logger_ms": 6.24014,
+          "hip_over_vulkan": 0.24,
+          "matched_gap_ms": -4.740962,
+          "projected_instrumented_saving_percent": 0.0
+        },
+        {
+          "role": "linear_attention_conv",
+          "hip_instrumented_ms": 2.533774,
+          "vulkan_logger_ms": 7.73973,
+          "hip_over_vulkan": 0.327,
+          "matched_gap_ms": -5.205956,
+          "projected_instrumented_saving_percent": 0.0
+        }
+      ],
+      "decode_graph_join_m12": [
+        {
+          "role": "full_attention_core_kv",
+          "hip_graph_ms_per_token": 1.111198,
+          "vulkan_logger_ms_per_token": 0.163598,
+          "matched_gap_ms": 0.9476
+        },
+        {
+          "role": "dense_ffn_projections",
+          "hip_graph_ms_per_token": 2.256596,
+          "vulkan_logger_ms_per_token": 1.556757,
+          "matched_gap_ms": 0.699839
+        },
+        {
+          "role": "linear_attention_projections",
+          "hip_graph_ms_per_token": 1.735277,
+          "vulkan_logger_ms_per_token": 1.326941,
+          "matched_gap_ms": 0.408336
+        },
+        {
+          "role": "full_attention_projections_rope",
+          "hip_graph_ms_per_token": 0.55551,
+          "vulkan_logger_ms_per_token": 0.319515,
+          "matched_gap_ms": 0.235995
+        },
+        {
+          "role": "attention_norm",
+          "hip_graph_ms_per_token": 0.32827,
+          "vulkan_logger_ms_per_token": 0.108168,
+          "matched_gap_ms": 0.220102
+        },
+        {
+          "role": "residual_norm_glue",
+          "hip_graph_ms_per_token": 0.346376,
+          "vulkan_logger_ms_per_token": 0.164417,
+          "matched_gap_ms": 0.181959
+        },
+        {
+          "role": "linear_attention_conv",
+          "hip_graph_ms_per_token": 0.239496,
+          "vulkan_logger_ms_per_token": 0.118465,
+          "matched_gap_ms": 0.121031
+        },
+        {
+          "role": "dense_ffn_activation",
+          "hip_graph_ms_per_token": 0.178347,
+          "vulkan_logger_ms_per_token": 0.072582,
+          "matched_gap_ms": 0.105765
+        },
+        {
+          "role": "final_norm",
+          "hip_graph_ms_per_token": 0.006844,
+          "vulkan_logger_ms_per_token": 0.004507,
+          "matched_gap_ms": 0.002337
+        },
+        {
+          "role": "lm_head_sampler_transport",
+          "hip_graph_ms_per_token": 1.108194,
+          "vulkan_logger_ms_per_token": 1.182966,
+          "matched_gap_ms": -0.074772
+        },
+        {
+          "role": "gdn_recurrence",
+          "hip_graph_ms_per_token": 0.622347,
+          "vulkan_logger_ms_per_token": 0.739304,
+          "matched_gap_ms": -0.116957
+        },
+        {
+          "role": "input_setup",
+          "hip_graph_ms_per_token": 0.00962,
+          "vulkan_logger_ms_per_token": 0.225001,
+          "matched_gap_ms": -0.215381
+        }
+      ],
+      "eager_decode_diagnostic_ms_per_token": 17.624,
+      "vulkan_decode_logger_total_ms_per_token": 5.9822,
+      "m12_graph_tok_s": 117.182915,
+      "vulkan_prefill_raw_rows": [
+        {
+          "label": "ADD",
+          "calls": 66,
+          "us": 1394.78
+        },
+        {
+          "label": "CONCAT",
+          "calls": 18,
+          "us": 6229.19
+        },
+        {
+          "label": "CONT",
+          "calls": 6,
+          "us": 271.874
+        },
+        {
+          "label": "CPY",
+          "calls": 36,
+          "us": 253.585
+        },
+        {
+          "label": "FLASH_ATTN_EXT dst(256,8,512,1),  q(256,512,8,1),  k(256,512,2,1),  v(256,512,2,1),  m(512,512,1,1)",
+          "calls": 6,
+          "us": 1449.71
+        },
+        {
+          "label": "GATED_DELTA_NET",
+          "calls": 18,
+          "us": 8582.26
+        },
+        {
+          "label": "GET_ROWS",
+          "calls": 37,
+          "us": 285.205
+        },
+        {
+          "label": "GLU",
+          "calls": 24,
+          "us": 1462.13
+        },
+        {
+          "label": "L2_NORM",
+          "calls": 36,
+          "us": 3221.1
+        },
+        {
+          "label": "MUL",
+          "calls": 42,
+          "us": 965.572
+        },
+        {
+          "label": "MUL_MAT q8_0 m=1024 n=512 k=2048",
+          "calls": 24,
+          "us": 5187.33
+        },
+        {
+          "label": "MUL_MAT q8_0 m=1024 n=512 k=3584",
+          "calls": 24,
+          "us": 9217.66
+        },
+        {
+          "label": "MUL_MAT q8_0 m=16 n=512 k=1024",
+          "calls": 36,
+          "us": 1453.26
+        },
+        {
+          "label": "MUL_MAT q8_0 m=2048 n=512 k=1024",
+          "calls": 18,
+          "us": 3390.87
+        },
+        {
+          "label": "MUL_MAT q8_0 m=3584 n=512 k=1024",
+          "calls": 48,
+          "us": 18584.5
+        },
+        {
+          "label": "MUL_MAT q8_0 m=4096 n=512 k=1024",
+          "calls": 6,
+          "us": 2424.96
+        },
+        {
+          "label": "MUL_MAT q8_0 m=512 n=512 k=1024",
+          "calls": 12,
+          "us": 1417.49
+        },
+        {
+          "label": "MUL_MAT q8_0 m=6144 n=512 k=1024",
+          "calls": 18,
+          "us": 11097.5
+        },
+        {
+          "label": "MUL_MAT_VEC q8_0 m=248320 n=1 k=1024",
+          "calls": 1,
+          "us": 6240.14
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(1024,512,1,1)",
+          "calls": 49,
+          "us": 912.554
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(128,16,512,1)",
+          "calls": 18,
+          "us": 2179.53
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(256,2,512,1)",
+          "calls": 6,
+          "us": 109.846
+        },
+        {
+          "label": "RMS_NORM_MUL RMS_NORM(256,8,512,1)",
+          "calls": 6,
+          "us": 400.076
+        },
+        {
+          "label": "ROPE",
+          "calls": 12,
+          "us": 306.374
+        },
+        {
+          "label": "SCALE",
+          "calls": 36,
+          "us": 439.654
+        },
+        {
+          "label": "SET_ROWS",
+          "calls": 12,
+          "us": 186.47
+        },
+        {
+          "label": "SIGMOID",
+          "calls": 24,
+          "us": 276.914
+        },
+        {
+          "label": "SILU",
+          "calls": 18,
+          "us": 598.85
+        },
+        {
+          "label": "SOFTPLUS",
+          "calls": 18,
+          "us": 60.827
+        },
+        {
+          "label": "SSM_CONV_SILU SSM_CONV",
+          "calls": 18,
+          "us": 1510.54
+        }
+      ]
+    }
+  },
+  "ranked_gaps": [
+    {
+      "quant": "q4_k_m",
+      "phase": "prefill",
+      "role": "dense_ffn_projections",
+      "hip_instrumented_ms": 113.808155,
+      "vulkan_logger_ms": 24.49522,
+      "hip_over_vulkan": 4.646,
+      "matched_gap_ms": 89.312935,
+      "projected_instrumented_saving_percent": 38.9292
+    },
+    {
+      "quant": "q8_0",
+      "phase": "prefill",
+      "role": "gdn_recurrence",
+      "hip_instrumented_ms": 50.489891,
+      "vulkan_logger_ms": 16.751519,
+      "hip_over_vulkan": 3.014,
+      "matched_gap_ms": 33.738372,
+      "projected_instrumented_saving_percent": 26.4862
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "prefill",
+      "role": "linear_attention_projections",
+      "hip_instrumented_ms": 47.697175,
+      "vulkan_logger_ms": 17.82819,
+      "hip_over_vulkan": 2.675,
+      "matched_gap_ms": 29.868985,
+      "projected_instrumented_saving_percent": 13.0191
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "prefill",
+      "role": "gdn_recurrence",
+      "hip_instrumented_ms": 40.048372,
+      "vulkan_logger_ms": 12.585055,
+      "hip_over_vulkan": 3.182,
+      "matched_gap_ms": 27.463317,
+      "projected_instrumented_saving_percent": 11.9706
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "prefill",
+      "role": "full_attention_projections_rope",
+      "hip_instrumented_ms": 12.552971,
+      "vulkan_logger_ms": 4.38531,
+      "hip_over_vulkan": 2.863,
+      "matched_gap_ms": 8.167661,
+      "projected_instrumented_saving_percent": 3.5601
+    },
+    {
+      "quant": "q8_0",
+      "phase": "prefill",
+      "role": "linear_attention_projections",
+      "hip_instrumented_ms": 25.654463,
+      "vulkan_logger_ms": 19.832127,
+      "hip_over_vulkan": 1.294,
+      "matched_gap_ms": 5.822336,
+      "projected_instrumented_saving_percent": 4.5708
+    },
+    {
+      "quant": "q8_0",
+      "phase": "prefill",
+      "role": "dense_ffn_projections",
+      "hip_instrumented_ms": 31.022944,
+      "vulkan_logger_ms": 27.80216,
+      "hip_over_vulkan": 1.116,
+      "matched_gap_ms": 3.220784,
+      "projected_instrumented_saving_percent": 2.5285
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "prefill",
+      "role": "full_attention_core_kv",
+      "hip_instrumented_ms": 3.746799,
+      "vulkan_logger_ms": 1.765358,
+      "hip_over_vulkan": 2.122,
+      "matched_gap_ms": 1.981441,
+      "projected_instrumented_saving_percent": 0.8637
+    },
+    {
+      "quant": "q8_0",
+      "phase": "prefill",
+      "role": "input_setup",
+      "hip_instrumented_ms": 2.138784,
+      "vulkan_logger_ms": 0.285205,
+      "hip_over_vulkan": 7.499,
+      "matched_gap_ms": 1.853579,
+      "projected_instrumented_saving_percent": 1.4551
+    },
+    {
+      "quant": "q8_0",
+      "phase": "prefill",
+      "role": "full_attention_projections_rope",
+      "hip_instrumented_ms": 7.620519,
+      "vulkan_logger_ms": 6.227453,
+      "hip_over_vulkan": 1.224,
+      "matched_gap_ms": 1.393066,
+      "projected_instrumented_saving_percent": 1.0936
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "linear_attention_projections",
+      "hip_graph_ms_per_token": 2.035839,
+      "vulkan_logger_ms_per_token": 1.051429,
+      "matched_gap_ms": 0.98441
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "dense_ffn_projections",
+      "hip_graph_ms_per_token": 2.073228,
+      "vulkan_logger_ms_per_token": 1.102156,
+      "matched_gap_ms": 0.971072
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "full_attention_core_kv",
+      "hip_graph_ms_per_token": 1.120426,
+      "vulkan_logger_ms_per_token": 0.156845,
+      "matched_gap_ms": 0.963581
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "full_attention_core_kv",
+      "hip_graph_ms_per_token": 1.111198,
+      "vulkan_logger_ms_per_token": 0.163598,
+      "matched_gap_ms": 0.9476
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "dense_ffn_projections",
+      "hip_graph_ms_per_token": 2.256596,
+      "vulkan_logger_ms_per_token": 1.556757,
+      "matched_gap_ms": 0.699839
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "linear_attention_projections",
+      "hip_graph_ms_per_token": 1.735277,
+      "vulkan_logger_ms_per_token": 1.326941,
+      "matched_gap_ms": 0.408336
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "full_attention_projections_rope",
+      "hip_graph_ms_per_token": 0.590084,
+      "vulkan_logger_ms_per_token": 0.250669,
+      "matched_gap_ms": 0.339415
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "full_attention_projections_rope",
+      "hip_graph_ms_per_token": 0.55551,
+      "vulkan_logger_ms_per_token": 0.319515,
+      "matched_gap_ms": 0.235995
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "attention_norm",
+      "hip_graph_ms_per_token": 0.32827,
+      "vulkan_logger_ms_per_token": 0.108168,
+      "matched_gap_ms": 0.220102
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "residual_norm_glue",
+      "hip_graph_ms_per_token": 0.346376,
+      "vulkan_logger_ms_per_token": 0.164417,
+      "matched_gap_ms": 0.181959
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "attention_norm",
+      "hip_graph_ms_per_token": 0.279248,
+      "vulkan_logger_ms_per_token": 0.108414,
+      "matched_gap_ms": 0.170834
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "linear_attention_conv",
+      "hip_graph_ms_per_token": 0.241043,
+      "vulkan_logger_ms_per_token": 0.114745,
+      "matched_gap_ms": 0.126298
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "linear_attention_conv",
+      "hip_graph_ms_per_token": 0.239496,
+      "vulkan_logger_ms_per_token": 0.118465,
+      "matched_gap_ms": 0.121031
+    },
+    {
+      "quant": "q4_k_m",
+      "phase": "decode",
+      "role": "residual_norm_glue",
+      "hip_graph_ms_per_token": 0.28256,
+      "vulkan_logger_ms_per_token": 0.162521,
+      "matched_gap_ms": 0.120039
+    },
+    {
+      "quant": "q8_0",
+      "phase": "decode",
+      "role": "dense_ffn_activation",
+      "hip_graph_ms_per_token": 0.178347,
+      "vulkan_logger_ms_per_token": 0.072582,
+      "matched_gap_ms": 0.105765
+    }
+  ]
+}

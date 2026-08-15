@@ -36,6 +36,9 @@ _SYMBOL_PACK8_FP16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_fp16_out"
 _SYMBOL_PACK8_BF16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out"
 _SYMBOL_PACK8_BF16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_fp16_out"
 _SYMBOL_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out"
+_SYMBOL_PACK8_BF16_RESIDUAL_BF16_OUT = (
+    "hipengine_gguf_q4_k_pack8_gemv_bf16_residual_bf16_out"
+)
 _SYMBOL_PACK8_ROWTILE_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out"
 )
@@ -349,6 +352,59 @@ def gguf_q4_k_pack8_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_pack8_prefill_bf16_residual_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run resident-pack8 Q4_K plus an exact rounded-BF16 residual."""
+
+    launch_threads = _pack8_threads(in_features, threads)
+    _validate(rows, in_features, out_features, launch_threads, require_pack8=True)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PACK8_BF16_RESIDUAL_BF16_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(scales_ptr),
+        ctypes.c_void_p(mins_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(launch_threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def gguf_q4_k_pack8_rowtile_bf16_bf16_out(
     x_ptr: int,
     qweight_ptr: int,
@@ -502,6 +558,20 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     )
     for variant, fn in _EXTRA_Q4_K_WRAPPERS.items():
         register(KernelKey("hip_gfx1100", "linear", "gguf_q4_k", variant), fn, replace=replace)
+    for variant in (
+        "pack8_bf16_residual_bf16_out",
+        "pack8_prefill_bf16_residual_bf16_out",
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear+residual",
+                "gguf_q4_k",
+                variant,
+            ),
+            gguf_q4_k_pack8_prefill_bf16_residual_bf16_out,
+            replace=replace,
+        )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1207,6 +1277,7 @@ __all__ = [
     "gguf_q4_k_pack8_rowtile_bf16_bf16_out",
     "gguf_q4_k_pack8_exact_prefill_tile8x8_bf16_bf16_out",
     "gguf_q4_k_pack8_prefill_bf16_bf16_out",
+    "gguf_q4_k_pack8_prefill_bf16_residual_bf16_out",
     "gguf_q4_k_pack8_prefill_bf16_f32_out",
     "gguf_q4_k_pack8_prefill_bf16_fp16_out",
     "gguf_q4_k_pack8_prefill_f32_f32_out",

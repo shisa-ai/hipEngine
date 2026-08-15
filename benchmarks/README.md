@@ -110,6 +110,17 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
+Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
+full Vulkan-parity campaign (D08) to a blocked closure, then the
+human-approved D08-X extension retained three prefill routes - Q5T16 QKV,
+cluster8 GDN (Q4 and, after a fresh gate, Q8_0), pack8-WMMA bulk, and
+dense-BF16 WMMA - moving exact-core pp512 to **4345/4983 tok/s Q4/Q8
+(0.73x/0.80x Vulkan)** with public decode at llama-HIP parity. Full
+per-package evidence and history live in
+[`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
+[`results/`](results/), and
+[`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+
 ## Current single-request scoreboards
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B

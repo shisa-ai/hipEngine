@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_GDN_INDEXED_SINGLETON_DECODE as GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE,
     GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS as GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS as GFX1100_GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q5_T16_SELECTED_QWEN_TILE8 as GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8,
@@ -153,6 +154,7 @@ from hipengine.kernels.hip_gfx1151 import (
     LAGUNA_SWA_PREFILL_VARIANT,
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE,
     GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     TARGET_ARCH,
@@ -362,19 +364,25 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
         ),
-            KernelKey(
-                "hip_gfx1151",
-                "linear_pair_silu",
-                "gguf_q4_k",
-                "t16_sidecar_dual_decode_bf16_bf16_out",
-            ),
-            KernelKey(
-                "hip_gfx1151",
-                "linear_pair_silu",
-                "gguf_q4_k",
-                "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
-            ),
-        ]
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_decode_t128_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "t16_sidecar_dual_decode_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
+        ),
+    ]
 
 
 def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
@@ -441,7 +449,22 @@ def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> 
     ) is None
 
 
-def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
+def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+        {},
+    ) == {
+        (1_024, 24, 8, 2, 256, 256, 256): (514, 641),
+    }
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+        {},
+    ) == {}
+
+
+def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
     register_gfx1151_kernels()
 
     assert backend_package_capability(
@@ -454,12 +477,66 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,
     )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_QKV",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_QKV",
+        False,
+    )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
+        False,
+    )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        {},
+    ) == {
+        ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+            (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
+        }
+    }
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        {},
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
+        {},
+    ) == {"gguf_q4_k_t16_v1": {(8, 1_024, 4_096): 4}}
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
+        {},
+    ) == {"gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)})}
     for variant in (
         "t16_gemv_decode_bf16_bf16_out",
         "t16_gemv_rowtile_bf16_bf16_out",
         "t16_wmma_prefill_bf16_bf16_out",
     ):
-        assert not is_registered(
+        assert is_registered(
             KernelKey(
                 "hip_gfx1151",
                 "linear",
@@ -483,6 +560,88 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
                 layer,
                 "gguf_q5_k_t16_v1",
                 variant,
+            )
+        )
+
+
+def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None:
+    import hipengine.kernels.hip_gfx1151 as gfx1151
+
+    calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gfx1151,
+        "gguf_q4_k_pack8_dual_silu_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    register_gfx1151_kernels(replace=True)
+    fn = resolve(
+        backend="hip_gfx1151",
+        layer="linear_pair_silu",
+        quant="gguf_q4_k",
+        variant="pack8_dual_decode_t128_bf16_bf16_out",
+    )
+    fn(1, 2, 3, 4, 5, 6, 7, 8, 1, 1_024, 3_584, stream=9, runtime="runtime")
+
+    assert calls == [
+        (
+            (1, 2, 3, 4, 5, 6, 7, 8, 1, 1_024, 3_584),
+            {"stream": 9, "runtime": "runtime", "threads": 128},
+        )
+    ]
+
+
+def test_gfx1151_08b_dense_down_residual_policy_is_exact() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+        register_dense_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        register_gguf_q4_k_gemv_kernels,
+    )
+
+    register_dense_gemv_kernels()
+    register_gguf_q4_k_gemv_kernels()
+    register_gfx1151_kernels(replace=True)
+    expected = {
+        ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {(1, 3_584, 1_024): True}
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
+    ) == expected
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
+    ) == {}
+    for quant, variant in (
+        ("gguf_q4_k", "pack8_bf16_residual_bf16_out"),
+        ("bf16", "out_bf16_residual_bf16_out"),
+    ):
+        assert is_registered(
+            KernelKey("hip_gfx1151", "linear+residual", quant, variant)
+        )
+        assert is_registered(
+            KernelKey("hip_gfx1100", "linear+residual", quant, variant)
+        )
+
+
+def test_gfx1151_08b_fixed1024_norm_residual_policy_is_exact() -> None:
+    register_gfx1151_kernels(replace=True)
+    expected = {
+        ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+            (1, 1_024): "bf16_out_fixed1024_wave256"
+        }
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == expected
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
+    ) == {}
+    for layer in ("rmsnorm", "add_rmsnorm"):
+        assert is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                layer,
+                "gguf_f32_weight",
+                "bf16_out_fixed1024_wave256",
             )
         )
 
@@ -1019,8 +1178,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_compact_peer_wave32"
+    assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {}
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
+    assert GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {
+        ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+        # D08-X2-K2: fresh five-block gate admitted Q8_0 after P2's 0.0108%
+        # rejection was superseded by exact-core graph-decode evidence.
+        ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
+    }
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768

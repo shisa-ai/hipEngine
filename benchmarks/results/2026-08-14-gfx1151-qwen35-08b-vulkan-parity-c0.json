@@ -1,0 +1,690 @@
+{
+  "schema": "qwen35_08b_gfx1151_vulkan_parity_c0_v1",
+  "date": "2026-08-14",
+  "status": "diagnostic_route_certification",
+  "performance_claim": false,
+  "objective": "Certify hipEngine fallback, fast eager, and graph routes before module optimization.",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "uma": true,
+    "kernel": "7.1.8-1-cachyos",
+    "mesa_radv": "26.1.6-arch3.1"
+  },
+  "software": {
+    "hipengine_commit": "217f599dea2bb226d3990d76c1503c5dab38553a",
+    "llamacpp_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "llamacpp_build": 10415,
+    "hip_runtime": "7.15.0",
+    "rocprofv3": "1.3.5 (3aabde92853d1318d317e8457663e6a275353221)"
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "tensor_types": {
+        "F32": 133,
+        "Q4_K": 98,
+        "Q5_K": 36,
+        "Q6_K": 17,
+        "Q8_0": 36
+      },
+      "encoded_tensor_bytes": 521555200
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "tensor_types": {
+        "F32": 133,
+        "Q8_0": 187
+      },
+      "encoded_tensor_bytes": 800881920
+    }
+  },
+  "protocol": {
+    "shape": "pp512/tg128",
+    "hipengine": "persistent session; force bulk attention; repeated token 9707; 1 warmup + 5 measured",
+    "llamacpp": "flash attention; 5 repetitions; serial execution",
+    "timing_scope_note": "hipEngine includes native greedy sampling/token transport; llama-bench tg is model-eval shaped. Strict shared-token/core timing remains D08-C1.",
+    "invalid_rows_excluded": "Concurrent llama Q4/Q8 runs at ~3.1k/~115 were discarded due single-GPU contention and replaced serially."
+  },
+  "hipengine_routes": {
+    "q4-fallback": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --no-use-wmma-prefill --no-use-gemv-decode --no-graph-replay-decode --json /tmp/d08-c0/q4-fallback.json",
+      "prefill_tok_s": {
+        "samples": [
+          916.0962591234027,
+          900.5599535888928,
+          917.4437424206002,
+          914.7912573341622,
+          906.1061404356333
+        ],
+        "median": 914.7912573341622,
+        "stdev_pct_of_median": 0.8010820491569518
+      },
+      "decode_tok_s": {
+        "samples": [
+          50.43079243662898,
+          50.20810604896248,
+          49.639120530156454,
+          49.58553279668954,
+          48.81447303983107
+        ],
+        "median": 49.639120530156454,
+        "stdev_pct_of_median": 1.2688635862590119
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.5588932329992531,
+          0.5685351629945217,
+          0.5580723659950309,
+          0.5596905260026688,
+          0.5650552150036674
+        ],
+        "median": 0.5596905260026688,
+        "stdev_pct_of_median": 0.8111434806357766
+      },
+      "decode_seconds": {
+        "samples": [
+          2.5381318400031887,
+          2.5493891340011032,
+          2.578611357996124,
+          2.581398096997873,
+          2.622173139010556
+        ],
+        "median": 2.578611357996124,
+        "stdev_pct_of_median": 1.2698561699114361
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452
+        ],
+        "median": 1.18018514290452,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.4055137634277344,
+          1.4055137634277344,
+          1.4055137634277344,
+          1.4055137634277344,
+          1.4055137634277344
+        ],
+        "median": 1.4055137634277344,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": false,
+        "gemv_decode": false,
+        "graph_replay_decode": false,
+        "host_token_embedding": false,
+        "host_token_embedding_reason": null
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 26.91680145263672,
+        "generated_count_including_prefill_sample_and_warmup": 130,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q4-fast-eager": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --json /tmp/d08-c0/q4-fast-eager.json",
+      "prefill_tok_s": {
+        "samples": [
+          1432.745166377679,
+          1427.4457299309329,
+          1432.4801849584524,
+          1414.336217449963,
+          1411.8415240982285
+        ],
+        "median": 1427.4457299309329,
+        "stdev_pct_of_median": 0.701616682918683
+      },
+      "decode_tok_s": {
+        "samples": [
+          48.845629277767195,
+          49.115086333351556,
+          49.05185363218638,
+          49.01634074392122,
+          49.62686892916205
+        ],
+        "median": 49.05185363218638,
+        "stdev_pct_of_median": 0.6004416984512356
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.3573559429933084,
+          0.35868263799056876,
+          0.357422047003638,
+          0.36200727499090135,
+          0.36264693399425596
+        ],
+        "median": 0.35868263799056876,
+        "stdev_pct_of_median": 0.7066438386804587
+      },
+      "decode_seconds": {
+        "samples": [
+          2.620500583012472,
+          2.606123892997857,
+          2.6094834450050257,
+          2.6113740450091427,
+          2.5792479509982513
+        ],
+        "median": 2.6094834450050257,
+        "stdev_pct_of_median": 0.5951698977411349
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452
+        ],
+        "median": 1.18018514290452,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.4058799743652344,
+          1.4058799743652344,
+          1.4058799743652344,
+          1.4058799743652344,
+          1.4058799743652344
+        ],
+        "median": 1.4058799743652344,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": true,
+        "gemv_decode": true,
+        "graph_replay_decode": false,
+        "host_token_embedding": false,
+        "host_token_embedding_reason": null
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 26.947044372558594,
+        "generated_count_including_prefill_sample_and_warmup": 130,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q4-fast-graph": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --use-wmma-prefill --use-gemv-decode --graph-replay-decode --json /tmp/d08-c0/q4-fast-graph.json",
+      "prefill_tok_s": {
+        "samples": [
+          1377.8097867531994,
+          1374.7471582773917,
+          1329.1587813713847,
+          1370.390960333441,
+          1366.7031452466988
+        ],
+        "median": 1370.390960333441,
+        "stdev_pct_of_median": 1.4447649324678158
+      },
+      "decode_tok_s": {
+        "samples": [
+          87.16846712940092,
+          87.00813547345088,
+          87.56263176294827,
+          87.11764286031513,
+          86.91088449131662
+        ],
+        "median": 87.11764286031513,
+        "stdev_pct_of_median": 0.2863314584165868
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.371604269996169,
+          0.3724321210029302,
+          0.3852060469944263,
+          0.3736160080006812,
+          0.37462414700712543
+        ],
+        "median": 0.3736160080006812,
+        "stdev_pct_of_median": 1.4848940699410866
+      },
+      "decode_seconds": {
+        "samples": [
+          1.4684209120023297,
+          1.4711268009996274,
+          1.4618107910064282,
+          1.4692775860021356,
+          1.472772952998639
+        ],
+        "median": 1.4692775860021356,
+        "stdev_pct_of_median": 0.2854277526404806
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452,
+          1.18018514290452
+        ],
+        "median": 1.18018514290452,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.4060935974121094,
+          1.4060935974121094,
+          1.4060935974121094,
+          1.4060935974121094,
+          1.4060935974121094
+        ],
+        "median": 1.4060935974121094,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": true,
+        "gemv_decode": true,
+        "graph_replay_decode": true,
+        "host_token_embedding": false,
+        "host_token_embedding_reason": null
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 26.947044372558594,
+        "generated_count_including_prefill_sample_and_warmup": 3,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q8-host-fallback": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --quant gguf_q8_0 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --no-use-wmma-prefill --no-use-gemv-decode --no-graph-replay-decode --json /tmp/d08-c0/q8-host-fallback.json",
+      "prefill_tok_s": {
+        "samples": [
+          637.433920515255,
+          627.0735697152234,
+          631.8468660218792,
+          635.9155430848061,
+          631.5171490521064
+        ],
+        "median": 631.8468660218792,
+        "stdev_pct_of_median": 0.6453930393388817
+      },
+      "decode_tok_s": {
+        "samples": [
+          59.358716684946344,
+          60.47569565152687,
+          60.19335206972911,
+          58.71632465515075,
+          59.64602079229981
+        ],
+        "median": 59.64602079229981,
+        "stdev_pct_of_median": 1.1644807426064405
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.8032205119961873,
+          0.8164911179919727,
+          0.8103229240077781,
+          0.8051383639976848,
+          0.8107459960010601
+        ],
+        "median": 0.8103229240077781,
+        "stdev_pct_of_median": 0.6443876950621197
+      },
+      "decode_seconds": {
+        "samples": [
+          2.1563808510109084,
+          2.1165527510020183,
+          2.126480676000938,
+          2.1799729589984054,
+          2.145993953992729
+        ],
+        "median": 2.145993953992729,
+        "stdev_pct_of_median": 1.1663123466481664
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855
+        ],
+        "median": 0.9587693847715855,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.1670799255371094,
+          1.1670799255371094,
+          1.1670799255371094,
+          1.1670799255371094,
+          1.1670799255371094
+        ],
+        "median": 1.1670799255371094,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": false,
+        "gemv_decode": false,
+        "graph_replay_decode": false,
+        "host_token_embedding": true,
+        "host_token_embedding_reason": "explicit_private_c1"
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 27.782602310180664,
+        "generated_count_including_prefill_sample_and_warmup": 130,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q8-host-fast-eager": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --quant gguf_q8_0 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --json /tmp/d08-c0/q8-host-fast-eager.json",
+      "prefill_tok_s": {
+        "samples": [
+          4088.545893897946,
+          4055.116959709761,
+          4101.232811860973,
+          4131.123172843117,
+          4131.627186210792
+        ],
+        "median": 4101.232811860973,
+        "stdev_pct_of_median": 0.7810568573714746
+      },
+      "decode_tok_s": {
+        "samples": [
+          61.60225544234046,
+          60.11485692964115,
+          62.998602997024236,
+          59.60320734894742,
+          59.80549515816152
+        ],
+        "median": 60.11485692964115,
+        "stdev_pct_of_median": 2.4056085731753205
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.12522789600188844,
+          0.1262602299975697,
+          0.1248405110090971,
+          0.12393723899731413,
+          0.12392212000850122
+        ],
+        "median": 0.1248405110090971,
+        "stdev_pct_of_median": 0.7833005515491926
+      },
+      "decode_seconds": {
+        "samples": [
+          2.077845998996054,
+          2.1292573340033414,
+          2.031791086003068,
+          2.14753543799452,
+          2.140271552998456
+        ],
+        "median": 2.1292573340033414,
+        "stdev_pct_of_median": 2.3172788646279865
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855
+        ],
+        "median": 0.9587693847715855,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.1674461364746094,
+          1.1674461364746094,
+          1.1674461364746094,
+          1.1674461364746094,
+          1.1674461364746094
+        ],
+        "median": 1.1674461364746094,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": true,
+        "gemv_decode": true,
+        "graph_replay_decode": false,
+        "host_token_embedding": true,
+        "host_token_embedding_reason": "explicit_private_c1"
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 27.846378326416016,
+        "generated_count_including_prefill_sample_and_warmup": 130,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q8-device-fast-eager": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --quant gguf_q8_0 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --json /tmp/d08-c0/q8-device-fast-eager.json",
+      "prefill_tok_s": {
+        "samples": [
+          4169.81391231077,
+          4131.058075797326,
+          4128.0564719962495,
+          4157.451523672193,
+          4144.521471162468
+        ],
+        "median": 4144.521471162468,
+        "stdev_pct_of_median": 0.4257616504473836
+      },
+      "decode_tok_s": {
+        "samples": [
+          59.25809395991659,
+          60.82641610673033,
+          59.58425248849911,
+          60.07585271974891,
+          60.0599369361265
+        ],
+        "median": 60.0599369361265,
+        "stdev_pct_of_median": 0.9878187036227633
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.12278725400392432,
+          0.12393919199530501,
+          0.12402931100223213,
+          0.12315236800350249,
+          0.12353657800122164
+        ],
+        "median": 0.12353657800122164,
+        "stdev_pct_of_median": 0.4250025214381232
+      },
+      "decode_seconds": {
+        "samples": [
+          2.160042475996306,
+          2.1043488699942827,
+          2.148218609014293,
+          2.1306397529988317,
+          2.1312043689977145
+        ],
+        "median": 2.1312043689977145,
+        "stdev_pct_of_median": 0.988344512443821
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855,
+          0.9587693847715855
+        ],
+        "median": 0.9587693847715855,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.1674728393554688,
+          1.1674728393554688,
+          1.1674728393554688,
+          1.1674728393554688,
+          1.1674728393554688
+        ],
+        "median": 1.1674728393554688,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": true,
+        "gemv_decode": true,
+        "graph_replay_decode": false,
+        "host_token_embedding": false,
+        "host_token_embedding_reason": null
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 27.846378326416016,
+        "generated_count_including_prefill_sample_and_warmup": 130,
+        "preview_and_tail_all_9707": true
+      }
+    },
+    "q8-host-fast-graph": {
+      "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.5-0.8B-Q8_0.gguf --quant gguf_q8_0 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 5 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --compiler-version-file /tmp/d08-c0/hipcc-version.txt --use-wmma-prefill --use-gemv-decode --graph-replay-decode --json /tmp/d08-c0/q8-host-fast-graph.json",
+      "prefill_tok_s": {
+        "samples": [
+          4169.261428125969,
+          4020.0834578429253,
+          4137.911816506093,
+          4038.8233793825366,
+          4312.539399509624
+        ],
+        "median": 4137.911816506093,
+        "stdev_pct_of_median": 2.8378142121982637
+      },
+      "decode_tok_s": {
+        "samples": [
+          114.56522479252875,
+          112.69261371926204,
+          116.21460075218555,
+          114.30761491090954,
+          111.05032503572302
+        ],
+        "median": 114.30761491090954,
+        "stdev_pct_of_median": 1.719596501853727
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.12280352499510627,
+          0.12736053999105934,
+          0.1237339079962112,
+          0.12676959398959298,
+          0.11872355300874915
+        ],
+        "median": 0.1237339079962112,
+        "stdev_pct_of_median": 2.80642432648094
+      },
+      "decode_seconds": {
+        "samples": [
+          1.1172674800036475,
+          1.1358330930088414,
+          1.101410659000976,
+          1.1197854149941122,
+          1.1526305750012398
+        ],
+        "median": 1.1197854149941122,
+        "stdev_pct_of_median": 1.74283705580105
+      },
+      "tracked_peak_gib": {
+        "samples": [
+          1.2103868164122105,
+          1.2103868164122105,
+          1.2103868164122105,
+          1.2103868164122105,
+          1.2103868164122105
+        ],
+        "median": 1.2103868164122105,
+        "stdev_pct_of_median": 0.0
+      },
+      "sampled_hip_used_peak_gib": {
+        "samples": [
+          1.4196281433105469,
+          1.4196281433105469,
+          1.4196281433105469,
+          1.4196281433105469,
+          1.4196281433105469
+        ],
+        "median": 1.4196281433105469,
+        "stdev_pct_of_median": 0.0
+      },
+      "effective_route": {
+        "wmma_prefill": true,
+        "gemv_decode": true,
+        "graph_replay_decode": true,
+        "host_token_embedding": false,
+        "host_token_embedding_reason": "device_fallback:decode_graph"
+      },
+      "correctness_sanity": {
+        "finite_final_logits": true,
+        "final_token_id": 9707,
+        "final_logit": 27.846378326416016,
+        "generated_count_including_prefill_sample_and_warmup": 3,
+        "preview_and_tail_all_9707": true
+      }
+    }
+  },
+  "llamacpp_reference": {
+    "q4": {
+      "command": "build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf -r 5",
+      "pp512_tok_s_mean": 6492.02,
+      "pp512_tok_s_sd": 135.24,
+      "tg128_tok_s_mean": 201.17,
+      "tg128_tok_s_sd": 1.26,
+      "log": "/tmp/d08-c0/llama-q4-serial.log"
+    },
+    "q8": {
+      "command": "build/bin/llama-bench -fa 1 -m /models/gguf/Qwen3.5-0.8B-Q8_0.gguf -r 5",
+      "pp512_tok_s_mean": 6123.47,
+      "pp512_tok_s_sd": 167.47,
+      "tg128_tok_s_mean": 165.32,
+      "tg128_tok_s_sd": 1.1,
+      "log": "/tmp/d08-c0/llama-q8-serial.log"
+    }
+  },
+  "certified_comparison": {
+    "q4": {
+      "hip_prefill_route": "q4-fast-eager",
+      "hip_prefill_tok_s": 1427.4457299309329,
+      "llama_prefill_tok_s": 6492.02,
+      "llama_over_hip_prefill": 4.547997772436587,
+      "hip_decode_route": "q4-fast-graph",
+      "hip_decode_tok_s": 87.11764286031513,
+      "llama_decode_tok_s": 201.17,
+      "llama_over_hip_decode": 2.3091763435628874,
+      "tracked_peak_gib": 1.18018514290452
+    },
+    "q8": {
+      "hip_prefill_route": "q8-device-fast-eager",
+      "hip_prefill_tok_s": 4144.521471162468,
+      "llama_prefill_tok_s": 6123.47,
+      "llama_over_hip_prefill": 1.4774854087756653,
+      "hip_decode_route": "q8-host-fast-graph",
+      "hip_decode_tok_s": 114.30761491090954,
+      "llama_decode_tok_s": 165.32,
+      "llama_over_hip_decode": 1.446272850053333,
+      "tracked_peak_gib": 1.2103868164122105
+    }
+  },
+  "profile_tooling": {
+    "selected_region_control_library": "librocprofiler-sdk-roctx.so",
+    "q4_prefill_dispatches": 491,
+    "q4_decode_dispatches_8_steps": 2672,
+    "q4_decode_dispatches_per_step": 334,
+    "expected_kernel_names_observed": true,
+    "duration_status": "blocked: ROCm 7.15 rocprofv3 emits End_Timestamp == Start_Timestamp for every gfx1151 kernel in selected and full traces",
+    "next": "Use HIP-event semantic stage timing while retaining rocprof dispatch/resource census."
+  },
+  "decisions": [
+    "Certify forced bulk+WMMA+GEMV for prefill and production graph replay for decode.",
+    "Q8 host/device eager placement is throughput-neutral; graph requires device fallback and raises tracked peak by ~0.252 GiB.",
+    "The remaining gap is material: Q4 4.55x prefill/2.31x decode; Q8 1.48x prefill/1.45x decode. Proceed to module attribution."
+  ]
+}

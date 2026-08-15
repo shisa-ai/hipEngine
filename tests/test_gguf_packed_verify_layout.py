@@ -19,6 +19,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
     _HipEventStageRecorder,
+    _HipWallClockStageRecorder,
     _build_gguf_packed_verify_layout,
     _packed_ar_prefill_linear_state_plan,
     _packed_ar_slot_capacity,
@@ -1600,3 +1601,39 @@ def test_hip_event_stage_recorder_accumulates_aliases_and_closes() -> None:
         "packed_verify_gpu_negative_event_elapsed": 0.25,
         "bad_interval": 0.0,
     }
+
+
+def test_wall_clock_stage_recorder_converts_ticks_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = SimpleNamespace()
+    buffer = DeviceBuffer(ptr=0x1000, nbytes=32)
+    launches: list[tuple[int, int, int]] = []
+    freed: list[DeviceBuffer] = []
+    ticks = np.asarray([100, 112, 150], dtype=np.uint64)
+
+    monkeypatch.setattr(gguf_runner, "malloc", lambda nbytes, **_: buffer)
+    monkeypatch.setattr(gguf_runner, "free", lambda item, **_: freed.append(item))
+    monkeypatch.setattr(
+        gguf_runner,
+        "wall_clock_mark_u64",
+        lambda ptr, index, **kwargs: launches.append((int(ptr), int(index), int(kwargs["stream"]))),
+    )
+    monkeypatch.setattr(gguf_runner, "wall_clock_rate_khz", lambda **_: 2)
+
+    def fake_copy(host_ptr: int, _buffer: DeviceBuffer, *, nbytes: int, **_kwargs) -> None:
+        ctypes.memmove(host_ptr, ticks.ctypes.data, nbytes)
+
+    monkeypatch.setattr(gguf_runner, "copy_device_to_host", fake_copy)
+
+    recorder = _HipWallClockStageRecorder(runtime, enabled=True, stream=9, capacity=4)
+    recorder.start()
+    recorder.mark("first", "total")
+    recorder.mark("second")
+    timings: dict[str, float] = {}
+    recorder.resolve_into(timings)
+    recorder.close()
+
+    assert launches == [(0x1000, 0, 9), (0x1000, 1, 9), (0x1000, 2, 9)]
+    assert timings == {"first": 6.0, "total": 6.0, "second": 19.0}
+    assert freed == [buffer]

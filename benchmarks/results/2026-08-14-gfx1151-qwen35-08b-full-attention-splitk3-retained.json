@@ -1,0 +1,257 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "retained-default",
+  "task": "D08-D4 gfx1151 Qwen3.5-0.8B short-context generic split-K3 attention route",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "base_commit": "1283c9700",
+  "source_state": "base commit plus scoped capability/runtime/tests retained in the same logical-unit commit as this artifact",
+  "models": {
+    "q4": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "q8": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf"
+  },
+  "implementation": {
+    "backend_capability": "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+    "policy": {
+      "model_attention_shape": [
+        1024,
+        24,
+        8,
+        2,
+        256,
+        256,
+        256
+      ],
+      "model_attention_shape_fields": [
+        "hidden_size",
+        "layers",
+        "q_heads",
+        "kv_heads",
+        "key_dim",
+        "value_dim",
+        "kv_block_size"
+      ],
+      "attention_context_cap_range": [
+        514,
+        641
+      ]
+    },
+    "schedule": "existing generic split-K producer, chunk256/three splits/24 blocks, plus existing fused 8-block BF16 gated reducer",
+    "fallback": "fixed256 plus separate BF16 gate at cap513 and cap642-1023; established generic long split at >=1024; all 16Q, rows>1, gfx1100, peer backends, unsupported shapes, BF16-mirror diagnostics, and threshold=0 retain prior behavior",
+    "quant_scope": "quant-neutral BF16 KV attention shape; admitted independently for Q4_K_M and Q8_0",
+    "persistent_bytes_delta": 0,
+    "hot_scratch_bytes_delta": 0,
+    "existing_split_scratch_bytes": 24768,
+    "graph_node_delta": 0
+  },
+  "protocol": {
+    "correctness": "all 18 mtpbench category+heldout prompts per quant, natural chat prompt self-tiled on the left to 512 while preserving the full natural suffix; 24 teacher-forced decode steps; candidate consumes control prefix",
+    "performance": "simultaneous resident sessions; one warmup then five counterbalanced 512/128 pairs per eager/production-graph scope",
+    "q8_focused_repair": "The first fixed-session Q8 gate passed correctness and graph 5/5 but the untouched candidate-session prefill was 1.36% slower. Per focused-repair policy, correctness was preserved and only Q8 performance was rerun with both physical sessions executing both roles within every pair.",
+    "acceptance": "KL <=0.05, top1 >=90% overall and each prompt, exact repeated-prompt trajectories, no prefill regression beyond 1%, production graph decode improves in >=4/5 pairs for both quants, expected route kernels and unchanged node count"
+  },
+  "q4": {
+    "correctness": {
+      "passed": true,
+      "prompts": 18,
+      "transitions": 450,
+      "top1_matches": 448,
+      "top1_agreement": 0.9955555555555555,
+      "kl_max": 0.0014943404110910905,
+      "by_category": {
+        "code": {
+          "prompts": 6,
+          "transitions": 150,
+          "top1_matches": 149,
+          "top1_agreement": 0.9933333333333333,
+          "kl_max": 0.001445510949198706
+        },
+        "general_en": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 100,
+          "top1_agreement": 1.0,
+          "kl_max": 0.0014943404110910905
+        },
+        "general_ja": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 99,
+          "top1_agreement": 0.99,
+          "kl_max": 0.0012424257225252169
+        },
+        "mixed_ja_en": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 100,
+          "top1_agreement": 1.0,
+          "kl_max": 0.0013092608835674688
+        }
+      }
+    },
+    "eager": {
+      "control_prefill_tok_s": 2448.156333,
+      "candidate_prefill_tok_s": 2473.221628,
+      "prefill_delta_percent": 1.023844,
+      "control_decode_tok_s": 66.07741,
+      "candidate_decode_tok_s": 67.438127,
+      "decode_delta_percent": 2.059278,
+      "candidate_prefill_wins": 4,
+      "candidate_decode_wins": 5,
+      "trajectory_exact": true,
+      "final_kl_max": 4.3332070158538375e-07,
+      "final_top1_exact": true
+    },
+    "production_graph": {
+      "control_prefill_tok_s": 2493.797628,
+      "candidate_prefill_tok_s": 2493.176682,
+      "prefill_delta_percent": -0.0249,
+      "control_decode_tok_s": 109.481391,
+      "candidate_decode_tok_s": 116.014909,
+      "decode_delta_percent": 5.967698,
+      "candidate_prefill_wins": 2,
+      "candidate_decode_wins": 5,
+      "trajectory_exact": true,
+      "final_kl_max": 4.3332070158538375e-07,
+      "final_top1_exact": true
+    },
+    "graph_nodes_recording": 311,
+    "control_route": "six fixed256 plus six gate kernels",
+    "candidate_route": "six generic split-K producers plus six fused gated reducers",
+    "weight_physical_bytes_control": 838835456,
+    "weight_physical_bytes_candidate": 838835456,
+    "passed": true
+  },
+  "q8": {
+    "correctness": {
+      "passed": true,
+      "prompts": 18,
+      "transitions": 450,
+      "top1_matches": 449,
+      "top1_agreement": 0.9977777777777778,
+      "kl_max": 0.0019438175405383246,
+      "by_category": {
+        "code": {
+          "prompts": 6,
+          "transitions": 150,
+          "top1_matches": 150,
+          "top1_agreement": 1.0,
+          "kl_max": 0.0019438175405383246
+        },
+        "general_en": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 99,
+          "top1_agreement": 0.99,
+          "kl_max": 0.0010446574967574987
+        },
+        "general_ja": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 100,
+          "top1_agreement": 1.0,
+          "kl_max": 0.0012253729050173794
+        },
+        "mixed_ja_en": {
+          "prompts": 4,
+          "transitions": 100,
+          "top1_matches": 100,
+          "top1_agreement": 1.0,
+          "kl_max": 0.0011453415891153583
+        }
+      }
+    },
+    "first_fixed_session_result": {
+      "status": "performance-guard-failed/session-identity-confounded",
+      "eager": {
+        "control_prefill_tok_s": 4228.553621,
+        "candidate_prefill_tok_s": 4168.534467,
+        "prefill_delta_percent": -1.419378,
+        "control_decode_tok_s": 73.541841,
+        "candidate_decode_tok_s": 72.156798,
+        "decode_delta_percent": -1.88334,
+        "candidate_prefill_wins": 1,
+        "candidate_decode_wins": 0,
+        "trajectory_exact": true,
+        "final_kl_max": 1.1969858258157532e-07,
+        "final_top1_exact": true
+      },
+      "production_graph": {
+        "control_prefill_tok_s": 4243.239951,
+        "candidate_prefill_tok_s": 4185.458722,
+        "prefill_delta_percent": -1.361724,
+        "control_decode_tok_s": 110.022412,
+        "candidate_decode_tok_s": 116.422004,
+        "decode_delta_percent": 5.816626,
+        "candidate_prefill_wins": 0,
+        "candidate_decode_wins": 5,
+        "trajectory_exact": true,
+        "final_kl_max": 1.1969858258157532e-07,
+        "final_top1_exact": true
+      },
+      "reason": "untouched prefill differed by -1.36% while split graph decode improved 5.82% in 5/5 pairs"
+    },
+    "focused_crossed_performance": {
+      "eager": {
+        "control_prefill_ms": 120.726991,
+        "candidate_prefill_ms": 120.9113665,
+        "prefill_delta_percent": -0.152488,
+        "control_decode_tok_s": 73.80972818462469,
+        "candidate_decode_tok_s": 74.03336898116204,
+        "decode_delta_percent": 0.302996,
+        "candidate_decode_wins": 4,
+        "trajectory_exact": true,
+        "top1_exact": true,
+        "kl_max": 1.1969858258157532e-07
+      },
+      "production_graph": {
+        "control_prefill_ms": 120.6735245,
+        "candidate_prefill_ms": 121.23799299999999,
+        "prefill_delta_percent": -0.465587,
+        "control_decode_tok_s": 110.42856008949327,
+        "candidate_decode_tok_s": 116.99712126526536,
+        "decode_delta_percent": 5.948245,
+        "candidate_decode_wins": 5,
+        "trajectory_exact": true,
+        "top1_exact": true,
+        "kl_max": 1.1969858258157532e-07
+      }
+    },
+    "graph_nodes_recording": 289,
+    "control_route": "six fixed256 plus six gate kernels",
+    "candidate_route": "six generic split-K producers plus six fused gated reducers",
+    "weight_physical_bytes_control": 270172160,
+    "weight_physical_bytes_candidate": 270172160,
+    "passed": true
+  },
+  "validation": {
+    "red": "Three route/policy tests failed before capability/helper integration: dispatch kept fixed256, helper was absent, and gfx1151 capability was empty.",
+    "green": "Focused GREEN: 42 passed across dispatch/backend/semantic files. Final affected bundle including paged-attention plan/direct-gate files exited zero with 47 passed and 12 skipped.",
+    "primitive_cpu_reference": "benchmarks/results/2026-08-14-gfx1151-qwen35-08b-full-attention-core-screen.json; contexts514/576/641, max abs7.61e-6, 100% head top1",
+    "graph_mechanical_q4": {
+      "same_node_count": true,
+      "control_has_fixed256_gate": true,
+      "candidate_has_splitk3_gate": true
+    },
+    "graph_mechanical_q8": {
+      "same_node_count": true,
+      "control_has_fixed256_gate": true,
+      "candidate_has_splitk3_gate": true
+    }
+  },
+  "raw": {
+    "full_script_sha256": "3976e95def730047999b0778ee71a698be01b5cdd5cf80e0db1fff66a112f736",
+    "full_json_sha256": "6565ea531b0b811aed97809374a5becaf049fc0c22801380003a5fae09d0cf4f",
+    "q8_repair_script_sha256": "89eb6b34178d54ee6aaf090801b368777012437dd58ce32c0bc6a38f82052ade",
+    "q8_repair_json_sha256": "c42840e64c5ae73ba3c16960f6000e23e0fb6712a27b4651c5790476312d8e4e"
+  },
+  "commands": [
+    "ROCM_LIBS=...; LD_LIBRARY_PATH=... HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d4/q4_q8_splitk3_full_gate.py",
+    "ROCM_LIBS=...; LD_LIBRARY_PATH=... HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 python3 /tmp/d08-d4/q8_crossed_performance_repair.py"
+  ],
+  "passed": true
+}

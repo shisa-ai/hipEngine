@@ -6,6 +6,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_bench_module():
     script_path = Path(__file__).resolve().parents[1] / "scripts" / "qwen35_gguf_bench.py"
@@ -51,6 +53,39 @@ def test_selected_profiler_region_resumes_and_pauses_only_matching_phase(monkeyp
     assert calls == [("resume", 0), ("pause", 0)]
 
 
+def test_selected_profiler_control_prefers_sdk_control_library(monkeypatch) -> None:
+    loaded: list[str] = []
+    calls: list[tuple[str, int]] = []
+
+    def load(name: str):
+        loaded.append(name)
+        return _FakeRoctx(calls)
+
+    monkeypatch.setattr(BENCH.ctypes, "CDLL", load)
+    BENCH._RoctxProfilerControl(enabled=True)
+
+    assert loaded == ["librocprofiler-sdk-roctx.so"]
+
+
+def test_selected_profiler_control_falls_back_to_legacy_library(monkeypatch) -> None:
+    loaded: list[str] = []
+    calls: list[tuple[str, int]] = []
+
+    def load(name: str):
+        loaded.append(name)
+        if name == "librocprofiler-sdk-roctx.so":
+            raise OSError("SDK control library unavailable")
+        return _FakeRoctx(calls)
+
+    monkeypatch.setattr(BENCH.ctypes, "CDLL", load)
+    control = BENCH._RoctxProfilerControl(enabled=True)
+    control.resume()
+    control.pause()
+
+    assert loaded == ["librocprofiler-sdk-roctx.so", "libroctx64.so"]
+    assert calls == [("resume", 0), ("pause", 0)]
+
+
 def test_disabled_profiler_control_does_not_load_roctx(monkeypatch) -> None:
     def fail_load(_name: str):  # pragma: no cover - assertion helper
         raise AssertionError("disabled profiler control should not load ROCTX")
@@ -60,3 +95,28 @@ def test_disabled_profiler_control_does_not_load_roctx(monkeypatch) -> None:
 
     with control.region("prefill", selected="prefill"):
         pass
+
+
+def test_gpu_stage_timings_require_persistent_session(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["qwen35_gguf_bench.py", "--gpu-stage-timings"])
+
+    with pytest.raises(ValueError, match="requires --persistent-session"):
+        BENCH.main()
+
+
+def test_gpu_stage_timings_reject_graph_decode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qwen35_gguf_bench.py",
+            "--persistent-session",
+            "--gpu-stage-timings",
+            "--graph-replay-decode",
+            "--decode-tokens",
+            "1",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="requires eager decode"):
+        BENCH.main()

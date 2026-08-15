@@ -1,0 +1,515 @@
+{
+  "schema": 1,
+  "date": "2026-08-14",
+  "status": "diagnostic-retained",
+  "task": "D08-M12 post-D5 production graph/direct Q4/Q8 rerank",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "source_commit": "2cad5f2c2",
+  "method": {
+    "raw": "/tmp/d08-m12/current-graph-rerank.json",
+    "raw_sha256": "02ab68ad6a7aca1d9171960cd0f38b142568a2cc35876869ce3f8b539fcdf848",
+    "script": "/tmp/d08-m12/current_graph_rerank.py",
+    "script_sha256": "3fc6fb68db887609b10919f5219297bcf3e6ac069918ae68fb31105624037894",
+    "builder": "/tmp/d08-m12/build_post_d5_graph_rerank.py",
+    "builder_sha256": "3d468837a88f39e3caa3adafb47a12155e6f5e3759429c428f308cc8414e4b01",
+    "prompt": "token 9707 repeated 512 times; one warmup decode then 128 measured transitions",
+    "samples": "128 eager, production graph, and separately instrumented graph observations per quant; separate recording graph trajectory",
+    "exact_command": "ROCM_LIBS=/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_libraries/lib; LD_LIBRARY_PATH=\"$ROCM_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\" HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/d08-m12/current_graph_rerank.py"
+  },
+  "q4": {
+    "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+    "correctness": {
+      "trajectory_exact": true,
+      "recorded_graph_kl_max": 0.0,
+      "production_graph_kl_max": 0.0,
+      "instrumented_graph_kl_max": 0.0,
+      "recorded_top1_agreement": 1.0,
+      "production_top1_agreement": 1.0,
+      "instrumented_top1_agreement": 1.0
+    },
+    "timing": {
+      "eager_host_mean_ms_per_token": 14.139471,
+      "eager_tok_s": 70.724006,
+      "production_graph_host_mean_ms_per_token": 8.341806,
+      "production_graph_tok_s": 119.878119,
+      "graph_over_eager": 1.695013,
+      "pre_d5_graph_ms_per_token": 8.318507,
+      "pre_d5_graph_tok_s": 120.213879,
+      "current_over_pre_d5": 0.997207,
+      "binding_d5_graph_delta_percent": 2.884396342764628,
+      "llamacpp_vulkan_ms_per_token": 4.97092,
+      "llamacpp_vulkan_tok_s": 201.17,
+      "vulkan_over_current_graph": 1.678121,
+      "remaining_wall_gap_ms_per_token": 3.370886
+    },
+    "api_census": {
+      "graph_launch_mean_ms": 0.015441,
+      "stream_synchronize_mean_ms": 8.321134,
+      "python_residual_mean_ms": 0.005231,
+      "launch_plus_python_share_percent": 0.247811,
+      "copies_inside_replay": 0
+    },
+    "graph_inventory": {
+      "nodes": 286,
+      "kernel_nodes": 286,
+      "edges": 285,
+      "pre_d5_nodes": 286,
+      "node_delta": 0,
+      "split_k3_producers": 6,
+      "fused_gated_reducers": 6
+    },
+    "instrumentation": {
+      "host_mean_ms": 9.653537,
+      "marker_baseline_mean_ms": 0.008458,
+      "adjusted_stage_mean_sum_ms": 9.386074,
+      "stage_coverage": 0.972293733,
+      "sync_normalization_scale": 0.886540456,
+      "prefix_nodes": [],
+      "suffix_nodes": [],
+      "all_non_marker_nodes_assigned": true,
+      "normalized_stage_ms": {
+        "decode_input_setup": 0.009724,
+        "decode_linear_attn_norm": 0.2139,
+        "decode_full_attn_norm": 0.065349,
+        "decode_linear_attn_qkv_gate": 1.148877,
+        "decode_linear_attn_alpha_beta": 0.364501,
+        "decode_linear_attn_ssm_out": 0.522462,
+        "decode_linear_attn_conv": 0.241043,
+        "decode_linear_attn_gdn": 0.722266,
+        "decode_full_attn_qkv_head_norm_rope": 0.431539,
+        "decode_full_attn_output": 0.158545,
+        "decode_full_attn_kv_write": 0.076533,
+        "decode_full_attn_core_gate": 1.043894,
+        "decode_ffn_post_norm_residual": 0.28256,
+        "decode_ffn_gate_up": 1.051229,
+        "decode_ffn_down_residual": 1.021999,
+        "decode_ffn_silu": 0.057313,
+        "decode_output_norm": 0.007736,
+        "decode_lm_head_sample": 0.896715,
+        "decode_state_advance": 0.00495
+      },
+      "caveat": "Role times are marker-subtracted stage shares normalized to the directly measured production sync span; total/API wall and graph nodes are direct."
+    },
+    "joined_roles": [
+      {
+        "role": "linear_attention_projections",
+        "current_sync_share_normalized_ms": 2.035839,
+        "pre_d5_ms": 1.991787,
+        "change_ms": 0.044052,
+        "change_percent": 2.211698,
+        "vulkan_gpu_ms": 1.050735,
+        "matched_gap_ms": 0.985104,
+        "share_of_current_graph_wall_percent": 24.405259,
+        "potential_request_saving_percent": 11.809245
+      },
+      {
+        "role": "dense_ffn_projections",
+        "current_sync_share_normalized_ms": 2.073228,
+        "pre_d5_ms": 2.057269,
+        "change_ms": 0.015959,
+        "change_percent": 0.775759,
+        "vulkan_gpu_ms": 1.096217,
+        "matched_gap_ms": 0.977011,
+        "share_of_current_graph_wall_percent": 24.853473,
+        "potential_request_saving_percent": 11.71223
+      },
+      {
+        "role": "full_attention_core_kv",
+        "current_sync_share_normalized_ms": 1.120426,
+        "pre_d5_ms": 1.104475,
+        "change_ms": 0.015951,
+        "change_percent": 1.444257,
+        "vulkan_gpu_ms": 0.158398,
+        "matched_gap_ms": 0.962028,
+        "share_of_current_graph_wall_percent": 13.431462,
+        "potential_request_saving_percent": 11.532616
+      },
+      {
+        "role": "full_attention_projections_rope",
+        "current_sync_share_normalized_ms": 0.590084,
+        "pre_d5_ms": 0.578744,
+        "change_ms": 0.01134,
+        "change_percent": 1.959426,
+        "vulkan_gpu_ms": 0.253003,
+        "matched_gap_ms": 0.337081,
+        "share_of_current_graph_wall_percent": 7.073817,
+        "potential_request_saving_percent": 4.040864
+      },
+      {
+        "role": "attention_norm",
+        "current_sync_share_normalized_ms": 0.279248,
+        "pre_d5_ms": 0.332426,
+        "change_ms": -0.053178,
+        "change_percent": -15.996834,
+        "vulkan_gpu_ms": 0.108623,
+        "matched_gap_ms": 0.170625,
+        "share_of_current_graph_wall_percent": 3.347577,
+        "potential_request_saving_percent": 2.045425
+      },
+      {
+        "role": "linear_attention_conv",
+        "current_sync_share_normalized_ms": 0.241043,
+        "pre_d5_ms": 0.239245,
+        "change_ms": 0.001798,
+        "change_percent": 0.75172,
+        "vulkan_gpu_ms": 0.115152,
+        "matched_gap_ms": 0.125891,
+        "share_of_current_graph_wall_percent": 2.889584,
+        "potential_request_saving_percent": 1.509163
+      },
+      {
+        "role": "residual_norm_glue",
+        "current_sync_share_normalized_ms": 0.28256,
+        "pre_d5_ms": 0.341622,
+        "change_ms": -0.059062,
+        "change_percent": -17.288761,
+        "vulkan_gpu_ms": 0.163005,
+        "matched_gap_ms": 0.119555,
+        "share_of_current_graph_wall_percent": 3.387274,
+        "potential_request_saving_percent": 1.4332
+      },
+      {
+        "role": "gdn_recurrence",
+        "current_sync_share_normalized_ms": 0.722266,
+        "pre_d5_ms": 0.688363,
+        "change_ms": 0.033903,
+        "change_percent": 4.925163,
+        "vulkan_gpu_ms": 0.716228,
+        "matched_gap_ms": 0.006038,
+        "share_of_current_graph_wall_percent": 8.658389,
+        "potential_request_saving_percent": 0.072382
+      },
+      {
+        "role": "final_norm",
+        "current_sync_share_normalized_ms": 0.007736,
+        "pre_d5_ms": 0.006377,
+        "change_ms": 0.001359,
+        "change_percent": 21.309574,
+        "vulkan_gpu_ms": 0.004526,
+        "matched_gap_ms": 0.00321,
+        "share_of_current_graph_wall_percent": 0.092737,
+        "potential_request_saving_percent": 0.03848
+      },
+      {
+        "role": "dense_ffn_activation",
+        "current_sync_share_normalized_ms": 0.057313,
+        "pre_d5_ms": 0.052241,
+        "change_ms": 0.005072,
+        "change_percent": 9.708691,
+        "vulkan_gpu_ms": 0.069472,
+        "matched_gap_ms": -0.012159,
+        "share_of_current_graph_wall_percent": 0.687056,
+        "potential_request_saving_percent": 0.0
+      },
+      {
+        "role": "lm_head_sampler_transport",
+        "current_sync_share_normalized_ms": 0.896715,
+        "pre_d5_ms": 0.890765,
+        "change_ms": 0.00595,
+        "change_percent": 0.668009,
+        "vulkan_gpu_ms": 0.928033,
+        "matched_gap_ms": -0.031318,
+        "share_of_current_graph_wall_percent": 10.749655,
+        "potential_request_saving_percent": 0.0
+      },
+      {
+        "role": "input_setup",
+        "current_sync_share_normalized_ms": 0.009724,
+        "pre_d5_ms": 0.009266,
+        "change_ms": 0.000458,
+        "change_percent": 4.938479,
+        "vulkan_gpu_ms": 0.221467,
+        "matched_gap_ms": -0.211743,
+        "share_of_current_graph_wall_percent": 0.116565,
+        "potential_request_saving_percent": 0.0
+      }
+    ],
+    "memory": {
+      "owned_session_bytes": 1067067204,
+      "tracked_current_bytes": 1067067204,
+      "tracked_peak_bytes": 1067068236,
+      "tracked_graph_delta_bytes": 0,
+      "hip_used_graph_delta_bytes": 204800
+    }
+  },
+  "q8": {
+    "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+    "correctness": {
+      "trajectory_exact": true,
+      "recorded_graph_kl_max": 0.0,
+      "production_graph_kl_max": 0.0,
+      "instrumented_graph_kl_max": 0.0,
+      "recorded_top1_agreement": 1.0,
+      "production_top1_agreement": 1.0,
+      "instrumented_top1_agreement": 1.0
+    },
+    "timing": {
+      "eager_host_mean_ms_per_token": 14.221376,
+      "eager_tok_s": 70.316685,
+      "production_graph_host_mean_ms_per_token": 8.533667,
+      "production_graph_tok_s": 117.182915,
+      "graph_over_eager": 1.666502,
+      "pre_d5_graph_ms_per_token": 8.488642,
+      "pre_d5_graph_tok_s": 117.804475,
+      "current_over_pre_d5": 0.994724,
+      "binding_d5_graph_delta_percent": 0.4933394250309586,
+      "llamacpp_vulkan_ms_per_token": 6.048875,
+      "llamacpp_vulkan_tok_s": 165.32,
+      "vulkan_over_current_graph": 1.410786,
+      "remaining_wall_gap_ms_per_token": 2.484792
+    },
+    "api_census": {
+      "graph_launch_mean_ms": 0.021374,
+      "stream_synchronize_mean_ms": 8.503473,
+      "python_residual_mean_ms": 0.00882,
+      "launch_plus_python_share_percent": 0.353824,
+      "copies_inside_replay": 0
+    },
+    "graph_inventory": {
+      "nodes": 288,
+      "kernel_nodes": 288,
+      "edges": 287,
+      "pre_d5_nodes": 288,
+      "node_delta": 0,
+      "split_k3_producers": 6,
+      "fused_gated_reducers": 6
+    },
+    "instrumentation": {
+      "host_mean_ms": 9.840292,
+      "marker_baseline_mean_ms": 0.0087,
+      "adjusted_stage_mean_sum_ms": 9.575948,
+      "stage_coverage": 0.97313657,
+      "sync_normalization_scale": 0.888003256,
+      "prefix_nodes": [],
+      "suffix_nodes": [],
+      "all_non_marker_nodes_assigned": true,
+      "normalized_stage_ms": {
+        "decode_input_setup": 0.00962,
+        "decode_linear_attn_norm": 0.250765,
+        "decode_full_attn_norm": 0.077505,
+        "decode_linear_attn_qkv_gate": 0.946874,
+        "decode_linear_attn_alpha_beta": 0.346899,
+        "decode_linear_attn_ssm_out": 0.441505,
+        "decode_linear_attn_conv": 0.239496,
+        "decode_linear_attn_gdn": 0.622347,
+        "decode_full_attn_qkv_head_norm_rope": 0.388455,
+        "decode_full_attn_output": 0.167055,
+        "decode_full_attn_kv_write": 0.078699,
+        "decode_full_attn_core_gate": 1.032498,
+        "decode_ffn_post_norm_residual": 0.346376,
+        "decode_ffn_gate_up": 1.155657,
+        "decode_ffn_down_residual": 1.100939,
+        "decode_ffn_silu": 0.178347,
+        "decode_output_norm": 0.006844,
+        "decode_lm_head_sample": 1.108194,
+        "decode_state_advance": 0.005398
+      },
+      "caveat": "Role times are marker-subtracted stage shares normalized to the directly measured production sync span; total/API wall and graph nodes are direct."
+    },
+    "joined_roles": [
+      {
+        "role": "full_attention_core_kv",
+        "current_sync_share_normalized_ms": 1.111198,
+        "pre_d5_ms": 1.111073,
+        "change_ms": 0.000125,
+        "change_percent": 0.011219,
+        "vulkan_gpu_ms": 0.163071,
+        "matched_gap_ms": 0.948127,
+        "share_of_current_graph_wall_percent": 13.021338,
+        "potential_request_saving_percent": 11.110424
+      },
+      {
+        "role": "dense_ffn_projections",
+        "current_sync_share_normalized_ms": 2.256596,
+        "pre_d5_ms": 2.245509,
+        "change_ms": 0.011087,
+        "change_percent": 0.493752,
+        "vulkan_gpu_ms": 1.565013,
+        "matched_gap_ms": 0.691583,
+        "share_of_current_graph_wall_percent": 26.443453,
+        "potential_request_saving_percent": 8.104174
+      },
+      {
+        "role": "linear_attention_projections",
+        "current_sync_share_normalized_ms": 1.735277,
+        "pre_d5_ms": 1.732576,
+        "change_ms": 0.002701,
+        "change_percent": 0.155889,
+        "vulkan_gpu_ms": 1.328228,
+        "matched_gap_ms": 0.407049,
+        "share_of_current_graph_wall_percent": 20.33448,
+        "potential_request_saving_percent": 4.769918
+      },
+      {
+        "role": "full_attention_projections_rope",
+        "current_sync_share_normalized_ms": 0.55551,
+        "pre_d5_ms": 0.556297,
+        "change_ms": -0.000787,
+        "change_percent": -0.141422,
+        "vulkan_gpu_ms": 0.320207,
+        "matched_gap_ms": 0.235303,
+        "share_of_current_graph_wall_percent": 6.509631,
+        "potential_request_saving_percent": 2.757352
+      },
+      {
+        "role": "attention_norm",
+        "current_sync_share_normalized_ms": 0.32827,
+        "pre_d5_ms": 0.325781,
+        "change_ms": 0.002489,
+        "change_percent": 0.764095,
+        "vulkan_gpu_ms": 0.109832,
+        "matched_gap_ms": 0.218438,
+        "share_of_current_graph_wall_percent": 3.846767,
+        "potential_request_saving_percent": 2.559723
+      },
+      {
+        "role": "residual_norm_glue",
+        "current_sync_share_normalized_ms": 0.346376,
+        "pre_d5_ms": 0.344926,
+        "change_ms": 0.00145,
+        "change_percent": 0.420328,
+        "vulkan_gpu_ms": 0.166442,
+        "matched_gap_ms": 0.179934,
+        "share_of_current_graph_wall_percent": 4.058933,
+        "potential_request_saving_percent": 2.108517
+      },
+      {
+        "role": "linear_attention_conv",
+        "current_sync_share_normalized_ms": 0.239496,
+        "pre_d5_ms": 0.235214,
+        "change_ms": 0.004282,
+        "change_percent": 1.820387,
+        "vulkan_gpu_ms": 0.118737,
+        "matched_gap_ms": 0.120759,
+        "share_of_current_graph_wall_percent": 2.806482,
+        "potential_request_saving_percent": 1.415087
+      },
+      {
+        "role": "dense_ffn_activation",
+        "current_sync_share_normalized_ms": 0.178347,
+        "pre_d5_ms": 0.189881,
+        "change_ms": -0.011534,
+        "change_percent": -6.074247,
+        "vulkan_gpu_ms": 0.07121,
+        "matched_gap_ms": 0.107137,
+        "share_of_current_graph_wall_percent": 2.089924,
+        "potential_request_saving_percent": 1.255464
+      },
+      {
+        "role": "final_norm",
+        "current_sync_share_normalized_ms": 0.006844,
+        "pre_d5_ms": 0.007306,
+        "change_ms": -0.000462,
+        "change_percent": -6.320194,
+        "vulkan_gpu_ms": 0.004576,
+        "matched_gap_ms": 0.002268,
+        "share_of_current_graph_wall_percent": 0.080203,
+        "potential_request_saving_percent": 0.02658
+      },
+      {
+        "role": "lm_head_sampler_transport",
+        "current_sync_share_normalized_ms": 1.108194,
+        "pre_d5_ms": 1.100352,
+        "change_ms": 0.007842,
+        "change_percent": 0.71269,
+        "vulkan_gpu_ms": 1.184923,
+        "matched_gap_ms": -0.076729,
+        "share_of_current_graph_wall_percent": 12.986142,
+        "potential_request_saving_percent": 0.0
+      },
+      {
+        "role": "gdn_recurrence",
+        "current_sync_share_normalized_ms": 0.622347,
+        "pre_d5_ms": 0.602101,
+        "change_ms": 0.020246,
+        "change_percent": 3.362486,
+        "vulkan_gpu_ms": 0.736251,
+        "matched_gap_ms": -0.113904,
+        "share_of_current_graph_wall_percent": 7.292838,
+        "potential_request_saving_percent": 0.0
+      },
+      {
+        "role": "input_setup",
+        "current_sync_share_normalized_ms": 0.00962,
+        "pre_d5_ms": 0.009856,
+        "change_ms": -0.000236,
+        "change_percent": -2.3992,
+        "vulkan_gpu_ms": 0.22349,
+        "matched_gap_ms": -0.21387,
+        "share_of_current_graph_wall_percent": 0.112725,
+        "potential_request_saving_percent": 0.0
+      }
+    ],
+    "memory": {
+      "owned_session_bytes": 1029470788,
+      "tracked_current_bytes": 1029470788,
+      "tracked_peak_bytes": 1067099972,
+      "tracked_graph_delta_bytes": 0,
+      "hip_used_graph_delta_bytes": 204800
+    }
+  },
+  "d5_reconciliation": {
+    "q4_attention_norm_ms": {
+      "pre_d5": 0.332426,
+      "current": 0.279248,
+      "change": -0.053178,
+      "change_percent": -15.996834
+    },
+    "q4_residual_norm_glue_ms": {
+      "pre_d5": 0.341622,
+      "current": 0.28256,
+      "change": -0.059062,
+      "change_percent": -17.288761
+    },
+    "q4_combined_ms": {
+      "pre_d5": 0.674048,
+      "current": 0.561808,
+      "change": -0.11224
+    },
+    "q8_combined_change_ms": 0.003939,
+    "binding_full_model_delta_percent": {
+      "q4_graph": 2.884396342764628,
+      "q4_eager": 0.20745015703691472,
+      "q8_graph_guard": 0.4933394250309586
+    },
+    "graph_route": {
+      "q4_fixed_standalone": 24,
+      "q4_fixed_add": 24,
+      "q4_generic_standalone": 1,
+      "q4_generic_add": 0,
+      "q8_fixed_standalone": 0,
+      "q8_fixed_add": 0,
+      "q8_generic_standalone": 25,
+      "q8_generic_add": 24
+    }
+  },
+  "decision": {
+    "primary_next": "D08-G1-G2 final correctness and fresh same-session parity gate",
+    "reason": "M12 assigns every graph node with >97% marker coverage, confirms the exact 24+24 Q4 D5 route and -0.112240 ms normalized norm movement, and leaves Q8 norm ownership unchanged within noise. All admitted arithmetic packages are accepted/exhausted or rejected, so no sub-1% package is reopened before the frozen closure gate.",
+    "parity_warning": {
+      "q4_current_over_vulkan": 0.5959045533628274,
+      "q8_current_over_vulkan": 0.7088247943382531,
+      "disposition": "Current decode remains materially below the frozen Vulkan rows; G2 must use fresh serial llama.cpp rows and cannot close if Q4 does not match or beat them."
+    },
+    "exhausted_large_roles": {
+      "linear_attention_projections": 0.985104,
+      "dense_ffn_projections": 0.977011,
+      "full_attention_core_kv": 0.962028
+    },
+    "d5_current_stage_ms": {
+      "linear_attention_norm": 0.2139,
+      "full_attention_norm": 0.065349,
+      "post_attention_add_rmsnorm": 0.28256
+    }
+  },
+  "correctness": {
+    "q4_trajectory_exact": true,
+    "q8_trajectory_exact": true,
+    "all_kl_zero": true,
+    "all_top1_exact": true
+  }
+}

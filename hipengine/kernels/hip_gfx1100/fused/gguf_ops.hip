@@ -183,6 +183,73 @@ __global__ void gguf_rmsnorm_f32_f32_weight_out_f32_kernel(
   }
 }
 
+template <bool kAddResidual>
+__launch_bounds__(256, 4)
+__global__ void gguf_norm_fixed1024_wave256_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ add,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ residual_out,
+    float eps) {
+  constexpr int kHidden = 1024;
+  constexpr int kThreads = 256;
+  constexpr int kWave = 32;
+  constexpr int kWaves = kThreads / kWave;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & (kWave - 1);
+  const int wave = tid / kWave;
+  const int i0 = tid;
+  const int i1 = tid + kThreads;
+  const int i2 = tid + 2 * kThreads;
+  const int i3 = tid + 3 * kThreads;
+  const float v0 = bf16_bits_to_float(x[i0]) +
+      (kAddResidual ? bf16_bits_to_float(add[i0]) : 0.0f);
+  const float v1 = bf16_bits_to_float(x[i1]) +
+      (kAddResidual ? bf16_bits_to_float(add[i1]) : 0.0f);
+  const float v2 = bf16_bits_to_float(x[i2]) +
+      (kAddResidual ? bf16_bits_to_float(add[i2]) : 0.0f);
+  const float v3 = bf16_bits_to_float(x[i3]) +
+      (kAddResidual ? bf16_bits_to_float(add[i3]) : 0.0f);
+  float sum = 0.0f;
+  sum += v0 * v0;
+  sum += v1 * v1;
+  sum += v2 * v2;
+  sum += v3 * v3;
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum += __shfl_down(sum, offset, kWave);
+  }
+  __shared__ float wave_sums[kWaves];
+  __shared__ float shared_inv_rms;
+  if (lane == 0) {
+    wave_sums[wave] = sum;
+  }
+  __syncthreads();
+  if (wave == 0) {
+    float total = lane < kWaves ? wave_sums[lane] : 0.0f;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      total += __shfl_down(total, offset, kWave);
+    }
+    if (lane == 0) {
+      shared_inv_rms = rsqrtf(total / static_cast<float>(kHidden) + eps);
+    }
+  }
+  __syncthreads();
+  const float inv_rms = shared_inv_rms;
+  norm_out[i0] = float_to_bf16_bits(v0 * inv_rms * weight[i0]);
+  norm_out[i1] = float_to_bf16_bits(v1 * inv_rms * weight[i1]);
+  norm_out[i2] = float_to_bf16_bits(v2 * inv_rms * weight[i2]);
+  norm_out[i3] = float_to_bf16_bits(v3 * inv_rms * weight[i3]);
+  if constexpr (kAddResidual) {
+    residual_out[i0] = float_to_bf16_bits(v0);
+    residual_out[i1] = float_to_bf16_bits(v1);
+    residual_out[i2] = float_to_bf16_bits(v2);
+    residual_out[i3] = float_to_bf16_bits(v3);
+  }
+}
+
 __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ add,
@@ -770,6 +837,45 @@ extern "C" int hipengine_gguf_rmsnorm_f32_f32_weight_out_f32(
       static_cast<unsigned int>(threads),
       static_cast<size_t>(threads) * sizeof(float),
       stream>>>(x, weight, out, eps, hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256(
+    const uint16_t* x,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows != 1 ||
+      hidden_size != 1024 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed1024_wave256_kernel<false><<<dim3(1), dim3(256), 0, stream>>>(
+      x, nullptr, weight, out, nullptr, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256(
+    const uint16_t* x,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || add == nullptr || weight == nullptr || norm_out == nullptr ||
+      residual_out == nullptr || rows != 1 || hidden_size != 1024 ||
+      threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed1024_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
+      x, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
 
