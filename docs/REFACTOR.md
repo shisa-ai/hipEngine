@@ -155,6 +155,14 @@ should be removed or collapsed.
   1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
   fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
   production fallback chain.
+- P4's shared-weight prefill owner is limited to rows>=512 K17408/N5120. The
+  exact 24-KiB-LDS four-wave body improves the actual FFN-down leaf
+  1.421-1.502x and complete prefill 4.325-5.403%; the universal route is
+  rejected because narrow V misses its 1K leaf gate. There is no environment
+  selector, sidecar, or workspace. Keep one-wave prefill registered for short
+  rows, narrow V, root, peer backends, and all policy misses. If another shape
+  is admitted, replace the singleton backend shape set with a generic
+  quant/shape/min-row policy instead of adding another branch.
 - Removal trigger: delete the QKV slot exclusion only after a byte-neutral
   planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
   512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused

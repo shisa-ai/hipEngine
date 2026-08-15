@@ -1,0 +1,413 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_q6_shared4_prefill",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "cu_count": 40,
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "base_commit": "50a0390db27de219de69bb5447dae77f7a1068d4",
+    "development_worktree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "32 planar-Q6 K17408/N5120 FFN-down prefill owners at rows>=512 on gfx1151",
+    "candidate": "128-thread four-wave 48-column x 256-row shared-weight WMMA",
+    "mechanism": "decode each 48x256 Q6 weight slab once into 24 KiB LDS and preserve four independent retained 48x64 per-wave K16 WMMA sequences",
+    "resident_layout": "gguf_q6_k_t16_qmicro_planar_v1",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "fallback": "retained one-wave planar-qmicro WMMA below 512 rows and for narrow V, root, all shape misses, and peer backends",
+    "peer_backends_changed": false
+  },
+  "actual_weight_leaf": {
+    "protocol": {
+      "rows": [
+        512,
+        1024,
+        4096
+      ],
+      "warmups": 3,
+      "counterbalanced_pairs_per_cell": 15,
+      "control": "retained one-wave planar-Q6 48-column x 64-row WMMA",
+      "candidate": "four-wave shared-weight planar-Q6 48-column x 256-row workgroup",
+      "leaf_gate": ">=1.10x and >=12/15 wins at every role/row",
+      "request_gate": ">=1% projected complete-request saving at every shape"
+    },
+    "wide_ffn_down": {
+      "weight": "blk.0.ffn_down.weight",
+      "shape": {
+        "k": 17408,
+        "n": 5120
+      },
+      "call_count": 32,
+      "rows": {
+        "512": {
+          "control_median_ms": 7.1577887535095215,
+          "candidate_median_ms": 4.765851974487305,
+          "speedup": 1.5018906990453755,
+          "candidate_wins": "15/15",
+          "bf16_mismatches": 0,
+          "call_weighted_saved_ms": 76.54197692871094,
+          "projected_complete_prefill_saving_percent": 5.132497862642205
+        },
+        "1024": {
+          "control_median_ms": 13.451236724853516,
+          "candidate_median_ms": 9.468964576721191,
+          "speedup": 1.4205604652828114,
+          "candidate_wins": "15/15",
+          "bf16_mismatches": 0,
+          "call_weighted_saved_ms": 127.43270874023438,
+          "projected_complete_prefill_saving_percent": 4.206743662627617
+        },
+        "4096": {
+          "control_median_ms": 55.10561752319336,
+          "candidate_median_ms": 37.384681701660156,
+          "speedup": 1.4740159609476162,
+          "candidate_wins": "15/15",
+          "bf16_mismatches": 0,
+          "call_weighted_saved_ms": 567.0699462890625,
+          "projected_complete_prefill_saving_percent": 4.6057213121788045
+        }
+      },
+      "all_bf16_bit_exact": true,
+      "all_45_pairs_won": true
+    },
+    "universal_route_rejected": {
+      "reason": "narrow K5120/N1024 V misses the predeclared 1.10x and 12/15 gate at rows1024",
+      "narrow_v_speedups": {
+        "512": 1.6738824023273937,
+        "1024": 1.0331664286162583,
+        "4096": 2.160630004364861
+      },
+      "narrow_v_wins": {
+        "512": "15/15",
+        "1024": "11/15",
+        "4096": "15/15"
+      }
+    },
+    "raw_artifact": {
+      "path": "/tmp/qwen38-task37-q6-shared4/leaf-two-role.json",
+      "sha256": "065887488f7b2b32dd7c605372fe7bb1d6dd5b8a6ff4b8bee387b45b4c7ec3e6",
+      "bytes": 11912
+    }
+  },
+  "complete_prefill": {
+    "protocol": "same-source control/candidate processes; repeated token 9707; BF16 K/V; one warmup plus three measured persistent-session bulk-prefill runs; cached gfx1151 builds; decode_tokens=0 with one warmup decode token",
+    "control": "same candidate source/binary with GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES monkeypatched to an empty frozenset before benchmark entry",
+    "candidate": "default gfx1151 shape-qualified dispatch",
+    "rows": {
+      "512": {
+        "control": {
+          "prefill_tok_s_samples": [
+            344.042335759584,
+            345.1065258562042,
+            344.88640434249385
+          ],
+          "prefill_tok_s_median": 344.88640434249385,
+          "prefill_seconds_samples": [
+            1.488188942996203,
+            1.4835998789931182,
+            1.4845467770064715
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 17988630916,
+          "tracked_peak_gib": 16.753218058496714,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/control-512.json",
+          "raw_sha256": "bbd31adb09d011bb64ff142c9b94b2eb74d1814fd05124b277fe34877a57ef27"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            363.0032627412297,
+            363.5206424702853,
+            364.02881307143565
+          ],
+          "prefill_tok_s_median": 363.5206424702853,
+          "prefill_seconds_samples": [
+            1.4104556420061272,
+            1.4084482149919495,
+            1.4064820739877177
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 17988630916,
+          "tracked_peak_gib": 16.753218058496714,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/candidate-512.json",
+          "raw_sha256": "5c88ed125d07a76c8397ac0e0c5fff1d9db9d681ef0d2abe93f38dd02cb34a84"
+        },
+        "speedup": 1.0540300745206717,
+        "candidate_delta_percent": 5.403007452067166,
+        "clean_llamacpp_hip_tok_s": 352.42581849519684,
+        "candidate_vs_clean_llamacpp_hip": 1.0314813029943766,
+        "clean_llamacpp_vulkan_tok_s": 242.95616918860227,
+        "candidate_vs_clean_llamacpp_vulkan": 1.4962396043876174,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      },
+      "1024": {
+        "control": {
+          "prefill_tok_s_samples": [
+            337.61508677568395,
+            339.7323855742385,
+            339.54757949725007
+          ],
+          "prefill_tok_s_median": 339.54757949725007,
+          "prefill_seconds_samples": [
+            3.03303981400677,
+            3.014137136997306,
+            3.0157776459964225
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 18444362764,
+          "tracked_peak_gib": 17.177651416510344,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/control-1024.json",
+          "raw_sha256": "9004fa3e7955105fea18b945e90b678227094b817f3303a3ae1d0f94f8179420"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            353.80317457489866,
+            354.28823676341096,
+            354.2314700549571
+          ],
+          "prefill_tok_s_median": 354.2314700549571,
+          "prefill_seconds_samples": [
+            2.894264589995146,
+            2.8903020019934047,
+            2.890765181989991
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 18444362764,
+          "tracked_peak_gib": 17.177651416510344,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/candidate-1024.json",
+          "raw_sha256": "15096e10fc1ced551e12d0589f06b6834f4ee729628ea717819337aea8739ca4"
+        },
+        "speedup": 1.0432454579103425,
+        "candidate_delta_percent": 4.324545791034251,
+        "clean_llamacpp_hip_tok_s": 364.442641212626,
+        "candidate_vs_clean_llamacpp_hip": 0.9719814039221842,
+        "clean_llamacpp_vulkan_tok_s": 247.61046231581554,
+        "candidate_vs_clean_llamacpp_vulkan": 1.4305997684506215,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      },
+      "4096": {
+        "control": {
+          "prefill_tok_s_samples": [
+            334.7297501773715,
+            334.71812976248424,
+            334.68051878358796
+          ],
+          "prefill_tok_s_median": 334.71812976248424,
+          "prefill_seconds_samples": [
+            12.236737241997616,
+            12.237162065008306,
+            12.238537262004684
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 20969428668,
+          "tracked_peak_gib": 19.529302295297384,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/control-4096.json",
+          "raw_sha256": "dc6e223b8bbcac33f0420a6bd877637325eaca071f919832dba1f5f1f9ab0681"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            349.13395675238536,
+            349.2039078641256,
+            349.6117098231655
+          ],
+          "prefill_tok_s_median": 349.2039078641256,
+          "prefill_seconds_samples": [
+            11.73188663199835,
+            11.729536548009492,
+            11.715854718000628
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 20969428668,
+          "tracked_peak_gib": 19.529302295297384,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task37-q6-shared4/full-model/candidate-4096.json",
+          "raw_sha256": "0e57f38dc0469e1a4482677c610c34ddde0eea3546e05600665590569c9001cf"
+        },
+        "speedup": 1.0432775425457845,
+        "candidate_delta_percent": 4.327754254578453,
+        "clean_llamacpp_hip_tok_s": 367.99291757380905,
+        "candidate_vs_clean_llamacpp_hip": 0.9489419257480277,
+        "clean_llamacpp_vulkan_tok_s": 354.3677775179427,
+        "candidate_vs_clean_llamacpp_vulkan": 0.985427936789327,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      }
+    },
+    "all_shapes_positive": true,
+    "all_ids_identical": true,
+    "all_tracked_peaks_unchanged": true,
+    "all_tracked_teardown_zero": true,
+    "whole_process_gtt": "not resampled; implementation changes no allocation or resident payload",
+    "command_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task37-hipcc-version.txt PYTHONPATH=/home/lhl/hipEngine-main python3 {driver} --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {rows} --decode-tokens 0 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/qwen38-task37-hipcc-version.txt --require-cached-build --json {output}",
+    "control_driver_source": "import runpy,sys; import hipengine.kernels.hip_gfx1151 as g; g.GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES=frozenset(); sys.argv[0]='scripts/qwen35_gguf_bench.py'; runpy.run_path('/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py',run_name='__main__')"
+  },
+  "kernel_trace": {
+    "tool": "rocprofv3 --kernel-trace",
+    "raw_path": "/tmp/qwen38-task37-q6-shared4/trace/q6-shared4_kernel_trace.csv",
+    "raw_sha256": "b2d141eb5c915d92dfae12e58a3d0805810e4207c81e93ca38da844458caee9a",
+    "raw_bytes": 855,
+    "kernel": "(anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+    "duration_ns": 41598,
+    "lds_block_bytes": 24576,
+    "scratch_bytes": 0,
+    "vgpr_count": 248,
+    "sgpr_count": 128,
+    "workgroup_x": 128,
+    "grid_x": 768,
+    "grid_y": 2
+  },
+  "correctness": {
+    "synthetic_partial_rows": [
+      17,
+      257
+    ],
+    "shared4_vs_retained_bf16_bit_exact": true,
+    "cpu_reference_gate": "rows17 Q6_K fixture passes allclose plus KL <=0.05 and top-1 >=90%",
+    "actual_weight_all_shapes_bf16_bit_exact": true,
+    "complete_model_generated_preview_ids": [
+      9707,
+      9707
+    ],
+    "finite": true
+  },
+  "validation": {
+    "focused_pytest": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task37-hipcc-version.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_qmicro_planar_shared4_wmma_is_bit_exact_to_retained_wmma tests/test_gfx1151_backend.py::test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes tests/test_gfx1151_backend.py::test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only",
+    "focused_pytest_initial_result": "3 passed, 1 failed: the first random CPU-comparator fixture had max KL 0.060447 while remaining assertions and candidate-vs-retained identity passed",
+    "focused_repair": "reuse the existing deterministic Q6 WMMA CPU-quality fixture seed for rows17; no production change",
+    "focused_repair_result": "1 passed for the isolated failing rows17 node; the other three nodes passed in the completed bundle",
+    "final_targeted_status": "all four target nodes pass",
+    "compileall": "passed",
+    "diff_check": "passed",
+    "registry_smoke": "passed with the expected missing fp16 embed diagnostic",
+    "worklog_check": "239 valid entries"
+  },
+  "decision": "Retain shared4 only for gfx1151 K17408/N5120 planar-Q6 prefill. Keep narrow V and root on the one-wave fallback. This is a material new P4 dataflow and unblocks post-retain prefill reranking, but 1K/4K still trail clean llama.cpp HIP."
+}

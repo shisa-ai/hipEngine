@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
     register_gguf_q6_k_t16_gemv_kernels,
 )
@@ -672,6 +673,69 @@ def test_q6_t16_qmicro_planar_wmma_is_bit_exact_to_legacy_wmma(
     )
 
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [17, 257])
+def test_q6_t16_qmicro_planar_shared4_wmma_is_bit_exact_to_retained_wmma(
+    q6_t16_library,
+    rows: int,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x3627 if rows == 17 else 0x6A18 + rows)
+    qweight = make_q6_k_weight(out_features, in_features)
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+    if rows == 17:
+        x_ref = _bf16_u16_to_f32(x)
+        cpu_expected = gguf_quant_gemv(
+            x_ref,
+            qweight,
+            GGMLQuantizationType.Q6_K,
+        )
+        actual_f32 = _bf16_u16_to_f32(actual)
+        np.testing.assert_allclose(
+            actual_f32,
+            cpu_expected,
+            atol=3.0e-1,
+            rtol=1.2e-2,
+        )
+        kls = [
+            _stable_kl(cpu_expected[row], actual_f32[row])
+            for row in range(rows)
+        ]
+        top1 = np.mean(
+            np.argmax(cpu_expected, axis=1) == np.argmax(actual_f32, axis=1)
+        )
+        assert max(kls) <= 0.05
+        assert top1 >= 0.90
 
 
 def _run_selected_q6_t16_direct(

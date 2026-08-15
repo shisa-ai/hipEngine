@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import hipengine.kernels.hip_gfx1151 as gfx1151_backend
 from hipengine.core.build import plan_hip_build
 from hipengine.generation import register_builtin_generators, resolve_text_generator
 from hipengine.kernels.backends import (
@@ -173,9 +174,12 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
     GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES,
     GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES,
+    GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS,
+    GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES,
     GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE,
     GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES,
     TARGET_ARCH,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
     register_gfx1151_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -437,6 +441,17 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
         (),
     ) == ("attn_qkv",)
+    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 512
+    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES == frozenset({(17_408, 5_120)})
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q6_k_t16_qmicro_planar_v1",
+            variant="t16_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    )
     for layer, variant in (
         ("linear", "t16_gemv_decode_bf16_bf16_out"),
         ("linear", "t16_gemv_decode_bf16_f32_out"),
@@ -455,6 +470,41 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
                 variant,
             )
         )
+
+
+def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def retained(*args, **kwargs):
+        calls.append(("retained", args, kwargs))
+
+    def shared4(*args, **kwargs):
+        calls.append(("shared4", args, kwargs))
+
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+        shared4,
+    )
+    fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    fn(1, 2, 3, 512, 17_408, 5_120, stream=7)
+    fn(1, 2, 3, 256, 17_408, 5_120, stream=8)
+    fn(1, 2, 3, 1_024, 5_120, 1_024, stream=9)
+    fn(1, 2, 3, 512, 5_120, 248_320, stream=11)
+
+    assert calls == [
+        ("shared4", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
+        ("retained", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
+        ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 9}),
+        ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 11}),
+    ]
 
 
 def test_gfx1151_backend_excludes_losing_dense_down_residual_fusions() -> None:
