@@ -734,9 +734,10 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # operation-complete T16 family. Architecture-local primitive, actual-weight,
 # full-state, natural-suite, memory, and performance gates decide retention.
 GGUF_DENSE_Q4_T16 = True
-# Dense H5120 Q5T16 recurrent-output ownership is W7900-only until gfx1151
-# receives independent rotating-cache, quality, and complete-model gates.
-GGUF_DENSE_Q5_T16_SSM_OUT = False
+# Qwen3.8-27B P2 retains the 48 K6144/N5120 recurrent outputs as sole
+# Q5T16 after architecture-local actual-weight, GDN-handoff, full-state,
+# natural-suite, memory, and performance gates.
+GGUF_DENSE_Q5_T16_SSM_OUT = True
 # D08-P6 admits the same sole-resident family independently for the exact
 # Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
 GGUF_DENSE_Q5_T16_SSM_OUT_08B = True

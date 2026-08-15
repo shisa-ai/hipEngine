@@ -183,7 +183,14 @@ absent. The existing local32 c1, exact rows-2-4 rowtile, same-T16 residual and
 unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal attention-pair owners
 cover the complete operation set. The raw token embedding remains raw GGUF and
 peer geometries retain their prior policy. No kernel body or `KVLiveSpans` ABI
-changes are involved.
+changes are involved. The same gfx1151 model policy also gives the 48 exact
+K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
+`gguf_q5_k_t16_v1/tiles` payload each. Existing direct c1, exact rows-2-4
+rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the role; the
+GDN and residual boundaries remain separate registered primitives. Dense BF16
+stays available as a numerical oracle and policy-miss fallback but is not a
+resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
+independently shape-qualified.
 
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
