@@ -483,7 +483,9 @@ materially larger operation-complete boundary; heterogeneous Q6-QKV/Q4-gate
 requires an independent design rather than the same-Q4 dual body. Q8_1x2
 thread geometry is closed too: t32 regresses 4.85%, while t128 improves the
 family 1.01774x but projects only 0.676% complete wall and changes the reduction
-boundary, below the 1% admission threshold for another full natural gate.
+boundary, below the 1% admission threshold for another full natural gate. An
+exact tile8 split is closed as well: duplicated T16 metadata/activation work
+regresses the Q8_1x2 family 5.25% and projects -2.04% complete wall.
 
 ### P6 — Exact B3 MTP
 
