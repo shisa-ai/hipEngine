@@ -467,6 +467,16 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
     ) == {}
 
 
+def test_gfx1151_backend_admits_dense_h5120_sole_q4_t16() -> None:
+    register_gfx1151_kernels()
+
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q4_T16",
+        False,
+    )
+
+
 def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
     register_gfx1151_kernels()
 

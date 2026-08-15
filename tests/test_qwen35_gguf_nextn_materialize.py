@@ -66,8 +66,14 @@ def _spec(
     )
 
 
-def test_qwen36_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights() -> None:
-    model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+@pytest.mark.parametrize(
+    "model",
+    (
+        Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"),
+        Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"),
+    ),
+)
+def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(model: Path) -> None:
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
     model_map = build_qwen35_gguf_nextn_tensor_map(GGUFReader(model).info)
