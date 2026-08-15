@@ -17,9 +17,11 @@ tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
 below clean llama HIP and is 6.12% below Vulkan at 4K. These are not new clean
 publication toplines: a same-protocol clean three-shape refresh is still needed
 before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
-planar-Q6 row80, and standard-Q6 48x64 tiling are rejected. AOTriton attention
-is active but nonmaterial, and the remaining primitive add boundary is below
-the >=1% request gate.
+planar-Q6 row80, standard-Q6 48x64 tiling, and the exact unequal-output Q4
+QKV+gate pair are rejected. The latter wins every actual-weight leaf but
+projects only 0.208-0.472% complete-prefill saving. AOTriton attention is active
+but nonmaterial, and the remaining primitive add boundary is below the >=1%
+request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up and an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs. The first unit improves
@@ -441,13 +443,16 @@ close the package rather than opening an unbounded variant ladder.
 P4 closure on 2026-08-15 follows that bound. Q5 K6,144/N5,120 source-F16 is the
 only retained P4 unit. Chunk128/256/512 loses every complete shape; Q4 dual
 row128 loses 9.9-12.1%; planar-Q6 row80 is nonuniform and projects below 1%;
-and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. The pp512
-ledger leaves Q4 dual/single and Q6 as large families, but previously screened
-Q4/Q6 source-F16, geometry, attention, and add-boundary mechanisms provide no
-remaining bounded all-shape candidate. G2 therefore remains blocked rather
-than complete. Reopen P4 only for a materially new operation-complete dataflow
-with a measured >=1% request projection or after a compiler/runtime/baseline
-change invalidates these economics.
+and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. A later
+transfer screen of the already registered exact unequal-output Q4 QKV+gate pair
+wins all 45 actual-weight pairs at 1.038-1.085x, but its 24 calls project only
+0.208-0.472% complete-prefill saving and therefore stop before integration. The
+pp512 ledger leaves Q4 dual/single and Q6 as large families, but previously
+screened Q4/Q6 source-F16, geometry, attention, and add-boundary mechanisms
+provide no remaining bounded all-shape candidate. G2 therefore remains blocked
+rather than complete. Reopen P4 only for a materially new operation-complete
+dataflow with a measured >=1% request projection or after a
+compiler/runtime/baseline change invalidates these economics.
 
 ### P5 — True-AR decode
 
