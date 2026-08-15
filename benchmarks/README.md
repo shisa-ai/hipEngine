@@ -124,7 +124,12 @@ parity. Full per-package evidence and history live in
 The fresh semantic rerank assigns 99.1%/99.0% of marker-prefill wall and all
 286/288 public graph nodes. Same-session graph replay leaves only **0.114/0.127
 ms/token Q4/Q8** outside device stages, closing the prior ~2.3-ms isolated-owner
-estimate as microbenchmark undercount rather than API overhead.
+estimate as microbenchmark undercount rather than API overhead. The clean
+fresh-process p16-p4096 threshold diagnostic then completes all **187** children
+with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
+p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
+every Q4/Q8 length. This keeps the p512-only WMMA scope and current GDN policies;
+see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
 
 ## Current single-request scoreboards
 

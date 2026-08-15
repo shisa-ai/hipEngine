@@ -109,6 +109,7 @@ not a synthetic leaf projection.
 | 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
 | 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
 | 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
+| 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. Final cumulative semantic packet remains. |
 
 ### 1.2 Bounded task contract
 
@@ -1558,6 +1559,44 @@ until the prompt-length and cumulative semantic gates complete.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json).
+
+### 2.44 Post-review prompt-length threshold sweep (2026-08-15)
+
+The approved p16/32/64/128/256/511/512/513/768/1024/4096 packet ran three
+cyclic Q4 blocks and four counter-rotated Q8 blocks, one fresh resident process
+per length and role. All **187** children used clean commit `6eb41219c`, cached
+builds, device token embedding, production AOTriton at p512+, WMMA prefill, and
+GEMV decode. Every result is finite, every final ID is 9707, and every scratch
+capacity matches its prompt/decode geometry.
+
+| Length | Q4 current / pre-X2 | Q4 current / strict-X2 | Q8 current / strict-X2 |
+| ---: | ---: | ---: | ---: |
+| 16 | 1.002x | 1.056x | 1.045x |
+| 32 | 0.999x | 1.059x | 1.079x |
+| 64 | 1.032x | 1.125x | 1.100x |
+| 128 | 1.004x | 1.019x | 1.188x |
+| 256 | 1.012x | 1.039x | 1.196x |
+| 511 | 1.015x | 1.048x | 1.124x |
+| 512 | **1.764x** | **1.820x** | **1.156x** |
+| 513 | 1.011x | 1.046x | 1.140x |
+| 768 | 0.997x | 1.031x | 1.131x |
+| 1024 | 1.012x | 1.066x | 1.178x |
+| 4096 | 1.007x | 1.087x | 1.138x |
+
+This confirms that the pack8+dense WMMA package is isolated to exact p512:
+Q4 current and pre-X2 are within 3.3% at every other measured length. Automatic
+GDN is non-regressive versus strict X2 throughout the matrix, so its current
+quant/geometry policies remain unchanged. Do not broaden WMMA beyond p512.
+
+The original mixed-shape resident protocol exposed an intermittent AOTriton v3
+C++ exception. Five coredumps assign that separate lifecycle defect to
+`flash::attn_fwd`; the fresh-process protocol preserves all production routes
+rather than hiding it with an attention fallback. The exception-boundary repair
+is tracked separately and the final 18-prompt cumulative semantic packet remains
+required.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
 
 ## 3. Comparison contracts
 
