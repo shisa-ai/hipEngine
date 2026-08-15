@@ -35,6 +35,9 @@ from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
     register_qwen35_rmsnorm_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    register_gguf_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
@@ -477,15 +480,16 @@ def test_gfx1151_backend_admits_dense_h5120_sole_q4_t16() -> None:
     )
 
 
-def test_gfx1151_backend_scopes_dense_q5_t16_to_08b_roles() -> None:
-    register_gfx1151_kernels()
+def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
+    register_gguf_k_t16_selected_prefill_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
 
     assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,
     )
-    assert not backend_package_capability(
+    assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DENSE_Q5_T16_SSM_OUT",
         False,

@@ -117,7 +117,7 @@ def test_qwen35_08b_dense_q4_attn_q_policy_uses_single_t16_resident() -> None:
     )
 
 
-def test_qwen35_08b_ignores_dense_h5120_q4_policy() -> None:
+def test_qwen35_08b_ignores_dense_h5120_compressed_policies() -> None:
     reader = GGUFReader(MODEL) if MODEL.exists() else None
     if reader is None:
         pytest.skip(f"local GGUF fixture not found: {MODEL}")
@@ -133,6 +133,7 @@ def test_qwen35_08b_ignores_dense_h5120_q4_policy() -> None:
         decode_repack=True,
         dense_q4_t16=True,
         dense_q4_t16_attn_q_08b=True,
+        dense_q5_t16_ssm_out=True,
     )
 
     assert tuple(
@@ -526,6 +527,55 @@ def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
         assert tuple(weight.allocations) == ("tiles",)
         assert weight.allocation("tiles").tensor.dtype == DType.INT8
         assert weight.allocation("tiles").buffer.nbytes == 18_186_240
+    finally:
+        resident.free(runtime=runtime)
+
+
+def test_qwen38_dense_q5_ssm_out_plan_uses_one_t16_payload_per_owner() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+    )
+    q5_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.source.ggml_type_name == "Q5_K"
+        and spec.slot_path.endswith(".ssm_out")
+    )
+
+    assert len(q5_specs) == 48
+    assert all(spec.source.shape == (5_120, 6_144) for spec in q5_specs)
+    assert all(spec.layout == LAYOUT_GGUF_Q5_K_T16 for spec in q5_specs)
+    assert all(spec.quant_key == "gguf_q5_k_t16_v1" for spec in q5_specs)
+    assert all(spec.allocation_names == ("tiles",) for spec in q5_specs)
+
+
+def test_qwen38_dense_q5_ssm_out_materializes_sole_t16_on_gfx1151() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        QWEN38_DENSE_MODEL,
+        selected_slots=("layers.0.ssm_out",),
+        decode_repack=True,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    try:
+        weight = resident.layer(0).weight("ssm_out")
+        assert weight.spec.layout == LAYOUT_GGUF_Q5_K_T16
+        assert weight.spec.quant_key == "gguf_q5_k_t16_v1"
+        assert tuple(weight.allocations) == ("tiles",)
+        assert weight.allocation("tiles").tensor.dtype == DType.INT8
+        assert weight.allocation("tiles").buffer.nbytes == 22_118_400
     finally:
         resident.free(runtime=runtime)
 
