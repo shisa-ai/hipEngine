@@ -128,10 +128,14 @@ Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
-The fresh semantic rerank assigns 99.1%/99.0% of marker-prefill wall and all
-286/288 public graph nodes. Same-session graph replay leaves only **0.114/0.127
-ms/token Q4/Q8** outside device stages, closing the prior ~2.3-ms isolated-owner
-estimate as microbenchmark undercount rather than API overhead. The clean
+The post-X3 Q4 marker rerank reconciles **100.08%** of its 106.338-ms wall.
+Current owners are dense FFN **34.007 ms**, linear-attention projections
+**31.815 ms**, and GDN **23.617 ms**; normalized historical-attribution gaps
+rerank linear projections first at **13.460 ms**. The Q5-QKV + Q4-gate stage is
+an explicit **17.628-ms fallback**, selecting one bounded heterogeneous
+operation-complete screen. Evidence: [`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json).
+The prior same-session graph replay census, whose decode route is unchanged by
+X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
 fresh-process p16-p4096 threshold diagnostic then completes all **187** children
 with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
 p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
