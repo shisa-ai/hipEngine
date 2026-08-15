@@ -8,8 +8,10 @@ FP32-scale INT8 and tail-four Hadamard INT8 pass complete 512/8 and 4K/16 suites
 plus bounded 32K/16. Neither is promoted because chunk-outer BF16 prefill
 oracles raise 32K tracked peak by `1.024/0.268 GiB`; direct no-oracle prefill is
 non-finite, and fixed-shape prefill regresses about `0.33%`. BF16 therefore
-remains the only supported/default dense-27B server cache. K2 compact DMS
-remains planned. Last updated: 2026-08-15._
+remains the only supported/default dense-27B server cache. On the 24-GiB XTX,
+its observed pre-sized single-request roof is 52K with only `0.025 GiB`
+headroom; 53K fails, so 32K with `2.115 GiB` headroom remains the operational
+setting. K2 compact DMS remains planned. Last updated: 2026-08-15._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -30,6 +32,7 @@ long-context evidence controls the support decision.
 | Can dense Qwen3.6-27B run native INT8 decode? | **Yes, diagnostically.** The 24Q/4KV/head-256 split-K specialization is CPU-reference gated and appears in `rocprofv3` at `73,321 ns`. |
 | Does pure Qwen3.6-27B INT8 pass quality? | **No.** FP32 scales improve numerical fidelity, and the 4K/16 suite passes, but the required 512/8 suite fails `mixed_ja_en_translate` at `77.78%` top-1. |
 | Does mixed BF16/INT8 solve Qwen3.6-27B? | **Quality only, not product constraints.** A selected 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16 suites plus bounded mixed 8K/16K/32K rows. It raises 32K tracked peak by `0.448 GiB`, projects `7 GiB` of prefill oracles at 256K, cannot use the supported graph route safely, and executes `10.52%` slower than BF16 graph decode. |
+| What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable setting. |
 | Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 32K/16 with no BF16 mirror. Tail-four Hadamard passes the same gates with still lower KL. |
 | Does Qwen3.8 INT8 create 32K server headroom? | **Not at request high water.** Pure/tail-four retained ownership falls `0.992/0.236 GiB`, but current prefill oracles raise tracked peak `1.024/0.268 GiB`; both fixed-shape prefill bands also regress about `0.33%`. |
 | Did a recent-token BF16 tail solve 27B? | **No.** The earlier host screen favored pure INT8 over recent 4K/8K BF16 tails, and the native result identifies non-monotonic layer interactions instead. Do not add two-arena temporal storage. |
@@ -41,8 +44,19 @@ evidence**.
 
 ## Qwen3.8-27B quality frontier
 
-The August 15 exact-file screen reused the native 24Q/4KV/head-256 consumer but
-reran quality rather than transferring Qwen3.6's rejection. Qwen3.8 behaves
+The August 15 exact-file screen first bracketed the supported BF16 baseline.
+The default 128-page server pool completes 32K at `21.869 GiB` whole-device peak
+with `2.115 GiB` headroom. Its next contiguous request crosses a duplicate-
+backing cliff: 33,024 tokens still complete, but peak rises to `23.953 GiB` with
+only `0.031 GiB` free. Pre-sizing the existing pool to the request capacity
+removes that duplication and establishes an observed physical roof of 53,248
+tokens at `23.959 GiB` peak (`0.025 GiB` free); 54,272 tokens abort with
+`HSA_STATUS_ERROR_OUT_OF_RESOURCES`, as do 54K, 56K, 63K, and 64K controls. The
+52K pass is a ceiling diagnostic, not a reliability recommendation. Compact
+evidence: [`Qwen3.8 BF16 context roof`](../benchmarks/results/2026-08-15-qwen38-27b-xtx-bf16-context-roof.json).
+
+The same exact-file screen reused the native 24Q/4KV/head-256 consumer but reran
+INT8 quality rather than transferring Qwen3.6's rejection. Qwen3.8 behaves
 materially differently despite sharing the same geometry:
 
 1. **Pure FP32-scale INT8 passes the measured quality ladder.** With all 16

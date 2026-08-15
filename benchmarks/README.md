@@ -232,6 +232,14 @@ because its output ledger differs from Vulkan AR. Evidence:
 [`Qwen3.8 cross-engine comparison`](results/2026-08-15-qwen38-27b-xtx-hip-vulkan-comparison.json) and
 [`clean-idle hipEngine correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json).
 
+The real single-request BF16 server roof is now bracketed separately. The
+operational **32K** row peaks at **21.869 GiB** with **2.115 GiB** free. A
+pre-sized contiguous KV pool reaches an observed **52K** ceiling
+(53,248 total tokens) at **23.959 GiB**, leaving only **0.025 GiB**; **53K**
+(54,272 tokens) and all larger controls through 64K abort out of resources.
+The 52K row is a physical-roof diagnostic, not a reliable serving setting, so
+32K remains recommended. Evidence: [`Qwen3.8 BF16 context roof`](results/2026-08-15-qwen38-27b-xtx-bf16-context-roof.json).
+
 A separate INT8 KV screen finds a quality-passing but non-promotable frontier.
 Pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus bounded 32K/16,
 saves **0.992 GiB** live at 32K capacity, and runs eager decode **7.46%** faster
