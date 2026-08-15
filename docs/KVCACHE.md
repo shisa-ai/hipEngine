@@ -4,16 +4,18 @@ _Status: K1 dense per-token/per-head INT8 K/V is implemented, but support is
 model- and runtime-gated. Qwen3.6 W4-PARO still fails its final 128K/16 quality
 gate, and dense Qwen3.6-27B pure FP32-scale INT8 fails the complete 512/8 suite.
 The exact Qwen3.8-27B `Q4_K_M` file is a measured quality exception. Its pure
-FP32-scale route now uses layer-outer exact prefill with one reusable BF16 K/V
+FP32-scale route uses layer-outer exact prefill with one reusable BF16 K/V
 oracle pair, passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16,
 and lowers the matched 32K-capacity tracked peak `17.920 -> 17.330 GiB` while
-running eager AR decode `6.50%` above BF16 graph. On the 24-GiB XTX, real
-single-request HTTP rows complete at 64K/96K/112K with
-`3.420/1.570/0.662 GiB` sampled request-high-water headroom; 120K fails the
-1-GiB startup guard and 128K exhausts memory. This qualifies an explicit
-single-request AR capacity route, not a new default: long pure INT8 still needs
-the unverified-long gate, graph capture rejects it, and exact natural B3 MTP is
-only `0.6423x` true AR. BF16 remains supported/default. K2 compact DMS remains
+running eager AR decode `6.50%` above BF16 graph. On a dedicated idle 24-GiB
+XTX, four different natural 112K c1 requests pass at `23.322876 GiB` peak with
+`0.661499 GiB` headroom and zero leaked ownership; 120K still fails the 1-GiB
+startup guard. **112K is therefore the recommended explicit maximum for the
+exact dedicated-c1 AR contract; 96K is an optional extra-margin setting.** Do
+not transfer that number to c>1: current packed short-context INT8 adds a BF16
+mirror and is not a compact-INT8 capacity route. Long pure INT8 still needs the
+unverified-long gate, graph capture rejects it, and exact natural B3 MTP is only
+`0.6423x` true AR. BF16 remains supported/default. K2 compact DMS remains
 planned. Last updated: 2026-08-15._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
@@ -38,7 +40,8 @@ long-context evidence controls the support decision.
 | What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable BF16 setting. |
 | Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 64K/16 with no BF16 mirror. Tail-four Hadamard passed the earlier 512/4K/32K gates but was not rerun in this qualification. |
 | Does bounded Qwen3.8 INT8 save memory? | **Yes.** Layer-outer exact prefill reuses one oracle pair instead of 16, lowering the 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16. A real 64K server request peaks at `20.564 GiB`, `1.305 GiB` below the BF16 32K request. |
-| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K observed, 96K recommended for capacity use.** 64K/96K/112K return HTTP 200 with `3.420/1.570/0.662 GiB` sampled request-high-water headroom. 120K fails the configured 1-GiB startup guard and 128K OOMs. Only 64K has a non-repeated-token long-context quality row. |
+| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K recommended for a dedicated idle c1 server; 96K is optional extra margin.** Four pinned ShareGPT-derived 112K requests pass consecutively at `23.322876 GiB` peak with `0.661499 GiB` headroom, exact generated-ID accounting, and zero leaked ownership. 120K fails the configured 1-GiB startup guard and 128K OOMs. Only 64K has a representative non-repeated-token long-context quality row. |
+| Does that 112K recommendation apply at c2/c4/c8? | **No.** With a 512-MiB high-water reserve, measured current-server settings are 4K/request at physical c2 and 1,280/request at physical c4. Offered c8 runs as two c4 queue waves and also uses 1,280/request. These short packed routes retain a BF16 mirror (`25,296,896` bytes/page versus `8,519,680` for no-mirror long c1), so they validate concurrency/lifecycle but are not efficient INT8 capacity paths. |
 | Did a recent-token BF16 tail solve 27B? | **No.** The earlier host screen favored pure INT8 over recent 4K/8K BF16 tails, and the native result identifies non-monotonic layer interactions instead. Do not add two-arena temporal storage. |
 | Product status | BF16 remains supported/default. Qwen3.6 pure INT8 is quality-rejected. Qwen3.8 pure FP32-scale INT8 is qualified only as an explicit single-request AR capacity route behind the unverified-long gate; pure-INT8 graph capture is fail-closed and exact natural B3 MTP is slower than AR. |
 
@@ -95,26 +98,41 @@ materially differently despite sharing the same geometry:
    prefill/decode and bounded INT8 eager is `978.626/33.761`:
    `-0.050%/+6.499%`. Prefill sample ranges overlap, final IDs are identical,
    and tracked peak/current ownership falls `0.590/0.716 GiB`.
-6. **Real server capacity more than doubles the physical BF16 roof.** Pre-sized
-   pure-INT8 pools complete one-token HTTP requests at 64K, 96K, and 112K with
-   peaks/headroom of `20.564/3.420`, `22.414/1.570`, and
-   `23.322/0.662 GiB`. The 120K row is rejected by the configured 1-GiB startup
-   guard and 128K OOMs during eager warmup. Therefore 112K is the highest
-   observed pass, 96K is the practical explicit capacity setting, and 64K is
-   the highest context with a non-repeated-token quality row.
-7. **The remaining blockers are transport and MTP, not AR memory.** Pure INT8
-   graph capture fails closed because only BF16 and tail-four are admitted.
-   The full natural25 B3 suite is transaction-exact with matching GPU/CPU
-   acceptance, but target verification makes B3 `22.472 tok/s / 0.6423x` true
-   AR. Long pure INT8 also remains behind
+6. **Dedicated c1 recommends 112K, not 96K.** Pre-sized pure-INT8 pools first
+   completed repeated-token 64K/96K/112K rows at peaks/headroom of
+   `20.564/3.420`, `22.414/1.570`, and `23.322/0.662 GiB`. The follow-up natural
+   soak then completed four different pinned ShareGPT-derived 114,683-token
+   prompts plus four generated tokens each in one cold server. Peak/headroom is
+   `23.322876/0.661499 GiB`, every response has exact generated-ID and physical
+   shape accounting, ownership drains after every request, and teardown returns
+   to `0.060410 GiB`. Since recommendations assume an otherwise idle dedicated
+   GPU, **112K is the explicit c1 maximum**; 96K remains available when an
+   operator voluntarily wants `1.570 GiB` rather than `0.661 GiB` margin. The
+   120K row fails the default 1-GiB startup guard and 128K OOMs.
+7. **Current c>1 INT8 is mirrored and memory-negative.** At contexts through
+   8K, packed AR retains BF16 K/V beside INT8 to preserve its exact fallback.
+   The measured page grows `8,519,680 -> 25,296,896` bytes. Two repeated cold
+   c2 runs select 4K/request at `23.452324 GiB` peak and `0.532051 GiB`
+   headroom; 4,352 leaves only `0.014400 GiB`. Physical c4 selects
+   1,280/request at `23.430866/0.553509 GiB`; 1,536 multi-turn leaves only
+   `0.162945 GiB`. Offered c8 is two c4 queue waves, not resident c8, and passes
+   32 exact four-turn requests at the same 1,280 setting. This is server safety
+   evidence, not an INT8 memory-saving recommendation.
+8. **The remaining blockers are c>1 direct INT8, transport, and MTP.** Packed
+   AR fails closed above the mirror boundary because direct no-mirror INT8 is
+   not admitted. Pure-INT8 graph capture likewise rejects all but BF16 and
+   tail-four layouts. The full natural25 B3 suite is transaction-exact with
+   matching GPU/CPU acceptance, but target verification makes B3
+   `22.472 tok/s / 0.6423x` true AR. Long pure INT8 also remains behind
    `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` because Qwen3.6 shares the
    geometry but fails quality.
 
 The bounded route is retained and qualified for explicit single-request AR
 capacity use; BF16 remains supported/default and owns the public MTP row.
 Compact evidence:
-[`initial Qwen3.8 INT8 frontier`](../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json) and
-[`bounded INT8 serving qualification`](../benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json).
+[`initial Qwen3.8 INT8 frontier`](../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
+[`bounded INT8 serving qualification`](../benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json), and
+[`dedicated-XTX c1/c2/c4/c8 soak`](../benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json).
 
 ## Qwen3.6-27B scope refresh
 

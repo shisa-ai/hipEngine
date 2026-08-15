@@ -3,6 +3,10 @@
   "date": "2026-08-15",
   "kind": "qwen38_27b_bounded_int8_kv_serving_qualification",
   "status": "qualified_explicit_ar_capacity_default_unchanged",
+  "recommendation_superseded_by": {
+    "artifact": "benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json",
+    "decision": "The later natural-prompt c1/c2/c4/c8 soak recommends 112K for the explicitly dedicated, idle, max-active=1 contract. The historical 96K recommendation remains an optional extra-margin setting."
+  },
   "performance_claim": true,
   "correctness_claim": true,
   "topline_eligible": false,
