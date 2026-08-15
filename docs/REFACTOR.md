@@ -87,6 +87,22 @@ should be removed or collapsed.
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
 
+## gfx1151 Qwen3.8 compact-peer GDN rollback seam
+
+- Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route
+  right-sizes normalized Q/K to K-head cardinality and is bit-identical to the
+  peer-wave oracle, but differs slightly from scalar-exact direct LDS32
+  (maximum BF16 output 0.001953125, FP32 state 2.24e-8). Keep
+  `chain_lds32_direct_nonvolatile` as the explicit exact selector through one
+  release window and retain both primitive chains permanently as numerical
+  fallbacks.
+- The gfx1151 1,024-row recurrence cap is evidence, not a universal tuning
+  constant: unchunked compact wins at 512/1K but loses 8.26% at 4K; state-carry
+  chunking restores a 1.422x complete-chain win. Revisit 1K only during P4's
+  full 128/256/512/1K chunk sweep, with peer-bit/state exactness, scalar-oracle
+  bounds, 512/1K/4K full-engine gates, and the natural category suite. Do not
+  remove or widen the cap from a single-prompt timing.
+
 ## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
 
 - Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by

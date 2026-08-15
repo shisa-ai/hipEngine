@@ -1,0 +1,353 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-15T12:00:00Z",
+  "kind": "qwen38_27b_gfx1151_p3_compact_peer_gdn",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics (gfx1151)",
+    "host": "AMD Ryzen AI Max+ PRO 395",
+    "rocm": "TheRock build 10438",
+    "device_selector": 0
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "geometry": "16 K heads / 48 V heads / 128 K dim / 128 V dim",
+    "route": "chain_compact_peer_wave32",
+    "recurrence_chunk_rows": 1024
+  },
+  "baseline": {
+    "commit": "0474f3319",
+    "route": "chain_lds32_direct_nonvolatile"
+  },
+  "rejected_unchunked": {
+    "status": "rejected_4k_regression",
+    "results": {
+      "1024": {
+        "peer_speedup": 1.3635296920065405,
+        "peer_wins": 15,
+        "production_speedup": 1.4780437839662988,
+        "production_wins": 15,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 2.2351741790771484e-08,
+        "compact_qk_bytes": 16777216,
+        "peer_qk_bytes": 50331648,
+        "qk_saved_bytes": 33554432
+      },
+      "4096": {
+        "peer_speedup": 1.3403466459933362,
+        "peer_wins": 15,
+        "production_speedup": 0.9174004556865722,
+        "production_wins": 0,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 1.4901161193847656e-08,
+        "compact_qk_bytes": 67108864,
+        "peer_qk_bytes": 201326592,
+        "qk_saved_bytes": 134217728
+      },
+      "512": {
+        "peer_speedup": 1.244956013652208,
+        "peer_wins": 15,
+        "production_speedup": 1.4947505851511658,
+        "production_wins": 15,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 1.4901161193847656e-08,
+        "compact_qk_bytes": 8388608,
+        "peer_qk_bytes": 25165824,
+        "qk_saved_bytes": 16777216
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-compact-peer-16k48v-production.json",
+      "sha256": "929d4984c1910e38ebda8c2bfbb40402de7ffc341b90e3079fd4eb5b7b75ac35",
+      "bytes": 12237
+    }
+  },
+  "retained_leaf": {
+    "status": "passed",
+    "protocol": "15 counterbalanced HIP-event pairs/shape; complete prepare+recurrence+RMSNorm chain",
+    "results": {
+      "1024": {
+        "peer_speedup": 1.3576445377548743,
+        "peer_wins": 15,
+        "production_speedup": 1.478586624322573,
+        "production_wins": 15,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 2.2351741790771484e-08,
+        "compact_qk_bytes": 16777216,
+        "peer_qk_bytes": 50331648,
+        "qk_saved_bytes": 33554432
+      },
+      "4096": {
+        "peer_speedup": 2.0417667507014827,
+        "peer_wins": 15,
+        "production_speedup": 1.4224107461484732,
+        "production_wins": 15,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 1.4901161193847656e-08,
+        "compact_qk_bytes": 67108864,
+        "peer_qk_bytes": 201326592,
+        "qk_saved_bytes": 134217728
+      },
+      "512": {
+        "peer_speedup": 1.237271423990061,
+        "peer_wins": 15,
+        "production_speedup": 1.5171821974681219,
+        "production_wins": 15,
+        "peer_output_bits_exact": true,
+        "peer_state_bits_exact": true,
+        "scalar_output_max_abs": 0.001953125,
+        "scalar_state_max_abs": 1.4901161193847656e-08,
+        "compact_qk_bytes": 8388608,
+        "peer_qk_bytes": 25165824,
+        "qk_saved_bytes": 16777216
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-compact-peer-16k48v-chunk1024.json",
+      "sha256": "bdebca9b1f5816fd351a8163569e0c35ac12f1c9f7758e0193a2168cb46e6371",
+      "bytes": 12289
+    }
+  },
+  "pp512_stage": {
+    "control_tok_s": 316.2579122507765,
+    "candidate_tok_s": 330.06874585418234,
+    "speedup": 1.0436695275230128,
+    "control_gdn_ms": 213.79517082456672,
+    "candidate_gdn_ms": 144.59765554553655,
+    "control_peak_bytes": 17988270468,
+    "candidate_peak_bytes": 17963104644,
+    "teardown_bytes": 0,
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-pp512-smoke.json",
+      "sha256": "2568d8b0220295c412f5f71de21771778b6ba6cca940905d9e8f62768aba712f",
+      "bytes": 249185
+    }
+  },
+  "shapes": {
+    "status": "complete_counterbalanced",
+    "rows": {
+      "512/128": {
+        "metrics": {
+          "prefill_tok_s": {
+            "pre_control": 315.94793378472957,
+            "candidate": 330.18659021161307,
+            "post_control": 316.58907621873567,
+            "pre_ratio": 1.0450664647694292,
+            "post_ratio": 1.042950041597401,
+            "bracket_mean_ratio": 1.0440071805752653
+          },
+          "decode_tok_s": {
+            "pre_control": 11.839025193251757,
+            "candidate": 11.823615750268504,
+            "post_control": 11.827165927209196,
+            "pre_ratio": 0.9986984196138009,
+            "post_ratio": 0.9996998286011592,
+            "bracket_mean_ratio": 0.9991988732015457
+          }
+        },
+        "candidate_peak_gib": 16.729414347559214,
+        "pre_control_peak_gib": 16.752851847559214,
+        "post_control_peak_gib": 16.752851847559214,
+        "candidate_source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-512.json",
+        "candidate_sha256": "c7834cd62a98a4c447e4afeccaf5686659e56d432cf200715a0e0d4db49063c6",
+        "post_control_source": "/tmp/qwen38-task20-gdn-shapes-post-control/control-512.json",
+        "post_control_sha256": "fb854936cf59db4c438a6998cc1a7087e14d56ae066c0485e0bddf34b9de0ea3",
+        "finite": true,
+        "final_ids_identical": true,
+        "native_fallbacks": 0
+      },
+      "1K/128": {
+        "metrics": {
+          "prefill_tok_s": {
+            "pre_control": 314.98926476356615,
+            "candidate": 329.79789156335073,
+            "post_control": 314.9390809276,
+            "pre_ratio": 1.047013115862536,
+            "post_ratio": 1.0471799517290348,
+            "bracket_mean_ratio": 1.0470965271502168
+          },
+          "decode_tok_s": {
+            "pre_control": 11.68134936017606,
+            "candidate": 11.677737586734208,
+            "post_control": 11.678552195952316,
+            "pre_ratio": 0.9996908085418483,
+            "post_ratio": 0.9999302474138542,
+            "bracket_mean_ratio": 0.9998105136423916
+          }
+        },
+        "candidate_peak_gib": 19.465825732797384,
+        "pre_control_peak_gib": 19.590825732797384,
+        "post_control_peak_gib": 19.590825732797384,
+        "candidate_source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-1k4k.json",
+        "candidate_sha256": "d2f6e0cb6ff9d313ada20eed03d0a80af9078137aef71ac110006e0488e39b36",
+        "post_control_source": "/tmp/qwen38-task20-gdn-shapes-post-control/control-1k4k.json",
+        "post_control_sha256": "d610f424d031bcbe29bf71e4d810e1a47eeaf731fa73317a9cecd87883daecbd",
+        "finite": true,
+        "final_ids_identical": true,
+        "native_fallbacks": 0
+      },
+      "4K/128": {
+        "metrics": {
+          "prefill_tok_s": {
+            "pre_control": 309.8801866748937,
+            "candidate": 324.0872731828156,
+            "post_control": 310.5410844170411,
+            "pre_ratio": 1.0458470309456314,
+            "post_ratio": 1.0436212451283342,
+            "bracket_mean_ratio": 1.0447329525386047
+          },
+          "decode_tok_s": {
+            "pre_control": 10.941846896312175,
+            "candidate": 10.941411983384711,
+            "post_control": 10.93975604104107,
+            "pre_ratio": 0.9999602523292836,
+            "post_ratio": 1.0001513692204314,
+            "bracket_mean_ratio": 1.0000558016439507
+          }
+        },
+        "candidate_peak_gib": 19.465825732797384,
+        "pre_control_peak_gib": 19.590825732797384,
+        "post_control_peak_gib": 19.590825732797384,
+        "candidate_source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-1k4k.json",
+        "candidate_sha256": "d2f6e0cb6ff9d313ada20eed03d0a80af9078137aef71ac110006e0488e39b36",
+        "post_control_source": "/tmp/qwen38-task20-gdn-shapes-post-control/control-1k4k.json",
+        "post_control_sha256": "d610f424d031bcbe29bf71e4d810e1a47eeaf731fa73317a9cecd87883daecbd",
+        "finite": true,
+        "final_ids_identical": true,
+        "native_fallbacks": 0
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-shapes-post-control/validated-summary.json",
+      "sha256": "7360b98a027a78b4cd0590d15319d874ea5d8bd65a34cefcaf93df5b2adb78aa",
+      "bytes": 3974
+    },
+    "adjudication": {
+      "prefill_all_non_regressive": true,
+      "memory_all_non_regressive": true,
+      "decode_bracket_mean_deltas_percent": {
+        "512/128": -0.0801,
+        "1K/128": -0.0189,
+        "4K/128": 0.0056
+      },
+      "decode_verdict": "flat within measured control drift; P3 changes prefill-only kernels and the production decode graph is byte-identical. Full natural AR/B1-B3 is +0.211%/+0.341%/+0.277%/+0.225% with identical trajectories."
+    }
+  },
+  "natural": {
+    "status": "passed",
+    "metrics_tok_s": {
+      "true_ar": 12.05808700289307,
+      "1": 18.912998760625168,
+      "2": 23.143502026150898,
+      "3": 24.210545613820315
+    },
+    "control_tok_s": {
+      "true_ar": 12.032686138521472,
+      "1": 18.84877943282264,
+      "2": 23.079619979339814,
+      "3": 24.156135944109028
+    },
+    "ratios": {
+      "true_ar": 1.0021109886918997,
+      "1": 1.0034070815052725,
+      "2": 1.0027678985558806,
+      "3": 1.0022524161081547
+    },
+    "requests_per_mode": 30,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "all_exact_greedy_to_candidate_ar": true,
+    "true_ar_identical_to_q6": true,
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_reconciled": true,
+    "native_graph": {
+      "1": {
+        "cycles": 393,
+        "native_fallbacks": 0
+      },
+      "2": {
+        "cycles": 297,
+        "native_fallbacks": 0
+      },
+      "3": {
+        "cycles": 264,
+        "native_fallbacks": 0
+      }
+    },
+    "teardown_bytes": 0,
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-natural/validated-summary.json",
+      "sha256": "84a916f5d32219052305e76ff954de5b84afe6fef86075ee0b8e29d793153861",
+      "bytes": 1695
+    }
+  },
+  "trace": {
+    "status": "passed",
+    "performance_claim": false,
+    "traces": {
+      "pp512": {
+        "path": "/tmp/qwen38-task20-gdn-trace/pp512/gfx1151/873774_kernel_trace.csv",
+        "sha256": "0523e9d7a09cf6c84ffe296de518d992dcb5191a502121329c46eb3a00a24f1d",
+        "all_kernel_rows": 1163,
+        "compact_recurrence_calls": 48,
+        "expected_calls": 48,
+        "all_duration_positive": true,
+        "total_ms": 75.044915,
+        "resources": {
+          "workgroup_x": 128,
+          "vgpr": 40,
+          "lds_bytes": 0,
+          "scratch_bytes": 0
+        }
+      },
+      "pp4096": {
+        "path": "/tmp/qwen38-task20-gdn-trace/pp4096/gfx1151/874753_kernel_trace.csv",
+        "sha256": "ef4277716130d97928d5ffd70b0ebcc10d5112e602aa46cac17db95c227d9e3d",
+        "all_kernel_rows": 3673,
+        "compact_recurrence_calls": 192,
+        "expected_calls": 192,
+        "all_duration_positive": true,
+        "total_ms": 617.369484,
+        "resources": {
+          "workgroup_x": 128,
+          "vgpr": 40,
+          "lds_bytes": 0,
+          "scratch_bytes": 0
+        }
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task20-gdn-trace/validated-summary.json",
+      "sha256": "c307cbf953ee8efab3cfc0c3f736bd2558db4aeec6756a5b5ad15bb113f8240b",
+      "bytes": 1040
+    }
+  },
+  "validation": {
+    "routing_bundle": "58 tests completed with one expected stale policy assertion; focused repaired node and chunk test pass",
+    "no_compiler_child": true,
+    "focused_tests": {
+      "count": 44,
+      "scope": "session mode, scratch liveness, routing, and gfx1151 backend policy",
+      "status": "passed"
+    },
+    "broad_repair": "Routing/compact-peer broad bundle passed all nodes except one stale expected policy map; repaired node passed focused without repeating broad GPU work."
+  },
+  "reason_not_publishable": "dirty development candidate; clean candidate repeat is required before benchmark rollup publication"
+}

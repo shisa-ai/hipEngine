@@ -686,12 +686,20 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # after a 0.0108% guard miss; X2-K2's fresh five-block gate superseded it.
 GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
+    # Qwen3.8-27B P3: compact per-K-head Q/K plus wave32/XOR is bit exact to
+    # the peer-wave oracle and 1.42-1.52x faster than direct LDS32 at
+    # 512/1K/4K when recurrence chunks are capped at 1K rows.
+    ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
     # D08-X2-K2 (2026-08-15): the exact-core gate measures the Vulkan-shaped
     # cluster8 recurrence at +16.70% Q8_0 pp512 with neutral core-graph tg128,
     # so the same one-V-head-per-K-head geometry now uses cluster8 for Q8_0 too.
     # HIPENGINE_GGUF_GDN_PREFILL_MODE remains the explicit override.
     ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
 }
+# The 4K unchunked compact recurrence loses 8.26% to direct LDS32. Four
+# state-carrying 1K recurrence launches are peer-bit-exact and win 1.422x;
+# prepare and RMSNorm remain one complete-chain launch each.
+GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS = 1024
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
@@ -1845,6 +1853,7 @@ __all__ = [
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
+    "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
