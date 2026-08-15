@@ -28,6 +28,17 @@ def test_pool_pages_cover_all_near_capacity_requests() -> None:
     assert module.pool_pages(8192, 8) == 256
     with pytest.raises(ValueError, match="positive"):
         module.pool_pages(0, 1)
+    assert module.effective_resident_capacity(
+        current_pool_pages=20,
+        pages_per_request=5,
+        offered_concurrency=8,
+    ) == 4
+    with pytest.raises(ValueError, match="integral"):
+        module.effective_resident_capacity(
+            current_pool_pages=21,
+            pages_per_request=5,
+            offered_concurrency=8,
+        )
 
 
 def test_pinned_sharegpt_fixture_is_complete_and_rotates_lanes() -> None:
@@ -48,7 +59,13 @@ def test_extract_chat_response_requires_authoritative_exact_ids() -> None:
         "choices": [{"text": "ok", "finish_reason": "length", "hipengine": {}}],
         "usage": {"prompt_tokens": 4091, "completion_tokens": 4},
         "hipengine": {
-            "token_accounting": {"choice_generated_token_ids": [[11, 12, 13, 14]]}
+            "token_accounting": {"choice_generated_token_ids": [[11, 12, 13, 14]]},
+            "generation_shape": {
+                "queue_group": {"id": "group-1", "request_count": 2},
+                "backend_groups": [
+                    {"input_rows": 2, "actual_group_rows": [2]}
+                ],
+            },
         },
     }
     row = module.extract_chat_response(
@@ -58,6 +75,11 @@ def test_extract_chat_response_requires_authoritative_exact_ids() -> None:
     )
     assert row["generated_token_ids"] == [11, 12, 13, 14]
     assert row["exact_accounting"] is True
+    assert row["generation_shape"]["queue_group"]["request_count"] == 2
+    shape = module.summarize_generation_shapes([row, row])
+    assert shape["shape_count"] == 2
+    assert shape["queue_group_count"] == 1
+    assert shape["maximum_backend_group_rows"] == 2
 
     response["hipengine"]["token_accounting"] = {}
     with pytest.raises(ValueError, match="generated token IDs"):
