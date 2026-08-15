@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. Current exact-core pp512 is 4345/4983 tok/s Q4/Q8 (0.72x/0.83x the same-day Vulkan diagnostic), so parity remains open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The fresh post-review six-block exact-core pp512 baseline is 4314/4976 tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic), so parity remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -107,6 +107,7 @@ not a synthetic leaf projection.
 | 26 | **D08-X2-K2 Q8 GDN cluster8** | **accepted: +16.70% Q8 exact-core pp512** | Fresh five-block and 18-prompt gates supersede P2's 0.0108%-miss rejection: 448/450 top-1, max KL 0.003260. | Q4 and Q8 now both use the quant/geometry-qualified cluster8 route. |
 | 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Re-profile graph replay/API residual before more decode kernel work. |
 | 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
+| 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
 
 ### 1.2 Bounded task contract
 
@@ -1505,6 +1506,25 @@ at campaign open).
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json).
+
+### 2.42 Post-review current-HEAD baseline (2026-08-15)
+
+After merging the correctness hardening and concurrent verifier-scratch work,
+six clean-tree, cyclically counter-rotated shared-token blocks establish the new
+current baseline. Exact-core pp512 is **4314.0/4975.9 tok/s Q4/Q8**; public
+prefill is **4342.4/4959.5 tok/s**. Against X2-disabled controls, current Q4 is
+**1.754x** the pre-X2 route and Q8 is **1.175x** its exact pre-X2 route, winning
+all six prefill blocks. Every child is finite and deterministic, and current,
+pre-X2, strict-X2, Q4, and Q8 all emit the same repeated-fixture top-1 trajectory.
+
+The current Q4/Q8 core decode medians are **140.97/137.74 tok/s**, but the Q4
+samples are visibly bimodal (roughly 140-141 and 147-148 tok/s), so this row
+makes no new decode-speed claim. Public decode is **121.97/114.79 tok/s**. The
+historical same-day Vulkan pp512 comparator remains **6015.0/6035.8 tok/s**;
+those rows are not same-session denominators.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json).
 
 ## 3. Comparison contracts
 
