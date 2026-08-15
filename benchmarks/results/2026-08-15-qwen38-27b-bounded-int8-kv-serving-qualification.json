@@ -1,0 +1,343 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_bounded_int8_kv_serving_qualification",
+  "status": "qualified_explicit_ar_capacity_default_unchanged",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "decision": "Retain the bounded exact-prefill implementation and qualify pure FP32-scale per-token/head INT8 KV as an explicit Qwen3.8 single-request AR capacity route. It now saves memory at request high water, matches BF16-graph prefill within overlapping sample bands, and improves eager INT8 AR decode. The highest completed 24-GiB server request is 114,688 total context tokens (112 Ki), while 98,304 (96 Ki) retains materially safer headroom. Keep BF16 as the supported/default route and keep long pure INT8 behind the existing explicit unverified-long gate: pure INT8 decode is not admitted to the HIP graph, and exact natural B3 MTP is slower than true AR.",
+  "source": {
+    "implementation_commit": "b3dd9a39f376bc7b813313c810fd59dad43a7640",
+    "pre_mtp_quality_and_capacity_commit": "b3dd9a39f376bc7b813313c810fd59dad43a7640",
+    "mtp_policy_fix_commit": "12bdf8c520b6e4f5b6b9f50ca2e04dc3aa9ec27e",
+    "final_performance_and_mtp_commit": "12bdf8c520b6e4f5b6b9f50ca2e04dc3aa9ec27e",
+    "qualification_commit": "12bdf8c520b6e4f5b6b9f50ca2e04dc3aa9ec27e",
+    "tracked_source_clean_for_published_quality_performance_and_mtp": true,
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "hardware": {
+    "capacity_and_performance_device": "AMD Radeon RX 7900 XTX",
+    "capacity_and_performance_visible_device": "1",
+    "total_vram_bytes": 25753026560,
+    "total_vram_gib": 23.984375,
+    "capacity_baseline_vram_bytes": 64864256,
+    "long_quality_device": "AMD Radeon Pro W7900",
+    "long_quality_visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "file_type": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "tensor_inventory_sha256": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3",
+    "geometry": {
+      "hidden_size": 5120,
+      "linear_attention_layers": 48,
+      "full_attention_layers": 16,
+      "query_heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256
+    }
+  },
+  "implementation": {
+    "storage": "int8_per_token_head",
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "retained_bf16_mirror": false,
+    "prefill_math": "existing exact BF16 bulk attention followed by resident INT8 quantization",
+    "lifetime_mode": "layer_outer_shared_oracle",
+    "planner_basis": "geometry, storage policy, mirror ownership, hidden-plane count, and exact byte comparison; no model-name/backend branch",
+    "ownership_at_33024_positions": {
+      "old_layer_local_oracle_pairs": 16,
+      "new_shared_oracle_pairs": 1,
+      "shared_oracle_pair_bytes": 135266304,
+      "old_chunk_hidden_bytes": 41943040,
+      "new_full_sequence_hidden_bytes": 338165760,
+      "old_chunk_token_bytes": 32768,
+      "new_full_sequence_token_bytes": 264192,
+      "modeled_and_measured_peak_saving_bytes": 1732540416,
+      "modeled_and_measured_peak_saving_gib": 1.613554
+    },
+    "safety": "The shared oracle is selected only with full-prompt hidden ownership and layer-outer scheduling. A fail-closed guard rejects shared ownership if allocation drift re-enters chunk-outer execution. BF16, short mirrored INT8, and memory-negative hybrid layouts preserve their prior route."
+  },
+  "quality": {
+    "thresholds": {
+      "mean_kl_max": 0.05,
+      "top1_agreement_min_per_prompt": 0.9,
+      "all_prompts_must_pass": true,
+      "require_no_bf16_mirror": true,
+      "expected_int8_full_attention_indices": "0-15",
+      "expected_bf16_full_attention_indices": "none"
+    },
+    "rows": [
+      {
+        "device": "AMD Radeon RX 7900 XTX",
+        "prompt_tokens": 512,
+        "decode_steps": 8,
+        "prompt_count": 11,
+        "positions_compared": 99,
+        "passed": true,
+        "weighted_mean_kl": 0.0001131478230873339,
+        "max_kl": 0.0022928143639333906,
+        "aggregate_top1_agreement": 1.0,
+        "minimum_prompt_top1_agreement": 1.0,
+        "retained_bf16_mirror_bytes": 0,
+        "retained_int8_kv_plus_scales_gib": 1.0235595703125
+      },
+      {
+        "device": "AMD Radeon RX 7900 XTX",
+        "prompt_tokens": 4096,
+        "decode_steps": 16,
+        "prompt_count": 11,
+        "positions_compared": 187,
+        "passed": true,
+        "weighted_mean_kl": 0.00014636530519173546,
+        "max_kl": 0.01430839581077192,
+        "aggregate_top1_agreement": 0.9946524064171123,
+        "minimum_prompt_top1_agreement": 0.9411764705882353,
+        "retained_bf16_mirror_bytes": 0,
+        "retained_int8_kv_plus_scales_gib": 1.0235595703125
+      },
+      {
+        "device": "AMD Radeon Pro W7900",
+        "prompt_tokens": 65536,
+        "decode_steps": 16,
+        "prompt_count": 1,
+        "prompt_id": "mixed_v1",
+        "positions_compared": 17,
+        "passed": true,
+        "weighted_mean_kl": 0.00003343428901439429,
+        "max_kl": 0.00041620865067494854,
+        "aggregate_top1_agreement": 1.0,
+        "minimum_prompt_top1_agreement": 1.0,
+        "retained_bf16_mirror_bytes": 0,
+        "retained_int8_kv_plus_scales_gib": 2.0391845703125,
+        "scope": "bounded long-context quality row, not a complete 64K category suite"
+      }
+    ]
+  },
+  "matched_runtime": {
+    "hardware": "AMD Radeon RX 7900 XTX",
+    "workload": "4,096 prompt tokens / 128 decode transitions / 32,786 configured sequence capacity / one discarded warmup / three measured persistent-session runs / GPU_MAX_HW_QUEUES=1",
+    "rows": [
+      {
+        "route": "BF16 KV production graph",
+        "prefill_tok_s_samples": [980.1501059239336, 979.0363434525442, 979.1180598459164],
+        "prefill_tok_s_median": 979.1180598459164,
+        "decode_tok_s_samples": [31.727408159315633, 31.70104883956291, 31.676355761588116],
+        "decode_tok_s_median": 31.70104883956291,
+        "tracked_peak_gib": 17.919904716312885,
+        "tracked_current_gib": 17.919904716312885,
+        "graph_replay": true,
+        "finite_final_logits": true,
+        "final_token_ids": [9707, 9707, 9707]
+      },
+      {
+        "route": "bounded pure FP32-scale INT8 KV eager",
+        "prefill_tok_s_samples": [979.2363808415337, 978.6256304349563, 978.4561819669201],
+        "prefill_tok_s_median": 978.6256304349563,
+        "decode_tok_s_samples": [33.76117428336499, 33.744090135474174, 34.03265559024195],
+        "decode_tok_s_median": 33.76117428336499,
+        "tracked_peak_gib": 17.329910285770893,
+        "tracked_current_gib": 17.203933723270893,
+        "graph_replay": false,
+        "finite_final_logits": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "prefill_change_vs_bf16_graph_percent": -0.05029315985015659,
+        "decode_change_vs_bf16_graph_percent": 6.498603419174698,
+        "tracked_peak_change_vs_bf16_graph_gib": -0.5899944305419922,
+        "tracked_peak_change_vs_bf16_graph_percent": -3.2923971409563713,
+        "tracked_current_change_vs_bf16_graph_gib": -0.7159709930419922,
+        "tracked_current_change_vs_bf16_graph_percent": -3.9953950892954726
+      },
+      {
+        "route": "prior layer-local-oracle pure INT8 eager",
+        "prefill_tok_s_median": 978.5732092946494,
+        "decode_tok_s_median": 34.10760611399879,
+        "tracked_peak_gib": 18.943464286625385,
+        "tracked_current_gib": 16.927839286625385,
+        "source": "benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json"
+      }
+    ],
+    "bounded_change_vs_prior_int8": {
+      "prefill_percent": 0.005356895100838699,
+      "decode_percent": -1.0157025663891983,
+      "tracked_peak_gib": -1.6135540008544922,
+      "tracked_peak_percent": -8.517734541267119,
+      "tracked_current_gib": 0.2760944366455078,
+      "interpretation": "The decode sample ranges overlap at their boundary and were measured in different sessions. The binding result is the exact 1.613554-GiB peak reduction and non-regression versus the supported BF16-graph decode route."
+    },
+    "interpretation": "Bounded INT8 prefill is within 0.051% of the matched BF16 graph-route median and the prefill sample ranges overlap. Eager INT8 decode is 6.50% faster than BF16 graph. The route therefore meets the fixed-shape AR memory/decode gate without a measurable prefill regression."
+  },
+  "server_capacity": {
+    "protocol": {
+      "surface": "OpenAI-compatible /v1/completions",
+      "max_active_requests": 1,
+      "prompt": "token ID 9707 repeated context-2 times",
+      "generated_tokens": 1,
+      "reserved_context_slots": 1,
+      "sampling": "temperature=0",
+      "pool_presizing": "HIPENGINE_KV_POOL_INITIAL_PAGES=ceil(context/256)",
+      "startup_min_free_mib": 1024,
+      "whole_device_sampler": "/sys/class/drm/card0/device/mem_info_vram_used at 20 ms",
+      "pass_rule": "HTTP 200, one generated token, /ready true after request, and clean teardown"
+    },
+    "rows": [
+      {
+        "context_tokens": 65536,
+        "prompt_tokens": 65534,
+        "pool_pages": 256,
+        "passed": true,
+        "http_status": 200,
+        "request_elapsed_s": 147.05730772018433,
+        "peak_whole_device_vram_gib": 20.564430236816406,
+        "headroom_gib": 3.4199447631835938,
+        "ready_after": true,
+        "generated_token_ids": [9707]
+      },
+      {
+        "context_tokens": 98304,
+        "prompt_tokens": 98302,
+        "pool_pages": 384,
+        "passed": true,
+        "http_status": 200,
+        "request_elapsed_s": 276.31730699539185,
+        "peak_whole_device_vram_gib": 22.414138793945312,
+        "headroom_gib": 1.5702362060546875,
+        "ready_after": true,
+        "generated_token_ids": [9707]
+      },
+      {
+        "context_tokens": 114688,
+        "prompt_tokens": 114686,
+        "pool_pages": 448,
+        "passed": true,
+        "http_status": 200,
+        "request_elapsed_s": 352.61668634414673,
+        "peak_whole_device_vram_gib": 23.322322845458984,
+        "headroom_gib": 0.6620521545410156,
+        "ready_after": true,
+        "generated_token_ids": [9707]
+      },
+      {
+        "context_tokens": 122880,
+        "prompt_tokens": 122878,
+        "pool_pages": 480,
+        "passed": false,
+        "http_status": null,
+        "peak_whole_device_vram_gib": 23.637592315673828,
+        "sampled_headroom_gib": 0.3467826843261719,
+        "startup_guard_free_gib": 0.86,
+        "error": "startup free-memory guard failed: free=0.86 GiB below required=1.00 GiB"
+      },
+      {
+        "context_tokens": 131072,
+        "prompt_tokens": 131070,
+        "pool_pages": 512,
+        "passed": false,
+        "http_status": null,
+        "peak_whole_device_vram_gib": 23.81664276123047,
+        "sampled_headroom_gib": 0.16773223876953125,
+        "error": "HIP out of memory while allocating the shared BF16 prefill oracle during eager warmup; server remained not-ready"
+      }
+    ],
+    "highest_observed_pass_tokens": 114688,
+    "first_upper_failure_tokens": 122880,
+    "capacity_bracket_tokens": [114688, 122880],
+    "recommended_explicit_capacity_tokens": 98304,
+    "highest_long_context_quality_checked_tokens": 65536,
+    "comparison_to_bf16": {
+      "bf16_observed_physical_pass_tokens": 53248,
+      "highest_int8_observed_pass_change_percent": 115.38461538461537,
+      "bf16_operational_tokens": 32768,
+      "recommended_int8_capacity_multiple_vs_bf16_operational": 3.0,
+      "int8_64k_peak_minus_bf16_32k_peak_gib": -1.3050079345703125,
+      "int8_64k_peak_change_vs_bf16_32k_percent": -5.967267765834716
+    },
+    "interpretation": "112 Ki is the highest completed one-token server request, not a reliability recommendation. 96 Ki retains 1.57 GiB sampled request-high-water headroom. Only 64 Ki has a non-repeated-token long-context quality row, and all long pure-INT8 rows still require the explicit unverified-long gate."
+  },
+  "graph_safety": {
+    "pure_int8_decode_graph_admitted": false,
+    "result": "expected_fail_closed",
+    "error": "RuntimeError: GGUF decode graph requires BF16 KV or the admitted tail4_hadamard_group32 layout",
+    "server_behavior": "Pure INT8 uses eager decode; the 4K/128 eager row still beats BF16 production graph by 6.50%.",
+    "tail4_control": "The separately qualified tail-four layout remains graph-admitted, but was not rerun as part of this pure-INT8 bounded qualification."
+  },
+  "natural_mtp": {
+    "protocol": "all 10 mtpbench category prompts, reasoning off, 25 visible outputs / 24 timed transitions, B3, serial-exact target, no warmup",
+    "status": "complete_exact",
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "true_ar": {
+      "decode_tok_s_weighted": 34.98665125476244,
+      "timed_transitions": 240,
+      "decode_seconds": 6.859759119339287
+    },
+    "mtp_b3": {
+      "decode_tok_s_weighted": 22.472189774846825,
+      "timed_transitions": 240,
+      "decode_seconds": 10.67986708926037,
+      "accepted_draft_tokens": 159,
+      "proposed_draft_tokens": 252,
+      "draft_acceptance": 0.6309523809523809,
+      "accepted_per_output": 0.636,
+      "cycles": 88,
+      "target_verify_seconds": 9.990642858669162,
+      "mtp_vs_true_ar": 0.6423075364147025,
+      "all_categories_slower_than_true_ar": true
+    },
+    "decision": "Correctness and transaction admission pass, but pure-INT8 serial-exact target verification is not a speed path. Do not advertise INT8 MTP or change the BF16/default natural-MTP row."
+  },
+  "support_and_use": {
+    "default_kv_storage": "bf16",
+    "pure_int8_status": "explicit experimental single-request AR capacity route",
+    "required_environment": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "ceil(max_context_tokens/256)"
+    },
+    "required_cli": [
+      "--kv-storage int8_per_token_head",
+      "--kv-scale-dtype fp32",
+      "--max-active-requests 1"
+    ],
+    "recommended_96k_example": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none HIPENGINE_KV_POOL_INITIAL_PAGES=384 hipengine serve --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --max-context-tokens 98304 --max-active-requests 1 --kv-storage int8_per_token_head --kv-scale-dtype fp32 --startup-min-free-mib 1024"
+  },
+  "commands": {
+    "complete_quality": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length <512|4096> --decode-steps <8|16> --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json <output>",
+    "long_quality": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 65536 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 65554 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-bounded-prefill-mixed-v1-64kx16-w7900-clean.json",
+    "matched_runtime": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 32786 --warmup-runs 1 --measured-runs 3 --persistent-session --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --no-graph-replay-decode --kv-storage int8_per_token_head --kv-scale-dtype fp32 --json /tmp/qwen38-xtx-pure-int8-bounded-prefill-cap32k-4kx128-r3-final-clean.json",
+    "bf16_graph_control": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 32786 --warmup-runs 1 --measured-runs 3 --persistent-session --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --graph-replay-decode --kv-storage bf16 --json /tmp/qwen38-xtx-bf16-graph-current-cap32k-4kx128-r3-final-clean.json",
+    "server_probe": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 /tmp/qwen38_server_capacity_probe.py --context <tokens> --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-pool-initial-pages <ceil(tokens/256)> --request-timeout 600 --output <output>",
+    "natural_mtp": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 /tmp/qwen38_int8_mtp_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode serial-exact --runs 1 --no-warmup --max-sequence-length 32786 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --output /tmp/qwen38-27b-pure-int8-bounded-prefill-natural25-b3-serial-clean.json"
+  },
+  "raw_source_sha256": [
+    {"path": "/tmp/qwen38-27b-pure-int8-bounded-prefill-suite-512x8-clean.json", "sha256": "512493a9340b5a5d57d498655c5f2e3133841b0cee54c9143b977ee936271fc6"},
+    {"path": "/tmp/qwen38-27b-pure-int8-bounded-prefill-suite-4kx16-clean.json", "sha256": "43a5eff86e730ddabb867187ef3b3075a1a181892ae200b39010c5e93daa091c"},
+    {"path": "/tmp/qwen38-27b-pure-int8-bounded-prefill-mixed-v1-64kx16-w7900-clean.json", "sha256": "0aae277e7a33ddf57c4dced3c4587c054f26d078c2b00cba91b5e9b06e164a66"},
+    {"path": "/tmp/qwen38-int8-bounded-prefill-server-65536-clean.json", "sha256": "2f252cb3d66e4061ab2beb9e8c4f0b3bc0a84ef07fd00ee48da82b9f81c326ac"},
+    {"path": "/tmp/qwen38-int8-bounded-prefill-server-98304-clean.json", "sha256": "4af3f0d1528e33dd868f5f0d7722a4520f36b76625a1c067533a3b451a7ae134"},
+    {"path": "/tmp/qwen38-int8-bounded-prefill-server-114688-clean.json", "sha256": "b52124fd8965797fc171887667e6f8d9cd7e1e9a19f6a58d454925a041261d98"},
+    {"path": "/tmp/qwen38-int8-bounded-prefill-server-122880-clean.json", "sha256": "6b5da5a9aa3cfeabc2b9f156762869d559761e9be796ffb4ddc13d540ce3a69a"},
+    {"path": "/tmp/qwen38-int8-bounded-prefill-server-131072-clean.json", "sha256": "4a31aa38a484875b65267d51ecfb24e7ab1f4954080a274ae7c8a3c259d8a63d"},
+    {"path": "/tmp/qwen38-xtx-pure-int8-bounded-prefill-cap32k-4kx128-r3-final-clean.json", "sha256": "eccd3962325cce72e30d2c49b51a1cca7911ddb78adbcf0c66f5e05d4c7c9a34"},
+    {"path": "/tmp/qwen38-xtx-bf16-graph-current-cap32k-4kx128-r3-final-clean.json", "sha256": "d334ded8b36faf844497769560d27a0a94badfa3089de40c4e9c35f5e714570c"},
+    {"path": "/tmp/qwen38-27b-pure-int8-bounded-prefill-natural25-b3-serial-clean.json", "sha256": "09d471222f34c216297c060b42346595546065d7be43f7d1da7ee69304ee972b"},
+    {"path": "/tmp/qwen38_int8_mtp_suite.py", "sha256": "738ab630695d6900fd47c70411d419638df4e742f02a332f6f14a4fd4b650a37"},
+    {"path": "/tmp/qwen38_server_capacity_probe.py", "sha256": "933ba225bc4e91ef56c5d623943c632c7658d21eaf18025f68aa17dce7611bfd"},
+    {"path": "/tmp/vstack-pi-bg/bg-874-1786809964885.log", "sha256": "cf0069129fb9f390aec6c016dddc7b85631c57aa10d12900d6e124c485126a77"}
+  ],
+  "limitations": [
+    "The 64K/96K/112K server prompts repeat token 9707 to fix memory shape. They are capacity and lifecycle evidence, not representative quality or throughput rows.",
+    "The complete natural/category quality gates cover 512 and 4K. The 64K long-context gate covers only mixed_v1; no representative 96K or 112K quality suite was run.",
+    "112K leaves only 0.662 GiB at sampled request high water and is one clean request, so it is an observed ceiling row rather than a recommended production setting.",
+    "Pure INT8 is eager-only for AR decode graph capture and slows serial-exact B3 MTP. The retained BF16 graph/MTP routes remain the default.",
+    "The full natural MTP artifact's generic provenance field says kv_dtype=bf16 because the committed suite has no INT8 target CLI. The hashed disposable wrapper replaces only target session construction with explicit FP32-scale INT8; the row's target behavior and layout were separately checked before the full run.",
+    "This qualification covers one active request, no prefix-cache retention, and no concurrent c>1 server ownership."
+  ],
+  "next": "Optimize or graph-admit pure INT8 target verification before any MTP claim. If product support beyond the explicit gate is desired, add a model-plugin capability that distinguishes Qwen3.8's admitted quality from Qwen3.6 without filename/backend branches, then run representative long-context quality at the intended supported ceiling and c>1 capacity gates."
+}
