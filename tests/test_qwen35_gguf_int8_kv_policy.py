@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -13,6 +14,8 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_KV_BLOCK16_ENV,
     _GGUF_INT8_KV_KEY_ONLY_ENV,
     _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
+    FULL_ATTENTION,
+    LINEAR_ATTENTION,
     Qwen35GGUFResidentSession,
     _gguf_aotriton_head_major_buffers,
     _gguf_int8_bf16_full_attention_layer_indices,
@@ -24,6 +27,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_int8_kv_scale_granularity,
     _gguf_int8_kv_value_bf16_enabled,
     _plan_gguf_int8_prefill_lifetime,
+    _plan_gguf_int8_prefill_lifetime_for_session,
     _validate_gguf_int8_kv_context,
 )
 from scripts.qwen35_gguf_bench import _decode_scratch_breakdown
@@ -112,8 +116,10 @@ def test_qwen38_pure_int8_prefill_plan_trades_layer_local_oracles_for_one_hidden
     assert plan.layer_local_oracle_bytes == 2_164_260_864
     assert plan.chunk_hidden_bytes == 41_943_040
     assert plan.layer_outer_hidden_bytes == 338_165_760
-    assert plan.projected_peak_delta_bytes == -1_732_771_840
-    assert plan.projected_peak_saving_bytes == 1_732_771_840
+    assert plan.chunk_token_bytes == 32_768
+    assert plan.layer_outer_token_bytes == 264_192
+    assert plan.projected_peak_delta_bytes == -1_732_540_416
+    assert plan.projected_peak_saving_bytes == 1_732_540_416
     assert plan.required_hidden_capacity == 33_024
     assert plan.oracle_buffer_count == 1
 
@@ -134,8 +140,8 @@ def test_qwen38_tail4_prefill_plan_still_saves_peak_with_shared_oracle() -> None
 
     assert plan.mode == "layer_outer_shared_oracle"
     assert plan.int8_full_attention_layers == 4
-    assert plan.projected_peak_delta_bytes == -109_576_192
-    assert plan.projected_peak_saving_bytes == 109_576_192
+    assert plan.projected_peak_delta_bytes == -109_344_768
+    assert plan.projected_peak_saving_bytes == 109_344_768
 
 
 def test_gguf_int8_prefill_plan_keeps_layer_local_route_when_full_hidden_costs_more() -> None:
@@ -154,7 +160,7 @@ def test_gguf_int8_prefill_plan_keeps_layer_local_route_when_full_hidden_costs_m
 
     assert plan.mode == "chunk_outer_layer_local_oracles"
     assert plan.int8_full_attention_layers == 2
-    assert plan.projected_peak_delta_bytes == 1_555_038_208
+    assert plan.projected_peak_delta_bytes == 1_556_056_064
     assert plan.projected_peak_saving_bytes == 0
     assert plan.required_hidden_capacity == 4_096
     assert plan.oracle_buffer_count == 2
@@ -178,6 +184,105 @@ def test_gguf_int8_prefill_plan_preserves_short_bf16_mirror_route() -> None:
     assert plan.required_hidden_capacity == 4_096
     assert plan.oracle_buffer_count == 0
     assert plan.projected_peak_delta_bytes == 0
+
+
+def test_qwen38_session_plan_selects_full_hidden_capacity_without_model_name_gate() -> None:
+    session = SimpleNamespace(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        kv_scale_granularity="per_token_head",
+        int8_bf16_full_attention_layer_indices=(),
+        scratch=SimpleNamespace(max_positions=33_024),
+        runner=SimpleNamespace(
+            hidden_size=5_120,
+            weights=SimpleNamespace(
+                config=SimpleNamespace(
+                    layer_types=(LINEAR_ATTENTION,) * 48 + (FULL_ATTENTION,) * 16,
+                    head_count_kv=4,
+                    key_length=256,
+                )
+            ),
+        ),
+    )
+
+    plan = _plan_gguf_int8_prefill_lifetime_for_session(session, scratch_rows=4_096)
+
+    assert plan.mode == "layer_outer_shared_oracle"
+    assert plan.required_hidden_capacity == 33_024
+    assert plan.oracle_buffer_count == 1
+
+
+def test_qwen38_shared_oracle_plan_reuses_one_pair_across_layers(monkeypatch) -> None:
+    allocations: list[_Buffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime) -> _Buffer:
+        buffer = _Buffer(0x10_0000 + len(allocations) * 0x10_0000, int(nbytes))
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr("hipengine.runtime.qwen35_gguf_runner.malloc", fake_malloc)
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runtime = SimpleNamespace()
+    session.scratch = SimpleNamespace(max_positions=33_024)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(head_count_kv=4, key_length=256))
+    )
+    session._int8_prefill_oracle_buffers = {}
+    session._int8_prefill_lifetime_plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=33_024,
+        scratch_rows=4_096,
+        hidden_size=5_120,
+        head_count_kv=4,
+        key_length=256,
+        full_attention_layers=16,
+        bf16_full_attention_layers=0,
+        has_bf16_mirror=False,
+        hidden_buffer_count=1,
+    )
+
+    first = session._int8_prefill_oracle_cache_for_layer(3)
+    second = session._int8_prefill_oracle_cache_for_layer(7)
+
+    assert first == second
+    assert len(allocations) == 2
+    assert len(session._int8_prefill_oracle_buffers) == 1
+
+
+def test_layer_local_oracle_plan_keeps_distinct_pairs(monkeypatch) -> None:
+    allocations: list[_Buffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime) -> _Buffer:
+        buffer = _Buffer(0x10_0000 + len(allocations) * 0x10_0000, int(nbytes))
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr("hipengine.runtime.qwen35_gguf_runner.malloc", fake_malloc)
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runtime = SimpleNamespace()
+    session.scratch = SimpleNamespace(max_positions=131_328)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(head_count_kv=2, key_length=256))
+    )
+    session._int8_prefill_oracle_buffers = {}
+    session._int8_prefill_lifetime_plan = _plan_gguf_int8_prefill_lifetime(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        max_positions=131_328,
+        scratch_rows=4_096,
+        hidden_size=7_168,
+        head_count_kv=2,
+        key_length=256,
+        full_attention_layers=10,
+        bf16_full_attention_layers=8,
+        has_bf16_mirror=False,
+        hidden_buffer_count=1,
+    )
+
+    first = session._int8_prefill_oracle_cache_for_layer(3)
+    second = session._int8_prefill_oracle_cache_for_layer(7)
+
+    assert first != second
+    assert len(allocations) == 4
+    assert len(session._int8_prefill_oracle_buffers) == 2
 
 
 def test_gguf_full_attention_prefill_scratch_retains_bf16_cache_by_default() -> None:
