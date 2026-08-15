@@ -192,6 +192,47 @@ drift, not a single-layout regression. Evidence:
 The superseded dual-layout publication remains in the
 [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
 
+### Radeon 8060S: Qwen3.8-27B Dense GGUF campaign opening
+
+This is the clean G0 **current snapshot**, not an optimization claim. hipEngine
+uses `943ec15f5`; llama.cpp HIP and Vulkan use build 10438 `9d57ce456`.
+Binding shape rows use Qwen3.8-27B Q4_K_M, BF16 K/V, explicit repeated token
+9707 arrays, one same-shape warmup, three measured runs, full output hashes,
+and one right-sized process per engine/shape. GTT is whole-device process-run
+delta on the unified-memory APU.
+
+| Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **85.288** | 352.426 | 242.956 | **7.0257** | 12.1506 | 12.7629 | **33.125 GiB** | 15.785 GiB |
+| 1K/128 | **84.497** | 364.443 | 247.610 | **6.9592** | 12.0645 | 12.7197 | **33.613 GiB** | 15.816 GiB |
+| 4K/128 | **84.204** | 367.993 | 354.368 | **6.7144** | 11.5081 | 12.5683 | **36.046 GiB** | 16.004 GiB |
+
+Every llama row has the same stable 129-token hash as the common-capacity
+hipEngine control. hipEngine tracked ownership returns to zero after close and
+peaks at 31.659/32.093/34.497 GiB, but its opening plan still carries
+10,790,502,400 alternate-layout bytes. Synthetic-input llama-bench rows and the
+first F16 profile are retained as diagnostics only, not mixed into this table.
+
+Natural exact suite (ten prompts, six train/four heldout, four categories,
+three runs and 720 timed transitions per mode):
+
+| Engine/mode | Throughput | AR ratio | AR-equivalent output | GTT delta |
+| --- | ---: | ---: | --- | ---: |
+| hipEngine true AR | **7.10844** | 1.0000x | deterministic reference | **34.555 GiB** |
+| hipEngine exact B1 | **14.79394** | 2.0812x | 30/30 | shared process |
+| hipEngine exact B2 | **18.48249** | 2.6001x | 30/30 | shared process |
+| hipEngine exact B3 | **19.72960** | **2.7755x** | 30/30; GPU accept = CPU | shared process |
+| llama.cpp HIP AR | 12.06439 | 1.0000x | deterministic reference | 15.803 GiB |
+| llama.cpp HIP B3 | 19.63473 | 1.6275x | 30/30; valid comparator | 16.358 GiB |
+| llama.cpp Vulkan AR | 12.77754 | 1.0000x | nondeterministic on 2/10 prompts | 15.871 GiB |
+| llama.cpp Vulkan B3 | 26.10541 | 2.0431x | invalid: 27/30; stretch rate | 16.722 GiB |
+
+The opening exact B3 leads the binding correctness-valid HIP comparator by
+0.483%, while prefill, AR, memory and the invalid Vulkan stretch rate remain
+open campaign gaps. Evidence:
+[`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
+[`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a
