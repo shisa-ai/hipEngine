@@ -110,6 +110,58 @@ should be removed or collapsed.
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
 
+## gfx1151 Qwen3.8 Q5 source-F16 rollback and workspace seam
+
+- Added 2026-08-15 for the 48 sole-Q5T16 K6,144/N5,120 recurrent outputs.
+  Keep exact Q5T16 WMMA registered and selectable through one release window;
+  source-F16 changes arithmetic even though the octet producer is byte-exact,
+  the CPU quality gate passes, and every retained natural token/acceptance
+  trajectory is identical.
+- The source-F16 context adds bounded activation/tile/output scratch, raising
+  tracked peak 24.375 MiB at 512 and 65 MiB at 1K/4K. P8 must re-run owner-slot
+  liveness and attempt safe dead-input/in-place or arena reuse. Remove any
+  redundant standalone field after a proven alias, but do not trade the sole
+  Q5T16 payload for persistent F16 weights.
+- Q4/Q6 source-F16 maps are explicit empty denials after complete pp512 losses.
+  Remove those declarations only when package capability defaults are made
+  fail-closed per quant; do not interpret absence as inheriting gfx1100 policy.
+
+## gfx1151 Qwen3.8 compact-peer GDN rollback seam
+
+- Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route
+  right-sizes normalized Q/K to K-head cardinality and is bit-identical to the
+  peer-wave oracle, but differs slightly from scalar-exact direct LDS32
+  (maximum BF16 output 0.001953125, FP32 state 2.24e-8). Keep
+  `chain_lds32_direct_nonvolatile` as the explicit exact selector through one
+  release window and retain both primitive chains permanently as numerical
+  fallbacks.
+- The gfx1151 1,024-row recurrence cap is evidence, not a universal tuning
+  constant: unchunked compact wins at 512/1K but loses 8.26% at 4K; state-carry
+  chunking restores a 1.422x complete-chain win. Revisit 1K only during P4's
+  full 128/256/512/1K chunk sweep, with peer-bit/state exactness, scalar-oracle
+  bounds, 512/1K/4K full-engine gates, and the natural category suite. Do not
+  remove or widen the cap from a single-prompt timing.
+
+## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
+
+- Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by
+  22.11-23.65% and removed 49,479,680 bytes, but regressed complete AR by
+  0.14-0.19%. Actual-weight counterbalancing localized K=5,120/N=10,240 QKV c1
+  at +8.72% wall with 0/11 planar wins. The backend capability therefore keeps
+  one standard-T16 owner for those 24 tensors while down, narrow V, and root
+  remain sole planar. There is no duplicate payload or environment selector.
+- The exact planar down+residual alias is separately excluded on gfx1151. Its
+  same-planar projection plus primitive BF16 add fallback is 1.1735x/1.1144x/
+  1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
+  fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
+  production fallback chain.
+- Removal trigger: delete the QKV slot exclusion only after a byte-neutral
+  planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
+  512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused
+  residual alias only after it beats the unfused same-planar chain at every
+  rows2-4 shape and remains non-regressive in the full category suite. Keep
+  standard T16 and projection+add registered as required numerical fallbacks.
+
 ## Dense-H5120 B4 exact eager-MTP seam
 
 - Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step

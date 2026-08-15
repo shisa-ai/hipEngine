@@ -3096,21 +3096,45 @@ class Qwen35GGUFFullStackRunner:
                     if mode == "chain_compact_peer_wave32"
                     else (cfg.ssm_time_step_rank,)
                 )
-                normalized_recurrent(
-                    scratch.prefill_query.ptr,
-                    scratch.prefill_key.ptr,
-                    scratch.prefill_value.ptr,
-                    scratch.prefill_beta.ptr,
-                    scratch.prefill_decay.ptr,
-                    recurrent_state.ptr,
-                    scratch.recurrent_out.ptr,
-                    rows,
-                    *recurrent_shape,
-                    cfg.ssm_state_size,
-                    self.ssm_value_dim,
-                    stream=stream,
-                    runtime=runtime,
+                compact_chunk_rows = (
+                    int(plan.compact_peer_chunk_rows)
+                    if mode == "chain_compact_peer_wave32"
+                    else 0
                 )
+                compact_chunk_rows = compact_chunk_rows or rows
+                qk_row_bytes = (
+                    int(cfg.ssm_group_count)
+                    * int(cfg.ssm_state_size)
+                    * DType.FP32.itemsize
+                )
+                value_row_bytes = (
+                    int(cfg.ssm_time_step_rank)
+                    * int(self.ssm_value_dim)
+                    * DType.FP32.itemsize
+                )
+                scalar_row_bytes = (
+                    int(cfg.ssm_time_step_rank) * DType.FP32.itemsize
+                )
+                for start in range(0, rows, compact_chunk_rows):
+                    chunk = min(compact_chunk_rows, rows - start)
+                    qk_offset = start * qk_row_bytes
+                    value_offset = start * value_row_bytes
+                    scalar_offset = start * scalar_row_bytes
+                    normalized_recurrent(
+                        scratch.prefill_query.ptr + qk_offset,
+                        scratch.prefill_key.ptr + qk_offset,
+                        scratch.prefill_value.ptr + value_offset,
+                        scratch.prefill_beta.ptr + scalar_offset,
+                        scratch.prefill_decay.ptr + scalar_offset,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr + value_offset,
+                        chunk,
+                        *recurrent_shape,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
             plan.rmsnorm_gate(
                 scratch.recurrent_out.ptr,
                 scratch.linear_z.ptr,
@@ -24866,6 +24890,7 @@ class _GGUFGDNPrefillPlan:
     auto_modes_by_quant_shape: Mapping[
         tuple[str, int, int, int, int], str
     ] | None = None
+    compact_peer_chunk_rows: int = 0
 
     @property
     def has_chain(self) -> bool:
@@ -25064,6 +25089,27 @@ def _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
             )
         normalized[(quant, *shape)] = mode
     return MappingProxyType(normalized)
+
+
+def _gguf_gdn_prefill_backend_compact_peer_chunk_rows(backend: str) -> int:
+    """Resolve the architecture-scoped compact-peer recurrence chunk."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
+        0,
+    )
+    try:
+        rows = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "backend GGUF GDN compact-peer chunk rows must be an integer"
+        ) from exc
+    if rows < 0:
+        raise RuntimeError(
+            "backend GGUF GDN compact-peer chunk rows must be non-negative"
+        )
+    return rows
 
 
 def _gguf_gdn_prefill_backend_exact_mode(backend: str) -> str:
@@ -25425,6 +25471,9 @@ def _resolve_gguf_gdn_prefill_plan(
         auto_mode=_gguf_gdn_prefill_backend_auto_mode(backend),
         auto_modes_by_quant_shape=(
             _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(backend)
+        ),
+        compact_peer_chunk_rows=(
+            _gguf_gdn_prefill_backend_compact_peer_chunk_rows(backend)
         ),
     )
 

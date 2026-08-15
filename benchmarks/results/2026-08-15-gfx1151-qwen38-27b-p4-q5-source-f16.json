@@ -1,0 +1,278 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_q5_source_f16",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "role": "48 x K6144/N5120 Q5_K recurrent outputs"
+  },
+  "baseline": {
+    "commit": "7c42e976a",
+    "route": "sole Q5T16 exact WMMA",
+    "pp512": {
+      "prefill_tok_s": 330.2283777808853,
+      "prefill_wall_ms": 1550.4421619989444,
+      "tracked_peak_bytes": 17963104644,
+      "teardown_bytes": 0
+    }
+  },
+  "family_screen": {
+    "q6": {
+      "decision": "rejected wall and memory",
+      "candidate": {
+        "prefill_tok_s": 329.54126997431945,
+        "prefill_wall_ms": 1553.6749009916093,
+        "tracked_peak_bytes": 18008193412,
+        "teardown_bytes": 0
+      },
+      "prefill_ratio": 0.9979192950915268,
+      "evidence": {
+        "path": "/tmp/qwen38-task21-p4-q6-pp512.json",
+        "sha256": "3c9182cdce2e83c961333491980cd226ce512e9955927eaffd1d57e00f8d46f7",
+        "bytes": 253735
+      }
+    },
+    "q4": {
+      "decision": "rejected wall and memory",
+      "candidate": {
+        "prefill_tok_s": 321.49729266319224,
+        "prefill_wall_ms": 1592.548403001274,
+        "tracked_peak_bytes": 18008193412,
+        "teardown_bytes": 0
+      },
+      "prefill_ratio": 0.9735604638936077,
+      "evidence": {
+        "path": "/tmp/qwen38-task21-p4-q4-pp512.json",
+        "sha256": "a0def629e41d31a805933719d60d1cd8239de4da61b271f2849f6b7c14dbb09c",
+        "bytes": 253747
+      }
+    },
+    "q5": {
+      "decision": "retained",
+      "candidate": {
+        "prefill_tok_s": 343.9367548020148,
+        "prefill_wall_ms": 1488.645784003893,
+        "tracked_peak_bytes": 17988663684,
+        "teardown_bytes": 0
+      },
+      "prefill_ratio": 1.041511808019798,
+      "ssm_out_control_ms": 115.538,
+      "ssm_out_candidate_ms": 52.78136459272618,
+      "evidence": {
+        "path": "/tmp/qwen38-task21-p4-q5-pp512.json",
+        "sha256": "75f0e71d1a72b31788897c741e2a3c160645caafaa3dcc8fa4971016080e9ddd",
+        "bytes": 253555
+      }
+    }
+  },
+  "implementation": {
+    "master_policy": "Qwen3.8 dense Q4_K_M only",
+    "q4_policy": {},
+    "q6_policy": {},
+    "q5_policy": {
+      "6144x5120": {
+        "512": 1280,
+        "1024": 1280,
+        "4096": 1024
+      }
+    },
+    "producer": "f16_rocblas_t16_octet_bf16_bf16_out",
+    "resident_weight_layout": "gguf_q5_k_t16_v1",
+    "duplicate_weight_bytes": 0,
+    "workspace": "bounded temporary activation/weight tile/output tile; zero rocBLAS workspace",
+    "exact_fallback": "Q5T16 WMMA"
+  },
+  "producer_trace": {
+    "status": "passed",
+    "kernel_trace": "/tmp/qwen38-task21-p4-q5-trace/gfx1151/910393_kernel_trace.csv",
+    "sha256": "b856145fe0a3ddc52db2f91c665da0ff83583d30dcfae3e217809a44d45f4164",
+    "all_rows": 1739,
+    "q5_octet_producer_calls": 192,
+    "expected_calls": 192,
+    "total_producer_ms": 8.433259,
+    "all_duration_positive": true,
+    "resources": [
+      {
+        "workgroup_x": 256,
+        "vgpr": 48,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    ],
+    "evidence": {
+      "path": "/tmp/qwen38-task21-p4-q5-trace/validated-summary.json",
+      "sha256": "05a55ec18d37f1b0f0a824f5676825e7bb1d649f659fd9407447cacc74d2a89c",
+      "bytes": 461
+    }
+  },
+  "shapes": {
+    "status": "passed_prefill",
+    "rows": {
+      "512/128": {
+        "control": {
+          "prefill_tok_s": 330.18659021161307,
+          "decode_tok_s": 11.823615750268504,
+          "peak_gib": 16.729414347559214,
+          "source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-512.json",
+          "sha256": "c7834cd62a98a4c447e4afeccaf5686659e56d432cf200715a0e0d4db49063c6"
+        },
+        "candidate": {
+          "prefill_tok_s": 343.3199678289345,
+          "decode_tok_s": 11.803131426928202,
+          "peak_gib": 16.753218058496714,
+          "source": "/tmp/qwen38-task21-p4-q5-shapes/candidate-512.json",
+          "sha256": "c025895adacd34284c53ad33c0d357d2c61a0a2b516e3d69d7de121f706753db"
+        },
+        "ratios": {
+          "prefill": 1.0397756238643865,
+          "decode": 0.9982675076919819
+        },
+        "peak_delta_gib": 0.0238037109375,
+        "final_ids_identical": true,
+        "native_fallbacks": 0,
+        "teardown_bytes": 0
+      },
+      "1K/128": {
+        "control": {
+          "prefill_tok_s": 329.79789156335073,
+          "decode_tok_s": 11.677737586734208,
+          "peak_gib": 19.465825732797384,
+          "source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-1k4k.json",
+          "sha256": "d2f6e0cb6ff9d313ada20eed03d0a80af9078137aef71ac110006e0488e39b36"
+        },
+        "candidate": {
+          "prefill_tok_s": 338.03766341589244,
+          "decode_tok_s": 11.651986402581699,
+          "peak_gib": 19.529302295297384,
+          "source": "/tmp/qwen38-task21-p4-q5-shapes/candidate-1k4k.json",
+          "sha256": "59527aafeab5aec82b9f4449a7dd95fbe9ee7e75db9d5d8ce7a3b12fff31ba5d"
+        },
+        "ratios": {
+          "prefill": 1.0249843072479405,
+          "decode": 0.9977948481920195
+        },
+        "peak_delta_gib": 0.0634765625,
+        "final_ids_identical": true,
+        "native_fallbacks": 0,
+        "teardown_bytes": 0
+      },
+      "4K/128": {
+        "control": {
+          "prefill_tok_s": 324.0872731828156,
+          "decode_tok_s": 10.941411983384711,
+          "peak_gib": 19.465825732797384,
+          "source": "/tmp/qwen38-task20-gdn-shapes-candidate/candidate-1k4k.json",
+          "sha256": "d2f6e0cb6ff9d313ada20eed03d0a80af9078137aef71ac110006e0488e39b36"
+        },
+        "candidate": {
+          "prefill_tok_s": 332.67561820438954,
+          "decode_tok_s": 10.918004407905913,
+          "peak_gib": 19.529302295297384,
+          "source": "/tmp/qwen38-task21-p4-q5-shapes/candidate-1k4k.json",
+          "sha256": "59527aafeab5aec82b9f4449a7dd95fbe9ee7e75db9d5d8ce7a3b12fff31ba5d"
+        },
+        "ratios": {
+          "prefill": 1.0265000996096794,
+          "decode": 0.9978606439905249
+        },
+        "peak_delta_gib": 0.0634765625,
+        "final_ids_identical": true,
+        "native_fallbacks": 0,
+        "teardown_bytes": 0
+      }
+    },
+    "evidence": {
+      "path": "/tmp/qwen38-task21-p4-q5-shapes/validated-summary.json",
+      "sha256": "a1930484105f53ef9a55336f72d1deb79ed41a0ed6e62d4452dac2f35ffaafec",
+      "bytes": 2879
+    }
+  },
+  "natural": {
+    "status": "passed_post_control_within_noise_guard",
+    "candidate_tok_s": {
+      "true_ar": 12.024508188666315,
+      "1": 18.831143372275452,
+      "2": 23.072397600620086,
+      "3": 24.122081034457356
+    },
+    "historical_control_tok_s": {
+      "true_ar": 12.05808700289307,
+      "1": 18.912998760625168,
+      "2": 23.143502026150898,
+      "3": 24.210545613820315
+    },
+    "post_control_tok_s": {
+      "true_ar": 12.015105632503431,
+      "1": 18.814424015070898,
+      "2": 23.025327211532595,
+      "3": 24.111219860475682
+    },
+    "historical_ratios": {
+      "true_ar": 0.9972152453188721,
+      "1": 0.9956720037162943,
+      "2": 0.9969276721625592,
+      "3": 0.9963460311562553
+    },
+    "post_control_ratios": {
+      "true_ar": 1.0007825612566774,
+      "1": 1.000888645710927,
+      "2": 1.0020442875210873,
+      "3": 1.0004504614052927
+    },
+    "bracket_mean_ratios": {
+      "true_ar": 0.9989957186639082,
+      "1": 0.9982735096554985,
+      "2": 0.999479431537681,
+      "3": 0.9983940279371091
+    },
+    "minimum_post_control_scope_ratio": 0.998609768715134,
+    "minimum_bracket_mean_scope_ratio": 0.9965674001390102,
+    "adjudication": "Retain prefill-only Q5 source-F16. All full modes beat the clean post-candidate control; all 28 full/train/heldout/category scopes are within 0.5% of both post-control and bracket mean; token/accept trajectories and decode graph are identical. Historical/bracket negatives are disclosed as unchanged-path drift, not speed wins.",
+    "all_tokens_identical": true,
+    "all_acceptance_trajectories_identical": true,
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_reconciled": true,
+    "native_graph": {
+      "1": {
+        "cycles": 393,
+        "native_fallbacks": 0
+      },
+      "2": {
+        "cycles": 297,
+        "native_fallbacks": 0
+      },
+      "3": {
+        "cycles": 264,
+        "native_fallbacks": 0
+      }
+    },
+    "teardown_bytes": 0,
+    "candidate_evidence": {
+      "path": "/tmp/qwen38-task21-p4-q5-natural/validated-summary.json",
+      "sha256": "f5c9393efbb8f3f56aed0dbdd4702c4df6beb3424e5cd4685bf2602ae45141fe",
+      "bytes": 1430
+    },
+    "post_control_evidence": {
+      "path": "/tmp/qwen38-task21-p4-q5-full-post-control/validated-summary.json",
+      "sha256": "eb622ff5db30dfc5bcb29daab9cb0c9b367be5b88f21589c70f46d1d5ada4de9",
+      "bytes": 6919
+    }
+  },
+  "validation": {
+    "q5_scalar_pair_octet_source_f16_bytes": "exact",
+    "cpu_quality_gate": "passed",
+    "focused_tests": 14,
+    "require_cached_build": true,
+    "compiler_child_measured": false
+  },
+  "reason_not_publishable": "dirty development candidate; clean candidate benchmark evidence deferred to milestone publication"
+}

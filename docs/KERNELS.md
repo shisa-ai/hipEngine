@@ -127,9 +127,22 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641; fixed256 and unsupported shapes/backends remain fallbacks. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 and Q8 `(16K,16V,128,128)` select cluster8; all other gfx1151 shapes retain exact nonvolatile LDS32. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 and Q8 `(16K,16V,128,128)` select cluster8; Q4 `(16K,48V,128,128)` selects 1K-chunked compact-peer wave32; all other gfx1151 shapes retain exact nonvolatile LDS32. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
+
+Qwen3.8-27B Q4_K_M is the independent 16K/48V/128x128 gfx1151 GDN
+exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
+head and carries one FP32 recurrent state across at most 1,024 rows per launch;
+prepare and RMSNorm still cover the complete prefill once. This chunk is
+required because unchunked 4K loses 8.26% to direct LDS32, while the repaired
+route is peer-bit-exact and wins the production complete chain
+1.517x/1.479x/1.422x at 512/1K/4K. Scalar-exact output/state deltas are bounded
+at 0.001953125/2.24e-8. Integrated pp512 improves 316.258 to 330.069
+tok/s and drops 24 MiB; 512/1K/4K peak falls 24/128/128 MiB. rocprof confirms
+48/192 compact recurrence launches at pp512/pp4K (local128, 40 VGPR, zero LDS
+or scratch). Exact direct LDS32 remains the explicit rollback. Evidence:
+[`Qwen3.8 compact-peer GDN`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p3-compact-peer-gdn.json).
 
 ### GGUF / Qwen / Laguna path
 
@@ -176,12 +189,54 @@ dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12
 [`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
+For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
+plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
+`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
+absent. The existing local32 c1, exact rows-2-4 rowtile, same-T16 residual and
+unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal attention-pair owners
+cover the complete operation set. The raw token embedding remains raw GGUF and
+peer geometries retain their prior policy. No kernel body or `KVLiveSpans` ABI
+changes are involved. The same gfx1151 model policy also gives the 48 exact
+K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
+`gguf_q5_k_t16_v1/tiles` payload each. Existing direct c1, exact rows-2-4
+rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the role; the
+GDN and residual boundaries remain separate registered primitives. Dense BF16
+stays available as a numerical oracle and policy-miss fallback but is not a
+resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
+independently shape-qualified.
+
+The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
+than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
+attention-V tensors, and untied root own one
+`gguf_q6_k_t16_qmicro_planar_v1/tiles` payload each. The 24 recurrent
+K=5,120/N=10,240 QKV tensors retain one `gguf_q6_k_t16_v1/tiles` payload each
+because planar c1 loses 8.72% on actual weights; no tensor retains both layouts
+and dense-BF16 Q6 bytes are zero. Exact native c1, rows2-4, WMMA, residual,
+and top-1 leaves remain registered. On gfx1151, rows2 F32 uses a dedicated
+planar col16 owner, while FFN down+residual deliberately uses planar projection
+plus the primitive BF16 add: the exact fused sibling loses 17.35%/11.44%/11.15%
+at rows2/3/4 and remains a peer-backend/diagnostic leaf. Complete actual-weight,
+512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
+gates retain the role-qualified route. Evidence:
+[`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
+
+Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
+K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
+octet producer expands four bounded tiles per layer into temporary F16,
+zero-workspace rocBLAS publishes BF16, and exact Q5T16 WMMA remains the policy
+miss/rollback. Q4 and Q6 source-F16 are explicitly empty after pp512 wall and
+memory losses. Q5 improves prefill 3.978%/2.498%/2.650% at 512/1K/4K while
+adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
+teardown. All natural tokens/acceptance are identical; every full/train/
+heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
+[`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
+
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
 K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,
 physical c8 is split into two exact c4 launches by backend capability, and the
-existing T16 WMMA owner handles bulk rows. Every other Q4 role, Qwen3.6-27B,
-and peer backends retain their prior residents. No attention kernel or
+existing T16 WMMA owner handles bulk rows. Every other 0.8B Q4 role and peer
+geometry retains its prior residents. No attention kernel or
 `KVLiveSpans` ABI changes. Evidence:
 [`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
 

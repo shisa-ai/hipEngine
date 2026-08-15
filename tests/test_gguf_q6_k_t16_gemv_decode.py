@@ -194,7 +194,7 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         layer="linear",
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_gemv_rowtile_bf16_f32_out",
-    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear+argmax",
@@ -579,6 +579,48 @@ def test_q6_t16_qmicro_planar_rowtile_col8_f32_is_bit_exact_to_legacy(
     )
     actual = _run_single(
         t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_rowtile_f32_rows2_matches_generic_legacy_tree(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 2, 512, 256
+    rng = np.random.default_rng(0x6A16)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        t16_mod.gguf_q6_k_t16_gemv_rowtile_bf16_f32_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        getattr(
+            t16_mod,
+            "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
+        ),
         x,
         qmicro_tiles,
         rows,

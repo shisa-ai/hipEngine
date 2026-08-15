@@ -1,8 +1,9 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **plan approved in scope; measurement and implementation lanes have not
-started.** The working performance set is `512/128`, `1024/128`, and
-`4096/128`. The model is Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
+Status: **G1 single-layout ownership complete on 2026-08-15; the bounded P4
+prefill ladder is closed below G2, and P5 true-AR decode is next.** The working
+performance set is `512/128`, `1024/128`, and `4096/128`. The model is
+Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -10,9 +11,17 @@ valid exact MTP, while minimizing resident and whole-process memory. A separate
 lane will determine whether native INT8 K/V can meet the repository quality
 contract without losing the production graph path or hiding a BF16 cache.
 
-This document is a campaign plan, not a performance claim. Opening numbers are
-explicitly labeled diagnostics and must be refreshed by M0 before they become
-optimization denominators.
+The retained-path P4 development gate is `343.320/338.038/332.676` prefill
+tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
+below clean llama HIP and is 6.12% below Vulkan at 4K. These are not new clean
+publication toplines: a same-protocol clean three-shape refresh is still needed
+before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
+planar-Q6 row80, and standard-Q6 48x64 tiling are rejected. AOTriton attention
+is active but nonmaterial, and the remaining primitive add boundary is below
+the >=1% request gate.
+
+This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
+used as the optimization denominator; it is not itself an optimization claim.
 
 Related authorities:
 
@@ -102,44 +111,66 @@ Keep these scopes separate:
 
 ---
 
-## 2. Opening diagnostic and target gap
+## 2. G0 current snapshot and target gap
 
-The matched current-engine comparison used clean llama.cpp HIP and Vulkan build
-10438 at `9d57ce456`, BF16 K/V, identical natural prompt token arrays, and 24
-transition-normalized natural decode steps. The hipEngine rows predate this
-plan and M0 will refresh them on the current commit.
+G0 uses clean hipEngine `943ec15f5`, clean llama.cpp HIP/Vulkan build 10438
+`9d57ce456`, BF16 K/V, and Radeon 8060S/`gfx1151`. Binding shape rows use token
+ID 9707 repeated exactly, one same-shape warmup, three measured runs, full
+output hashes, and one right-sized process per engine/shape. `llama-bench`
+rows are retained only as split-timing/profile diagnostics because it cannot
+accept the explicit token arrays; the first such diagnostic also used F16 K/V
+and is excluded from every binding denominator.
 
-### 2.1 Known 512 and natural-suite rows
+### 2.1 Matched right-sized shape rows
 
-| Metric | hipEngine gfx1151 | llama.cpp HIP | llama.cpp Vulkan | Current valid target | Required lift |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| pp512 | `147.984 tok/s` | **`353.620`** | `242.538` | `353.620` | **+138.96%** |
-| Natural true AR | `7.1358 tok/s` | `12.0437` | **`12.7723`** | `12.7723` | **+79.00%** |
-| Natural exact B3 | `19.4404 tok/s` | **`19.6552`** | `26.0789` diagnostic-invalid | `19.6552` | **+1.10%** |
-| AR/base memory | `31.659 GiB` owned; GTT delta pending M0 | `15.790 GiB` GTT delta | `15.868 GiB` GTT delta | `<=15.790 GiB` in matched GTT scope | pending matched hipEngine GTT row |
+| Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | `85.288` | **`352.426`** | `242.956` | `7.0257` | `12.1506` | **`12.7629`** | `33.125 GiB` | **`15.785 GiB`** |
+| 1K/128 | `84.497` | **`364.443`** | `247.610` | `6.9592` | `12.0645` | **`12.7197`** | `33.613 GiB` | **`15.816 GiB`** |
+| 4K/128 | `84.204` | **`367.993`** | `354.368` | `6.7144` | `11.5081` | **`12.5683`** | `36.046 GiB` | **`16.004 GiB`** |
 
-The opening hipEngine owned-byte value and llama.cpp GTT deltas are different
-scopes and are not a parity ratio; they only expose the need for M0's matched
-process-GTT measurement. The Vulkan B3 throughput is a stretch reference, not a valid exact target:
-its Qwen3.8 B3 output matched Vulkan AR on only 9/10 prompts, and B4 matched on
-6/10. Current llama.cpp HIP B3 is exact on 10/10 and is the binding MTP
-comparator until a Vulkan build passes its own AR-equivalence gate. hipEngine
-still aims to exceed the diagnostic Vulkan rate after clearing the valid HIP
-row.
+All six llama rows and the common-capacity hipEngine control produce the same
+129-token SHA-256 `5055191f…ee652`; hipEngine's three runs retain stable token
+9707 and return tracked ownership to zero. Relative to the faster comparator,
+hipEngine needs **+313.22%/+331.31%/+337.02%** prefill and
+**+81.66%/+82.77%/+87.19%** AR lift. Meeting the lower matched llama GTT row
+requires **52.35%/52.95%/55.60%** less hipEngine process-GTT delta.
 
-### 2.2 Current three-shape hipEngine diagnostics
+### 2.2 Natural-suite AR and exact MTP
 
-| Shape | Prefill | AR decode | B3 decode | Evidence status |
-| --- | ---: | ---: | ---: | --- |
-| 512/128 | `147.83-148.94` | `7.05` | `22.614` repeat-control | one-run/incomplete-sweep diagnostic |
-| 1K/128 | `157.09-158.14` | `6.99` | `16.589` repeat-control | one-run/incomplete-sweep diagnostic |
-| 4K/128 | `153.536` | `6.710` | `15.937` repeat-control | exact real-device GREEN after scratch fix |
+Ten prompts cover all four categories, six train prompts and four heldouts,
+with three runs and 720 timed transitions per mode.
 
-The 4K row uses a 128K-capacity resident allocation and therefore is not the
-right-sized memory denominator. Commit `5e4691814` fixes the prior 4K target-
-verifier page fault by recycling bounded prefill hidden scratch. M0 must rerun
-all three right-sized rows from a clean tree and collect matched llama.cpp
-HIP/Vulkan rows before any optimization claim.
+| Engine/mode | Throughput | Own-AR ratio | AR-equivalent output | Process GTT delta |
+| --- | ---: | ---: | --- | ---: |
+| hipEngine true AR | `7.10844` | `1.0000x` | deterministic reference | `34.555 GiB` |
+| hipEngine exact B1 | `14.79394` | `2.0812x` | `30/30` | shared process |
+| hipEngine exact B2 | `18.48249` | `2.6001x` | `30/30` | shared process |
+| hipEngine exact B3 | **`19.72960`** | **`2.7755x`** | `30/30`; GPU accept = CPU | shared process |
+| llama.cpp HIP AR | `12.06439` | `1.0000x` | deterministic reference | **`15.803 GiB`** |
+| llama.cpp HIP B3 | `19.63473` | `1.6275x` | `30/30`; valid comparator | `16.358 GiB` |
+| llama.cpp Vulkan AR | **`12.77754`** | `1.0000x` | nondeterministic on 2/10 prompts | `15.871 GiB` |
+| llama.cpp Vulkan B3 | `26.10541` | `2.0431x` | invalid: `27/30`; stretch rate | `16.722 GiB` |
+
+hipEngine needs **+79.75%** natural-AR lift. Its opening exact B3 already leads
+the binding correctness-valid HIP row by **0.483%**, but the invalid Vulkan
+rate remains a **+32.32%** stretch gap. Vulkan B1-B3 each match only 9/10
+corresponding AR prompts per run, so none can be promoted as a correctness-valid
+MTP target.
+
+### 2.3 Opening ownership and ranked profile
+
+The current gfx1151 materialization plan owns `33,127,663,616` weight bytes,
+including `10,790,502,400` alternate-layout bytes; the qualified gfx1100
+single-layout plan is `17,121,478,656` bytes with zero alternate bytes. The
+same-stream pp512/pp1K/pp4K ledgers reconcile at least 97.66% of complete wall;
+linear-attention FFN gate/up leads at 32.93-33.22%, followed by SSM output,
+linear-attention FFN down/residual, full-attention FFN gate/up, and linear-
+attention QKV/gate. The 512 eager AR ledger reconciles 99.55% of decode wall
+and assigns 42.76% to FFN gate/up. This admits sole compressed ownership before
+micro-tuning. Full provenance, samples, memory scopes, trace resources and raw
+hashes are in
+[`2026-08-15-gfx1151-qwen38-27b-p0-baseline.json`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json).
 
 ---
 
@@ -313,7 +344,8 @@ opening hypothesis; each retained structural unit can change it.
 | P0.2 | Record effective route and physical weight census. | All requested owners are concrete; duplicate/alternate bytes and per-quant residency are explicit. |
 | P0.3 | Run M1 semantic profiles. | Complete owner ledger and ranked whole-request ceilings. |
 
-No device code begins before P0. A missing/incorrect registered route is fixed
+P0 completed on 2026-08-15 with the compact G0 artifact linked in Section 2.
+No device code began before P0. A missing/incorrect registered route is fixed
 as a route unit and followed by a profile refresh.
 
 ### P1 — Sole dense Q4T16 ownership
@@ -396,6 +428,17 @@ Candidate order:
 A leaf normally needs >=1.10x and >=1% projected request saving to receive a
 full-model A/B. Keep a smaller exact non-regressive win if already measured, but
 close the package rather than opening an unbounded variant ladder.
+
+P4 closure on 2026-08-15 follows that bound. Q5 K6,144/N5,120 source-F16 is the
+only retained P4 unit. Chunk128/256/512 loses every complete shape; Q4 dual
+row128 loses 9.9-12.1%; planar-Q6 row80 is nonuniform and projects below 1%;
+and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. The pp512
+ledger leaves Q4 dual/single and Q6 as large families, but previously screened
+Q4/Q6 source-F16, geometry, attention, and add-boundary mechanisms provide no
+remaining bounded all-shape candidate. G2 therefore remains blocked rather
+than complete. Reopen P4 only for a materially new operation-complete dataflow
+with a measured >=1% request projection or after a compiler/runtime/baseline
+change invalidates these economics.
 
 ### P5 — True-AR decode
 
@@ -595,8 +638,8 @@ Do not start or repeat these without a new measured complete-owner premise:
 
 | Milestone | Required result |
 | --- | --- |
-| **G0 Baseline frozen** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
-| **G1 Single-layout parity** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
+| **G0 Baseline frozen — complete 2026-08-15** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
+| **G1 Single-layout parity — complete 2026-08-15** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
 | **G2 Prefill win** | hipEngine beats both llama backends at all three prefill shapes with retained quality and memory. |
 | **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
