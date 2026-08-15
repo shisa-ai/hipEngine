@@ -190,13 +190,13 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **973.457** | **33.521** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **956.579** | **33.964** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **959.416** | **34.060** |
 
 #### MTP
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.925 tok/s** | **2.8104x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **62.440 tok/s** | **1.7695x** |
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 

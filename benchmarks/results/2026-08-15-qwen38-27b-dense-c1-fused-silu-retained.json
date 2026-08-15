@@ -2,12 +2,13 @@
   "schema": 1,
   "kind": "qwen38_27b_dense_c1_fused_silu_retained",
   "created_at": "2026-08-15T05:13:51Z",
-  "status": "accepted_default",
-  "performance_claim": true,
+  "status": "superseded_contaminated_natural25_timing",
+  "performance_claim": false,
   "correctness_claim": true,
-  "topline_eligible": true,
+  "topline_eligible": false,
   "decision": "retain_existing_q4t16_dense_dual_local32_silu_owner",
-  "decision_reason": "The existing exact Q4T16 c1 dual+SiLU owner is the only retained gfx1151 0.8B optimization with both a matching 27B operation and a matching sole-resident layout. It removes 128 PM4 graph nodes, improves Qwen3.8 graph decode 1.259% and full-suite true AR 13.364%, leaves prefill and memory non-regressive, and improves absolute native-B3 throughput with unchanged acceptance and exact outputs.",
+  "decision_reason": "The exact fused owner remains retained based on its valid direct matched A/B and the later idle-card correction. This artifact's natural25 performance comparison and 2.8104x MTP ratio are superseded because competing GPU activity contaminated the AR denominator.",
+  "superseded_by": "benchmarks/results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json",
   "source": {
     "base_commit": "421325cee",
     "tested_tree_dirty_only_for_candidate": true,
@@ -184,8 +185,9 @@
     "reason": "The retained route adds no allocation, changes no KV/prefill path, and direct tracked peak is byte-identical; the earlier real 32K gate retains its 2.115 GiB headroom."
   },
   "limitations": [
-    "The direct A/B uses separate resident processes in control-then-candidate order; each side has three low-variance measured runs.",
-    "Natural25 MTP has one full-suite run per route, as required by the dense suite protocol; every category is non-regressive in absolute MTP throughput.",
+    "SUPERSEDED: the natural25 timing rows and derived 2.8104x ratio were contaminated by competing GPU activity; use the clean-idle correction artifact.",
+    "The direct A/B remains valid: separate resident processes in control-then-candidate order, each with three low-variance measured runs.",
+    "Natural25 exactness, acceptance, topology, and teardown evidence remain valid even though its timing claims are superseded.",
     "Only the existing c1 gate/up+SiLU owner is retained. No 0.8B shape-specific pack8, GDN, attention, norm, or dense-BF16 policy is copied."
   ]
 }

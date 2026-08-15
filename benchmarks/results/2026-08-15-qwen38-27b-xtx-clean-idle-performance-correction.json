@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_xtx_clean_idle_performance_correction",
+  "created_at": "2026-08-15T05:30:19Z",
+  "status": "accepted_correction",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": true,
+  "decision": "supersede_contaminated_absolute_timings_and_retain_fused_silu_default",
+  "decision_reason": "Exact-protocol idle-card reruns with no KFD process present at admission raise production natural25 true AR from the published 21.679 to 35.287 tok/s and native B3 from 60.925 to 62.440 tok/s. A matched idle pre-fusion control measures 34.007 AR and 62.167 B3, so the retained fusion improves true AR 3.764% and B3 0.439%, with every category non-regressive. The previous 2.8104x MTP ratio is invalid because its AR denominator was contaminated; the corrected same-run ratio is 1.7695x.",
+  "supersedes": "benchmarks/results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json",
+  "source": {
+    "production_commit": "b2494bfb6363488b8a0e4076d9bdbafe51dac7c6",
+    "pre_fusion_control_commit": "421325cee2059f1f7a1a5006e513976481495f79",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "queue_policy": "direct=GPU_MAX_HW_QUEUES=1; natural25=unset (published protocol)",
+    "cached_builds_required": true
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "total_vram_gib": 23.984375,
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "admission_observation": "Both GPUs were 0% busy with no KFD PIDs before the production and matched-control runs.",
+    "mid_run_observation": "Only the benchmark child appeared as a KFD process on GPU 1 during each run.",
+    "teardown_observation": "Both GPUs returned to 0% busy with no KFD PIDs after the matched control."
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "file_type": "MOSTLY_Q4_K_M",
+    "size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "production_direct_512_128": {
+    "protocol": "persistent session; one discarded warmup plus three measured runs; PM4 one-step graph replay; repeated token 9707 only for fixed-shape throughput",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-sequence-length 768 --warmup-runs 1 --measured-runs 3 --persistent-session --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-xtx-fused-silu-clean-rerun-512x128.json",
+    "prefill_tok_s_samples": [961.327154641143, 956.668510689309, 959.4155031506195],
+    "prefill_tok_s_median": 959.4155031506195,
+    "decode_tok_s_samples": [34.0641945630943, 34.0598795607839, 34.015610077351894],
+    "decode_tok_s_median": 34.0598795607839,
+    "tracked_peak_gib": 15.586668975651264,
+    "sampled_hip_peak_gib": 15.74755859375,
+    "finite_final_logits": true,
+    "final_token_ids": [9707, 9707, 9707],
+    "change_from_superseded_topline_percent": {
+      "prefill_tok_s": 0.2964853123211597,
+      "decode_tok_s": 0.28177759125973534
+    }
+  },
+  "clean_natural25": {
+    "protocol": "all ten prompts, four categories, six train and four heldout, 25 visible outputs/24 timed transitions, true no-MTP AR and native B3, one run after warmup; production followed by a separately loaded pre-fusion control from commit 421325cee; both admitted from idle with GPU_MAX_HW_QUEUES explicitly unset to match the published protocol",
+    "production_command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 10 --warmup --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen38-xtx-fused-silu-clean-rerun-no-queue-override-full-native-b3.json",
+    "control_command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/tmp/hipengine-qwen38-fused-control /home/lhl/hipEngine-main/.venv/bin/python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 10 --warmup --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen38-xtx-pre-fused-silu-clean-control-no-queue-override-full-native-b3.json",
+    "pre_fusion_control": {
+      "true_ar_tok_s": 34.00667745608006,
+      "mtp_b3_tok_s": 62.16685616633318,
+      "mtp_vs_true_ar": 1.8280779193034147,
+      "client_ar_transition_tok_s": 11.456534413835035,
+      "client_b3_transition_tok_s": 12.6507040800157,
+      "draft_acceptance": 0.6309523809523809
+    },
+    "production": {
+      "true_ar_tok_s": 35.28656254970208,
+      "mtp_b3_tok_s": 62.43971586189457,
+      "mtp_vs_true_ar": 1.7695040647256737,
+      "client_ar_transition_tok_s": 12.067692908416628,
+      "client_b3_transition_tok_s": 13.223194304942114,
+      "draft_acceptance": 0.6309523809523809,
+      "category_ar_tok_s": {
+        "code": 35.58077891991216,
+        "general_en": 34.974469877468124,
+        "general_ja": 34.91533061477365,
+        "mixed_ja_en": 35.393374499378055
+      },
+      "category_mtp_tok_s": {
+        "code": 75.32371419501625,
+        "general_en": 54.2140338197481,
+        "general_ja": 54.20697710445819,
+        "mixed_ja_en": 60.12521547336932
+      }
+    },
+    "production_change_percent": {
+      "true_ar_tok_s": 3.7636287616601205,
+      "mtp_b3_tok_s": 0.4389150624431126,
+      "client_ar_transition_tok_s": 5.334584373469453,
+      "client_b3_transition_tok_s": 4.525362551407519
+    },
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "tracked_bytes_after_close": 0,
+    "peak_allocated_bytes": 17761163794
+  },
+  "superseded_publication_correction": {
+    "published_true_ar_tok_s": 21.67862522852481,
+    "clean_true_ar_tok_s": 35.28656254970208,
+    "change_percent": 62.771219012873104,
+    "published_mtp_b3_tok_s": 60.92461055478097,
+    "clean_mtp_b3_tok_s": 62.43971586189457,
+    "change_percent_b3": 2.486852674669593,
+    "published_mtp_vs_true_ar": 2.8103539736743155,
+    "clean_mtp_vs_true_ar": 1.7695040647256737,
+    "interpretation": "The exact published queue environment reproduces the fast idle-card result, ruling out queue policy and confirming contamination of the prior AR denominator. Correctness, acceptance, topology, memory, and the direct matched A/B remain valid; only the old natural25 timing claims are superseded."
+  },
+  "raw_sources": {
+    "production_direct": {
+      "path": "/tmp/qwen38-xtx-fused-silu-clean-rerun-512x128.json",
+      "sha256": "2e7008468b29c0df1d4af9bbdd452184ee9bf183932a70d33f6f057d38aa3edb"
+    },
+    "production_natural25": {
+      "path": "/tmp/qwen38-xtx-fused-silu-clean-rerun-no-queue-override-full-native-b3.json",
+      "sha256": "60bc447c48e1e51a8a65c1e61d41d64e1b51e9bdbd9808260fdb2c5645ebad73"
+    },
+    "pre_fusion_control_natural25": {
+      "path": "/tmp/qwen38-xtx-pre-fused-silu-clean-control-no-queue-override-full-native-b3.json",
+      "sha256": "fc81e8a1ccdeac7cc0bd6bea93c52c2bd5d7e12e0be3ed37aeec3ce3ebf6f4db"
+    }
+  },
+  "limitations": [
+    "Natural25 has one complete suite run per route, as required by the current dense-suite protocol; the routes ran production then control rather than counterbalanced.",
+    "The direct fixed-shape row is a production confirmation, not a fresh matched A/B. The retained matched direct A/B remains 33.534 -> 34.000 tok/s (+1.389%) with unchanged memory."
+  ]
+}

@@ -41,13 +41,13 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **973.457** | **33.521** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **956.579** | **33.964** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **959.416** | **34.060** |
 
 #### MTP
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.925 tok/s** | **2.8104x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — MTP-3 | **62.440 tok/s** | **1.7695x** |
 
 ### Strix Halo / Radeon 8060S (`gfx1151`)
 
@@ -203,12 +203,14 @@ The superseded dual-layout publication remains in the
 
 | Workload | Prefill | Autoregressive decode | Tracked peak | Status |
 | --- | ---: | ---: | ---: | --- |
-| 512/128 | **956.579 tok/s** | **33.964 tok/s** | **15.587 GiB** | Geometry-qualified sole T16 + c1 fused gate/up SiLU |
+| 512/128 | **959.416 tok/s** | **34.060 tok/s** | **15.587 GiB** | Geometry-qualified sole T16 + c1 fused gate/up SiLU |
 
-The complete exact natural25 suite measures true AR **21.679 tok/s** and native
-B3 **60.925 tok/s / 2.8104x** with unchanged acceptance and non-regressive
-absolute MTP throughput in every category. Evidence:
-[`Qwen3.8 fused-SiLU retention`](results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json).
+The clean idle-card exact natural25 suite measures true AR **35.287 tok/s** and
+native B3 **62.440 tok/s / 1.7695x**. A matched pre-fusion control measures
+**34.007 / 62.167 tok/s**, so the retained fusion improves AR **3.764%** and
+B3 **0.439%**, with every category non-regressive. Exact outputs, acceptance,
+and teardown pass. Evidence: [`clean-idle correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) and
+[`fusion implementation`](results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
@@ -271,7 +273,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 22.926 | **61.147** | **2.6671x** | Retained exact natural25 control; all greedy outputs and GPU/CPU acceptance agree. [`artifact`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json) |
-| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 21.679 | **60.925** | **2.8104x** | Retained existing T16 c1 fusion; exact greedy and GPU/CPU acceptance, all categories non-regressive in absolute MTP tok/s. [`artifact`](results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json) |
+| RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
