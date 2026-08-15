@@ -114,12 +114,27 @@ Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then the
 human-approved D08-X extension retained three additional prefill routes:
 Q8_0 cluster8 GDN, pack8-WMMA bulk, and dense-BF16 WMMA. Together with D08's
-Q5T16 QKV and Q4 cluster8 routes, they move exact-core pp512 to **4345/4983
-tok/s Q4/Q8 (0.72x/0.83x the same-day Vulkan diagnostic)** with public decode
-at llama-HIP parity. Full per-package evidence and history live in
+Q5T16 QKV and Q4 cluster8 routes, they move exact-core pp512 to **4314/4976
+tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic)** on the fresh
+post-review six-block baseline, with public decode remaining near llama-HIP
+parity. Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+The fresh semantic rerank assigns 99.1%/99.0% of marker-prefill wall and all
+286/288 public graph nodes. Same-session graph replay leaves only **0.114/0.127
+ms/token Q4/Q8** outside device stages, closing the prior ~2.3-ms isolated-owner
+estimate as microbenchmark undercount rather than API overhead. The clean
+fresh-process p16-p4096 threshold diagnostic then completes all **187** children
+with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
+p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
+every Q4/Q8 length. This keeps the p512-only WMMA scope and current GDN policies;
+see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+The final natural+category-p512 cumulative packet then passes at **1794/1800
+current top-1 (99.667%), max KL 0.005930**, deterministic finite state, and
+**72/72 exact eager/recorded-graph trajectories**; this closes post-review
+validation without changing the blocked Vulkan-parity status. Evidence:
+[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
 
 ## Current single-request scoreboards
 

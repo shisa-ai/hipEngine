@@ -1,0 +1,582 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained_diagnostic_baseline",
+  "task": "D08 post-review current-HEAD exact-core Q4/Q8 baseline and cumulative X2 controls",
+  "hardware": {
+    "host": "zbook",
+    "platform": "Linux-7.1.8-1-cachyos-x86_64-with-glibc2.44",
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics"
+  },
+  "repo": {
+    "head": "943ec15f57d090f2ca8e38c3c7f1f330c3572517",
+    "describe": "v0.4.0-195-g943ec15f5",
+    "status_porcelain": ""
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c"
+    }
+  },
+  "protocol": {
+    "scope": "committed shared-token p512/tg128 fixture; no-sampler exact-core plus public sampler path",
+    "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json",
+    "fixture_sha256": "86af62a7c081cdb16994a92ab2e5c89ab1a214f11cbc20fb4582a18c1c980030",
+    "driver": "scripts/qwen35_08b_exact_core.py",
+    "driver_sha256": "77cd2461caac5ef414e8725a6f020dc945351f93ef6cf1ba5d187758628f405e",
+    "parent_command": "uv run python /tmp/d08-review/run_current_head_exact_ab.py",
+    "parent_harness_sha256": "a0f4e9b1d6b8ad9b3b83f8600ef8fdb347bd2c46a25ebf57278fd781589280cd",
+    "reproducer_child_command": "uv run python scripts/qwen35_08b_exact_core.py --model <model> --fixture benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json --compiler-version-file /tmp/d08-c0/hipcc-version.txt --repetitions 1 --output <artifact>",
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "blocks": 6,
+    "child_repetitions": 1,
+    "order": "cyclic counter-rotation; every role occupies every order position equally",
+    "role_env": {
+      "q4": {
+        "current": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": null,
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": null,
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        },
+        "pre_x2": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        },
+        "strict_x2": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+        }
+      },
+      "q8": {
+        "current": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": null,
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": null,
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        },
+        "pre_x2_strict": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+        }
+      }
+    },
+    "control_definitions": {
+      "q4_pre_x2": "disable X2 pack8 and dense WMMA; retain D08 Q4 cluster8 GDN auto policy",
+      "q4_strict_x2": "disable X2 pack8 and dense WMMA; force exact nonvolatile direct-LDS32 GDN",
+      "q8_pre_x2_strict": "disable X2 bulk flags and force exact nonvolatile direct-LDS32 GDN"
+    }
+  },
+  "quants": {
+    "q4": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "model_sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "roles": {
+        "current": {
+          "prefill_tok_s": {
+            "samples": [
+              4310.844161712192,
+              4263.706588367692,
+              4377.031248121916,
+              4335.491730794686,
+              4246.204807246228,
+              4317.194681499468
+            ],
+            "median": 4314.01942160583
+          },
+          "decode_tok_s": {
+            "samples": [
+              141.19827757207253,
+              139.93423375255043,
+              140.2081148921026,
+              147.77764530384175,
+              147.49371206074267,
+              140.73289091581537
+            ],
+            "median": 140.96558424394397
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              4395.372514044481,
+              4276.536735262623,
+              4424.059438482823,
+              4354.905470992893,
+              4320.467941781897,
+              4329.868933598864
+            ],
+            "median": 4342.3872022958785
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              121.50471342175949,
+              122.56173412046078,
+              121.2865324523101,
+              128.75923073541986,
+              122.42989520727897,
+              118.59701173110865
+            ],
+            "median": 121.96730431451923
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_graph_nodes": [
+            283
+          ],
+          "top1_ids_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "pre_x2": {
+          "prefill_tok_s": {
+            "samples": [
+              2456.75434584609,
+              2555.219605728916,
+              2406.94710750185,
+              2460.931593441239,
+              2402.7828204670054,
+              2536.5752978537625
+            ],
+            "median": 2458.842969643664
+          },
+          "decode_tok_s": {
+            "samples": [
+              142.81945207051658,
+              139.60287732262134,
+              144.72933357183672,
+              147.18934990852227,
+              150.78671549292872,
+              140.9014114519291
+            ],
+            "median": 143.77439282117666
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              2597.157111245451,
+              2526.531953397506,
+              2482.0509058654416,
+              2318.6603059715912,
+              2464.681546680866,
+              2533.2173568374474
+            ],
+            "median": 2504.291429631474
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              119.43471114531758,
+              118.93512447252087,
+              132.01614921786995,
+              123.57584808716727,
+              122.31002709364897,
+              119.03806157111119
+            ],
+            "median": 120.87236911948327
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_graph_nodes": [
+            283
+          ],
+          "top1_ids_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "strict_x2": {
+          "prefill_tok_s": {
+            "samples": [
+              2390.0768304668322,
+              2400.3688354244446,
+              2389.021137643747,
+              1614.9360132860027,
+              2380.3572916294734,
+              2354.7234618975094
+            ],
+            "median": 2384.68921463661
+          },
+          "decode_tok_s": {
+            "samples": [
+              140.44006818562804,
+              140.56943847089917,
+              144.00267351763586,
+              124.49623110711579,
+              142.6413955176506,
+              150.16952203258484
+            ],
+            "median": 141.6054169942749
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              2403.598122543873,
+              2365.0185086718025,
+              2388.473462186843,
+              2318.7281297970385,
+              2375.7435984660715,
+              2388.9294879886284
+            ],
+            "median": 2382.108530326457
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              118.70541293696809,
+              118.2450731737603,
+              122.18731553354722,
+              80.86121372127138,
+              119.03679801369543,
+              117.49772332096923
+            ],
+            "median": 118.47524305536419
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_graph_nodes": [
+            283
+          ],
+          "top1_ids_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        }
+      },
+      "comparisons_vs_current": {
+        "pre_x2": {
+          "prefill_tok_s": {
+            "current_median": 4314.01942160583,
+            "control_median": 2458.842969643664,
+            "ratio": 1.7544916348322228,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "current_median": 140.96558424394397,
+            "control_median": 143.77439282117666,
+            "ratio": 0.9804637771572701,
+            "paired_wins": 2,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "current_median": 4342.3872022958785,
+            "control_median": 2504.291429631474,
+            "ratio": 1.7339783824340664,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "current_median": 121.96730431451923,
+            "control_median": 120.87236911948327,
+            "ratio": 1.0090586062225155,
+            "paired_wins": 4,
+            "blocks": 6
+          }
+        },
+        "strict_x2": {
+          "prefill_tok_s": {
+            "current_median": 4314.01942160583,
+            "control_median": 2384.68921463661,
+            "ratio": 1.809048908816917,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "current_median": 140.96558424394397,
+            "control_median": 141.6054169942749,
+            "ratio": 0.995481579985342,
+            "paired_wins": 3,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "current_median": 4342.3872022958785,
+            "control_median": 2382.108530326457,
+            "ratio": 1.8229174477204757,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "current_median": 121.96730431451923,
+            "control_median": 118.47524305536419,
+            "ratio": 1.0294750292896482,
+            "paired_wins": 5,
+            "blocks": 6
+          }
+        }
+      },
+      "fresh_current_vs_same_day_diagnostic": {
+        "previous_hipengine_core_prefill_tok_s": 4344.8,
+        "current_hipengine_core_prefill_tok_s": 4314.01942160583,
+        "current_over_previous": 0.9929155361825238,
+        "same_day_llamacpp_vulkan_prefill_tok_s": 6015.0,
+        "current_over_same_day_vulkan": 0.7172102114057904
+      },
+      "public_graph_nodes": [
+        286
+      ],
+      "execution_order": [
+        {
+          "block": 0,
+          "order": [
+            "current",
+            "pre_x2",
+            "strict_x2"
+          ]
+        },
+        {
+          "block": 1,
+          "order": [
+            "pre_x2",
+            "strict_x2",
+            "current"
+          ]
+        },
+        {
+          "block": 2,
+          "order": [
+            "strict_x2",
+            "current",
+            "pre_x2"
+          ]
+        },
+        {
+          "block": 3,
+          "order": [
+            "current",
+            "pre_x2",
+            "strict_x2"
+          ]
+        },
+        {
+          "block": 4,
+          "order": [
+            "pre_x2",
+            "strict_x2",
+            "current"
+          ]
+        },
+        {
+          "block": 5,
+          "order": [
+            "strict_x2",
+            "current",
+            "pre_x2"
+          ]
+        }
+      ]
+    },
+    "q8": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "model_sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "roles": {
+        "current": {
+          "prefill_tok_s": {
+            "samples": [
+              5092.566699668555,
+              4918.420975528454,
+              4973.485977130007,
+              4930.122257402838,
+              4978.3234850037925,
+              5030.751351950559
+            ],
+            "median": 4975.904731066899
+          },
+          "decode_tok_s": {
+            "samples": [
+              137.63500176460977,
+              137.8357342916558,
+              151.2225246527006,
+              136.89331880992188,
+              137.25281713927055,
+              138.20708213017724
+            ],
+            "median": 137.73536802813277
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              4966.473298192819,
+              4952.5485873067955,
+              5139.705218631817,
+              4904.033006824029,
+              5000.721051233609,
+              4944.81107943642
+            ],
+            "median": 4959.510942749807
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              114.8763851701411,
+              115.31863275187482,
+              113.59997816040419,
+              114.69545396396163,
+              114.46954460677652,
+              117.58949120208563
+            ],
+            "median": 114.78591956705137
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_graph_nodes": [
+            285
+          ],
+          "top1_ids_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "pre_x2_strict": {
+          "prefill_tok_s": {
+            "samples": [
+              4305.027945559189,
+              4218.007451505601,
+              4305.766000102413,
+              4165.553309998696,
+              4220.310112178728,
+              4245.946870533152
+            ],
+            "median": 4233.128491355939
+          },
+          "decode_tok_s": {
+            "samples": [
+              137.19953402536385,
+              142.47518659941795,
+              137.31859768033786,
+              136.90920979237518,
+              142.49819594500767,
+              136.73847853571183
+            ],
+            "median": 137.25906585285085
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              4292.283587420873,
+              4200.529194481909,
+              4212.780881097032,
+              4174.958314631301,
+              4245.366319475855,
+              4232.121761184907
+            ],
+            "median": 4222.451321140969
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              118.2103999369148,
+              114.68368941994709,
+              114.31715364641369,
+              117.77358304874734,
+              114.02123033441657,
+              114.21896329582717
+            ],
+            "median": 114.50042153318039
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_graph_nodes": [
+            285
+          ],
+          "top1_ids_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        }
+      },
+      "comparisons_vs_current": {
+        "pre_x2_strict": {
+          "prefill_tok_s": {
+            "current_median": 4975.904731066899,
+            "control_median": 4233.128491355939,
+            "ratio": 1.1754674447581053,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "current_median": 137.73536802813277,
+            "control_median": 137.25906585285085,
+            "ratio": 1.0034700962907073,
+            "paired_wins": 3,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "current_median": 4959.510942749807,
+            "control_median": 4222.451321140969,
+            "ratio": 1.1745572809610683,
+            "paired_wins": 6,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "current_median": 114.78591956705137,
+            "control_median": 114.50042153318039,
+            "ratio": 1.0024934234306573,
+            "paired_wins": 3,
+            "blocks": 6
+          }
+        }
+      },
+      "fresh_current_vs_same_day_diagnostic": {
+        "previous_hipengine_core_prefill_tok_s": 4982.5,
+        "current_hipengine_core_prefill_tok_s": 4975.904731066899,
+        "current_over_previous": 0.9986763133099648,
+        "same_day_llamacpp_vulkan_prefill_tok_s": 6035.8,
+        "current_over_same_day_vulkan": 0.8243985438660822
+      },
+      "public_graph_nodes": [
+        288
+      ],
+      "execution_order": [
+        {
+          "block": 0,
+          "order": [
+            "current",
+            "pre_x2_strict"
+          ]
+        },
+        {
+          "block": 1,
+          "order": [
+            "pre_x2_strict",
+            "current"
+          ]
+        },
+        {
+          "block": 2,
+          "order": [
+            "current",
+            "pre_x2_strict"
+          ]
+        },
+        {
+          "block": 3,
+          "order": [
+            "pre_x2_strict",
+            "current"
+          ]
+        },
+        {
+          "block": 4,
+          "order": [
+            "current",
+            "pre_x2_strict"
+          ]
+        },
+        {
+          "block": 5,
+          "order": [
+            "pre_x2_strict",
+            "current"
+          ]
+        }
+      ]
+    }
+  },
+  "correctness": {
+    "all_children_finite": true,
+    "all_roles_deterministic": true,
+    "shared_top1_trajectory_sha256": "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0",
+    "top1_trajectory_exact_across_all_roles_and_quants": true
+  },
+  "notes": [
+    "The Q4 strict-X2 block-3 sample is a retained severe system outlier (1614.9 pp / 124.5 tg); six-block medians and all raw samples remain visible.",
+    "Core decode samples are bimodal on this host; no decode-speed claim is made from this baseline. Public decode medians remain within 3% of the same-day llama.cpp HIP diagnostic.",
+    "The same-day Vulkan rows are historical diagnostics from the same hardware, not same-session denominators."
+  ],
+  "decision": "Fresh current-HEAD baseline retained. No routing change. Use the new current rows for the post-X2 semantic and graph rerank; require the cumulative semantic packet before further optimization."
+}

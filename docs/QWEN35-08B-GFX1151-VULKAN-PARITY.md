@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. Current exact-core pp512 is 4345/4983 tok/s Q4/Q8 (0.72x/0.83x the same-day Vulkan diagnostic), so parity remains open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. The fresh post-review six-block exact-core pp512 baseline is 4314/4976 tok/s Q4/Q8 (0.72x/0.82x the same-day Vulkan diagnostic), so parity remains open. The p16-p4096 threshold matrix and final 18-prompt cumulative semantic packet now pass; they close post-review route validation without changing the blocked G2/G3 parity disposition.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -105,8 +105,12 @@ not a synthetic leaf projection.
 | 24 | **D08-X2a pack8 WMMA bulk route** | **accepted: +35.31% Q4 exact-core pp512** | Existing registered small-tile WMMA replaced tile8x8 for the five qualified p512 pack8 shapes; 447/450 top-1 and max KL 0.003848. | Retained/default on the measured gfx1151 row/shape matrix; sole residency and decode owners unchanged. |
 | 25 | **D08-X2-K1 large-tile pack8 WMMA** | **closed; diagnostic not routed** | LDS-staged large tiles are bit-exact but do not beat the qualified small-tile owner on gfx1151 wave32. | Keep the registered 128x64 diagnostic; durable artifact replaces the former `/tmp`-only reference. |
 | 26 | **D08-X2-K2 Q8 GDN cluster8** | **accepted: +16.70% Q8 exact-core pp512** | Fresh five-block and 18-prompt gates supersede P2's 0.0108%-miss rejection: 448/450 top-1, max KL 0.003260. | Q4 and Q8 now both use the quant/geometry-qualified cluster8 route. |
-| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Re-profile graph replay/API residual before more decode kernel work. |
+| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Post-review replay profiling closes the apparent ~2.3-ms gap as isolated-microbench undercount: API/Python residual is only 0.114/0.127 ms Q4/Q8. |
 | 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
+| 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
+| 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
+| 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. |
+| 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
 
 ### 1.2 Bounded task contract
 
@@ -1505,6 +1509,134 @@ at campaign open).
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json).
+
+### 2.42 Post-review current-HEAD baseline (2026-08-15)
+
+After merging the correctness hardening and concurrent verifier-scratch work,
+six clean-tree, cyclically counter-rotated shared-token blocks establish the new
+current baseline. Exact-core pp512 is **4314.0/4975.9 tok/s Q4/Q8**; public
+prefill is **4342.4/4959.5 tok/s**. Against X2-disabled controls, current Q4 is
+**1.754x** the pre-X2 route and Q8 is **1.175x** its exact pre-X2 route, winning
+all six prefill blocks. Every child is finite and deterministic, and current,
+pre-X2, strict-X2, Q4, and Q8 all emit the same repeated-fixture top-1 trajectory.
+
+The current Q4/Q8 core decode medians are **140.97/137.74 tok/s**, but the Q4
+samples are visibly bimodal (roughly 140-141 and 147-148 tok/s), so this row
+makes no new decode-speed claim. Public decode is **121.97/114.79 tok/s**. The
+historical same-day Vulkan pp512 comparator remains **6015.0/6035.8 tok/s**;
+those rows are not same-session denominators.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json).
+
+### 2.43 Post-review semantic and graph rerank (2026-08-15)
+
+Three measured p512 device-marker runs assign **99.12%/99.05%** of Q4/Q8
+instrumented prefill wall. Q4's current raw leader is dense FFN at **44.54 ms**
+with a **20.05-ms** historical Vulkan-matched gap, followed by GDN at **29.27
+ms / 16.68-ms gap** and linear-attention projections at **33.88 ms / 16.05-ms
+gap**. Q8 is tighter: linear projections lead at **28.18 ms / 8.35-ms gap**,
+GDN follows at **24.92 ms / 8.17-ms gap**, and dense FFN is **34.30 ms /
+6.50-ms gap**. The Vulkan rows are the same-day logger diagnostic, not a
+same-session denominator. Marker wall is 1.079x/1.053x exact-core wall, so these
+shares rank roles but do not project topline gains directly.
+
+The public production graph is **286/288 nodes** and **8.365/8.742 ms/token**
+Q4/Q8. Eager, recording, production, and instrumented logits have zero KL and
+100% top-1 agreement; the recorded trajectory is exact. The 240-marker graph
+assigns every non-marker production node and measures **9.846/10.134 ms** of
+device stages inside **9.959/10.261 ms** host wall: only **0.114/0.127 ms**
+remains for API/Python, while asynchronous `graph_launch` itself is
+**0.012/0.014 ms**. Therefore X2-K4's prior ~2.3-ms wall-minus-isolated estimate
+is not graph API overhead; repeated isolated microbenches undercounted the
+production chain. `rocprofv3` dispatch durations remain zero on this stack, and
+the marker graph is itself 1.59/1.52 ms slower, so marker-normalized attention
+must not reopen K4 over its exact standalone ~0.15-0.2-ms/token ROI.
+
+The measured next-owner labels are Q4 dense FFN and Q8 linear-attention
+projections, with shared GDN and linear-projection aggregate gaps effectively
+tied. Q4 dense's known large-tile route is already exhausted; no candidate opens
+until the prompt-length and cumulative semantic gates complete.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json).
+
+### 2.44 Post-review prompt-length threshold sweep (2026-08-15)
+
+The approved p16/32/64/128/256/511/512/513/768/1024/4096 packet ran three
+cyclic Q4 blocks and four counter-rotated Q8 blocks, one fresh resident process
+per length and role. All **187** children used clean commit `6eb41219c`, cached
+builds, device token embedding, production AOTriton at p512+, WMMA prefill, and
+GEMV decode. Every result is finite, every final ID is 9707, and every scratch
+capacity matches its prompt/decode geometry.
+
+| Length | Q4 current / pre-X2 | Q4 current / strict-X2 | Q8 current / strict-X2 |
+| ---: | ---: | ---: | ---: |
+| 16 | 1.002x | 1.056x | 1.045x |
+| 32 | 0.999x | 1.059x | 1.079x |
+| 64 | 1.032x | 1.125x | 1.100x |
+| 128 | 1.004x | 1.019x | 1.188x |
+| 256 | 1.012x | 1.039x | 1.196x |
+| 511 | 1.015x | 1.048x | 1.124x |
+| 512 | **1.764x** | **1.820x** | **1.156x** |
+| 513 | 1.011x | 1.046x | 1.140x |
+| 768 | 0.997x | 1.031x | 1.131x |
+| 1024 | 1.012x | 1.066x | 1.178x |
+| 4096 | 1.007x | 1.087x | 1.138x |
+
+This confirms that the pack8+dense WMMA package is isolated to exact p512:
+Q4 current and pre-X2 are within 3.3% at every other measured length. Automatic
+GDN is non-regressive versus strict X2 throughout the matrix, so its current
+quant/geometry policies remain unchanged. Do not broaden WMMA beyond p512.
+
+The original mixed-shape resident protocol exposed an intermittent AOTriton v3
+C++ exception. Five coredumps assign that separate lifecycle defect to
+`flash::attn_fwd`; the fresh-process protocol preserves all production routes
+rather than hiding it with an attention fallback. The exception-boundary repair
+is tracked separately and the final 18-prompt cumulative semantic packet remains
+required.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+
+### 2.45 Final cumulative semantic packet (2026-08-15)
+
+The versioned clean-tree harness runs all **18 category+heldout prompts** in two
+profiles per quant: unmodified natural chat-token sequences and category-derived
+sequences repeated and truncated to exactly p512. Each candidate consumes the
+strict-X2 free-running token prefix for **24 teacher-forced transitions** after
+prefill, preventing greedy divergence from changing the comparison context.
+
+| Quant / role | Natural top-1 / max KL | Category p512 top-1 / max KL |
+| --- | ---: | ---: |
+| Q4 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q4 pre-X2 | 449/450 / 0.004529 | 449/450 / 0.004846 |
+| Q4 current | 449/450 / 0.004529 | 449/450 / **0.005930** |
+| Q8 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q8 current | 448/450 / **0.003259** | 448/450 / 0.002205 |
+
+Current defaults total **1794/1800 top-1 (99.667%)** with maximum KL
+**0.005930**, comfortably inside the 90%/0.05 gate. Every strict/pre/current
+repeat is trajectory+logit deterministic. All Conv/GDN and live full-attention
+KV fingerprints are repeat-deterministic and finite. Candidate bytes differ
+from strict on the accepted reassociated math routes (0 exact candidate profile
+states), which is diagnostic; repeat determinism, finiteness, KL, and top-1 are
+the binding state/math checks.
+
+All **72** category-p512 strict/current recorded-graph prompt-role trajectories
+exactly match same-role eager. Final graph top-1 is 100%, maximum graph KL is
+**0.000475**, and the recording graphs contain **287 Q4 / 289 Q8 nodes**.
+Current free-running trajectories match strict on **66/72** prompt profiles;
+the six expected greedy divergences remain outside the same-context correctness
+criterion.
+
+This closes the post-review baseline/profile/threshold/semantic sequence and
+retains every current route unchanged. It does not claim Vulkan parity: D08-G2
+still fails the published same-session cross-engine target, so G3/T1 remain
+blocked absent a separately approved architectural extension.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
 
 ## 3. Comparison contracts
 
