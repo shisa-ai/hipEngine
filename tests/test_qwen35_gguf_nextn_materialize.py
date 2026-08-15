@@ -77,7 +77,10 @@ def _spec(
 def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(model: Path) -> None:
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
-    model_map = build_qwen35_gguf_nextn_tensor_map(GGUFReader(model).info)
+    info = GGUFReader(model).info
+    if not any(".nextn." in tensor.name for tensor in info.tensors):
+        pytest.skip(f"local GGUF fixture has no trailing NextN block: {model}")
+    model_map = build_qwen35_gguf_nextn_tensor_map(info)
 
     plan = plan_qwen35_gguf_nextn_materialization(
         model_map,

@@ -14,6 +14,29 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
+
+- Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta
+  promotion. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores the two
+  singleton registered Q8T16 WMMA projections. Shape/backend/registry misses
+  also fail closed to those primitives; no resident or scratch allocation
+  depends on the pair owner.
+- Removal trigger: after one release window with Q4/Q8 p512, decode, cumulative
+  semantic, and lifecycle gates stable, remove the selector/cache dimension.
+  Keep the singleton kernels as required numerical and peer-backend fallbacks.
+
+## gfx1151 dense-BF16 WMMA residual rollback seam
+
+- Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.
+  `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` preserves the already-retained WMMA
+  projection plus standalone `gguf_bf16_add` chain for paired bisection. Registry
+  and shape misses also fail closed to that primitive chain; no resident or
+  scratch bytes depend on the fused owner.
+- Removal trigger: after one release window with Q4/Q8 p512, eager/graph decode,
+  cumulative semantic, and lifecycle gates stable, remove the environment
+  selector and dead default-off branch. Keep the registered primitive chain as
+  the required numerical and peer-backend fallback.
+
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
@@ -3615,6 +3638,17 @@ should be boring.
   p512 pack8 shapes exercised by the complete-model campaign A/B. Remove the
   env branch once the parity campaign closes and no A/B bisection still needs
   the tile8x8 control; expand the shape policy only with matched evidence.
+
+## gfx1151 Q4 operation-complete pack8 prefill rollback env
+
+- `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0` (default `1`) rolls the
+  exact Qwen3.5-0.8B Q4_K_M p512 dense gate/up owner back to two registered
+  singleton pack8 WMMAs plus standalone BF16 SiLU. Added with D08-X3
+  (2026-08-15): the fused leaf is byte-exact and 2.089x faster; five paired
+  complete-model blocks improve core/public prefill 13.81%/13.85% with neutral
+  decode and Q8 guards. Remove the env branch after one non-regressive release
+  window when no A/B bisection needs it. Do not broaden the model/quant/rows/
+  K/N policy without separate complete-model evidence.
 
 ## gfx1151 pack8 wmma64 diagnostic kernel
 

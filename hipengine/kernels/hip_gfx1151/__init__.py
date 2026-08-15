@@ -374,6 +374,17 @@ GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
         (512, 3_584, 1_024),
     }
 )
+# D08-X3 retained: reuse the Q4T16 operation-complete dual-WMMA dataflow over
+# the sole resident pack8 gate/up pair. The exact-model-shape route improves
+# core/public pp512 by 13.81%/13.85%; two singleton WMMAs plus standalone SiLU
+# remain the rollback and every other shape fails closed.
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL = True
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES = frozenset(
+    {(512, 1_024, 3_584)}
+)
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): frozenset({512}),
+}
 # D08-X2-K5 (2026-08-15): dense-BF16 bulk prefill (expanded Q6_K down owners)
 # prefers the registered LDS-staged 128x64 WMMA consumer over the naive
 # 32x8 scalar tile. Admit only the two Qwen3.5-0.8B p512 shapes covered by the
@@ -385,6 +396,14 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
         (512, 3_584, 1_024),
     }
 )
+# D08-X6: exact rounded-boundary down+residual fusion is admitted only through
+# the already-qualified dense-BF16 WMMA shape above. Existing small-row
+# residual limits remain unchanged for their quant families.
+GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
+    "gguf_q4_k_t16_v1": 4,
+    "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    "bf16": 512,
+}
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
@@ -859,6 +878,14 @@ GGUF_PREFILL_ROUTER_SELECT_THREADS = 128
 # available as the first rollback schedule during its release window.
 GGUF_Q8_T16_PREFILL_FOUR_WAVE = True
 GGUF_Q8_T16_PREFILL_TWO_WAVE = True
+# D08-X8: the 18 alpha/beta pairs are same-shape Q8T16 N16 projections.
+# One two-wave block shares each activation tile and preserves singleton order.
+GGUF_Q8_T16_DUAL_WMMA_PREFILL = True
+GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES = frozenset({(512, 1_024, 16, 16)})
+GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES = {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): frozenset({512}),
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q8_0"): frozenset({512}),
+}
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
@@ -1920,6 +1947,9 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
+    "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

@@ -22,16 +22,48 @@ def test_expand_to_512_repeats_complete_prompt_tokens() -> None:
 
 def test_role_environment_restores_every_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "before")
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+        "before-dual",
+    )
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
 
     with cumulative.role_environment("q4", "strict_x2"):
         assert os.environ["HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK"] == "0"
+        assert os.environ[
+            "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
+        ] == "0"
         assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_BULK"] == "0"
+        assert os.environ["HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"] == "0"
         assert os.environ["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "exact"
         assert os.environ["HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"] == "0"
 
     assert os.environ["HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK"] == "before"
+    assert os.environ[
+        "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
+    ] == "before-dual"
     assert "HIPENGINE_GGUF_GDN_PREFILL_MODE" not in os.environ
+
+
+def test_x6_rollback_environment_isolates_dense_residual(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", raising=False)
+    with cumulative.role_environment("q4", "current_x6_rollback"):
+        assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"] == "0"
+        assert "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL" not in os.environ
+    assert "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL" not in os.environ
+
+
+def test_x8_rollback_environment_isolates_q8_t16_dual_wmma(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"
+    monkeypatch.delenv(selector, raising=False)
+    for quant in ("q4", "q8"):
+        with cumulative.role_environment(quant, "current_x8_rollback"):
+            assert os.environ[selector] == "0"
+        assert selector not in os.environ
 
 
 def test_trajectory_digest_covers_tokens_and_logits() -> None:
@@ -74,3 +106,25 @@ def test_cumulative_semantic_artifact_closes_the_packet() -> None:
                     assert role["teacher_forced_deterministic"] is True
                     assert role["state_deterministic"] is True
                     assert role["state_finite"] is True
+
+
+def test_dense_residual_artifact_keeps_cumulative_and_operational_gates() -> None:
+    artifact = (
+        Path(__file__).parents[1]
+        / "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json"
+    )
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+    assert payload["status"] == "retained"
+    assert payload["leaf_screen"]["output_byte_exact"] is True
+    assert payload["leaf_screen"]["speedup"] > 1.0
+    assert payload["profile"]["scratch_bytes"] == 0
+    assert payload["cumulative_semantic"]["gate_passed"] is True
+    rollback = payload["cumulative_semantic"]["q4_candidate_vs_x6_rollback"]
+    assert rollback["teacher_forced_digest_matches"] == 36
+    assert rollback["state_digest_matches"] == 36
+    assert min(
+        payload["complete_model_ab"]["q8_guard"][
+            "median_candidate_over_control"
+        ].values()
+    ) >= 0.98

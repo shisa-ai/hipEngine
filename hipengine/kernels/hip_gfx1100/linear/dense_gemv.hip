@@ -984,11 +984,12 @@ bool valid_wmma_shape(int64_t rows, int64_t in_features, int64_t out_features) {
 // F32 accumulators). The naive scalar-tile kernel above remains the
 // registered fallback for small rows and unaligned shapes.
 // -------------------------------------------------------------------------
-template <int BM, int BN, int BK>
+template <int BM, int BN, int BK, bool AddResidual>
 __launch_bounds__(256, 2)
 __global__ void dense_prefill_wmma_out_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ weight,
+    const uint16_t* __restrict__ residual,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
@@ -1087,8 +1088,16 @@ __global__ void dense_prefill_wmma_out_kernel(
         const int64_t col =
             col0 + warp_m * WARP_TILE_M + fm * 16 + 2 * j + (lane >> 4);
         if (col < out_features) {
-          out[out_row * out_features + col] =
+          const int64_t out_idx = out_row * out_features + col;
+          const uint16_t projection_bits =
               float_to_bf16_bits(static_cast<float>(acc[fm][fn][j]));
+          if constexpr (AddResidual) {
+            const float sum = bf16_bits_to_float(projection_bits) +
+                bf16_bits_to_float(residual[out_idx]);
+            out[out_idx] = float_to_bf16_bits(sum);
+          } else {
+            out[out_idx] = projection_bits;
+          }
         }
       }
     }
@@ -1342,7 +1351,7 @@ extern "C" int hipengine_dense_prefill_wmma_out_bf16(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (dense_prefill_wmma_out_kernel<BM, BN, BK>),
+      (dense_prefill_wmma_out_kernel<BM, BN, BK, false>),
       dim3(
           static_cast<unsigned int>(out_features / BM),
           static_cast<unsigned int>((rows + BN - 1) / BN)),
@@ -1351,6 +1360,42 @@ extern "C" int hipengine_dense_prefill_wmma_out_bf16(
       stream,
       x,
       weight,
+      nullptr,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_prefill_wmma_out_bf16_residual_bf16_out(
+    const uint16_t* x,
+    const uint16_t* weight,
+    const uint16_t* residual,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int BM = 128;
+  constexpr int BN = 64;
+  constexpr int BK = 32;
+  if (x == nullptr || weight == nullptr || residual == nullptr || out == nullptr ||
+      rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % BK) != 0 || (out_features % BM) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_prefill_wmma_out_kernel<BM, BN, BK, true>),
+      dim3(
+          static_cast<unsigned int>(out_features / BM),
+          static_cast<unsigned int>((rows + BN - 1) / BN)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      residual,
       out,
       rows,
       in_features,

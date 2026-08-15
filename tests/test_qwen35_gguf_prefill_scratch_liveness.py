@@ -174,6 +174,33 @@ def test_unequal_q4_pair_owner_is_geometry_backend_scoped(monkeypatch) -> None:
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
 
 
+def test_pack8_dual_wmma_silu_prefill_is_model_quant_request_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    assert gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 511)
+    runner.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+
+
+def test_q8_t16_dual_wmma_prefill_is_model_quant_request_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    for quant in ("MOSTLY_Q4_K_M", "MOSTLY_Q8_0"):
+        runner.weights.file_type_name = quant
+        assert gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+        assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 511)
+    runner.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+    runner.backend = "hip_gfx1151"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
+    assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+
+
 def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
     runner = _fake_dense_qwen35_08b_runner()
     expected = "pack8_dual_decode_t128_bf16_bf16_out"

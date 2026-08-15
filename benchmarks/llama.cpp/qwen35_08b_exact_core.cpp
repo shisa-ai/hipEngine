@@ -1,7 +1,7 @@
 // D08 closure helper for llama.cpp's exact-token no-sampler core scope.
 //
-// Build this file against the pinned read-only llama.cpp Vulkan checkout. The
-// prompt and teacher token/count arguments come from
+// Build this file against matched read-only llama.cpp HIP and Vulkan checkouts.
+// The prompt and teacher token/count arguments come from
 // benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json. Core throughput
 // excludes top-1 scans; public throughput includes greedy scans and feedback.
 // Separate untimed repeats record deterministic top-1 for both scopes.
@@ -61,6 +61,10 @@ int main(int argc, char ** argv) {
         return 2;
     }
     const char * model_path = argv[1];
+    const char * engine_label = std::getenv("QWEN35_08B_ENGINE_LABEL");
+    if (engine_label == nullptr || engine_label[0] == '\0') {
+        engine_label = "llamacpp";
+    }
     const int prompt_id = std::stoi(argv[2]);
     const int prompt_tokens = std::stoi(argv[3]);
     const int teacher_id = std::stoi(argv[4]);
@@ -103,6 +107,7 @@ int main(int argc, char ** argv) {
         llama_memory_clear(llama_get_memory(context), true);
         const auto prompt_start = clock_type::now();
         decode_or_die(context, prompt.data(), prompt_tokens);
+        llama_synchronize(context);
         const double prompt_ms = ms_since(prompt_start);
         bool finite = true;
         if (collect) {
@@ -115,6 +120,7 @@ int main(int argc, char ** argv) {
                 top1_ids->push_back(top1(context, vocab_size, finite));
             }
         }
+        llama_synchronize(context);
         const double decode_ms = ms_since(decode_start);
         if (!finite) {
             std::cerr << "non-finite logits\n";
@@ -174,7 +180,7 @@ int main(int argc, char ** argv) {
     const bool deterministic = top1_first == top1_second;
     const bool public_deterministic = public_top1_first == public_top1_second;
 
-    std::cout << "{\n  \"schema\":1,\n  \"engine\":\"llamacpp-vulkan\",\n"
+    std::cout << "{\n  \"schema\":1,\n  \"engine\":\"" << engine_label << "\",\n"
               << "  \"model\":\"" << model_path << "\",\n"
               << "  \"prompt_token_id\":" << prompt_id << ",\n"
               << "  \"prompt_tokens\":" << prompt_tokens << ",\n"

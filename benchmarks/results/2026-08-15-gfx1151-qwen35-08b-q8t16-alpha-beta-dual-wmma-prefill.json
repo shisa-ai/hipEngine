@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X8 exact Q8T16 alpha-beta dual WMMA prefill",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "source": {
+    "base_commit": "dccf70ef02d9d098125f8d47c9020d29ca5fd2ac",
+    "measurement_tree_clean": false,
+    "code_and_test_diff_sha256": "2667ad82299c2b620a81cb8171688df6a35d452d07fcb457e8e5453b47e2dfef"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15 / package 7.2.0"
+  },
+  "models": {
+    "q4": {"path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf", "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517", "quant": "MOSTLY_Q4_K_M"},
+    "q8": {"path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf", "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c", "quant": "MOSTLY_Q8_0"}
+  },
+  "mechanism": {
+    "owner": "18 same-shape ssm_alpha + ssm_beta Q8_0 T16 pairs",
+    "shape": {"rows": 512, "in_features": 1024, "out_features_a": 16, "out_features_b": 16},
+    "kernel": "gguf_q8_0_t16_dual_prefill_wmma_kernel<32>",
+    "mapping": "64 threads; wave 0 owns alpha, wave 1 owns beta; wave 0 stages each BF16-to-F16 activation K16 tile once in 1 KiB LDS",
+    "semantics": "each wave preserves the singleton weight decode, K traversal, WMMA accumulation order, and BF16 output store",
+    "resident_bytes_added": 0,
+    "scratch_bytes_added": 0,
+    "fallback": "two registered t16_wmma_prefill_bf16_bf16_out singleton projections",
+    "default_scope": "hip_gfx1151 Qwen3.5-0.8B Q4_K_M or Q8_0; rows512/K1024/N16+N16",
+    "rollback": "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0"
+  },
+  "leaf_screen": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u /tmp/q8t16_alpha_beta_dual_screen.py",
+    "script_sha256": "5d9ce75e6f18198110f7d1a95f988fa61e1eeb77faef64d092354f94d97a688e",
+    "method": "all 18 actual Q4-model alpha/beta resident pairs; ten full-pair loops per sample; five alternating blocks",
+    "control_ms_samples": [2.0346998993773013, 2.2033624991308898, 2.110836800420657, 2.1186144003877416, 2.112633202341385],
+    "candidate_ms_samples": [0.4226041986839846, 0.4173944005742669, 0.4056103003676981, 0.42371629970148206, 0.42168149957433343],
+    "control_median_ms": 2.112633202341385,
+    "candidate_median_ms": 0.42168149957433343,
+    "saving_ms": 1.6909517027670518,
+    "speedup": 5.010021081014898,
+    "output_byte_exact": true,
+    "candidate_paired_wins": 5
+  },
+  "profile": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt rocprofv3 --kernel-trace --output-directory /tmp/d08-x8-q8t16-trace --output-file q8t16-dual --output-format csv -- uv run pytest -q tests/test_gguf_q8_0_t16_wmma_prefill.py -k dual_wmma_prefill_is_bit_exact",
+    "trace_sha256": "dbcbeea32e93347a8975096e820600d7c995f49d18ad0ccadc674ea82cb37fa7",
+    "kernel_observed": true,
+    "workgroup_size": 64,
+    "grid_size": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "vgpr": 64,
+    "sgpr": 128,
+    "duration_note": "Start/end timestamps are equal under the documented gfx1151 rocprof blocker; synchronized leaf timing is authoritative."
+  },
+  "complete_model_ab": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u /tmp/run_q8t16_dual_ab.py",
+    "harness_sha256": "1124f19687c2c69cec1bab986095c20081806dc0f823356562c7a8ea2da3f65a",
+    "driver_sha256": "4369db461393ff27dd4dad49c6e98b81480f4b4dca308366690d850d48bd8156",
+    "aggregate_sha256": "1a704153c6f517322ba6e04132b78241aee7373f62635e4ff92cbfb1a727390e",
+    "protocol": "fresh process per role; one child warmup plus one measure; alternating role order; five Q4 and three Q8 blocks",
+    "q4": {
+      "candidate": {"core_prefill_tok_s": [5145.8548330230415, 4994.958019133889, 5091.7425599845565, 4942.031228502286, 5152.573020866009], "public_prefill_tok_s": [5199.245232068717, 4955.589305613728, 5147.087733025224, 5068.760658814146, 5202.00556009049]},
+      "control": {"core_prefill_tok_s": [4912.860817962156, 4820.747381934012, 4988.603914348983, 4849.481931360736, 4993.744652084737], "public_prefill_tok_s": [4967.6160430984155, 4842.353539305048, 5041.436968656421, 4857.698697689879, 4899.499026224568]},
+      "median_candidate_over_control": {"core_prefill": 1.036410911819114, "public_prefill": 1.050533474029781, "core_decode": 0.9658478040652368, "public_decode": 0.9937937814710058},
+      "prefill_paired_wins": {"core": 5, "public": 5},
+      "decode_note": "The pair is prefill-only. Public decode is within 1%; the inactive core window retains the campaign's documented bimodality, so no decode claim is made."
+    },
+    "q8": {
+      "candidate": {"core_prefill_tok_s": [5110.643076909778, 5237.94463257225, 5132.987793694875], "public_prefill_tok_s": [4995.161278977093, 5188.428891543343, 5061.49028582374]},
+      "control": {"core_prefill_tok_s": [5010.260122234886, 5028.08998446605, 4983.399439943769], "public_prefill_tok_s": [4824.047848373844, 5064.611734746935, 4955.990034123541]},
+      "median_candidate_over_control": {"core_prefill": 1.024495269400353, "public_prefill": 1.0212874220839423, "core_decode": 1.0062727034285681, "public_decode": 1.0074507137240227},
+      "prefill_paired_wins": {"core": 3, "public": 3}
+    },
+    "correctness": {"all_finite": true, "all_deterministic": true, "core_trajectories_exact": true, "public_trajectories_exact": true},
+    "owned_session_bytes": {"q4_candidate": 1067067204, "q4_control": 1067067204, "q8_candidate": 1029470788, "q8_control": 1029470788},
+    "interpretation": "The causal retained claim is the exact 1.69095-ms all-owner leaf saving; complete-model rows are binding non-regression evidence."
+  },
+  "cumulative_semantic": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python -u scripts/qwen35_08b_cumulative_semantic.py",
+    "raw_sha256": "88c7f50defd2376b124165b43844d02ac05e006fc78d30c311e577fd992e0730",
+    "measured_harness_sha256": "d30a14d0ff5ac42097f318fe6730ff8afd488c5b674f04f7d0668809890e5852",
+    "final_harness_sha256": "6cfb39593527963aeae938ae08eba1092f8950c4c68d5e37f1ad10d34ac1c278",
+    "focused_repair_note": "The completed gate admitted X8 in strict role labels as well as current; candidate and rollback still matched all 72 teacher/state digests, making the quality verdict equivalent. The final harness explicitly disables X8 in strict roles. Per focused-repair policy, the expensive all-pass gate was not repeated.",
+    "gate_passed": true,
+    "prompt_count": 18,
+    "profiles": ["natural", "category_p512"],
+    "decode_steps": 24,
+    "candidate_vs_x8_rollback_prompt_profile_pairs": 72,
+    "teacher_forced_digest_matches": 72,
+    "state_digest_matches": 72,
+    "q4_current_top1": "898/900",
+    "q4_max_kl": 0.005930369204291595,
+    "q8_current_top1": "896/900",
+    "overall_current_top1": "1794/1800",
+    "q8_max_kl": 0.003259258404580838,
+    "all_role_deterministic": true,
+    "all_state_finite": true,
+    "all_recorded_graph_trajectories_exact": true
+  },
+  "validation": {
+    "red": "Focused test collection failed because the dual wrapper did not exist.",
+    "green": "Focused GPU exactness, registry/dispatch, backend capability, model-policy, rollback-environment, post-scope production smoke, complete-model, cumulative semantic, and kernel-trace gates pass.",
+    "lineage": "Global check_lineage was attempted but the manifest references missing /home/lhl/amd-gpu-tuning/reference/atlas; this is an in-tree sibling of the current catalogued Q8T16 WMMA owner, not an external port."
+  },
+  "decision": "Retain as the gfx1151 default only for model-qualified Qwen3.5-0.8B Q4_K_M/Q8_0 rows512/K1024/N16+N16 alpha/beta. Keep singleton WMMA fallback and one-release env rollback."
+}

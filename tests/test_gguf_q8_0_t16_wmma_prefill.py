@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     build_gguf_q8_0_t16_prefill,
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
+    gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_bf16_f32_out,
     gguf_q8_0_t16_wmma_prefill_bf16_fp16_out,
@@ -298,6 +299,16 @@ def test_gguf_q8_0_t16_prefill_registry_and_build_plan() -> None:
         is gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out
     )
 
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_pair",
+            quant="gguf_q8_0_t16_v1",
+            variant="t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out
+    )
+
     artifact = plan_gguf_q8_0_t16_prefill_build(compiler_version="test-compiler")
     assert artifact.output_path.name == "gguf_q8_0_t16_prefill.so"
     assert any(path.name == "gguf_q8_0_t16_prefill.hip" for path in artifact.sources)
@@ -540,6 +551,62 @@ def test_lcp3_four_wave_q8_t16_prefill_is_bit_exact_to_32x32(
         wrapper_override=gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out,
     )
     np.testing.assert_array_equal(candidate, baseline)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_t16_dual_wmma_prefill_is_bit_exact_to_singletons() -> None:
+    rows, in_features, out_features = 37, 256, 16
+    host_in = _prepare_input(_make_activation(rows, in_features, seed=71), "bf16")
+    raw_a = make_q8_0_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, 1, axis=0).copy()
+    tiles_a = repack_gguf_q8_0_tile16(raw_a)
+    tiles_b = repack_gguf_q8_0_tile16(raw_b)
+    expected_a = np.empty((rows, out_features), dtype=np.uint16)
+    expected_b = np.empty_like(expected_a)
+    actual_a = np.empty_like(expected_a)
+    actual_b = np.empty_like(expected_a)
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q8_0_t16_prefill(load=True)
+    buffers = []
+
+    def upload(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer, host_array_ptr(np.ascontiguousarray(array)), runtime=runtime
+        )
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = upload(host_in)
+        a_dev = upload(tiles_a.tiles)
+        b_dev = upload(tiles_b.tiles)
+        out_devs = [malloc(expected_a.nbytes, runtime=runtime) for _ in range(4)]
+        buffers.extend(out_devs)
+        for tiles_dev, out_dev in zip((a_dev, b_dev), out_devs[:2], strict=True):
+            gguf_q8_0_t16_wmma_prefill_bf16_bf16_out(
+                x_dev.ptr, tiles_dev.ptr, out_dev.ptr, rows, in_features,
+                out_features, tile_m=16, tile_n=32, library=library,
+                runtime=runtime,
+            )
+        gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr, a_dev.ptr, b_dev.ptr, out_devs[2].ptr, out_devs[3].ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for host, device in zip(
+            (expected_a, expected_b, actual_a, actual_b), out_devs, strict=True
+        ):
+            copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

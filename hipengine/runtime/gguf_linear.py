@@ -855,6 +855,34 @@ _t16_f16_rocblas_prefill_session: ContextVar[
 _q4_t16_unequal_pair_prefill_enabled: ContextVar[bool] = ContextVar(
     "q4_t16_unequal_pair_prefill_enabled", default=False
 )
+_q4_pack8_dual_wmma_silu_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q4_pack8_dual_wmma_silu_prefill_enabled", default=False
+)
+_q8_t16_dual_wmma_prefill_enabled: ContextVar[bool] = ContextVar(
+    "q8_t16_dual_wmma_prefill_enabled", default=False
+)
+
+
+@contextlib.contextmanager
+def q4_pack8_dual_wmma_silu_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified operation-complete pack8 owner for one request."""
+
+    token = _q4_pack8_dual_wmma_silu_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q4_pack8_dual_wmma_silu_prefill_enabled.reset(token)
+
+
+@contextlib.contextmanager
+def q8_t16_dual_wmma_prefill_session(enabled: bool) -> Iterator[None]:
+    """Admit the model-qualified narrow Q8T16 pair for one request."""
+
+    token = _q8_t16_dual_wmma_prefill_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q8_t16_dual_wmma_prefill_enabled.reset(token)
 
 
 @contextlib.contextmanager
@@ -1611,6 +1639,59 @@ def _pack8_dual_rowtile_silu_dispatch(
         "gguf_q4_k",
         "pack8_dual_rowtile_bf16_bf16_out",
     )
+    return candidate if is_registered(candidate) else None
+
+
+def _pack8_dual_wmma_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    use_wmma: bool,
+) -> KernelKey | None:
+    """Resolve the shape-qualified operation-complete pack8 bulk FFN owner."""
+
+    expected = KernelKey(
+        dispatch_a.key.backend,
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    if (
+        not use_wmma
+        or not _q4_pack8_dual_wmma_silu_prefill_enabled.get()
+        or os.environ.get(
+            "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+            "1",
+        )
+        == "0"
+        or dispatch_a.abi != "pack8"
+        or dispatch_b.abi != "pack8"
+        or dispatch_a.key != expected
+        or dispatch_b.key != expected
+        or not backend_package_capability(
+            dispatch_a.key.backend,
+            "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+            False,
+        )
+        or not _backend_prefill_shape_is_qualified(
+            dispatch_a.key.backend,
+            "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES",
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_wmma_prefill_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(candidate)
     return candidate if is_registered(candidate) else None
 
 
@@ -2527,6 +2608,8 @@ def _linear_residual_variant(variant: str) -> str | None:
 
     if variant == "out":
         return "out_bf16_residual_bf16_out"
+    if variant == "prefill_wmma_out":
+        return "prefill_wmma_out_bf16_residual_bf16_out"
     suffix = "_bf16_bf16_out"
     if not variant.endswith(suffix):
         return None
@@ -2772,17 +2855,90 @@ def launch_gguf_linear_residual(
     runtime=None,
     registered_decode: bool = False,
 ) -> bool:
-    """Launch an exact small-row projection plus rounded-BF16 residual.
+    """Launch an exact projection plus rounded-BF16 residual composite.
 
     Registry-qualified native rows 2-4 use their existing session policy. A
     caller may independently admit one model/shape-qualified c1 owner through
-    ``registered_decode``; ABI and sibling registry misses still fail closed to
-    the ordinary projection plus ``gguf_bf16_add`` chain.
+    ``registered_decode``. Qualified bulk dense-BF16 WMMA shapes may own the
+    same rounded boundary; every ABI, shape, registry, and policy miss fails
+    closed to the ordinary projection plus ``gguf_bf16_add`` chain.
     """
 
-    if rows < 1 or rows > 4 or _resolve_use_wmma_prefill(None):
+    if rows < 1:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
+    if rows > 4:
+        # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail
+        # closed before registry/capability work for pack8/raw/T16 owners; their
+        # primitive chain remains the route and pays no candidate dispatch tax.
+        if weight.spec.layout != LAYOUT_DENSE_BF16:
+            return False
+        if (
+            not _resolve_use_wmma_prefill(None)
+            or os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "1") == "0"
+        ):
+            return False
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch = _dense_bf16_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            enabled=(
+                os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and bool(
+                    backend_package_capability(
+                        resolved_backend,
+                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+                        False,
+                    )
+                )
+                and _backend_prefill_shape_is_qualified(
+                    resolved_backend,
+                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+            ),
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return False
+        fused_key, fn = resolved
+        kwargs = {"stream": stream, "runtime": runtime}
+        if libraries is not None:
+            library = libraries.get(
+                f"{fused_key.quant}:{fused_key.variant}",
+                libraries.get(
+                    f"{dispatch.key.quant}:{dispatch.key.variant}",
+                    libraries.get(fused_key.quant),
+                ),
+            )
+            if library is not None:
+                kwargs["library"] = library
+        launcher(
+            fn,
+            weight,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
+        return True
+    if _resolve_use_wmma_prefill(None):
+        return False
     if rows == 1:
         if not registered_decode:
             return False
@@ -3160,13 +3316,10 @@ def launch_gguf_linear_pair(
 
     The pair fast paths cover registered exact raw decode pairs (including
     unequal-width F32 output), Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
-    and the P8.2 raw-Q4_K dual WMMA prefill. Populated resident-pack8 pairs
-    decline the legacy dual owner when the exact tile8x8 singleton is registered.
-    There is still no Q8_0 dual WMMA
-    prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
-    the WMMA family, the pair function returns ``False`` so the caller falls
-    back to two singletons that each take the WMMA path via
-    :func:`launch_gguf_linear`.
+    and raw-Q4/Q8T16 dual WMMA prefill. Populated resident-pack8 pairs decline
+    the legacy dual owner when the exact tile8x8 singleton is registered.
+    Q8T16 WMMA pairing is architecture/shape-qualified; every miss falls back
+    to two singleton WMMA projections via :func:`launch_gguf_linear`.
 
     When ``use_gemv_decode`` is enabled (kwarg / session / env opt-in) and
     ``rows == 1`` with a registered Q8_0 dual gate+up GEMV decode kernel,
@@ -3198,6 +3351,8 @@ def launch_gguf_linear_pair(
         resolved_backend,
         use_wmma,
         use_gemv,
+        os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1"),
+        _q8_t16_dual_wmma_prefill_enabled.get(),
         _q4_t16_unequal_pair_prefill_enabled.get(),
         (
             None
@@ -3226,6 +3381,36 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q8_t16_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
 
     if pair_kind == "q4_t16_unequal_dual_wmma":
         pair_key = KernelKey(
@@ -3630,6 +3815,42 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            use_wmma=_resolve_use_wmma_prefill(None),
+        )
+        if pack8_wmma_key is not None:
+            fn = resolve(
+                backend=pack8_wmma_key.backend,
+                layer=pack8_wmma_key.layer,
+                quant=pack8_wmma_key.quant,
+                variant=pack8_wmma_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None if libraries is None else libraries.get(pack8_wmma_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("qweight").tensor.ptr,
+                weight_a.allocation("scales").tensor.ptr,
+                weight_a.allocation("mins").tensor.ptr,
+                weight_b.allocation("qweight").tensor.ptr,
+                weight_b.allocation("scales").tensor.ptr,
+                weight_b.allocation("mins").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         t16_wmma_key = _q4_t16_dual_wmma_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -4037,6 +4258,38 @@ def _resolve_gguf_linear_pair_kind(
             # ABI. Decline unless an explicit ordered pair-only policy matched.
             return "none"
     if use_wmma and rows > 1:
+        q8_t16_dual_wmma = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        q8_t16_shapes = backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
+            (),
+        )
+        if (
+            os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1")
+            != "0"
+            and _q8_t16_dual_wmma_prefill_enabled.get()
+            and bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
+                    False,
+                )
+            )
+            and (rows, in_features, out_features, out_features_b)
+            in q8_t16_shapes
+            and activation_dtype == GGUF_ACTIVATION_BF16
+            and output_dtype == GGUF_OUTPUT_BF16
+            and dispatch_a.abi == dispatch_b.abi == "t16"
+            and dispatch_a.key.quant == dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+            and is_registered(q8_t16_dual_wmma)
+        ):
+            return "q8_t16_dual_wmma"
+
         q4_t16_unequal_dual = KernelKey(
             backend,
             "linear_pair",
@@ -5388,11 +5641,13 @@ __all__ = [
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
     "native_batch_decode_session",
+    "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
     "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",
+    "q8_t16_dual_wmma_prefill_session",
     "raw_k_prefill_rowbatch",
     "raw_k_prefill_rowbatch_session",
     "raw_k_prefill_variant",

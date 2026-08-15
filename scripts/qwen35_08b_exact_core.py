@@ -221,8 +221,28 @@ def _run(
                 finite = finite and bool(np.isfinite(row.logits).all())
             return token_ids, finite
 
+        def public_correctness() -> tuple[list[int], bool]:
+            first = session.prefill(
+                prompt,
+                use_bulk=True,
+                bulk_attention_mode="bulk",
+                return_logits=True,
+                capture_hidden_seed_fp32=False,
+            )
+            token_ids = [int(first.token_id)]
+            finite = bool(np.isfinite(first.logits).all())
+            current = int(first.token_id)
+            for _ in continuation:
+                row = session.step(current, return_logits=True)
+                current = int(row.token_id)
+                token_ids.append(current)
+                finite = finite and bool(np.isfinite(row.logits).all())
+            return token_ids, finite
+
         top1_ids, finite_first = correctness()
         top1_repeat, finite_repeat = correctness()
+        public_top1_ids, public_finite_first = public_correctness()
+        public_top1_repeat, public_finite_repeat = public_correctness()
         snapshot = _memory_snapshot("closure", runtime, session)
         prefill_ms = [float(row["prefill_ms"]) for row in rows]
         decode_ms = [float(row["decode_ms"]) for row in rows]
@@ -262,6 +282,9 @@ def _run(
             "top1_ids": top1_ids,
             "top1_repeat_exact": top1_ids == top1_repeat,
             "top1_all_finite": finite_first and finite_repeat,
+            "public_top1_ids": public_top1_ids,
+            "public_top1_repeat_exact": public_top1_ids == public_top1_repeat,
+            "public_top1_all_finite": public_finite_first and public_finite_repeat,
             "memory": {
                 "owned_session_bytes": int(snapshot["owned_session_bytes"]),
                 "tracked_current_bytes": int(snapshot["tracked"]["current_allocated_bytes"]),
@@ -304,6 +327,8 @@ def main() -> int:
             "public_all_finite",
             "top1_repeat_exact",
             "top1_all_finite",
+            "public_top1_repeat_exact",
+            "public_top1_all_finite",
             "memory",
         )
     }, indent=2))
