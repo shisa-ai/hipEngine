@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q6_planar_q8_decode",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "7effa58b56f1a80bc7e53e0b5660fe1f803329e2",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "graph_kernel_wall_ms": 10449.636,
+    "affected_planar_q6_down_ms": 1344.581979,
+    "family_share_percent": 12.867261395516552,
+    "required_family_saving_percent": 7.771661500157588,
+    "advance_threshold_percent": 1.0
+  },
+  "candidate": {
+    "control": "exact planar-Q6 BF16 c1 projection",
+    "path": "BF16-to-Q8_1 producer plus existing same-planar-payload dp4a projection",
+    "hypothesis": "replace scalar Q6 dequant/FMA with integer dot products",
+    "resident_layout": "gguf_q6_k_t16_qmicro_planar_v1",
+    "new_resident_bytes": 0,
+    "workspace_bytes_rows1": 19584,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "actual_layers": [0, 31, 63],
+    "shape": [5120, 17408],
+    "source_pool_mib": 209.1796875,
+    "source_mib_per_weight": 69.7265625,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 8,
+    "threads": [64, 128, 256],
+    "timing": "counterbalanced HIP events; candidate includes Q8_1 production",
+    "cache_contract": "every source weight exceeds 64 MiB and 2x the 32-MiB MALL"
+  },
+  "results": [
+    {
+      "threads": 64,
+      "control_ms": 0.9977896213531494,
+      "candidate_ms": 1.012058973312378,
+      "speedup": 0.98590067146727,
+      "candidate_wins": "3/45",
+      "projected_saved_ms": -19.228816461698248,
+      "projected_complete_graph_percent": -0.18401422271262124
+    },
+    {
+      "threads": 128,
+      "control_ms": 1.0019494891166687,
+      "candidate_ms": 1.028252750635147,
+      "speedup": 0.9744194591240034,
+      "candidate_wins": "2/45",
+      "projected_saved_ms": -35.29807820736551,
+      "projected_complete_graph_percent": -0.33779241886861433
+    },
+    {
+      "threads": 256,
+      "control_ms": 1.005091518163681,
+      "candidate_ms": 1.0131193697452545,
+      "speedup": 0.9920761049277025,
+      "candidate_wins": "14/45",
+      "projected_saved_ms": -10.739424591296439,
+      "projected_complete_graph_percent": -0.10277319316478048
+    }
+  ],
+  "correctness": {
+    "all_finite": true,
+    "maximum_absolute_error": 0.0078125,
+    "maximum_kl": 1.6238127592614137e-06,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "threads64": {
+      "path": "/tmp/qwen38-task22-q6-planar-q8-leaf-t64/leaf.json",
+      "sha256": "5724703de3ba9a9edec8fa856d8d0a3c683f4c791e77734a37330d80eb804171",
+      "bytes": 6934
+    },
+    "threads128": {
+      "path": "/tmp/qwen38-task22-q6-planar-q8-leaf-t128/leaf.json",
+      "sha256": "a2441a240e70660718a388070662adf95b8d50129be67dbe9a7f96b0fb12ff18",
+      "bytes": 6947
+    },
+    "threads256": {
+      "path": "/tmp/qwen38-task22-q6-planar-q8-leaf/leaf.json",
+      "sha256": "ac027f469c7c8ee82ff9430e06a408087e5a62a6d4da63c68125972dd8c4c0b3",
+      "bytes": 6918
+    },
+    "profile": {
+      "path": "/tmp/qwen38-task22-post-q8x2-rerank/rocprof-selected/gfx1151/1117555_kernel_trace.csv",
+      "sha256": "f39c0143cc477b173932a38bc55863d101a6a734a662886b20bdf805154b7f60"
+    }
+  },
+  "validation": {
+    "existing_kernel_and_wrapper_only": true,
+    "source_change": false,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject planar-Q6 Q8_1 decode at every 64/128/256-thread geometry. All actual layers regress and the best t256 route projects -10.739 ms / -0.103% selected graph wall; retain exact BF16 planar-Q6 c1."
+}
