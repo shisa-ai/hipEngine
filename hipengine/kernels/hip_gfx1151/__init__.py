@@ -680,16 +680,16 @@ GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # Qwen3.5-0.8B has one V head per K head and only 64 exact-LDS32 blocks at
-# pp512. The complete 18-prompt semantic/decode gate and paired full-engine
-# screen admit the existing Vulkan-shaped cluster8 recurrence only for its
-# exact quant and (K heads, V heads, K dim, V dim) geometry. Q8_0 retains the
-# exact route after its strict graph-decode guard missed by 0.0108%.
+# pp512. Complete 18-prompt semantic/decode gates and paired full-engine screens
+# admit the existing Vulkan-shaped cluster8 recurrence only for the listed
+# quant and (K heads, V heads, K dim, V dim) keys. P2 initially kept Q8_0 exact
+# after a 0.0108% guard miss; X2-K2's fresh five-block gate superseded it.
 GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
-    # D08-X2-K2 (2026-08-15): the exact-core five-block gate measures the
-    # Vulkan-shaped cluster8 recurrence at +18% Q8_0 pp512 with neutral
-    # core-graph tg128, so the same one-V-head-per-K-head geometry now uses
-    # cluster8 for Q8_0 too. HIPENGINE_GGUF_GDN_PREFILL_MODE overrides.
+    # D08-X2-K2 (2026-08-15): the exact-core gate measures the Vulkan-shaped
+    # cluster8 recurrence at +16.70% Q8_0 pp512 with neutral core-graph tg128,
+    # so the same one-V-head-per-K-head geometry now uses cluster8 for Q8_0 too.
+    # HIPENGINE_GGUF_GDN_PREFILL_MODE remains the explicit override.
     ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
 }
 # The architecture-scoped strict-exact selector resolves to the same proven

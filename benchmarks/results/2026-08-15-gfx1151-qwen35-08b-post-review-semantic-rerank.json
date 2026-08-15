@@ -1,0 +1,909 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained_diagnostic_rerank",
+  "task": "D08 post-review semantic prefill and graph-decode rerank with API-residual closure",
+  "hardware": {
+    "host": "zbook",
+    "platform": "Linux-7.1.8-1-cachyos-x86_64-with-glibc2.44",
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics"
+  },
+  "source_commit": "5af56be87618791d6db9ab0e00baae0a4cd123ee",
+  "clean_tree": true,
+  "protocol": {
+    "prefill": "three measured persistent-session p512 runs after one warmup; same-stream device wall-clock semantic markers; bulk current defaults; medians by role",
+    "graph": "committed scripts/qwen35_08b_graph_rerank.py; eager, recorded, production, and 240-marker instrumented graph in one session per quant; 128 token-level samples",
+    "graph_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0 uv run python scripts/qwen35_08b_graph_rerank.py",
+    "graph_script_sha256": "976744e1945c362d3282bb1bb48e789abce40a207dc4e50a5eff4525951475a6",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "historical_comparator": "same-day Vulkan perf-logger semantic rows from benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json; not a same-session denominator",
+    "normalization": "instrumented decode role shares are normalized to uninstrumented production graph wall; marker timings are attribution only"
+  },
+  "quants": {
+    "q4": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "model_sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "quant": "gguf_q4_k_m",
+      "prefill": {
+        "command": [
+          "scripts/qwen35_gguf_bench.py",
+          "--model",
+          "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--token-id",
+          "9707",
+          "--prompt-length",
+          "512",
+          "--decode-tokens",
+          "4",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--persistent-session",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--no-graph-replay-decode",
+          "--gpu-stage-timings",
+          "--compiler-version-file",
+          "/tmp/d08-c0/hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/d08-review/q4-current-stage.json"
+        ],
+        "source_commit": "5af56be87618791d6db9ab0e00baae0a4cd123ee",
+        "clean_tree": true,
+        "instrumented_wall_samples_ms": [
+          128.55555399437435,
+          128.0849940085318,
+          127.8962490032427
+        ],
+        "instrumented_wall_median_ms": 128.0849940085318,
+        "semantic_role_median_sum_ms": 126.95962328424007,
+        "semantic_coverage": 0.9912138753411133,
+        "exact_core_baseline_wall_ms": 118.68282220422077,
+        "marker_wall_over_exact_core": 1.0792209995489697,
+        "roles": [
+          {
+            "role": "dense_ffn_projections",
+            "samples_ms": [
+              44.72461677186655,
+              44.51353571786394,
+              44.54102795311091
+            ],
+            "median_ms": 44.54102795311091,
+            "x1_hip_median_ms": 113.808155,
+            "movement_vs_x1_ms": -69.26712704688909,
+            "historical_vulkan_logger_ms": 24.49522,
+            "historical_matched_gap_ms": 20.045807953110913,
+            "instrumented_wall_share": 0.3477458721678514
+          },
+          {
+            "role": "gdn_recurrence",
+            "samples_ms": [
+              28.488568279731492,
+              29.627612463680993,
+              29.26632601943693
+            ],
+            "median_ms": 29.26632601943693,
+            "x1_hip_median_ms": 40.048372,
+            "movement_vs_x1_ms": -10.782045980563069,
+            "historical_vulkan_logger_ms": 12.585055,
+            "historical_matched_gap_ms": 16.68127101943693,
+            "instrumented_wall_share": 0.22849145011856337
+          },
+          {
+            "role": "linear_attention_projections",
+            "samples_ms": [
+              33.87708646428214,
+              33.764372307384036,
+              33.99127341949705
+            ],
+            "median_ms": 33.87708646428214,
+            "x1_hip_median_ms": 47.697175,
+            "movement_vs_x1_ms": -13.820088535717865,
+            "historical_vulkan_logger_ms": 17.82819,
+            "historical_matched_gap_ms": 16.048896464282137,
+            "instrumented_wall_share": 0.2644891130808467
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "samples_ms": [
+              8.243582807333935,
+              8.213485622683098,
+              8.486283939485022
+            ],
+            "median_ms": 8.243582807333935,
+            "x1_hip_median_ms": 12.552971,
+            "movement_vs_x1_ms": -4.309388192666065,
+            "historical_vulkan_logger_ms": 4.38531,
+            "historical_matched_gap_ms": 3.858272807333935,
+            "instrumented_wall_share": 0.06436025446341377
+          },
+          {
+            "role": "full_attention_core_kv",
+            "samples_ms": [
+              2.8201983769161405,
+              2.8323013726079553,
+              2.758360885682797
+            ],
+            "median_ms": 2.8201983769161405,
+            "x1_hip_median_ms": 3.746799,
+            "movement_vs_x1_ms": -0.9266006230838597,
+            "historical_vulkan_logger_ms": 1.765358,
+            "historical_matched_gap_ms": 1.0548403769161405,
+            "instrumented_wall_share": 0.02201817940303207
+          },
+          {
+            "role": "input_setup",
+            "samples_ms": [
+              1.8654844203987577,
+              0.812012824366296,
+              0.8766255886183749
+            ],
+            "median_ms": 0.8766255886183749,
+            "x1_hip_median_ms": 0.887126,
+            "movement_vs_x1_ms": -0.010500411381625052,
+            "historical_vulkan_logger_ms": 0.246531,
+            "historical_matched_gap_ms": 0.6300945886183749,
+            "instrumented_wall_share": 0.006844092826049416
+          },
+          {
+            "role": "attention_norm",
+            "samples_ms": [
+              0.8033463580803526,
+              0.7742610960825568,
+              0.7764352269311692
+            ],
+            "median_ms": 0.7764352269311692,
+            "x1_hip_median_ms": 0.95764,
+            "movement_vs_x1_ms": -0.18120477306883087,
+            "historical_vulkan_logger_ms": 0.46143,
+            "historical_matched_gap_ms": 0.31500522693116917,
+            "instrumented_wall_share": 0.006061875030258818
+          },
+          {
+            "role": "dense_ffn_activation",
+            "samples_ms": [
+              1.3893998597334933,
+              1.459012123033764,
+              1.4396553451557959
+            ],
+            "median_ms": 1.4396553451557959,
+            "x1_hip_median_ms": 1.897325,
+            "movement_vs_x1_ms": -0.4576696548442041,
+            "historical_vulkan_logger_ms": 1.32827,
+            "historical_matched_gap_ms": 0.11138534515579579,
+            "instrumented_wall_share": 0.01123984395127426
+          },
+          {
+            "role": "state_finalize",
+            "samples_ms": [
+              0.01691213305280032,
+              0.0094980462879471,
+              0.005891193267207695
+            ],
+            "median_ms": 0.0094980462879471,
+            "x1_hip_median_ms": 0.006452,
+            "movement_vs_x1_ms": 0.0030460462879470995,
+            "historical_vulkan_logger_ms": 0.0,
+            "historical_matched_gap_ms": 0.0094980462879471,
+            "instrumented_wall_share": 7.415424704094869e-05
+          },
+          {
+            "role": "final_norm",
+            "samples_ms": [
+              0.02236248872858431,
+              0.016150686303977556,
+              0.010820559062218215
+            ],
+            "median_ms": 0.016150686303977556,
+            "x1_hip_median_ms": 0.012343,
+            "movement_vs_x1_ms": 0.003807686303977556,
+            "historical_vulkan_logger_ms": 0.019226,
+            "historical_matched_gap_ms": -0.003075313696022444,
+            "instrumented_wall_share": 0.00012609350868144438
+          },
+          {
+            "role": "residual_norm_glue",
+            "samples_ms": [
+              1.0985272016831982,
+              1.1320308586313999,
+              1.0858230638212605
+            ],
+            "median_ms": 1.0985272016831982,
+            "x1_hip_median_ms": 1.225408,
+            "movement_vs_x1_ms": -0.12688079831680188,
+            "historical_vulkan_logger_ms": 1.363423,
+            "historical_matched_gap_ms": -0.2648957983168019,
+            "instrumented_wall_share": 0.008576548800166433
+          },
+          {
+            "role": "lm_head_sampler_transport",
+            "samples_ms": [
+              1.2979661356577497,
+              1.2484119827672577,
+              1.211541929666366
+            ],
+            "median_ms": 1.2484119827672577,
+            "x1_hip_median_ms": 1.6212,
+            "movement_vs_x1_ms": -0.37278801723274224,
+            "historical_vulkan_logger_ms": 2.28526,
+            "historical_matched_gap_ms": -1.0368480172327423,
+            "instrumented_wall_share": 0.009746746622669167
+          },
+          {
+            "role": "linear_attention_conv",
+            "samples_ms": [
+              2.694760044083759,
+              2.775192866446248,
+              2.7460975854122833
+            ],
+            "median_ms": 2.7460975854122833,
+            "x1_hip_median_ms": 4.065284,
+            "movement_vs_x1_ms": -1.3191864145877168,
+            "historical_vulkan_logger_ms": 6.85906,
+            "historical_matched_gap_ms": -4.112962414587717,
+            "instrumented_wall_share": 0.021439651121265342
+          }
+        ]
+      },
+      "decode_graph": {
+        "production_wall_median_ms": 8.365361,
+        "production_tok_s": 119.54056734670506,
+        "eager_wall_median_ms": 15.031515500000001,
+        "nodes": 286,
+        "edges": 285,
+        "node_types": {
+          "0": 286
+        },
+        "kernel_name_counts": {
+          "_Z34gguf_norm_fixed1024_wave256_kernelILb0EEvPKtS1_PKfPtS4_f": 24,
+          "_Z34gguf_norm_fixed1024_wave256_kernelILb1EEvPKtS1_PKfPtS4_f": 24,
+          "_Z35gguf_q6_k_embedding_bf16_out_kernelPKlPKhPtiii": 1,
+          "_Z35gguf_rmsnorm_bf16_f32_weight_kernelPKtPKfPtfl": 1,
+          "_Z59gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernelPKfS0_S0_S0_S0_S0_PKlPfS3_flllll": 6,
+          "_ZN12_GLOBAL__N_118bf16_to_f32_kernelEPKtPfl": 6,
+          "_ZN12_GLOBAL__N_118f32_to_bf16_kernelEPKfPtl": 18,
+          "_ZN12_GLOBAL__N_120argmax_stage1_kernelEPKfPfPll": 1,
+          "_ZN12_GLOBAL__N_120argmax_stage2_kernelEPKfPKllPlPf": 1,
+          "_ZN12_GLOBAL__N_120q6_k_t16_gemv_kernelItfEEvPKT_PKhPT0_lll": 1,
+          "_ZN12_GLOBAL__N_121dense_gemv_out_kernelItLb0EEEvPKT_S3_S3_PS1_lll": 4,
+          "_ZN12_GLOBAL__N_121dense_gemv_out_kernelItLb1EEEvPKT_S3_S3_PS1_lll": 12,
+          "_ZN12_GLOBAL__N_130qwen35_split_qgate_bf16_kernelEPKtPfPtlll": 6,
+          "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttLb1EEEvPKT_PKhS5_PT0_S7_llll": 18,
+          "_ZN12_GLOBAL__N_134advance_decode_position_i64_kernelEPlS0_": 1,
+          "_ZN12_GLOBAL__N_134gguf_q4_k_pack8_prefill_out_kernelIttLb0EEEvPKT_PKiPKfS7_PKT0_PS8_iiii": 28,
+          "_ZN12_GLOBAL__N_134gguf_q4_k_pack8_prefill_out_kernelIttLb1EEEvPKT_PKiPKfS7_PKT0_PS8_iiii": 12,
+          "_ZN12_GLOBAL__N_134qk_t16_selected_direct_gemv_kernelItLi5ELb0ELb0ELb1EEEvPKT_PKlPKhPS1_lllll": 36,
+          "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb0EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 2,
+          "_ZN12_GLOBAL__N_139gguf_q4_k_pack8_dual_prefill_out_kernelItLb1EEEvPKT_PKiPKfS7_S5_S7_S7_PS1_S8_S8_iiii": 24,
+          "_ZN12_GLOBAL__N_141q4_k_t16_dense_single_local32_gemv_kernelItEEvPKT_PKhPS1_ll": 6,
+          "_ZN12_GLOBAL__N_142qwen35_linear_attn_conv_decode_lowp_kernelItEEvPKT_PfPKfS4_ll": 18,
+          "_ZN12_GLOBAL__N_145qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernelItLb0EEEvPKfPKT_S5_S5_S2_S2_S2_PfS6_Ptfllll": 18,
+          "_ZN12_GLOBAL__N_155qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernelEPKfPKtS3_PKiPKlPfS8_S8_llllllf": 6,
+          "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_decode_split_k_reduce_gate_kernelI12hip_bfloat16EEvPKfS3_S3_PKT_PS4_llll": 6,
+          "_ZN12_GLOBAL__N_156qwen35_write_paged_kv_mixed_value_position_tensor_kernelItEEvPKfPKT_PtS6_PKiPKlllll": 6
+        },
+        "transport": {
+          "schema_version": 1,
+          "transport": "hipgraph",
+          "backend": "hip_gfx1151",
+          "gfx_arch": "gfx1151",
+          "source": "hip_runtime_graph",
+          "launches": 128,
+          "submission_started": true,
+          "native_fallbacks": 0,
+          "decode_graph_key_sha256": "e97415940611a6a1caa5d1eb974b42a518e1a2b9032c1f957e33deedaab614b1",
+          "replayed_steps": 128
+        },
+        "recorded_trajectory_exact": true,
+        "quality": {
+          "recorded": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          },
+          "production": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          },
+          "instrumented": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          }
+        },
+        "roles": [
+          {
+            "role": "full_attention_core_kv",
+            "instrumented_marker_median_ms": 1.3475002504759042,
+            "production_wall_normalized_ms": 1.1449185619905522,
+            "historical_vulkan_logger_ms": 0.156845,
+            "historical_matched_gap_ms": 0.9880735619905522,
+            "production_wall_share": 0.13686421446612432
+          },
+          {
+            "role": "linear_attention_projections",
+            "instrumented_marker_median_ms": 2.385332131048993,
+            "production_wall_normalized_ms": 2.0267239522856833,
+            "historical_vulkan_logger_ms": 1.051429,
+            "historical_matched_gap_ms": 0.9752949522856833,
+            "production_wall_share": 0.24227573111138698
+          },
+          {
+            "role": "dense_ffn_projections",
+            "instrumented_marker_median_ms": 2.40250475904218,
+            "production_wall_normalized_ms": 2.0413148664919065,
+            "historical_vulkan_logger_ms": 1.102156,
+            "historical_matched_gap_ms": 0.9391588664919066,
+            "production_wall_share": 0.244019937273706
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "instrumented_marker_median_ms": 0.7144374311191264,
+            "production_wall_normalized_ms": 0.6070297025772325,
+            "historical_vulkan_logger_ms": 0.250669,
+            "historical_matched_gap_ms": 0.35636070257723257,
+            "production_wall_share": 0.07256467504238401
+          },
+          {
+            "role": "attention_norm",
+            "instrumented_marker_median_ms": 0.3555154794108807,
+            "production_wall_normalized_ms": 0.3020676777675789,
+            "historical_vulkan_logger_ms": 0.108414,
+            "historical_matched_gap_ms": 0.1936536777675789,
+            "production_wall_share": 0.03610934157743807
+          },
+          {
+            "role": "residual_norm_glue",
+            "instrumented_marker_median_ms": 0.3580402765253982,
+            "production_wall_normalized_ms": 0.3042128996928813,
+            "historical_vulkan_logger_ms": 0.162521,
+            "historical_matched_gap_ms": 0.1416918996928813,
+            "production_wall_share": 0.03636578262347331
+          },
+          {
+            "role": "linear_attention_conv",
+            "instrumented_marker_median_ms": 0.2967237751728284,
+            "production_wall_normalized_ms": 0.25211465293553764,
+            "historical_vulkan_logger_ms": 0.114745,
+            "historical_matched_gap_ms": 0.13736965293553766,
+            "production_wall_share": 0.03013792864833181
+          },
+          {
+            "role": "final_norm",
+            "instrumented_marker_median_ms": 0.020498948001202284,
+            "production_wall_normalized_ms": 0.01741715896495509,
+            "historical_vulkan_logger_ms": 0.004517,
+            "historical_matched_gap_ms": 0.01290015896495509,
+            "production_wall_share": 0.0020820570642384817
+          },
+          {
+            "role": "gdn_recurrence",
+            "instrumented_marker_median_ms": 0.8350866646628596,
+            "production_wall_normalized_ms": 0.7095406645791824,
+            "historical_vulkan_logger_ms": 0.711241,
+            "historical_matched_gap_ms": -0.0017003354208176003,
+            "production_wall_share": 0.08481889359935361
+          },
+          {
+            "role": "dense_ffn_activation",
+            "instrumented_marker_median_ms": 0.07378018234645825,
+            "production_wall_normalized_ms": 0.06268815181716973,
+            "historical_vulkan_logger_ms": 0.068271,
+            "historical_matched_gap_ms": -0.005582848182830266,
+            "production_wall_share": 0.00749377723414085
+          },
+          {
+            "role": "lm_head_sampler_transport",
+            "instrumented_marker_median_ms": 1.0104799118324816,
+            "production_wall_normalized_ms": 0.8585654861043552,
+            "historical_vulkan_logger_ms": 0.928866,
+            "historical_matched_gap_ms": -0.07030051389564473,
+            "production_wall_share": 0.10263340531321424
+          },
+          {
+            "role": "input_setup",
+            "instrumented_marker_median_ms": 0.02364492535818054,
+            "production_wall_normalized_ms": 0.020090173586165206,
+            "historical_vulkan_logger_ms": 0.220372,
+            "historical_matched_gap_ms": -0.2002818264138348,
+            "production_wall_share": 0.002401590748583977
+          },
+          {
+            "role": "state_finalize",
+            "instrumented_marker_median_ms": 0.013225127742711151,
+            "production_wall_normalized_ms": 0.011236876751583929,
+            "historical_vulkan_logger_ms": null,
+            "historical_matched_gap_ms": null,
+            "production_wall_share": 0.001343262622089343
+          }
+        ],
+        "instrumented_inventory": {
+          "nodes": 526,
+          "marker_nodes": 240,
+          "nonmarker_stage_nodes": 286,
+          "prefix_nodes": 0,
+          "suffix_nodes": 0
+        },
+        "api_residual": {
+          "production_wall_median_ms_per_token": 8.365361,
+          "graph_launch_api_median_ms": 0.012112999999999999,
+          "stream_synchronize_call_median_ms_including_device_wait": 8.3492915,
+          "instrumented_wall_median_ms_per_token": 9.959201499999999,
+          "same_session_device_stage_median_sum_ms_per_token": 9.845526500350667,
+          "instrumented_host_minus_device_stage_ms": 0.11367499964933181,
+          "instrumented_device_stage_coverage": 0.9885859323511698,
+          "prior_k4_isolated_owner_sum_estimate_ms_per_token": 6.0,
+          "production_wall_minus_prior_isolated_estimate_ms": 2.365361,
+          "interpretation_contract": "graph_launch is asynchronous; stream_synchronize includes device execution. The host-minus-same-session-device-stage value is the API/Python residual. The prior ~6 ms isolated-owner sum is retained only to test whether its ~2.3 ms gap is real API overhead or isolated-microbench undercount."
+        },
+        "memory_before": {
+          "tracked_current_bytes": 1067067204,
+          "tracked_peak_bytes": 1067068236,
+          "owned_session_bytes": 1067067204,
+          "hip_used_bytes": 1357598720
+        },
+        "memory_after": {
+          "tracked_current_bytes": 1067067204,
+          "tracked_peak_bytes": 1067068236,
+          "owned_session_bytes": 1067067204,
+          "hip_used_bytes": 1357803520
+        }
+      }
+    },
+    "q8": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "model_sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "quant": "gguf_q8_0",
+      "prefill": {
+        "command": [
+          "scripts/qwen35_gguf_bench.py",
+          "--model",
+          "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+          "--quant",
+          "gguf_q8_0",
+          "--token-id",
+          "9707",
+          "--prompt-length",
+          "512",
+          "--decode-tokens",
+          "4",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--persistent-session",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--no-graph-replay-decode",
+          "--gpu-stage-timings",
+          "--compiler-version-file",
+          "/tmp/d08-c0/hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/d08-review/q8-current-stage.json"
+        ],
+        "source_commit": "5af56be87618791d6db9ab0e00baae0a4cd123ee",
+        "clean_tree": true,
+        "instrumented_wall_samples_ms": [
+          108.34437300218269,
+          109.24115299712867,
+          108.1114870030433
+        ],
+        "instrumented_wall_median_ms": 108.34437300218269,
+        "semantic_role_median_sum_ms": 107.3113716060515,
+        "semantic_coverage": 0.9904655740994469,
+        "exact_core_baseline_wall_ms": 102.89586068707158,
+        "marker_wall_over_exact_core": 1.0529517152461674,
+        "roles": [
+          {
+            "role": "linear_attention_projections",
+            "samples_ms": [
+              28.178929966937183,
+              28.792836389139364,
+              28.167378018234643
+            ],
+            "median_ms": 28.178929966937183,
+            "x1_hip_median_ms": 25.654463,
+            "movement_vs_x1_ms": 2.524466966937183,
+            "historical_vulkan_logger_ms": 19.832127,
+            "historical_matched_gap_ms": 8.346802966937183,
+            "instrumented_wall_share": 0.2600866956548772
+          },
+          {
+            "role": "gdn_recurrence",
+            "samples_ms": [
+              25.132311391644123,
+              24.57312894499549,
+              24.919266606552448
+            ],
+            "median_ms": 24.919266606552448,
+            "x1_hip_median_ms": 50.489891,
+            "movement_vs_x1_ms": -25.570624393447552,
+            "historical_vulkan_logger_ms": 16.751519,
+            "historical_matched_gap_ms": 8.16774760655245,
+            "instrumented_wall_share": 0.23000056132172575
+          },
+          {
+            "role": "dense_ffn_projections",
+            "samples_ms": [
+              33.99378819757539,
+              34.92479711451758,
+              34.29924857228735
+            ],
+            "median_ms": 34.29924857228735,
+            "x1_hip_median_ms": 31.022944,
+            "movement_vs_x1_ms": 3.276304572287348,
+            "historical_vulkan_logger_ms": 27.80216,
+            "historical_matched_gap_ms": 6.497088572287346,
+            "instrumented_wall_share": 0.31657618777854163
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "samples_ms": [
+              8.362007814848212,
+              8.506041478809738,
+              8.479350766456268
+            ],
+            "median_ms": 8.479350766456268,
+            "x1_hip_median_ms": 7.620519,
+            "movement_vs_x1_ms": 0.8588317664562677,
+            "historical_vulkan_logger_ms": 6.227453,
+            "historical_matched_gap_ms": 2.251897766456268,
+            "instrumented_wall_share": 0.07826295479402003
+          },
+          {
+            "role": "input_setup",
+            "samples_ms": [
+              1.5419697425107706,
+              1.2570283538723575,
+              1.1795711852519788
+            ],
+            "median_ms": 1.2570283538723575,
+            "x1_hip_median_ms": 2.138784,
+            "movement_vs_x1_ms": -0.8817556461276423,
+            "historical_vulkan_logger_ms": 0.285205,
+            "historical_matched_gap_ms": 0.9718233538723575,
+            "instrumented_wall_share": 0.011602156337616477
+          },
+          {
+            "role": "full_attention_core_kv",
+            "samples_ms": [
+              2.775192866446248,
+              2.737521290451858,
+              2.839875763951508
+            ],
+            "median_ms": 2.775192866446248,
+            "x1_hip_median_ms": 2.655485,
+            "movement_vs_x1_ms": 0.11970786644624809,
+            "historical_vulkan_logger_ms": 1.843347,
+            "historical_matched_gap_ms": 0.9318458664462481,
+            "instrumented_wall_share": 0.02561455467918338
+          },
+          {
+            "role": "attention_norm",
+            "samples_ms": [
+              0.8417793808235647,
+              0.74941388638413,
+              0.7767959122332433
+            ],
+            "median_ms": 0.7767959122332433,
+            "x1_hip_median_ms": 0.735828,
+            "movement_vs_x1_ms": 0.04096791223324325,
+            "historical_vulkan_logger_ms": 0.446965,
+            "historical_matched_gap_ms": 0.3298309122332433,
+            "instrumented_wall_share": 0.007169693180259524
+          },
+          {
+            "role": "state_finalize",
+            "samples_ms": [
+              0.016631600040076144,
+              0.017352970644224027,
+              0.01707243763149985
+            ],
+            "median_ms": 0.01707243763149985,
+            "x1_hip_median_ms": 0.016752,
+            "movement_vs_x1_ms": 0.00032043763149984875,
+            "historical_vulkan_logger_ms": 0.0,
+            "historical_matched_gap_ms": 0.01707243763149985,
+            "instrumented_wall_share": 0.00015757567429141805
+          },
+          {
+            "role": "final_norm",
+            "samples_ms": [
+              0.023885382226229837,
+              0.01635106702735197,
+              0.020679290652239255
+            ],
+            "median_ms": 0.020679290652239255,
+            "x1_hip_median_ms": 0.021761,
+            "movement_vs_x1_ms": -0.001081709347760744,
+            "historical_vulkan_logger_ms": 0.018624,
+            "historical_matched_gap_ms": 0.0020552906522392535,
+            "instrumented_wall_share": 0.00019086630970509795
+          },
+          {
+            "role": "dense_ffn_activation",
+            "samples_ms": [
+              1.3709247570383731,
+              1.4607353972547843,
+              1.4234245065624687
+            ],
+            "median_ms": 1.4234245065624687,
+            "x1_hip_median_ms": 1.229576,
+            "movement_vs_x1_ms": 0.19384850656246866,
+            "historical_vulkan_logger_ms": 1.46213,
+            "historical_matched_gap_ms": -0.03870549343753127,
+            "instrumented_wall_share": 0.013137964318034242
+          },
+          {
+            "role": "residual_norm_glue",
+            "samples_ms": [
+              1.0810139264602745,
+              1.0588117423103895,
+              1.0822562869451957
+            ],
+            "median_ms": 1.0810139264602745,
+            "x1_hip_median_ms": 0.950887,
+            "movement_vs_x1_ms": 0.13012692646027446,
+            "historical_vulkan_logger_ms": 1.461351,
+            "historical_matched_gap_ms": -0.38033707353972557,
+            "instrumented_wall_share": 0.009977573329428899
+          },
+          {
+            "role": "lm_head_sampler_transport",
+            "samples_ms": [
+              1.3614066726780885,
+              1.3841899609257589,
+              1.370854623785192
+            ],
+            "median_ms": 1.370854623785192,
+            "x1_hip_median_ms": 1.499178,
+            "movement_vs_x1_ms": -0.12832337621480794,
+            "historical_vulkan_logger_ms": 6.24014,
+            "historical_matched_gap_ms": -4.869285376214808,
+            "instrumented_wall_share": 0.01265275330687986
+          },
+          {
+            "role": "linear_attention_conv",
+            "samples_ms": [
+              2.7125137761747324,
+              2.7442140066125638,
+              2.6947600440837594
+            ],
+            "median_ms": 2.7125137761747324,
+            "x1_hip_median_ms": 2.533774,
+            "movement_vs_x1_ms": 0.17873977617473225,
+            "historical_vulkan_logger_ms": 7.73973,
+            "historical_matched_gap_ms": -5.027216223825267,
+            "instrumented_wall_share": 0.025036037414883434
+          }
+        ]
+      },
+      "decode_graph": {
+        "production_wall_median_ms": 8.741836500000002,
+        "production_tok_s": 114.39243916309803,
+        "eager_wall_median_ms": 14.3042085,
+        "nodes": 288,
+        "edges": 287,
+        "node_types": {
+          "0": 288
+        },
+        "kernel_name_counts": {
+          "_Z20gguf_bf16_add_kernelPKtS0_Ptl": 24,
+          "_Z35gguf_q8_0_embedding_bf16_out_kernelPKlPKhPtiii": 1,
+          "_Z35gguf_rmsnorm_bf16_f32_weight_kernelPKtPKfPtfl": 25,
+          "_Z39gguf_add_rmsnorm_bf16_f32_weight_kernelPKtS0_PKfPtS3_fl": 24,
+          "_Z59gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernelPKfS0_S0_S0_S0_S0_PKlPfS3_flllll": 6,
+          "_ZN12_GLOBAL__N_118bf16_to_f32_kernelEPKtPfl": 6,
+          "_ZN12_GLOBAL__N_120argmax_stage1_kernelEPKfPfPll": 1,
+          "_ZN12_GLOBAL__N_120argmax_stage2_kernelEPKfPKllPlPf": 1,
+          "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIftEEvPKT_PKhPT0_lll": 18,
+          "_ZN12_GLOBAL__N_120q8_0_t16_gemv_kernelIttEEvPKT_PKhPT0_lll": 30,
+          "_ZN12_GLOBAL__N_128silu_mul_separate_out_kernelItEEvPKT_S3_PS1_ll": 24,
+          "_ZN12_GLOBAL__N_130qwen35_split_qgate_bf16_kernelEPKtPfPtlll": 6,
+          "_ZN12_GLOBAL__N_131gguf_k_pack8_prefill_out_kernelItfLi8EEEvPKT_PKhPT0_iiii": 1,
+          "_ZN12_GLOBAL__N_131q8_0_t16_dual_split_gemv_kernelIttLb1EEEvPKT_PKhS5_PT0_S7_llll": 60,
+          "_ZN12_GLOBAL__N_133q8_0_t16_triple_split_gemv_kernelIttEEvPKT_PKhS5_S5_PT0_S7_S7_lllll": 6,
+          "_ZN12_GLOBAL__N_134advance_decode_position_i64_kernelEPlS0_": 1,
+          "_ZN12_GLOBAL__N_142qwen35_linear_attn_conv_decode_lowp_kernelItEEvPKT_PfPKfS4_ll": 18,
+          "_ZN12_GLOBAL__N_145qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernelItLb0EEEvPKfPKT_S5_S5_S2_S2_S2_PfS6_Ptfllll": 18,
+          "_ZN12_GLOBAL__N_155qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernelEPKfPKtS3_PKiPKlPfS8_S8_llllllf": 6,
+          "_ZN12_GLOBAL__N_156qwen35_paged_full_attn_decode_split_k_reduce_gate_kernelI12hip_bfloat16EEvPKfS3_S3_PKT_PS4_llll": 6,
+          "_ZN12_GLOBAL__N_156qwen35_write_paged_kv_mixed_value_position_tensor_kernelItEEvPKfPKT_PtS6_PKiPKlllll": 6
+        },
+        "transport": {
+          "schema_version": 1,
+          "transport": "hipgraph",
+          "backend": "hip_gfx1151",
+          "gfx_arch": "gfx1151",
+          "source": "hip_runtime_graph",
+          "launches": 128,
+          "submission_started": true,
+          "native_fallbacks": 0,
+          "decode_graph_key_sha256": "978001cf90f36863986dea3fb6c90547976885952796e00bab119cf01da15d9e",
+          "replayed_steps": 128
+        },
+        "recorded_trajectory_exact": true,
+        "quality": {
+          "recorded": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          },
+          "production": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          },
+          "instrumented": {
+            "kl_max": 0.0,
+            "top1_agreement": 1.0
+          }
+        },
+        "roles": [
+          {
+            "role": "full_attention_core_kv",
+            "instrumented_marker_median_ms": 1.346177737701633,
+            "production_wall_normalized_ms": 1.1612464935460527,
+            "historical_vulkan_logger_ms": 0.163598,
+            "historical_matched_gap_ms": 0.9976484935460527,
+            "production_wall_share": 0.13283781886632776
+          },
+          {
+            "role": "dense_ffn_projections",
+            "instrumented_marker_median_ms": 2.622983668971045,
+            "production_wall_normalized_ms": 2.262651136559121,
+            "historical_vulkan_logger_ms": 1.556757,
+            "historical_matched_gap_ms": 0.7058941365591209,
+            "production_wall_share": 0.25883018248615386
+          },
+          {
+            "role": "linear_attention_projections",
+            "instrumented_marker_median_ms": 2.0535016531409678,
+            "production_wall_normalized_ms": 1.7714017454131297,
+            "historical_vulkan_logger_ms": 1.326941,
+            "historical_matched_gap_ms": 0.44446074541312974,
+            "production_wall_share": 0.2026349663955771
+          },
+          {
+            "role": "attention_norm",
+            "instrumented_marker_median_ms": 0.4299769562168119,
+            "production_wall_normalized_ms": 0.37090884712212085,
+            "historical_vulkan_logger_ms": 0.108168,
+            "historical_matched_gap_ms": 0.26274084712212087,
+            "production_wall_share": 0.042429167729472035
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "instrumented_marker_median_ms": 0.6705139765554554,
+            "production_wall_normalized_ms": 0.578402080454861,
+            "historical_vulkan_logger_ms": 0.319515,
+            "historical_matched_gap_ms": 0.258887080454861,
+            "production_wall_share": 0.06616482480024202
+          },
+          {
+            "role": "residual_norm_glue",
+            "instrumented_marker_median_ms": 0.44131850515980364,
+            "production_wall_normalized_ms": 0.38069235012664693,
+            "historical_vulkan_logger_ms": 0.164417,
+            "historical_matched_gap_ms": 0.21627535012664692,
+            "production_wall_share": 0.043548326501719276
+          },
+          {
+            "role": "linear_attention_conv",
+            "instrumented_marker_median_ms": 0.3055806031459774,
+            "production_wall_normalized_ms": 0.26360145021028725,
+            "historical_vulkan_logger_ms": 0.118465,
+            "historical_matched_gap_ms": 0.14513645021028726,
+            "production_wall_share": 0.0301540128564847
+          },
+          {
+            "role": "dense_ffn_activation",
+            "instrumented_marker_median_ms": 0.23312293357379016,
+            "production_wall_normalized_ms": 0.20109765716370365,
+            "historical_vulkan_logger_ms": 0.072582,
+            "historical_matched_gap_ms": 0.12851565716370367,
+            "production_wall_share": 0.023004051512940514
+          },
+          {
+            "role": "final_norm",
+            "instrumented_marker_median_ms": 0.017733694018635407,
+            "production_wall_normalized_ms": 0.015297526782695357,
+            "historical_vulkan_logger_ms": 0.004507,
+            "historical_matched_gap_ms": 0.010790526782695358,
+            "production_wall_share": 0.0017499214018353415
+          },
+          {
+            "role": "lm_head_sampler_transport",
+            "instrumented_marker_median_ms": 1.2425007514277127,
+            "production_wall_normalized_ms": 1.0718121392255264,
+            "historical_vulkan_logger_ms": 1.182966,
+            "historical_matched_gap_ms": -0.11115386077447353,
+            "production_wall_share": 0.12260720493062599
+          },
+          {
+            "role": "gdn_recurrence",
+            "instrumented_marker_median_ms": 0.7246167718665464,
+            "production_wall_normalized_ms": 0.6250725011478299,
+            "historical_vulkan_logger_ms": 0.739304,
+            "historical_matched_gap_ms": -0.1142314988521701,
+            "production_wall_share": 0.07150356806007865
+          },
+          {
+            "role": "input_setup",
+            "instrumented_marker_median_ms": 0.023685001502855425,
+            "production_wall_normalized_ms": 0.020431273058921933,
+            "historical_vulkan_logger_ms": 0.225001,
+            "historical_matched_gap_ms": -0.20456972694107808,
+            "production_wall_share": 0.002337183160417371
+          },
+          {
+            "role": "state_finalize",
+            "instrumented_marker_median_ms": 0.013305280032060916,
+            "production_wall_normalized_ms": 0.011477466422270866,
+            "historical_vulkan_logger_ms": null,
+            "historical_matched_gap_ms": null,
+            "production_wall_share": 0.0013129353794561205
+          }
+        ],
+        "instrumented_inventory": {
+          "nodes": 528,
+          "marker_nodes": 240,
+          "nonmarker_stage_nodes": 288,
+          "prefix_nodes": 0,
+          "suffix_nodes": 0
+        },
+        "api_residual": {
+          "production_wall_median_ms_per_token": 8.741836500000002,
+          "graph_launch_api_median_ms": 0.014482499999999999,
+          "stream_synchronize_call_median_ms_including_device_wait": 8.7243785,
+          "instrumented_wall_median_ms_per_token": 10.261262,
+          "same_session_device_stage_median_sum_ms_per_token": 10.13399458972047,
+          "instrumented_host_minus_device_stage_ms": 0.12726741027953103,
+          "instrumented_device_stage_coverage": 0.9875972945355521,
+          "prior_k4_isolated_owner_sum_estimate_ms_per_token": 6.0,
+          "production_wall_minus_prior_isolated_estimate_ms": 2.7418365000000016,
+          "interpretation_contract": "graph_launch is asynchronous; stream_synchronize includes device execution. The host-minus-same-session-device-stage value is the API/Python residual. The prior ~6 ms isolated-owner sum is retained only to test whether its ~2.3 ms gap is real API overhead or isolated-microbench undercount."
+        },
+        "memory_before": {
+          "tracked_current_bytes": 1029470788,
+          "tracked_peak_bytes": 1067099972,
+          "owned_session_bytes": 1029470788,
+          "hip_used_bytes": 1257697280
+        },
+        "memory_after": {
+          "tracked_current_bytes": 1029470788,
+          "tracked_peak_bytes": 1067099972,
+          "owned_session_bytes": 1029470788,
+          "hip_used_bytes": 1257902080
+        }
+      }
+    }
+  },
+  "api_residual_conclusion": {
+    "q4_host_minus_device_ms": 0.11367499964933181,
+    "q8_host_minus_device_ms": 0.12726741027953103,
+    "q4_graph_launch_api_ms": 0.012112999999999999,
+    "q8_graph_launch_api_ms": 0.014482499999999999,
+    "per_node_sum_limitation": "rocprofv3 still reports zero dispatch durations on this gfx1151 stack, so an uninstrumented 286/288-node duration sum is unavailable. The same-session 240-marker graph assigns all 286/288 non-marker production nodes and supplies the device-chain sum used here.",
+    "decision": "The prior ~2.3 ms/token production-wall minus isolated-owner estimate is not graph-launch/Python API residual. Same-session instrumented host-minus-device residual is only 0.114/0.127 ms Q4/Q8 and asynchronous graph launch itself is 0.012/0.014 ms. The old isolated sum undercounted production because repeated microbenches were cache-flattered and incomplete; the 240-marker graph is itself 1.59/1.52 ms slower, so marker role shares remain attribution-only."
+  },
+  "next_owner": {
+    "q4_measured_leader": "dense_ffn_projections: 44.54 ms current marker ownership and 20.05 ms historical matched gap",
+    "q8_measured_leader": "linear_attention_projections: 28.18 ms current marker ownership and 8.35 ms historical matched gap (GDN is 8.17 ms)",
+    "shared_cross_quant_leader": "GDN recurrence and linear-attention projections are effectively tied at ~24.8/~24.4 ms aggregate historical matched gap; Q4 dense FFN is the largest single role but its known large-tile path is exhausted.",
+    "decode": "Do not reopen K4 from marker-normalized ~1 ms; its exact standalone pair remains ~0.15-0.2 ms/token ROI. No material graph API residual exists. Reassess decode only through a complete non-marker owner screen."
+  },
+  "decision": "Use Q4 dense FFN as the raw p512 leader and Q8 linear projections as the Q8 leader, but do not start a candidate until the prompt-length sweep and cumulative semantic packet pass. No production route changes."
+}

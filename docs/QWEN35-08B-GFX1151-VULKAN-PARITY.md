@@ -105,9 +105,10 @@ not a synthetic leaf projection.
 | 24 | **D08-X2a pack8 WMMA bulk route** | **accepted: +35.31% Q4 exact-core pp512** | Existing registered small-tile WMMA replaced tile8x8 for the five qualified p512 pack8 shapes; 447/450 top-1 and max KL 0.003848. | Retained/default on the measured gfx1151 row/shape matrix; sole residency and decode owners unchanged. |
 | 25 | **D08-X2-K1 large-tile pack8 WMMA** | **closed; diagnostic not routed** | LDS-staged large tiles are bit-exact but do not beat the qualified small-tile owner on gfx1151 wave32. | Keep the registered 128x64 diagnostic; durable artifact replaces the former `/tmp`-only reference. |
 | 26 | **D08-X2-K2 Q8 GDN cluster8** | **accepted: +16.70% Q8 exact-core pp512** | Fresh five-block and 18-prompt gates supersede P2's 0.0108%-miss rejection: 448/450 top-1, max KL 0.003260. | Q4 and Q8 now both use the quant/geometry-qualified cluster8 route. |
-| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Re-profile graph replay/API residual before more decode kernel work. |
+| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Post-review replay profiling closes the apparent ~2.3-ms gap as isolated-microbench undercount: API/Python residual is only 0.114/0.127 ms Q4/Q8. |
 | 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
 | 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
+| 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
 
 ### 1.2 Bounded task contract
 
@@ -1525,6 +1526,38 @@ those rows are not same-session denominators.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json).
+
+### 2.43 Post-review semantic and graph rerank (2026-08-15)
+
+Three measured p512 device-marker runs assign **99.12%/99.05%** of Q4/Q8
+instrumented prefill wall. Q4's current raw leader is dense FFN at **44.54 ms**
+with a **20.05-ms** historical Vulkan-matched gap, followed by GDN at **29.27
+ms / 16.68-ms gap** and linear-attention projections at **33.88 ms / 16.05-ms
+gap**. Q8 is tighter: linear projections lead at **28.18 ms / 8.35-ms gap**,
+GDN follows at **24.92 ms / 8.17-ms gap**, and dense FFN is **34.30 ms /
+6.50-ms gap**. The Vulkan rows are the same-day logger diagnostic, not a
+same-session denominator. Marker wall is 1.079x/1.053x exact-core wall, so these
+shares rank roles but do not project topline gains directly.
+
+The public production graph is **286/288 nodes** and **8.365/8.742 ms/token**
+Q4/Q8. Eager, recording, production, and instrumented logits have zero KL and
+100% top-1 agreement; the recorded trajectory is exact. The 240-marker graph
+assigns every non-marker production node and measures **9.846/10.134 ms** of
+device stages inside **9.959/10.261 ms** host wall: only **0.114/0.127 ms**
+remains for API/Python, while asynchronous `graph_launch` itself is
+**0.012/0.014 ms**. Therefore X2-K4's prior ~2.3-ms wall-minus-isolated estimate
+is not graph API overhead; repeated isolated microbenches undercounted the
+production chain. `rocprofv3` dispatch durations remain zero on this stack, and
+the marker graph is itself 1.59/1.52 ms slower, so marker-normalized attention
+must not reopen K4 over its exact standalone ~0.15-0.2-ms/token ROI.
+
+The measured next-owner labels are Q4 dense FFN and Q8 linear-attention
+projections, with shared GDN and linear-projection aggregate gaps effectively
+tied. Q4 dense's known large-tile route is already exhausted; no candidate opens
+until the prompt-length and cumulative semantic gates complete.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json).
 
 ## 3. Comparison contracts
 
