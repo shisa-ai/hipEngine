@@ -55,6 +55,85 @@ def _assert_local_markdown_links_exist(text: str, base_dir: Path) -> None:
         assert anchor in heading_slugs, f"broken README anchor: {target}"
 
 
+def _run_sync_check(
+    tmp_path: Path,
+    block_body: str,
+    *,
+    document_prefix: str = "# Benchmarks\n\n",
+) -> subprocess.CompletedProcess[str]:
+    source = tmp_path / "source.md"
+    target = tmp_path / "target.md"
+    document = (
+        document_prefix
+        + "<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->\n"
+        + f"{block_body.rstrip()}\n"
+        + "<!-- END TOPLINE:README_HIGHLIGHTS -->\n"
+    )
+    source.write_text(document, encoding="utf-8")
+    target.write_text(document, encoding="utf-8")
+    repo_root = Path(__file__).resolve().parents[1]
+    return subprocess.run(
+        [
+            sys.executable,
+            "scripts/sync_benchmark_readme.py",
+            "--check",
+            "--source",
+            str(source),
+            "--target",
+            str(target),
+        ],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_sync_accepts_compact_public_benchmark_summary(tmp_path: Path) -> None:
+    result = _run_sync_check(
+        tmp_path,
+        "### GPU\n\n"
+        "| Model | Throughput |\n"
+        "| --- | ---: |\n"
+        "| Example | **100 tok/s** |\n\n"
+        "Compare rows only when their protocols match.",
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_sync_rejects_worklog_style_exported_prose(tmp_path: Path) -> None:
+    diary = " ".join(["implementation-detail"] * 45)
+    result = _run_sync_check(
+        tmp_path,
+        f"### GPU\n\n{diary}\n\n{diary}\n\n{diary}",
+    )
+    assert result.returncode == 2
+    assert "public README prose budget" in result.stderr
+
+
+def test_sync_rejects_oversized_exported_block(tmp_path: Path) -> None:
+    rows = "\n".join(f"| model-{index} | {index} |" for index in range(78))
+    result = _run_sync_check(
+        tmp_path,
+        "### GPU\n\n| Model | Throughput |\n| --- | ---: |\n" + rows,
+    )
+    assert result.returncode == 2
+    assert "public README line budget" in result.stderr
+
+
+def test_sync_rejects_oversized_public_readme(tmp_path: Path) -> None:
+    prefix = "# Benchmarks\n\n" + "\n".join(
+        f"Public project detail {index}." for index in range(320)
+    ) + "\n\n"
+    result = _run_sync_check(
+        tmp_path,
+        "### GPU\n\nBrief user-visible note.",
+        document_prefix=prefix,
+    )
+    assert result.returncode == 2
+    assert "public README document budget" in result.stderr
+
+
 def test_root_readme_is_compact_model_first_and_synced() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
@@ -67,7 +146,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
-    assert len(readme.splitlines()) < 400
+    assert len(readme.splitlines()) <= 325
     assert readme.index("## Supported models") < readme.index("## Performance highlights")
     assert readme.index("## Performance highlights") < readme.index("## Status")
     for model_url in (
