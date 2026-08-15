@@ -2092,13 +2092,15 @@ class Qwen35GGUFFullStackRunner:
                 f"{self.weights.backend!r} != {self.backend!r}"
             )
         cfg = getattr(self.weights, "config", None)
-        if cfg is not None:
+        feed_forward_length = getattr(cfg, "feed_forward_length", None)
+        hidden_size = getattr(cfg, "hidden_size", None)
+        if feed_forward_length is not None and hidden_size is not None:
             self._dense_down_residual_decode_c1 = (
                 _gguf_dense_down_residual_decode_fused(
                     self,
                     rows=1,
-                    in_features=int(cfg.feed_forward_length),
-                    out_features=int(cfg.hidden_size),
+                    in_features=int(feed_forward_length),
+                    out_features=int(hidden_size),
                 )
             )
         if placement == "host":
