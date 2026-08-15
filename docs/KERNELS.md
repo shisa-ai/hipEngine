@@ -192,6 +192,21 @@ stays available as a numerical oracle and policy-miss fallback but is not a
 resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
 independently shape-qualified.
 
+The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
+than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
+attention-V tensors, and untied root own one
+`gguf_q6_k_t16_qmicro_planar_v1/tiles` payload each. The 24 recurrent
+K=5,120/N=10,240 QKV tensors retain one `gguf_q6_k_t16_v1/tiles` payload each
+because planar c1 loses 8.72% on actual weights; no tensor retains both layouts
+and dense-BF16 Q6 bytes are zero. Exact native c1, rows2-4, WMMA, residual,
+and top-1 leaves remain registered. On gfx1151, rows2 F32 uses a dedicated
+planar col16 owner, while FFN down+residual deliberately uses planar projection
+plus the primitive BF16 add: the exact fused sibling loses 17.35%/11.44%/11.15%
+at rows2/3/4 and remains a peer-backend/diagnostic leaf. Complete actual-weight,
+512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
+gates retain the role-qualified route. Evidence:
+[`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
+
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
 K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,

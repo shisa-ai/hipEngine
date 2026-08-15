@@ -262,8 +262,12 @@ def plan_qwen35_gguf_materialization(
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
+    dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFMaterializationPlan:
     requested_decode_repack = gguf_decode_repack_enabled(decode_repack)
+    q6_planar_excluded = frozenset(
+        str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
+    )
     contract_q3_f32_linear = any(
         GGMLQuantizationType(tensor.ggml_type)
         in {
@@ -290,6 +294,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
+            dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
         for slot, tensor in model_map.root_tensors.items()
     }
@@ -304,6 +309,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
+            dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
         for layer in model_map.layers
     )
@@ -628,6 +634,13 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q6_qmicro_planar_excluded_slots=tuple(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
+                (),
+            )
+        ),
     )
     selected = None if selected_slots is None else set(selected_slots)
     deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
@@ -770,6 +783,7 @@ def _plan_layer(
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
+    dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> dict[str, Qwen35GGUFWeightSpec]:
     return {
         slot: _spec_for_tensor(
@@ -783,6 +797,9 @@ def _plan_layer(
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
             dense_q6_qmicro_planar=dense_q6_qmicro_planar,
+            dense_q6_qmicro_planar_excluded_slots=(
+                dense_q6_qmicro_planar_excluded_slots
+            ),
         )
         for slot, tensor in layer.tensors.items()
     }
@@ -922,6 +939,7 @@ def plan_qwen35_gguf_weight_spec(
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
+    dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFWeightSpec:
     """Plan one canonical GGUF weight for AR or draft-model materialization."""
 
@@ -935,6 +953,9 @@ def plan_qwen35_gguf_weight_spec(
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
         dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
+        dense_q6_qmicro_planar_excluded_slots=frozenset(
+            str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
+        ),
     )
 
 
@@ -950,6 +971,7 @@ def _spec_for_tensor(
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q6_qmicro_planar: bool = False,
+    dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
@@ -1100,6 +1122,7 @@ def _spec_for_tensor(
         keep_x8_sidecar = gguf_lm_head_q6_x8_sidecar_enabled()
         use_qmicro_planar = (
             dense_q6_qmicro_planar
+            and "lm_head" not in dense_q6_qmicro_planar_excluded_slots
             and not keep_x8_sidecar
             and tuple(map(int, tensor.shape)) == (248_320, 5_120)
         )
@@ -1119,9 +1142,14 @@ def _spec_for_tensor(
             allocation_names=("tiles", "x8") if keep_x8_sidecar else ("tiles",),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
+        slot_name = slot_path.rsplit(".", 1)[-1]
+        use_qmicro_planar = (
+            dense_q6_qmicro_planar
+            and slot_name not in dense_q6_qmicro_planar_excluded_slots
+        )
         if (
             decode_repack
-            and dense_q6_qmicro_planar
+            and use_qmicro_planar
             and _is_narrow_q6_attn_v_tensor(slot_path, tensor)
         ):
             return Qwen35GGUFWeightSpec(
@@ -1137,12 +1165,12 @@ def _spec_for_tensor(
                 source=tensor,
                 quant_key=(
                     "gguf_q6_k_t16_qmicro_planar_v1"
-                    if dense_q6_qmicro_planar
+                    if use_qmicro_planar
                     else "gguf_q6_k_t16_v1"
                 ),
                 layout=(
                     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
-                    if dense_q6_qmicro_planar
+                    if use_qmicro_planar
                     else LAYOUT_GGUF_Q6_K_T16
                 ),
                 allocation_names=("tiles",),

@@ -49,6 +49,9 @@ _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "bf16_residual_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_ROWTILE_BF16_F32 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out"
+)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_F32 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out"
 )
@@ -847,6 +850,36 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out(
     )
 
 
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact planar-qmicro FP32 rowtile with a 16-column rows=2 owner."""
+
+    if rows < 2 or rows > 4:
+        raise ValueError("qmicro planar rowtile requires rows in [2, 4]")
+    _launch(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_BF16_F32,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1098,7 +1131,7 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_rowtile_bf16_f32_out",
         ),
-        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out,
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
         replace=replace,
     )
     register(
@@ -1180,6 +1213,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_residual_bf16_out",

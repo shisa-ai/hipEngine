@@ -87,6 +87,26 @@ should be removed or collapsed.
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
 
+## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
+
+- Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by
+  22.11-23.65% and removed 49,479,680 bytes, but regressed complete AR by
+  0.14-0.19%. Actual-weight counterbalancing localized K=5,120/N=10,240 QKV c1
+  at +8.72% wall with 0/11 planar wins. The backend capability therefore keeps
+  one standard-T16 owner for those 24 tensors while down, narrow V, and root
+  remain sole planar. There is no duplicate payload or environment selector.
+- The exact planar down+residual alias is separately excluded on gfx1151. Its
+  same-planar projection plus primitive BF16 add fallback is 1.1735x/1.1144x/
+  1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
+  fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
+  production fallback chain.
+- Removal trigger: delete the QKV slot exclusion only after a byte-neutral
+  planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
+  512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused
+  residual alias only after it beats the unfused same-planar chain at every
+  rows2-4 shape and remains non-regressive in the full category suite. Keep
+  standard T16 and projection+add registered as required numerical fallbacks.
+
 ## Dense-H5120 B4 exact eager-MTP seam
 
 - Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step

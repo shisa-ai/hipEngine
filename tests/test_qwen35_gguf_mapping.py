@@ -580,6 +580,93 @@ def test_qwen38_dense_q5_ssm_out_materializes_sole_t16_on_gfx1151() -> None:
         resident.free(runtime=runtime)
 
 
+def test_qwen38_dense_q6_plan_keeps_decode_blocked_qkv_standard() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q6_qmicro_planar=True,
+        dense_q6_qmicro_planar_excluded_slots=("attn_qkv",),
+    )
+    q6_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.slot_path.startswith("layers.")
+        and spec.source.ggml_type_name == "Q6_K"
+        and len(spec.source.shape) == 2
+    )
+
+    assert len(q6_specs) == 64
+    assert sum(spec.slot_path.endswith(".ffn_down") for spec in q6_specs) == 32
+    assert sum(spec.slot_path.endswith(".attn_qkv") for spec in q6_specs) == 24
+    assert sum(spec.slot_path.endswith(".attn_v") for spec in q6_specs) == 8
+    qkv_specs = tuple(
+        spec for spec in q6_specs if spec.slot_path.endswith(".attn_qkv")
+    )
+    planar_specs = tuple(
+        spec for spec in q6_specs if not spec.slot_path.endswith(".attn_qkv")
+    )
+    assert len(qkv_specs) == 24
+    assert all(spec.layout == LAYOUT_GGUF_Q6_K_T16 for spec in qkv_specs)
+    assert all(spec.quant_key == "gguf_q6_k_t16_v1" for spec in qkv_specs)
+    assert len(planar_specs) == 40
+    assert all(
+        spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        for spec in planar_specs
+    )
+    assert all(
+        spec.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+        for spec in planar_specs
+    )
+    assert all(spec.allocation_names == ("tiles",) for spec in q6_specs)
+    lm_head = plan.root_specs["lm_head"]
+    assert lm_head.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+    assert lm_head.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+    assert lm_head.allocation_names == ("tiles",)
+
+
+def test_qwen38_dense_q6_materializes_role_qualified_layouts_on_gfx1151() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        QWEN38_DENSE_MODEL,
+        selected_slots=(
+            "layers.0.ffn_down",
+            "layers.0.attn_qkv",
+            "layers.3.attn_v",
+        ),
+        decode_repack=True,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    try:
+        weights = (
+            resident.layer(0).weight("ffn_down"),
+            resident.layer(0).weight("attn_qkv"),
+            resident.layer(3).weight("attn_v"),
+        )
+        assert weights[0].spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        assert weights[0].spec.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+        assert weights[1].spec.layout == LAYOUT_GGUF_Q6_K_T16
+        assert weights[1].spec.quant_key == "gguf_q6_k_t16_v1"
+        assert weights[2].spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        assert weights[2].spec.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+        assert all(tuple(weight.allocations) == ("tiles",) for weight in weights)
+        assert all(
+            weight.allocation("tiles").tensor.dtype == DType.INT8
+            for weight in weights
+        )
+    finally:
+        resident.free(runtime=runtime)
+
+
 def test_qwen36_dense_attn_v_materializes_sole_qmicro_owner() -> None:
     if not DENSE_UNTIED_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
