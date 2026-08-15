@@ -12,7 +12,10 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
-from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
+from hipengine.kernels.policy import (
+    QWEN35_DENSE_H1024_GEOMETRY,
+    QWEN35_MOE_H2048_E256_GEOMETRY,
+)
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
@@ -743,7 +746,7 @@ GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
 # selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
 # Q8, other models/shapes, native batches, and peer backends retain prior owners.
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
-    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
     },
 }
@@ -751,7 +754,7 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
 # Q8, native batches, other models/shapes, and peer backends remain unfused.
 GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
-    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 3_584, 1_024): True,
     },
 }
@@ -759,7 +762,7 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
 # route for the exact dense-0.8B Q4 decode owner. Q8, native batches, output
 # norm, other shapes/models, and peer backends keep the generic primitives.
 GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
-    ("Qwen3.5-0.8B", "MOSTLY_Q4_K_M"): {
+    (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024): "bf16_out_fixed1024_wave256",
     },
 }
