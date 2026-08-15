@@ -62,6 +62,9 @@ _SYMBOL_FP16_OUT = "hipengine_dense_gemv_out_fp16"
 _SYMBOL_F32_OUT = "hipengine_dense_gemv_out_f32"
 _SYMBOL_DENSE_PREFILL_BF16_OUT = "hipengine_dense_prefill_gemm_out_bf16"
 _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16 = "hipengine_dense_prefill_wmma_out_bf16"
+_SYMBOL_DENSE_PREFILL_WMMA_RESIDUAL_OUT_BF16 = (
+    "hipengine_dense_prefill_wmma_out_bf16_residual_bf16_out"
+)
 _SYMBOL_DUAL_BF16_OUT = "hipengine_dense_dual_gemv_out_bf16"
 _SYMBOL_DUAL_FP16_OUT = "hipengine_dense_dual_gemv_out_fp16"
 _SYMBOL_DUAL_SEPARATE_BF16_OUT = "hipengine_dense_dual_gemv_separate_out_bf16"
@@ -694,6 +697,46 @@ def dense_prefill_wmma_out_bf16(
         runtime.check(int(err))
 
 
+def dense_prefill_wmma_out_bf16_residual_bf16_out(
+    x_ptr: int,
+    weight_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch WMMA dense projection plus an exact rounded-BF16 residual."""
+
+    if rows <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("shape must be positive")
+    if in_features % 32:
+        raise ValueError("dense WMMA prefill requires in_features % 32 == 0")
+    if out_features % 128:
+        raise ValueError("dense WMMA prefill requires out_features % 128 == 0")
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_RESIDUAL_OUT_BF16)
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_dense_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("bf16", "w4_paro"):
         register(
@@ -779,6 +822,16 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
             "out_bf16_residual_bf16_out",
         ),
         dense_gemv_out_bf16_residual_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+residual",
+            "bf16",
+            "prefill_wmma_out_bf16_residual_bf16_out",
+        ),
+        dense_prefill_wmma_out_bf16_residual_bf16_out,
         replace=replace,
     )
     register(

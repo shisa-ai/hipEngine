@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. The subsequent GDN cluster8 wave-broadcast screen was exact but 0.6483x and was also removed. Dense FFN is next by the unchanged ranking. Core Vulkan parity and G3 remain open.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. The subsequent GDN cluster8 wave-broadcast screen was exact but 0.6483x and was also removed. D08-X6 then retained exact dense-BF16 WMMA down+residual fusion: the 12-owner leaf saves 0.155 ms and five paired Q4 blocks improve core/public pp512 3.09%/1.68%. Core Vulkan parity and G3 remain open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -117,6 +117,7 @@ not a synthetic leaf projection.
 | 36 | **D08-X4 post-X3 Q4 owner rerank** | **completed: 100.08% marker-wall coverage** | Dense FFN falls to 34.007 ms; normalized historical gaps now rank linear-attention projections 13.460 ms, GDN 10.641 ms, and dense FFN 8.948 ms. | Admit exactly one heterogeneous Q5T16-QKV + pack8-Q4-gate operation-complete p512 screen; its current explicit fallback stage owns 17.628 ms. |
 | 37 | **D08-X4 heterogeneous QKV/gate screen** | **rejected: 1.0059x leaf; no production change** | One 128-thread schedule is byte-exact on actual resident weights but saves only 0.114 ms across all 18 pairs, projecting 0.11% of exact wall. | Stop before profile/full-model gates and remove all transient code. Reopen only for a materially different >=1.10x mechanism; GDN remains next. |
 | 38 | **D08-X5 GDN cluster8 wave broadcast** | **rejected: 0.6483x leaf; no production change** | Wave-sharing Q/K/value/beta/decay preserves every output/state bit but regresses the exact rows512 recurrence 0.77453 -> 1.19467 ms. | Stop before profile/full-model gates and remove all transient code. Do not revisit this load-sharing mechanism; dense FFN is next. |
+| 39 | **D08-X6 dense-BF16 WMMA down+residual** | **accepted: 1.0158x 12-owner leaf; +3.09%/+1.68% core/public Q4 pp512** | Exact intermediate/output BF16 boundaries remove 12 standalone residual-add launches and save 0.155 ms in the causal leaf. | Retain for gfx1151 rows512/K3584/N1024 dense-BF16 only; primitive chain and temporary env rollback remain. Q8/decode/memory guards pass. |
 
 ### 1.2 Bounded task contract
 
@@ -1894,6 +1895,42 @@ owner ranking now advances to dense FFN.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json).
+
+### 2.52 D08-X6 dense-BF16 WMMA down+residual (2026-08-15)
+
+Twelve Q4_K_M FFN-down tensors are resident as dense BF16 at
+rows512/K3584/N1024; the other twelve remain pack8-Q4. The retained WMMA owner
+previously rounded each projection to BF16, wrote a temporary, then launched
+`gguf_bf16_add`. X6 adds one registered sibling that performs the same first
+round, adds the BF16 residual, and rounds again in the WMMA store. It adds no
+resident/scratch bytes and keeps the two primitives as fallback.
+
+Five rotated all-resident leaf blocks measure **9.95928 -> 9.80398 ms
+(-1.56%, 1.01584x)** with byte-exact outputs, four wins, and a causal 0.15530-ms
+saving. Cached tracing names the `<128,64,32,true>` body at WG256, 15,360-byte
+LDS, 96 VGPR, SGPR128, and scratch0.
+
+Five paired fresh-process Q4 blocks then measure exact-core pp512
+**4938.948 -> 5091.718 tok/s (+3.09%, 5/5 wins)** and public pp512
+**5020.345 -> 5104.790 (+1.68%, 3/5)**. Decode medians are positive but retain
+the known core bimodality. The five-block Q8 control guard is
+**0.9815x/0.9879x** core/public prefill and **0.9925x/1.0080x** decode; Q8 has
+no dense-BF16 owner, and final non-dense misses return before registry work.
+All children are finite/deterministic with exact core/public trajectories and
+identical owned-session bytes. The full natural/category-p512 cumulative gate
+also passes: current remains 1794/1800 top-1 with max KL 0.005930, all 72
+recorded-graph prompt/role pairs are exact, and X6 candidate/rollback teacher
+and state digests match on all 36 Q4 prompt/profile pairs.
+
+Promotion is capability-scoped to gfx1151 and the already-qualified exact
+shape. `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` temporarily restores WMMA plus
+standalone add for bisection; registry/shape misses use the same fallback. The
+causal performance claim is the exact 0.155-ms subwindow; the larger observed
+full-wall ratio is retained as non-regression evidence rather than wholly
+assigned to the removed add.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
 
 ## 3. Comparison contracts
 

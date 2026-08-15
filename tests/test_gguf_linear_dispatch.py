@@ -1412,6 +1412,100 @@ def test_launch_gguf_linear_residual_routes_registered_c1_pack8_and_dense_abis()
     ]
 
 
+def test_launch_gguf_linear_residual_routes_dense_wmma_bulk_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
+        register_dense_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_dense_gemv_kernels()
+    register_gfx1151_kernels(replace=True)
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear+residual",
+        "bf16",
+        "prefill_wmma_out_bf16_residual_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, capture, replace=True)
+    dense = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="bf16")
+    pack8 = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
+    resolve_calls = []
+    real_resolve = gguf_linear_module.resolve_gguf_linear_dispatch
+
+    def traced_resolve(*args, **kwargs):
+        resolve_calls.append((args, kwargs))
+        return real_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "resolve_gguf_linear_dispatch",
+        traced_resolve,
+    )
+    try:
+        assert not gguf_linear_module.launch_gguf_linear_residual(
+            dense,
+            101,
+            301,
+            401,
+            512,
+            3_584,
+            1_024,
+            backend="hip_gfx1151",
+        )
+        with wmma_prefill_session(True):
+            assert not gguf_linear_module.launch_gguf_linear_residual(
+                pack8,
+                100,
+                300,
+                400,
+                512,
+                3_584,
+                1_024,
+                backend="hip_gfx1151",
+            )
+            assert resolve_calls == []
+            monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "0")
+            assert not gguf_linear_module.launch_gguf_linear_residual(
+                dense, 101, 301, 401, 512, 3_584, 1_024, backend="hip_gfx1151"
+            )
+            monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL")
+            assert gguf_linear_module.launch_gguf_linear_residual(
+                dense,
+                101,
+                301,
+                401,
+                512,
+                3_584,
+                1_024,
+                backend="hip_gfx1151",
+                stream=9,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (101, 10, 301, 401, 512, 3_584, 1_024),
+            {"stream": 9, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert len(resolve_calls) == 1
+
+
 def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1876,6 +1970,11 @@ def test_gfx1151_bulk_wmma_policy_matches_qwen35_08b_campaign_shapes() -> None:
             (512, 3_584, 1_024),
         }
     )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        {},
+    )["bf16"] == 512
 
 
 def test_qwen35_dense_pack8_wmma_tile_policy_covers_ffn_shapes() -> None:
