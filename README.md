@@ -193,6 +193,12 @@ Each value is the total tokens per second across all active requests:
 | 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
 | 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
+#### Dedicated-server context
+| KV route | Server shape | Recommended context | Peak / headroom |
+| --- | --- | ---: | ---: |
+| BF16 default | c1 | **32K** | 21.869 / 2.115 GiB |
+| Pure INT8 explicit | dedicated c1, AR-only | **112K** | 23.323 / 0.661 GiB |
+
 #### Decode / MTP
 
 | Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |

@@ -44,6 +44,12 @@ Each value is the total tokens per second across all active requests:
 | 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
 | 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
+#### Dedicated-server context
+| KV route | Server shape | Recommended context | Peak / headroom |
+| --- | --- | ---: | ---: |
+| BF16 default | c1 | **32K** | 21.869 / 2.115 GiB |
+| Pure INT8 explicit | dedicated c1, AR-only | **112K** | 23.323 / 0.661 GiB |
+
 #### Decode / MTP
 
 | Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
@@ -247,13 +253,30 @@ one BF16 K/V oracle pair instead of 16 lowers 32K-capacity tracked peak
 sample ranges, while eager INT8 decode is **6.50% faster**. Real single-request
 server rows complete at **64K/96K/112K** with **3.420/1.570/0.662 GiB** sampled
 headroom; 120K fails the 1-GiB startup guard and 128K OOMs. Complete 512/8 and
-4K/16 quality plus bounded `mixed_v1` 64K/16 pass with no BF16 mirror. This is
-an explicit AR capacity route, not a new default: long pure INT8 still uses the
-unverified gate, graph capture rejects it, and exact natural B3 is only
-**0.6423x** true AR. Use **96K** for practical capacity; **112K** is the highest
-observed pass. BF16 remains supported/default. Evidence:
-[`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json) and
-[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json).
+4K/16 quality plus bounded `mixed_v1` 64K/16 pass with no BF16 mirror. A later
+cold-server soak completed **four different natural 112K c1 requests** at
+**23.322876 GiB** peak with **0.661499 GiB** headroom, exact generated-ID and
+physical-shape accounting, zero leaked ownership, and clean teardown. Under the
+stated dedicated-idle-GPU assumption, use **112K** as the explicit c1 maximum;
+**96K** remains an optional extra-margin setting. Long pure INT8 still uses the
+unverified gate, graph capture rejects it, exact natural B3 is only **0.6423x**
+true AR, and BF16 remains supported/default.
+
+Do not transfer 112K to concurrent serving. Current packed short-context INT8
+retains a BF16 mirror and is not a compact memory route. With the soak's explicit
+512-MiB high-water reserve, measured settings are:
+
+| Offered HTTP clients | Physical residency | Context / request | Max resident context | Peak / headroom | Gate |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | 1 | **112K** | 112K | 23.323 / 0.661 GiB | 4 natural requests pass; 120K startup guard fails |
+| 2 | 2 | **4K** | 8K | 23.452 / 0.532 GiB | 24 requests across two cold runs pass; 4.25K leaves 0.014 GiB |
+| 4 | 4 | **1.25K** | 5K | 23.431 / 0.554 GiB | 32 multi-turn requests pass; 1.5K leaves 0.163 GiB |
+| 8 | 4, two queue waves | **1.25K** | 5K | 23.431 / 0.554 GiB | 32 multi-turn requests pass; 1.5K leaves 0.493 GiB on its first burst |
+
+Evidence:
+[`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
+[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json), and
+[`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

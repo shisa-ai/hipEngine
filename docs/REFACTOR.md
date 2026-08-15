@@ -14,6 +14,23 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Qwen3.8 c>1 mirrored-INT8 serving seam
+
+- Added 2026-08-15 after the dedicated-XTX context soak. Long c1 uses genuine
+  no-mirror FP32-scale INT8 at `8,519,680` bytes/page and reaches 112K. Current
+  c>1 packed AR admits per-token/head INT8 only at short contexts where it also
+  retains BF16 K/V, raising each page to `25,296,896` bytes; above 8K it fails
+  closed because direct packed INT8 attention is not admitted. The measured
+  512-MiB-reserve settings collapse to 4K/request at c2 and 1,280/request at c4;
+  offered c8 is two c4 waves. Do not advertise these mirrored rows as INT8
+  memory savings.
+- Removal trigger: implement and quality-gate either direct no-mirror packed
+  INT8 attention or an explicit serial c>1 no-mirror fallback, then rerun the
+  pinned ShareGPT c1/c2/c4/c8 context matrix. Remove the mirrored short route if
+  the replacement is exact, non-regressive, and no supported caller still needs
+  the BF16 fallback; retain a separately registered numerical fallback as
+  required by `AGENTS.md`.
+
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
