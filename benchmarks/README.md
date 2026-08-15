@@ -112,11 +112,11 @@ diagnostic never replaces a retained row.
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then the
-human-approved D08-X extension retained three prefill routes - Q5T16 QKV,
-cluster8 GDN (Q4 and, after a fresh gate, Q8_0), pack8-WMMA bulk, and
-dense-BF16 WMMA - moving exact-core pp512 to **4345/4983 tok/s Q4/Q8
-(0.73x/0.80x Vulkan)** with public decode at llama-HIP parity. Full
-per-package evidence and history live in
+human-approved D08-X extension retained three additional prefill routes:
+Q8_0 cluster8 GDN, pack8-WMMA bulk, and dense-BF16 WMMA. Together with D08's
+Q5T16 QKV and Q4 cluster8 routes, they move exact-core pp512 to **4345/4983
+tok/s Q4/Q8 (0.72x/0.83x the same-day Vulkan diagnostic)** with public decode
+at llama-HIP parity. Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).

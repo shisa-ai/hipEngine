@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, and X2-K5 dense-BF16 WMMA on 2026-08-15; X2-K1/K3/K4 closed without production routing. Current exact-core pp512 is 4345/4983 tok/s Q4/Q8 (0.72x/0.83x the same-day Vulkan diagnostic), so parity remains open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -83,7 +83,7 @@ not a synthetic leaf projection.
 | 2 | **D08-P1 route/default correction** | **accepted; +33.68% pp / +42.19% eager tg** | The existing Q5T16 family replaces 18 expanded BF16 QKV residents for the exact 0.8B role/shape. | Promoted by default after one route repair; no kernel variants were tested. |
 | 3 | **Mandatory post-P1 re-profile** | **completed** | P1 invalidated every prior Q4 Amdahl percentage. | M6 reconciles 99.60% of post-P1 prefill wall and supersedes the old ranking. |
 | 4 | **D08-P3 dense FFN projections** | **closed/rejected** | All three sole-resident layouts won at pp512, but raw Q4 regressed c1-c8, Q4T16 regressed c8, and Q6T16 regressed c1. | Preserve the evidence; do not duplicate resident weights or trade decode for prefill. |
-| 5 | **D08-P2 GDN recurrence** | **accepted: +4.33% paired Q4 pp512** | The Q4/16K/16V shape-scoped cluster8 route cuts marker GDN **67.60 -> 42.83 ms (-36.64%)** and passes the complete semantic/graph-decode gate. | Promoted for Q4 only; Q8 remains exact after its strict graph-decode guard missed by 0.0108%. |
+| 5 | **D08-P2 GDN recurrence** | **accepted: +4.33% paired Q4 pp512** | The Q4/16K/16V shape-scoped cluster8 route cuts marker GDN **67.60 -> 42.83 ms (-36.64%)** and passes the complete semantic/graph-decode gate. | P2 promoted Q4 only after Q8's strict guard missed by 0.0108%; D08-X2-K2 later superseded that Q8 disposition with a fresh retained cluster8 gate. |
 | 6 | **Mandatory post-P2 re-profile** | **completed** | The structural GDN route invalidates the P2-era ranking. | Reconciles 99.61% of wall; dense FFN is exhausted, so remaining linear projections are the largest non-exhausted owner. |
 | 7 | **D08-P6 remaining linear-attention projections** | **accepted: +14.18% graph-scope Q4 pp512 / +0.69% graph tg128; -46.69 MiB** | The audit selected 35.93-ms Q5 SSM-out; sole Q5T16 direct/rowtile/WMMA wins the complete production route and correctness gate. | Closed after exactly three shipped leaves and one full-model A/B; Q8 and 27B remain unchanged. |
 | 8 | **Mandatory post-P6 re-profile** | **completed** | P6 removes 48.96 MB of weights and changes 18 bulk projection owners, invalidating the post-P2 ranking. | M7 reconciles 99.58% of wall, confirms SSM-out at 9.68 ms, and corrects one 1.20-ms Vulkan Q4 role assignment without changing backend totals. |
@@ -101,6 +101,12 @@ not a synthetic leaf projection.
 | 20 | **Mandatory post-D5 graph rerank / M12** | **completed: current graph 119.88/117.18 tok/s Q4/Q8; 286/288 nodes** | Exact trajectories/zero KL, complete assignment, and 97.23%/97.31% coverage reconcile Q4 norm owners 0.67405 -> 0.56181 ms (-0.11224 ms); Q8 norm movement is +0.00394 ms noise. | All bounded packages are accepted/exhausted or rejected; run G1-G2. Current decode is only 0.596x/0.709x frozen Vulkan, so G2 cannot close without fresh parity. |
 | 21 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
 | 22 | **D08-G1-G3 closure** | **blocked: G2 exact Q4 is 0.424x/0.734x core and 0.463x/0.942x public pp/tg** | C1/C2 pass; exact cross-engine top-1 is 645/645 per quant, and Q8 public tg is 1.028x, but Q4 loses every required scope and all 5 blocks. The milestone suite also has unrelated open failures. | Do not close G3 or open D08-T1. Any architectural extension beyond the exhausted bounded packages requires human approval and a new complete-package contract. |
+| 23 | **D08-X1 cross-engine rerank** | **completed** | A fresh HIP-stage/Vulkan-op join found per-kernel structure rather than launch count as the gap and opened one bounded extension. | Reconciled X2 ladder: pack8 bulk, GDN, decode GEMV, full-attention c1, and dense-BF16 owners. |
+| 24 | **D08-X2a pack8 WMMA bulk route** | **accepted: +35.31% Q4 exact-core pp512** | Existing registered small-tile WMMA replaced tile8x8 for the five qualified p512 pack8 shapes; 447/450 top-1 and max KL 0.003848. | Retained/default on the measured gfx1151 row/shape matrix; sole residency and decode owners unchanged. |
+| 25 | **D08-X2-K1 large-tile pack8 WMMA** | **closed; diagnostic not routed** | LDS-staged large tiles are bit-exact but do not beat the qualified small-tile owner on gfx1151 wave32. | Keep the registered 128x64 diagnostic; durable artifact replaces the former `/tmp`-only reference. |
+| 26 | **D08-X2-K2 Q8 GDN cluster8** | **accepted: +16.70% Q8 exact-core pp512** | Fresh five-block and 18-prompt gates supersede P2's 0.0108%-miss rejection: 448/450 top-1, max KL 0.003260. | Q4 and Q8 now both use the quant/geometry-qualified cluster8 route. |
+| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Re-profile graph replay/API residual before more decode kernel work. |
+| 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
 
 ### 1.2 Bounded task contract
 
@@ -1019,9 +1025,10 @@ Artifact:
 ### 2.30 D08-D3B retained full-model gate (2026-08-14)
 
 Production RED/GREEN binds combined C through
-`GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES` only for gfx1151,
-`Qwen3.5-0.8B`, `MOSTLY_Q4_K_M`, and c1 `[K3584,N1024]`. The Q4 pack8 normal
-owner derives the `pack8_bf16_residual_bf16_out` sibling through its pack8 ABI;
+`GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES` only for gfx1151, the immutable
+24-layer/H1024 Qwen3.5 geometry, `MOSTLY_Q4_K_M`, and c1 `[K3584,N1024]`.
+The Q4 pack8 normal owner derives the `pack8_bf16_residual_bf16_out` sibling
+through its pack8 ABI;
 the dense-BF16 normal owner derives `out_bf16_residual_bf16_out` through the
 dense ABI. Policy resolution is hoisted to resident-runner initialization so
 Q8 and other unsupported owners pay no repeated per-layer package lookup.
@@ -1181,9 +1188,10 @@ Artifact:
 ### 2.34 D08-D5 retained norm/residual route (2026-08-14)
 
 Production RED binds the candidate through the four-axis registry, not a backend
-branch. `GGUF_NORM_RESIDUAL_DECODE_POLICIES` admits only gfx1151,
-`Qwen3.5-0.8B`, `MOSTLY_Q4_K_M`, rows1, and hidden1,024. Both the actual
-attention-norm helper and post-attention add+norm site resolve their layer key.
+branch. `GGUF_NORM_RESIDUAL_DECODE_POLICIES` admits only gfx1151, the immutable
+24-layer/H1024 Qwen3.5 geometry, `MOSTLY_Q4_K_M`, rows1, and hidden1,024. Both
+the actual attention-norm helper and post-attention add+norm site resolve their
+layer key.
 Q8, rows>1, other hidden/model/file/backend, output norm, verifier-F32 paths,
 and generic t256 primitives remain explicit fallbacks. Public wrappers and HIP
 entry points preserve pre-load validation. The resident capability caches a
@@ -1338,8 +1346,9 @@ re-reads activations from global once per 16-column band: for `[3584,1024]`
 at rows=512 that is 224 band reads x 1.05 MB = **235 MB activation traffic per
 mat** versus llama's 28 tiles x 1.05 MB = **29 MB**. The registered-but-disabled
 pack8 WMMA leaf already measures 1.97x/2.33x the shipped tile8x8 leaf on the
-0.8B dense shapes (within one BF16 ULP); X2a routes it. The remaining 1.5-1.7x
-to Vulkan requires the LDS/large-tile structure (X2-K1).
+0.8B dense shapes (within one BF16 ULP); X2a routes it. That remaining
+1.5-1.7x estimate motivated X2-K1, whose actual-weight screen later found the
+LDS/large-tile structure no faster than the qualified small-tile owner.
 
 **Decode GEMV.** `mul_mat_vec_q4_k.comp` assigns a 16-thread team per Q4_K
 superblock: packed 32-bit loads, unpack8 bit-trick scale decode, fully unrolled
@@ -1360,17 +1369,18 @@ state finalize; its exact route exposes only 64 one-wave blocks. X2-K2 ports
 the column-parallel register-state structure as an additional prefill schedule
 for both quants.
 
-**Full-attention decode core.** Vulkan `FLASH_ATTN_EXT` at c1 8Q/2KV/D256 and
-live context 512-641 costs ~26 us/layer; hipEngine's retained split-K3
-producer plus fused reducer costs ~153 us/layer (5.9x). X2-K4 targets a
-single-kernel c1 scan without the second launch.
+**Full-attention decode core.** The opening marker attribution estimated the
+retained split-K3 producer plus fused reducer at ~153 us/layer versus Vulkan's
+~26 us/layer. X2-K4 later measured the exact production pair standalone at
+56.5-57.1 us/layer, reducing the rewrite ROI to ~0.15-0.2 ms/token; no
+single-kernel rewrite was started.
 
-**Bounded fix ladder (human-approved):** X2a (done below) routes the measured
-pack8 WMMA bulk leaf; X2-K1 writes the LDS-staged large-tile pack8 WMMA GEMM
-(acceptance >= 2x X2a at pp512, no c1-c8 change); X2-K2 adds the GDN register
-scan; X2-K3 raises decode GEMV bandwidth; X2-K4 replaces the split-K pair.
-Each keeps its unfused/legacy fallback registered and passes the standard
-correctness/full-model gates.
+**Bounded extension outcomes (human-approved):** X2a retained the measured
+pack8 WMMA bulk leaf; X2-K1's LDS-staged large-tile pack8 screen was bit-exact
+but not faster; X2-K2 retained Q8 cluster8 GDN; X2-K3 found only a distributed
+GEMV grind and landed no kernel; X2-K4 corrected the attention ROI and stopped;
+X2-K5 retained dense-BF16 WMMA. Every retained route keeps its legacy fallback
+and passed its named correctness/full-model gates.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json).
@@ -1402,8 +1412,8 @@ A cached-build rocprofv3 kernel trace confirms
 (264) with the tile8x8 kernel absent; the stack's zero-duration blocker still
 applies, so names and geometry are the smoke evidence.
 
-Retained as the gfx1151 default. The remaining ~1.5-1.7x per-mat gap to
-Vulkan is the X2-K1 LDS/large-tile structure described in 2.37.
+Retained as the gfx1151 default. X2-K1 subsequently screened the proposed
+LDS/large-tile structure and closed it unrouted on gfx1151 wave32.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json).
@@ -1433,8 +1443,7 @@ lever is a wave64 WMMA variant (llama runs subgroup 64); X2 priority moves to
 GDN (X2-K2), the largest remaining matched gap.
 
 Artifact:
-[`/tmp/d08-x/pack8-v2-screen.json` retained via the X2 worklog entry; in-tree
-evidence is the test file plus this section].
+[`2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json).
 
 ### 2.40 D08-X2-K2 retained Q8_0 GDN cluster8 route (2026-08-15)
 
@@ -1474,14 +1483,15 @@ The twelve expanded-dense-BF16 Q6_K down owners (`[1024,3584]`) ran the naive
 `dense_prefill_wmma_out_kernel` applies the same LDS-staged wave32 structure
 proven in X2-K1 - 128x64 block tile, 256 threads, BK=32 shared f16 tiles,
 F32-accumulating 16x16x16 WMMA - without dequant. On actual-weight-class data
-it measures **0.0006 ms vs 0.0031 ms (5.2x)** per `[1024,3584] x 512` mat with
+it measures **0.6 ms vs 3.1 ms (5.2x)** per `[1024,3584] x 512` mat with
 100% top-1 versus the naive reference.
 
 Registered as `dense_gemv/prefill_wmma_out` behind the gfx1151 capability
 `GGUF_DENSE_BF16_WMMA_BULK_PREFILL` and the
-`HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback; rows 1-15, unaligned
-`out_features`, and peer backends keep the exact fallback. Fixtures live in
-`tests/test_dense_prefill_wmma.py`.
+`HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback. The backend default is limited
+to the two complete-model-gated p512 dense-BF16 shapes; K not divisible by 32,
+every row/shape policy miss, and peer backends keep the exact fallback. Fixtures
+live in `tests/test_dense_prefill_wmma.py`.
 
 Binding gates: five counter-rotated env-pair exact-core blocks on Q4_K_M give
 prefill **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)** and public **+24.63%
@@ -1699,7 +1709,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | --- | --- | --- | --- | --- | --- |
 | **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair, no kernel variants, and M6 re-profile complete. | accepted |
 | **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.60% merged Q4 bound; unrealized** | All three frozen sole-resident candidates won pp512 but failed a required c1 or c8 operational guard. | **Closed:** no duplicate layouts, no full-model A/B, and no production change. Reopen only for a new sole-resident family that is non-regressive at every width. | rejected |
-| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed:** Q4-only quant/shape plugin policy; Q8 exact fallback retained; no new arithmetic variants. | accepted |
+| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed at P2:** Q4-only policy; D08-X2-K2 later retained Q8 cluster8 under a fresh gate without adding arithmetic variants. | accepted; Q8 disposition superseded by X2-K2 |
 | **D08-P6** | Remaining linear-attention projections after accepted Q5 QKV routing: residual QKV/gate, alpha/beta, and SSM-out. | **realized: +14.18% graph-scope pp512 / +0.69% graph tg128; -46.69 MiB weights** | The split selected 35.93-ms Q5 SSM-out; exact-role sole Q5T16 passes 449/450 top-1, max KL 0.003273, and all graph pairs. | **Closed:** exactly three existing leaves and one combined full-model A/B; M7 confirms SSM-out at 9.68 ms. | accepted |
 | **D08-P7** | Residual linear-attention QKV/gate, alpha/beta, and conversion after accepted Q5T16 SSM-out. | **3.58% selected gate bound; unrealized** | Q4T16 pp512/split-c8 win but c1 is 0.883x; raw Q4 regresses all operational widths. | **Closed:** preserve sole pack8, skip conditional source-F16 after exact-T16 c1 failure, and run no full-model A/B. | rejected |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Exact-role sole Q4T16 passes every operational leaf, 447/450 top-1, max KL 0.003574, and exact trajectories. | **Closed:** gfx1151 0.8B Q-only plugin policy; M8 confirms Q at 2.71 ms and all other scope remains unchanged. | accepted/exhausted |
@@ -1776,7 +1786,7 @@ potential band, then measured upper bound.
 | Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
 | P1 Q5T16 QKV route | **accepted** | **realized: +33.68% pp / +42.19% eager tg; -11.59% tracked peak** | One exact-role sole-resident policy reused the shipped direct/rowtile/WMMA family; no arithmetic variants or duplicate weights. | Closed; reopen only if a future correctness regression identifies this exact role. |
 | Dense FFN projection package / P3 | **rejected** | **29.60% merged Q4 bound; unrealized** | Raw Q4 regresses every operational width, Q4T16 regresses c8, and Q6T16 regresses c1; duplicate residents are disallowed. | A new sole-resident family passes pp512 plus c1/c2/c4/c8 without sacrificing memory or either topline scope. |
-| Q4/16K/16V cluster8 GDN / P2 | **accepted** | **realized: +4.33% paired / +5.83% independent pp512; GDN -36.64%** | Complete Q4 semantic and production-graph decode gates pass; Q8 remains exact because its strict decode guard missed. | Closed; reopen only for a regression in this exact quant/shape key. |
+| Q4/Q8 16K/16V cluster8 GDN / P2 + X2-K2 | **accepted** | **Q4 +4.33% paired / +5.83% independent; Q8 +16.70% exact-core pp512** | Complete Q4 gates pass; X2-K2's fresh Q8 gate supersedes P2's strict-guard miss with 448/450 top-1 and max KL 0.003260. | Closed; reopen only for a regression in either exact quant/shape key. |
 | Q5T16 SSM-out / P6 | **accepted** | **realized: +14.18% graph pp / +0.69% graph tg; -46.69 MiB** | Exact-role sole Q5T16 replaces 18 dense-BF16 expansions; correctness and all production-graph pairs pass. | Closed; M7 confirms the route at 9.68 ms and selects the residual group instead. |
 | Residual linear-attention projections / P7 | **rejected** | **3.58% selected gate bound; unrealized** | Native Q4T16 c1 regresses 11.73%; raw Q4 regresses every c1-c8 width; source-F16 cannot repair c1. | A new sole-resident family passes pp512 and every operational width, or an operation-complete fusion removes the c1 regression without sidecars. |
 | Full-attention Q projection / P4 | **accepted/exhausted** | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Six exact-role sole-Q4T16 residents pass 447/450 top-1 and every graph/eager trajectory; M8 confirms 2.71-ms Q and T16 WMMA bulk ownership. | Closed; reopen only for a regression in this exact role/shape key. |
