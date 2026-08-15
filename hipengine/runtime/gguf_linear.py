@@ -1407,6 +1407,20 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
         _raw_k_prefill_variant.reset(token)
 
 
+def _backend_prefill_shape_is_qualified(
+    backend: str,
+    capability: str,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    """Admit a backend optimization only for its measured shape contracts."""
+
+    shapes = backend_package_capability(backend, capability, frozenset())
+    return (int(rows), int(in_features), int(out_features)) in shapes
+
+
 def _dense_bf16_wmma_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -2223,6 +2237,13 @@ def launch_gguf_linear(
                         False,
                     )
                 )
+                and _backend_prefill_shape_is_qualified(
+                    resolved_backend,
+                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
             ),
         )
         dispatch = _pack8_rowtile_dispatch(
@@ -2281,6 +2302,13 @@ def launch_gguf_linear(
                         "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1"
                     )
                     != "0"
+                    and _backend_prefill_shape_is_qualified(
+                        resolved_backend,
+                        "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
+                        rows=rows,
+                        in_features=in_features,
+                        out_features=out_features,
+                    )
                 )
             ),
         )
@@ -3478,6 +3506,13 @@ def launch_gguf_linear_pair(
                 resolved_backend,
                 "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
                 False,
+            )
+            and _backend_prefill_shape_is_qualified(
+                resolved_backend,
+                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
             )
             and is_registered(wmma_key)
         ):

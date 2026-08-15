@@ -358,12 +358,29 @@ LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # D08-X (2026-08-15): on Qwen3.5-0.8B dense-FFN pack8 shapes the registered
 # pack8 WMMA bulk consumer measures 1.97x ([3584,1024], 16x32) and 2.33x
 # ([1024,3584], 64x16) versus the exact tile8x8 leaf at rows=512, within one
-# BF16 ULP. Bulk prefill sessions on this backend therefore prefer it.
+# BF16 ULP. The complete p512 A/B also exercised the attention pack8 shapes.
+# Fail closed beyond that measured row/shape matrix until it is expanded.
 GGUF_Q4_PACK8_WMMA_BULK_PREFILL = True
+GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
+    {
+        (512, 1_024, 512),
+        (512, 1_024, 2_048),
+        (512, 1_024, 3_584),
+        (512, 2_048, 1_024),
+        (512, 3_584, 1_024),
+    }
+)
 # D08-X2-K5 (2026-08-15): dense-BF16 bulk prefill (expanded Q6_K down owners)
 # prefers the registered LDS-staged 128x64 WMMA consumer over the naive
-# 32x8 scalar tile; rows 1-15 and unaligned shapes keep the exact fallback.
+# 32x8 scalar tile. Admit only the two Qwen3.5-0.8B p512 shapes covered by the
+# complete-state A/B; other rows/shapes retain the exact fallback.
 GGUF_DENSE_BF16_WMMA_BULK_PREFILL = True
+GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
+    {
+        (512, 1_024, 512),
+        (512, 3_584, 1_024),
+    }
+)
 # The attention-RMSNorm source range is statically bounded from resident F32
 # norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
 # restores. Attention output retains power-of-two row scaling; decode is
