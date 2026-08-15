@@ -284,11 +284,26 @@ open campaign gaps. Evidence:
 #### Retained development state
 
 These rows are dirty-development gates, not replacement clean publication
-toplines. Single-layout ownership plus bounded P4 raises prefill to
-343.320/338.038/332.676 tok/s. P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an
-exact serial-c1 Q5T16 recurrent-output tile8 owner, and an exact four-wave Q4
-split-weight gate/up owner. The latest exact graph-AR rows, against fresh
-same-source pre-split controls, are:
+toplines. P4's rows>=512 four-wave shared planar-Q6 FFN-down owner is
+BF16-bit exact, changes no resident/workspace bytes, and improves the complete
+same-source prefill gate at all three working shapes:
+
+| Shape | Same-source control | Shared-Q6 prefill | Delta | llama HIP | llama Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 344.886 | **363.521** | **+5.403%** | 352.426 | 242.956 |
+| 1K/128 | 339.548 | **354.231** | **+4.325%** | 364.443 | 247.610 |
+| 4K/128 | 334.718 | **349.204** | **+4.328%** | 367.993 | 354.368 |
+
+The actual K17408/N5120 leaf improves 1.421-1.502x with 45/45 wins; narrow V,
+root, rows<512, and peer backends retain the one-wave fallback. IDs, tracked
+peaks, and teardown are unchanged. The 512 row now beats clean llama HIP, while
+1K HIP and 4K HIP/Vulkan remain open. Evidence:
+[`shared planar-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json).
+
+P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an exact serial-c1 Q5T16
+recurrent-output tile8 owner, and an exact four-wave Q4 split-weight gate/up
+owner. The latest exact graph-AR rows, against fresh same-source pre-split
+controls, are:
 
 | Shape | Same-source control | Current AR | Split-weight delta | llama HIP | llama Vulkan |
 | --- | ---: | ---: | ---: | ---: | ---: |

@@ -1,9 +1,10 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership complete on 2026-08-15; the bounded P4
-prefill ladder is closed below G2, P5 has retained its first exact-trajectory
-decode wins but remains open, and the K0-K3 native INT8 K/V ladder is closed
-below K4 on model-level correctness.** The working performance set is
+Status: **G1 single-layout ownership complete on 2026-08-15; P4 has reopened
+and retained an exact shared-weight planar-Q6 prefill owner but remains below G2
+at 1K/4K, P5 has retained its first exact-trajectory decode wins but remains
+open, and the K0-K3 native INT8 K/V ladder is closed below K4 on model-level
+correctness.** The working performance set is
 `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
@@ -13,19 +14,22 @@ valid exact MTP, while minimizing resident and whole-process memory. The
 separate native INT8 K/V lane found no representation that transfers through
 1K/8 under the quality contract; BF16 therefore remains the supported route.
 
-The retained-path P4 development gate is `343.320/338.038/332.676` prefill
-tok/s at 512/1K/4K. It beats Vulkan at 512/1K but remains 2.58%/7.25%/9.60%
-below clean llama HIP and is 6.12% below Vulkan at 4K. These are not new clean
-publication toplines: a same-protocol clean three-shape refresh is still needed
-before rollup. Bounded Q5 source-F16 is retained; outer chunks, Q4 row128,
-planar-Q6 row80, standard-Q6 48x64 tiling, the exact unequal-output Q4
-QKV+gate pair, 16-column dual-Q4 output subdivision, and the byte-neutral
-Laguna-derived D8-MMQ transfer are rejected. The unequal pair wins every
-actual-weight leaf but projects only 0.208-0.472% complete-prefill saving;
-16-column subdivision is exact but raises leaf wall 50.35-63.30%, while the
-operation-complete dense D8-MMQ route is 2.99-3.09x slower and is not
-BF16-identical. AOTriton attention is active but nonmaterial, and the remaining
-primitive add boundary is below the >=1% request gate.
+The retained-path P4 development gate is now
+`363.521/354.231/349.204` prefill tok/s at 512/1K/4K. A same-source three-run
+control is `344.886/339.548/334.718`, so the shared-Q6 owner improves complete
+prefill **5.403%/4.325%/4.328%** with identical IDs, tracked peaks, and teardown.
+It beats clean llama HIP at 512 by 3.15% and Vulkan at 512/1K, but remains
+2.80%/5.11% below llama HIP at 1K/4K and 1.46% below Vulkan at 4K. These are
+retained dirty-development rows, not new clean publication toplines; a
+same-protocol clean three-shape refresh is still needed before rollup. Bounded
+Q5 source-F16 and rows>=512 four-wave shared planar-Q6 FFN-down are retained;
+outer chunks, Q4 row128, planar-Q6 row80, standard-Q6 48x64 tiling, the exact
+unequal-output Q4 QKV+gate pair, 16-column dual-Q4 output subdivision, and the
+byte-neutral Laguna-derived D8-MMQ transfer are rejected. The new shared-Q6
+route decodes one 48x256 slab into 24 KiB LDS and preserves the four prior
+per-wave 48x64 arithmetic sequences; narrow V, root, rows<512, and peer backends
+retain the one-wave fallback. AOTriton attention is active but nonmaterial, and
+the remaining primitive add boundary is below the >=1% request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up, an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs, and an exact four-wave
@@ -446,27 +450,24 @@ A leaf normally needs >=1.10x and >=1% projected request saving to receive a
 full-model A/B. Keep a smaller exact non-regressive win if already measured, but
 close the package rather than opening an unbounded variant ladder.
 
-P4 closure on 2026-08-15 follows that bound. Q5 K6,144/N5,120 source-F16 is the
-only retained P4 unit. Chunk128/256/512 loses every complete shape; Q4 dual
-row128 loses 9.9-12.1%; planar-Q6 row80 is nonuniform and projects below 1%;
-and the nonduplicative standard-Q6 48x64 dataflow loses 4.1-10.8%. A later
-transfer screen of the already registered exact unequal-output Q4 QKV+gate pair
-wins all 45 actual-weight pairs at 1.038-1.085x, but its 24 calls project only
-0.208-0.472% complete-prefill saving and therefore stop before integration. A
-materially distinct 16-column dual-Q4 output subdivision halves LDS and lowers
-VGPR 248 -> 224, but doubles output workgroups/activation transport and raises
-actual-weight wall 50.35-63.30% at 512/1K/4K with 0/45 wins. A subsequent
-byte-neutral transfer of the existing Laguna dual-interleaved Q4T16 D8-MMQ128x32
-dataflow to the dense K5120/N17408 gate/up+SiLU boundary also fails decisively:
-operation-complete wall rises **6.8510/13.7535/54.2381 ->
-21.1716/41.1409/164.2927 ms** at 512/1K/4K (0/21 wins), and the different
-reduction boundary is not BF16-identical. The pp512 ledger leaves Q4 dual/single
-and Q6 as large families, but previously screened Q4/Q6 source-F16, geometry,
-attention, add-boundary, and D8-MMQ mechanisms provide no remaining bounded
-all-shape candidate. G2 therefore remains blocked
-rather than complete. Reopen P4 only for a materially new operation-complete
-dataflow with a measured >=1% request projection or after a
-compiler/runtime/baseline change invalidates these economics.
+The initial P4 closure on 2026-08-15 followed that bound. Q5 K6,144/N5,120
+source-F16 survived while chunk128/256/512, Q4 dual row128, planar-Q6 row80,
+standard-Q6 48x64, unequal-output Q4, dual-Q4 col16, and dense D8-MMQ all failed
+their declared gates. The materially distinct shared-weight screen reopened P4:
+one 128-thread/four-wave workgroup decodes each planar-Q6 48x256 slab once into
+24 KiB LDS while preserving four independent retained 48x64 K16 WMMA sequences.
+The universal route is rejected because narrow K5120/N1024 V reaches only
+1.033x and 11/15 wins at 1K. The admitted rows>=512 K17408/N5120 FFN-down scope
+is BF16-bit exact and improves **1.502x/1.421x/1.474x** at 512/1K/4K with
+**45/45 wins**, projecting **5.132%/4.207%/4.606%** complete-request savings.
+
+The same-source full-model gate confirms **344.886/339.548/334.718 ->
+363.521/354.231/349.204 tok/s (+5.403%/+4.325%/+4.328%)** with identical
+preview IDs, byte-identical tracked peaks, and zero teardown ownership. The 512
+row now beats clean llama HIP by 3.15%; 1K remains 2.80% below HIP and 4K
+remains 5.11% below HIP / 1.46% below Vulkan. G2 therefore remains blocked
+rather than complete, but P4 is no longer mechanism-blocked: rerank the
+post-retain ledger and continue only with a new >=1% all-shape premise.
 
 ### P5 — True-AR decode
 
