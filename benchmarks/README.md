@@ -148,6 +148,13 @@ Selective unsafe-math was rejected for that same operation: despite 100% top-1,
 mean KL `4.74e-13`, and matching NaN/Inf classes, it regressed the actual leaf
 **20.032 -> 21.569 us (-7.67%)**. No unsafe production route remains. Evidence:
 [`unsafe-math rejection`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp4-unsafe-math-rejected.json).
+On the admitted Q4_K_M+NextN artifact, the existing prompt-agnostic B1-probe
+adaptive MTP route is also economically sound: exact adaptive B3 reaches
+**27.054 tok/s / 37.140 ms-output**, or **1.134x** current strict-profile AR and
+**1.116x** the best fixed-depth control across all ten train+heldout prompts.
+This is diagnostic revalidation only: dirty unrelated docs/tests and a changed
+execution-profile denominator block a new budget/topline claim. Evidence:
+[`adaptive MTP`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp5-adaptive-mtp-diagnostic.json).
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
