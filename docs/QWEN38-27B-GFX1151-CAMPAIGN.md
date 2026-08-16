@@ -318,6 +318,14 @@ request measurement.
 Evidence:
 [`qmicro paired-qload rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qmicro-paired-qload-rejected.json).
 
+A matched clean process-level scheduling check also keeps the gfx1151
+`GPU_MAX_HW_QUEUES=2` default. One queue changes 512/128 graph AR **12.40721 ->
+12.40308 tok/s (-0.0333%)** and prefill **400.5497 -> 400.2541 (-0.0738%)**
+with exact IDs, bytes, and teardown. Queue count is not a material remaining
+serial-AR gap.
+Evidence:
+[`hardware-queue count rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-hardware-queue-count-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

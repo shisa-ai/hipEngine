@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_hardware_queue_count",
+  "status": "rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "9c649e28d6850faf89c597425493dd04c09e19e0",
+    "worktree": "clean detached",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "protocol": {
+    "order": "retained GPU_MAX_HW_QUEUES=2 then candidate GPU_MAX_HW_QUEUES=1",
+    "shape": "512/128",
+    "prompt": "token 9707 repeated 512 times",
+    "runs_per_process": "one discarded warmup plus three measured persistent-session resets",
+    "routes": "production bulk attention, WMMA prefill, GEMV decode, graph replay",
+    "process_isolation": true
+  },
+  "control_two_queues": {
+    "prefill_tok_s": {
+      "median": 400.54966147504797,
+      "min": 400.108465028544,
+      "max": 402.02203642164824
+    },
+    "decode_tok_s": {
+      "median": 12.40721287058568,
+      "min": 12.404391499010165,
+      "max": 12.416201596774906
+    },
+    "tracked_peak_bytes": 17810372996,
+    "artifact_sha256": "77ae8d2f8891cd52d8f5008833bc94e9e82efab9c99362c6526c5b80baca5c89"
+  },
+  "candidate_one_queue": {
+    "prefill_tok_s": {
+      "median": 400.2540803508984,
+      "min": 399.6138263143429,
+      "max": 402.02120779007566
+    },
+    "decode_tok_s": {
+      "median": 12.403082342437056,
+      "min": 12.386565547929614,
+      "max": 12.407297586873286
+    },
+    "tracked_peak_bytes": 17810372996,
+    "artifact_sha256": "4f6dde3acece776fdef4605335d978378c5f4a0854a145b10b38cdf27ae7918e"
+  },
+  "comparison": {
+    "decode_delta_percent": -0.03329134586233762,
+    "prefill_delta_percent": -0.07379387690930583,
+    "final_token_ids_exact": true,
+    "tracked_peak_exact": true,
+    "tracked_after_close_bytes": 0
+  },
+  "command": "GPU_MAX_HW_QUEUES=<2|1> python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+  "decision": "Reject the one-queue scheduling override for Qwen3.8 serial AR. It is exact and byte-neutral but slightly negative for both decode and prefill. Retain the documented gfx1151 two-queue default; graph-safe scheduling is not a material remaining gap."
+}
