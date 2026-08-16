@@ -111,16 +111,30 @@ class KVLiveSpans:
             DType.INT64,
         }:
             raise ValueError("row_positions must be int32 or int64")
-        if self.request_ids is not None and self.request_ids.numel != self.live_counts.numel:
+        if self.spans_mode not in {"uniform", "per_head_variable", "sliding_ring"}:
+            raise ValueError("spans_mode must be 'uniform', 'per_head_variable', or 'sliding_ring'")
+        if self.spans_mode == "per_head_variable":
+            if len(self.live_counts.shape) != 3:
+                raise ValueError("per_head_variable live_counts must be [rows, layers, heads]")
+            if self.base_offsets.shape != self.live_counts.shape:
+                raise ValueError("per_head_variable base_offsets and live_counts must have the same shape")
+            live_rows = self.live_counts.shape[0]
+            for name, tensor in (
+                ("token_positions", self.token_positions),
+                ("evict_mask", self.evict_mask),
+            ):
+                if tensor is not None and (not tensor.shape or tensor.shape[0] != live_rows):
+                    raise ValueError(f"per_head_variable {name} must align with rows")
+        else:
+            live_rows = self.live_counts.numel
+        if self.request_ids is not None and self.request_ids.numel != live_rows:
             raise ValueError("request_ids must have one entry per live_counts row")
-        if self.row_positions is not None and self.row_positions.numel != self.live_counts.numel:
+        if self.row_positions is not None and self.row_positions.numel != live_rows:
             raise ValueError("row_positions must have one entry per live_counts row")
         if self.max_live_count < 0:
             raise ValueError("max_live_count must be non-negative")
         storage = DType.parse(self.storage_dtype)
         object.__setattr__(self, "storage_dtype", storage)
-        if self.spans_mode not in {"uniform", "per_head_variable", "sliding_ring"}:
-            raise ValueError("spans_mode must be 'uniform', 'per_head_variable', or 'sliding_ring'")
         if self.spans_mode == "sliding_ring":
             if self.storage_dtype != DType.BF16:
                 raise ValueError("sliding_ring spans require bf16 storage")

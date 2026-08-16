@@ -32,6 +32,44 @@ def test_kv_live_spans_accepts_uniform_paged_bridge() -> None:
     assert spans.span_role == "decode"
 
 
+def test_kv_live_spans_accepts_per_head_variable_rows() -> None:
+    spans = KVLiveSpans(
+        base_offsets=_tensor(0x1000, (2, 3, 4), "int32"),
+        live_counts=_tensor(0x2000, (2, 3, 4), "int32"),
+        max_live_count=7,
+        token_positions=_tensor(0x3000, (2, 7), "int32"),
+        evict_mask=None,
+        storage_dtype="bf16",
+        spans_mode="per_head_variable",
+        request_ids=_tensor(0x4000, (2,), "int64"),
+        row_positions=_tensor(0x5000, (2,), "int32"),
+    )
+
+    assert spans.live_counts.shape == (2, 3, 4)
+    assert spans.request_ids is not None and spans.request_ids.numel == 2
+
+    with pytest.raises(ValueError, match="same shape"):
+        KVLiveSpans(
+            base_offsets=_tensor(0x1000, (2, 3, 5), "int32"),
+            live_counts=_tensor(0x2000, (2, 3, 4), "int32"),
+            max_live_count=7,
+            token_positions=None,
+            evict_mask=None,
+            storage_dtype="bf16",
+            spans_mode="per_head_variable",
+        )
+    with pytest.raises(ValueError, match="align with rows"):
+        KVLiveSpans(
+            base_offsets=_tensor(0x1000, (2, 3, 4), "int32"),
+            live_counts=_tensor(0x2000, (2, 3, 4), "int32"),
+            max_live_count=7,
+            token_positions=_tensor(0x3000, (1, 7), "int32"),
+            evict_mask=None,
+            storage_dtype="bf16",
+            spans_mode="per_head_variable",
+        )
+
+
 def test_kv_scale_metadata_validates_int8_scale_tensors() -> None:
     metadata = KVScaleMetadata(
         k_scale=_tensor(0x3000, (2, 4, 1), "fp16"),
