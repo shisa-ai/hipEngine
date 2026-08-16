@@ -859,6 +859,12 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
     {(1, 5_120, 48, 48)}
 )
+# The graph-safe serial composite joins those independent projections with the
+# current in-place Conv channel blocks. Wider/native rows and peer backends keep
+# the separately registered pair plus Conv fallback.
+GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 48, 10_240, 4)}
+)
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
 # Qwen3.8 P5 independently admits same-resident direct Q4/Q6 c1 siblings at
@@ -2046,6 +2052,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
+    "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",

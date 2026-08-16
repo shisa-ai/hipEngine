@@ -4681,27 +4681,51 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_gate")
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
-        self._run_linear_attention_alpha_beta_rows(
-            layer,
-            scratch.norm.ptr,
-            attn_norm_f32_ptr,
-            scratch,
-            rows=1,
-            stream=stream,
-            runtime=runtime,
+        alpha_beta_conv_fused = (
+            attn_norm_f32_ptr is None
+            and _try_launch_dense_f32_alpha_beta_conv_decode(
+                layer.weight("ssm_alpha"),
+                layer.weight("ssm_beta"),
+                scratch.norm.ptr,
+                linear_alpha_ptr,
+                linear_beta_ptr,
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                channels=self.linear_qkv_width,
+                kernel_size=cfg.ssm_conv_kernel,
+                backend=self.backend,
+                stream=stream,
+                runtime=runtime,
+            )
         )
+        if not alpha_beta_conv_fused:
+            self._run_linear_attention_alpha_beta_rows(
+                layer,
+                scratch.norm.ptr,
+                attn_norm_f32_ptr,
+                scratch,
+                rows=1,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_alpha_beta")
-        qwen35_linear_attn_conv_decode_bf16(
-            scratch.linear_qkv.ptr,
-            conv_state.ptr,
-            layer.weight("ssm_conv1d").allocation().tensor.ptr,
-            scratch.conv_out.ptr,
-            self.linear_qkv_width,
-            cfg.ssm_conv_kernel,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not alpha_beta_conv_fused:
+            qwen35_linear_attn_conv_decode_bf16(
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_conv")
         ssm_out_weight = layer.weight("ssm_out")
@@ -11488,6 +11512,86 @@ def _try_launch_dense_q8_triple_dp4a_f32(
         out_features_a,
         out_features_b,
         out_features_c,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
+def _try_launch_dense_f32_alpha_beta_conv_decode(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    norm_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    conv_out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    channels: int,
+    kernel_size: int,
+    backend: str,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Launch the exact architecture-qualified serial alpha/beta plus Conv."""
+
+    shape = (
+        int(rows),
+        int(in_features),
+        int(out_features),
+        int(channels),
+        int(kernel_size),
+    )
+    admitted = backend_package_capability(
+        backend,
+        "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+        (),
+    )
+    key = KernelKey(
+        backend,
+        "linear_attn_alpha_beta+conv_decode",
+        "f32",
+        "bf16_k5120_n48_c10240_k4_c1",
+    )
+    if (
+        shape not in admitted
+        or getattr(weight_a, "backend", None) != backend
+        or getattr(weight_b, "backend", None) != backend
+        or getattr(getattr(weight_a, "spec", None), "quant_key", None) != "f32"
+        or getattr(getattr(weight_b, "spec", None), "quant_key", None) != "f32"
+        or not is_registered(key)
+    ):
+        return False
+    try:
+        weight_a_ptr = weight_a.allocation("raw").tensor.ptr
+        weight_b_ptr = weight_b.allocation("raw").tensor.ptr
+    except (KeyError, ValueError):
+        return False
+    kernel = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    kernel(
+        norm_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        conv_out_ptr,
+        in_features,
+        out_features,
+        channels,
+        kernel_size,
         stream=stream,
         runtime=runtime,
     )
