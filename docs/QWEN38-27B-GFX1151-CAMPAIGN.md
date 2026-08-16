@@ -244,6 +244,17 @@ unchanged peaks, and no bytes. Native rows, prefill, misses, and peer backends
 retain the two primitive projections. Evidence:
 [`Q6/Q4 mixed grid`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
 
+The homogeneous-Q4 recurrent analogue is rejected. Concatenating the unchanged
+QKV and gate local32 block ranges preserves all BF16 bits but changes four
+actual pairs **0.93259 -> 0.93888 ms (+0.675%, 2/15 wins)** over independent
+115.625/69.375-MiB resident pools. Transient code is removed before any graph
+or request gate. The adjacent Q5 `ssm_out` -> add-RMSNorm store seam is not a
+conventional exact rounded-residual fusion either: normalization consumes the
+unrounded FP32 sum while residual publication rounds separately to BF16. It
+requires a materially different persistent/global-synchronization premise, not
+the existing producer-store composite. Evidence:
+[`Q4/Q4 recurrent-grid rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-q4-unequal-grid-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
