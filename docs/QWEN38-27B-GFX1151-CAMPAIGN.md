@@ -120,6 +120,13 @@ requires retention. Native rows/MTP, peers, and all other Q4 singleton shapes
 stay on their prior owners. Evidence:
 [`Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
 
+Packed standard-Q4T16 coefficient publication does not improve the dominant
+split-weight gate/up owner. Eight scale/min quartet broadcasts per K256 tile are
+BF16-bit exact but change three actual layers **1.434625 -> 1.435730 ms
+(0.99923x, 19/45 wins)** and project **-0.0294%** selected wall. Direct metadata
+loads remain production. Evidence:
+[`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -704,6 +711,16 @@ but it satisfies the exact non-regressive verified-subwindow rule. The
 architecture-local shape map excludes native sessions, MTP, peers, and all
 other Q4 singleton geometries. Evidence:
 [`Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
+
+The final same-payload metadata-publication screen is also closed. Unlike the
+rejected Q5 FP32 coefficient path, this Q4 candidate packs four byte coefficients
+per wave exchange: each eight-lane K32 group loads four scale and four min words
+once instead of issuing 32 per-lane byte loads. It remains BF16-bit exact but
+measures **1.434625 -> 1.435730 ms (0.99923x, 19/45 wins)** over layers 0/8/63;
+layer 8 regresses **0.621%** and the post-grouped projection is **-0.0294%**.
+Transient code is removed and the retained split-weight kernel keeps direct
+standard-T16 metadata loads. Evidence:
+[`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
 
 ### P6 — Exact B3 MTP
 
