@@ -87,6 +87,15 @@ although max KL is only **2.57e-11** and top-1 remains 3/3. No prefill/verifier
 package or payload migration is warranted. Evidence:
 [`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
 
+The only smaller existing Q4 payload also fails against the current owner.
+Qmicro reduces each actual gate/up resident pair **103,055,360 -> 100,270,080
+bytes (-2.70%)** and a split-weight consumer preserves BF16 bits exactly, but
+per-K256 compressed-metadata expansion regresses every pair: the three-layer
+family moves **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)** and projects a
+**1.7014% selected 4K kernel-wall regression**. The transient route is removed;
+standard-Q4T16 remains production. Evidence:
+[`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -630,6 +639,15 @@ but the candidate is slower and its exact BF16 association differs from the
 current Q8_1x2 route at 1,476 positions, so operation-complete integration stops.
 Evidence:
 [`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
+
+Qmicro closes the remaining existing Q4 resident-byte route. Its K256/N16 tile
+is **2,304 instead of 2,368 bytes (-2.70%)**, and a transient consumer preserves
+the retained split-weight thread/FMA/reduction order plus exact BF16 output.
+However, cooperative metadata expansion costs more than the removed traffic:
+three actual layers regress **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)**,
+projecting **-21.991 ms / -1.7014%** selected 4K kernel wall. The candidate is
+removed before runtime integration. Evidence:
+[`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
 
 ### P6 — Exact B3 MTP
 
