@@ -2,8 +2,15 @@
 
 Last updated: 2026-08-17.
 
-This document is the source-of-truth roadmap and punchlist for making `c=N` a
-first-class model pipeline in hipEngine. The destination is fully native
+> **Superseded for active architecture planning.** The Generation-2 request,
+> scheduler, and shared-KV redesign is now in
+> [`CONCURRENCY2.md`](CONCURRENCY2.md). This file remains the retained c=N
+> kernel/resident-runner roadmap and evidence history. Its unresolved work is
+> migrated or delegated in the Generation-2 migration ledger; do not add new
+> active queue items here.
+
+This document was the source-of-truth roadmap and punchlist for making `c=N` a
+first-class model pipeline in hipEngine. Its destination was fully native
 single-GPU continuous batching for:
 
 - GGUF and PARO model paths;

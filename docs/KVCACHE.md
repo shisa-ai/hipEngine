@@ -24,13 +24,15 @@ occupancy `0->1->4->3->2->1->0`, 4/4 exact rows, and zero final ownership. Long
 pure INT8 still needs the unverified-long gate, graph capture rejects it, and
 exact natural B3 MTP is only `0.6423x` true
 AR. BF16 remains supported/default. K2 compact DMS remains planned. Last
-updated: 2026-08-16._
+updated: 2026-08-17._
 
-This document is the source of truth for hipEngine K/V-cache architecture,
-capacity, and fidelity. It supersedes the June 24 interpretation that the old
-Qwen3.5 short E2E fixture made 256K INT8 a correctness-passing product route.
-That fixture remains useful kernel bring-up evidence; current Qwen3.6
-long-context evidence controls the support decision.
+This document is the source of truth for hipEngine K/V storage formats,
+`KVLiveSpans`, capacity, and fidelity. The active shared-arena ownership,
+admission, prefix-cache lifecycle, and DMS scheduler integration design is
+[`CONCURRENCY2.md`](CONCURRENCY2.md). This document supersedes the June 24
+interpretation that the old Qwen3.5 short E2E fixture made 256K INT8 a
+correctness-passing product route. That fixture remains useful kernel bring-up
+evidence; current Qwen3.6 long-context evidence controls the support decision.
 
 ## Executive decision
 

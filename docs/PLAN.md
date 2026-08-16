@@ -443,6 +443,14 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 
 ### Concurrent Decode, Continuous Batching, and SpecDec Readiness
 
+The active Generation-2 request-lifecycle, scheduler, global device-KV pool,
+prefix-cache, c1-c32, and FastDMS integration design is
+[`CONCURRENCY2.md`](CONCURRENCY2.md). [`CONCURRENCY.md`](CONCURRENCY.md) is the
+legacy retained c=N kernel/resident-runner roadmap and evidence history. The
+batch-shaped, `KVLiveSpans`, transactional-KV, and plugin invariants below remain
+binding while the Generation-2 host ownership replaces the older implementation
+sequence.
+
 hipEngine is a better foundation for c>1 than the current `nano-vllm-amd`
 native PARO path. The runnable tree now has retained direct c=2/c=4/c=8 PARO
 decode where the backend-specific gates pass, an opt-in gfx1151 PARO resident

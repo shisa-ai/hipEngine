@@ -1,0 +1,1042 @@
+# Concurrency and KV Architecture, Generation 2
+
+Last updated: 2026-08-17.
+
+_Status: approved redesign and implementation roadmap. This document is the
+source of truth for the next-generation server scheduler, request lifecycle,
+and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md) remains the
+historical record for the retained c=N kernel and resident-runner campaigns;
+new architecture work belongs here._
+
+Related source-of-truth documents:
+
+- [`PLAN.md`](PLAN.md) — project architecture and plugin invariants.
+- [`KVCACHE.md`](KVCACHE.md) — storage formats, `KVLiveSpans`, dense INT8, and
+  FastDMS-derived compact DMS.
+- [`BENCHMARK.md`](BENCHMARK.md) — correctness and performance evidence.
+- [`TESTING.md`](TESTING.md) — RED/GREEN workflow and test tiers.
+- [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) — the separate
+  no-mirror INT8 storage/kernel campaign.
+- [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — speculative transaction and
+  verification work classes.
+
+## Executive decision
+
+hipEngine will have **one long-lived engine service per loaded model replica**.
+That service, not an HTTP batcher and not an individual `generate()` caller,
+will be the sole owner of:
+
+- request admission and scheduling;
+- resident model state and physical execution-row maps;
+- one policy-shaped device KV arena shared by all compatible requests;
+- prefix-cache ownership and eviction;
+- graph/workspace selection;
+- token commit, completion, cancellation, and reclaim.
+
+Every prompt/choice becomes an independent child request with its own stable
+request ID and output collector. Blocking and streaming endpoints submit the
+same request type to the same engine. A blocking endpoint buffers its own
+output; it does **not** submit a static backend batch and wait for every sibling
+before resolving. A multi-prompt or `n>1` API call may aggregate its child
+results at the HTTP boundary, but each child frees backend resources as soon as
+that child terminates.
+
+The dense baseline will use one preplanned global device page arena with stable
+block IDs. Full immutable prefix pages may be shared by refcount; writable tails
+are private or copy-on-write; zero-active-reference cache pages are LRU-evictable.
+The scheduler admits by a complete resource estimate and current pool state,
+not by a hardcoded physical c4/c8 route width. Physical c1/c2/c4/c8 kernels are
+execution buckets: 23 ready rows may be lowered to several certified groups in
+one fairness round without limiting resident concurrency to eight.
+
+FastDMS contributes the compact allocator, per-layer/per-head metadata, and
+streaming no-dense-shadow shape. It does **not** supply the production request
+frontend or scheduler design. Initial DMS serving will use the same engine
+service and a global compact arena, but cross-request DMS prefix sharing stays
+disabled until immutable-snapshot or per-request eviction-overlay semantics pass
+independent correctness and lifecycle gates.
+
+The first production qualification target is smooth correctness, bounded
+memory, and useful throughput from concurrency 1 through 32. Offered load may be
+higher, but “unlimited concurrency” means a bounded, observable queue feeding a
+capacity-managed resident set; no finite GPU or host can promise an unbounded
+number of resident requests.
+
+## Goals and non-goals
+
+### Goals
+
+1. Remove non-streaming head-of-line response and admission blocking.
+2. Make blocking, SSE, library, cancellation, timeout, and shutdown paths use one
+   request lifecycle.
+3. Separate logical concurrency, resident capacity, scheduled rows, and native
+   physical kernel width.
+4. Share one real KV capacity pool across all compatible requests for a loaded
+   model replica.
+5. Support safe dense prefix reuse, copy-on-write, cache eviction, and immediate
+   per-request reclaim.
+6. Admit from complete memory/resource accounting before a HIP allocation or
+   graph launch can fail.
+7. Schedule multiple bounded prefills and all due decode rows fairly, without a
+   long prompt or a slow output consumer stalling unrelated work.
+8. Keep c=1 on its fastest exact route while scaling through c=32 and beyond by
+   composing measured physical buckets.
+9. Make DMS a `KVPolicy` over the same scheduler rather than a second serving
+   architecture.
+10. Preserve speculative KV transactions, plugin dispatch, and `KVLiveSpans`.
+
+### Non-goals
+
+- Linear 32x speedup from c1 to c32. Weight bandwidth and physical kernel
+  plateaus remain real; the requirement is no correctness, memory, admission,
+  or latency cliff at bucket boundaries.
+- Infinite resident GPU requests. Excess work queues or receives explicit
+  overload rejection.
+- Copying vLLM/SGLang multiprocessing, Torch, CUDA, or ZMQ architecture.
+- Enabling DMS on checkpoints without validated DMS metadata/training.
+- Sharing mutable DMS state as though it were an immutable dense prefix.
+- Using prefix hits, fixed prompts, or request reordering to game benchmark
+  scores.
+
+## Concurrency dimensions
+
+The old design often used one `capacity` or `max_active_requests` value for
+several different concepts. Generation 2 uses distinct counters:
+
+| Name | Meaning |
+| --- | --- |
+| Offered concurrency | Requests currently presented by clients, including work not accepted into the bounded ingress queue. |
+| Queued concurrency | Valid child requests waiting for resource admission. |
+| Resident concurrency | Requests holding model-state and/or KV leases. |
+| Ready-decode concurrency | Resident requests eligible to advance a target token now. |
+| Scheduled rows | Request or verification rows selected for one scheduling round. |
+| Physical group width | Rows advanced by one certified model execution, such as c1/c2/c4/c8. |
+| Output concurrency | Terminal or streaming results waiting for frontend consumption. |
+
+Use `C_offered`, `C_queued`, `C_resident`, `C_ready`, `C_step`, and
+`C_physical` in telemetry and benchmark artifacts. A physical width is never an
+admission limit. An operator may configure a resident cap for isolation, but it
+is a separate backstop after resource feasibility, not a hidden model route
+clamp.
+
+## Current implementation audit
+
+The current tree is valuable scaffolding, not a throwaway prototype. Preserve
+what is already exact and replace the ownership boundaries that cause scaling
+failures.
+
+### Keep and generalize
+
+| Existing component | Decision |
+| --- | --- |
+| Stable `RequestState`, `ActiveBatch`, `WorkItem`, and request-to-slot maps | Keep. Split resident slots from ephemeral execution rows and remove fixed physical-width assumptions. |
+| `ResidentEngineLoop` admission/prefill/decode/reclaim contract | Keep the lifecycle semantics. Replace caller-driven polling and one-work-item ticks with one service-owned scheduling loop and multi-item rounds. |
+| Native GGUF/PARO c1/c2/c4/c8 runners | Keep as certified execution buckets behind model/backend capability registration. |
+| Row-scoped cancellation and reclaim callbacks | Keep. Move command handling into the sole engine service. |
+| `KVPolicy`, `KVLiveSpans`, and speculative `begin/commit/rollback` | Keep as invariants. Expand policy allocation/accounting; do not replace the kernel ABI. |
+| `DeviceChunkedKVPool` refcounts, COW tests, and pointer-stability checks | Reuse their invariants and fixtures. Replace one-backing/contiguous-per-request constraints with a production global arena. |
+| `RadixCache` complete-page matching scaffolding | Reuse token-prefix semantics. Integrate cache-owned eviction, generation checks, quotas, and the real device arena. |
+| Per-row sampler and stop state | Keep. Attach it to child request records rather than submission-wide completion. |
+| Exact lifecycle/profiler/evidence gates from `CONCURRENCY.md` | Keep as migration gates. |
+
+### Replace or repair
+
+1. **Blocking HTTP coalescing is a completion barrier.**
+   `_GenerationBatcher._run()` awaits one `_run_group(group)` before selecting
+   the next blocking group. `_run_group()` submits a prompt list, while
+   `SubmitPollTextGenerator.generate_detailed()` waits until all request IDs in
+   that submission have outputs. A short row may retire internally, but its HTTP
+   future, active-request count, and the next queued group remain blocked by the
+   longest row.
+2. **Streaming and blocking use different ownership shapes.** Controlled SSE
+   launches independent producer tasks, while blocking requests use static
+   groups. Correctness converges in the resident runner, but admission,
+   backpressure, response resolution, and metrics do not.
+3. **Callers drive the model loop.** Multiple iterators call `poll()` behind a
+   lock. The lock is tick-scoped, which is correct, but it still makes frontend
+   tasks responsible for engine progress and complicates shutdown, priority,
+   and output fairness.
+4. **One scheduler tick executes one work item.** `next_prefill_work()` emits one
+   row, and the loop chooses one prefill or one decode item. `protect_decode`
+   can serialize admissions; `protect_ttft` can damage ITL; even `fair` is a
+   policy around a one-item limitation rather than a token-budget plan.
+5. **Capacity conflates resident slots and physical width.** Registry route caps
+   protect measured configurations, but they also prevent spare KV capacity
+   from admitting more logical rows that could be executed as multiple physical
+   groups.
+6. **The device pool is not yet fully fungible.** A request's pages must be a
+   contiguous run in one backing chunk because the current runner binds one base
+   pointer plus an int32 block table. Prefix sharing also requires the suffix to
+   fit in that same backing. Runtime growth can therefore fragment, duplicate
+   large backing layouts, and create graph pin/rebind cliffs.
+7. **Admission is page-oriented and head-of-queue.** The first pending request
+   owns admission order even when it temporarily cannot fit, and page count does
+   not by itself budget scale planes, mirrors, prefill scratch, graphs, model
+   state, or workspaces.
+8. **Prefix cache and pool eviction are not one allocator state machine.** The
+   current radix scaffold can retain entries, but production pressure ordering,
+   stale-node generations, quotas, and general completed-prefix eviction are not
+   complete.
+9. **Completion storage remains submission-owned.** Scheduler completions are
+   independently keyed, but the public result path consumes and releases a
+   complete submission together.
+
+## Reference review
+
+The review used local read-only source as present on 2026-08-17:
+
+| Reference | Revision | Files reviewed |
+| --- | --- | --- |
+| FastDMS | `/home/lhl/FastDMS` at `c602b0e` | `fastdms/engine/{llm_engine,scheduler,block_manager,compact_kv,sequence}.py`, model runner, compact attention, README |
+| SGLang | `/home/lhl/ai/sglang/sglang` at `00ce7e31` (`v0.4.3.post2-109`; local tree dirty) | `srt/managers/{scheduler,schedule_batch,tokenizer_manager}.py`, `srt/mem_cache/{memory_pool,radix_cache}.py` |
+| vLLM | `/home/lhl/ai/vllm/vllm` at `42d9a2c4c` (`v0.8.4-378`) | V1 scheduler, KV cache manager, block pool/free queue, async LLM, output processor |
+
+These are design references, not claims about every newer upstream release.
+
+### vLLM lessons
+
+- One scheduler reasons in **tokens**, not separate permanent prefill/decode
+  phases: `num_computed_tokens` catches up to request tokens under one batched
+  token budget. That naturally covers chunked prefill, normal decode, prefix
+  hits, and speculative rows.
+- One global `KVCacheManager` maps request IDs to blocks from a refcounted
+  `BlockPool`. Full hash-addressed blocks can remain as zero-reference eviction
+  candidates; allocation evicts from the free/LRU queue as needed.
+- Running work is considered before new waiting work; if allocation fails, a
+  lower-priority request may be preempted and later recomputed.
+- `EngineCoreOutput` is request-ID keyed. `OutputProcessor` pushes each request's
+  result into its own `RequestOutputCollector`; one background output handler
+  drives all async generators. This is the key response-lifecycle pattern to
+  adopt.
+- The reviewed scheduler notes that iterating all running requests can become a
+  bottleneck at 1K+ rows. hipEngine should maintain ready indexes and touch only
+  scheduled/changed records per round rather than copy that scan.
+
+### SGLang lessons
+
+- One `running_batch` survives across decode iterations. Finished rows are
+  filtered, newly prefetched rows are merged, and mixed chunked prefill may run
+  with decode rows.
+- `ReqToTokenPool` separates request metadata rows from a global
+  `TokenToKVPool`. The radix cache maps token prefixes to KV indices rather than
+  owning separate per-request KV arrays.
+- Radix nodes have lock references. Active prefixes are protected; unlocked
+  leaves are LRU-evictable. Allocation can evict prefix leaves before retracting
+  live decode requests.
+- Request IDs map to independent async events in `TokenizerManager`; batched
+  scheduler output is split and signalled per request.
+- Decode retraction under pressure and prefix-aware scheduling are useful, but
+  they must be bounded by starvation controls and complete resource accounting.
+
+### FastDMS lessons
+
+- The reusable design is the global compact storage plus per-sequence,
+  per-layer, per-KV-head `base_offsets`, `range_capacity`, `live_counts`,
+  `token_positions`, and `evict_mask`.
+- Streaming pack writes surviving prompt K/V directly into compact storage and
+  avoids retaining dense pages. Decode expires/compacts live rows and scans only
+  actual `live_counts`.
+- Compact admission must be based on actual/projected compact capacity rather
+  than logical dense sequence pages. This is the hard scheduler boundary.
+- The current FastDMS `LLMEngine.generate()` is synchronous and static: it adds
+  all prompts, steps until all finish, then returns ordered outputs. Its
+  scheduler is phase-separated and the DMS allocation gate partly lives in the
+  model runner. That frontend/ownership shape is **not** the design to port.
+- FastDMS streaming-DMS mode bypasses dense block/prefix allocation. It does not
+  solve safe cross-request prefix reuse after per-head, per-sequence eviction
+  diverges.
+
+### Synthesis
+
+Adopt vLLM's central token-budget owner and per-request output collectors,
+SGLang's global token pool plus lock-aware radix lifetime, and FastDMS's compact
+metadata/no-shadow storage. Keep hipEngine's smaller torch-free host,
+backend-neutral registry, `KVLiveSpans`, exact c-aware kernels, and explicit KV
+transactions.
+
+## Target architecture
+
+```text
+HTTP / library callers
+        |
+        | submit child request / cancel / consume output
+        v
++--------------------------------------------------------------+
+| Frontend adapters                                            |
+| ParentRequest aggregation only; no model batching            |
++---------------------------+----------------------------------+
+                            | bounded command channel
+                            v
++--------------------------------------------------------------+
+| EngineService (one per loaded model replica)                 |
+|                                                              |
+|  RequestTable + ready queues + deadline/fairness policy      |
+|  OutputRouter (one collector/mailbox per child request)      |
+|  ResourceLedger + AdmissionController                        |
+|  PrefixIndex                                                 |
+|  KVPolicy                                                    |
+|    dense -> GlobalPagedKVArena                               |
+|    DMS   -> GlobalCompactKVArena                             |
+|  ExecutionPlanner -> c1/c2/c4/c8/verify/prefill groups       |
+|  ModelRunner + graph/workspace caches                        |
++---------------------------+----------------------------------+
+                            |
+                            | EngineOutput(request_id, ...)
+                            v
++--------------------------------------------------------------+
+| Independent collectors                                      |
+| blocking buffer | SSE bounded queue | parent aggregation     |
++--------------------------------------------------------------+
+```
+
+The `EngineService` may run in a dedicated thread initially and a process later.
+The ownership contract is the same. Frontend event-loop tasks enqueue commands;
+they never call model `poll()` themselves and never hold the scheduler lock.
+
+## Request and output lifecycle
+
+### Child request is the scheduling unit
+
+One child request represents one generated sequence. It owns:
+
+```text
+request_id                 stable for the complete lifecycle
+parent_id / choice_index   optional HTTP aggregation metadata
+phase                      queued | prefill | decode | verify | terminal
+prompt and output tokens   canonical token history
+sampling/stop state        independent per row
+priority/deadline          scheduling metadata
+resident_slot              stable model-state slot, if admitted
+kv_lease                   policy-owned pages/extents, if admitted
+output_collector           blocking buffer or streaming mailbox
+resource_estimate          admission and growth accounting
+```
+
+A multi-prompt call or `n>1` creates a `ParentRequest` plus child records. The
+parent can preserve public ordering and wait for all choices, but it owns no KV,
+model slot, or physical batch. Child completion is never delayed for parent
+completion.
+
+### One lifecycle for blocking and streaming
+
+1. Parse/tokenize and validate the child request.
+2. Put a `SUBMIT` command on the bounded engine channel.
+3. The engine records it in the request table and admission queue.
+4. The scheduler admits it when all required resources can be reserved
+   atomically.
+5. Prefill/decode/verify work emits request-ID-keyed token events.
+6. The output router updates that child's collector.
+7. At terminal commit, copy final host-visible result metadata, release model/KV
+   ownership immediately, and publish the terminal event.
+8. Blocking code resolves that child's future; SSE emits its terminal chunk.
+   Parent aggregation happens outside engine ownership.
+
+Non-streaming is therefore “stream internally, buffer locally,” not “form a
+static prompt-list backend call.”
+
+### Independent completion invariant
+
+If requests A and B share an execution group and A finishes first:
+
+- A's terminal result is publishable immediately;
+- A's model slot and private KV are reclaimable at that commit barrier;
+- a queued request C may be admitted into the freed capacity before B finishes;
+- B's output, state, and KV are unchanged;
+- a parent that contains both A and B may still wait to format its public
+  response, but it cannot retain A's backend resources.
+
+This invariant gets a dedicated RED test before implementation.
+
+### Output isolation and slow consumers
+
+The model loop must never await a client queue.
+
+- A blocking collector appends tokens/text directly into its bounded final
+  buffer; its bound derives from validated output limits.
+- An SSE collector uses a bounded per-request mailbox. `put` is non-blocking.
+- If one SSE consumer exceeds its mailbox budget, cancel only that request with
+  `client_backpressure`; do not stop decode for neighbors.
+- Disconnect and timeout enqueue O(1) cancellation commands by request ID.
+- Detokenization/stop holdback state is per child, never per static submission.
+- Completed collector records have a TTL/size bound so abandoned clients cannot
+  become a host-memory leak.
+
+## Engine ownership and scheduling rounds
+
+### Sole driver
+
+One engine driver repeatedly:
+
+1. drains a bounded number of submit/cancel/control commands;
+2. commits pending cancellations and terminal cleanup;
+3. performs cache eviction/maintenance required for admission;
+4. admits fitting requests atomically;
+5. builds one `SchedulingRound` under token, row, workspace, and latency budgets;
+6. executes its ordered work items;
+7. commits each result, routes outputs, and reclaims terminal rows;
+8. publishes metrics and sleeps on command/GPU readiness when no work exists.
+
+No request-lifetime lock exists. No frontend iterator owns progress. One round
+may contain several model executions; a “round” is a fairness/accounting unit,
+not one giant kernel.
+
+### Work classes
+
+The scheduler keeps peer work classes:
+
+- `PREFILL`: one or more bounded chunks, grouped by compatible shape/policy;
+- `DECODE`: ready resident requests, lowered into certified physical groups;
+- `VERIFY_CHAIN` / `VERIFY_TREE`: speculative rows with scratch/journal KV;
+- `MAINTENANCE`: cancellation, cache eviction, DMS compaction, graph rebind;
+- `RECLAIM`: normally part of commit, never a separately delayed batch.
+
+A work item always carries stable request IDs, resident slots, ephemeral
+execution rows, token positions, policy key, `KVLiveSpans`, and an honest route
+label.
+
+### Token-budget planning
+
+Replace one-prefill-or-one-decode ticks with a budgeted planner:
+
+```text
+max_batched_tokens_per_round
+max_prefill_tokens_per_round
+max_prefill_chunk_tokens
+max_decode_rows_per_round
+max_work_items_per_round
+workspace_budget_bytes
+round_wall_budget_us
+```
+
+Running decode rows receive due times derived from the ITL target. Queued
+prefill chunks receive age/TTFT priority. The planner first protects overdue
+terminal/cancellation work, then due decode, then spends bounded budget on
+prefill, while guaranteeing aged prefills eventual service. Several short
+prefills may share one round. Long prefills are chunked and cannot monopolize
+the engine.
+
+Mixed prefill+decode in one physical kernel is optional. Generation 2 first
+needs the scheduler to plan both in one round; it may execute a prefill group and
+one or more decode groups serially. A registered mixed kernel can replace those
+items later if exact and faster.
+
+### Fairness and fit-aware admission
+
+Pure FCFS can let one temporarily non-fitting long request block many fitting
+short requests. Pure best-fit can starve long requests. Use bounded bypass:
+
+- reject requests that can never fit the configured model/policy envelope;
+- keep temporary no-fit requests queued with a named blocking resource;
+- consider a bounded lookahead for fitting requests;
+- increment an explicit bypass count/age;
+- after the threshold, enter a reservation/drain mode or enforce tenant/priority
+  policy so the aged request eventually fits;
+- cancel/timeout is removable from every queue in O(1).
+
+Prefix-aware priority may improve TTFT but cannot override the starvation bound
+or benchmark fairness protocol.
+
+## Stable identity and physical execution
+
+Generation 2 has three row identities:
+
+1. **Request ID** — stable public/scheduler identity.
+2. **Resident slot** — stable row in model state and metadata while admitted;
+   compactable only at a commit barrier through an explicit move plan.
+3. **Execution row** — ephemeral dense row in one physical kernel group.
+
+Execution gathers resident slots into dense c1/c2/c4/c8 rows and scatters
+results back by request ID/slot map. KV pages do not move merely because
+physical width changes.
+
+For 23 ready decode rows, a backend may select `8+8+4+2+1`. Every selected row
+advances once in the fairness round before a second normal decode step for the
+same request. This allows `C_resident=32` with a largest certified physical
+kernel of c8. Backend capabilities register supported widths, shape/context
+limits, workspace estimates, and exact fallbacks. Engine code does not branch on
+backend or quant.
+
+`max_active_requests` becomes an optional operator limit on **resident child
+requests**. It does not select a physical batch and is not silently clamped by a
+route capability. If an operator value exceeds a hard metadata/state limit,
+startup rejects it or reports the explicit effective limit and reason. The
+normal primary gate is the resource ledger.
+
+## Global dense KV architecture
+
+### One planned arena per compatible policy
+
+At model load, a resource planner measures or declares:
+
+```text
+device_limit
+- weights and permanent model state
+- stable execution/state metadata slabs
+- graph and model workspace budget
+- prefill scratch budget
+- sampler/output device buffers
+- backend/runtime safety reserve
+= allocatable KV arena budget
+```
+
+The production dense path allocates one policy-shaped arena from that budget,
+ideally at startup after model/workspace profiling. A conceptual layout is:
+
+```text
+K[layer][page_id][token_in_page][kv_head][head_dim]
+V[layer][page_id][token_in_page][kv_head][head_dim]
+optional_scale[layer][page_id][token_in_page][kv_head]
+```
+
+The arena base pointers, block metadata arrays, resident-slot metadata, and
+graph input slabs remain stable. Kernels consume changing block IDs and
+`KVLiveSpans`; graph capture must not embed request-private allocation pointers.
+A page is protected only while referenced or in flight, not forever because a
+graph once saw it.
+
+If a backend cannot allocate the final arena in one object, it must implement a
+registered page-pointer/segment-table ABI with stable indirection. The current
+“all pages for one request must fit contiguously in one backing chunk” rule is a
+compatibility fallback, not the Generation-2 production design. Hot-path HIP
+allocation and surprise arena growth are disabled in the promoted server mode.
+
+### Page states and ownership
+
+Each dense page has explicit state:
+
+```text
+FREE
+ACTIVE_PRIVATE        one writable request owner
+ACTIVE_SHARED         immutable full page, one or more request refs
+CACHED_EVICTABLE      zero active refs, indexed by prefix cache
+PINNED_SESSION        explicit continuation/session lease with quota/TTL
+IN_FLIGHT             transient execution epoch fence
+```
+
+Track active references separately from cache/session ownership. Allocation may
+reuse `FREE`, then evict `CACHED_EVICTABLE`. It never evicts an active, session-
+pinned, or in-flight page. All state changes are scheduler-thread operations at
+commit barriers.
+
+### KV leases and growth credits
+
+A `KVLease` belongs to one child request and identifies shared prefix pages,
+private full pages, writable tail, policy metadata, and reserved next-step
+credits. Admission does not reserve the request's entire declared `max_tokens`;
+that would waste most of the pool. It must reserve:
+
+- all uncached prompt pages needed for the admitted prefill chunk/window;
+- writable-tail/COW cost;
+- enough growth credit for the next decode allocation quantum;
+- policy metadata and model state;
+- applicable workspace share and safety reserve.
+
+Before each growth boundary the scheduler renews credits. When credits cannot
+be renewed, it stops new admission, evicts cache pages, and only then considers
+preemption. This guarantees that already scheduled work cannot fail halfway
+through a commit while still allowing high utilization.
+
+### Complete resource estimate
+
+`KVPolicy.estimate(request, prefix_match)` returns a structured estimate, not a
+single page count:
+
+```text
+payload pages/bytes
+scale and auxiliary metadata bytes
+BF16 mirror bytes, if any
+resident model-state bytes
+prefill scratch peak/share
+attention/split-K workspace peak/share
+graph bucket/pinned workspace delta
+next-step growth credits
+whole-device safety reserve
+confidence: exact | bounded | unknown
+```
+
+Unknown estimates fail closed to a conservative registered policy or explicit
+rejection. Admission reserve is atomic: either every component is leased and the
+request becomes resident, or all provisional mutations roll back.
+
+## Prefix cache
+
+### Index and allocator are separate
+
+Use a token radix index for longest-prefix lookup, but share only complete,
+immutable KV pages. The radix entry stores page handles plus a generation; the
+arena owns bytes, refs, and eviction state. A stale generation is a miss, never a
+use-after-free.
+
+The cache key includes every value that changes KV meaning:
+
+```text
+model artifact fingerprint and revision
+adapter/LoRA identity
+backend/model/quant policy key
+KV storage dtype/layout/scale policy
+RoPE/scaling and position semantics
+relevant multimodal/input hashes
+prompt token IDs
+```
+
+A hit increments active refs and attaches pages to the new lease. Divergence in
+a partial page allocates a private page and copies the valid prefix cells before
+write. Full pages remain immutable.
+
+### Completion and eviction
+
+On normal completion:
+
+- drop request refs immediately;
+- keep eligible full pages as zero-active-reference `CACHED_EVICTABLE` entries;
+- free private/incomplete tails unless an explicit session lease owns them;
+- enforce global and per-tenant cache byte quotas plus TTL;
+- evict LRU leaves before preempting live requests.
+
+Active prefixes are protected through refs, like SGLang's lock semantics. Cache
+entries do not depend on the lifetime of the source HTTP request. Session
+continuation is a separate pin/lease class so normal prefix caching cannot grow
+without bound.
+
+### Prefix rollout
+
+1. Deterministic BF16 dense complete-page reuse and COW.
+2. Completed-prefix LRU ownership, pressure eviction, and stale-generation tests.
+3. Sampled requests whose KV semantics are unchanged by sampling.
+4. Broader historical/session boundaries with quotas and graph-safe metadata.
+5. DMS prefix semantics only after the policy below is proven.
+
+## DMS integration
+
+### Same scheduler, different policy
+
+`DMSKVPolicy` plugs into the same request table, admission controller, output
+router, and execution planner. It owns global per-layer compact arenas and
+per-resident-sequence metadata compatible with `KVLiveSpans`:
+
+```text
+base_offsets    [rows, layers, kv_heads] int32
+range_capacity  [rows, layers, kv_heads] int32
+live_counts     [rows, layers, kv_heads] int32
+token_positions [rows, layers, kv_heads, capacity] int32
+evict_mask      [rows, layers, kv_heads, capacity] bool
+```
+
+Port FastDMS count/rank/scatter, streaming prefill pack, append/expiry, and
+compact grouped split-K attention into registered HIP kernels. Start with BF16
+storage and no retained dense shadow. Compressed storage is an independent
+quality/capacity gate under `KVCACHE.md`.
+
+### Scheduler-owned compact admission
+
+Do not copy the FastDMS boundary where model-runner preparation discovers
+compact allocation failure. Before scheduling a DMS prefill chunk, the policy
+reserves a bounded extent for every affected layer/head plus metadata and
+workspace. The kernel commits actual survivors and releases unused provisional
+capacity. Decode append/expiry similarly mutates canonical live counts only at
+commit.
+
+Admission uses actual and projected physical live rows, fragmentation, and
+near-term growth—not logical context length and not dense pages. Export both
+logical tokens and physical live cells/bytes.
+
+### Fragmentation and compaction
+
+Compact arenas need extent/slab accounting in addition to free bytes. Track
+largest free extent, per-layer utilization, internal fragmentation, and
+compaction moves. A compaction plan may relocate policy-owned ranges only at a
+barrier, then atomically update stable metadata before any graph replay. Graphs
+consume metadata indirection rather than captured range addresses.
+
+### DMS and shared prefixes
+
+Initial rule: **one global compact capacity pool, private sequence/head ranges,
+no cross-request DMS KV sharing.** This still shares the arena and obtains DMS
+capacity benefits without corrupting per-sequence eviction decisions.
+
+Future prefix reuse requires one of two independently gated designs:
+
+1. immutable no-evict compact prefix snapshots plus private post-prefix DMS
+   overlays; or
+2. cloning a compact snapshot into private ranges when eviction state diverges.
+
+A dense-prefix page cannot simply be labelled shared DMS after two sequences
+make different per-head decisions. Until an overlay/snapshot design passes
+state/KV/refcount/eviction gates, a DMS radix lookup returns a miss.
+
+## Pressure, preemption, and overload
+
+### Pressure order
+
+When a request or growth quantum does not fit:
+
+1. reclaim all terminal/cancelled ownership;
+2. release unused provisional credits/workspace;
+3. evict zero-active-reference prefix-cache pages by quota/LRU;
+4. shrink or compact policy metadata/extents at a safe barrier;
+5. stop admitting new resident requests;
+6. optionally preempt/recompute the lowest-priority eligible live request;
+7. reject new work explicitly if the bounded queue/resource SLO is exhausted.
+
+Never partially admit and then expose a HIP OOM. Never evict active/shared-live,
+session-pinned, transaction scratch needed for commit, or in-flight pages.
+
+### Preemption
+
+Dense phase-1 production should normally avoid live preemption through growth
+credits. If enabled later, preemption is scheduler-visible recompute:
+
+- record canonical tokens/sampling state;
+- free model/KV leases at a barrier;
+- return the request to waiting with a `preempted_recompute` reason;
+- reuse any surviving immutable prefix on resume;
+- expose count and lost-work tokens/seconds.
+
+DMS preemption additionally needs a reproducible no-evict/full-prefix restore or
+private compact snapshot; it is disabled until that gate exists.
+
+### Bounded ingress
+
+There are separate limits for tokenization work, queued child requests, queued
+prompt tokens/bytes, resident metadata slots, and completed-result retention.
+Queue full returns retryable overload (`429`/`Retry-After` at the OpenAI
+boundary). A huge impossible request is rejected during validation rather than
+blocking the queue. Readiness reports configured and effective limits.
+
+## Graphs, workspaces, and state
+
+- Graph keys describe execution shape, not request ownership:
+  `(work class, physical width, context/page bucket, KV policy/layout, active
+  mask class, sampler mode, draft/tree shape, expert/top-k shape, replay steps)`.
+- Graph inputs point to stable execution/state/metadata slabs. Per-request page
+  IDs and span counts are copied into those slabs before replay.
+- KV page allocation or cache eviction does not invalidate a graph when arena
+  and metadata pointers stay stable.
+- A real arena/metadata resize increments a generation and invalidates/rebinds
+  affected graphs before reuse.
+- Workspaces are reserved by the resource ledger and reused by non-overlapping
+  work items. Concurrent streams must declare overlapping workspace ownership.
+- c=1 keeps an independently measured physical c1 graph/eager route; it is not a
+  masked c8 launch.
+
+## Complexity and scaling rules
+
+To remain smooth beyond c32:
+
+- queued and resident requests live in ID-indexed tables;
+- cancellation/removal is O(1) plus queue-node unlink, not a full deque rebuild;
+- ready queues are incremental; the planner does not scan all queued history;
+- one output handler routes a batch by request ID into independent collectors;
+- completion records and metrics rings are bounded;
+- prefix lookup scales with matched prompt length/page boundaries, not number of
+  active requests;
+- allocator operations are O(pages allocated/evicted), with fragmentation
+  indexes rather than full-pool scans;
+- physical grouping is O(C_ready log W) or better for a small registered width
+  set;
+- host per-token work is measured at c1/c8/c32 before moving it to C++.
+
+Do not add C++/Cython merely because other engines use it. First remove
+submission barriers, global scans, duplicate allocation, and frontend-driven
+polling; then profile. A C++ engine-step remains an extraction option if Python
+planning/output overhead is material after those fixes.
+
+## Observability contract
+
+### Per request
+
+- queue, admission, prefill-start, first-token, terminal, and frontend-response
+  timestamps;
+- queue time, TTFT, ITL samples, service time, and response-publication delay;
+- parent/choice IDs, priority, deadline, finish/cancel reason;
+- prefix matched/recomputed tokens and COW pages;
+- KV policy, logical tokens, owned/shared/live bytes, peak bytes, and growth
+  credits;
+- preemption/bypass counts and admission-blocked resource;
+- physical groups/routes/fallbacks used;
+- output mailbox high-water and backpressure outcome.
+
+### Engine/pool
+
+- offered/queued/resident/ready/scheduled concurrency;
+- per-round prefill tokens, decode rows, work-item count, and planning/commit
+  wall;
+- physical-width histogram and group count;
+- dense pages by free/private/shared/cache/session/in-flight state;
+- cache hit tokens, active refs, evictable bytes, evictions, COW copies, and stale
+  generations;
+- DMS live cells, allocated extents, target/actual compression, largest free
+  extent, fragmentation, and compaction moves;
+- complete resource-ledger budget versus measured current/peak GPU memory;
+- graph hits/misses/invalidations and workspace usage;
+- queue rejections, no-fit bypasses, preemptions, and recovery;
+- backend-terminal-to-HTTP-response delay and slots reclaimed while a parent
+  response is still pending.
+
+The `/ready` and capability payloads derive values from the loaded engine. Do
+not publish hardcoded `continuous_decode` or route-cap fields disconnected from
+runtime ownership.
+
+## Implementation roadmap
+
+Work phases in order unless a durable blocker changes the dependency graph.
+Each phase is one or more validated atomic commits, not one giant rewrite.
+
+### C2-0 — contract and RED simulator
+
+- [ ] Add child/parent request and output-collector host types.
+- [ ] Add a deterministic fake engine/resource ledger with queued, resident,
+      scheduled, and physical-width counters.
+- [ ] RED: short A completes and request C is admitted while long sibling B from
+      the old static group is still decoding.
+- [ ] RED: blocking and streaming child requests share scheduling order,
+      cancellation, and reclaim semantics.
+- [ ] RED/property: random c1-c32 arrival/length/cancel sequences preserve unique
+      IDs/slots, resource conservation, independent c1 outputs, and final drain.
+
+Exit: the new lifecycle and concurrency dimensions are executable without GPU.
+
+### C2-1 — independent outputs and sole engine driver
+
+- [ ] Introduce one `EngineService` command/output loop around the existing
+      resident runner.
+- [ ] Submit every blocking/SSE/library child independently; remove static HTTP
+      groups from model ownership.
+- [ ] Resolve/reclaim each child at terminal commit; keep only parent aggregation
+      at the API boundary.
+- [ ] Move stop holdback, timeout, disconnect, and slow-consumer handling to
+      request-owned collectors/commands.
+- [ ] Preserve a compatibility adapter for synchronous `LLM.generate()` that
+      submits children then waits, without preventing other clients from using
+      the engine.
+
+Exit: the observed non-streaming head-of-line barrier is gone in host and real
+server tests; one driver owns progress and shutdown.
+
+### C2-2 — resource ledger and concurrency separation
+
+- [ ] Add registered resource estimators for model state, dense BF16/INT8 KV,
+      scales/mirrors, prefill scratch, attention workspace, graphs, and reserve.
+- [ ] Split resident metadata capacity from supported physical widths.
+- [ ] Replace route-cap clamping with fit-aware admission plus an optional clear
+      operator resident cap.
+- [ ] Add bounded lookahead/starvation control and impossible-request rejection.
+- [ ] Expose effective limits and blocking resources.
+
+Exit: overload is atomic/retryable and never first appears as HIP OOM; c9-c32
+can remain resident while using certified <=c8 physical groups.
+
+### C2-3 — production global dense arena
+
+- [ ] Allocate one stable policy-shaped device arena from the load-time plan.
+- [ ] Bind runner graphs/kernels to global arena and stable metadata slabs rather
+      than request-private backing bases.
+- [ ] Implement page leases, growth credits, complete page-state accounting,
+      COW tails, and in-flight epochs.
+- [ ] Port current dynamic-pool lifecycle fixtures; add fragmentation and
+      pressure recovery tests.
+- [ ] Keep the old chunked backing path only as an explicit fallback until the
+      new arena passes both gfx11 gates; track its removal in `REFACTOR.md`.
+
+Exit: all compatible requests draw from one fungible dense page pool and a
+request may use arbitrary free pages without same-chunk constraints.
+
+### C2-4 — integrated radix cache and eviction
+
+- [ ] Make the radix index reference generation-checked arena pages.
+- [ ] Retain completed immutable pages as evictable cache ownership independent
+      of source-request lifetime.
+- [ ] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
+      and cache-first pressure handling.
+- [ ] Re-run active/completed p256+s1 and agentic 2K/8K correctness/economics on
+      both gfx11 targets before changing the default.
+- [ ] Extend to sampled reuse only after exact state/KV gates.
+
+Exit: shared prefixes save real device pages and never pin capacity without
+quota/eviction.
+
+### C2-5 — token-budget scheduling and c1-c32
+
+- [ ] Plan multiple compatible prefill chunks and all due decode groups per
+      fairness round.
+- [ ] Register per-backend physical width/context/workspace capabilities and
+      honest fallback labels.
+- [ ] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
+      sparse retirement, cancellation, and refill.
+- [ ] Tune TTFT/ITL policy from workload SLOs; remove generic
+      `protect_decode`/`protect_ttft` as production architecture choices.
+- [ ] Profile host planner/output overhead at c1/c8/c32.
+
+Exit: no admission/response/memory cliff at c2/c4/c8/c9/c16/c17/c32 and c1
+retains its direct route.
+
+### C2-6 — graphs, long context, and production load
+
+- [ ] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
+- [ ] Qualify 4K/16K/32K and model-supported long-context mixed membership under
+      real resource accounting.
+- [ ] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
+      sustained c1-c32 soaks.
+- [ ] Compare matched same-model/quant/hardware serving against prior hipEngine,
+      llama.cpp where applicable, vLLM, and SGLang; qualify unsupported backends
+      honestly.
+- [ ] Promote defaults only after correctness, SLO, memory, and throughput gates.
+
+Exit: one production configuration handles offered load above 32 with bounded
+queueing and smooth resident c1-c32 operation.
+
+### C2-7 — FastDMS policy
+
+- [ ] Complete the metadata/checkpoint gate from `KVCACHE.md`.
+- [ ] Add global compact arena/extent accounting and scheduler-owned admission.
+- [ ] Port streaming no-shadow prefill pack and compact decode in BF16 first.
+- [ ] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
+- [ ] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
+- [ ] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
+
+Exit: DMS provides allocator-visible capacity and attention-work savings without
+forking the concurrency architecture.
+
+## Acceptance gates
+
+### Functional and lifecycle
+
+- Every child output matches its independent c1 oracle for deterministic gates.
+- Fast children resolve and free backend resources before slow siblings.
+- New work fills a reclaimed slot before unrelated long requests finish.
+- Blocking and SSE produce equivalent IDs, finish reasons, accounting, timeout,
+  cancellation, and final ownership.
+- Sparse retirement, compaction, COW, prefix eviction, and slot reuse preserve
+  survivor hidden/state/KV hashes.
+- Queue, pool, model state, graph refs, collectors, and completion records drain
+  to their documented idle baselines.
+
+### Width matrix
+
+At minimum test logical widths:
+
+```text
+1, 2, 3, 4, 5, 7, 8, 9, 13, 16, 17, 24, 32
+```
+
+For every width report physical decomposition, native group count, fallbacks,
+prefill/decode work, aggregate and per-request throughput, TTFT/ITL p50/p95,
+peak memory, pages/live cells, and exact output counts. C>8 is not native c>8
+unless one physical group actually has that width.
+
+### Load shapes
+
+- simultaneous fixed prompt/decode lengths;
+- ragged prompt and completion lengths;
+- delayed and Poisson arrivals during active decode;
+- one long prompt among short prompts;
+- one slow SSE consumer among normal blocking/SSE clients;
+- cancellation before admission, during prefill, and during decode;
+- queue overload, no-fit large request, recovery, and aged-request fairness;
+- shared system-prefix hit/miss/COW/eviction pressure;
+- 60-second smoke and longer production soak with offered concurrency above 32.
+
+### Performance
+
+- Compare against the exact same model, quant, KV policy, context, output shape,
+  hardware, and command.
+- Keep c1 transition/complete-request performance within the retained regression
+  budget from `BENCHMARK.md`; occupancy one must select physical c1.
+- c=N promotion must beat the old server path and honest serial composition on
+  aggregate goodput without violating the declared TTFT/ITL/memory SLO.
+- Boundary widths 9 and 17 must not show unexplained collapse from route caps,
+  reallocation, response barriers, or graph rebuilds.
+- External-engine comparisons are secondary to same-engine old/new proof and
+  must disclose feature/backend mismatches.
+
+### KV and pressure
+
+- Pool accounting equals request refs + cache/session ownership + free/in-flight
+  states at every commit barrier.
+- Resource estimates and measured high-water are reported together; unexplained
+  memory remains visible.
+- Admission failure is atomic and identifies the rejecting resource.
+- Cache eviction never changes active-request outputs.
+- DMS reports logical tokens, physical live cells, allocator bytes,
+  fragmentation, and actual compression; masked dense storage is not a compact
+  claim.
+- Speculative reject/partial/full transactions leave canonical KV exact.
+
+## Migration from `CONCURRENCY.md`
+
+The old document remains useful evidence, but its active queue is no longer the
+architecture order. Unresolved work is mapped as follows:
+
+| Old work | Generation-2 disposition |
+| --- | --- |
+| A4 late physical-width exactness and frozen rerun | Preserve as a required gfx1100 correctness gate before promoting that affected route through C2-5; it does not block C2-0/C2-4 infrastructure. |
+| IKV-C1 through IKV-C7 | Continue under `QWEN38-INT8-KV-CONTINUOUS.md`; implement resource estimates, no-mirror page layout, and lifecycle through the C2 policy/arena interfaces rather than another scheduler. |
+| Sampled/general historical prefix reuse | C2-4 after deterministic dense arena/cache ownership is proven. |
+| Long-context pressure and graph invalidation | C2-3 and C2-6. |
+| Route-cap follow-up / KV-budget admission | Replaced by C2-2 and C2-3; physical route widths cease to be primary admission caps. |
+| Prefill co-admission | C2-5 token-budget rounds. |
+| DMS/KV tier movement | C2-7 plus `KVCACHE.md`; DMS is a policy, not a new loop. |
+| MTP/DFlash verify/commit/scatter | Keep as peer work classes in the C2 scheduler under `NATIVE_SPEC_CYCLE.md`. |
+| gfx1100 PARO c4/c8 owner and broader GGUF/PARO/quant coverage | Migrate each runner after C2-1/C2-3, preserving its existing direct correctness/profiler gate. |
+| Tensor parallel | Later replica/shard integration under `TENSOR_PARALLEL.md`; each replica/shard group still exposes one engine/KV owner. |
+
+Completed C4-F5/GGUF/PARO evidence is not recopied here. It remains the migration
+oracle in `CONCURRENCY.md` and retained benchmark artifacts.
+
+## Guardrails
+
+- No `if backend == ...` or `if quant == ...` in engine, scheduler, or model
+  dispatch. Register capabilities and policy factories.
+- `KVLiveSpans` remains the only attention/KV-write ABI.
+- Fused kernels keep numerically equivalent unfused fallbacks.
+- Canonical KV mutates only through scheduler-owned commit/rollback points.
+- Never call a per-row complete model/session loop and label it native c=N.
+- Never hide physical group decomposition, serial fallback, cache hit, or graph
+  rebuild from telemetry.
+- Do not tune admission, priority, prefix cache, or physical grouping to fixed
+  benchmark prompts/token IDs.
+- Do not retain dense shadow KV for a claimed DMS capacity path.
+- Do not rely on HIP OOM as admission control.
+- Do not automatically preempt live requests while evictable cache capacity
+  remains.
+- Keep unrelated old paths until their replacement passes the same backend,
+  model, correctness, lifecycle, and performance gates; then record cleanup in
+  `REFACTOR.md`.
+
+## Failure handling
+
+| Failure | Required action |
+| --- | --- |
+| Short response waits for long sibling | Reject C2-1; inspect parent/child collector and terminal publication ownership. |
+| Freed resident slot is not refillable | Inspect delayed KV/model refs and admission credits; frontend response formatting cannot own backend resources. |
+| Width 9/17 collapses | Inspect route-cap leakage, group planning, repeated prefill, graph rebuild, and workspace serialization. |
+| Pool has free bytes but request cannot fit | Report fragmentation/largest extent; compact safely or use page indirection, never hide the failure. |
+| Estimated fit reaches HIP OOM | Resource estimator/reserve bug; add the missing resource and fail admission earlier. |
+| Prefix hit changes output/state | Invalidate cache entry, capture the first divergent page/layer, and add a COW/key-generation fixture. |
+| DMS shared prefix diverges | Disable DMS prefix reuse; private ranges are canonical until overlay/snapshot semantics are proven. |
+| Slow client stalls GPU | Cancel only its collector/request; engine output routing must be non-blocking. |
+| Cancellation harms neighbor | Reject lifecycle gate and locate mutation outside request-owned commit. |
+| Graph sees stale page/range | Disable that bucket, increment arena generation, and require stable metadata indirection before replay. |
+| c1 regresses | Keep old c1 default and profile transition/collector/planner overhead before further c>N tuning. |
+
+## Definition of done
+
+Generation 2 is complete for a model/backend/KV-policy combination only when:
+
+- [ ] one engine service owns all blocking, SSE, and library child requests;
+- [ ] independent terminal publication/reclaim removes the head-of-line barrier;
+- [ ] one complete resource ledger governs atomic admission and pressure;
+- [ ] all dense requests share one global device page arena;
+- [ ] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
+      evictable;
+- [ ] logical resident concurrency is independent of physical kernel width;
+- [ ] the width/load/overload/lifecycle matrices pass through c32;
+- [ ] c1 retains its direct route and c=N beats honest old/serial baselines under
+      declared SLOs;
+- [ ] graph, pool, state, collectors, and completion ownership drain cleanly;
+- [ ] documentation, artifacts, and telemetry disclose exact routes and memory.
+
+DMS is complete only after the same list passes with compact allocator-visible
+storage, DMS checkpoint quality gates, per-head live-span accounting, and no
+dense shadow. Until then, dense global paging is the canonical Generation-2 KV
+path and DMS prefix sharing remains off.
