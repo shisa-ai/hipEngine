@@ -32,21 +32,25 @@ def test_validate_width_schedule_requires_descending_supported_widths() -> None:
         validate_width_schedule(((0, 8), (9, 4)), decode_steps=9)
 
 
-def test_bundled_router_policy_restores_caller_environment(
+def test_bundled_router_policy_uses_package_rowtile_floor_and_restores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(gate.POLICY_ENV, "caller-rowtile")
     monkeypatch.setenv(gate.ROUTER_COOP_ENV, "caller")
     monkeypatch.delenv(gate.ROUTER_PERSISTENT_ENV, raising=False)
 
-    with gate._router_candidate_policy(True, enabled=True):
+    with gate._candidate_bundle_policy(True, include_router_candidate=True):
+        assert gate.POLICY_ENV not in os.environ
         assert os.environ[gate.ROUTER_COOP_ENV] == "1"
         assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "1"
 
+    assert os.environ[gate.POLICY_ENV] == "caller-rowtile"
     assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
     assert gate.ROUTER_PERSISTENT_ENV not in os.environ
 
-    with gate._router_candidate_policy(False, enabled=False):
-        assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
+    variants = gate.candidate_variant_manifest(include_router_candidate=True)
+    assert variants["c2"]["single"] == "t16_gemv_decode_bf16_bf16_out"
+    assert variants["c4"]["single"] == "t16_gemv_decode_rowtile4_bf16_bf16_out"
 
 
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:

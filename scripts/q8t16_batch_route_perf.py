@@ -35,10 +35,10 @@ from scripts.execution_profile_gguf_batch_route_gate import (
     KIND as QUALITY_KIND,
     POLICY_CAPABILITY,
     POLICY_ENV,
+    POLICY_MIN_ROWS_CAPABILITY,
     ROUTER_COOP_ENV,
     ROUTER_PERSISTENT_ENV,
-    _router_candidate_policy,
-    _rowtile_policy,
+    _candidate_bundle_policy,
 )
 from scripts.gguf_packed_ar_bench import (
     CONFIGURATIONS,
@@ -243,9 +243,16 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     os.environ["HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE"] = "1"
     os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     os.environ["HIPENGINE_GGUF_GDN_PREFILL_MODE"] = str(args.gdn_mode)
-    package = __import__(f"hipengine.kernels.{args.backend}", fromlist=[POLICY_CAPABILITY])
+    package = __import__(
+        f"hipengine.kernels.{args.backend}",
+        fromlist=[POLICY_CAPABILITY, POLICY_MIN_ROWS_CAPABILITY],
+    )
     if getattr(package, POLICY_CAPABILITY) is not False:
         raise CalibrationError(f"current package {POLICY_CAPABILITY} is not False")
+    if args.include_router_candidate and int(
+        getattr(package, POLICY_MIN_ROWS_CAPABILITY, 0)
+    ) != 4:
+        raise CalibrationError("bundled candidate requires package rowtile min rows 4")
 
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -308,9 +315,9 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             measured: bool,
         ) -> dict[str, Any]:
             config = CONFIGURATIONS[configuration]
-            with _rowtile_policy(label == "candidate"), _router_candidate_policy(
+            with _candidate_bundle_policy(
                 label == "candidate",
-                enabled=bool(args.include_router_candidate),
+                include_router_candidate=bool(args.include_router_candidate),
             ):
                 sample = _run_sample(
                     config=config,
@@ -406,6 +413,10 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "route": {
             "policy_capability": POLICY_CAPABILITY,
             "package_value_verified": False,
+            "package_min_rows_capability": POLICY_MIN_ROWS_CAPABILITY,
+            "package_min_rows_verified": int(
+                getattr(package, POLICY_MIN_ROWS_CAPABILITY, 0)
+            ),
             "strict_environment": {
                 POLICY_ENV: "0",
                 **(
@@ -415,7 +426,11 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 ),
             },
             "candidate_environment": {
-                POLICY_ENV: "1",
+                POLICY_ENV: (
+                    "unset: package physical-width floor"
+                    if args.include_router_candidate
+                    else "1"
+                ),
                 **(
                     {ROUTER_COOP_ENV: "1", ROUTER_PERSISTENT_ENV: "1"}
                     if args.include_router_candidate
