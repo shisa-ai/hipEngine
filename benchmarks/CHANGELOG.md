@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-17
+
+- [retained gfx1151 Qwen3.8 exact native B3] Qwen3.8-27B / Q4_K_S / BF16 KV / ten-prompt natural suite: a shared-weight rows2-4 Q8_1x2 qmicro owner repairs both Japanese verifier trajectories and moves publishable native B3 from **correctness-blocked -> 24.19347 tok/s (1.8228x own AR)**, **23.218%** above the correctness-valid llama HIP B3 row, with 40/40 AR/B1/B2/B3 prompt trajectories exact, GPU/CPU acceptance agreement, no new bytes, and zero teardown; `benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json`.
+
 ## 2026-08-16
 
 - [clean gfx1151 Qwen3.8 Q4_K_S P5 closure] Qwen3.8-27B / Q4_K_S / BF16 KV / clean `3118943eb`: production 512/1K/4K prefill is **379.716/377.321/370.788 tok/s** and true AR is **13.03883/12.86679/13.02544 tok/s**, beating frozen clean llama HIP and Vulkan at every row; natural true AR remains repeat-exact **13.33276 tok/s** versus same-file llama **5.53853/7.51888**. Native Q4_K_S MTP remains correctness-blocked and whole-GTT memory remains task 24; `benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json`.

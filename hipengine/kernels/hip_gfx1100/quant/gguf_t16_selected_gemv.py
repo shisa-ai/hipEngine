@@ -78,6 +78,10 @@ _Q4_QMICRO_DENSE_DUAL_Q8X2_SPLIT_WEIGHT_DP4A_SILU_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_"
     "silu_gemv_bf16_bf16_out"
 )
+_Q4_QMICRO_DENSE_DUAL_Q8X2_ROWTILE8_DP4A_SILU_BF16 = (
+    "hipengine_gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_"
+    "silu_gemv_bf16_bf16_out"
+)
 _Q4_DENSE_ROWTILE_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_bf16_out"
 )
@@ -1135,6 +1139,58 @@ def gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out(
     if status != HIP_SUCCESS:
         raise RuntimeError(
             f"{_Q4_QMICRO_DENSE_DUAL_Q8X2_SPLIT_WEIGHT_DP4A_SILU_BF16} "
+            f"failed with HIP status {status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out(
+    xq_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact c1-association Q8_1x2 while sharing weights across rows."""
+
+    if rows < 2 or rows > 4:
+        raise ValueError("dense qmicro Q8_1x2 rowtile8 requires rows in [2, 4]")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or build_gguf_t16_selected_gemv()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_Q8X2_ROWTILE8_DP4A_SILU_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q4_QMICRO_DENSE_DUAL_Q8X2_ROWTILE8_DP4A_SILU_BF16} "
             f"failed with HIP status {status}: {rt.error_string(status)}"
         )
 
@@ -3768,6 +3824,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k_qmicro_t16_v1",
+            "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
+        ),
+        gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_bf16_bf16_out",
@@ -4220,6 +4286,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out",
+    "gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out",

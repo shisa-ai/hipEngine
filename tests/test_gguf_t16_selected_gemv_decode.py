@@ -3025,6 +3025,56 @@ def test_qmicro_q4_dense_dual_q8_1x2_split_weight_is_bit_exact(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_qmicro_q4_dense_dual_q8_1x2_shared_rowbatch_matches_serial_c1_bits(
+    rows,
+    t16_selected_library,
+    q4_library,
+) -> None:
+    shared_rowbatch = getattr(
+        selected_t16_mod,
+        "gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out",
+    )
+    rng = np.random.default_rng(20260824 + rows)
+    in_features, out_features = 1024, 512
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=13, axis=0).copy()
+    tiles_a = repack_gguf_q4_k_tile16_qmicro(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16_qmicro(raw_b[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    serial = np.concatenate(
+        [
+            _run_dense_dual_silu_q8x2_dp4a(
+                gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
+                x_bf16[row : row + 1],
+                tiles_a,
+                tiles_b,
+                out_features,
+                np.uint16,
+                t16_selected_library,
+                q4_library,
+            )
+            for row in range(rows)
+        ],
+        axis=0,
+    )
+    batched = _run_dense_dual_silu_q8x2_dp4a(
+        shared_rowbatch,
+        x_bf16,
+        tiles_a,
+        tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    np.testing.assert_array_equal(batched, serial)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     "name,builder,repack,fn_float,fn_dp4a",
     [

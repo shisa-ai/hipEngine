@@ -8055,6 +8055,7 @@ class Qwen35GGUFFullStackRunner:
                 in {
                     "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
                     "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+                    "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
                 }
             ),
             planes=2,

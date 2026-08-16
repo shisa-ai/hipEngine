@@ -168,10 +168,14 @@ _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT = (
 _Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT = (
     "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
 )
+_Q4_T16_DENSE_PAIR_SILU_Q8_1X2_ROWTILE8_VARIANT = (
+    "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
+)
 _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS = frozenset(
     {
         _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT,
         _Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT,
+        _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_ROWTILE8_VARIANT,
     }
 )
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
@@ -3973,6 +3977,62 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        dense_pair_quant = (
+            dispatch_a.key.quant
+            if dispatch_a.key.quant == dispatch_b.key.quant
+            and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
+            else None
+        )
+        qmicro_q8x2_rowbatch = (
+            _native_batch_decode_session_enabled
+            and _resolve_use_gemv_decode(use_gemv_decode)
+            and dense_pair_quant == "gguf_q4_k_qmicro_t16_v1"
+            and registered_decode_variant
+            == _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_ROWTILE8_VARIANT
+        )
+        if qmicro_q8x2_rowbatch:
+            fused_key = KernelKey(
+                resolved_backend,
+                "linear_pair_silu",
+                dense_pair_quant,
+                registered_decode_variant,
+            )
+            _ensure_linear_kernel_registered(fused_key)
+            if not is_registered(fused_key):
+                return False
+            if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
+                return False
+            q4_library = None if libraries is None else libraries.get("gguf_q4_k")
+            gguf_q4_k_quantize_bf16_q8_1x2(
+                x_ptr,
+                int(q8_1_workspace_ptr),
+                rows,
+                in_features,
+                stream=stream,
+                library=q4_library,
+                runtime=runtime,
+            )
+            fn = resolve(
+                backend=fused_key.backend,
+                layer=fused_key.layer,
+                quant=fused_key.quant,
+                variant=fused_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = None if libraries is None else libraries.get(fused_key.quant)
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                int(q8_1_workspace_ptr),
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
             dispatch_a,
             dispatch_b,

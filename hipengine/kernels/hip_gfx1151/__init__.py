@@ -855,8 +855,9 @@ GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
 # two-wave gate/up owners, lowering VGPR 224 -> 120 and LDS 1,024 -> 512 bytes
 # without changing any output operation. Q4_K_S has the same compact Q4
 # gate/up representation and independently clears the complete true-AR gate.
-# Native-session B1 retains the prior Q8_1x2 owner; rows>1 native batches and
-# peer geometries retain their owners.
+# Q4_K_S native rows2-4 require the same row-independent Q8_1x2 arithmetic as
+# true AR: the direct-BF16 rowtile is close but can change greedy trajectories.
+# Q4_K_M, peer geometries, and every non-native miss retain their prior owners.
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
@@ -870,6 +871,12 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         (1, 5_120, 17_408): (
             "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
         ),
+        **{
+            (rows, 5_120, 17_408): (
+                "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
+            )
+            for rows in (2, 3, 4)
+        },
     },
 }
 # Qwen3.8 P5 independently qualifies the exact same-input F32 alpha/beta pair
