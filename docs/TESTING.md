@@ -83,6 +83,66 @@ graph/eager repeats. Numeric state values may drift in production; state/KV
 ownership, metadata, finiteness, isolation, and transaction destinations may
 not.
 
+### Reusable evaluator contract
+
+`hipengine.benchmark.execution_profiles` is the mechanical profile evaluator.
+Model adapters emit external `.npy` full-logit arrays plus small capture JSON;
+large logits remain uncommitted. The schemas are:
+
+- `benchmarks/schemas/execution-profile-manifest.schema.json` — exact selected
+  variants and strict fallbacks over the existing registry variant axis;
+- `benchmarks/schemas/execution-profile-capture.schema.json` — aligned
+  strict-teacher rows, selected IDs, exact request/slot/position/mask and
+  route/scatter ownership, diagnostic route-decision hashes, publication/update
+  order, KV/state/RNG ownership, transaction accounting, graph, and lifecycle
+  control records;
+- `benchmarks/schemas/execution-profile-control-capture.schema.json` — actual
+  same-run control telemetry with a run ID;
+- `benchmarks/schemas/execution-profile-control-fixture.schema.json` — separate
+  expected scenario controls; and
+- `benchmarks/schemas/execution-profile-evaluation.schema.json` — retained
+  verdict with manifest/capture hashes.
+
+The evaluator computes canonical quant-quality KL/NLL/top-k row metrics, then
+mean/p95/p99/max KL and top-1 by category, shape, and transition. It separately
+checks exact controls, same-schedule repeat bytes/IDs, same-width neighbor
+isolation, optional cross-width/composition invariance, BF16-relative deltas,
+and supplied task verdicts. Repeat/isolation/composition captures require
+independent run IDs, and isolation/composition also require distinct scenario
+IDs plus separate expected-control fixtures, preventing self-comparison from
+passing a gate. Strict and candidate primary fixtures are also separate because
+their declared graph/fallback metadata can differ even when logical ownership
+is identical. Production generated-ID equality to strict remains non-binding.
+A row above the `0.02` review boundary yields `requires_review` even
+when the provisional hard envelope passes.
+
+Run a completed packet with:
+
+```bash
+uv run python scripts/execution_profile_gate.py \
+  --variant-manifest /tmp/production-variants.json \
+  --strict-manifest /tmp/strict-variants.json \
+  --strict-capture /tmp/strict-capture.json \
+  --candidate-capture /tmp/production-capture.json \
+  --expected-controls /tmp/production-scenario-controls.json \
+  --strict-expected-controls /tmp/strict-scenario-controls.json \
+  --repeat-capture /tmp/production-repeat.json \
+  --isolation-capture /tmp/production-neighbor-substitution.json \
+  --comparison-controls /tmp/neighbor-substitution-controls.json \
+  --task-results /tmp/category-task-results.json \
+  --arithmetic-class T2 \
+  --output /tmp/execution-profile-evaluation.json
+```
+
+Add `--batch-invariant-capture` for cross-composition certification and
+`--bf16-logits` when an aligned BF16 cache is available. The Qwen3.6 PARO lane
+can adapt the existing `scripts/quant_quality/qwen36_teacher.py` fixture/cache
+with `scripts/qwen36_execution_profile_adapter.py`, but only when an actual
+control capture carrying the same run ID and the resolved variant manifest are
+supplied. Expected controls remain a separate gate input; a legacy logits cache
+alone, or using actual telemetry as its own expected fixture, cannot certify
+control ownership.
+
 ## Required coverage by change type
 
 | Change type | Minimum tests before commit |
