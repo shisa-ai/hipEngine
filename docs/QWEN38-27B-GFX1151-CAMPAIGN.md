@@ -78,6 +78,15 @@ hypothetical mixed Q6-QKV/Q4-gate producer reaches only **0.1262%**, still 7.9x
 below admission. No mixed runtime package is warranted. Evidence:
 [`planar-Q6 Q8 QKV rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-qkv-planar-q8-rejected.json).
 
+The byte-neutral Q4 payload-transfer route is closed as well. The existing
+BF16-input dual-interleaved T16 tile2 consumer regresses the current Q8_1x2
+split-weight gate/up family **1.428673 -> 1.452220 ms (0.98379x, 7/45 wins)**
+and projects **-0.6291%** selected wall. It also differs from the current
+changed-association output at 1,476 BF16 positions across three actual layers,
+although max KL is only **2.57e-11** and top-1 remains 3/3. No prefill/verifier
+package or payload migration is warranted. Evidence:
+[`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -612,6 +621,15 @@ medians **1.423306 -> 1.420789 ms (1.00177x)**, but wins only **24/45** pairs an
 projects **7.122 ms / 0.0685%** selected wall. Transient code is removed; the
 plane-major owner remains. Evidence:
 [`interleaved Q8_1x2 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-q8x2-interleaved-rejected.json).
+
+The pre-existing exact BF16-input dual-interleaved T16 layout also fails against
+the newer retained split-weight owner. Three 95.625-MiB actual gate/up pairs
+measure **1.428673 -> 1.452220 ms (0.98379x, 7/45 wins)**, projecting
+**-8.131 ms / -0.6291%** selected wall. Both payloads are exactly byte-neutral,
+but the candidate is slower and its exact BF16 association differs from the
+current Q8_1x2 route at 1,476 positions, so operation-complete integration stops.
+Evidence:
+[`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
 
 ### P6 — Exact B3 MTP
 

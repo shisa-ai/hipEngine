@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_q4_dual_interleaved_vs_q8x2_split_leaf",
+  "created_at": "2026-08-16T01:51:04.089778+00:00",
+  "status": "rejected",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": {
+    "layers": [
+      0,
+      8,
+      63
+    ],
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timed_order": "counterbalanced within each actual layer",
+    "control": "Q8_1x2 producer plus retained split-weight Q4T16 dp4a+SiLU",
+    "candidate": "BF16-input exact byte-neutral dual-interleaved Q4T16 tile2+SiLU",
+    "cache_contract": "each actual source/resident pair exceeds 64 MiB and 2x 32-MiB MALL",
+    "advance_gate": "BF16 exact, >=36/45 wins, and >=1% projected selected wall"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "names": [
+        "blk.0.ffn_gate.weight",
+        "blk.0.ffn_up.weight"
+      ],
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_nbytes": 100270080,
+      "source_mib": 95.625,
+      "separate_t16_nbytes": 103055360,
+      "dual_interleaved_nbytes": 103055360,
+      "medians_ms": {
+        "control_ms": 0.47452273964881897,
+        "candidate_ms": 0.4835427403450012
+      },
+      "samples_ms": {
+        "control_ms": [
+          0.47536399960517883,
+          0.4724085032939911,
+          0.47452273964881897,
+          0.47189074754714966,
+          0.47728073596954346,
+          0.47399476170539856,
+          0.4749162495136261,
+          0.4802064895629883,
+          0.48528599739074707,
+          0.47586825489997864,
+          0.47870349884033203,
+          0.4725340008735657,
+          0.47282424569129944,
+          0.4731147587299347,
+          0.46918773651123047
+        ],
+        "candidate_ms": [
+          0.4908532500267029,
+          0.4915044903755188,
+          0.4950439929962158,
+          0.48343250155448914,
+          0.48722925782203674,
+          0.4883917570114136,
+          0.4835427403450012,
+          0.4828212559223175,
+          0.4806874990463257,
+          0.48806124925613403,
+          0.48440423607826233,
+          0.4801580011844635,
+          0.4767819941043854,
+          0.47875550389289856,
+          0.4796472489833832
+        ]
+      },
+      "speedup": 0.9813460115444054,
+      "candidate_wins": 1,
+      "pair_count": 15,
+      "bf16_mismatches": 508,
+      "finite": true,
+      "max_abs_vs_control": 0.00048828125,
+      "kl_vs_control": 1.4560639008897374e-11,
+      "top1_matches_control": true,
+      "control_sha256": "4b13629bf3006f34049ad79830cafa68615d90f9c7983921ce7ad3dfc58f4394",
+      "candidate_sha256": "bd95bc5c346e7f7ea8a277acfd71a2bd6c2ce275d026575a91c42f6269a6a7bc"
+    },
+    {
+      "layer": 8,
+      "names": [
+        "blk.8.ffn_gate.weight",
+        "blk.8.ffn_up.weight"
+      ],
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_nbytes": 100270080,
+      "source_mib": 95.625,
+      "separate_t16_nbytes": 103055360,
+      "dual_interleaved_nbytes": 103055360,
+      "medians_ms": {
+        "control_ms": 0.47791650891304016,
+        "candidate_ms": 0.48618200421333313
+      },
+      "samples_ms": {
+        "control_ms": [
+          0.47623324394226074,
+          0.4775557518005371,
+          0.4757322371006012,
+          0.4791887402534485,
+          0.47319748997688293,
+          0.48677298426628113,
+          0.5015004873275757,
+          0.48161324858665466,
+          0.4772452414035797,
+          0.48009049892425537,
+          0.47699475288391113,
+          0.48320651054382324,
+          0.4780465066432953,
+          0.47791650891304016,
+          0.4721657633781433
+        ],
+        "candidate_ms": [
+          0.4890172481536865,
+          0.48856648802757263,
+          0.4888267517089844,
+          0.49297475814819336,
+          0.4794292449951172,
+          0.4797297418117523,
+          0.4940364956855774,
+          0.49686199426651,
+          0.48492950201034546,
+          0.48783499002456665,
+          0.47637349367141724,
+          0.48618200421333313,
+          0.4818037450313568,
+          0.48302599787712097,
+          0.47636350989341736
+        ]
+      },
+      "speedup": 0.9829991747356693,
+      "candidate_wins": 3,
+      "pair_count": 15,
+      "bf16_mismatches": 471,
+      "finite": true,
+      "max_abs_vs_control": 0.0001220703125,
+      "kl_vs_control": 7.270263551507029e-12,
+      "top1_matches_control": true,
+      "control_sha256": "3cc03fe12994fb86ba7e0294e6fc8c5f3e777f97de55e0068392ccdcbb856fe6",
+      "candidate_sha256": "50adb5a2c44034cd36ee81e2e85f4d33ca67c8ebc4ce8a6d4c5cb91de2c2e514"
+    },
+    {
+      "layer": 63,
+      "names": [
+        "blk.63.ffn_gate.weight",
+        "blk.63.ffn_up.weight"
+      ],
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_nbytes": 100270080,
+      "source_mib": 95.625,
+      "separate_t16_nbytes": 103055360,
+      "dual_interleaved_nbytes": 103055360,
+      "medians_ms": {
+        "control_ms": 0.47623351216316223,
+        "candidate_ms": 0.4824952483177185
+      },
+      "samples_ms": {
+        "control_ms": [
+          0.47623351216316223,
+          0.4774307608604431,
+          0.474009245634079,
+          0.47112375497817993,
+          0.47664424777030945,
+          0.4730075001716614,
+          0.4764939844608307,
+          0.47915899753570557,
+          0.4757327437400818,
+          0.4820845127105713,
+          0.47975024580955505,
+          0.4731777608394623,
+          0.475492000579834,
+          0.4760432541370392,
+          0.4781169891357422
+        ],
+        "candidate_ms": [
+          0.49197301268577576,
+          0.49074074625968933,
+          0.49373623728752136,
+          0.4824250042438507,
+          0.4824952483177185,
+          0.4826757609844208,
+          0.47822725772857666,
+          0.4790387451648712,
+          0.4777964949607849,
+          0.4838077425956726,
+          0.4795297384262085,
+          0.4836674928665161,
+          0.47692474722862244,
+          0.4855712354183197,
+          0.4768044948577881
+        ]
+      },
+      "speedup": 0.9870221806818024,
+      "candidate_wins": 3,
+      "pair_count": 15,
+      "bf16_mismatches": 497,
+      "finite": true,
+      "max_abs_vs_control": 0.00048828125,
+      "kl_vs_control": 2.5681595794925563e-11,
+      "top1_matches_control": true,
+      "control_sha256": "f0c0d6b265c13555c27854620e249edb94f7b1e31ccd41efdbdc7982040ba3ef",
+      "candidate_sha256": "cd4eed1aec268083826085807c349e61330d4a887bb33849ed4911da59fbea42"
+    }
+  ],
+  "family": {
+    "control_ms": 1.4286727607250214,
+    "candidate_ms": 1.4522199928760529,
+    "speedup": 0.9837853546525018,
+    "candidate_wins": 7,
+    "pair_count": 45
+  },
+  "projection": {
+    "trace_family_ms": 493.324681,
+    "selected_kernel_ms": 1292.498954,
+    "projected_saved_ms": -8.130924805653507,
+    "projected_complete_wall_percent": -0.62908560045562,
+    "advance_threshold_ms": 12.924989539999999,
+    "required_family_speedup": 1.0269046582871841
+  },
+  "correctness": {
+    "all_bf16_exact": false,
+    "all_finite": true,
+    "max_kl": 2.5681595794925563e-11,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "teardown_exact": true
+  },
+  "decision": "reject before runtime integration",
+  "provenance": {
+    "commit": "7e5a644e1fae4922c2b9d1119733d8c3c9df7801",
+    "tracked_dirty": [],
+    "compiler_version_file": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt",
+    "require_cached": true
+  }
+}
