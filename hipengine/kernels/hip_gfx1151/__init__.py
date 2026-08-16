@@ -774,6 +774,9 @@ GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     # the peer-wave oracle and 1.42-1.52x faster than direct LDS32 at
     # 512/1K/4K when recurrence chunks are capped at 1K rows.
     ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
+    # Qwen3.8-27B Q4_K_S has the same GDN geometry and unchanged recurrent
+    # state math; only projection tensor quant assignments differ.
+    ("MOSTLY_Q4_K_S", 16, 48, 128, 128): "chain_compact_peer_wave32",
     # D08-X2-K2 (2026-08-15): the exact-core gate measures the Vulkan-shaped
     # cluster8 recurrence at +16.70% Q8_0 pp512 with neutral core-graph tg128,
     # so the same one-V-head-per-K-head geometry now uses cluster8 for Q8_0 too.
@@ -835,6 +838,10 @@ GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = True
 # Q5T16 after architecture-local actual-weight, GDN-handoff, full-state,
 # natural-suite, memory, and performance gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
+# Qwen3.8-27B Q4_K_S candidate: compact the exact H5120 Q5 FFN-down,
+# recurrent-QKV, and full-attention-V roles through the operation-complete
+# direct/rowtile/WMMA T16 family. Q4_K_M has no Q5 tensors at these shapes.
+GGUF_DENSE_Q5_T16_H5120 = True
 # D08-P6 admits the same sole-resident family independently for the exact
 # Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
 GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
@@ -2087,6 +2094,7 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
+    "GGUF_DENSE_Q5_T16_H5120",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",

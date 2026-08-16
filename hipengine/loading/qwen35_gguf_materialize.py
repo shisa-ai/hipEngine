@@ -265,6 +265,7 @@ def plan_qwen35_gguf_materialization(
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
+    dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFMaterializationPlan:
@@ -298,6 +299,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
+            dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
@@ -314,6 +316,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
+            dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
@@ -647,6 +650,13 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q5_t16_h5120=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q5_T16_H5120",
+                False,
+            )
+        ),
         dense_q6_qmicro_planar=bool(
             backend_package_capability(
                 backend,
@@ -803,6 +813,7 @@ def _plan_layer(
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
+    dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> dict[str, Qwen35GGUFWeightSpec]:
@@ -818,6 +829,7 @@ def _plan_layer(
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
+            dense_q5_t16_h5120=dense_q5_t16_h5120,
             dense_q6_qmicro_planar=dense_q6_qmicro_planar,
             dense_q6_qmicro_planar_excluded_slots=(
                 dense_q6_qmicro_planar_excluded_slots
@@ -961,6 +973,7 @@ def plan_qwen35_gguf_weight_spec(
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
+    dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFWeightSpec:
@@ -976,6 +989,7 @@ def plan_qwen35_gguf_weight_spec(
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
+        dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
         dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         dense_q6_qmicro_planar_excluded_slots=frozenset(
             str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
@@ -995,6 +1009,7 @@ def _spec_for_tensor(
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
+    dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> Qwen35GGUFWeightSpec:
@@ -1114,6 +1129,10 @@ def _spec_for_tensor(
             or (
                 dense_q5_t16_qkv
                 and _is_dense_q5_t16_qkv_tensor(slot_path, tensor)
+            )
+            or (
+                dense_q5_t16_h5120
+                and _is_dense_h5120_q5_t16_tensor(slot_path, tensor)
             )
         ):
             return Qwen35GGUFWeightSpec(
@@ -1409,6 +1428,24 @@ def _is_dense_q5_t16_qkv_tensor(
         and tuple(map(int, tensor.shape)) == (6_144, 1_024)
         and slot_path.startswith("layers.")
         and slot_path.endswith(".attn_qkv")
+    )
+
+
+def _is_dense_h5120_q5_t16_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select Q4_K_S Q5 roles with operation-complete dense-H5120 consumers."""
+
+    shape = tuple(map(int, tensor.shape))
+    return (
+        len(shape) == 2
+        and slot_path.startswith("layers.")
+        and (
+            (slot_path.endswith(".ffn_down") and shape == (5_120, 17_408))
+            or (slot_path.endswith(".attn_qkv") and shape == (10_240, 5_120))
+            or (slot_path.endswith(".attn_v") and shape == (1_024, 5_120))
+        )
     )
 
 

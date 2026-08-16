@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4ks_qualification_checkpoint",
+  "status": "qualification_checkpoint",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "development_base_commit": "c1f79bbf1",
+    "tracked_tree_dirty": true,
+    "require_cached_build": true,
+    "kernel_body_changed": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "size_bytes": 16121359328,
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "huggingface_lfs_sha256_match": true,
+    "architecture": "qwen35",
+    "file_type": "MOSTLY_Q4_K_S",
+    "tensor_count": 866
+  },
+  "layout": {
+    "source_tensor_counts": {
+      "F32": 456,
+      "Q4_K": 348,
+      "Q5_K": 60,
+      "Q6_K": 1,
+      "Q8_0": 1
+    },
+    "changes_vs_q4_k_m": {
+      "q6_to_q4_tensor_count": 54,
+      "q6_to_q5_tensor_count": 12
+    },
+    "new_q5_t16_roles": {
+      "ffn_down": 8,
+      "attn_qkv": 3,
+      "attn_v": 1
+    },
+    "all_rank2_q5_sole_t16": true,
+    "dense_bf16_q5_shadow_bytes": 0,
+    "planned_weight_bytes": 16047015936,
+    "planned_weight_gib": 14.944948196411133,
+    "q4_k_m_planned_weight_bytes": 16943220736,
+    "bytes_saved_vs_q4_k_m_plan": 896204800,
+    "gib_saved_vs_q4_k_m_plan": 0.83465576171875
+  },
+  "correctness": {
+    "selected_materialization": {
+      "passed": true,
+      "representative_slots": [
+        "layers.0.ffn_down",
+        "layers.0.attn_qkv",
+        "layers.3.attn_v"
+      ],
+      "allocation_names": ["tiles"]
+    },
+    "actual_weight_operation_gate": {
+      "passed": true,
+      "operation_checks": 27,
+      "rows": [1, 2, 3, 4, 16, 33, 512, 1024, 4096],
+      "all_bf16_exact_to_selected_oracle": true,
+      "max_kl": 3.157372119492484e-07,
+      "top1_matches": 48,
+      "top1_total": 48,
+      "source": "/tmp/qwen38-q4ks-q5-actual-gate.json",
+      "source_sha256": "492a1caeca2d29a69750e1643995b4ec29d296407703d894fd70a6b6d22eee80"
+    },
+    "full_model_smoke": {
+      "workload": "512/8",
+      "final_token_id": 9707,
+      "finite_final_logits": true,
+      "graph_transport": "hipgraph",
+      "graph_replayed_steps": 8,
+      "native_fallbacks": 0,
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "diagnostic_measurement": {
+    "workload": "512/8",
+    "warmup_runs": 0,
+    "measured_runs": 1,
+    "prefill_tok_s": 377.22622617327966,
+    "decode_tok_s": 12.591964765345928,
+    "tracked_peak_gib": 15.728742960840464,
+    "performance_claim": false,
+    "reason_not_publishable": "single smoke only; full natural AR/MTP and retained 512/1K/4K protocols are deferred",
+    "source": "/tmp/qwen38-q4ks-qualification/smoke-q4ks-key-gdn-rerun.json",
+    "source_sha256": "7f6e7e2fd3e2756a9da3e792e242302ad1d3561f47900393903545ab68d8582a"
+  },
+  "commands": {
+    "selected_materialization": "PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_mapping.py::test_qwen38_dense_q4ks_materializes_h5120_q5_t16_on_gfx1151",
+    "actual_weight_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt PYTHONPATH=. python3 /tmp/qwen38_q4ks_q5_actual_gate.py",
+    "full_model_smoke": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads 512/8 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "deferred": [
+    "full natural true-AR and category suite",
+    "native MTP B1-B3 own-AR and CPU-acceptance suite",
+    "retained 512/128, 1024/128, and 4096/128 measurements",
+    "Q4_K_S-specific promotion of remaining Q4_K_M file-type policies"
+  ],
+  "decision": "Commit first-class Q4_K_S generation and compact H5120 Q5T16 ownership as a correctness/memory qualification checkpoint. Resume broad quality and publication gates in a later session."
+}

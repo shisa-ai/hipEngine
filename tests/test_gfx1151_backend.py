@@ -668,6 +668,16 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
     )
     assert not backend_package_capability(
         "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_H5120",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_H5120",
+        False,
+    )
+    assert not backend_package_capability(
+        "hip_gfx1100",
         "GGUF_DENSE_Q5_T16_QKV",
         False,
     )
@@ -1992,18 +2002,19 @@ def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> Non
     }
     assert generator.server_plain_ar_max_active_requests == 8
 
-    other_quant_factory = resolve_text_generator(
-        model="qwen3_5_moe_gguf",
-        backend="hip_gfx1151",
-        quant="gguf_q8_0",
-    )
-    other_quant_generator = other_quant_factory(
-        model_path="/tmp/fake-q8.gguf",
-        weight_index=object(),
-        model_plugin=object(),
-    )
-    assert other_quant_generator.engine_loop_config_defaults == {}
-    assert other_quant_generator.server_plain_ar_max_active_requests is None
+    for quant in ("gguf_q4_k_s", "gguf_q8_0"):
+        other_quant_factory = resolve_text_generator(
+            model="qwen3_5_moe_gguf",
+            backend="hip_gfx1151",
+            quant=quant,
+        )
+        other_quant_generator = other_quant_factory(
+            model_path=f"/tmp/fake-{quant}.gguf",
+            weight_index=object(),
+            model_plugin=object(),
+        )
+        assert other_quant_generator.engine_loop_config_defaults == {}
+        assert other_quant_generator.server_plain_ar_max_active_requests is None
 
 
 def test_gguf_weight_backend_drives_embedding_and_linear_dispatch() -> None:
