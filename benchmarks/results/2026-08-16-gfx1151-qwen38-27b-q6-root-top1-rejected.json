@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q6_root_top1",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "base_commit": "591e7f270f3ab2ed3c098acd86de1e2f634794eb",
+    "tracked_tree_clean": true,
+    "require_cached_build": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "root_weight": {
+    "tensor": "output.weight",
+    "shape_out_in": [248320, 5120],
+    "source_bytes": 1042944000,
+    "source_mib": 994.62890625,
+    "resident_layout": "gguf_q6_k_t16_qmicro_planar_v1",
+    "resident_bytes": 1042944000,
+    "resident_sha256": "96460ab1b37c54c6dbd7f89ef4349189229c9985622b24bdcda962c46cac4ece"
+  },
+  "candidate": {
+    "control": "planar-qmicro Q6T16 FP32 full-logit GEMV plus generic 128-thread argmax",
+    "path": "existing exact planar-qmicro Q6T16 producer emits one FP32 value/index winner per 16-logit tile, followed by the existing tile stage-2 i32-to-i64 control reducer",
+    "preserved_boundary": "same resident payload, K partition, FMA stream, ordered four-wave sum, complete FP32 logits, minimum-index tie order, selected FP32 value, and top-1 token",
+    "new_resident_bytes": 0,
+    "runtime_workspace_if_promoted_bytes": 124184,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "warmups": 5,
+    "samples": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP-event pairs",
+    "cache_contract": "the 994.629-MiB actual root source/resident payload exceeds 64 MiB and 2x the 32-MiB MALL",
+    "advance_gate": "FP32/logit/winner bit identity, consistent paired wins, and positive projected wall"
+  },
+  "results": {
+    "control_current": {
+      "median_ms": 4.591175556182861,
+      "minimum_ms": 4.585436820983887,
+      "maximum_ms": 4.699410915374756
+    },
+    "control_publish": {
+      "median_ms": 4.593897819519043,
+      "minimum_ms": 4.587592601776123,
+      "maximum_ms": 4.692331790924072
+    },
+    "candidate_tile_top1": {
+      "median_ms": 4.603906154632568,
+      "minimum_ms": 4.59437894821167,
+      "maximum_ms": 4.635365962982178
+    },
+    "candidate_vs_current": {
+      "speedup": 0.9972348266836636,
+      "delta_percent": 0.27728407014544487,
+      "wins": "4/15",
+      "median_paired_delta_ms": 0.004021644592285156
+    },
+    "candidate_vs_publish": {
+      "speedup": 0.9978261209552556,
+      "delta_percent": 0.21786150904359314,
+      "wins": "6/15",
+      "median_paired_delta_ms": 0.005039691925048828
+    }
+  },
+  "projection": {
+    "profile_source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json",
+    "profiled_selected_kernel_ms_per_token": 80.781184625,
+    "profiled_root_ms_per_token": 4.606897875,
+    "root_share_percent": 5.702934286475252,
+    "required_root_speedup_for_one_percent_selected_wall": 1.212633207075806,
+    "projected_delta_ms_per_token": 0.01277419393524415,
+    "projected_selected_kernel_wall_delta_percent": 0.01581332830725884,
+    "direction": "regression"
+  },
+  "correctness": {
+    "fp32_logits_bit_exact": true,
+    "top1_id_exact": true,
+    "top1_value_bit_exact": true,
+    "finite": true,
+    "control_id": 163553,
+    "candidate_id": 163553,
+    "logits_sha256": "532ecbd53438e25b4be541b2d523aa2f87265d416e4294cc617883ea49be55d1",
+    "max_abs": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q6-root-top1/hipcc-version.txt PYTHONPATH=. python3.12 -u /tmp/qwen38-task22-q6-root-top1-leaf.py --samples 15 --warmups 5 --burst 4 --compiler-version-file /tmp/qwen38-task22-q6-root-top1/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q6-root-top1/leaf.json"
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q6-root-top1/leaf.json",
+      "sha256": "71c7366b4d3f6010f31947ebefd451fd2512ea44d474e86725eb92a9a53d895d",
+      "bytes": 3463
+    },
+    "leaf_runner": {
+      "path": "/tmp/qwen38-task22-q6-root-top1-leaf.py",
+      "sha256": "858e8efe4ba95167fe461fec2b0bf00487436452df45449ec20fe0b8851a95d4",
+      "bytes": 15881
+    }
+  },
+  "validation": {
+    "existing_admitted_kernels_only": true,
+    "production_source_unchanged": true,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject serial-AR routing to producer-owned planar-Q6 tile maxima. The existing exact candidate loses 11 of 15 pairs, regresses the actual root family by 0.277%, and projects a 0.0158% selected-kernel-wall regression. Keep the full-logit planar-Q6 owner plus generic argmax."
+}
