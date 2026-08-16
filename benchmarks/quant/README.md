@@ -83,7 +83,7 @@ direct format comparison uses one runtime/backend.
 | ROCmFP4 STRIX_LEAN / ROCmFPX HIP | **4.354** | 0.045984 | 0.205053 | 1.272484 | **0.99676** | **97.778** | `quality-traded` |
 | Q4_K_M / ROCmFPX CPU | 5.180 | **0.009005** | **0.054460** | **0.139566** | 1.01234 | 94.444 | backend diagnostic |
 | Q4_K_M / hipEngine HIP | 5.180 | 0.011807 | **0.041929** | 0.286379 | 1.00740 | 95.556 | runtime control |
-| PARO W4 / hipEngine HIP | 4.680 | 12.072252 | 18.196675 | 21.878865 | 217649.82 | 0.000 | **implementation blocked** |
+| PARO W4 / hipEngine HIP | 4.680 | 0.027038 | 0.143607 | 0.321606 | 1.02733 | 92.222 | `quality-traded`; runtime-correct |
 
 ROCmFP4 is 15.96% smaller than the exact local Q4_K_M and preserves BF16
 argmax unusually well (88/90 rows), but its full-distribution drift is 3.35x
@@ -94,13 +94,21 @@ predeclared `+0.005` margin. Japanese is the clear distribution outlier
 **quality-traded**, not Q4-equivalent; downstream Japanese and calibration/task
 tests are required before deployment.
 
-The PARO checkpoint itself is not bad: its bundled 129,921-token canonical
-result is KL `0.027939`, top-1 `92.856%`. The exact local checkpoint's hipEngine
-full logits are self-consistent with hipEngine sampling but disagree with BF16
-on all 90 rows. That is a packed-loader/runtime correctness blocker. The native
-ParoQuant/Transformers cross-check loaded the checkpoint but its ROCm rotation
-extension failed with `HIP error: invalid device function` on gfx1151, so the
-bundled canonical payload remains the independent quant-quality authority.
+PARO's packed-runtime blocker is closed. The checkpoint retains Transformers'
+grouped V-head order, while hipEngine had applied the tiled order used only
+after llama.cpp's GGUF converter explicitly permutes V-head tensors. With the
+grouped GDN sibling, hipEngine matches the independent ParoQuant/Transformers
+90-row capture at mean/max KL `0.001151/0.023016` and `98.889%` top-1; two
+hipEngine captures are bit-identical. Against BF16 it measures KL `0.027038`
+and top-1 `92.222%`, consistent with the bundled 129,921-token canonical PARO
+result (`0.027939`, `92.856%`).
+
+PARO is nevertheless **quality-traded** versus hipEngine Q4_K_M. Its paired
+prompt-block PARO-minus-Q4 mean-KL 95% interval is
+`[+0.00741,+0.02317]`, top-1 delta is `[-6.667,0.000]` percentage points, and
+teacher-PPL-ratio delta is `[-0.00799,+0.05153]`; all predeclared noninferiority
+gates fail and category point margins veto equivalence. PARO speed may now be
+measured, but every comparison must retain this quality and cross-format caveat.
 
 Evidence:
 [`2026-08-16-zbook-qwen36-quant-quality.json`](../results/2026-08-16-zbook-qwen36-quant-quality.json).

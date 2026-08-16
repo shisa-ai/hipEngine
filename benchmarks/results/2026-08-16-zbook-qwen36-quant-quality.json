@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "qwen36_35b_cross_format_quantization_quality",
-  "timestamp": "2026-08-16T01:45:00Z",
+  "timestamp": "2026-08-16T03:27:22Z",
   "status": "diagnostic_retained",
   "performance_claim": false,
   "campaign": "docs/QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md",
@@ -17,8 +17,8 @@
     }
   },
   "source_revisions": {
-    "hipengine_base_commit": "0da58e1eb9bc3e8faba6af7d3302feb9db9ee7a3",
-    "quality_harness": "scripts/quant_quality/ (same logical commit as this artifact)",
+    "hipengine_base_commit": "3cf113aa81d14f168560b8febf4e3e63cec3c058",
+    "quality_harness": "795f2c016 (portable suite) + fdef525cf (gfx1151 ParoQuant oracle)",
     "rocmfpx": "0d313da1849f73c5a7f8c5f7e5b8d7d278fbb69d",
     "paroquant": "7bfbf5e1c8a39be20ef02c90377a8ca6b630fadf"
   },
@@ -616,121 +616,123 @@
         }
       }
     },
-    "paro_w4_hipengine_blocked": {
-      "name": "PARO full8192 packed / hipEngine",
+    "paro_w4_hipengine": {
+      "name": "PARO full8192 packed / hipEngine grouped-head fix",
       "runtime": "hipEngine PARO packed W4 (hip_gfx1151)",
       "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
-      "model_bytes": null,
+      "model_bytes": 20474495512,
       "model_sha256": "a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60",
-      "logits_sha256": "56b5237f5e7fcac90b55b1d3a00cfe2ca332d58408ddea86dcd255a70c7fa270",
+      "logits_sha256": "85181d5ce11f4a6d6f9329dc62326b3dc91c8f83b4b3f667e1e28d8a897ca9d0",
+      "repeat_logits_sha256": "85181d5ce11f4a6d6f9329dc62326b3dc91c8f83b4b3f667e1e28d8a897ca9d0",
       "execution": true,
+      "deterministic_repeat": true,
       "overall": {
         "rows": 90,
         "finite_rows": 90,
-        "mean_kl_nats": 12.072252109067131,
-        "p95_kl_nats": 18.19667527446173,
-        "max_kl_nats": 21.87886463316637,
-        "top1_agreement_pct": 0.0,
-        "top1_mismatch_count": 90,
-        "first_top1_mismatch_row": 0,
-        "top5_set_overlap_pct": 2.2222222222222223,
-        "teacher_delta_nll_nats": 12.29064271528982,
-        "teacher_ppl_ratio": 217649.81898261097,
-        "rms_delta_p_pct": 88.89351830095096,
-        "max_abs_logit_delta": 38.39837646484375
+        "mean_kl_nats": 0.02703786304279384,
+        "p95_kl_nats": 0.14360670620094979,
+        "max_kl_nats": 0.3216055361731569,
+        "top1_agreement_pct": 92.22222222222223,
+        "top1_mismatch_count": 7,
+        "first_top1_mismatch_row": 22,
+        "top5_set_overlap_pct": 87.55555555555554,
+        "teacher_delta_nll_nats": 0.026961375801928783,
+        "teacher_ppl_ratio": 1.027328122272302,
+        "rms_delta_p_pct": 7.172619088919251,
+        "max_abs_logit_delta": 4.26914519071579
       },
       "by_split": {
         "heldout": {
           "rows": 36,
           "finite_rows": 36,
-          "mean_kl_nats": 12.368633833890547,
-          "p95_kl_nats": 18.271826848960334,
-          "max_kl_nats": 20.167816284148177,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 36,
-          "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 2.7777777777777777,
-          "teacher_delta_nll_nats": 12.72423687954969,
-          "teacher_ppl_ratio": 335788.53461505525,
-          "rms_delta_p_pct": 83.96483088896859,
-          "max_abs_logit_delta": 32.59808874130249
+          "mean_kl_nats": 0.04016759842285014,
+          "p95_kl_nats": 0.1452745329889077,
+          "max_kl_nats": 0.24304913284646285,
+          "top1_agreement_pct": 91.66666666666666,
+          "top1_mismatch_count": 3,
+          "first_top1_mismatch_row": 11,
+          "top5_set_overlap_pct": 85.00000000000001,
+          "teacher_delta_nll_nats": 0.0038449625608075744,
+          "teacher_ppl_ratio": 1.0038523639122874,
+          "rms_delta_p_pct": 7.183641239539115,
+          "max_abs_logit_delta": 4.26914519071579
         },
         "train": {
           "rows": 54,
           "finite_rows": 54,
-          "mean_kl_nats": 11.874664292518187,
-          "p95_kl_nats": 18.051568473111562,
-          "max_kl_nats": 21.87886463316637,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 54,
-          "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 1.8518518518518516,
-          "teacher_delta_nll_nats": 12.00157993911657,
-          "teacher_ppl_ratio": 163012.13732227313,
-          "rms_delta_p_pct": 92.0327882282203,
-          "max_abs_logit_delta": 38.39837646484375
+          "mean_kl_nats": 0.018284706122756293,
+          "p95_kl_nats": 0.08434330234084413,
+          "max_kl_nats": 0.3216055361731569,
+          "top1_agreement_pct": 92.5925925925926,
+          "top1_mismatch_count": 4,
+          "first_top1_mismatch_row": 22,
+          "top5_set_overlap_pct": 89.25925925925924,
+          "teacher_delta_nll_nats": 0.04237231796267618,
+          "teacher_ppl_ratio": 1.0432828393907128,
+          "rms_delta_p_pct": 7.165261569006163,
+          "max_abs_logit_delta": 3.333915486931801
         }
       },
       "by_category": {
         "code": {
           "rows": 36,
           "finite_rows": 36,
-          "mean_kl_nats": 11.124602847254135,
-          "p95_kl_nats": 18.228274678525352,
-          "max_kl_nats": 21.87886463316637,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 36,
-          "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 3.888888888888889,
-          "teacher_delta_nll_nats": 11.19191050194226,
-          "teacher_ppl_ratio": 72541.23965429558,
-          "rms_delta_p_pct": 95.75459552516133,
-          "max_abs_logit_delta": 38.39837646484375
+          "mean_kl_nats": 0.004369435008178166,
+          "p95_kl_nats": 0.030478886165616618,
+          "max_kl_nats": 0.05353131364344317,
+          "top1_agreement_pct": 97.22222222222221,
+          "top1_mismatch_count": 1,
+          "first_top1_mismatch_row": 22,
+          "top5_set_overlap_pct": 89.44444444444444,
+          "teacher_delta_nll_nats": -0.0006184304844606345,
+          "teacher_ppl_ratio": 0.999381760704257,
+          "rms_delta_p_pct": 3.569374815573937,
+          "max_abs_logit_delta": 4.26914519071579
         },
         "general_en": {
           "rows": 18,
           "finite_rows": 18,
-          "mean_kl_nats": 11.47153186374018,
-          "p95_kl_nats": 16.194376958486995,
-          "max_kl_nats": 17.462638085720837,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 18,
-          "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 2.2222222222222223,
-          "teacher_delta_nll_nats": 11.413204850330143,
-          "teacher_ppl_ratio": 90509.02516810261,
-          "rms_delta_p_pct": 84.61478316317745,
-          "max_abs_logit_delta": 30.362430453300476
+          "mean_kl_nats": 0.02173322618512759,
+          "p95_kl_nats": 0.13158026379365606,
+          "max_kl_nats": 0.14322712131360846,
+          "top1_agreement_pct": 88.88888888888889,
+          "top1_mismatch_count": 2,
+          "first_top1_mismatch_row": 1,
+          "top5_set_overlap_pct": 85.55555555555556,
+          "teacher_delta_nll_nats": 0.06645188502341132,
+          "teacher_ppl_ratio": 1.0687095419035062,
+          "rms_delta_p_pct": 6.708783041817728,
+          "max_abs_logit_delta": 2.54973503947258
         },
         "general_ja": {
           "rows": 18,
           "finite_rows": 18,
-          "mean_kl_nats": 15.103670099904946,
-          "p95_kl_nats": 18.34514477487412,
-          "max_kl_nats": 18.51085156061505,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 18,
-          "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 0.0,
-          "teacher_delta_nll_nats": 15.734280479581548,
-          "teacher_ppl_ratio": 6812573.313984633,
-          "rms_delta_p_pct": 79.1204271099433,
-          "max_abs_logit_delta": 32.46906852722168
+          "mean_kl_nats": 0.06677774383812446,
+          "p95_kl_nats": 0.2548325933454668,
+          "max_kl_nats": 0.3216055361731569,
+          "top1_agreement_pct": 83.33333333333334,
+          "top1_mismatch_count": 3,
+          "first_top1_mismatch_row": 5,
+          "top5_set_overlap_pct": 86.66666666666667,
+          "teacher_delta_nll_nats": 0.059618737341150085,
+          "teacher_ppl_ratio": 1.061431785085478,
+          "rms_delta_p_pct": 10.716388661214198,
+          "max_abs_logit_delta": 2.8826189041137695
         },
         "mixed_ja_en": {
           "rows": 18,
           "finite_rows": 18,
-          "mean_kl_nats": 11.536852887182253,
-          "p95_kl_nats": 16.709342484323628,
-          "max_kl_nats": 18.200376180323246,
-          "top1_agreement_pct": 0.0,
-          "top1_mismatch_count": 18,
+          "mean_kl_nats": 0.0379394751743608,
+          "p95_kl_nats": 0.15027198331754849,
+          "max_kl_nats": 0.20138320156748857,
+          "top1_agreement_pct": 94.44444444444444,
+          "top1_mismatch_count": 1,
           "first_top1_mismatch_row": 0,
-          "top5_set_overlap_pct": 1.1111111111111112,
-          "teacher_delta_nll_nats": 11.92190724265288,
-          "teacher_ppl_ratio": 150528.42904675993,
-          "rms_delta_p_pct": 88.04941416853178,
-          "max_abs_logit_delta": 33.33653283119202
+          "top5_set_overlap_pct": 86.66666666666667,
+          "teacher_delta_nll_nats": 0.009973117614003518,
+          "teacher_ppl_ratio": 1.0100230148906602,
+          "rms_delta_p_pct": 8.479545623743988,
+          "max_abs_logit_delta": 4.1100921630859375
         }
       }
     }
@@ -823,21 +825,33 @@
       "top5_set_overlap_pct": 95.55555555555556,
       "max_abs_logit_delta": 2.584683418273926
     },
-    "interpretation": "Execution backend/runtime contributes measurable drift; compare ROCmFP4 to Q4_K_M on the matched ROCmFPX HIP runtime."
+    "interpretation": "Execution backend/runtime contributes measurable drift; compare ROCmFP4 to Q4_K_M on the matched ROCmFPX HIP runtime.",
+    "paroquant_transformers_reference_to_hipengine": {
+      "rows": 90,
+      "finite_rows": 90,
+      "mean_kl_nats": 0.0011513515114021516,
+      "p95_kl_nats": 0.004293224806096682,
+      "max_kl_nats": 0.02301574247834027,
+      "top1_agreement_pct": 98.88888888888889,
+      "top1_mismatch_count": 1,
+      "first_top1_mismatch_row": 75,
+      "top5_set_overlap_pct": 97.33333333333334,
+      "teacher_delta_nll_nats": -0.002149705296480814,
+      "teacher_ppl_ratio": 0.9978526036651247,
+      "rms_delta_p_pct": 1.4765672615757846,
+      "max_abs_logit_delta": 1.516129493713379,
+      "reference_runtime": "ParoQuant Transformers 5.15.0 / PyTorch 2.10.0+rocm7.15.0a20260727 cuda:0",
+      "reference_logits_sha256": "84d4404789ede049447424340455fed3c9fd5be6f438b9d8329ac2e1e90f836b",
+      "candidate_logits_sha256": "85181d5ce11f4a6d6f9329dc62326b3dc91c8f83b4b3f667e1e28d8a897ca9d0",
+      "implementation_gate": {
+        "max_kl_at_most_0_05": true,
+        "top1_at_least_90_pct": true,
+        "passed": true
+      },
+      "interpretation": "Same checkpoint and canonical Transformers head layout; closes the packed PARO runtime correctness gate."
+    }
   },
   "blockers_and_failed_attempts": [
-    {
-      "component": "hipEngine packed PARO exact local checkpoint",
-      "result": "90 finite, self-consistent full-logit rows but 0/90 BF16 top-1; mean KL 12.072252",
-      "classification": "implementation correctness blocker, not quantization quality",
-      "rerun_condition": "fix packed full8192 loader/runtime and pass same-format oracle before any speed row"
-    },
-    {
-      "component": "ParoQuant Transformers ROCm cross-check on gfx1151",
-      "result": "checkpoint loaded, first forward failed with HIP invalid device function in paroquant rotation kernel",
-      "classification": "external ROCm extension lacks a usable gfx1151 kernel in this environment",
-      "canonical_fallback": "checkpoint-bundled 129,921-token canonical payload"
-    },
     {
       "component": "ROCmFPX CPU ROCmFP4 capture",
       "result": "segmentation fault on first decode; ROCmFPX HIP capture completed",
@@ -847,21 +861,117 @@
   "verdicts": {
     "q4_k_m": "best established distribution-fidelity baseline; exact local portable rows pass finite/top-1 smoke, with measurable runtime drift requiring follow-up",
     "paro_w4_quant": "quality-traded versus Q4_K_M by exact checkpoint canonical evidence (KL 0.027939, top-1 92.856%); quant itself is usable",
-    "paro_w4_hipengine": "blocked: current exact-checkpoint runtime output is not implementation-correct",
+    "paro_w4_hipengine": "implementation-correct and deterministic versus exact-checkpoint ParoQuant (max KL 0.023016, top-1 98.889%); BF16-relative KL 0.027038 / top-1 92.222%; quality-traded versus hipEngine Q4_K_M under the paired noninferiority gate",
     "rocmfp4_strix_lean": "quality-traded: 97.778% portable BF16 top-1 and 15.96% smaller than local Q4_K_M, but mean KL 0.045984 and Japanese-category KL 0.135091 fail the predeclared Q4-equivalence margin",
-    "campaign_quality_gate": "partial: portable exact-artifact gate and canonical PARO/Q4 evidence exist; canonical rolling-corpus ROCmFP4 and fixed hipEngine PARO remain open"
+    "campaign_quality_gate": "portable exact-artifact gate complete for Q4_K_M, PARO, and ROCmFP4; PARO implementation correctness is closed, while canonical rolling-corpus ROCmFP4 remains open before full Z1 closure"
   },
   "commands": [
     "PYTHONPATH=. python scripts/quant_quality/qwen36_teacher.py capture-bf16 --output-dir /models/eval-results/hipengine-qwen36-teacher-v1 --threads 16",
     "ROCmFPX llama-teacher-logits MODEL fixture/llama_input.bin OUTPUT.f32 16 99; register-raw for Q4_K_M and ROCmFP4",
     "python scripts/quant_quality/qwen36_teacher.py capture-hipengine-gguf|capture-hipengine-paro ... --backend hip_gfx1151",
     "python scripts/quant_quality/qwen36_teacher.py compare ...",
-    "python scripts/quant_quality/qwen36_teacher.py noninferiority ... --bootstrap-samples 10000 --bootstrap-seed 1234"
+    "python scripts/quant_quality/qwen36_teacher.py noninferiority ... --bootstrap-samples 10000 --bootstrap-seed 1234",
+    "PYTHONPATH=. /home/lhl/miniforge3/bin/python3 scripts/quant_quality/qwen36_teacher.py capture-transformers-paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --model-sha256 a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60 --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-transformers.npy --device cuda:0 --dtype float16 --local-files-only",
+    "PYTHONPATH=. /home/lhl/miniforge3/bin/python3 scripts/quant_quality/qwen36_teacher.py capture-hipengine-paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --model-sha256 a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60 --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-hipengine-grouped.npy --backend hip_gfx1151",
+    "PYTHONPATH=. /home/lhl/miniforge3/bin/python3 scripts/quant_quality/qwen36_teacher.py capture-hipengine-paro --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --model-sha256 a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60 --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-hipengine-grouped-repeat.npy --backend hip_gfx1151",
+    "uv run python scripts/quant_quality/qwen36_teacher.py compare --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json --reference-manifest /models/eval-results/hipengine-qwen36-teacher-v1/paro-transformers.manifest.json --candidate-manifest /models/eval-results/hipengine-qwen36-teacher-v1/paro-hipengine-grouped.manifest.json --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-transformers-to-hipengine-grouped.json",
+    "uv run python scripts/quant_quality/qwen36_teacher.py noninferiority --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json --reference-manifest /models/eval-results/hipengine-qwen36-teacher-v1/bf16.manifest.json --baseline-manifest /models/eval-results/hipengine-qwen36-teacher-v1/q4km-hipengine.manifest.json --candidate-manifest /models/eval-results/hipengine-qwen36-teacher-v1/paro-hipengine-grouped.manifest.json --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-vs-q4-hipengine-ni.json --bootstrap-samples 10000 --bootstrap-seed 1234"
   ],
   "validation": {
     "metrics_tests": "uv run pytest -q tests/test_quant_quality_metrics.py tests/test_quant_quality_harness.py => 3 passed",
     "cpp_compile": "g++ -std=c++17 -Wall -Wextra -Werror against ROCmFPX headers => pass",
     "bf16_teacher_top1_matches": "90/90",
-    "all_retained_candidate_rows_finite": true
-  }
+    "all_retained_candidate_rows_finite": true,
+    "paro_transformers_reference_rows_finite": 90,
+    "paro_hipengine_rows_finite": 90,
+    "paro_hipengine_repeat_array_equal": true,
+    "paro_hipengine_repeat_max_abs_logit_delta": 0.0,
+    "paro_hipengine_repeat_logits_sha256": "85181d5ce11f4a6d6f9329dc62326b3dc91c8f83b4b3f667e1e28d8a897ca9d0",
+    "paro_same_quant_gate": "max KL 0.023016 <= 0.05 and top-1 98.889% >= 90%; pass",
+    "paro_bf16_gate": "mean KL 0.027038 and top-1 92.222%; absolute portable gate pass; Q4 noninferiority fail"
+  },
+  "paired_paro_vs_q4_hipengine": {
+    "bootstrap": {
+      "unit": "prompt block (nine teacher rows)",
+      "prompt_count": 10,
+      "samples": 10000,
+      "seed": 1234
+    },
+    "margins": {
+      "mean_kl_candidate_minus_q4_max_nats": 0.005,
+      "top1_candidate_minus_q4_min_pp": -2.0,
+      "teacher_ppl_ratio_candidate_minus_q4_max": 0.01,
+      "teacher_ppl_note": "portable BF16-teacher trajectory diagnostic; not canonical held-out-corpus PPL"
+    },
+    "confidence_intervals": {
+      "mean_kl_candidate_minus_baseline_nats": {
+        "low_95": 0.007414067038612177,
+        "median": 0.015230261692711987,
+        "high_95": 0.02316938506874981
+      },
+      "top1_candidate_minus_baseline_pp": {
+        "low_95": -6.66666666666667,
+        "median": -3.333333333333335,
+        "high_95": 0.0
+      },
+      "teacher_ppl_ratio_candidate_minus_baseline": {
+        "low_95": -0.007986820005415082,
+        "median": 0.019501769356416565,
+        "high_95": 0.051532300061601956
+      }
+    },
+    "gates": {
+      "mean_kl_noninferior": false,
+      "top1_noninferior": false,
+      "teacher_ppl_ratio_noninferior_diagnostic": false,
+      "category_point_margin_veto": true,
+      "portable_q4_equivalent": false
+    },
+    "verdict": "quality-traded",
+    "category_point_results": {
+      "code": {
+        "candidate_minus_baseline": {
+          "mean_kl_nats": 0.0021907198440683593,
+          "top1_agreement_pp": -2.7777777777777857
+        },
+        "point_margin_veto": true
+      },
+      "general_en": {
+        "candidate_minus_baseline": {
+          "mean_kl_nats": 0.017601276741917492,
+          "top1_agreement_pp": -11.111111111111114
+        },
+        "point_margin_veto": true
+      },
+      "general_ja": {
+        "candidate_minus_baseline": {
+          "mean_kl_nats": 0.03118182054656432,
+          "top1_agreement_pp": 0.0
+        },
+        "point_margin_veto": true
+      },
+      "mixed_ja_en": {
+        "candidate_minus_baseline": {
+          "mean_kl_nats": 0.022987839770513926,
+          "top1_agreement_pp": 0.0
+        },
+        "point_margin_veto": true
+      }
+    }
+  },
+  "resolved_implementation_issues": [
+    {
+      "component": "hipEngine packed PARO canonical-vs-tiled GDN head layout",
+      "before": "90/90 finite but mean KL 12.072252 and 0/90 top-1 versus BF16",
+      "root_cause": "Packed PARO safetensors retain grouped Transformers V-head order; hipEngine used the tiled modulo mapping valid only after llama.cpp GGUF conversion reorders V-head tensors.",
+      "fix_commit": "3cf113aa81d14f168560b8febf4e3e63cec3c058",
+      "after": "mean KL 0.001151 / max KL 0.023016 / 98.889% top-1 versus exact-checkpoint ParoQuant Transformers; bit-identical 90-row repeat"
+    },
+    {
+      "component": "ParoQuant Transformers gfx1151 oracle",
+      "before": "rotation JIT targeted gfx1100 and MIOpen had no usable grouped depthwise-conv algorithm",
+      "resolution": "Auto-select gfx1151 and install the algebraically equivalent Torch unfold depthwise fallback in the optional quality oracle.",
+      "result": "90-row full-logit reference captured successfully; logits sha256 84d4404789ede049447424340455fed3c9fd5be6f438b9d8329ac2e1e90f836b"
+    }
+  ]
 }
