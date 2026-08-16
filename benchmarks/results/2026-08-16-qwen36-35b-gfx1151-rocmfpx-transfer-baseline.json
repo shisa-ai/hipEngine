@@ -1,0 +1,282 @@
+{
+  "baselines": [
+    {
+      "command": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --prompt-length 512 --decode-tokens 32 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-gfx1151-hipcc-version.txt --require-cached-build --batch-size 4 --json /tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c4-p512-d32.json",
+      "concurrency": 4,
+      "correctness": {
+        "generated_token_equality_vs_independent_c1": true,
+        "generated_tokens_per_request": 32,
+        "mismatch_count": 0
+      },
+      "execution": {
+        "full_attention_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "selected_batch",
+        "native_caware_decode": true,
+        "native_compact_prefill": true,
+        "scheduler_path": "scheduler_native_compact_batch"
+      },
+      "measurements": {
+        "decode_step_seconds_median": 0.057378001511096954,
+        "decode_step_seconds_samples": [
+          0.05771408200962469,
+          0.05983456096146256,
+          0.05927198601420969,
+          0.0581023310078308,
+          0.05745002703042701,
+          0.05899890302680433,
+          0.05677745502907783,
+          0.057730583008378744,
+          0.058449963049497455,
+          0.05900188797386363,
+          0.058670606988016516,
+          0.05526493804063648,
+          0.058115865977015346,
+          0.055359404999762774,
+          0.0559925030102022,
+          0.05718713300302625,
+          0.05707065499154851,
+          0.05569811997702345,
+          0.05661940801655874,
+          0.05752051901072264,
+          0.05662260501412675,
+          0.057014279009308666,
+          0.05673162901075557,
+          0.05792627000482753,
+          0.0573059759917669,
+          0.05117614503251389,
+          0.05008280504262075,
+          0.05607198202051222,
+          0.05892733804648742,
+          0.05724491202272475,
+          0.05786743899807334,
+          0.057849547010846436
+        ],
+        "decode_tok_s_aggregate": 70.11064874509334,
+        "decode_tok_s_per_request": 17.527662186273336,
+        "decode_wall_seconds": 1.825685574032832,
+        "load_seconds": 17.104052370006684,
+        "prefill_tok_s": 618.11177561671
+      },
+      "performance_claim": false,
+      "source_artifact": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c4-p512-d32.json",
+      "status": "blocked"
+    },
+    {
+      "command": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --prompt-length 512 --decode-tokens 32 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-gfx1151-hipcc-version.txt --require-cached-build --batch-size 8 --json /tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c8-p512-d32.json",
+      "concurrency": 8,
+      "correctness": {
+        "generated_token_equality_vs_independent_c1": true,
+        "generated_tokens_per_request": 32,
+        "mismatch_count": 0
+      },
+      "execution": {
+        "full_attention_decode_path": "native_batch",
+        "linear_attention_output_path": "batch_gemv",
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "moe_decode_path": "selected_batch",
+        "native_caware_decode": true,
+        "native_compact_prefill": true,
+        "scheduler_path": "scheduler_native_compact_batch"
+      },
+      "measurements": {
+        "decode_step_seconds_median": 0.10799991298699751,
+        "decode_step_seconds_samples": [
+          0.11655647098086774,
+          0.1159194559440948,
+          0.11347038100939244,
+          0.11481751798419282,
+          0.11283545003971085,
+          0.11277589801466092,
+          0.11185192398261279,
+          0.1115895519615151,
+          0.10904406697954983,
+          0.10996361204888672,
+          0.10908894101157784,
+          0.10699663602281362,
+          0.10794525599339977,
+          0.10746401303913444,
+          0.10860695695737377,
+          0.10861523199127987,
+          0.10643352998886257,
+          0.10695963597390801,
+          0.10742142196977511,
+          0.10653415799606591,
+          0.105835777008906,
+          0.10791503899963573,
+          0.10701360699022189,
+          0.10608744999626651,
+          0.10901323903817683,
+          0.11174470296828076,
+          0.10683998197782785,
+          0.10633265000069514,
+          0.10762032499769703,
+          0.10805456998059526,
+          0.1067847780068405,
+          0.10739547299453989
+        ],
+        "decode_tok_s_aggregate": 73.2357226548397,
+        "decode_tok_s_per_request": 9.154465331854963,
+        "decode_wall_seconds": 3.4955618749954738,
+        "load_seconds": 17.23248527001124,
+        "prefill_tok_s": 482.4210914167035
+      },
+      "performance_claim": false,
+      "source_artifact": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c8-p512-d32.json",
+      "status": "blocked"
+    }
+  ],
+  "date": "2026-08-16",
+  "decision": {
+    "baseline_established": true,
+    "claim_scope": "diagnostic only; cross-format PARO remains quality-traded and no opportunity has been promoted",
+    "correctness_gate": "pass: c4/c8 D32 generated tokens exact vs independent c1; profiled c8/L4 hidden and tokens exact",
+    "next": "A/B exact small-M weight reuse, then screen one-plane Q8_1, measured boundary fusion, selective unsafe math, and adaptive MTP."
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "host": "AMD Ryzen AI MAX+ PRO 395 / Radeon 8060S",
+    "power_profile": "60W GPU / 60W CPU / 45W system"
+  },
+  "model": {
+    "family": "Qwen3.6-35B-A3B",
+    "fingerprint_sha256_directory_manifest": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quality_classification": "quality-traded; implementation-correct",
+    "quality_evidence": "benchmarks/results/2026-08-16-zbook-qwen36-quant-quality.json",
+    "quant": "w4_paro",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "performance_claim": false,
+  "profile": {
+    "command": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --prompt-length 512 --batch-size 8 --decode-tokens 1 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --json /tmp/hipengine-rocmfpx-transfer-campaign/paro-c8-l4-profiled-hidden.json",
+    "correctness_passed": true,
+    "dispatch_count": 4644,
+    "hidden_passed": true,
+    "kernel_evidence": {
+      "gdn": [
+        {
+          "calls": 51,
+          "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_fp16_kernel(float const*, _Float16 const*, float const*, _Float16*, float, long, long, long)"
+        },
+        {
+          "calls": 48,
+          "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)"
+        },
+        {
+          "calls": 24,
+          "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<_Float16, false>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)"
+        },
+        {
+          "calls": 3,
+          "kernel_name": "(anonymous namespace)::qwen35_gdn_prefill_recurrent_k2_segments_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)"
+        },
+        {
+          "calls": 3,
+          "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)"
+        }
+      ],
+      "rotation": [
+        {
+          "calls": 257,
+          "kernel_name": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+        },
+        {
+          "calls": 182,
+          "kernel_name": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+        },
+        {
+          "calls": 33,
+          "kernel_name": "void (anonymous namespace)::paro_rotate3_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, _Float16*, short const*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+        },
+        {
+          "calls": 17,
+          "kernel_name": "(anonymous namespace)::paro_rotate1_bf16_gate_fp16_kernel(unsigned short const*, _Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+        },
+        {
+          "calls": 3,
+          "kernel_name": "(anonymous namespace)::paro_rotate1_f32_to_fp16_kernel(float const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)"
+        }
+      ],
+      "selected_down_projection": [
+        {
+          "calls": 68,
+          "kernel_name": "void (anonymous namespace)::gemm_awq_selected_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+        },
+        {
+          "calls": 36,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+        }
+      ],
+      "selected_dual_projection": [
+        {
+          "calls": 68,
+          "kernel_name": "void (anonymous namespace)::gemm_awq_selected_dual_pack8_wmma_compact_kernel<_Float16>(_Float16 const*, long const*, long const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+        },
+        {
+          "calls": 36,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)"
+        }
+      ],
+      "silu": [
+        {
+          "calls": 136,
+          "kernel_name": "void (anonymous namespace)::silu_mul_dual_rotate_out_kernel<_Float16>(_Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)"
+        },
+        {
+          "calls": 69,
+          "kernel_name": "void (anonymous namespace)::silu_mul_separate_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long)"
+        },
+        {
+          "calls": 3,
+          "kernel_name": "void (anonymous namespace)::silu_mul_pair_rotate_out_kernel<_Float16>(_Float16 const*, _Float16 const*, short const*, _Float16 const*, _Float16 const*, _Float16*, long, long, int, int)"
+        }
+      ],
+      "small_m_output_tiled": [
+        {
+          "calls": 6,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_output_tiled_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+        },
+        {
+          "calls": 4,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_dual_pack8_output_tiled_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, int)"
+        },
+        {
+          "calls": 3,
+          "kernel_name": "void (anonymous namespace)::gemv_awq_pack8_output_tiled_combine_residual_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, float const*, float const*, _Float16 const*, _Float16*, long, long, long, int, long, long)"
+        }
+      ]
+    },
+    "scope": "c8 prompt512 max_layers4 decode1 plus independent c1 hidden oracle",
+    "timestamp_duration_status": "unavailable: this rocprofv3/gfx1151 override trace emitted Start_Timestamp == End_Timestamp for every dispatch",
+    "token_passed": true,
+    "trace_sha256": "1335f09c9c27d2d5a5a730753887d60e60b694159470e09b01be8ab223e2a49b",
+    "unique_kernel_names": 77,
+    "zero_duration_dispatches": 4644
+  },
+  "purpose": "Fresh repaired-runtime baseline before screening five ROCmFPX-transfer opportunities on Qwen3.6-35B-A3B.",
+  "schema": 1,
+  "software": {
+    "compiler": "AMD clang 23.0.0git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5",
+    "hipengine_commit": "4fb90b87a85eacf0fe2f86920b5ec39201e7a046",
+    "python": "3.13.13",
+    "rocm": "7.15.0",
+    "working_tree": "dirty from unrelated execution-profile work; benchmark command/runtime sources unchanged by this campaign"
+  },
+  "status": "diagnostic",
+  "workload": {
+    "concurrency": [
+      4,
+      8
+    ],
+    "decode_tokens_per_request": 32,
+    "kv_dtype": "bf16",
+    "max_layers": 40,
+    "prompt_tokens_per_request": 512,
+    "timing_repeats": 3
+  }
+}

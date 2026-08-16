@@ -553,7 +553,7 @@ def test_qwen38_dense_gate_up_plan_uses_sole_qmicro_payload() -> None:
     )
 
 
-def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
+def test_qwen38_dense_q4km_materializes_standard_t16_owner_on_gfx1151() -> None:
     if not QWEN38_DENSE_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
     try:
@@ -576,12 +576,13 @@ def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
         assert weight.allocation("tiles").tensor.dtype == DType.INT8
         assert weight.allocation("tiles").buffer.nbytes == 18_186_240
 
+        assert resident.file_type_name == "MOSTLY_Q4_K_M"
         gate = resident.layer(0).weight("ffn_gate")
-        assert gate.spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16
-        assert gate.spec.quant_key == "gguf_q4_k_qmicro_t16_v1"
+        assert gate.spec.layout == LAYOUT_GGUF_Q4_K_T16
+        assert gate.spec.quant_key == "gguf_q4_k_t16_v1"
         assert tuple(gate.allocations) == ("tiles",)
         assert gate.allocation("tiles").tensor.dtype == DType.INT8
-        assert gate.allocation("tiles").buffer.nbytes == 50_135_040
+        assert gate.allocation("tiles").buffer.nbytes == 51_527_680
     finally:
         resident.free(runtime=runtime)
 
@@ -637,6 +638,7 @@ def test_qwen38_dense_q4ks_materializes_h5120_q5_t16_on_gfx1151() -> None:
     resident = materialize_qwen35_gguf_weights(
         QWEN38_DENSE_Q4KS_MODEL,
         selected_slots=(
+            "layers.0.ffn_gate",
             "layers.0.ffn_down",
             "layers.0.attn_qkv",
             "layers.3.attn_v",
@@ -662,6 +664,14 @@ def test_qwen38_dense_q4ks_materializes_h5120_q5_t16_on_gfx1151() -> None:
         assert tuple(
             weight.allocation("tiles").buffer.nbytes for weight in weights
         ) == expected_bytes
+
+        assert resident.file_type_name == "MOSTLY_Q4_K_S"
+        gate = resident.layer(0).weight("ffn_gate")
+        assert gate.spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16
+        assert gate.spec.quant_key == "gguf_q4_k_qmicro_t16_v1"
+        assert tuple(gate.allocations) == ("tiles",)
+        assert gate.allocation("tiles").tensor.dtype == DType.INT8
+        assert gate.allocation("tiles").buffer.nbytes == 50_135_040
     finally:
         resident.free(runtime=runtime)
 

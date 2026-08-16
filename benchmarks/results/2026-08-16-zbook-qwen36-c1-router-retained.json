@@ -1,0 +1,774 @@
+{
+  "candidate": {
+    "candidate_environment": {
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "1",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "1"
+    },
+    "classification": "T2",
+    "name": "router_f32w_coop_persistent",
+    "strict_environment": {
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "0",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "0"
+    }
+  },
+  "created_at": "2026-08-16T17:34:35.623178+00:00",
+  "decision": {
+    "new_runtime_default": false,
+    "package_route_retained": true,
+    "public_profile_qualified": false,
+    "reason": "The cooperative/persistent route was already the omitted-profile incumbent. Independent ZBook evidence retains it as the first c1 production candidate versus the strict unfused chain.",
+    "remaining_blockers": [
+      "No real Qwen3.6 GGUF strict/production runtime profile plan or immutable variant manifest is registered yet.",
+      "The c1 adapter fingerprints finite/live state values but does not emit the approved exact request/control ownership records.",
+      "Public profile default selection still requires the c>N dynamic SLO packet and default-decision rule."
+    ],
+    "strict_fallback_retained": true
+  },
+  "fixed_token_control": {
+    "candidate_median_tok_s": 33.42741682630355,
+    "candidate_samples_tok_s": [
+      33.18954054753993,
+      33.57776545748603,
+      33.75690698506009,
+      33.04818083974621,
+      33.42741682630355
+    ],
+    "candidate_vs_strict_pct": 8.747848825870829,
+    "generated_ids_repeatable": true,
+    "source_artifact": "/tmp/zbook-router-coop-perf.json",
+    "source_artifact_sha256": "abc313aa1769c311e94479cdf568a92437563ab80d4e1fe4dcc8e56b8e289a7f",
+    "source_commit": "b00f7dae1819a569fbd4225291956d73319c2ccb",
+    "strict_candidate_generated_ids_equal": true,
+    "strict_median_tok_s": 30.7384625877319,
+    "strict_samples_tok_s": [
+      30.880715481942563,
+      30.82379869564871,
+      30.7384625877319,
+      30.65271662495247,
+      30.706434280623906
+    ],
+    "workload": {
+      "decode_steps": 128,
+      "graph_replay": false,
+      "prompt_length": 512,
+      "prompt_token_id": 9707,
+      "repetitions": 5,
+      "warmup_decode_steps": 1
+    }
+  },
+  "kind": "hipengine_execution_profile_gguf_c1_router_retained",
+  "natural_performance": {
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/execution_profile_gguf_c1_route_perf.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--candidate",
+      "router_f32w_coop_persistent",
+      "--quality-artifact",
+      "/tmp/zbook-router-coop-gate-full.json",
+      "--natural-suite",
+      "--decode-steps",
+      "128",
+      "--warmup-decode-steps",
+      "1",
+      "--compiler-version-file",
+      "/tmp/d08-c0/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/zbook-router-coop-natural-perf.json"
+    ],
+    "measurements": [
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 0,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "code_merge_intervals",
+        "prompt_tokens": 40,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8623945449944586,
+            "final_token_id": 1368,
+            "generated_token_ids_sha256": "d6ce9fb7de8e68710b40bb69e8477c581bed529ca68c153dd71d8b5c8e7909b6",
+            "tok_s": 33.14006337490404
+          },
+          "strict": {
+            "elapsed_seconds": 4.22360764304176,
+            "final_token_id": 1368,
+            "generated_token_ids_sha256": "d6ce9fb7de8e68710b40bb69e8477c581bed529ca68c153dd71d8b5c8e7909b6",
+            "tok_s": 30.305845338374496
+          }
+        }
+      },
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 1,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "code_topological_sort",
+        "prompt_tokens": 50,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.870419708022382,
+            "final_token_id": 262,
+            "generated_token_ids_sha256": "0db395cf5ea2bdb9d113d2082329fd2dc789968d819910532aee7c9c6ecea336",
+            "tok_s": 33.07134875700664
+          },
+          "strict": {
+            "elapsed_seconds": 4.21507264097454,
+            "final_token_id": 262,
+            "generated_token_ids_sha256": "0db395cf5ea2bdb9d113d2082329fd2dc789968d819910532aee7c9c6ecea336",
+            "tok_s": 30.367210936228595
+          }
+        }
+      },
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 2,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "code_lru_cache",
+        "prompt_tokens": 47,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8919377839774825,
+            "final_token_id": 198,
+            "generated_token_ids_sha256": "44ec6209b3c7b44d7f9a30a76eb2085579652dda54216affe9c4b93fd1911a37",
+            "tok_s": 32.88850107701017
+          },
+          "strict": {
+            "elapsed_seconds": 4.230449620983563,
+            "final_token_id": 198,
+            "generated_token_ids_sha256": "44ec6209b3c7b44d7f9a30a76eb2085579652dda54216affe9c4b93fd1911a37",
+            "tok_s": 30.25683118056858
+          }
+        }
+      },
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 3,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "code_markdown_table",
+        "prompt_tokens": 52,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8893494810326956,
+            "final_token_id": 524,
+            "generated_token_ids_sha256": "77161f4830ca7be72b8d1ed4e633b3bea8b476b0afb7f69097c12dfbe4417c87",
+            "tok_s": 32.91038787443025
+          },
+          "strict": {
+            "elapsed_seconds": 4.225898376957048,
+            "final_token_id": 524,
+            "generated_token_ids_sha256": "77161f4830ca7be72b8d1ed4e633b3bea8b476b0afb7f69097c12dfbe4417c87",
+            "tok_s": 30.289417440314608
+          }
+        }
+      },
+      {
+        "category": "general_en",
+        "generated_ids_equal": true,
+        "index": 4,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "general_en_plan",
+        "prompt_tokens": 39,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8715295970323496,
+            "final_token_id": 12,
+            "generated_token_ids_sha256": "1938f45bfc4a6d6533e4c4627b66d1677a6b6808d090318a85a6fc64275310c8",
+            "tok_s": 33.061867872097906
+          },
+          "strict": {
+            "elapsed_seconds": 4.227073210000526,
+            "final_token_id": 12,
+            "generated_token_ids_sha256": "1938f45bfc4a6d6533e4c4627b66d1677a6b6808d090318a85a6fc64275310c8",
+            "tok_s": 30.280999083993642
+          }
+        }
+      },
+      {
+        "category": "general_en",
+        "generated_ids_equal": true,
+        "index": 5,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "general_en_explain",
+        "prompt_tokens": 40,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.906728963018395,
+            "final_token_id": 854,
+            "generated_token_ids_sha256": "070e065a18483be60521309e8a0e4c44e4b22d3cd6afc5dfbdae820f85fab199",
+            "tok_s": 32.763982659576506
+          },
+          "strict": {
+            "elapsed_seconds": 4.177550374995917,
+            "final_token_id": 854,
+            "generated_token_ids_sha256": "070e065a18483be60521309e8a0e4c44e4b22d3cd6afc5dfbdae820f85fab199",
+            "tok_s": 30.6399656521497
+          }
+        }
+      },
+      {
+        "category": "general_ja",
+        "generated_ids_equal": true,
+        "index": 6,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "general_ja_plan",
+        "prompt_tokens": 43,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.838870710984338,
+            "final_token_id": 163066,
+            "generated_token_ids_sha256": "e603bcb5d4ff6eeab2b410154269074a887ddf96c249e8976e9853df8f2d522d",
+            "tok_s": 33.34313907309972
+          },
+          "strict": {
+            "elapsed_seconds": 4.214993760979269,
+            "final_token_id": 163066,
+            "generated_token_ids_sha256": "e603bcb5d4ff6eeab2b410154269074a887ddf96c249e8976e9853df8f2d522d",
+            "tok_s": 30.36777923255141
+          }
+        }
+      },
+      {
+        "category": "general_ja",
+        "generated_ids_equal": true,
+        "index": 7,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "general_ja_explain",
+        "prompt_tokens": 43,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.9023829419747926,
+            "final_token_id": 9616,
+            "generated_token_ids_sha256": "a22721da1250a86061f5a4c2a11898a78c0f27e7e6745ab60a45f2ec242edc71",
+            "tok_s": 32.80047137947612
+          },
+          "strict": {
+            "elapsed_seconds": 4.205089004011825,
+            "final_token_id": 9616,
+            "generated_token_ids_sha256": "a22721da1250a86061f5a4c2a11898a78c0f27e7e6745ab60a45f2ec242edc71",
+            "tok_s": 30.4393081520707
+          }
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "generated_ids_equal": true,
+        "index": 8,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "mixed_ja_en_translate",
+        "prompt_tokens": 64,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8396762459888123,
+            "final_token_id": 846,
+            "generated_token_ids_sha256": "06b3db1679328fb130bd19cdf88f01215daffed9eeca60a4fd4c92b1a0a56139",
+            "tok_s": 33.33614393497825
+          },
+          "strict": {
+            "elapsed_seconds": 4.202574853028636,
+            "final_token_id": 846,
+            "generated_token_ids_sha256": "06b3db1679328fb130bd19cdf88f01215daffed9eeca60a4fd4c92b1a0a56139",
+            "tok_s": 30.457518182633976
+          }
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "generated_ids_equal": true,
+        "index": 9,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "mixed_ja_en_review",
+        "prompt_tokens": 71,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8478052249993198,
+            "final_token_id": 248045,
+            "generated_token_ids_sha256": "4c431f30110b525d6cf782b60cf3497ec0edd1e8a946cdc77c09e8d53fcf86fa",
+            "tok_s": 33.2657170816183
+          },
+          "strict": {
+            "elapsed_seconds": 4.216042265004944,
+            "final_token_id": 248045,
+            "generated_token_ids_sha256": "4c431f30110b525d6cf782b60cf3497ec0edd1e8a946cdc77c09e8d53fcf86fa",
+            "tok_s": 30.360226950867602
+          }
+        }
+      },
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 10,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "heldout_code_rate_limiter",
+        "prompt_tokens": 55,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8211856270208955,
+            "final_token_id": 1259,
+            "generated_token_ids_sha256": "d8a7a212f56dfdb15ae30c343f1ba7e3c3424d6341dc36c04ccbcd898286a6a1",
+            "tok_s": 33.497456678070996
+          },
+          "strict": {
+            "elapsed_seconds": 4.209138870006427,
+            "final_token_id": 1259,
+            "generated_token_ids_sha256": "d8a7a212f56dfdb15ae30c343f1ba7e3c3424d6341dc36c04ccbcd898286a6a1",
+            "tok_s": 30.41002066054536
+          }
+        }
+      },
+      {
+        "category": "code",
+        "generated_ids_equal": true,
+        "index": 11,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "heldout_code_interval_schedule",
+        "prompt_tokens": 52,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8390401729848236,
+            "final_token_id": 43716,
+            "generated_token_ids_sha256": "a597568ca25800226f6ce825410f35d2ebf765631ac0f13bd569f8b71a8a896f",
+            "tok_s": 33.34166724816558
+          },
+          "strict": {
+            "elapsed_seconds": 4.2226807329570875,
+            "final_token_id": 43716,
+            "generated_token_ids_sha256": "a597568ca25800226f6ce825410f35d2ebf765631ac0f13bd569f8b71a8a896f",
+            "tok_s": 30.31249769867477
+          }
+        }
+      },
+      {
+        "category": "general_en",
+        "generated_ids_equal": true,
+        "index": 12,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "heldout_general_en_incident",
+        "prompt_tokens": 45,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8516114039812237,
+            "final_token_id": 220,
+            "generated_token_ids_sha256": "e86922a2c771b2906721e3c13a4bb33f0eea4a08f74f5e73e36318e5db941de8",
+            "tok_s": 33.23284375669171
+          },
+          "strict": {
+            "elapsed_seconds": 4.211511567002162,
+            "final_token_id": 220,
+            "generated_token_ids_sha256": "e86922a2c771b2906721e3c13a4bb33f0eea4a08f74f5e73e36318e5db941de8",
+            "tok_s": 30.39288815039702
+          }
+        }
+      },
+      {
+        "category": "general_en",
+        "generated_ids_equal": true,
+        "index": 13,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "heldout_general_en_quant",
+        "prompt_tokens": 56,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.857174295990262,
+            "final_token_id": 48804,
+            "generated_token_ids_sha256": "d0edfdcf1923744e5cd9d1e89a1e7fa77291b03c247f67787849dbf2ef59aeb7",
+            "tok_s": 33.18491470117459
+          },
+          "strict": {
+            "elapsed_seconds": 4.164724931004457,
+            "final_token_id": 48804,
+            "generated_token_ids_sha256": "d0edfdcf1923744e5cd9d1e89a1e7fa77291b03c247f67787849dbf2ef59aeb7",
+            "tok_s": 30.73432270330725
+          }
+        }
+      },
+      {
+        "category": "general_ja",
+        "generated_ids_equal": true,
+        "index": 14,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "heldout_general_ja_migration",
+        "prompt_tokens": 53,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.8596458089887165,
+            "final_token_id": 15,
+            "generated_token_ids_sha256": "6d53adfb6dc7c6be1bbfe2138eddaf9ea44fc7aeb14d6fdb4c3ada3c58ae7c8f",
+            "tok_s": 33.16366483730223
+          },
+          "strict": {
+            "elapsed_seconds": 4.229405668971594,
+            "final_token_id": 15,
+            "generated_token_ids_sha256": "6d53adfb6dc7c6be1bbfe2138eddaf9ea44fc7aeb14d6fdb4c3ada3c58ae7c8f",
+            "tok_s": 30.264299530085978
+          }
+        }
+      },
+      {
+        "category": "general_ja",
+        "generated_ids_equal": true,
+        "index": 15,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "heldout_general_ja_speculative",
+        "prompt_tokens": 45,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.7734835449955426,
+            "final_token_id": 1710,
+            "generated_token_ids_sha256": "d1de8b12db14109312dfb9a76bb676bf73584ecfa6f78871719e3a6d9c02f085",
+            "tok_s": 33.920911135217686
+          },
+          "strict": {
+            "elapsed_seconds": 4.15221697097877,
+            "final_token_id": 1710,
+            "generated_token_ids_sha256": "d1de8b12db14109312dfb9a76bb676bf73584ecfa6f78871719e3a6d9c02f085",
+            "tok_s": 30.826905456683672
+          }
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "generated_ids_equal": true,
+        "index": 16,
+        "order": [
+          "strict",
+          "candidate"
+        ],
+        "prompt_id": "heldout_mixed_summary",
+        "prompt_tokens": 52,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.830297076026909,
+            "final_token_id": 13,
+            "generated_token_ids_sha256": "a4f76f84778c25afca36d850f42e5971e204c542195b6f4433c66126d5755d5f",
+            "tok_s": 33.41777346752745
+          },
+          "strict": {
+            "elapsed_seconds": 4.197368688008282,
+            "final_token_id": 13,
+            "generated_token_ids_sha256": "a4f76f84778c25afca36d850f42e5971e204c542195b6f4433c66126d5755d5f",
+            "tok_s": 30.495295866119882
+          }
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "generated_ids_equal": true,
+        "index": 17,
+        "order": [
+          "candidate",
+          "strict"
+        ],
+        "prompt_id": "heldout_mixed_review",
+        "prompt_tokens": 56,
+        "routes": {
+          "candidate": {
+            "elapsed_seconds": 3.80394408502616,
+            "final_token_id": 93280,
+            "generated_token_ids_sha256": "19c94f486ff1fde54e724da58a13027f4eebf604763edba92d95318533294d8e",
+            "tok_s": 33.64928535723199
+          },
+          "strict": {
+            "elapsed_seconds": 4.168396758963354,
+            "final_token_id": 93280,
+            "generated_token_ids_sha256": "19c94f486ff1fde54e724da58a13027f4eebf604763edba92d95318533294d8e",
+            "tok_s": 30.707249669734544
+          }
+        }
+      }
+    ],
+    "provenance": {
+      "build_profile": "execution_profile_gguf_c1_route_performance",
+      "collected_at": "2026-08-16T17:32:42.900583+00:00",
+      "command": [
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "scripts/execution_profile_gguf_c1_route_perf.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--candidate",
+        "router_f32w_coop_persistent",
+        "--quality-artifact",
+        "/tmp/zbook-router-coop-gate-full.json",
+        "--natural-suite",
+        "--decode-steps",
+        "128",
+        "--warmup-decode-steps",
+        "1",
+        "--compiler-version-file",
+        "/tmp/d08-c0/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/zbook-router-coop-natural-perf.json"
+      ],
+      "configured_backend": "hip_gfx1151",
+      "device_name": "AMD Radeon 8060S Graphics",
+      "dirty": false,
+      "environment": {
+        "HIPENGINE_GGUF_DECODE_REPACK": "1",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "HIP_VISIBLE_DEVICES": null,
+        "candidate_route_environment": "{'HIPENGINE_GGUF_ROUTER_F32W_COOP': '1', 'HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER': '1'}",
+        "strict_route_environment": "{'HIPENGINE_GGUF_ROUTER_F32W_COOP': '0', 'HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER': '0'}"
+      },
+      "git_branch": null,
+      "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "hipengine_commit": "7077dcf0e2dc0e069bafa511a394b7f0865037de",
+      "host_name": "zbook",
+      "kind": "hipengine_artifact_provenance",
+      "kv_dtype": "bf16",
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "exists": true,
+        "path_type": "file",
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "sampled_bytes": 3145728,
+        "size_bytes": 22663387424,
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+      },
+      "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "profiler": {
+        "command": null,
+        "enabled": false,
+        "kind": null
+      },
+      "quant": "gguf_q4_k_m",
+      "repetitions": 18,
+      "repo_root": "/tmp/hipengine-zbook-c1-707",
+      "resolved_backend": "hip_gfx1151",
+      "rocm_version": "HIP version: 7.15.0-0000000",
+      "schema_version": 2,
+      "staged_dirty": false,
+      "target_arch": "gfx1151",
+      "timing_protocol": "same_resident_alternating_route_wall_v1",
+      "unstaged_dirty": false,
+      "untracked_count": 0,
+      "untracked_dirty": false,
+      "warmups": 1
+    },
+    "source_artifact": "/tmp/zbook-router-coop-natural-perf.json",
+    "source_artifact_sha256": "cc35ff2063a08c65aa1b0dda79fb314ad4fe0eafe9ab3fdc69e049fdcae19a5a",
+    "source_commit": "7077dcf0e2dc0e069bafa511a394b7f0865037de",
+    "summary": {
+      "candidate": {
+        "aggregate_tok_s": 33.21920133845294,
+        "median_tok_s": 33.20887922893315,
+        "samples_tok_s": [
+          33.14006337490404,
+          33.07134875700664,
+          32.88850107701017,
+          32.91038787443025,
+          33.061867872097906,
+          32.763982659576506,
+          33.34313907309972,
+          32.80047137947612,
+          33.33614393497825,
+          33.2657170816183,
+          33.497456678070996,
+          33.34166724816558,
+          33.23284375669171,
+          33.18491470117459,
+          33.16366483730223,
+          33.920911135217686,
+          33.41777346752745,
+          33.64928535723199
+        ]
+      },
+      "candidate_faster": true,
+      "candidate_vs_strict_pct": 9.135739901557315,
+      "paired_wins": 18,
+      "prompt_count": 18,
+      "strict": {
+        "aggregate_tok_s": 30.43842591658548,
+        "median_tok_s": 30.380333691474213,
+        "samples_tok_s": [
+          30.305845338374496,
+          30.367210936228595,
+          30.25683118056858,
+          30.289417440314608,
+          30.280999083993642,
+          30.6399656521497,
+          30.36777923255141,
+          30.4393081520707,
+          30.457518182633976,
+          30.360226950867602,
+          30.41002066054536,
+          30.31249769867477,
+          30.39288815039702,
+          30.73432270330725,
+          30.264299530085978,
+          30.826905456683672,
+          30.495295866119882,
+          30.707249669734544
+        ]
+      },
+      "strict_candidate_generated_ids_equal_prompts": 18
+    },
+    "workload": {
+      "decode_steps": 128,
+      "graph_replay": false,
+      "mode": "natural_prompt_suite",
+      "prompt_count": 18,
+      "prompt_length": null,
+      "prompt_suites": [
+        "/tmp/hipengine-zbook-c1-707/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "/tmp/hipengine-zbook-c1-707/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      ],
+      "prompt_token_id": null,
+      "repetitions_per_prompt": 1,
+      "warmup_decode_steps": 1
+    }
+  },
+  "notes": [
+    "All absolute rates are local to physical host zbook and are not comparable with the other gfx1151 host.",
+    "The natural suite uses all code/general_en/general_ja/mixed_ja_en prompts plus category heldouts; no prompt conditions route selection.",
+    "Strict/candidate free-running IDs match on all 18 pN/d128 natural prompts; production policy records this diagnostically rather than requiring universal composition invariance.",
+    "The older commit-515 device-stage labels are superseded because missing c1 MoE boundaries charged MoE to the next norm; only the corrected commit-331 stage packet is used."
+  ],
+  "profile_attribution": {
+    "decode_tokens": 24,
+    "device_stage_ms_per_token": {
+      "decode_ffn_moe_combine": 2.5969149717797144,
+      "decode_ffn_moe_router": 1.7631562468690511,
+      "decode_ffn_moe_selected": 5.949459806966569,
+      "decode_ffn_moe_shared_down": 1.8310072471028291,
+      "decode_ffn_moe_shared_gate_up": 1.7010478241993117,
+      "decode_ffn_post_norm_residual": 0.888302775273019,
+      "decode_full_attn_core_gate": 2.7360497445145775,
+      "decode_full_attn_kv_write": 0.1524730320943125,
+      "decode_full_attn_norm": 0.0859257589419898,
+      "decode_full_attn_output": 0.6575760611829142,
+      "decode_full_attn_qkv_head_norm_rope": 2.311354907657883,
+      "decode_input_setup": 0.23847560364692919,
+      "decode_linear_attn_alpha_beta": 0.7483927796146012,
+      "decode_linear_attn_conv": 0.5088221788063987,
+      "decode_linear_attn_gdn": 1.2554140366696727,
+      "decode_linear_attn_norm": 0.2966473800220418,
+      "decode_linear_attn_qkv_gate": 6.022075276358415,
+      "decode_linear_attn_ssm_out": 2.0849038172527807,
+      "decode_lm_head_sample": 2.0141230838593325,
+      "decode_output_norm": 0.028647764085095017
+    },
+    "host_decode_tok_s_diagnostic": 28.945573471516095,
+    "measured_stage_sum_ms_per_token": 33.87077029689744,
+    "note": "Device events include instrumentation overhead and rank owners; they are not the request wall denominator.",
+    "source_artifact": "/tmp/zbook-production-numerics-c1-331-stages.json",
+    "source_artifact_sha256": "bbfa4b0b6476e0e000d49424e8e00253d63eadffeb8f70e7a460bbaab1e92831",
+    "source_commit": "331bf52a429e872d8e99657e3286fa7474154a97"
+  },
+  "quality": {
+    "artifact": "benchmarks/results/2026-08-16-zbook-qwen36-c1-router-quality.json",
+    "artifact_sha256": "7ba3d812b06f6229ea79cc0a41101bd589e0d69336217fe56a62889d114c0fe5",
+    "measurement_valid": true,
+    "prompt_count": 18,
+    "repeat_deterministic": true,
+    "repeat_runs": 3,
+    "source_commit": "7779a110d26823705d98e939af04e78f0b652c65",
+    "state_repeat_passed": true,
+    "strict_candidate_state_equal_prompts": 18,
+    "summary": {
+      "candidate_teacher_nll_mean": 0.141508255977587,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "kl_p50": 0.0,
+      "kl_p95": 0.0,
+      "kl_p99": 0.0,
+      "max_abs_logit_delta": 0.0,
+      "rows": 450,
+      "strict_margin_min": 0.01271820068359375,
+      "strict_teacher_nll_mean": 0.141508255977587,
+      "teacher_delta_p_mean": 0.0,
+      "teacher_nll_delta": 0.0,
+      "top1_agreement": 1.0,
+      "top1_matches": 450,
+      "topk_overlap_mean": 1.0
+    },
+    "teacher_forced_rows": 450
+  },
+  "schema_version": 1,
+  "scope": {
+    "backend": "hip_gfx1151",
+    "gpu": "Radeon 8060S",
+    "host": "zbook",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "route": "eager_c1",
+    "target_arch": "gfx1151"
+  },
+  "status": "retained_package_route_profile_binding_pending"
+}

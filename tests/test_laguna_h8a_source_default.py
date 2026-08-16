@@ -58,7 +58,7 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "68a6151cbd9f568f2e6610e86c389f4ee34fe44724df6d1a9646120a319b8213"
+    "573ea7f60427c65c06b634bed6ee8810cce6545750723c3b7ac49408cf821773"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
@@ -81,12 +81,12 @@ _SOURCE_SHA256 = {
     ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
-    # Qwen3.8 dense ownership additions do not alter Laguna's H8A owner.
+    # Later Qwen3.8 and execution-profile policies do not alter H8A's owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "c2829fb14c6bbd690d12cd8cd56b58d1ec1d064c5fa1bf992e676bc5eb2237d9"
+        "9f77b84cb9faa0ed37431f8edaf296db30676e5ce2fee2d2390ab779c1a7690d"
     ),
     "hipengine/runtime/gguf_linear.py": (
-        "d181366751c26d9f273dc368cf0a68fde17486b24f5526ad7aaf572cccd9b3bb"
+        "38f7f53c99297072e360f4f1fce6054aec120b3e9e8b14ff7b84248cc447833c"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"

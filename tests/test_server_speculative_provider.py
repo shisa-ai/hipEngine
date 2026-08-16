@@ -348,7 +348,9 @@ def test_lazy_server_forwards_speculative_owner_to_llm(monkeypatch) -> None:
         return fake
 
     monkeypatch.setattr("hipengine.server.api.LLM", build_llm)
-    client = TestClient(create_app(_config(), llm=None))
+    client = TestClient(
+        create_app(_config(execution_profile="strict"), llm=None)
+    )
 
     response = client.post(
         "/v1/completions",
@@ -356,6 +358,7 @@ def test_lazy_server_forwards_speculative_owner_to_llm(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
+    assert captured["execution_profile"] == "strict"
     assert captured["speculative_provider"] == "dflash"
     assert captured["draft_model"] == "/models/drafter"
     assert captured["speculative_candidate_budget"] == 4

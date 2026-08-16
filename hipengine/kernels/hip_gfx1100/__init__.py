@@ -198,6 +198,8 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = False
 # Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
 # independent native-AR width gate passes on W7900.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# Zero keeps the width-scoped all-projection policy disabled on gfx1100.
+GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # The exact 128-thread c8 pair schedule is admitted only on independently
 # measured backends. Zero disables automatic pair rowtiling on gfx1100.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 0
@@ -835,6 +837,7 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",

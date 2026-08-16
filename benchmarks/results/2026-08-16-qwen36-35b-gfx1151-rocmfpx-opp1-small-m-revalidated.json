@@ -1,0 +1,90 @@
+{
+  "baseline_artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-transfer-baseline.json",
+  "correctness": {
+    "complete_path": "all default and opt-out c4/c8 runs match independent c1 for 32 generated tokens/request",
+    "primitive_command": "LD_LIBRARY_PATH=<ROCm SDK libs> HSA_OVERRIDE_GFX_VERSION=11.5.1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt GPU_MAX_HW_QUEUES=2 uv run pytest -q tests/test_paro_awq_output_tiled_gemv.py --tb=short",
+    "primitive_result": "all collected BF16/FP16 single, dual, split-output, and combine-residual output-tiled nodes passed"
+  },
+  "date": "2026-08-16",
+  "decision": {
+    "claim_scope": "diagnostic revalidation because the default was already retained before this campaign; no new canonical topline row",
+    "promotion_change_required": false,
+    "reason": "exact complete-path c4/c8 wins are positive and meaningful; no duplicate kernel work is warranted",
+    "verdict": "keep_existing_default"
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "power_profile": "60W GPU / 60W CPU / 45W system"
+  },
+  "mechanism": {
+    "candidate": "existing default output-column-tiled pack8 kernels stream each output weight tile across all 2/4/8 activation rows",
+    "control": "HIPENGINE_DISABLE_PACK8_OUTPUT_TILED=1 restores row-parallel pack8 GEMV",
+    "kernel_trace_evidence": "baseline profile captured output_tiled single, dual, and combine-residual symbols at c8"
+  },
+  "model": {
+    "family": "Qwen3.6-35B-A3B",
+    "quality_classification": "quality-traded; implementation-correct",
+    "quant": "w4_paro",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "opportunity": 1,
+  "performance_claim": false,
+  "results": [
+    {
+      "concurrency": 4,
+      "default_weight_reuse": {
+        "decode_step_seconds_median": 0.057378001511096954,
+        "decode_tok_s_aggregate": 70.11064874509334,
+        "generated_token_equality_vs_c1": true,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c4-p512-d32.json"
+      },
+      "delta": {
+        "aggregate_tok_s_percent": 3.40765999574395,
+        "median_step_reduction_percent": 2.5020953084971542
+      },
+      "row_parallel_optout": {
+        "command": "env HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --batch-size 4 --decode-tokens 32 --prompt-length 512 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --json /tmp/hipengine-rocmfpx-transfer-campaign/opp1-rowparallel-paro-c4-p512-d32.json",
+        "decode_step_seconds_median": 0.058850497036473826,
+        "decode_tok_s_aggregate": 67.80024685596692,
+        "environment_override": "HIPENGINE_DISABLE_PACK8_OUTPUT_TILED=1",
+        "generated_token_equality_vs_c1": true,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp1-rowparallel-paro-c4-p512-d32.json"
+      }
+    },
+    {
+      "concurrency": 8,
+      "default_weight_reuse": {
+        "decode_step_seconds_median": 0.10799991298699751,
+        "decode_tok_s_aggregate": 73.2357226548397,
+        "generated_token_equality_vs_c1": true,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c8-p512-d32.json"
+      },
+      "delta": {
+        "aggregate_tok_s_percent": 3.9996824829051203,
+        "median_step_reduction_percent": 3.96337854446166
+      },
+      "row_parallel_optout": {
+        "command": "env HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --batch-size 8 --decode-tokens 32 --prompt-length 512 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --json /tmp/hipengine-rocmfpx-transfer-campaign/opp1-rowparallel-paro-c8-p512-d32.json",
+        "decode_step_seconds_median": 0.11245700999279507,
+        "decode_tok_s_aggregate": 70.41917908439555,
+        "environment_override": "HIPENGINE_DISABLE_PACK8_OUTPUT_TILED=1",
+        "generated_token_equality_vs_c1": true,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp1-rowparallel-paro-c8-p512-d32.json"
+      }
+    }
+  ],
+  "schema": 1,
+  "status": "diagnostic_revalidation",
+  "title": "True small-M pack8 weight reuse at c4/c8",
+  "workload": {
+    "concurrency": [
+      4,
+      8
+    ],
+    "decode_tokens_per_request": 32,
+    "kv_dtype": "bf16",
+    "max_layers": 40,
+    "prompt_tokens_per_request": 512
+  }
+}
