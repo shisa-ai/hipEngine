@@ -191,24 +191,28 @@ dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12
 [`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
-For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
-plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
-`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
-absent. The rows1 H=5,120/N=17,408 gate/up pair uses a model/quant/shape-
-qualified primary-plus-residual Q8_1 producer and same-resident dual-Q4T16
-dp4a+SiLU consumer. Serial true AR defaults to the exact four-wave split-weight
-sibling: independent two-wave gate/up owners preserve the prior K/FMA/reduction
-order while lowering traced resources from 224 to 120 VGPR and 1,024 to 512 B
-LDS. It reuses the same 11,520-byte rows1 workspace and adds no resident bytes.
-`native_batch_decode_session` retains the prior Q8_1x2 consumer after the
-split-weight B1 diagnostic regressed; the exact two-local32-plus-primitive-SiLU
-chain remains the policy-miss rollback. Exact rows-2-4 rowtile, same-T16
-residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
-attention-pair owners cover the remaining operation set. The raw token
-embedding remains raw GGUF, peer geometries retain prior policy, and no
-`KVLiveSpans` ABI changes are involved. Evidence:
-[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json) and
-[`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+For dense Qwen3.8-27B Q4_K_M on gfx1151, the capability-driven H=5,120
+plan is qualified as sole Q4 ownership without sidecars. The 128
+H=5,120/N=17,408 gate/up weights use only
+`gguf_q4_k_qmicro_t16_v1/tiles`; the other 160 rank-2 Q4 weights keep only
+`gguf_q4_k_t16_v1/tiles`. Pack8, decode-tile, raw, and alternate-Q4 shadows are
+absent. Each qmicro K256/N16 tile is 2,304 rather than 2,368 bytes, so replacing
+the gate/up pool removes 170 MiB.
+
+Rows1 retain the primary-plus-residual Q8_1x2 producer and exact four-wave
+split-weight dp4a+SiLU arithmetic, but the consumer now reads compact qmicro
+metadata directly. Rows2-4 use direct-metadata singleton and dual-rowtile
+owners. Bulk 512/1K uses direct-metadata singleton/dual WMMA; from 4K, one
+bounded expansion writes only the compact coefficients into the already-dead
+FFN gate/up scratch plane before the same exact dual WMMA. This adds no
+workspace allocation or persistent bytes. Rows5-4095 and fused-policy misses
+use the qmicro singleton WMMA plus primitive SiLU. Registry, role, model,
+geometry, and backend misses retain independently qualified layouts and
+primitive chains. The raw token embedding remains raw GGUF, peer geometries
+retain prior policy, and no `KVLiveSpans` ABI changes are involved. Evidence:
+[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
+[`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json), and
+[`Qwen3.8 sole qmicro gate/up`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
 The serial-c1 K=5,120/N=1,024 full-attention K/V subset independently selects
 the exact four-column Q4T16 owner; native sessions, peers, and all shape misses
 retain local32 direct. Evidence:

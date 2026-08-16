@@ -19,6 +19,7 @@ from hipengine.loading.qwen35_gguf import (
 )
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
@@ -508,6 +509,41 @@ def test_qwen38_dense_q4_plan_uses_one_t16_payload_for_every_rank2_owner() -> No
     assert token_embedding.allocation_names == ("raw",)
 
 
+def test_qwen38_dense_gate_up_plan_uses_sole_qmicro_payload() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q4_qmicro_t16_gate_up=True,
+    )
+    qmicro_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16
+    )
+    assert len(qmicro_specs) == 128
+    assert all(
+        spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
+        for spec in qmicro_specs
+    )
+    assert all(
+        spec.quant_key == "gguf_q4_k_qmicro_t16_v1"
+        and spec.allocation_names == ("tiles",)
+        for spec in qmicro_specs
+    )
+    assert all(
+        spec.layout == LAYOUT_GGUF_Q4_K_T16
+        for spec in plan.specs
+        if spec.slot_path.startswith("layers.")
+        and spec.source.ggml_type_name == "Q4_K"
+        and len(spec.source.shape) == 2
+        and not spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
+    )
+
+
 def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
     if not QWEN38_DENSE_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
@@ -518,7 +554,7 @@ def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
     runtime = get_hip_runtime()
     resident = materialize_qwen35_gguf_weights(
         QWEN38_DENSE_MODEL,
-        selected_slots=("layers.0.attn_gate",),
+        selected_slots=("layers.0.attn_gate", "layers.0.ffn_gate"),
         decode_repack=True,
         backend="hip_gfx1151",
         runtime=runtime,
@@ -530,6 +566,13 @@ def test_qwen38_dense_q4_materializes_sole_t16_owner_on_gfx1151() -> None:
         assert tuple(weight.allocations) == ("tiles",)
         assert weight.allocation("tiles").tensor.dtype == DType.INT8
         assert weight.allocation("tiles").buffer.nbytes == 18_186_240
+
+        gate = resident.layer(0).weight("ffn_gate")
+        assert gate.spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16
+        assert gate.spec.quant_key == "gguf_q4_k_qmicro_t16_v1"
+        assert tuple(gate.allocations) == ("tiles",)
+        assert gate.allocation("tiles").tensor.dtype == DType.INT8
+        assert gate.allocation("tiles").buffer.nbytes == 50_135_040
     finally:
         resident.free(runtime=runtime)
 

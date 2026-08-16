@@ -21,6 +21,9 @@ from hipengine.kernels.cpu_reference.ops import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as t16_prefill
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     build_gguf_k_t16_selected_prefill,
+    gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
@@ -29,12 +32,17 @@ from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.materialize import DeviceTensorAllocation
 from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
     LAYOUT_GGUF_Q4_K_T16,
     Qwen35GGUFDeviceWeight,
     Qwen35GGUFWeightSpec,
+    plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_q4_k import (
+    repack_gguf_q4_k_tile16,
+    repack_gguf_q4_k_tile16_qmicro,
+)
 from hipengine.runtime.gguf_linear import (
     clear_gguf_linear_dispatch_cache,
     launch_gguf_linear,
@@ -63,7 +71,14 @@ def _bf16_bits_to_f32(value: np.ndarray) -> np.ndarray:
     return (np.asarray(value, dtype=np.uint16).astype(np.uint32) << np.uint32(16)).view(np.float32)
 
 
-def _weight(ptr: int, *, in_features: int = 256, out_features: int = 16) -> Qwen35GGUFDeviceWeight:
+def _weight(
+    ptr: int,
+    *,
+    in_features: int = 256,
+    out_features: int = 16,
+    qmicro: bool = False,
+    backend: str = "hip_gfx1100",
+) -> Qwen35GGUFDeviceWeight:
     source = GGUFTensorInfo(
         name=f"weight.{ptr:x}",
         shape=(out_features, in_features),
@@ -76,14 +91,21 @@ def _weight(ptr: int, *, in_features: int = 256, out_features: int = 16) -> Qwen
         data_offset=0,
         byte_shape=(out_features, (in_features // 256) * 144),
     )
+    quant_key = (
+        "gguf_q4_k_qmicro_t16_v1" if qmicro else "gguf_q4_k_t16_v1"
+    )
+    layout = (
+        LAYOUT_GGUF_Q4_K_QMICRO_T16 if qmicro else LAYOUT_GGUF_Q4_K_T16
+    )
     spec = Qwen35GGUFWeightSpec(
         slot_path=f"layers.0.weight_{ptr:x}",
         source=source,
-        quant_key="gguf_q4_k_t16_v1",
-        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key=quant_key,
+        layout=layout,
         allocation_names=("tiles",),
     )
-    nbytes = out_features // 16 * (in_features // 256) * 2368
+    tile_bytes = 2304 if qmicro else 2368
+    nbytes = out_features // 16 * (in_features // 256) * tile_bytes
     buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes)
     allocation = DeviceTensorAllocation(
         name=f"{source.name}.t16.tiles",
@@ -94,7 +116,7 @@ def _weight(ptr: int, *, in_features: int = 256, out_features: int = 16) -> Qwen
     return Qwen35GGUFDeviceWeight(
         spec=spec,
         allocations=MappingProxyType({"tiles": allocation}),
-        backend="hip_gfx1100",
+        backend=backend,
     )
 
 
@@ -129,6 +151,53 @@ def test_q4_t16_unequal_dual_prefill_leaf_contract() -> None:
         wrapper(1, 2, 3, 4, 5, 512, 5_120, 10_240, 6_160)
 
 
+def test_q4_qmicro_dense_gate_up_planning_is_role_and_shape_bounded() -> None:
+    def source(out_features: int, in_features: int) -> GGUFTensorInfo:
+        return GGUFTensorInfo(
+            name=f"weight.{out_features}.{in_features}",
+            shape=(out_features, in_features),
+            ggml_shape=(in_features, out_features),
+            ggml_type=int(GGMLQuantizationType.Q4_K),
+            ggml_type_name="Q4_K",
+            n_elements=out_features * in_features,
+            nbytes=out_features * (in_features // 256) * 144,
+            offset=0,
+            data_offset=0,
+            byte_shape=(out_features, (in_features // 256) * 144),
+        )
+
+    for role in ("ffn_gate", "ffn_up"):
+        spec = plan_qwen35_gguf_weight_spec(
+            f"layers.0.{role}",
+            source(17_408, 5_120),
+            decode_repack=True,
+            dense_q4_t16=True,
+            dense_q4_qmicro_t16_gate_up=True,
+        )
+        assert spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16
+        assert spec.quant_key == "gguf_q4_k_qmicro_t16_v1"
+        assert spec.allocation_names == ("tiles",)
+
+    for slot_path, shape, expected_layout in (
+        ("layers.0.ffn_down", (5_120, 17_408), LAYOUT_GGUF_Q4_K_T16),
+        ("layers.0.attn_q", (12_288, 5_120), LAYOUT_GGUF_Q4_K_T16),
+        ("layers.0.ffn_gate", (3_584, 1_024), "q4_k_pack8"),
+    ):
+        spec = plan_qwen35_gguf_weight_spec(
+            slot_path,
+            source(*shape),
+            decode_repack=True,
+            dense_q4_t16=True,
+            dense_q4_qmicro_t16_gate_up=True,
+        )
+        assert spec.layout == expected_layout
+        assert spec.quant_key == (
+            "gguf_q4_k_t16_v1"
+            if expected_layout == LAYOUT_GGUF_Q4_K_T16
+            else "gguf_q4_k"
+        )
+
+
 def test_q4_t16_dense_dispatch_uses_one_tiles_abi_for_decode_and_prefill() -> None:
     weight = _weight(0x1000)
 
@@ -150,25 +219,35 @@ def test_q4_t16_dense_dispatch_uses_one_tiles_abi_for_decode_and_prefill() -> No
     assert decode.abi == prefill.abi == "t16"
 
 
-def test_q4_t16_dense_launch_routes_c1_small_rows_and_bulk_without_shadow_allocations() -> None:
-    weight = _weight(0x1000)
+@pytest.mark.parametrize(
+    "qmicro,quant",
+    [
+        (False, "gguf_q4_k_t16_v1"),
+        (True, "gguf_q4_k_qmicro_t16_v1"),
+    ],
+)
+def test_q4_dense_launch_routes_c1_small_rows_and_bulk_without_shadow_allocations(
+    qmicro: bool,
+    quant: str,
+) -> None:
+    weight = _weight(0x1000, qmicro=qmicro)
     keys = (
         KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q4_k_t16_v1",
+            quant,
             "dense_single_local32_bf16_bf16_out",
         ),
         KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q4_k_t16_v1",
+            quant,
             "dense_rowtile_bf16_bf16_out",
         ),
         KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q4_k_t16_v1",
+            quant,
             "t16_wmma_prefill_bf16_bf16_out",
         ),
     )
@@ -198,6 +277,145 @@ def test_q4_t16_dense_launch_routes_c1_small_rows_and_bulk_without_shadow_alloca
         "t16_wmma_prefill_bf16_bf16_out",
     ]
     assert all(args[:3] == (0x2000, 0x1000, 0x3000) for _variant, args in calls)
+
+
+def test_q4_qmicro_dense_pair_silu_routes_c1_native_rows_and_prefill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    register_gfx1151_kernels(replace=True)
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1x2",
+        lambda *args, **kwargs: None,
+    )
+    weight_a = _weight(
+        0x1000,
+        in_features=5_120,
+        out_features=17_408,
+        qmicro=True,
+        backend="hip_gfx1151",
+    )
+    weight_b = _weight(
+        0x2000,
+        in_features=5_120,
+        out_features=17_408,
+        qmicro=True,
+        backend="hip_gfx1151",
+    )
+    quant = "gguf_q4_k_qmicro_t16_v1"
+    keys = {
+        "c1": KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            quant,
+            "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+        ),
+        "native": KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            quant,
+            "dense_dual_rowtile_bf16_bf16_out",
+        ),
+        "direct": KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            quant,
+            "dense_dual_wmma_prefill_bf16_bf16_out",
+        ),
+        "expanded": KernelKey(
+            "hip_gfx1151",
+            "linear_pair_silu",
+            quant,
+            "dense_dual_wmma_prefill_expanded_meta_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in keys.values()
+    }
+    calls: list[tuple[str, tuple]] = []
+    try:
+        for label, key in keys.items():
+            register(
+                key,
+                lambda *args, _label=label, **kwargs: calls.append(
+                    (_label, args)
+                ),
+                replace=True,
+            )
+        assert launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            0x3000,
+            0x4000,
+            1,
+            5_120,
+            17_408,
+            use_gemv_decode=True,
+            registered_decode_variant=keys["c1"].variant,
+            q8_1_workspace_ptr=0x5000,
+        )
+        with native_batch_decode_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                3,
+                5_120,
+                17_408,
+            )
+        assert launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            0x3000,
+            0x4000,
+            512,
+            5_120,
+            17_408,
+        )
+        metadata_nbytes = (17_408 // 16) * (5_120 // 256) * 256
+        assert launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            0x3000,
+            0x4000,
+            4_096,
+            5_120,
+            17_408,
+            pair_workspace_ptr=0x6000,
+            pair_workspace_nbytes=2 * metadata_nbytes,
+        )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+        clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _args in calls] == [
+        "c1",
+        "native",
+        "direct",
+        "expanded",
+    ]
+    assert calls[0][1][:4] == (0x5000, 0x1000, 0x2000, 0x4000)
+    assert calls[1][1][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
+    assert calls[2][1][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
+    assert calls[3][1][:6] == (
+        0x3000,
+        0x1000,
+        0x2000,
+        0x6000,
+        0x6000 + metadata_nbytes,
+        0x4000,
+    )
 
 
 def test_q4_t16_dense_c1_pair_silu_uses_canonical_tiles() -> None:
@@ -595,3 +813,156 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
             free(buffer, runtime=runtime)
 
     np.testing.assert_array_equal(actual_bits, expected_bits)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [16, 33, 512, 513])
+@pytest.mark.parametrize("expanded_metadata", [False, True])
+def test_q4_qmicro_dense_dual_wmma_silu_matches_t16_bits(
+    rows: int,
+    expanded_metadata: bool,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+        build_paro_silu,
+        silu_mul_separate_out_bf16,
+    )
+
+    runtime = get_hip_runtime()
+    in_features = 256
+    out_features = 32
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=3, axis=0).copy()
+    control_tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    control_tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    candidate_tiles_a = repack_gguf_q4_k_tile16_qmicro(raw_a[None, ...]).tiles
+    candidate_tiles_b = repack_gguf_q4_k_tile16_qmicro(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(3800 + rows)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    control_bits = np.zeros((rows, out_features), dtype=np.uint16)
+    candidate_bits = np.zeros_like(control_bits)
+    fallback_bits = np.zeros_like(control_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        control_a_dev = malloc(control_tiles_a.nbytes, runtime=runtime)
+        control_b_dev = malloc(control_tiles_b.nbytes, runtime=runtime)
+        candidate_a_dev = malloc(candidate_tiles_a.nbytes, runtime=runtime)
+        candidate_b_dev = malloc(candidate_tiles_b.nbytes, runtime=runtime)
+        control_dev = malloc(control_bits.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate_bits.nbytes, runtime=runtime)
+        fallback_gate_dev = malloc(fallback_bits.nbytes, runtime=runtime)
+        fallback_up_dev = malloc(fallback_bits.nbytes, runtime=runtime)
+        fallback_dev = malloc(fallback_bits.nbytes, runtime=runtime)
+        metadata_nbytes = (out_features // 16) * (in_features // 256) * 256
+        metadata_a_dev = malloc(metadata_nbytes, runtime=runtime)
+        metadata_b_dev = malloc(metadata_nbytes, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                control_a_dev,
+                control_b_dev,
+                candidate_a_dev,
+                candidate_b_dev,
+                control_dev,
+                candidate_dev,
+                fallback_gate_dev,
+                fallback_up_dev,
+                fallback_dev,
+                metadata_a_dev,
+                metadata_b_dev,
+            )
+        )
+        for device, host in (
+            (x_dev, x_bits),
+            (control_a_dev, control_tiles_a),
+            (control_b_dev, control_tiles_b),
+            (candidate_a_dev, candidate_tiles_a),
+            (candidate_b_dev, candidate_tiles_b),
+        ):
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+            x_dev.ptr,
+            control_a_dev.ptr,
+            control_b_dev.ptr,
+            control_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            candidate_a_dev.ptr,
+            fallback_gate_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            candidate_b_dev.ptr,
+            fallback_up_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            fallback_gate_dev.ptr,
+            fallback_up_dev.ptr,
+            fallback_dev.ptr,
+            rows,
+            out_features,
+            library=build_paro_silu(load=True),
+            runtime=runtime,
+        )
+        if expanded_metadata:
+            gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out(
+                x_dev.ptr,
+                candidate_a_dev.ptr,
+                candidate_b_dev.ptr,
+                metadata_a_dev.ptr,
+                metadata_b_dev.ptr,
+                candidate_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        else:
+            gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+                x_dev.ptr,
+                candidate_a_dev.ptr,
+                candidate_b_dev.ptr,
+                candidate_dev.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(control_bits), control_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(candidate_bits), candidate_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(fallback_bits), fallback_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate_bits, control_bits)
+    np.testing.assert_array_equal(candidate_bits, fallback_bits)

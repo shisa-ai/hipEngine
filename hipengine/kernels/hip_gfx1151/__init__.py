@@ -826,6 +826,11 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # operation-complete T16 family. Architecture-local primitive, actual-weight,
 # full-state, natural-suite, memory, and performance gates decide retention.
 GGUF_DENSE_Q4_T16 = True
+# Qwen3.8 P5 replaces only the H5120/N17408 gate/up pair with the byte-neutral
+# qmicro payload. Direct-metadata c1/native leaves and the bounded 4K metadata
+# expansion route are exact and operation-complete; every other Q4 role keeps
+# its independently qualified T16 owner.
+GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = True
 # Qwen3.8-27B P2 retains the 48 K6144/N5120 recurrent outputs as sole
 # Q5T16 after architecture-local actual-weight, GDN-handoff, full-state,
 # natural-suite, memory, and performance gates.
@@ -2076,6 +2081,7 @@ __all__ = [
     "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",

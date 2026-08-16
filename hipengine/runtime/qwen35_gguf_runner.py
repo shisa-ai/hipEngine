@@ -8073,6 +8073,10 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
             registered_decode_variant=dense_decode_variant,
             q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
+            pair_workspace_ptr=scratch.ffn_gate_up.ptr,
+            pair_workspace_nbytes=int(
+                getattr(scratch.ffn_gate_up, "nbytes", 0)
+            ),
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
