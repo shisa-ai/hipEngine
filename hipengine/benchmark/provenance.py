@@ -13,6 +13,7 @@ import ctypes
 import hashlib
 import json
 import os
+import socket
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -28,7 +29,7 @@ from hipengine.kernels.backends import (
 
 
 ARTIFACT_PROVENANCE_KIND = "hipengine_artifact_provenance"
-ARTIFACT_PROVENANCE_SCHEMA_VERSION = 1
+ARTIFACT_PROVENANCE_SCHEMA_VERSION = 2
 _FULL_HASH_MAX_BYTES = 8 * 1024 * 1024
 _SAMPLE_BYTES = 1024 * 1024
 _UNSET = object()
@@ -318,6 +319,7 @@ def collect_artifact_provenance(
     warmups: int | None = None,
     repetitions: int | None = None,
     profiler: Mapping[str, Any] | None = None,
+    host_name: str | None = None,
     rocm_version: str | None | object = _UNSET,
     hipcc_version: str | None | object = _UNSET,
 ) -> dict[str, Any]:
@@ -358,6 +360,7 @@ def collect_artifact_provenance(
         "kind": ARTIFACT_PROVENANCE_KIND,
         "schema_version": ARTIFACT_PROVENANCE_SCHEMA_VERSION,
         "collected_at": datetime.now(timezone.utc).isoformat(),
+        "host_name": str(host_name or socket.gethostname()).strip(),
         **repo,
         "configured_backend": requested,
         "resolved_backend": resolved,
@@ -389,18 +392,24 @@ def validate_artifact_provenance(
 ) -> dict[str, Any]:
     """Validate and return a plain dict for the canonical provenance schema."""
 
-    missing = [field for field in _REQUIRED_FIELDS if field not in payload]
+    schema_version = payload.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {1, 2}:
+        raise ValueError("artifact provenance schema_version must be 1 or 2")
+    required_fields = _REQUIRED_FIELDS + (("host_name",) if schema_version >= 2 else ())
+    missing = [field for field in required_fields if field not in payload]
     if missing:
         raise ValueError(f"artifact provenance missing fields: {missing}")
     if payload.get("kind") != ARTIFACT_PROVENANCE_KIND:
         raise ValueError(f"artifact provenance kind must be {ARTIFACT_PROVENANCE_KIND!r}")
-    if type(payload.get("schema_version")) is not int or payload["schema_version"] != ARTIFACT_PROVENANCE_SCHEMA_VERSION:
-        raise ValueError(
-            f"artifact provenance schema_version must be {ARTIFACT_PROVENANCE_SCHEMA_VERSION}"
-        )
     if not isinstance(payload.get("collected_at"), str) or not str(payload["collected_at"]).strip():
         raise ValueError("artifact provenance collected_at must be a non-empty string")
-    for field in ("repo_root", "hipengine_commit", "configured_backend", "resolved_backend"):
+    for field in (
+        "repo_root",
+        "hipengine_commit",
+        "configured_backend",
+        "resolved_backend",
+        *(("host_name",) if schema_version >= 2 else ()),
+    ):
         if not isinstance(payload.get(field), str) or not str(payload[field]).strip():
             raise ValueError(f"artifact provenance {field} must be a non-empty string")
     if payload["resolved_backend"] == "auto":
