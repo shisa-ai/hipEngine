@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_qmicro_split_weight_decode",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "eb30b87a2617fc2494fe0c8f035a377536e5a254",
+    "development_tree_dirty": true,
+    "runtime_change_retained": false,
+    "transient_source_restored": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "candidate": {
+    "scope": "rows1 H5120/N17408 dense gate/up+SiLU",
+    "control": "retained standard-Q4T16 residual-Q8_1x2 split-weight dp4a owner",
+    "dataflow": "same 128-thread split-weight K/FMA/reduction order with cooperative per-K256 expansion of compressed six-bit scale/min metadata",
+    "control_resident_layout": "gguf_q4_k_t16_v1",
+    "candidate_resident_layout": "gguf_q4_k_qmicro_t16_v1",
+    "control_tile_bytes_per_k256_n16": 2368,
+    "candidate_tile_bytes_per_k256_n16": 2304,
+    "resident_bytes_ratio": 0.972972972972973,
+    "resident_bytes_delta_percent": -2.7027027027026984,
+    "new_workspace_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "layers": [
+      0,
+      8,
+      63
+    ],
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "cache_contract": "each actual gate/up source pair is 95.625 MiB and each resident layout exceeds 64 MiB and 2x the 32-MiB MALL",
+    "advance_gate": "BF16 exact, >=36/45 wins, and >=1% projected selected 4K kernel wall"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "control_resident_bytes": 103055360,
+      "candidate_resident_bytes": 100270080,
+      "control_median_ms": 0.4745264947414398,
+      "candidate_median_ms": 0.4964669942855835,
+      "speedup": 0.9558067307662294,
+      "candidate_wins": 0,
+      "pair_count": 15,
+      "bf16_mismatches": 0,
+      "bf16_max_ulp": 0,
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "e2aeb62c85e08e53580b30678e3415dbc06f1ebfbbffa4e62bf785ceeb873273",
+      "candidate_sha256": "e2aeb62c85e08e53580b30678e3415dbc06f1ebfbbffa4e62bf785ceeb873273"
+    },
+    {
+      "layer": 8,
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "control_resident_bytes": 103055360,
+      "candidate_resident_bytes": 100270080,
+      "control_median_ms": 0.47374874353408813,
+      "candidate_median_ms": 0.4947179853916168,
+      "speedup": 0.9576137466663366,
+      "candidate_wins": 0,
+      "pair_count": 15,
+      "bf16_mismatches": 0,
+      "bf16_max_ulp": 0,
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "5fe0c86fe2e370aec729c5e98a770e2cfa0940071f7fd99ba6b65d30e2bd38b2",
+      "candidate_sha256": "5fe0c86fe2e370aec729c5e98a770e2cfa0940071f7fd99ba6b65d30e2bd38b2"
+    },
+    {
+      "layer": 63,
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "control_resident_bytes": 103055360,
+      "candidate_resident_bytes": 100270080,
+      "control_median_ms": 0.4750714898109436,
+      "candidate_median_ms": 0.49560976028442383,
+      "speedup": 0.9585595924065465,
+      "candidate_wins": 0,
+      "pair_count": 15,
+      "bf16_mismatches": 0,
+      "bf16_max_ulp": 0,
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "d876e61f3300586e680ea4a9c2d99b5cd69502901c5ae652564fd2a77d8f964a",
+      "candidate_sha256": "d876e61f3300586e680ea4a9c2d99b5cd69502901c5ae652564fd2a77d8f964a"
+    }
+  ],
+  "family": {
+    "control_ms": 1.4233467280864716,
+    "candidate_ms": 1.4867947399616241,
+    "candidate_over_control": 1.0445766380202042,
+    "speedup": 0.957325641415176,
+    "candidate_delta_percent": 4.457663802020417,
+    "candidate_wins": 0,
+    "pair_count": 45,
+    "all_layers_positive": false
+  },
+  "projection": {
+    "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json",
+    "trace_family_ms": 493.324681,
+    "selected_kernel_ms": 1292.498954,
+    "projected_saved_ms": -21.990755731369696,
+    "projected_complete_wall_percent": -1.7014138126234566,
+    "advance_threshold_ms": 12.924989539999999,
+    "required_family_speedup": 1.0269046582871841
+  },
+  "correctness": {
+    "all_bf16_exact": true,
+    "all_finite": true,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "teardown_exact": true
+  },
+  "validation": {
+    "red": "Focused test collection failed because the qmicro split-weight producer wrapper did not exist.",
+    "green": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_qmicro_q4_dense_dual_q8_1x2_split_weight_is_bit_exact => 1 passed",
+    "actual_weight_result": "0/45 candidate wins; all three layers regress",
+    "source_restored_after_rejection": true,
+    "full_model_gate_run": false
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q4-qmicro-split-weight-leaf/hipcc-version.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-split-weight-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-q4-qmicro-split-weight-leaf/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-qmicro-split-weight-leaf/leaf.json",
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q4-qmicro-split-weight-leaf/leaf.json",
+      "bytes": 8383,
+      "sha256": "c364cbd81864c301ba01d9c6944c012ebd3ee86d9f30cd3d09b5a8b5317f24e5"
+    }
+  },
+  "decision": "Reject and remove the qmicro split-weight candidate. Its 2.70% resident-byte reduction is outweighed by per-K256 metadata expansion, regressing every actual-weight pair and projecting a 1.70% selected 4K kernel-wall regression. Retain the standard-Q4T16 split-weight owner."
+}
