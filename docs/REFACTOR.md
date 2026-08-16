@@ -8,11 +8,28 @@ should be removed or collapsed.
 ## Policy
 
 - Exact, same-suite non-regressive performance wins should become defaults.
+- Production-profile T1/T2 wins may become profile defaults only after exact
+  control/ownership plus the complete strict-teacher tail-KL/top-1,
+  determinism/isolation, BF16-relative, and task gates pass.
 - Keep opt-out flags only while they are useful for rollback, bisection, or a
   named validation gap.
 - When a flag is left in place, record the removal trigger here.
-- Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
-  runtime dispatch branches and stale experiment toggles first.
+- Do not remove registered strict unfused fallbacks required by `AGENTS.md` and
+  `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
+  experiment toggles first.
+
+## Execution-profile migration seam
+
+- Planned for campaign P3: public `strict|production|batch_invariant` selection
+  resolves to an immutable variant manifest. To avoid an unannounced behavior
+  change during calibration, an omitted profile may temporarily preserve the
+  pre-profile package selection internally. That compatibility behavior is not
+  a fourth named profile and must be visibly logged as migration behavior.
+- Removal trigger: after P4 re-certifies or replaces every current non-exact
+  default, P7 passes the public-default SLO/c1 guard, API/server docs name the
+  default, and one release window confirms strict fallback and
+  batch-invariant behavior. Then remove omitted-profile legacy selection and
+  any duplicate env-to-profile adapter. Keep registered strict fallbacks.
 
 ## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
 

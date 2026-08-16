@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0 policy complete, P1 procedure alignment next**
+Status: **approved; P0-P1 complete, P2 evaluator next**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control

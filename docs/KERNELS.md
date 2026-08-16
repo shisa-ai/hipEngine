@@ -22,6 +22,8 @@ Related documents:
 
 - [`PLAN.md`](PLAN.md) — architecture and roadmap.
 - [`TESTING.md`](TESTING.md) — RED/GREEN workflow, fixtures, and correctness gates.
+- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) — strict/production/
+  batch-invariant arithmetic, ownership, fallback, and manifest contracts.
 - [`BENCHMARK.md`](BENCHMARK.md) — benchmark protocols and evidence policy.
 - [`REFACTOR.md`](REFACTOR.md) — temporary flags and fallback-removal ledger.
 - [`source_lineage.json`](source_lineage.json) — external source baselines.
@@ -536,7 +538,12 @@ hipengine/kernels/cuda_sm120a/
 
 ## Fused and composite fallback map
 
-A `+` in a registry layer name denotes a composite boundary. Every fused composite must have a numerically equivalent unfused route. The table groups registered composites by semantic family; exact variants/dtypes remain in source.
+A `+` in a registry layer name denotes a composite boundary. Every fused
+composite must have a registered strict unfused route. Strict composites satisfy
+their declared exact/parent-parity boundary; production composites may
+reassociate only under a certified profile manifest and still fall back to the
+strict chain. The table groups registered composites by semantic family; exact
+variants/dtypes remain in source.
 
 | Composite family | Backends / paths | Required unfused chain |
 | --- | --- | --- |
@@ -565,8 +572,11 @@ A `+` in a registry layer name denotes a composite boundary. Every fused composi
 
 Fallback requirements:
 
-- Fused and unfused paths must share fixtures or direct equality tests at every published low-precision boundary.
-- Removing a fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
+- Strict fused and unfused paths share exact/parent-parity fixtures at every
+  published low-precision boundary. Production fused paths share the strict
+  fixture plus the full strict-teacher profile gate; free-running ID equality is
+  diagnostic unless strict/batch-invariant says otherwise.
+- Removing a strict fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
 - A library call can be one stage of an unfused chain, but it does not waive the independent primitive/oracle route.
 
 ## Source-lineage audit
@@ -661,29 +671,45 @@ register(
 
 The resolver tries exact variant, no variant, same-backend FP16 fallback, then CPU-reference candidates. Code that needs to know whether a *specific* optimized key exists must use `is_registered()`, not broad fallback resolution.
 
+Execution profile does not change `KernelKey`. Model/session construction
+resolves `strict`, `production`, or `batch_invariant` to an immutable selection
+of existing variant keys plus a strict fallback for each production selection.
+Dispatch consumes that plan; do not add profile branches or a fifth registry
+axis. Artifacts record the selected and strict manifest hashes.
+
 Backend packages may refresh missing keys after test isolation. `hip_gfx1151` aliases only allowed gfx11 registrations; `cuda_sm120a` registers only independent CUDA implementations.
 
 ## Correctness and profiler gate
 
 A new or ported kernel lands only when all applicable checks pass:
 
-1. **RED fixture/oracle:** write or identify the CPU/primitive oracle before implementation when math or storage changes.
-2. **Registry:** exact intended keys resolve under the correct backend, layer, quant, and variant.
-3. **Numerics:** KL ≤ 0.05 and top-1 agreement ≥ 90% versus `cpu_reference` for net-new math; a mechanical split/port also preserves its parent or prior in-tree boundary.
-4. **Fallback:** fused composites match their registered unfused chain.
-5. **Profiler:** cache-only `rocprofv3 --kernel-trace` or Nsight trace names the expected kernel with plausible resources/duration.
-6. **Integration:** run the narrowest applicable deterministic/model gate from `TESTING.md`.
-7. **Evidence:** performance claims follow `BENCHMARK.md` and update artifact/rollup/changelog/worklog; do not add the narrative here.
+1. **Declaration:** name execution profile, T0/T1/T2/T3 source, supported
+   backend/model/quant/shape envelope, and strict fallback.
+2. **RED fixture/oracle:** write or identify the strict/CPU/primitive oracle
+   before implementation when math or storage changes.
+3. **Registry:** exact intended and strict-fallback keys resolve under the correct backend, layer, quant, and variant; manifest selection adds no fifth axis.
+4. **Numerics:** the CPU-reference KL ≤ 0.05 / top-1 ≥ 90% outer floor passes.
+   Strict preserves its exact/parent boundary. Production additionally passes
+   calibrated strict-teacher mean/tail/max KL and top-1 by category/shape/
+   transition, same-schedule determinism, isolation, BF16-relative, and task
+   gates.
+5. **Fallback:** every fused/production composite retains its registered strict unfused chain.
+6. **Profiler:** cache-only `rocprofv3 --kernel-trace` or Nsight trace names the expected kernel with plausible resources/duration.
+7. **Integration:** run the narrowest applicable strict, production, or batch-invariant model/dynamic gate from `TESTING.md`.
+8. **Evidence:** performance claims follow `BENCHMARK.md` and record profile/schema and selected/fallback manifest hashes in artifact/rollup/changelog/worklog; do not add the narrative here.
 
 ## Per-family port checklist
 
 1. Audit `source_lineage.json` and run the narrow lineage check.
-2. Add the CPU reference or bit-exact fixture (RED).
+2. Declare the execution profile/arithmetic class and add the strict exact/
+   parent-parity or production numerical fixture (RED), plus the CPU-reference
+   outer oracle.
 3. Copy one functional family into `hipengine/kernels/<backend>/<family>/`; do not mix unrelated families.
 4. Retype launch wrappers to raw pointers and explicit metadata.
 5. Preserve or document storage layout, low-precision boundaries, `KVLiveSpans`, launch bounds, and build profile.
-6. Register exact four-axis keys and any required unfused fallback keys.
+6. Register exact four-axis keys and the required strict unfused/fallback keys;
+   profile selection remains outside the key.
 7. Update the relevant catalog row and fused fallback map without benchmark commentary.
-8. Run registry, numerical, profiler, and narrow integration gates.
+8. Run registry, declared-profile numerical/control, profiler, and narrow integration gates.
 9. Record decisions/results in a new immutable worklog entry; write compact benchmark artifacts only when making a performance claim.
 10. Commit the validated family as one logical unit with source commit provenance when ported.
