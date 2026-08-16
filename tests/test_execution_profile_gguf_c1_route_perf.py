@@ -57,6 +57,47 @@ def test_summarize_samples_reports_median_gain_and_repeatability() -> None:
     assert summary["strict_candidate_generated_ids_equal"] is True
 
 
+def test_summarize_natural_samples_reports_aggregate_and_paired_wins() -> None:
+    rows = [
+        {
+            "routes": {
+                "strict": {
+                    "tok_s": 10.0,
+                    "elapsed_seconds": 1.0,
+                    "generated_token_ids": [1],
+                },
+                "candidate": {
+                    "tok_s": 12.5,
+                    "elapsed_seconds": 0.8,
+                    "generated_token_ids": [1],
+                },
+            }
+        },
+        {
+            "routes": {
+                "strict": {
+                    "tok_s": 8.0,
+                    "elapsed_seconds": 1.25,
+                    "generated_token_ids": [2],
+                },
+                "candidate": {
+                    "tok_s": 10.0,
+                    "elapsed_seconds": 1.0,
+                    "generated_token_ids": [3],
+                },
+            }
+        },
+    ]
+
+    summary = perf.summarize_natural_samples(rows, decode_steps=10)
+
+    assert summary["strict"]["aggregate_tok_s"] == pytest.approx(20 / 2.25)
+    assert summary["candidate"]["aggregate_tok_s"] == pytest.approx(20 / 1.8)
+    assert summary["candidate_vs_strict_pct"] == pytest.approx(25.0)
+    assert summary["paired_wins"] == 2
+    assert summary["strict_candidate_generated_ids_equal_prompts"] == 1
+
+
 def test_summarize_samples_flags_candidate_id_drift() -> None:
     summary = perf.summarize_samples(
         {"strict": [10.0, 10.0, 10.0], "candidate": [11.0, 11.0, 11.0]},
