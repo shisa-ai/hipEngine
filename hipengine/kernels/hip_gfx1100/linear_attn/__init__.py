@@ -23,7 +23,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     build_qwen35_linear_attn_gdn,
+    build_qwen35_linear_attn_gdn_grouped_heads,
     plan_qwen35_linear_attn_gdn_build,
+    plan_qwen35_linear_attn_gdn_grouped_heads_build,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
@@ -59,8 +61,10 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
 __all__ = [
     "build_qwen35_linear_attn_conv",
     "build_qwen35_linear_attn_gdn",
+    "build_qwen35_linear_attn_gdn_grouped_heads",
     "plan_qwen35_linear_attn_conv_build",
     "plan_qwen35_linear_attn_gdn_build",
+    "plan_qwen35_linear_attn_gdn_grouped_heads_build",
     "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32",
     "qwen35_gdn_prefill_recurrent_f32",
     "qwen35_gdn_prefill_recurrent_decode_order_exact_f32",

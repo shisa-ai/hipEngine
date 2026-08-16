@@ -6,6 +6,12 @@ hipEngine is math-heavy software. A change that compiles, launches, and gets fas
 
 This doc is the test-authoring playbook. Keep `AGENTS.md` short; put detailed test methodology here.
 
+Before choosing tolerances, declare the execution profile from
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md). Exact request/control
+ownership binds in every profile. Strict arithmetic parity, production
+same-quant drift, repeat determinism, and cross-composition invariance are
+separate contracts and must not be collapsed into one generated-token check.
+
 ## Borrowed lesson from shisad
 
 The useful shisad lesson is the distinction between structural tests and actual contract tests.
@@ -18,10 +24,13 @@ For hipEngine:
   - a kernel launches;
   - output shape/dtype is right;
   - `rocprofv3` sees a kernel name.
-- **Numerical correctness** is the real product contract:
-  - layer output matches the CPU-reference oracle within tolerance;
-  - logits preserve KL ≤ 0.05 and top-1 agreement ≥ 90%;
-  - edge cases (masking, partial rotary, empty/short spans, non-power-of-two lengths) match the oracle;
+- **Profile-qualified numerical correctness** is the real product contract:
+  - strict layer output satisfies its declared exact/parent-parity oracle;
+  - production logits pass calibrated strict-teacher mean/tail/max KL, top-1,
+    deterministic/isolation, BF16-relative, and task gates;
+  - the broad KL ≤ 0.05 and top-1 ≥ 90% CPU-reference gate remains an outer
+    smoke/safety floor, not sufficient production-default evidence;
+  - edge cases (masking, partial rotary, empty/short spans, non-power-of-two lengths) match the declared profile oracle;
   - correctness still holds before performance numbers are retained.
 
 Rule: any test that touches math must include at least one numerical assertion, not just a structural assertion.
@@ -49,19 +58,108 @@ Preferred oracle order:
 
 Do not use a new HIP kernel as its own oracle. CPU-reference exists so correctness is independent of GPU implementation bugs.
 
+## Execution-profile gate selection
+
+Declare one binding gate before writing the RED test:
+
+| Profile | Binding arithmetic/result gate | Always exact |
+| --- | --- | --- |
+| `strict` | Exact/parent-parity boundary named by the kernel or model fixture; fixed-schedule repeat bytes/IDs where declared | Request/slot/token/position/mask/KV/state ownership, transactions, lifecycle, provenance |
+| `production` | Same-artifact strict-teacher full-logit distribution, calibrated mean/p95/p99/max KL and top-1 by category/shape/transition, same-schedule determinism, task non-inferiority, BF16-relative delta where available | Same control/ownership surfaces; same-width neighbor isolation; selected/fallback variant manifest |
+| `batch_invariant` | Same fixed-seed API result across supported slots, neighbors, widths, admission order, cancellation, and compaction | Same control/ownership surfaces and lifecycle |
+
+For T1/T2 arithmetic changes, the RED fixture must fail on the changed numerical
+boundary or profile verdict, not merely on free-running generated IDs. Use the
+strict trajectory as teacher input so candidate and strict logits are compared
+at identical contexts. Record free-running identity as a diagnostic for
+production and as a binding result only when the declared strict or
+batch-invariant contract requires it.
+
+Stateful or c>N production changes add the applicable dynamic scenario matrix:
+fixed c1/c2/c4/c8, ragged lengths, row permutations and neighbor substitution,
+sparse retirement, delayed admission, cancellation/reclaim, c1<->cN width
+transitions, compaction, page/ring/eviction/transaction boundaries, and
+graph/eager repeats. Numeric state values may drift in production; state/KV
+ownership, metadata, finiteness, isolation, and transaction destinations may
+not.
+
+### Reusable evaluator contract
+
+`hipengine.benchmark.execution_profiles` is the mechanical profile evaluator.
+Model adapters emit external `.npy` full-logit arrays plus small capture JSON;
+large logits remain uncommitted. The schemas are:
+
+- `benchmarks/schemas/execution-profile-manifest.schema.json` — exact selected
+  variants and strict fallbacks over the existing registry variant axis;
+- `benchmarks/schemas/execution-profile-capture.schema.json` — aligned
+  strict-teacher rows, selected IDs, exact request/slot/position/mask and
+  route/scatter ownership, diagnostic route-decision hashes, publication/update
+  order, KV/state/RNG ownership, transaction accounting, graph, and lifecycle
+  control records;
+- `benchmarks/schemas/execution-profile-control-capture.schema.json` — actual
+  same-run control telemetry with a run ID;
+- `benchmarks/schemas/execution-profile-control-fixture.schema.json` — separate
+  expected scenario controls; and
+- `benchmarks/schemas/execution-profile-evaluation.schema.json` — retained
+  verdict with manifest/capture hashes.
+
+The evaluator computes canonical quant-quality KL/NLL/top-k row metrics, then
+mean/p95/p99/max KL and top-1 by category, shape, and transition. It separately
+checks exact controls, same-schedule repeat bytes/IDs, same-width neighbor
+isolation, optional cross-width/composition invariance, BF16-relative deltas,
+and supplied task verdicts. Repeat/isolation/composition captures require
+independent run IDs, and isolation/composition also require distinct scenario
+IDs plus separate expected-control fixtures, preventing self-comparison from
+passing a gate. Strict and candidate primary fixtures are also separate because
+their declared graph/fallback metadata can differ even when logical ownership
+is identical. Production generated-ID equality to strict remains non-binding.
+A row above the `0.02` review boundary yields `requires_review` even
+when the calibrated hard envelope passes. Every top-1 mismatch is also emitted
+with prompt/step, strict and candidate winners, KL, top-k overlap, strict
+margin/rank, teacher NLL/delta-p, and maximum absolute logit delta even when its
+KL is below the review boundary. The binding values and calibration evidence
+are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
+
+Run a completed packet with:
+
+```bash
+uv run python scripts/execution_profile_gate.py \
+  --variant-manifest /tmp/production-variants.json \
+  --strict-manifest /tmp/strict-variants.json \
+  --strict-capture /tmp/strict-capture.json \
+  --candidate-capture /tmp/production-capture.json \
+  --expected-controls /tmp/production-scenario-controls.json \
+  --strict-expected-controls /tmp/strict-scenario-controls.json \
+  --repeat-capture /tmp/production-repeat.json \
+  --isolation-capture /tmp/production-neighbor-substitution.json \
+  --comparison-controls /tmp/neighbor-substitution-controls.json \
+  --task-results /tmp/category-task-results.json \
+  --arithmetic-class T2 \
+  --output /tmp/execution-profile-evaluation.json
+```
+
+Add `--batch-invariant-capture` for cross-composition certification and
+`--bf16-logits` when an aligned BF16 cache is available. The Qwen3.6 PARO lane
+can adapt the existing `scripts/quant_quality/qwen36_teacher.py` fixture/cache
+with `scripts/qwen36_execution_profile_adapter.py`, but only when an actual
+control capture carrying the same run ID and the resolved variant manifest are
+supplied. Expected controls remain a separate gate input; a legacy logits cache
+alone, or using actual telemetry as its own expected fixture, cannot certify
+control ownership.
+
 ## Required coverage by change type
 
 | Change type | Minimum tests before commit |
 | --- | --- |
-| Registry / fusion / plugin selection | Exact resolution, fallback order, duplicate/missing errors, negative path, and no backend/quant branch in dispatch code. |
+| Registry / fusion / plugin selection | Exact resolution, profile-manifest selection, strict fallback order, duplicate/missing errors, negative path, and no backend/quant/profile branch in dispatch code. |
 | CPU-reference primitive | A hand-checkable fixture under `tests/fixtures/cpu_reference/`; direct unit test for the formula; shape/error edge case when relevant. |
-| HIP kernel port | CPU-reference fixture gate, port-parity vs monolithic source when applicable, launch smoke, and `rocprofv3 --kernel-trace` showing the expected kernel name. |
-| Math optimization | A RED fixture that would catch the previous/wrong math; compare against CPU-reference over representative and edge shapes; perf gate only after correctness passes. |
+| HIP kernel port | Declared strict exact/parent-parity or production numerical fixture gate, CPU-reference outer gate, strict fallback, launch smoke, and `rocprofv3 --kernel-trace` showing the expected kernel name. |
+| Math optimization | Declare T0/T1/T2/T3 and execution profile; add a RED fixture that catches wrong math/control ownership; run representative/edge and applicable strict-teacher/dynamic/task gates; perf gate only after profile correctness passes. |
 | Quant plugin | Round-trip pack/dequant fixture, scale/zero-point edge cases, dtype/shape assertions, and target layer correctness. |
 | KV policy / attention span logic | Deterministic span fixtures for dense and variable-live-span cases; mask/position edge cases; no shortcut around `KVLiveSpans`. |
 | Runtime / memory / build | Import-time no-side-effect tests, fake-runtime tests, dry-run build planning tests, and real HIP smoke only after GPU clearance. |
 | Public API / server behavior | Unit/integration tests for success and failure paths; include user-visible output assertions once `LLM.generate()` exists. |
-| Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; exact-ID mismatch, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |
+| Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; profile/manifest mismatch, binding-vs-diagnostic generated-ID handling, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |
 | Profiler window/report contract | Synthetic marker/kernel CSVs proving exact window containment, family bucketing, per-token accounting, Amdahl arithmetic, and exact-token failure behavior. |
 | Perf claim | Exact benchmark command from `docs/BENCHMARK.md`, correctness gate, hardware/software context, and compact JSON artifact. |
 
@@ -162,19 +260,18 @@ boundary. Greeting and 512 retain the all-layer bisect; longer cases may use
 `--skip-layer-bisect`. Single-order wall fields from this driver are
 correctness diagnostics only and cannot select the default.
 
-**Peer-aligned reassociated GDN contract (adopted 2026-07-15).** llama.cpp HIP,
-llama.cpp Vulkan, and hipEngine PARO all evaluate the same F32 recurrence with
-parallel/tree reductions that are not guaranteed bit-exact to a scalar decode-
-order contraction. GGUF candidates using the same class of algebraically
-equivalent reassociation are admitted by the repository product gate, not by
-state-byte or greedy-token identity: CPU-reference primitive numerics, the full
-18-prompt multi-category plus heldout semantic suite with KL <= 0.05 and top-1
-agreement >= 90%, deterministic execution, decode non-regression, and the
-predeclared speed floors at both 512 and 4096. Teacher-forced comparisons must
-keep token history matched. Exact resident state, exact sampled tokens, and
-free-running trajectory identity remain reported diagnostics, but are not
-promotion blockers. Changing this contract does not retroactively admit a
-candidate that failed KL, primitive, determinism, decode, or speed gates.
+**Peer-aligned reassociated GDN precedent (adopted 2026-07-15).** llama.cpp
+HIP, llama.cpp Vulkan, and hipEngine PARO all evaluate the same F32 recurrence
+with parallel/tree reductions that are not guaranteed bit-exact to a scalar
+decode-order contraction. This established that teacher-forced model quality,
+not state bytes or free-running greedy identity, is the right denominator for
+T2 production arithmetic. It does not remain a standalone broad admission
+policy: new and re-certified routes use the tighter profile-wide mean/tail/max
+KL, top-1, isolation, determinism, BF16-relative, and task gates in
+`EXECUTION-PROFILES.md`. The historical KL <= 0.05 / top-1 >= 90% semantic gate
+is calibration evidence and the outer safety ceiling. It never retroactively
+admits a candidate that failed primitive, determinism, category, task, decode,
+or speed gates.
 
 Run the semantic gate before the speed gate:
 
@@ -281,23 +378,31 @@ For future smoke modes, use the same pattern or set `HIPENGINE_COMPILER_VERSION_
 
 For every new/ported kernel:
 
-- CPU-reference fixture pass;
-- KL ≤ 0.05 and top-1 agreement ≥ 90% for logit-producing paths;
-- launch smoke;
+- declare execution profile and T0/T1/T2/T3 arithmetic source;
+- strict exact/parent-parity RED or production numerical RED, as applicable;
+- CPU-reference fixture and the KL ≤ 0.05 / top-1 ≥ 90% outer floor for
+  logit-producing paths;
+- registered strict fallback for every production/fused route;
+- applicable strict-teacher category/shape/transition, isolation, determinism,
+  BF16-relative, and task gates before production promotion;
+- launch smoke; and
 - profiler trace with expected kernel name and plausible `DurationNs`.
 
-A perf win with a failed correctness gate is a failed change.
+A perf win with a failed declared-profile gate is a failed change.
 
-**Speculative-verify path (T1, adopted 2026-06-09).** For MTP/DFlash verify
-kernels (e.g. the GDN chain recurrence), the gate is the KL/top-1 bound above
-vs `cpu_reference` — **not** bit-exact `exact_ar_match`. `exact_ar_match`
-(spec tokens == same-run AR tokens) is a self-consistency check between two
-*different* kernels (the chain/verify kernel vs the AR decode kernel); a
-KL-correct verify kernel can still flip it by ~1 ULP at a near-tie boundary
-(amplified by the degenerate 1-token smoke prompt). Such a flip is **not** a
-correctness regression — gate on KL vs cpu_reference. See `docs/MEGAKERNEL.md`
-§5/§8.1/§9.4 for the T0→T1 rationale. Owed when claiming MTP *economics*
-(not kernel correctness): re-baseline AR tok/s and acceptance rate on real prompts.
+**Speculative-verify historical precedent (old T1, adopted 2026-06-09).** For
+MTP/DFlash verify kernels such as GDN chain recurrence, bit-exact
+`exact_ar_match` between two different kernels is not a universal production
+quality gate. The CPU-reference KL/top-1 check remains the leaf floor, while a
+new production promotion additionally uses the complete execution-profile
+strict-teacher/task/economics packet. `exact_ar_match` (spec tokens ==
+same-run AR tokens) is a self-consistency check between two *different* kernels
+(the chain/verify kernel vs the AR decode kernel); a numerically close verifier
+can flip it by about one ULP at a near-tie boundary. Such a flip alone is not a
+control-ownership bug, but it also does not waive the full production quality
+or MTP economics gate. See `docs/MEGAKERNEL.md` §5/§8.1/§9.4 for the historical
+rationale. Any MTP speed claim re-baselines true AR tok/s, task quality,
+acceptance, and complete cycle economics on the full suite.
 
 ### 5. K1 dense INT8 KV gate
 
@@ -429,11 +534,15 @@ Record exact commands and outcomes in the unit's immutable worklog entry before 
 
 A math or kernel change is not done until all applicable evidence exists:
 
-- [ ] Oracle identified (CPU-reference, monolithic source, or explicit external oracle).
+- [ ] Execution profile and T0/T1/T2/T3 source declared.
+- [ ] Oracle identified (strict, CPU-reference, monolithic source, or explicit external oracle).
 - [ ] RED test/fixture added or an explicit no-RED rationale recorded.
 - [ ] Targeted tests pass.
 - [ ] CPU deterministic bundle passes if code changed outside docs.
 - [ ] GPU smoke passes if GPU code changed and GPU is available.
+- [ ] Exact control/ownership plus applicable strict-teacher, dynamic,
+      determinism, BF16-relative, and task gates pass.
+- [ ] Strict fallback and profile/variant-manifest provenance are recorded.
 - [ ] `rocprofv3` trace captured for new/ported kernels, or blocker recorded.
 - [ ] The unit's immutable worklog entry records exact commands/results for non-trivial math, kernel, perf, or blocker evidence.
 
@@ -442,7 +551,10 @@ A math or kernel change is not done until all applicable evidence exists:
 Any claim of "works", "correct", "faster", "done", or "ported" must include:
 
 - **Runtime wiring evidence:** where the live path calls the implementation.
-- **Numerical evidence:** oracle, fixture/gate, and thresholds.
+- **Numerical evidence:** declared profile, oracle, fixture/gate, thresholds,
+  and whether generated-ID equality is binding or diagnostic.
+- **Variant evidence:** execution-profile schema plus selected/fallback manifest
+  hash for profile-sensitive paths.
 - **Command evidence:** exact validation command(s) and outcome(s).
 - **Scope:** model, quant, shape, backend, hardware when applicable.
 

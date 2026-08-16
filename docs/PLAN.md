@@ -367,9 +367,44 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 | **Torch-free at runtime** | hipEngine does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
 | **Fast dispatch, no Python in the hot path** | Decode forward is captured at warmup and replayed with zero Python kernel-dispatch overhead per subsequent step. Native `hipGraph` remains the default; an explicit, architecture-gated in-tree retained-PM4 transport may lower admitted kernel-only graphs to one ROCr submission. Python runs only once per token for sampling. |
 | **Fused + unfused kernels coexist** | Every fused composite (`rmsnorm_rotate`, `gate_combine_residual`, etc.) has an unfused chain equivalent. The dispatcher prefers fused when a registered composite matches the upcoming op chain and falls back to unfused primitives when not. Unfused kernels also serve as the correctness baseline. |
+| **Explicit execution profiles** | `strict`, `production`, and `batch_invariant` separate reference arithmetic, bounded production implementation drift, and cross-composition reproducibility. Every profile preserves exact request/control ownership; profile selection resolves once to registered variants rather than adding hot-path branches. |
 | **Library-first, server-included** | `pip install hipengine` gives you `from hipengine import LLM` plus the `hipengine serve` OpenAI-compatible server CLI. The torch-free inference hot path still does not import FastAPI/Uvicorn. |
 | **Extensible by design** | Four orthogonal plugin axes — **backend**, **model**, **quant**, **layer** — not hardcoded branches. See Extensibility Design. |
 | **Evidence-backed performance** | Every performance claim comes with a reproducible benchmark command, hardware context, and workload shape. No marketing numbers. |
+
+### Execution-profile architecture
+
+hipEngine exposes exactly three execution profiles:
+
+- **`strict`** is the implementation oracle for the selected model, quant, KV
+  policy, and backend.
+- **`production`** preserves exact request/slot/token/position/mask/KV/state
+  ownership while allowing calibrated same-quant T1/T2 arithmetic drift,
+  deterministic under an identical execution schedule.
+- **`batch_invariant`** adds a fixed-seed result guarantee across supported
+  slots, neighbors, batch widths, admission order, cancellation, and
+  compaction. Its first implementation may reuse strict variants.
+
+Execution profile is orthogonal to model weights, quant, KV storage, sampling,
+and speculative policy. Weight/KV representation changes and approximate
+routing, acceptance, or sampling remain explicit product/experiment choices.
+Profile resolution produces an immutable variant manifest over the existing
+`(backend, layer, quant, variant)` registry; it is not a fifth plugin axis and
+must not add `if profile` branches to engine/model hot paths. Missing or
+uncertified production variants fall back to registered strict variants.
+
+The exact control-plane, determinism, numerical calibration, evaluator, and
+migration/default rules are normative in
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md). The approved implementation
+and performance sequence is
+[`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md). Current
+non-exact defaults are not grandfathered, and public behavior does not change
+until the evaluator, manifests, and serving gates are retained. The first
+ZBook Qwen3.6 c1/cN package decision retains small implementation-route wins
+but does not switch the public default: its canonical server packet fails soak
+completion (87 completed, 33 overloaded of 120), and named-profile manifest,
+task, and BF16-relative evidence remains open. See the
+[`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
 ## Architecture
 
@@ -657,7 +692,7 @@ The key distinction is that many current "batched" kernels are row-parallel GEMV
 
 1. **Request and batch-state containers.** Add `RequestState` plus `ResidentBatchSession` (or equivalent) with `[C, hidden]` buffers, device token ids, per-request positions/context lengths, active masks, finish flags, per-layer linear-attention recurrent/conv state, and per-request/per-layer full-attention KV spans.
 2. **Continuous-batching scheduler.** Add admission, chunked prefill, decode-step batching, slot compaction, sampler/output routing, and reclaim around `KVPolicy.batch_spans(...)`. The scheduler owns physical slots and stable request ids; kernels only see row metadata.
-3. **Correctness harness first.** For fixed prompts and greedy sampling, compare c=2/4/8 batch output against independent c=1 runs. Require finite logits, matching generated ids for deterministic fixtures, and per-layer state/KV bounds checks before any perf claim.
+3. **Correctness harness first.** Exact request/slot/token/position/mask/`KVLiveSpans`/state-ownership checks bind in every profile. `strict` and `batch_invariant` retain their declared generated-ID equality gates. `production` compares c=2/4/8 against strict at identical teacher-forced contexts with calibrated mean/tail/max KL, top-1, determinism, isolation, state/KV, and task-quality gates; free-running cross-width generated-ID equality is diagnostic rather than a universal promotion requirement.
 4. **Transactional KV hooks.** Extend the KV policy contract with scratch/journal allocation and `commit(request_id, accepted_tokens)` / `rollback(request_id)` semantics before speculative verification writes can touch canonical KV.
 5. **Attention batch kernels.** Add batched paged GQA decode and KV append variants with a batch grid dimension and per-sequence span metadata. Uniform paged KV is first; DMS/variable spans reuse the same public ABI later.
 6. **Linear-attention state kernels.** Make conv/GDN recurrent decode consume `[C, ...]` state and update each sequence independently.
@@ -665,7 +700,7 @@ The key distinction is that many current "batched" kernels are row-parallel GEMV
 8. **Quantized projection dispatch.** Use c-aware rules: c=1 stays GEMV; c=2/4/8 uses multi-column/MMQ-style kernels where they beat row-GEMV; c>16 moves toward GEMM/WMMA.
 9. **SpecDec plugin boundary.** Add `DraftModel`, `DraftBatch`, `Verifier`, and `AcceptResult` interfaces. MTP heads are model-attached draft providers; EAGLE3 and DFlash are draft-model plugins; Lookahead/Medusa are lightweight draft providers. All verify through the same target-model batch runner and transactional KV path.
 10. **Graph bucket policy.** Capture/replay by active `C`, context bucket, mode (`prefill`, `decode`, `verify_chain`, `verify_tree`), draft depth/tree shape, top-k/experts, and replay length. Fall back to uncaptured launches for rare shapes.
-11. **Benchmark protocol.** Add c=N concurrent rows and SpecDec rows only after the corresponding correctness harness is green. Report aggregate tok/s, per-request tok/s, p50/p95 latency, memory, active batch occupancy, graph bucket, acceptance rate, accepted tokens per target pass, and generated-token equality vs non-spec c1.
+11. **Benchmark protocol.** Add c=N concurrent rows and SpecDec rows only after the corresponding profile-aware correctness harness is green. Report execution profile and manifest hash, aggregate tok/s, per-request tok/s, p50/p95 latency, SLO goodput, memory, active batch occupancy, graph bucket, acceptance rate, accepted tokens per target pass, and whether generated-token equality versus non-spec c1 is binding or diagnostic for the declared profile.
 
 ### Hot-Path Dispatch Strategy
 
@@ -709,7 +744,7 @@ fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 
 #### Fusion Planner
 
-Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have an unfused chain that is numerically equivalent (used as correctness baseline and fallback for backends that haven't ported the composite yet).
+Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
 
 ```python
 # hipengine/dispatch/fusion.py
@@ -859,6 +894,13 @@ hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implem
 
 Kernels are registered with the tuple `(backend, layer, quant, variant)`. The dispatcher resolves kernels at layer-build time; the fusion planner resolves at op-chain-build time.
 
+Execution profile is a policy selector over the existing `variant` key, not a
+fifth axis. At model/session construction, it resolves to an immutable manifest
+of selected and strict-fallback variants plus evidence identifiers. Dispatch
+and graph capture consume that manifest without backend-, quant-, or profile-
+specific branches in engine/model code. See
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
+
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
 resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`
 detections map to the matching HIP backend, `HIPENGINE_BACKEND` can force a
@@ -923,7 +965,7 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3-0.6B** dense | full_attention + dense_mlp | Phase 0 smoke |
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
-| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target |
+| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the separate 60/60/45 W HP ZBook gfx1151 quality/performance campaign is owned by [`QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md`](QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md) |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
@@ -4026,7 +4068,7 @@ Every performance claim in hipEngine must include:
 - **Quantization**: FP16, W8A16, W4, etc.
 - **Workload**: prompt/generation length, client concurrency, choices, queue
   grouping, actual backend widths, and verifier rows
-- **Hardware**: selected GPU, configured/resolved backend, target arch, ROCm and compiler versions
+- **Hardware**: physical host identity, selected GPU, configured/resolved backend, target arch, ROCm and compiler versions; same-arch results from different hosts are independent and never form an old→new comparison without a declared same-host A/B
 - **Source**: hipEngine commit plus separate staged, unstaged, and untracked state
 - **Command**: exact benchmark invocation
 - **Result**: tok/s prefill, tok/s decode, peak GiB
@@ -4035,10 +4077,12 @@ Every performance claim in hipEngine must include:
 This policy is inherited from the `LESSONS-LEARNED.md` discipline: fast rows are invalid until output sanity proves they are real.
 
 Server, retained PARO, GGUF, and microbenchmark harnesses share the stdlib-only,
-torch-free `hipengine_artifact_provenance` v1 collector and the formal
+torch-free `hipengine_artifact_provenance` v2 collector (with backward-readable
+v1) and the formal
 `benchmarks/schemas/artifact-provenance.schema.json` contract. It resolves
 `backend="auto"` to a concrete backend/target/device, fingerprints model
-content, and preserves staged, unstaged, and untracked dirtiness separately.
+content, records physical `host_name`, and preserves staged, unstaged, and
+untracked dirtiness separately.
 Legacy artifact-specific provenance fields remain readable but are not a
 substitute for this canonical block on new retained rows.
 

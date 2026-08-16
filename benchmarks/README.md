@@ -15,7 +15,6 @@ The root README exports this compact retained summary verbatim.
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
@@ -85,7 +84,9 @@ generation.
 | Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
 | Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
 | Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
+| Execution-profile numerical calibration | [`2026-08-16 ZBook-local policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
 | MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
+| Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
 | Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
 | Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
 
@@ -112,84 +113,77 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
-Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
-full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
-Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
-pack8 gate+up+SiLU. That X3 route measures **4344 -> 4944 exact-core pp512
-(+13.81%)** over five paired blocks. A fresh six-block clean-HEAD external
-packet now measures hipEngine / same-source llama HIP / Vulkan exact-core
-pp512 at **4896 / 4848 / 5510 Q4** and **4997 / 4640 / 5704 Q8 tok/s**.
-hipEngine therefore reaches **1.010x llama HIP / 0.889x Vulkan Q4** and
-**1.077x / 0.876x Q8**. The Q4 core gap to Vulkan falls from **21.458 to 11.657
-ms**; public prefill remains 0.867x Vulkan. hipEngine still beats llama HIP
-decode, while public decode is **0.959x Vulkan Q4 / 1.047x Vulkan Q8**. All 36
-children are finite/deterministic/cross-engine exact and every metric CV is
-below 5%. Core Vulkan parity stays open. Evidence: [`post-X3 three-way`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json)
-and [`operation-complete Q4 prefill`](results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
-Full per-package evidence and history live in
-[`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
-[`results/`](results/), and
-[`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
-The post-X3 Q4 marker rerank reconciles **100.08%** of its 106.338-ms wall.
-That profile's owners are dense FFN **34.007 ms**, linear-attention projections
-**31.815 ms**, and GDN **23.617 ms**; normalized historical-attribution gaps
-rerank linear projections first at **13.460 ms**. Its explicit 17.628-ms
-Q5-QKV + Q4-gate fallback screen was byte-exact but only **1.0059x / 0.114 ms**
-faster across all 18 pairs. The next GDN cluster8 wave-broadcast screen was
-also exact but regressed **0.775 -> 1.195 ms (0.648x)**. Both transient routes
-were removed. The next dense-FFN package retained exact WMMA down+residual:
-its 12-owner leaf is **9.959 -> 9.804 ms (1.0158x)**, while five paired Q4
-blocks observe **+3.09% core / +1.68% public pp512** with all guards passing.
-The causal retained claim is the 0.155-ms leaf saving. Applying the same exact
-rounded-residual store to the remaining 12 pack8-Q4 down owners instead loses
-both paired screens at **-4.22% core / -4.80% public pp512**; that candidate is
-removed and the pack8 projection+add chain remains current. Evidence:
-[`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json),
-[`projection rejection`](results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json),
-[`GDN rejection`](results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json),
-[`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json),
-and [`pack8 residual rejection`](results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
-The next same-resident operation-complete owner shares each exact activation
-tile across the 18 Q8T16 alpha/beta pairs. Its byte-exact leaf is **2.113 ->
-0.422 ms (5.010x)**; Q4/Q8 paired core pp512 improves **3.64%/2.45%** and
-public pp512 **5.05%/2.13%**, all with 5/5 and 3/3 wins. Evidence:
-[`Q8T16 alpha/beta dual WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
-The prior same-session graph replay census, whose decode route is unchanged by
-X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
-fresh-process p16-p4096 threshold diagnostic then completes all **187** children
-with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
-p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
-every Q4/Q8 length. This keeps the p512-only WMMA scope and current GDN policies;
-see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
-The final natural+category-p512 cumulative packet then passes at **1794/1800
-current top-1 (99.667%), max KL 0.005930**, deterministic finite state, and
-**72/72 exact eager/recorded-graph trajectories**; this closes post-review
-validation without changing the blocked Vulkan-parity status. The post-X6
-rerun preserves the same **1794/1800** current top-1 and max KL, keeps all
-**72/72** recorded-graph pairs exact, and matches candidate/rollback teacher and
-state digests on **36/36** Q4 prompt/profile pairs. Evidence:
-[`cumulative baseline`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json)
-and [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
+## Current Qwen3.6-35B quantization quality
+
+The current gate scores 90 full-vocabulary BF16-teacher positions across all ten
+code/English/Japanese/mixed prompts. Every row uses the exact local artifacts
+and identical teacher contexts; no historical or unmatched-artifact rows are
+mixed into this table. This is a cross-runtime distribution gate, not
+held-out-corpus PPL.
+
+| Exact local artifact | Size / BPW | Evidence scope | Mean KL vs BF16 ↓ | Top-1 agreement ↑ | Status |
+| --- | ---: | --- | ---: | ---: | --- |
+| GGUF `UD-Q4_K_M` | 21.107 GiB / 5.180 | exact-artifact, ROCmFPX HIP | **0.013713** | 92.222% | Matched-runtime quality baseline |
+| ROCmFP4 STRIX_LEAN | **17.739 GiB / 4.354** | exact-artifact, ROCmFPX HIP | 0.045984 | **97.778%** | Quality-traded: KL/category margin fails |
+| PARO full8192 packed | 19.068 GiB / 4.680 | exact-artifact, hipEngine HIP | 0.027038 | 92.222% | Quality-traded; runtime-correct and deterministic |
+
+ROCmFP4 is 15.96% smaller than local Q4_K_M and retains more BF16 greedy
+argmaxes, but fails the paired KL/category margin. PARO is runtime-correct and
+deterministic after the packed-layout repair, yet remains quality-traded versus
+hipEngine Q4_K_M. See the [`quality artifact`](results/2026-08-16-zbook-qwen36-quant-quality.json)
+and [`protocol`](quant/README.md).
+
+Current package decisions are compactly separated by execution profile:
+
+- Packed PARO retains exact SiLU+down-rotation (**1.371x leaf, 69 fewer c8/L4
+  launches**) with neutral aggregate wall; unsafe math is rejected.
+- ZBook strict c1 retains the exact cooperative router (**30.438 -> 33.219
+  tok/s, 18/18 wins**). Physical c4/c8 retain exact Q8T16 rowtiling while c2
+  remains direct.
+- The combined c1/cN package is exact over **1,050/1,050 rows** and remains the
+  implementation default, but is not a public `production` profile: the
+  60-second server soak completed 87/120 requests and rejected 33 as overloaded.
+
+Evidence: [`PARO boundary`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-silu-rotate-retained.json),
+[`c1 router`](results/2026-08-16-zbook-qwen36-c1-router-retained.json),
+[`c4/c8 rowtile`](results/2026-08-16-gfx1151-q8t16-batch-route-retained.json),
+[`package decision`](results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json), and the
+[`ROCmFPX transfer report`](quant/ROCMFPX-TRANSFER.md).
+
+Current Qwen3.5-0.8B gfx1151 status remains **Vulkan parity blocked**, while
+the exact D08-X package is retained. Its clean three-way exact-core pp512 is
+hipEngine / llama HIP / Vulkan **4896/4848/5510 Q4** and **4997/4640/5704 Q8
+tok/s**. Retained operation-complete units include Q4 pack8 gate+up+SiLU,
+dense-BF16 down+residual, and Q8T16 alpha/beta dual WMMA; the final natural and
+category gate is **1794/1800 top-1, max KL 0.005930**, with all **72/72** graph
+trajectories exact. Rejected projection, GDN-broadcast, and pack8-residual
+candidates remain in artifacts and the changelog. Evidence:
+[`three-way snapshot`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json),
+[`alpha/beta WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json),
+[`cumulative gate`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json), and the
+[`campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
 
 ## Current single-request scoreboards
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B
 
-These are the current six-shape hipEngine publication sweeps. PARO and GGUF use
-different weight formats and should not be treated as a same-math A/B. `Peak`
-is hipEngine tracked allocator high-water.
+The current valid six-shape publication is GGUF. `Peak` is hipEngine tracked
+allocator high-water.
 
-| Workload | PARO prefill | PARO decode | PARO peak | GGUF prefill | GGUF decode | GGUF peak |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | **115.599** | 18.144 GiB | **2716.648** | **92.833** | 21.228 GiB |
-| 1K/128 | **2995.876** | **103.238** | 18.367 GiB | **3052.541** | **98.148** | 21.295 GiB |
-| 4K/128 | **2943.038** | **105.943** | 19.161 GiB | **2953.101** | **100.522** | 21.670 GiB |
-| 32K/128 | **2108.868** | **92.438** | 19.864 GiB | **2078.038** | **88.240** | 22.234 GiB |
-| 64K/128 | **1584.131** | **78.260** | 20.403 GiB | **1559.878** | **76.691** | 22.879 GiB |
-| 128K/128 | **1056.252** | **60.663** | 22.124 GiB | **1037.378** | **62.669** | 24.168 GiB |
+| Workload | GGUF prefill | GGUF decode | GGUF peak |
+| --- | ---: | ---: | ---: |
+| 512/128 | **2716.648** | **92.833** | 21.228 GiB |
+| 1K/128 | **3052.541** | **98.148** | 21.295 GiB |
+| 4K/128 | **2953.101** | **100.522** | 21.670 GiB |
+| 32K/128 | **2078.038** | **88.240** | 22.234 GiB |
+| 64K/128 | **1559.878** | **76.691** | 22.879 GiB |
+| 128K/128 | **1037.378** | **62.669** | 24.168 GiB |
 
-Evidence: [`PARO five-run sweep`](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json)
-and [`GGUF final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
+The former PARO speed row is withdrawn: its sweep predates the grouped-V-head
+runtime fix and therefore followed the wrong generated trajectory. It remains a
+[`pre-fix diagnostic`](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
+not current performance evidence; a fresh repaired-runtime sweep is required.
+GGUF evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
 The matched llama.cpp HIP/Vulkan comparison columns and their differing memory
 scopes remain in the linked artifacts and the archived rollup rather than being
 repeated here.

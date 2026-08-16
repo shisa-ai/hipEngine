@@ -152,7 +152,11 @@ llm.close()
 
 `LLM(...)` detects a supported AMD GPU and chooses the model format
 automatically. You can also pass a local GGUF or Maple path. Advanced users can
-override the choice with `backend=` and `quant=`.
+override the choice with `backend=` and `quant=`. The opt-in
+`execution_profile="strict"|"production"|"batch_invariant"` selector is
+fail-closed to model/backend/quant plans with registered kernel variants and
+exact fallbacks. Omitting it preserves the current migration default until
+profile calibration is complete.
 
 ## Performance highlights
 
@@ -164,7 +168,6 @@ reading the input. Text generation is the speed of producing new tokens.
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |

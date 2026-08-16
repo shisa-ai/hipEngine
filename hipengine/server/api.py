@@ -321,8 +321,17 @@ class ServerConfig:
     draft_model: str | None = None
     speculative_candidate_budget: int = 4
     created: int = field(default_factory=lambda: int(time.time()))
+    execution_profile: str | None = None
 
     def __post_init__(self) -> None:
+        from hipengine.execution_profiles import resolve_requested_execution_profile
+
+        profile = resolve_requested_execution_profile(self.execution_profile)
+        object.__setattr__(
+            self,
+            "execution_profile",
+            None if profile is None else profile.value,
+        )
         mode = str(self.speculative_mtp_serving).strip().lower().replace("-", "_")
         if mode not in _SPECULATIVE_MTP_SERVING_MODES:
             raise ValueError(
@@ -382,6 +391,31 @@ def _server_model_identity(config: ServerConfig, engine: Any | None = None) -> d
         if resolved_quant and resolved_quant != "auto":
             quant = resolved_quant
     return {"id": config.model_id, "backend": backend, "quant": quant}
+
+
+def _server_execution_profile(
+    config: ServerConfig,
+    engine: Any | None = None,
+) -> dict[str, Any]:
+    requested = config.execution_profile
+    if engine is None:
+        return {
+            "requested": requested,
+            "resolved": None,
+            "manifest_sha256": None,
+            "fell_back_to_strict": None,
+            "migration_default_preserved": requested is None,
+        }
+    resolved = getattr(engine, "resolved_execution_profile", requested)
+    manifest_hash = getattr(engine, "execution_profile_manifest_sha256", None)
+    fell_back = getattr(engine, "execution_profile_fell_back_to_strict", None)
+    return {
+        "requested": requested,
+        "resolved": resolved,
+        "manifest_sha256": manifest_hash,
+        "fell_back_to_strict": fell_back,
+        "migration_default_preserved": resolved is None,
+    }
 
 
 def _server_model_uses_gguf(config: ServerConfig, engine: Any | None = None) -> bool:
@@ -3537,6 +3571,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.model,
                 backend=config.backend,
                 quant=config.quant,
+                execution_profile=config.execution_profile,
                 max_active_requests=config.max_active_requests,
                 max_sequence_length=config.max_context_tokens,
                 prefix_cache=prefix_cache_mode,
@@ -5147,6 +5182,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "path": config.model,
                         "backend": model_identity["backend"],
                         "quant": model_identity["quant"],
+                        "execution_profile": _server_execution_profile(config, engine),
                         "loaded": bool(readiness.model_loaded),
                         "resident_context": True,
                         "context": {
@@ -5249,6 +5285,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "path": config.model,
                 "backend": model_identity["backend"],
                 "quant": model_identity["quant"],
+                "execution_profile": _server_execution_profile(config, engine),
             },
             "context": {
                 "configured_max_context_tokens": configured_context,

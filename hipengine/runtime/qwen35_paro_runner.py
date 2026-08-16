@@ -7695,7 +7695,9 @@ class Qwen35ParoResidentSession:
         from hipengine.kernels.hip_gfx1100.fused.paro_silu import build_paro_silu
         from hipengine.kernels.hip_gfx1100.linear import build_dense_gemv, build_lm_head
         from hipengine.kernels.hip_gfx1100.linear_attn.conv import build_qwen35_linear_attn_conv
-        from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
+        from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+            build_qwen35_linear_attn_gdn_grouped_heads,
+        )
         from hipengine.kernels.hip_gfx1100.moe.group_scatter import build_qwen35_moe_group_scatter
         from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
         from hipengine.kernels.hip_gfx1100.norm import build_qwen35_rmsnorm
@@ -7724,7 +7726,10 @@ class Qwen35ParoResidentSession:
                 "group_scatter": build_qwen35_moe_group_scatter(**build_kwargs),
                 "kv": build_qwen35_paged_kv_write(**build_kwargs),
                 "linear_conv": build_qwen35_linear_attn_conv(**build_kwargs),
-                "linear_gdn": build_qwen35_linear_attn_gdn(**build_kwargs),
+                # Packed PARO safetensors retain Transformers' canonical grouped
+                # V-head order. The default GDN sibling remains tiled for GGUF,
+                # whose converter explicitly permutes all V-head tensors.
+                "linear_gdn": build_qwen35_linear_attn_gdn_grouped_heads(**build_kwargs),
                 "lm_head": build_lm_head(**build_kwargs),
                 "marlin_k": build_paro_marlin_k(**build_kwargs),
                 "norm": build_qwen35_rmsnorm(**build_kwargs),

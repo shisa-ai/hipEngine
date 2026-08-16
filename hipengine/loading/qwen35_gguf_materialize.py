@@ -605,6 +605,17 @@ def materialize_qwen35_gguf_weights(
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
+    file_type_name = getattr(reader.info, "file_type_name", None)
+    raw_qmicro_file_types = backend_package_capability(
+        backend,
+        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES",
+        (),
+    )
+    qmicro_file_types = (
+        frozenset(str(item) for item in raw_qmicro_file_types)
+        if isinstance(raw_qmicro_file_types, (tuple, list, set, frozenset))
+        else frozenset()
+    )
     plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=decode_repack,
@@ -615,12 +626,15 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
-        dense_q4_qmicro_t16_gate_up=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
-                False,
+        dense_q4_qmicro_t16_gate_up=(
+            bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
+                    False,
+                )
             )
+            and file_type_name in qmicro_file_types
         ),
         dense_q4_t16_attn_q_08b=bool(
             backend_package_capability(
@@ -787,7 +801,6 @@ def materialize_qwen35_gguf_weights(
     model_name = None
     if isinstance(metadata, Mapping) and metadata.get("general.name") is not None:
         model_name = str(metadata["general.name"])
-    file_type_name = getattr(reader.info, "file_type_name", None)
     return Qwen35GGUFResidentWeights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),

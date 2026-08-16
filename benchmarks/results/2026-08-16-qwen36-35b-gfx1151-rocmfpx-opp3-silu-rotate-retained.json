@@ -1,0 +1,133 @@
+{
+  "change": {
+    "candidate": "registered silu_mul_pair_rotate_out_fp16",
+    "default": "candidate",
+    "rollback": "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0",
+    "rounded_boundary": "pair kernel rounds SiLU(gate)*up to FP16 before applying scale/rotation, matching the fallback",
+    "runtime_path": "hipengine/runtime/qwen35_paro.py shared_expert_paro_w4_fp16 non-small prefill",
+    "strict_fallback": "registered silu_mul_separate_out_fp16 followed by paro_rotate1_fp16"
+  },
+  "complete_runs": [
+    {
+      "bracketed_delta": {
+        "complete_wall_percent": -0.15646602334213888,
+        "prefill_tok_s_percent": 0.22224746774117676
+      },
+      "candidate": {
+        "command": "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=1 env HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --batch-size 4 --decode-tokens 32 --prompt-length 512 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --json /tmp/hipengine-rocmfpx-transfer-campaign/opp3-pair-silu-rotate-paro-c4-p512-d32.json",
+        "complete_wall_seconds_excluding_load": 5.453288753982633,
+        "decode_tok_s_aggregate": 69.51427068497523,
+        "environment": "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=1",
+        "exact_vs_c1": true,
+        "prefill_tok_s": 616.777356672452,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp3-pair-silu-rotate-paro-c4-p512-d32.json"
+      },
+      "concurrency": 4,
+      "controls": [
+        {
+          "complete_wall_seconds_excluding_load": 5.4245299370377325,
+          "exact_vs_c1": true,
+          "prefill_tok_s": 618.11177561671,
+          "source": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c4-p512-d32.json"
+        },
+        {
+          "complete_wall_seconds_excluding_load": 5.4991394019452855,
+          "exact_vs_c1": true,
+          "prefill_tok_s": 612.707473115416,
+          "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp3-current-control-paro-c4-p512-d32.json"
+        }
+      ]
+    },
+    {
+      "bracketed_delta": {
+        "complete_wall_percent": 0.02062654402859021,
+        "prefill_tok_s_percent": 0.08139734511132257
+      },
+      "candidate": {
+        "command": "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=1 env HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/hipengine-rocmfpx-transfer-campaign/static9707-c8-p512.json --batch-size 8 --decode-tokens 32 --prompt-length 512 --warmup-decode-tokens 4 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --json /tmp/hipengine-rocmfpx-transfer-campaign/opp3-pair-silu-rotate-paro-c8-p512-d32.json",
+        "complete_wall_seconds_excluding_load": 12.64734376897104,
+        "decode_tok_s_aggregate": 73.48944915400781,
+        "environment": "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=1",
+        "exact_vs_c1": true,
+        "prefill_tok_s": 476.0402060771896,
+        "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp3-pair-silu-rotate-paro-c8-p512-d32.json"
+      },
+      "concurrency": 8,
+      "controls": [
+        {
+          "complete_wall_seconds_excluding_load": 12.529890112986322,
+          "exact_vs_c1": true,
+          "prefill_tok_s": 482.4210914167035,
+          "source": "/tmp/hipengine-rocmfpx-transfer-campaign/baseline-paro-c8-p512-d32.json"
+        },
+        {
+          "complete_wall_seconds_excluding_load": 12.759581081045326,
+          "exact_vs_c1": true,
+          "prefill_tok_s": 468.8849828493405,
+          "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp3-current-control-paro-c8-p512-d32.json"
+        }
+      ]
+    }
+  ],
+  "correctness": {
+    "actual_shape_gpu": "fused and strict FP16 output bits are exactly equal at rows16/features512/group128/krot8",
+    "complete": "candidate c4/c8 each match independent c1 for all 32 generated tokens/request",
+    "green": "default and explicit rollback dispatch tests pass",
+    "profile": "candidate c8/L4 hidden and generated tokens match independent c1",
+    "red": "new runtime dispatch test first failed because the separate SiLU and rotate launches remained",
+    "test_command": "uv run pytest -q tests/test_qwen35_decode_state.py tests/test_paro_silu_plan.py --tb=short",
+    "test_result": "all collected tests passed; 3 HIP-availability-gated nodes skipped by their own conditions"
+  },
+  "date": "2026-08-16",
+  "decision": {
+    "claim_scope": "retained leaf/sub-window and launch-count improvement; no new aggregate topline throughput claim",
+    "reason": "exact actual-shape leaf saves 8.027 us and one launch; trace removes 69 launches in the profiled batch+oracle scope; bracketed complete wall is neutral while prefill throughput is non-regressive",
+    "verdict": "retain_default_on"
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "power_profile": "60W GPU / 60W CPU / 45W system"
+  },
+  "leaf": {
+    "bit_exact": true,
+    "command": "PYTHONPATH=. python3 /tmp/hipengine-rocmfpx-transfer-campaign/opp3_leaf.py --rows 512 --features 512 --group-size 128 --krot 8 --warmup 50 --iters 500 --json /tmp/hipengine-rocmfpx-transfer-campaign/opp3-leaf-r512-f512.json",
+    "fused_ms": 0.021616764017380774,
+    "iterations": 500,
+    "shape": {
+      "dtype": "fp16",
+      "features": 512,
+      "group_size": 128,
+      "krot": 8,
+      "rows": 512
+    },
+    "speedup": 1.3713104342715887,
+    "unfused_ms": 0.02964329405222088
+  },
+  "model": {
+    "family": "Qwen3.6-35B-A3B",
+    "quality_classification": "quality-traded; implementation-correct",
+    "quant": "w4_paro",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "opportunity": 3,
+  "performance_claim": true,
+  "schema": 1,
+  "status": "accepted",
+  "title": "Exact shared-prefill SiLU plus down-rotation fusion",
+  "trace": {
+    "baseline_dispatches": 4644,
+    "baseline_pair_rotate_calls": 3,
+    "baseline_paro_rotate1_calls": 257,
+    "baseline_silu_separate_calls": 69,
+    "candidate_dispatches": 4575,
+    "candidate_pair_rotate_calls": 72,
+    "candidate_paro_rotate1_calls": 188,
+    "candidate_silu_separate_calls": 0,
+    "candidate_trace_sha256": "ff4db4ba68a0fc573869eff5e70ef00e5b304e8f37e20e5a103a4f83b0b2a4f3",
+    "dispatch_reduction": 69,
+    "duration_status": "rocprofv3 emitted equal start/end timestamps on this gfx1151 override; leaf wall uses host synchronize timing and trace is identity/count evidence",
+    "hidden_and_token_exact": true,
+    "scope": "c8 prompt512 max_layers4 decode1 plus independent c1 hidden oracle"
+  }
+}

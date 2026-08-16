@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-07-22.
+Last updated: 2026-08-16.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -20,6 +20,8 @@ Related source-of-truth documents:
 
 - [`PLAN.md`](PLAN.md) — architecture invariants and the batch-shaped runtime
   design.
+- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) — strict, production, and
+  batch-invariant numerical, ownership, and determinism contracts.
 - [`BENCHMARK.md`](BENCHMARK.md) — c=N correctness and performance acceptance
   protocols.
 - [`ROADMAP.md`](ROADMAP.md) — project-level phase ordering.
@@ -48,8 +50,11 @@ When this roadmap is complete:
 7. Per-row sampling parameters and stop conditions coexist in one active group.
 8. KV allocation, prefix reuse, graph buckets, and metrics are owned by the same
    loop.
-9. The same contracts work for GGUF/PARO and gfx1100/gfx1151 without backend or
-   quant branches in engine/model code.
+9. The same contracts work for GGUF/PARO and gfx1100/gfx1151 without backend,
+   quant, or execution-profile branches in engine/model code.
+10. Every run declares `strict`, `production`, or `batch_invariant`; exact
+    control/state ownership binds at every width, while arithmetic and
+    cross-composition equality follow the declared profile.
 
 The first retained milestone is not “the server accepts concurrent requests.”
 It is a correctness- and profiler-proven native c=N model step. The final
@@ -67,7 +72,7 @@ milestone is live admission/reclaim around that step.
 | Native group width | Largest number of rows advanced by one native model step. Two serial c4 groups are not native c8. |
 | Continuous batching | Requests are admitted, prefilled, decoded, finished, and reclaimed while other requests remain live under one model-owning loop. |
 | First-class c=N pipeline | Native c=N is the canonical internal path. c=1 is the `C=1` instance, not a separate architecture. |
-| Retained c=N row | Correctness, lifecycle, profiler, scaling, memory, and observability gates all pass under `docs/BENCHMARK.md`. |
+| Retained c=N row | Declared execution-profile correctness, lifecycle, profiler, scaling/SLO, memory, and observability gates all pass under `docs/BENCHMARK.md`. |
 
 ### Fully native does not require one giant kernel
 
@@ -80,8 +85,10 @@ math inside a batch-shaped kernel. It must not:
 - claim c8 when execution is two serial c4 groups;
 - hide per-row/split/serial fallbacks from artifact and profiler metadata.
 
-Exact row-local arithmetic is allowed when launched through an honest c-aware
-batch interface and reported as such. Performance promotion still requires the
+Row-local or width-specific arithmetic is allowed when launched through an
+honest c-aware batch interface and reported under its execution profile. Strict
+retains its exact boundary; production may reassociate only after the complete
+strict-teacher/dynamic/task gate. Performance promotion still requires the
 profiler to show that the route scales better than the serial bridge.
 
 ## Current truth
@@ -155,9 +162,9 @@ below remain the governing production contract. See
 ### Production OpenAI serving objective
 
 The next target is not merely a wider retained batch. It is one production
-server configuration that preserves the fastest exact c1 route when only one
-request is live and increases physical width only when occupancy and the
-latency policy justify it. A concurrency-capable server must not make a lone
+server configuration that preserves the fastest profile-qualified c1 route
+when only one request is live and increases physical width only when occupancy
+and the latency policy justify it. A concurrency-capable server must not make a lone
 request pay for masked physical c8 execution. Stable request identity, device
 state, and KV ownership must survive c1/c2/c4/c8 bucket changes without
 re-prefill or row migration visible to the client.
@@ -199,6 +206,12 @@ commands and raw measurements remain in `WORKLOG.md` and the linked artifacts.
 | A4 routing/SLO | All **8 candidates x 3 balanced repetitions** complete (**288 requests / 8,640 IDs**), but no candidate passes every exactness and SLO gate. The package control misses TTFT p95 once (**10.983 s > 10 s**); faster alternatives produce nine late p512/d48 ID divergences after 20–24 exact IDs. | Keep `protect_decode:256/burst-1` and the zero-ms window. Diagnostic gains up to **63.81%** are invalid for promotion. [`A4 decision`](../benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json). |
 | A5 pressure/soak | After closing admission, disconnect, cancellation-drain, and pre-start reservation races, all **9/9** workloads pass over **122 requests**: 108 completions, 12 exact retryable rejects, one disconnect, and one deadline. Queue/KV/stream/graph/workspace memory is bounded, the 80-second soak is 40/40 exact, GPU0 is exclusive, and final ownership is zero. | Retain the corrected bounded lifecycle and unchanged package defaults. This is bounded SLO/reliability evidence, not a multi-day or comparative performance claim. [`A5 closure`](../benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json). |
 | A6 automatic-tool quality | Only **10/48** turns complete successfully; valid-call/correct-tool is **18/48**, exact arguments/external-oracle pass is **16/48**, safe patch success is **0/6**, and external-test selection is **8/8**. Repeated outputs are exact, so failures are reproducible rather than timing noise. | Autonomous tool-call formation is the dominant production blocker. This is a no-performance synthetic quality diagnostic. [`A6 artifact`](../benchmarks/results/2026-07-22-w7900-agentic-a6-broad-quality.json). |
+
+The A4 row is pre-fix historical evidence, not a current numerical-drift
+candidate. Commit `29a0c75d6` repaired authoritative-token/position publication
+through the width transition and a clean follow-up passed 560/560 layer
+comparisons plus 360/360 IDs. Its old `+63.81%` screen remains invalid; the
+current campaign requires a fresh post-fix strict/production A4 SLO baseline.
 
 The retained gfx1100 coding-agent configuration is therefore cache off, native
 sampler off, `protect_decode:256/burst-1`, and a zero-ms generation window.
@@ -531,8 +544,9 @@ and future KVTC pointer movement.
 Graph buckets include every axis that changes captured work:
 
 ```text
-(model plan, backend, C bucket, context/page bucket, active mask,
- KV dtype/layout, prefill/decode mode, top-k/experts, replay length)
+(model plan, backend, execution profile + variant-manifest hash, C bucket,
+ context/page bucket, active mask, KV dtype/layout, prefill/decode mode,
+ top-k/experts, replay length)
 ```
 
 A cache lookup hit is not a replay claim. Retained evidence requires a replayed
@@ -576,31 +590,41 @@ requirements so roadmap items have local exit criteria.
 
 ### Gate 1 — primitive kernels
 
-For every backend, row count, KV dtype, and kernel family used by the runner:
+For every backend, row count, KV dtype, execution profile, and kernel family
+used by the runner:
 
-- KV append key/value mismatch = 0;
-- batch attention vs independent c1 satisfies the protocol tolerance;
-- CPU/NumPy oracle tolerance passes;
+- KV append destination/ownership metadata is exact; strict value bytes match
+  their oracle, while production values satisfy the declared primitive
+  tolerance;
+- batch attention vs independent strict c1 satisfies the declared strict or
+  production tolerance;
+- CPU/NumPy outer oracle tolerance passes;
 - repeated A/A determinism passes where required;
 - `rocprofv3 --kernel-trace` confirms the intended kernel, workgroup, resources,
   and positive duration.
 
-### Gate 2 — direct model equality
+### Gate 2 — direct model profile gate
 
 For greedy sampling and SpecDec disabled:
 
-- every generated token equals N independent c1 sessions;
-- logits are finite;
-- per-layer hidden capture passes the declared exact/tolerance contract;
-- all persistent Conv/GDN state matches the c1 oracle;
-- all live K/V prefixes match the c1 oracle;
+- request/slot/token/position/mask/`KVLiveSpans`/state ownership and lifecycle
+  metadata are exact;
+- logits and all recorded states are finite;
+- `strict` generated tokens, hidden/state boundaries, and live K/V prefixes
+  match N independent strict c1 sessions at the declared exact boundaries;
+- `production` compares c>N full logits against strict at identical teacher-
+  forced contexts and passes calibrated mean/p95/p99/max KL, top-1 by category/
+  shape/transition, same-schedule determinism, same-width neighbor isolation,
+  BF16-relative checks where available, and task non-inferiority; numerical
+  Conv/GDN/KV values may drift but ownership and transactions may not;
+- `batch_invariant` preserves the fixed-seed request result across supported
+  slots, neighbors, widths, admission order, cancellation, and compaction; and
 - no serial bridge or undeclared fallback is present.
 
-GGUF persistent state should be byte-exact when the c1 and c>N route claim the
-same arithmetic. PARO uses its fixture-specific hidden/state contract, but token
-equality remains mandatory.
+Cross-width free-running generated-ID equality is binding for strict and
+batch-invariant and diagnostic for production.
 
-### Gate 3 — lifecycle equality
+### Gate 3 — lifecycle and isolation
 
 At minimum:
 
@@ -614,6 +638,10 @@ At minimum:
 - standard all-row prompt 512 / decode 128.
 
 A short-horizon token-only suite is supportive evidence, not lifecycle closure.
+Every profile requires exact maps, positions, masks, `KVLiveSpans`, commit/
+rollback destinations, reclaim, and neighbor isolation. Strict/batch-invariant
+add their result-equality contract; production uses strict-teacher numerical
+quality at the transition contexts.
 
 ### Gate 4 — native execution
 
@@ -630,6 +658,8 @@ Artifacts and profiles must prove:
 
 Each retained c=N row records:
 
+- execution profile/schema, selected and strict-fallback manifest hashes,
+  teacher source, and whether generated-ID equality is binding or diagnostic;
 - exact model fingerprint, quant, KV dtype, backend, hardware, command, and clean
   source revision;
 - c1 and serial-bridge baselines from the same protocol;
@@ -642,14 +672,17 @@ Each retained c=N row records:
 - admission/completion timestamps and finish reasons.
 
 A native row must beat the serial bridge and c1 aggregate to become a scaling
-claim. There is no arbitrary fixed speedup target; exact, non-regressive wins are
-kept under the repository performance policy.
+claim. There is no arbitrary fixed speedup target for an individual qualified
+route; exact and production-profile non-regressive wins are kept under the
+repository performance policy. Changing the public default profile separately
+uses the material SLO-goodput/c1 guard in `EXECUTION-PROFILES.md`.
 
 ### Prompt coverage
 
 Do not tune concurrency to one repeated-token prompt. Before promotion, run:
 
-- deterministic raw-token 512/128 fixtures for exact comparison;
+- deterministic raw-token 512/128 fixtures for strict equality or production
+  strict-teacher comparison;
 - all categories in `benchmarks/prompts/mtpbench-code-general-ja.jsonl`;
 - ragged and sparse lifecycle fixtures;
 - category-heldout prompts when sampling or route selection changes.
@@ -1446,8 +1479,12 @@ multiple later gates.
    recertified; occupancy one is confirmed as masked physical c8.
 10. **Completed — F2:** retain c1-preserving occupancy-adaptive c1/c2/c4/c8
     execution in one long-lived gfx1151 GGUF owner.
-11. **Completed — F3:** singleton-indexed packed-AR GDN is retained without c1
-    or c>N regression; broader Q8T16 rowtiling was rejected as inexact.
+11. **Completed — F3 plus profile requalification:** singleton-indexed
+    packed-AR GDN remains retained. The former blanket Q8T16 rejection conflated
+    deterministic free-running ID divergence with control correctness: a fresh
+    ZBook-local 1,050-row strict-teacher gate is bit-identical, so current A/B evidence now
+    retains all-projection rowtiling only at physical c4/c8; c2 remains direct
+    after a measured `1.795%` regression.
 12. **Completed — F4:** clean real-Uvicorn static/ragged/fixed/Poisson,
     scheduler-owned timeout/disconnect isolation, exact overload, recovery, and
     120-request/60-second soak all pass under scoped package-default `fair:256`.
@@ -1518,22 +1555,30 @@ advance status.
   package metadata.
 - gfx1100 and gfx1151 may register different launch variants behind the same
   model-step contract.
-- Every fused route retains a numerically equivalent unfused chain.
+- Every fused route retains a registered strict unfused chain. Production
+  composites may reassociate only under a certified profile manifest.
 
 ### Correctness before tuning
 
 - Add a RED fixture before changing model math whenever practical.
-- Preserve independent c1 sessions as the external oracle until c=N becomes the
-  canonical route and a frozen fixture exists.
-- Never keep a speed win that regresses required token/state/KV equality.
-- Fail closed to true c1 for unsupported shapes; never silently enter an
-  unvalidated native route.
+- Preserve independent strict c1 sessions as the arithmetic/control oracle until
+  c=N becomes canonical and a frozen fixture exists.
+- Never keep a strict win that regresses required parity or a production win
+  that fails any control, tail-KL, category, determinism, isolation, or task
+  gate.
+- Fail closed to a certified strict route for unsupported/uncertified shapes;
+  never silently enter an unvalidated native or production route.
 
 ### Honest execution labels
 
 Every route emits:
 
 ```text
+execution_profile
+execution_profile_schema
+variant_manifest_sha256
+strict_manifest_sha256
+generated_id_equality_binding
 logical_concurrency
 physical_bucket_width
 native_group_width
@@ -1580,8 +1625,9 @@ and copy-on-write cost.
 | Failure | Action |
 | --- | --- |
 | Primitive mismatch | Stop model work; add/fix the primitive RED fixture. |
-| First hidden drift | Capture the earliest layer/stage; do not tune downstream kernels. |
-| Token equality but state/KV mismatch | Reject lifecycle gate; token coincidence is insufficient. |
+| First undeclared hidden drift | Capture the earliest layer/stage; verify it is the declared T1/T2 boundary before tuning downstream kernels. |
+| Token equality but state/KV ownership mismatch | Reject lifecycle gate in every profile; token coincidence is insufficient. |
+| Production ID divergence | Hold teacher contexts fixed and localize mean/tail KL, margin, transition, isolation, and task quality; do not call it a state bug or a pass from IDs alone. |
 | Exact route slower than serial | Keep as correctness anchor, profile family/launch walls, and do not promote. |
 | Graph/eager mismatch | Disable replay for that backend/bucket and keep eager canonical. |
 | Pool pointer changes under replay | Invalidate/rebind graph before reuse; treat stale execution as correctness failure. |
@@ -1593,7 +1639,8 @@ and copy-on-write cost.
 
 For each meaningful iteration:
 
-1. Put commands, measurements, diagnosis, and next action in `WORKLOG.md`.
+1. Put commands, measurements, diagnosis, and next action in a new immutable
+   `worklog/entries/` file.
 2. Put compact machine-readable evidence in `benchmarks/results/` when the
    benchmark protocol applies.
 3. Add only a one-line result pointer here if it changes current truth,
@@ -1604,14 +1651,15 @@ For each meaningful iteration:
    should be removed after promotion.
 
 Do not append experiment narratives, profiler tables, or per-iteration queues to
-this file. Git history and `WORKLOG.md` preserve them.
+this file. Git history and immutable `worklog/entries/` preserve them.
 
 ## Definition of done
 
 This roadmap is complete only when all of the following are true for both GGUF
 and PARO on both gfx1100 and gfx1151:
 
-- [ ] c1/c2/c4/c8 native model steps pass token/hidden/state/KV equality.
+- [ ] c1/c2/c4/c8 native model steps pass the declared strict, production, and
+      batch-invariant gates, with exact control/state/KV ownership in all three.
 - [ ] Sparse retirement, cancellation, compaction, and new admission pass while
       neighbors remain live.
 - [ ] One model-owning loop serves `LLM.generate()` and the OpenAI server.
