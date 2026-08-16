@@ -696,6 +696,16 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
         False,
     )
+    assert not backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
+        False,
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
+        False,
+    )
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",

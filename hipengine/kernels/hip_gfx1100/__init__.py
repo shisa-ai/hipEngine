@@ -213,6 +213,9 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
+# W7900 retains the expanded-metadata T16 gate/up payload. The qmicro replacement
+# is qualified independently for gfx1151 and must fail closed on this backend.
+GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = False
 # Private-c1 token lookup reads one compressed row from a pinned GGUF mmap.
 # The mapping is device-visible but does not create a VRAM weight shadow.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
@@ -806,6 +809,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
     "GGUF_DENSE_Q4_T16",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",

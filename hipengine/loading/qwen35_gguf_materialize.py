@@ -31,8 +31,10 @@ from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
     repack_gguf_q4_k_pack8,
     repack_gguf_q4_k_tile16,
+    repack_gguf_q4_k_tile16_qmicro,
 )
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_BLOCK_BYTES,
@@ -56,6 +58,7 @@ LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
 LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
+LAYOUT_GGUF_Q4_K_QMICRO_T16 = "gguf_q4_k_qmicro_t16_v1"
 LAYOUT_GGUF_Q4_K_X8 = "gguf_q4_k_x8_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
 LAYOUT_GGUF_Q5_K_QMICRO_T16 = "gguf_q5_k_qmicro_t16_v1"
@@ -257,6 +260,7 @@ def plan_qwen35_gguf_materialization(
     *,
     decode_repack: bool | None = None,
     dense_q4_t16: bool = False,
+    dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
@@ -289,6 +293,7 @@ def plan_qwen35_gguf_materialization(
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
+            dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
@@ -304,6 +309,7 @@ def plan_qwen35_gguf_materialization(
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
             dense_q4_t16=bool(dense_q4_t16),
+            dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
@@ -438,6 +444,13 @@ def planned_qwen35_gguf_weight_allocation_nbytes(
             source,
             block_bytes=GGUF_Q4_K_BLOCK_BYTES,
             tile_block_bytes=GGUF_Q4_K_TILE16_BLOCK_BYTES,
+            slot_path=spec.slot_path,
+        )
+    elif spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16:
+        primary_nbytes = _planned_t16_nbytes(
+            source,
+            block_bytes=GGUF_Q4_K_BLOCK_BYTES,
+            tile_block_bytes=GGUF_Q4_K_TILE16_QMICRO_BLOCK_BYTES,
             slot_path=spec.slot_path,
         )
     elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
@@ -596,6 +609,13 @@ def materialize_qwen35_gguf_weights(
             backend_package_capability(
                 backend,
                 "GGUF_DENSE_Q4_T16",
+                False,
+            )
+        ),
+        dense_q4_qmicro_t16_gate_up=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
                 False,
             )
         ),
@@ -778,6 +798,7 @@ def _plan_layer(
     decode_repack: bool,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
@@ -792,6 +813,7 @@ def _plan_layer(
             decode_repack=decode_repack,
             contract_f32_linear=contract_f32_linear,
             dense_q4_t16=dense_q4_t16,
+            dense_q4_qmicro_t16_gate_up=dense_q4_qmicro_t16_gate_up,
             dense_q4_t16_attn_q_08b=dense_q4_t16_attn_q_08b,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
@@ -934,6 +956,7 @@ def plan_qwen35_gguf_weight_spec(
     *,
     decode_repack: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
@@ -948,6 +971,7 @@ def plan_qwen35_gguf_weight_spec(
         tensor,
         decode_repack=bool(decode_repack),
         dense_q4_t16=bool(dense_q4_t16),
+        dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
         dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
@@ -966,6 +990,7 @@ def _spec_for_tensor(
     decode_repack: bool,
     contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
+    dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
@@ -1031,6 +1056,18 @@ def _spec_for_tensor(
                 layout=LAYOUT_RAW_GGUF,
                 allocation_names=("raw",),
                 sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
+            )
+        if (
+            decode_repack
+            and dense_q4_qmicro_t16_gate_up
+            and _is_dense_q4_qmicro_t16_gate_up_tensor(slot_path, tensor)
+        ):
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q4_k_qmicro_t16_v1",
+                layout=LAYOUT_GGUF_Q4_K_QMICRO_T16,
+                allocation_names=("tiles",),
             )
         if decode_repack and (
             (
@@ -1333,6 +1370,20 @@ def _dense_q4_t16_sidecar_allocation_name(
     return None
 
 
+def _is_dense_q4_qmicro_t16_gate_up_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select the measured Qwen3.8-27B dense gate/up replacement payload."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (17_408, 5_120)
+        and slot_path.startswith("layers.")
+        and slot_path.endswith((".ffn_gate", ".ffn_up"))
+    )
+
+
 def _is_dense_q4_t16_attn_q_08b_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
@@ -1561,6 +1612,7 @@ def _materialize_spec(
                 )
     elif spec.layout in {
         LAYOUT_GGUF_Q4_K_T16,
+        LAYOUT_GGUF_Q4_K_QMICRO_T16,
         LAYOUT_GGUF_Q4_K_X8,
         LAYOUT_GGUF_Q5_K_T16,
         LAYOUT_GGUF_Q5_K_QMICRO_T16,
@@ -1572,6 +1624,10 @@ def _materialize_spec(
     }:
         if spec.layout == LAYOUT_GGUF_Q4_K_T16:
             packed = repack_gguf_q4_k_tile16(
+                raw if raw.ndim == 3 else raw[None, ...]
+            )
+        elif spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16:
+            packed = repack_gguf_q4_k_tile16_qmicro(
                 raw if raw.ndim == 3 else raw[None, ...]
             )
         elif spec.layout == LAYOUT_GGUF_Q4_K_X8:
@@ -1686,6 +1742,7 @@ __all__ = [
     "GGUF_SELECTIVE_WEIGHT_ARENA_ALIGNMENT",
     "GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES",
     "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
+    "LAYOUT_GGUF_Q4_K_QMICRO_T16",
     "LAYOUT_GGUF_Q4_K_T16",
     "LAYOUT_GGUF_Q4_K_X8",
     "LAYOUT_GGUF_Q5_K_QMICRO_T16",

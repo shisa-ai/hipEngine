@@ -95,6 +95,7 @@ from hipengine.kernels.registry import KernelKey, generation, is_registered, res
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
@@ -154,6 +155,10 @@ _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 512
+_Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
+_Q4_T16_DENSE_QUANTS = frozenset(
+    {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"}
+)
 _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
@@ -1043,6 +1048,19 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         ),
         "t16",
     ),
+    (
+        LAYOUT_GGUF_Q4_K_QMICRO_T16,
+        GGUF_ACTIVATION_BF16,
+        GGUF_OUTPUT_BF16,
+    ): GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_qmicro_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        "t16",
+    ),
     (LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
         "t16",
@@ -1715,6 +1733,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    expanded_metadata: bool = False,
 ) -> KernelKey | None:
     """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
 
@@ -1724,15 +1743,20 @@ def _q4_t16_dual_wmma_silu_dispatch(
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or dispatch_a.abi != "t16"
         or dispatch_b.abi != "t16"
-        or dispatch_a.key.quant != "gguf_q4_k_t16_v1"
-        or dispatch_b.key.quant != "gguf_q4_k_t16_v1"
+        or dispatch_a.key.quant not in _Q4_T16_DENSE_QUANTS
+        or dispatch_a.key.quant != dispatch_b.key.quant
+        or (expanded_metadata and dispatch_a.key.quant != "gguf_q4_k_qmicro_t16_v1")
     ):
         return None
     candidate = KernelKey(
         dispatch_a.key.backend,
         "linear_pair_silu",
-        "gguf_q4_k_t16_v1",
-        "dense_dual_wmma_prefill_bf16_bf16_out",
+        dispatch_a.key.quant,
+        (
+            "dense_dual_wmma_prefill_expanded_meta_bf16_bf16_out"
+            if expanded_metadata
+            else "dense_dual_wmma_prefill_bf16_bf16_out"
+        ),
     )
     _ensure_linear_kernel_registered(candidate)
     return candidate if is_registered(candidate) else None
@@ -1753,8 +1777,8 @@ def _q4_t16_dual_rowtile_silu_dispatch(
     sole_t16 = (
         dispatch_a.abi == "t16"
         and dispatch_b.abi == "t16"
-        and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
-        and dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+        and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
+        and dispatch_a.key.quant == dispatch_b.key.quant
     )
     pack8_sidecars = (
         use_sidecar
@@ -1775,7 +1799,7 @@ def _q4_t16_dual_rowtile_silu_dispatch(
     candidate = KernelKey(
         dispatch_a.key.backend,
         "linear_pair_silu",
-        "gguf_q4_k_t16_v1",
+        dispatch_a.key.quant if sole_t16 else "gguf_q4_k_t16_v1",
         "dense_dual_rowtile_bf16_bf16_out",
     )
     _ensure_linear_kernel_registered(candidate)
@@ -2051,7 +2075,10 @@ def resolve_gguf_linear_dispatch(
             f"layout={weight.spec.layout!r}, activation={activation_dtype!r}, output={output_dtype!r}"
         ) from exc
     quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
-    if weight.spec.layout == LAYOUT_GGUF_Q4_K_T16 and rows > 1:
+    if weight.spec.layout in {
+        LAYOUT_GGUF_Q4_K_T16,
+        LAYOUT_GGUF_Q4_K_QMICRO_T16,
+    } and rows > 1:
         variant = "t16_wmma_prefill_bf16_bf16_out"
     else:
         variant = _variant_for_rows(dispatch.key.variant, rows=rows)
@@ -2526,7 +2553,7 @@ def _q4_t16_dense_native_dispatch(
     if (
         not _native_batch_decode_session_enabled
         or dispatch.abi != "t16"
-        or dispatch.key.quant != "gguf_q4_k_t16_v1"
+        or dispatch.key.quant not in _Q4_T16_DENSE_QUANTS
         or not 2 <= rows <= 4
     ):
         return dispatch
@@ -3929,6 +3956,8 @@ def launch_gguf_linear_pair_silu(
     use_q4_t16_dual_interleaved: bool = True,
     registered_decode_variant: str | None = None,
     q8_1_workspace_ptr: int | None = None,
+    pair_workspace_ptr: int | None = None,
+    pair_workspace_nbytes: int = 0,
 ) -> bool:
     """Launch a registered gate/up pair plus SiLU, or return False."""
 
@@ -3980,12 +4009,24 @@ def launch_gguf_linear_pair_silu(
                 **kwargs,
             )
             return True
+        qmicro_metadata_nbytes = (
+            (out_features // 16) * (in_features // 256) * 256
+        )
+        use_expanded_qmicro_metadata = (
+            rows >= _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS
+            and dispatch_a.key.quant == dispatch_b.key.quant
+            == "gguf_q4_k_qmicro_t16_v1"
+            and pair_workspace_ptr is not None
+            and int(pair_workspace_ptr) > 0
+            and int(pair_workspace_nbytes) >= 2 * qmicro_metadata_nbytes
+        )
         t16_wmma_key = _q4_t16_dual_wmma_silu_dispatch(
             dispatch_a,
             dispatch_b,
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            expanded_metadata=use_expanded_qmicro_metadata,
         )
         if t16_wmma_key is not None:
             fn = resolve(
@@ -4000,16 +4041,32 @@ def launch_gguf_linear_pair_silu(
             )
             if library is not None:
                 kwargs["library"] = library
-            fn(
+            common = (
                 x_ptr,
                 weight_a.allocation("tiles").tensor.ptr,
                 weight_b.allocation("tiles").tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
             )
+            if use_expanded_qmicro_metadata:
+                assert pair_workspace_ptr is not None
+                fn(
+                    *common,
+                    int(pair_workspace_ptr),
+                    int(pair_workspace_ptr) + qmicro_metadata_nbytes,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
+            else:
+                fn(
+                    *common,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
             return True
         t16_rowtile_key = _q4_t16_dual_rowtile_silu_dispatch(
             dispatch_a,
@@ -4024,7 +4081,8 @@ def launch_gguf_linear_pair_silu(
         decode_tiles_b = None
         allocation_name = (
             "tiles"
-            if dispatch_a.key.quant == dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+            if dispatch_a.key.quant == dispatch_b.key.quant
+            and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
             else "decode_tiles"
         )
         try:
@@ -4100,30 +4158,48 @@ def launch_gguf_linear_pair_silu(
         return True
     if not _resolve_use_gemv_decode(use_gemv_decode):
         return False
-    q4_t16_decode = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q4_k_t16_v1",
-        "dense_single_local32_bf16_bf16_out",
+    dense_pair_quant = (
+        dispatch_a.key.quant
+        if dispatch_a.key.quant == dispatch_b.key.quant
+        and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
+        else None
+    )
+    q4_t16_decode = (
+        None
+        if dense_pair_quant is None
+        else KernelKey(
+            resolved_backend,
+            "linear",
+            dense_pair_quant,
+            "dense_single_local32_bf16_bf16_out",
+        )
     )
     q4_t16_pair_variant = (
         registered_decode_variant or "dense_dual_local32_bf16_bf16_out"
     )
     if (
         _native_batch_decode_session_enabled
+        and dense_pair_quant == "gguf_q4_k_t16_v1"
         and q4_t16_pair_variant
         == _Q4_T16_DENSE_PAIR_SILU_SPLIT_WEIGHT_VARIANT
     ):
         q4_t16_pair_variant = _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT
-    q4_t16_pair_silu = KernelKey(
-        resolved_backend,
-        "linear_pair_silu",
-        "gguf_q4_k_t16_v1",
-        q4_t16_pair_variant,
+    q4_t16_pair_silu = (
+        None
+        if dense_pair_quant is None
+        else KernelKey(
+            resolved_backend,
+            "linear_pair_silu",
+            dense_pair_quant,
+            q4_t16_pair_variant,
+        )
     )
-    _ensure_linear_kernel_registered(q4_t16_pair_silu)
+    if q4_t16_pair_silu is not None:
+        _ensure_linear_kernel_registered(q4_t16_pair_silu)
     if (
-        dispatch_a.key == q4_t16_decode
+        q4_t16_decode is not None
+        and q4_t16_pair_silu is not None
+        and dispatch_a.key == q4_t16_decode
         and dispatch_b.key == q4_t16_decode
         and is_registered(q4_t16_pair_silu)
     ):

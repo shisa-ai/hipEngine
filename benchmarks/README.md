@@ -433,6 +433,29 @@ and peers retain the two singleton projections. This is retained development
 evidence, not a clean topline refresh. Evidence:
 [`narrow K/V pair`](results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
 
+The next retained unit replaces only the 128 H5120/N17408 dense gate/up weights
+with a sole qmicro-Q4 payload. Direct compact-metadata c1 and rows2-4 consumers
+improve actual-weight boundaries **1.03063x (45/45)** and **1.03076x
+(135/135)**. Direct WMMA remains positive at 512/1K; one bounded expansion into
+the already-dead FFN scratch plane makes the exact 4K pair positive
+**161.01965 -> 160.17212 ms (1.00529x, 32/45)**. No sidecar or workspace is
+added, and resident/tracked peak falls exactly **178,257,920 bytes / 170 MiB**.
+
+| Shape | Same-source AR control | Qmicro AR | AR delta | Same-source prefill control | Qmicro prefill | Prefill delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 12.36119 | **12.48862** | **+1.031%** | 400.234 | **401.870** | **+0.409%** |
+| 1K/128 | 12.18945 | **12.30596** | **+0.956%** | 391.159 | **392.140** | **+0.251%** |
+| 4K/128 | 12.34224 | **12.46215** | **+0.972%** | 385.116 | **385.329** | **+0.055%** |
+
+Natural AR improves **12.58125 -> 12.71731 tok/s (+1.082%)**, with every
+full/train/heldout/category scope positive. Native B1 improves **18.83154 ->
+19.00472 (+0.920%)** with all 30+30 trajectories, 339/393 acceptance, 786
+target rows, and GPU/CPU decisions exact. Against frozen clean llama build
+10438, these development AR rows lead HIP by **2.002-8.290%** and trail Vulkan
+by **0.845-3.253%**; a clean post-commit publication is still required before
+changing the topline. Evidence:
+[`sole qmicro gate/up retain`](results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

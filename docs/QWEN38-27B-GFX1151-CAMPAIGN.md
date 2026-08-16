@@ -1,11 +1,11 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership and G2 prefill are complete; clean P5 at
-`15a2ca45b` now beats llama.cpp HIP at 512/4K, remains 0.109% behind at 1K,
-and retains an exact development natural-AR lead, but remains 2.52-5.25% below
-Vulkan; G5 memory parity remains open, and the K0-K3 native INT8 K/V ladder is
-closed below K4 on model-level correctness.** The working performance set is
-`512/128`, `1024/128`, and `4096/128`. The model is Qwen3.8-27B Q4_K_M on
+Status: **G1 single-layout ownership and G2 prefill are complete. Clean P5 at
+`15a2ca45b` beats llama.cpp HIP at 512/4K and remains 0.109% behind at 1K; the
+latest exact sole-qmicro development gate beats HIP at all three rows and trails
+Vulkan by 0.845-3.253%. G5 memory parity remains open, and the K0-K3 native INT8
+K/V ladder is closed below K4 on model-level correctness.** The working
+performance set is `512/128`, `1024/128`, and `4096/128`. The model is Qwen3.8-27B Q4_K_M on
 Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
@@ -850,6 +850,29 @@ sidecar. Evidence:
 [`first qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json) and
 [`wave-shuffled qmicro operation rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-wave-meta-rejected.json).
 
+A later materially different sole-payload dataflow resolves that rejection.
+Direct compact-metadata consumers change actual c1 **1.423808 -> 1.381499 ms
+(1.03063x, 45/45)** and rows2-4 aggregate **4.279782 -> 4.152054 ms
+(1.03076x, 135/135)**, all BF16-bit exact. Direct dual WMMA wins at 512/1K;
+at 4K, expanding only the compact coefficients once into the already-dead FFN
+scratch plane changes three actual pairs **161.01965 -> 160.17212 ms (1.00529x,
+32/45)**. The 128 gate/up weights therefore replace standard T16 with sole
+qmicro, removing **178,257,920 bytes / 170 MiB** without a sidecar or new
+workspace.
+
+The complete-model gate is positive at every shape: AR changes
+**12.36119/12.18945/12.34224 -> 12.48862/12.30596/12.46215 tok/s
+(+1.031%/+0.956%/+0.972%)** and prefill changes
+**400.234/391.159/385.116 -> 401.870/392.140/385.329 tok/s
+(+0.409%/+0.251%/+0.055%)** at 512/1K/4K. Natural AR improves
+**12.58125 -> 12.71731 (+1.082%)** with every full/train/heldout/category scope
+positive. Native B1 improves **18.83154 -> 19.00472 (+0.920%)** with exact
+30/30 AR and B1 trajectories, 339/393 accepted/proposed tokens, 786 target
+rows, exact GPU/CPU decisions, and zero teardown. Development AR now beats
+clean llama HIP at all three rows and is within **0.845-3.253%** of Vulkan;
+P5 remains open. Evidence:
+[`sole qmicro gate/up retain`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
+
 A free-producer bound also closes cross-kernel Q6 activation fusion. The
 existing planar-Q6 Q8_1/dp4a consumer is timed with Q8 quantization performed
 once before all warmups and samples; best t256 is **0.993641 -> 0.990665 ms
@@ -927,11 +950,12 @@ profiled host decode falls **84.21668 -> 82.72545 ms/token (-1.771%)**, with
 exactly **934 launches/token** before and after. Fixed plus output norm now
 costs only **0.29792 ms/token / 0.376%**. Q4 dual/single projections own
 **62.673%** combined, while the kernel-to-host residual is **3.42086 ms/token**.
-Q4 geometry, Q8 activation, metadata publication, and the current
-operation-incomplete qmicro package are already closed; reopen that family only
-with a new sole-payload native/prefill dataflow. Wider graph replay is also
-closed, so any residual-wall candidate needs a distinct device-scheduling or
-operation-fusion premise. Evidence:
+Q4 geometry, Q8 activation, and same-payload metadata publication are closed;
+the rerank's requirement for a materially new sole-payload native/prefill
+dataflow is satisfied by the later retained qmicro route above. Wider graph
+replay is also closed. Refresh the selected-region profile after the qmicro
+commit before choosing another residual-wall device-scheduling or fusion
+premise. Evidence:
 [`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
 
 ### P6 — Exact B3 MTP

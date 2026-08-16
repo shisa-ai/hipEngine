@@ -27,6 +27,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
+    gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out,
@@ -938,6 +942,88 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         expected_single,
         **_TOL,
     )
+
+
+@pytest.mark.parametrize("rows", [1, 2, 3, 4])
+def test_qmicro_q4_dense_primitives_match_t16_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260819 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q4_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    control_tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    candidate_tiles = repack_gguf_q4_k_tile16_qmicro(raw[None, ...]).tiles
+    control_fn = (
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out
+        if rows == 1
+        else gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    )
+    candidate_fn = (
+        gguf_q4_k_qmicro_t16_dense_single_local32_bf16_bf16_out
+        if rows == 1
+        else gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out
+    )
+    control = _run_dense_single(
+        control_fn,
+        x_bf16,
+        control_tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dense_single(
+        candidate_fn,
+        x_bf16,
+        candidate_tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_qmicro_q4_dense_dual_rowtile_matches_t16_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260818 + rows)
+    in_features = 512
+    out_features = 32
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=11, axis=0).copy()
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    control_tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    control_tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    candidate_tiles_a = repack_gguf_q4_k_tile16_qmicro(raw_a[None, ...]).tiles
+    candidate_tiles_b = repack_gguf_q4_k_tile16_qmicro(raw_b[None, ...]).tiles
+
+    control = _run_dense_dual_silu(
+        x_bf16,
+        control_tiles_a,
+        control_tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+    )
+    candidate = _run_dense_dual_silu(
+        x_bf16,
+        candidate_tiles_a,
+        candidate_tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        fn=gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(candidate, control)
 
 
 @pytest.mark.parametrize("rows", [2, 3, 4])
@@ -2890,6 +2976,46 @@ def test_t16_q4_dense_dual_q8_1x2_split_weight_is_bit_exact(
         x_bf16,
         tiles_a,
         tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_qmicro_q4_dense_dual_q8_1x2_split_weight_is_bit_exact(
+    t16_selected_library,
+    q4_library,
+) -> None:
+    rng = np.random.default_rng(20260817)
+    in_features, out_features = 1024, 512
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=13, axis=0).copy()
+    control_tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    control_tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    candidate_tiles_a = repack_gguf_q4_k_tile16_qmicro(raw_a[None, ...]).tiles
+    candidate_tiles_b = repack_gguf_q4_k_tile16_qmicro(raw_b[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(1, in_features)).astype(np.float32)
+    )
+
+    control = _run_dense_dual_silu_q8x2_dp4a(
+        gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
+        x_bf16,
+        control_tiles_a,
+        control_tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        q4_library,
+    )
+    candidate = _run_dense_dual_silu_q8x2_dp4a(
+        gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
+        x_bf16,
+        candidate_tiles_a,
+        candidate_tiles_b,
         out_features,
         np.uint16,
         t16_selected_library,
