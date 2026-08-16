@@ -7936,6 +7936,8 @@ class Qwen35GGUFFullStackRunner:
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
                 )
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark(f"{stage_prefix}_moe_total")
             else:
                 self._run_post_attention_moe_rows(
                     layer_id,
