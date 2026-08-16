@@ -519,6 +519,16 @@ class LLM:
         )
 
     @property
+    def supports_independent_generation(self) -> bool:
+        """Whether one sole model service owns independently completing children."""
+
+        generator = self._text_generator
+        return bool(
+            generator is not None
+            and getattr(generator, "supports_independent_generation", False)
+        )
+
+    @property
     def supports_controlled_streaming(self) -> bool:
         """Whether streaming is driven by the shared submit/poll model loop."""
 
@@ -679,6 +689,7 @@ class LLM:
             return self._text_generator
 
         from hipengine.generation import (
+            EngineService,
             SubmitPollTextGenerator,
             engine_loop_config_from_env,
             register_builtin_generators,
@@ -752,9 +763,14 @@ class LLM:
             )
         if self.prefix_cache is not None:
             loop_config = replace(loop_config, prefix_cache=self.prefix_cache)
-        self._text_generator = SubmitPollTextGenerator(
+        resident_driver = SubmitPollTextGenerator(
             generator,
             config=loop_config,
+        )
+        self._text_generator = (
+            EngineService(resident_driver, idle_wait_seconds=0.0)
+            if resident_driver.supports_controlled_streaming
+            else resident_driver
         )
         return self._text_generator
 

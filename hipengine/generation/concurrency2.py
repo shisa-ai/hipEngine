@@ -24,6 +24,7 @@ class ChildPhase(str, Enum):
 
 class OutputKind(str, Enum):
     TOKEN = "token"
+    CHUNK = "chunk"
     TERMINAL = "terminal"
 
 
@@ -161,6 +162,20 @@ class EngineOutput:
                 raise TypeError("stream_chunk must be GenerationStreamChunk when set")
             object.__setattr__(self, "token_id", int(self.token_id))
             object.__setattr__(self, "token_index", int(self.token_index))
+        elif self.kind is OutputKind.CHUNK:
+            if self.token_id is not None or self.token_index is not None:
+                raise ValueError("chunk output cannot carry token identity")
+            if self.stream_chunk is None or not isinstance(
+                self.stream_chunk, GenerationStreamChunk
+            ):
+                raise TypeError("chunk output requires a GenerationStreamChunk")
+            if (
+                generated
+                or self.finish_reason is not None
+                or self.generation_output is not None
+                or self.error is not None
+            ):
+                raise ValueError("chunk output cannot carry terminal fields")
         else:
             if self.token_id is not None or self.token_index is not None:
                 raise ValueError("terminal output cannot carry token fields")
@@ -198,6 +213,8 @@ class OutputCollector(Protocol):
     def bind(self, request_id: int) -> None: ...
 
     def publish(self, output: EngineOutput) -> bool: ...
+
+    def wait(self, timeout: float | None = None) -> CollectedOutput | None: ...
 
     @property
     def result(self) -> CollectedOutput | None: ...
@@ -289,18 +306,27 @@ class BlockingOutputCollector(_CollectorBase):
             self._validate_output_locked(output)
             if output.kind is OutputKind.TOKEN:
                 return self._publish_token_locked(output)
+            if output.kind is OutputKind.CHUNK:
+                return True
             return self._publish_terminal_locked(output)
 
 
 class StreamingOutputCollector(_CollectorBase):
     """Bounded non-blocking token mailbox with an out-of-band terminal slot."""
 
-    def __init__(self, *, max_output_tokens: int, max_chunks: int) -> None:
+    def __init__(
+        self,
+        *,
+        max_output_tokens: int,
+        max_chunks: int,
+        enqueue_token_events: bool = True,
+    ) -> None:
         super().__init__(max_output_tokens=max_output_tokens)
         maximum = int(max_chunks)
         if maximum <= 0:
             raise ValueError("max_chunks must be positive")
         self.max_chunks = maximum
+        self.enqueue_token_events = bool(enqueue_token_events)
         self._mailbox: deque[EngineOutput] = deque()
         self._terminal_event: EngineOutput | None = None
         self._terminal_delivered = False
@@ -309,13 +335,20 @@ class StreamingOutputCollector(_CollectorBase):
         with self._condition:
             self._validate_output_locked(output)
             if output.kind is OutputKind.TOKEN:
-                if len(self._mailbox) >= self.max_chunks:
+                enqueue = self.enqueue_token_events or output.stream_chunk is not None
+                if enqueue and len(self._mailbox) >= self.max_chunks:
                     return False
                 accepted = self._publish_token_locked(output)
-                if accepted:
+                if accepted and enqueue:
                     self._mailbox.append(output)
                     self._condition.notify_all()
                 return accepted
+            if output.kind is OutputKind.CHUNK:
+                if len(self._mailbox) >= self.max_chunks:
+                    return False
+                self._mailbox.append(output)
+                self._condition.notify_all()
+                return True
             accepted = self._publish_terminal_locked(output)
             self._terminal_event = output
             return accepted
