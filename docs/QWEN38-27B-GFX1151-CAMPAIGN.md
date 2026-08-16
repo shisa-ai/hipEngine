@@ -1,12 +1,12 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership completed on 2026-08-15 and the clean G2
-prefill win completed on 2026-08-16; retained P5 development rows now edge
-clean llama.cpp HIP at 512/1K and lead it at 4K/natural AR through exact grouped
-GQA plus fixed-H5120 norms, but remain 2.52-5.15% below Vulkan; G5 memory parity
-remains open, and the K0-K3 native INT8 K/V ladder is closed below K4 on
-model-level correctness.** The working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
-Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
+Status: **G1 single-layout ownership and G2 prefill are complete; clean P5 at
+`15a2ca45b` now beats llama.cpp HIP at 512/4K, remains 0.109% behind at 1K,
+and retains an exact development natural-AR lead, but remains 2.52-5.25% below
+Vulkan; G5 memory parity remains open, and the K0-K3 native INT8 K/V ladder is
+closed below K4 on model-level correctness.** The working performance set is
+`512/128`, `1024/128`, and `4096/128`. The model is Qwen3.8-27B Q4_K_M on
+Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -142,6 +142,13 @@ the generic local256 FP32 tree improves all 128 actual norm leaves **1.23268 ->
 AR improves **12.28760 -> 12.45494 (+1.362%)**. Every output/trajectory and
 byte remains exact; rows>1, Q8, output norm, and peers stay generic. Evidence:
 [`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
+
+The clean post-commit publication is **399.836/390.793/384.712 prefill tok/s**
+and **12.2099/12.0514/12.2095 AR tok/s** at 512/1K/4K. It confirms HIP AR
+leads of **0.488%/6.095%** at 512/4K but places 1K **0.109%** behind; Vulkan
+remains **2.854-5.254%** ahead. All CVs are below 0.046%, IDs/bytes remain
+exact, and teardown is zero. Evidence:
+[`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -768,6 +775,15 @@ other-model, and peer-backend fallbacks remain registered. Development rows now
 meet clean llama HIP across the repeated set and natural AR but remain
 **2.52-5.15%** below Vulkan, so P5 remains open. Evidence:
 [`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
+
+The tracked-clean `15a2ca45b` repeat publishes
+**399.836/390.793/384.712 prefill tok/s** and
+**12.2099/12.0514/12.2095 AR tok/s** at 512/1K/4K. All CVs are below 0.046%,
+all IDs and peaks are stable, and teardown is zero. Clean AR beats HIP by
+**0.488%** at 512 and **6.095%** at 4K, but the noise-level development edge at
+1K does not reproduce: clean 1K remains **0.109%** behind HIP. Vulkan remains
+**4.333%/5.254%/2.854%** ahead, so P5 stays open. Evidence:
+[`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
 
 ### P6 — Exact B3 MTP
 
