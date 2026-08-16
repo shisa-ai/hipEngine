@@ -10,6 +10,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -17369,6 +17370,11 @@ def test_resident_scheduler_live_observability_snapshot_covers_d5_contract() -> 
         "prefill_decode_policy": "fair",
         "prefill_chunk_tokens": 2,
         "fair_prefill_burst_chunks": 1,
+        "round_prefill_token_budget": 1024,
+        "round_decode_row_budget": 32,
+        "rounds": 0,
+        "round_prefill_tokens": 0,
+        "round_decode_rows": 0,
         "consecutive_prefill_chunks": 1,
         "cold_prefill_cohort_size": 0,
         "last_work_kind": "prefill",

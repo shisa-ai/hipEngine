@@ -30,6 +30,11 @@ from hipengine.kvcache.backend_prefix import (
 from hipengine.kvcache.global_pool import GlobalKVPoolSet, GlobalPageLease
 from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
+from hipengine.dispatch.execution_planner import (
+    ExecutionCompatibilityKey,
+    ExecutionPlan,
+    plan_execution_groups,
+)
 
 _CPU = Device("cpu", 0)
 
@@ -788,6 +793,9 @@ class DenseKVResidentRunnerAdapter:
         self.capacity = int(getattr(runner, "capacity"))
         if self.capacity <= 0:
             raise ValueError("dense KV runner capacity must be positive")
+        self._execution_path_counts: dict[str, int] = {}
+        self._physical_width_counts: dict[int, int] = {}
+        self._planner_duration_ns = 0
 
     def plan_admission(
         self,
@@ -807,20 +815,66 @@ class DenseKVResidentRunnerAdapter:
         self.admission.rollback_admission(request)
 
     def prefill_batch(self, work: Any, *, commit: bool) -> Any:
-        view = self.backend.prepare(work)
-        return self.runner.prefill_batch_with_kv(
-            work,
-            kv_batch_view=view,
-            commit=commit,
-        )
+        physical_runner = getattr(self.runner, "prefill_physical_group_with_kv", None)
+        if not callable(physical_runner):
+            self._count_execution_path("runner_logical_batch")
+            view = self.backend.prepare(work)
+            return self.runner.prefill_batch_with_kv(
+                work,
+                kv_batch_view=view,
+                commit=commit,
+            )
+        plan = self._execution_plan(work)
+        for group in plan.groups:
+            self._count_execution_path(group.execution_path)
+            for physical_group in group.physical_groups:
+                self._count_physical_width(physical_group.physical_rows)
+                view = self.backend.prepare(
+                    SimpleNamespace(request_ids=physical_group.request_ids)
+                )
+                physical_runner(
+                    group.work,
+                    physical_group=physical_group,
+                    kv_batch_view=view,
+                    commit=commit,
+                )
+        return None
 
     def decode_batch(self, work: Any, *, commit: bool) -> Any:
-        view = self.backend.prepare(work)
-        return self.runner.decode_batch_with_kv(
-            work,
-            kv_batch_view=view,
-            commit=commit,
-        )
+        physical_runner = getattr(self.runner, "decode_physical_group_with_kv", None)
+        if not callable(physical_runner):
+            self._count_execution_path("runner_logical_batch")
+            view = self.backend.prepare(work)
+            return self.runner.decode_batch_with_kv(
+                work,
+                kv_batch_view=view,
+                commit=commit,
+            )
+        plan = self._execution_plan(work)
+        generated: list[Any] = []
+        for group in plan.groups:
+            self._count_execution_path(group.execution_path)
+            for physical_group in group.physical_groups:
+                self._count_physical_width(physical_group.physical_rows)
+                view = self.backend.prepare(
+                    SimpleNamespace(request_ids=physical_group.request_ids)
+                )
+                generated.extend(
+                    physical_runner(
+                        group.work,
+                        physical_group=physical_group,
+                        kv_batch_view=view,
+                        commit=commit,
+                    )
+                )
+        generated_ids = tuple(int(item.request_id) for item in generated)
+        if len(generated_ids) != len(set(generated_ids)) or set(generated_ids) != set(
+            work.request_ids
+        ):
+            raise RuntimeError(
+                "physical decode groups must return exactly one row per logical request"
+            )
+        return tuple(generated)
 
     def compact_batch(self, moves: Any) -> Any:
         compact = getattr(self.runner, "compact_batch", None)
@@ -833,7 +887,54 @@ class DenseKVResidentRunnerAdapter:
         self.admission.reclaim_request(completed)
 
     def resource_observability_snapshot(self) -> dict[str, Any]:
-        return self.admission.resource_observability_snapshot()
+        snapshot = self.admission.resource_observability_snapshot()
+        snapshot["execution_planner"] = {
+            "planner_duration_ns": self._planner_duration_ns,
+            "execution_path_counts": dict(sorted(self._execution_path_counts.items())),
+            "physical_width_counts": dict(sorted(self._physical_width_counts.items())),
+        }
+        return snapshot
+
+    def _execution_plan(self, work: Any) -> ExecutionPlan:
+        context_resolver = getattr(self.runner, "kv_execution_context_bucket", None)
+        workspace_key = str(
+            getattr(self.runner, "kv_workspace_key", "workspace:default")
+        )
+        supports_masked = bool(
+            getattr(self.runner, "kv_supports_masked_rows", False)
+        )
+        supports_compaction = bool(
+            getattr(self.runner, "kv_supports_dense_compaction", False)
+        )
+
+        def resolve(request_id: int) -> ExecutionCompatibilityKey:
+            context_bucket = (
+                str(context_resolver(request_id, work.kind))
+                if callable(context_resolver)
+                else "context:any"
+            )
+            return ExecutionCompatibilityKey(
+                backend_key=self.backend.spec.topology_key,
+                layout_key=self.backend.storage_view().layout_key,
+                kernel_bundle_key=self.backend.spec.kernel_bundle_key,
+                work_class=work.kind.value,
+                context_bucket=context_bucket,
+                workspace_key=workspace_key,
+                physical_widths=self.backend.spec.physical_widths,
+                supports_masked_rows=supports_masked,
+                supports_dense_compaction=supports_compaction,
+            )
+
+        plan = plan_execution_groups(work, key_resolver=resolve)
+        self._planner_duration_ns += plan.planner_duration_ns
+        return plan
+
+    def _count_execution_path(self, path: str) -> None:
+        self._execution_path_counts[path] = self._execution_path_counts.get(path, 0) + 1
+
+    def _count_physical_width(self, width: int) -> None:
+        value = int(width)
+        self._physical_width_counts[value] = self._physical_width_counts.get(value, 0) + 1
 
     def close(self) -> None:
         close = getattr(self.runner, "close", None)

@@ -65,6 +65,13 @@ from hipengine.generation.engine_loop import (
     engine_loop_config_from_args,
     engine_loop_config_from_env,
 )
+from hipengine.dispatch.execution_planner import (
+    ExecutionCompatibilityKey,
+    ExecutionPlan,
+    PlannedExecutionGroup,
+    TokenBudgetSLO,
+    plan_execution_groups,
+)
 from hipengine.generation.registry import (
     DecodePhase,
     DecodeState,
@@ -148,6 +155,8 @@ __all__ = [
     "EngineOutput",
     "EngineService",
     "EngineServiceHandle",
+    "ExecutionCompatibilityKey",
+    "ExecutionPlan",
     "GenerationAdmissionRejected",
     "GenerationSubmission",
     "FinishDetails",
@@ -175,6 +184,7 @@ __all__ = [
     "PreparedPromptInput",
     "PromptInput",
     "PerRowSamplingParams",
+    "PlannedExecutionGroup",
     "RequestObservability",
     "ResidentBatchScheduler",
     "RowSamplingState",
@@ -199,6 +209,7 @@ __all__ = [
     "TokenSequenceDFAState",
     "ToolCallConstraintSpec",
     "ToolCallConstraintState",
+    "TokenBudgetSLO",
     "TokenLogprob",
     "active_processor_names",
     "add_engine_loop_config_args",
@@ -210,6 +221,7 @@ __all__ = [
     "generation_deadline_expired",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
+    "plan_execution_groups",
     "plan_sampler",
     "register_builtin_generators",
     "register_text_generator",

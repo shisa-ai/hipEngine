@@ -34,12 +34,14 @@ from hipengine.generation.registry import (
     TextGenerator,
 )
 
-PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
+PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair", "token_budget")
 DEFAULT_KV_POOL_INITIAL_PAGES = 128
 DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
 DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
+DEFAULT_ROUND_PREFILL_TOKEN_BUDGET = 1024
+DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 # Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
 # client-facing queue remains independently bounded by ServerConfig (default 16).
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
@@ -53,6 +55,8 @@ class EngineLoopConfig:
     max_active_requests: int | None = None
     max_prefill_chunk_tokens: int = DEFAULT_MAX_PREFILL_CHUNK_TOKENS
     fair_prefill_burst_chunks: int = 1
+    round_prefill_token_budget: int = DEFAULT_ROUND_PREFILL_TOKEN_BUDGET
+    round_decode_row_budget: int = DEFAULT_ROUND_DECODE_ROW_BUDGET
     kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
@@ -70,6 +74,10 @@ class EngineLoopConfig:
             raise ValueError("max_prefill_chunk_tokens must be positive")
         if self.fair_prefill_burst_chunks <= 0:
             raise ValueError("fair_prefill_burst_chunks must be positive")
+        if self.round_prefill_token_budget <= 0:
+            raise ValueError("round_prefill_token_budget must be positive")
+        if self.round_decode_row_budget <= 0:
+            raise ValueError("round_decode_row_budget must be positive")
         if self.kv_pool_initial_pages <= 0:
             raise ValueError("kv_pool_initial_pages must be positive")
         if self.kv_pool_low_water_pages <= 0:
@@ -1216,6 +1224,26 @@ def add_engine_loop_config_args(
         help="Maximum consecutive prefill chunks while fair scheduling has decode work (env HIPENGINE_FAIR_PREFILL_BURST_CHUNKS; default: 1)",
     )
     parser.add_argument(
+        "--round-prefill-token-budget",
+        type=_positive_int_arg,
+        default=_env_positive_int(
+            env,
+            "HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET",
+            DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
+        ),
+        help="Token-budget prefill work per round (env HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET; default: 1024)",
+    )
+    parser.add_argument(
+        "--round-decode-row-budget",
+        type=_positive_int_arg,
+        default=_env_positive_int(
+            env,
+            "HIPENGINE_ROUND_DECODE_ROW_BUDGET",
+            DEFAULT_ROUND_DECODE_ROW_BUDGET,
+        ),
+        help="Token-budget due decode rows per round (env HIPENGINE_ROUND_DECODE_ROW_BUDGET; default: 32)",
+    )
+    parser.add_argument(
         "--kv-pool-initial-pages",
         type=_positive_int_arg,
         default=_env_positive_int(env, "HIPENGINE_KV_POOL_INITIAL_PAGES", DEFAULT_KV_POOL_INITIAL_PAGES),
@@ -1275,6 +1303,20 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
         ),
         max_prefill_chunk_tokens=int(getattr(args, "max_prefill_chunk_tokens")),
         fair_prefill_burst_chunks=int(getattr(args, "fair_prefill_burst_chunks")),
+        round_prefill_token_budget=int(
+            getattr(
+                args,
+                "round_prefill_token_budget",
+                DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
+            )
+        ),
+        round_decode_row_budget=int(
+            getattr(
+                args,
+                "round_decode_row_budget",
+                DEFAULT_ROUND_DECODE_ROW_BUDGET,
+            )
+        ),
         kv_pool_initial_pages=int(getattr(args, "kv_pool_initial_pages")),
         kv_pool_low_water_pages=int(getattr(args, "kv_pool_low_water_pages")),
         kv_pool_high_water_pages=(
@@ -1341,10 +1383,10 @@ def _nonnegative_float_arg(value: str) -> float:
 class ResidentEngineLoop:
     """Persistent ``submit``/``poll``/``cancel`` driver for resident batches.
 
-    The loop currently executes at most one scheduler work item per tick.  It is
-    deliberately conservative: requests stay resident across polls, admission
-    fills free slots, the prefill/decode choice is explicit, and completion
-    reclaim is delegated to ``ResidentBatchScheduler``.
+    Requests stay resident across polls and completion reclaim is delegated to
+    ``ResidentBatchScheduler``. Legacy policies execute one work item per tick;
+    ``token_budget`` executes fair prefill quanta plus one decode step for every
+    due resident row in a bounded scheduling round.
     """
 
     def __init__(
@@ -1402,9 +1444,21 @@ class ResidentEngineLoop:
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
         self.fair_prefill_burst_chunks = int(resolved_config.fair_prefill_burst_chunks)
+        self.round_prefill_token_budget = int(resolved_config.round_prefill_token_budget)
+        self.round_decode_row_budget = int(resolved_config.round_decode_row_budget)
+        if (
+            self.prefill_decode_policy == "token_budget"
+            and self.round_decode_row_budget < int(resolved_capacity)
+        ):
+            raise ValueError(
+                "token_budget round_decode_row_budget must cover resident capacity"
+            )
         self._last_work_kind: WorkKind | None = None
         self._consecutive_prefill_chunks = 0
         self._cold_prefill_cohort_request_ids: frozenset[int] = frozenset()
+        self._rounds = 0
+        self._round_prefill_tokens = 0
+        self._round_decode_rows = 0
         self.scheduler = ResidentBatchScheduler(
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
@@ -1435,6 +1489,11 @@ class ResidentEngineLoop:
             "prefill_decode_policy": self.prefill_decode_policy,
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
             "fair_prefill_burst_chunks": int(self.fair_prefill_burst_chunks),
+            "round_prefill_token_budget": int(self.round_prefill_token_budget),
+            "round_decode_row_budget": int(self.round_decode_row_budget),
+            "rounds": int(self._rounds),
+            "round_prefill_tokens": int(self._round_prefill_tokens),
+            "round_decode_rows": int(self._round_decode_rows),
             "consecutive_prefill_chunks": int(self._consecutive_prefill_chunks),
             "cold_prefill_cohort_size": len(self._cold_prefill_cohort_request_ids),
             "last_work_kind": (
@@ -1552,6 +1611,10 @@ class ResidentEngineLoop:
             for request_id in admitted
         )
 
+        if self.prefill_decode_policy == "token_budget":
+            events.extend(self._run_token_budget_round())
+            return tuple(events)
+
         decode = self.scheduler.next_decode_work()
         prefill_available = self.scheduler.has_prefill_work()
         self._update_cold_prefill_cohort(
@@ -1572,6 +1635,33 @@ class ResidentEngineLoop:
         if decode is None:
             return tuple(events)
         events.extend(self._run_decode(decode))
+        return tuple(events)
+
+    def _run_token_budget_round(self) -> tuple[EngineLoopEvent, ...]:
+        """Run fair prefill quanta and one decode step for every due row."""
+
+        events: list[EngineLoopEvent] = []
+        prefill_budget = self.round_prefill_token_budget
+        while prefill_budget > 0 and self.scheduler.has_prefill_work():
+            work = self.scheduler.next_round_robin_prefill_work(
+                chunk_size=min(self.prefill_chunk_size, prefill_budget)
+            )
+            if work is None:
+                break
+            tokens = sum(len(row) for row in work.token_rows)
+            if tokens <= 0 or tokens > prefill_budget:
+                raise AssertionError("token-budget prefill planner exceeded its budget")
+            events.extend(self._run_prefill(work))
+            prefill_budget -= tokens
+            self._round_prefill_tokens += tokens
+
+        decode = self.scheduler.next_decode_work()
+        if decode is not None:
+            if len(decode.request_ids) > self.round_decode_row_budget:
+                raise AssertionError("due decode rows exceed the configured round budget")
+            events.extend(self._run_decode(decode))
+            self._round_decode_rows += len(decode.request_ids)
+        self._rounds += 1
         return tuple(events)
 
     def _update_cold_prefill_cohort(
