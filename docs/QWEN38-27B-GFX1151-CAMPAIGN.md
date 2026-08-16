@@ -1,12 +1,10 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership complete on 2026-08-15; P4 now retains
-exact shared-weight standard+planar Q6 prefill and clears the development G2
-speed gate at all three shapes, with a clean publication refresh pending; P5 has
-retained its first exact-trajectory decode wins but remains open, and the K0-K3
+Status: **G1 single-layout ownership completed on 2026-08-15 and the clean G2
+prefill win completed on 2026-08-16; P5 has retained its first exact-trajectory
+decode wins but remains open, G5 memory parity remains open, and the K0-K3
 native INT8 K/V ladder is closed below K4 on model-level correctness.** The
-working performance set is
-`512/128`, `1024/128`, and `4096/128`. The model is
+working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
@@ -15,23 +13,26 @@ valid exact MTP, while minimizing resident and whole-process memory. The
 separate native INT8 K/V lane found no representation that transfers through
 1K/8 under the quality contract; BF16 therefore remains the supported route.
 
-The retained-path P4 development gate is now
-`398.792/391.861/384.628` prefill tok/s at 512/1K/4K. A same-source three-run
-standard-Q6 control is `362.752/354.270/349.130`, so the latest owner improves
-complete prefill **9.935%/10.611%/10.168%** with identical IDs, tracked peaks,
-and teardown. The cumulative path beats clean llama HIP by
-**13.16%/7.52%/4.52%** and Vulkan by **64.14%/58.26%/8.54%**. These are retained
-dirty-development rows, not new clean publication toplines; a same-protocol
-clean three-shape refresh is still needed before rollup. Bounded Q5 source-F16,
-rows>=512 four-wave shared standard-Q6 QKV, and shared planar-Q6 FFN-down are
-retained; outer chunks, Q4 row128, planar-Q6 row80, single-wave standard-Q6
-48x64 tiling, the exact unequal-output Q4 QKV+gate pair, 16-column dual-Q4
-output subdivision, and the byte-neutral Laguna-derived D8-MMQ transfer are
-rejected. The two shared-Q6 routes decode one 48x256 slab into 24 KiB LDS while
-preserving four independent prior 48x64 arithmetic sequences; narrow V, root,
-rows<512, and peer backends retain their exact fallbacks. AOTriton attention is
-active but nonmaterial, and the remaining primitive add boundary is below the
->=1% request gate.
+The clean retained P4 publication is
+`399.031/391.276/385.330` prefill tok/s at 512/1K/4K. It beats clean llama HIP
+by **13.224%/7.363%/4.711%** and Vulkan by
+**64.240%/58.021%/8.737%**, closing G2. A same-source three-run standard-Q6
+control is `362.752/354.270/349.130`, so the causal latest-owner A/B remains
+**+9.935%/+10.611%/+10.168%** with identical IDs, tracked peaks, and teardown.
+Clean process GTT is **17.322/17.805/20.181 GiB**, down
+**47.705%/47.030%/44.012%** from the opening snapshot but still
+**9.741%/12.575%/26.104%** above the lower llama comparator, so G5 remains
+open.
+
+Bounded Q5 source-F16, rows>=512 four-wave shared standard-Q6 QKV, and shared
+planar-Q6 FFN-down are retained; outer chunks, Q4 row128, planar-Q6 row80,
+single-wave standard-Q6 48x64 tiling, the exact unequal-output Q4 QKV+gate
+pair, 16-column dual-Q4 output subdivision, and the byte-neutral
+Laguna-derived D8-MMQ transfer are rejected. The two shared-Q6 routes decode
+one 48x256 slab into 24 KiB LDS while preserving four independent prior 48x64
+arithmetic sequences; narrow V, root, rows<512, and peer backends retain their
+exact fallbacks. AOTriton attention is active but nonmaterial, and the
+remaining primitive add boundary is below the >=1% request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up, an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs, and an exact four-wave
@@ -475,10 +476,12 @@ projected complete savings **8.998%/9.404%/9.668%**.
 
 The cumulative full-model gate confirms **362.752/354.270/349.130 ->
 398.792/391.861/384.628 tok/s (+9.935%/+10.611%/+10.168%)** with identical IDs,
-byte-identical tracked peaks, and zero teardown ownership. It beats clean llama
-HIP **13.16%/7.52%/4.52%** and Vulkan **64.14%/58.26%/8.54%** at 512/1K/4K.
-Development G2 therefore passes at every shape. P4 implementation is complete;
-only the explicitly approved post-commit clean publication refresh remains.
+byte-identical tracked peaks, and zero teardown ownership. The post-commit clean
+publication on `a06589f34` then measures
+**399.031/391.276/385.330 tok/s**, with all prefill CVs below 0.094%, stable
+9707 final IDs, and zero tracked teardown. It beats clean llama HIP
+**13.224%/7.363%/4.711%** and Vulkan **64.240%/58.021%/8.737%** at 512/1K/4K.
+G2 and P4 are complete; G3 and G5 remain separate open gates.
 
 ### P5 — True-AR decode
 
@@ -762,7 +765,7 @@ Do not start or repeat these without a new measured complete-owner premise:
 | --- | --- |
 | **G0 Baseline frozen — complete 2026-08-15** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
 | **G1 Single-layout parity — complete 2026-08-15** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
-| **G2 Prefill win** | hipEngine beats both llama backends at all three prefill shapes with retained quality and memory. |
+| **G2 Prefill win — complete 2026-08-16** | Clean `a06589f34` reaches 399.031/391.276/385.330 tok/s and beats both llama backends at all three shapes with retained correctness and zero teardown. |
 | **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
 | **G5 Memory win** | Matched process GTT delta is <= the lower llama backend at all shapes and selected B3; tracked teardown is zero. |

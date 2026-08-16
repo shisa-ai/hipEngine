@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-15**
+Last updated: **2026-08-16**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -47,6 +47,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.031** | **12.063** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -281,27 +282,35 @@ open campaign gaps. Evidence:
 [`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
-#### Retained development state
+#### Retained clean state — G2 complete
 
-These rows are dirty-development gates, not replacement clean publication
-toplines. P4 now retains exact rows>=512 four-wave shared-Q6 owners for both
-the 32 planar FFN-down and 24 standard recurrent-QKV projections. The latest
-standard-Q6 unit changes no resident/workspace bytes and improves the complete
-same-source prefill gate at all three working shapes:
+Clean detached commit `a06589f34` retains exact rows>=512 four-wave shared-Q6
+owners for both the 32 planar FFN-down and 24 standard recurrent-QKV projections.
+One right-sized process per shape, one warmup and three measured runs produce:
 
-| Shape | Same-source control | Shared-standard-Q6 | Delta | llama HIP | llama Vulkan |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 362.752 | **398.792** | **+9.935%** | 352.426 | 242.956 |
-| 1K/128 | 354.270 | **391.861** | **+10.611%** | 364.443 | 247.610 |
-| 4K/128 | 349.130 | **384.628** | **+10.168%** | 367.993 | 354.368 |
+| Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **399.031** | 352.426 | 242.956 | **12.0626** | 12.1506 | 12.7629 | **17.322 GiB** | 15.785 GiB |
+| 1K/128 | **391.276** | 364.443 | 247.610 | **11.9019** | 12.0645 | 12.7197 | **17.805 GiB** | 15.816 GiB |
+| 4K/128 | **385.330** | 367.993 | 354.368 | **11.0998** | 11.5081 | 12.5683 | **20.181 GiB** | 16.004 GiB |
 
-Both actual standard-Q6 QKV weights improve 2.961-3.548x with 90/90 wins; the
-prior planar leaf improves 1.421-1.502x with 45/45 wins. All are BF16-bit exact.
-Short rows, narrow V, root, shape misses, and peer backends retain exact
-fallbacks. IDs, tracked peaks, and teardown are unchanged. The development path
-now beats both clean llama.cpp backends at all three shapes; a post-commit clean
-publication refresh remains pending. Evidence:
-[`shared standard-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json)
+Prefill beats clean llama.cpp HIP by **13.224%/7.363%/4.711%** and Vulkan by
+**64.240%/58.021%/8.737%** at 512/1K/4K, closing G2. Every prefill CV is below
+0.094%, all nine outputs finish at token 9707, and tracked teardown is zero.
+Relative to the frozen opening snapshot, prefill is
+**367.863%/363.067%/357.612%** faster and process GTT is
+**47.705%/47.030%/44.012%** lower. GTT still exceeds the lower llama row by
+**9.741%/12.575%/26.104%**, and the clean AR diagnostics still trail llama.cpp;
+G3 and G5 therefore remain open.
+
+The causal same-source standard-Q6 A/B remains
+**362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
+(+9.935%/+10.611%/+10.168%)**. Both actual standard-Q6 QKV weights improve
+2.961-3.548x with 90/90 wins; the planar leaf improves 1.421-1.502x with 45/45
+wins. All are BF16-bit exact, while short rows, narrow V, root, shape misses,
+and peer backends retain exact fallbacks. Evidence:
+[`clean G2 publication`](results/2026-08-16-gfx1151-qwen38-27b-prefill-publication.json),
+[`shared standard-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json),
 and [`shared planar-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json).
 
 P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an exact serial-c1 Q5T16

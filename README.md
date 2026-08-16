@@ -196,6 +196,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.031** | **12.063** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
