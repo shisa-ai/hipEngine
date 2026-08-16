@@ -6,6 +6,7 @@ import argparse
 import os
 from collections.abc import Sequence
 
+from hipengine.execution_profiles import EXECUTION_PROFILE_ENV, ExecutionProfile
 from hipengine.kvcache import PREFIX_CACHE_CHOICES
 from hipengine.server.api import ServerConfig, create_app
 
@@ -100,6 +101,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--quant",
         default="auto",
         help="Quantization key (default: model plugin selection)",
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=tuple(profile.value for profile in ExecutionProfile),
+        default=os.environ.get(EXECUTION_PROFILE_ENV),
+        help=(
+            "Execution profile; omitted preserves the migration default "
+            f"(env {EXECUTION_PROFILE_ENV})"
+        ),
     )
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")
     parser.add_argument(
@@ -324,6 +334,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         model=args.model,
         backend=args.backend,
         quant=args.quant,
+        execution_profile=args.execution_profile,
         served_model_name=args.served_model_name,
         api_key=args.api_key,
         eager_load=args.eager_load,

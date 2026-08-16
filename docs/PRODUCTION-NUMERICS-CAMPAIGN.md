@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P1 complete, P2 evaluator core implemented; exact-control GPU smoke pending**
+Status: **approved; P0-P1 complete, P2 evaluator core and P3 fail-closed runtime plumbing implemented; model plans/GPU smoke pending**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -276,8 +276,19 @@ Add public `strict`, `production`, and `batch_invariant` selection. Resolve once
 to immutable variant manifests over the registry `variant` axis. Keep current
 public default unchanged during migration.
 
+Implemented 2026-08-16: Python API, server CLI, and environment selectors now
+resolve through a model/backend/quant/profile plan registry before generator or
+resident-runner construction. Resolution verifies exact selected/fallback
+kernel keys, fills missing production/batch-invariant scopes from strict,
+binds immutable manifest metadata through the shared engine-loop wrapper, and
+reports profile/hash provenance from server discovery endpoints. Omission still
+preserves legacy package behavior; explicit unsupported profiles fail closed.
+
 Exit: profile-selection tests, strict fallback tests, manifest provenance, and
-one no-change strict/production smoke pass.
+one no-change strict/production smoke pass. Synthetic CPU plan/factory smokes
+are complete. Primary Qwen3.6 PARO/GGUF strict plans, actual control capture,
+and the no-change GPU smoke remain open; registering unverified incumbent
+variants as `strict` would violate the contract.
 
 ### P4 — Calibration and current-route certification
 
