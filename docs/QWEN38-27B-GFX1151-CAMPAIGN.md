@@ -326,6 +326,15 @@ serial-AR gap.
 Evidence:
 [`hardware-queue count rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-hardware-queue-count-rejected.json).
 
+The prior gfx1100 wide-weight-arena premise does not improve Qwen3.8 decode on
+gfx1151. Raising the selective cutoff from 16 to 80 MiB collapses physical
+weight owners **371 -> 3** with exact trajectories and tracked bytes, but matched
+512/128 AR changes **12.41488 -> 12.39701 tok/s (-0.1439%)** and prefill
+**402.319 -> 400.743 (-0.3918%)**. Task 22 keeps the 16-MiB arena; task 24 may
+reopen only with matched whole-GTT evidence.
+Evidence:
+[`wide weight arena rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-wide-weight-arena-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
