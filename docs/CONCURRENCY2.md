@@ -588,6 +588,11 @@ lifetime                      load | lease | work_item | transaction | cache
 confidence                    exact | bounded | unknown
 ```
 
+A claim set may also carry a small, typed, backend-private metadata tuple (for
+example private-page and next-growth-credit counts). The generic ledger
+preserves this metadata opaquely; only the backend materializer interprets it,
+so it cannot become a codec formula in scheduler code.
+
 A `KVPoolPlan` may create one or many stable pools. Examples:
 
 - BF16 dense: K and V page planes;
@@ -706,6 +711,7 @@ Each dense page has explicit state:
 FREE
 ACTIVE_PRIVATE        one writable request owner
 ACTIVE_SHARED         immutable full page, one or more request refs
+RESERVED_CREDIT       physically reserved for the lease's next growth boundary
 CACHED_EVICTABLE      zero active refs, indexed by prefix cache
 PINNED_SESSION        explicit continuation/session lease with quota/TTL
 IN_FLIGHT             transient execution epoch fence
@@ -1058,23 +1064,27 @@ format metadata—into the resident scheduler.
 
 ### C2-3 — production global pool substrate and first dense backends
 
-- [ ] Allocate one stable backend-declared pool set from the load-time plan.
-- [ ] Bind runner graphs/kernels to global pool planes, `KVStorageView`, and
+- [x] Allocate one stable backend-declared pool set from the load-time plan.
+- [x] Bind runner graphs/kernels to global pool planes, `KVStorageView`, and
       stable metadata slabs rather than request-private backing bases.
-- [ ] Implement typed page/plane leases, growth credits, complete state
+- [x] Implement typed page/plane leases, growth credits, complete state
       accounting, COW tails, and in-flight epochs.
-- [ ] Port current dynamic-pool lifecycle fixtures; add cross-plane
+- [x] Port current dynamic-pool lifecycle fixtures; add cross-plane
       fragmentation, partial-reserve rollback, and pressure recovery tests.
-- [ ] Run the same lifecycle/scheduler suite with dense BF16 and the
+- [x] Run the same lifecycle/scheduler suite with dense BF16 and the
       artifact-qualified no-mirror INT8 backend; only pool plans, storage views,
       and registered kernels may differ.
-- [ ] Keep the old chunked backing path only as an explicit fallback until the
+- [x] Keep the old chunked backing path only as an explicit fallback until the
       new pool substrate passes both gfx11 gates; track its removal in
       `REFACTOR.md`.
 
 Exit: all requests compatible with a resolved backend draw from one fungible
 pool set, a request may use arbitrary free pages without same-chunk constraints,
 and BF16-to-INT8 replacement does not fork continuous batching.
+`GlobalKVPoolSet` owns one stable arbitrary-page table per plane;
+`DenseKVResidentRunnerAdapter` refuses runners that do not consume a
+backend-produced `KVBatchView`. The legacy GGUF base-pointer/chunk path remains
+an explicitly tracked compatibility fallback pending the C2-6 hardware gates.
 
 ### C2-4 — integrated radix cache and eviction
 

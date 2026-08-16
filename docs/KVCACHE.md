@@ -34,6 +34,16 @@ interpretation that the old Qwen3.5 short E2E fixture made 256K INT8 a
 correctness-passing product route. That fixture remains useful kernel bring-up
 evidence; current Qwen3.6 long-context evidence controls the support decision.
 
+Generation-2 C2-3 now provides a format-neutral `GlobalKVPoolSet` with stable
+arbitrary-page pointer tables, explicit page states, typed growth credits,
+COW/in-flight protection, and one dense lifecycle shared by BF16 and an
+artifact-qualified no-mirror INT8 composition. `DenseKVResidentRunnerAdapter`
+requires kernels to consume the backend's generation-checked `KVBatchView`; it
+does not silently fall back to request-private base pointers. The existing GGUF
+single-backing implementation remains an explicit compatibility path until the
+C2-6 gfx1100/gfx1151 hardware gates, as tracked in `REFACTOR.md`. This host
+substrate carries no new performance or product-support claim by itself.
+
 ## Executive decision
 
 | Question | Answer |

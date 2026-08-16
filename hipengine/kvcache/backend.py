@@ -71,6 +71,7 @@ class ResourceClaimSet:
     claim_id: str
     claims: tuple[ResourceClaim, ...] = ()
     request_id: int | None = None
+    metadata: tuple[tuple[str, int | str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "claim_id", _required_text(self.claim_id, "claim_id"))
@@ -85,6 +86,15 @@ class ResourceClaimSet:
             raise ValueError("request_id must be non-negative when set")
         object.__setattr__(self, "request_id", None if self.request_id is None else int(self.request_id))
         object.__setattr__(self, "claims", normalized)
+        metadata = tuple((str(key), value) for key, value in self.metadata)
+        metadata_keys = [key for key, _value in metadata]
+        if any(not key or key != key.strip() for key in metadata_keys):
+            raise ValueError("resource claim metadata keys must be non-empty trimmed strings")
+        if len(metadata_keys) != len(set(metadata_keys)):
+            raise ValueError("resource claim metadata keys must be unique")
+        if any(not isinstance(value, (int, str)) for _key, value in metadata):
+            raise TypeError("resource claim metadata values must be int or str")
+        object.__setattr__(self, "metadata", metadata)
 
     @classmethod
     def from_mapping(
@@ -115,11 +125,19 @@ class ResourceClaimSet:
             result[claim.pool_id] = result.get(claim.pool_id, 0) + claim.units
         return result
 
+    def metadata_dict(self) -> dict[str, int | str]:
+        return dict(self.metadata)
+
     def entries(self) -> dict[tuple[str, ClaimLifetime], ResourceClaim]:
         return {claim.key: claim for claim in self.claims}
 
     def with_claim_id(self, claim_id: str) -> "ResourceClaimSet":
-        return ResourceClaimSet(claim_id=claim_id, claims=self.claims, request_id=self.request_id)
+        return ResourceClaimSet(
+            claim_id=claim_id,
+            claims=self.claims,
+            request_id=self.request_id,
+            metadata=self.metadata,
+        )
 
     def apply(self, delta: "ResourceDelta", *, claim_id: str | None = None) -> "ResourceClaimSet":
         """Return this ownership vector after one validated signed delta."""
@@ -153,6 +171,7 @@ class ResourceClaimSet:
             claim_id=self.claim_id if claim_id is None else claim_id,
             request_id=self.request_id,
             claims=tuple(entries[key] for key in sorted(entries, key=lambda item: (item[0], item[1].value))),
+            metadata=self.metadata,
         )
 
 

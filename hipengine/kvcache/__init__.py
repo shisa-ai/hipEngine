@@ -16,6 +16,21 @@ from hipengine.kvcache.backend import (
     ResourceClaimSet,
     ResourceDelta,
 )
+from hipengine.kvcache.dense import (
+    DenseKVAdmissionManager,
+    DenseKVArtifactQualification,
+    DenseKVCacheBackend,
+    DenseKVOperation,
+    DenseKVResidentRunnerAdapter,
+    create_dense_bf16_backend,
+    create_dense_int8_backend,
+)
+from hipengine.kvcache.global_pool import (
+    GlobalKVPoolSet,
+    GlobalPageLease,
+    KVPageRecord,
+    KVPageState,
+)
 from hipengine.kvcache.ledger import (
     AdmissionGrant,
     FitAwareAdmissionController,
@@ -69,6 +84,13 @@ __all__ = [
     "ClaimConfidence",
     "ClaimLifetime",
     "ChunkedKVPool",
+    "DenseKVAdmissionManager",
+    "DenseKVArtifactQualification",
+    "DenseKVCacheBackend",
+    "DenseKVOperation",
+    "DenseKVResidentRunnerAdapter",
+    "GlobalKVPoolSet",
+    "GlobalPageLease",
     "DeviceChunkedKVPool",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
@@ -88,6 +110,8 @@ __all__ = [
     "KVPoolStats",
     "KVPoolPlan",
     "KVPoolSpec",
+    "KVPageRecord",
+    "KVPageState",
     "KVReservation",
     "KVScaleMetadata",
     "KVStorageView",
@@ -117,6 +141,8 @@ __all__ = [
     "KV_STORAGE_CHOICES",
     "KV_STORAGE_TAIL4_HADAMARD_GROUP32",
     "ResolvedKVPolicy",
+    "create_dense_bf16_backend",
+    "create_dense_int8_backend",
     "resolve_kv_policy",
     "resolve_prefix_cache_mode",
 ]
