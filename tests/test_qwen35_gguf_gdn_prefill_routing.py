@@ -269,6 +269,7 @@ def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     assert plan.auto_modes_by_quant_shape == {
         ("mostly_q4_k_m", 16, 16, 128, 128): "chain_peer_cluster8",
         ("mostly_q4_k_m", 16, 48, 128, 128): "chain_compact_peer_wave32",
+        ("mostly_q4_k_s", 16, 48, 128, 128): "chain_compact_peer_wave32",
         # D08-X2-K2: fresh five-block gate admitted Q8_0 on this geometry.
         ("mostly_q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
     }
@@ -278,7 +279,10 @@ def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     assert plan.has_exact_chain_lds32_direct_nonvolatile
 
 
-def test_gfx1151_qwen38_auto_uses_compact_qk_capacity_and_peer_liveness() -> None:
+@pytest.mark.parametrize("file_type_name", ("MOSTLY_Q4_K_M", "MOSTLY_Q4_K_S"))
+def test_gfx1151_qwen38_auto_uses_compact_qk_capacity_and_peer_liveness(
+    file_type_name: str,
+) -> None:
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
     runner.backend = "hip_gfx1151"
     runner.weights = SimpleNamespace(
@@ -289,7 +293,7 @@ def test_gfx1151_qwen38_auto_uses_compact_qk_capacity_and_peer_liveness() -> Non
             ssm_inner_size=6144,
             is_moe=False,
         ),
-        file_type_name="MOSTLY_Q4_K_M",
+        file_type_name=file_type_name,
         model_id="Qwen3.8-27B",
         quant="gguf_q4_k_m",
     )

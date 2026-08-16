@@ -121,6 +121,7 @@ def plan_qwen35_gguf_nextn_materialization(
     decode_repack: bool = False,
     dense_q4_t16: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFNextNMaterializationPlan:
     """Plan blk.N independently from the unchanged AR weight plan."""
@@ -129,6 +130,7 @@ def plan_qwen35_gguf_nextn_materialization(
         "decode_repack": bool(decode_repack),
         "dense_q4_t16": bool(dense_q4_t16),
         "dense_q5_t16_ssm_out": bool(dense_q5_t16_ssm_out),
+        "dense_q5_t16_h5120": bool(dense_q5_t16_h5120),
         "dense_q6_qmicro_planar": bool(dense_q6_qmicro_planar),
     }
     layer_specs = {
@@ -182,6 +184,11 @@ def materialize_qwen35_gguf_nextn_weights(
         dense_q5_t16_ssm_out=bool(
             backend_package_capability(
                 backend, "GGUF_DENSE_Q5_T16_SSM_OUT", False
+            )
+        ),
+        dense_q5_t16_h5120=bool(
+            backend_package_capability(
+                backend, "GGUF_DENSE_Q5_T16_H5120", False
             )
         ),
         dense_q6_qmicro_planar=bool(

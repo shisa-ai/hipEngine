@@ -230,6 +230,18 @@ resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
 independently shape-qualified. Evidence:
 [`Qwen3.8 Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
+Qwen3.8-27B Q4_K_S has a gfx1151 qualification checkpoint using the same
+operation-complete Q5T16 family. Its 60 rank-2 Q5 owners consist of the 48
+existing recurrent outputs plus eight K17,408/N5,120 FFN-down, three
+K5,120/N10,240 recurrent-QKV, and one K5,120/N1,024 full-attention-V tensor;
+all own only `tiles`, with no dense-BF16 Q5 shadow. The exact
+16K/48V/128x128 GDN geometry also selects `chain_compact_peer_wave32`; other
+Q4_K_M-only file-type policies remain fail-closed. Complete-file
+materialization, 27 actual-weight operation checks, CPU-reference KL/top-1,
+and a cache-only 512/8 full-model smoke pass, while full natural AR/MTP and
+512/1K/4K publication gates remain deferred. Evidence:
+[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json).
+
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
 attention-V tensors, and untied root own one
