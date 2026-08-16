@@ -55,6 +55,7 @@ from hipengine.server.api import (
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
     _prepared_context_tokens,
+    _request_completion_cap,
     _request_control,
     _startup_memory_summary,
 )
@@ -19428,6 +19429,11 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                 "packed_workspace_current_bytes": 0,
                 "packed_workspace_release_events": 4,
                 "packed_workspace_released_bytes": 3330000000,
+                "persistent_int8_payload_bytes": 8388608,
+                "persistent_bf16_payload_bytes": 0,
+                "persistent_scale_bytes": 65536,
+                "persistent_bf16_mirror_bytes": 0,
+                "persistent_kv_total_bytes": 8454144,
             },
             "kv_pool": {
                 "current_bytes": 15728640,
@@ -19469,8 +19475,14 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                 },
                 "fallback_reasons": {"host_sampling": 1},
                 "last_execution_manifest": {
-                    "kind": "gguf_packed_ar_execution_manifest",
+                    "kind": "gguf_ar_serial_fallback_execution_manifest",
+                    "mode": "serial_c1_per_row",
                     "rows": 2,
+                    "logical_c": 2,
+                    "physical_execution_width": 1,
+                    "kv_attention_source": "int8_direct",
+                    "serial_decode_fallback": True,
+                    "throughput_claim_eligible": False,
                 },
                 "recent_completed": [],
             },
@@ -19507,9 +19519,22 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
     assert _metric_value(body, "hipengine_resident_packed_workspace_current_bytes") == 0
     assert _metric_value(body, "hipengine_resident_packed_workspace_release_events_total") == 4
     assert _metric_value(body, "hipengine_resident_packed_workspace_released_bytes_total") == 3330000000
+    assert _metric_value(body, "hipengine_resident_kv_int8_payload_bytes") == 8388608
+    assert _metric_value(body, "hipengine_resident_kv_bf16_payload_bytes") == 0
+    assert _metric_value(body, "hipengine_resident_kv_scale_bytes") == 65536
+    assert _metric_value(body, "hipengine_resident_kv_bf16_mirror_bytes") == 0
+    assert _metric_value(body, "hipengine_resident_kv_total_bytes") == 8454144
     assert (
         'hipengine_resident_bucket_info{active_mask="1010",fair_prefill_burst_chunks="1",'
         'last_work_kind="decode",policy="protect_ttft"} 1'
+        in body
+    )
+    assert (
+        'hipengine_resident_route_manifest_info{claim_level="unavailable",'
+        'kind="gguf_ar_serial_fallback_execution_manifest",'
+        'kv_attention_source="int8_direct",logical_c="2",'
+        'mode="serial_c1_per_row",physical_execution_width="1",rows="2",'
+        'serial_decode_fallback="true",throughput_claim_eligible="false"} 1'
         in body
     )
     assert _labeled_metric_value(
@@ -20355,3 +20380,61 @@ def _sse_payloads(text: str) -> list[dict]:
             continue
         payloads.append(json.loads(line.removeprefix("data: ")))
     return payloads
+
+
+def test_chat_request_accepts_max_completion_tokens() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 7,
+            "temperature": 0,
+        }
+    )
+    assert request.max_completion_tokens == 7
+    extra = getattr(request, "model_extra", None) or {}
+    assert "max_completion_tokens" not in extra
+    assert _request_completion_cap(request) == 7
+    # max_tokens takes precedence when both are supplied.
+    both = ChatCompletionRequest.model_validate(
+        {
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "max_completion_tokens": 7,
+        }
+    )
+    assert _request_completion_cap(both) == 4
+
+
+def test_completion_request_accepts_max_completion_tokens() -> None:
+    request = CompletionRequest.model_validate(
+        {"model": "fake-model", "prompt": "hi", "max_tokens": None, "max_completion_tokens": 5}
+    )
+    assert request.max_completion_tokens == 5
+    assert _request_completion_cap(request) == 5
+
+
+def test_strip_chat_terminal_markers_removes_eos() -> None:
+    from hipengine.server.api import _strip_chat_terminal_markers
+
+    assert _strip_chat_terminal_markers("OK<|im_end|>") == "OK"
+    assert _strip_chat_terminal_markers("\n\nOK<|im_end|>") == "\n\nOK"
+    assert _strip_chat_terminal_markers("READY<|im_end|>") == "READY"
+    assert _strip_chat_terminal_markers("plain text") == "plain text"
+
+
+def test_usage_exposes_reasoning_tokens() -> None:
+    from hipengine.server.api import _finish_reasoning_token_total, _usage
+
+    details = [
+        GenerationOutput(
+            text="answer",
+            generated_token_ids=tuple(range(12)),
+            finish_details=FinishDetails(reason="eos", reasoning_tokens=9, answer_tokens=3),
+        )
+    ]
+    usage = _usage(FakeLLM(), ("prompt",), ("answer",), details=details)
+    assert usage["completion_tokens"] == 12
+    assert usage["reasoning_tokens"] == 9
+    assert usage["completion_tokens_details"] == {"reasoning_tokens": 9}
+    assert _finish_reasoning_token_total(details) == 9

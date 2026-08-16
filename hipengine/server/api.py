@@ -1683,6 +1683,7 @@ class CompletionRequest(_OpenAIBaseModel):
     model: str | None = None
     prompt: str | list[str] | list[int] | list[list[int]] | None = None
     max_tokens: int | None = Field(default=16, ge=0)
+    max_completion_tokens: int | None = Field(default=None, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     top_k: int | None = Field(default=0, ge=0)
@@ -1730,6 +1731,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     model: str | None = None
     messages: list[ChatMessage] = Field(default_factory=list)
     max_tokens: int | None = Field(default=None, ge=0)
+    max_completion_tokens: int | None = Field(default=None, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     top_k: int | None = Field(default=0, ge=0)
@@ -7424,6 +7426,23 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
                 model_runner.get("packed_workspace_released_bytes")
             ),
         },
+        "persistent_kv": {
+            "int8_payload_bytes": _non_negative_metric_value(
+                model_runner.get("persistent_int8_payload_bytes")
+            ),
+            "bf16_payload_bytes": _non_negative_metric_value(
+                model_runner.get("persistent_bf16_payload_bytes")
+            ),
+            "scale_bytes": _non_negative_metric_value(
+                model_runner.get("persistent_scale_bytes")
+            ),
+            "bf16_mirror_bytes": _non_negative_metric_value(
+                model_runner.get("persistent_bf16_mirror_bytes")
+            ),
+            "total_bytes": _non_negative_metric_value(
+                model_runner.get("persistent_kv_total_bytes")
+            ),
+        },
         "policy": {
             "name": str(policy.get("prefill_decode_policy") or "unavailable"),
             "prefill_chunk_tokens": _non_negative_metric_value(
@@ -7486,6 +7505,11 @@ def _render_prometheus_metrics(
         "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
         "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
         "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
+        "hipengine_resident_kv_int8_payload_bytes": resident["persistent_kv"]["int8_payload_bytes"],
+        "hipengine_resident_kv_bf16_payload_bytes": resident["persistent_kv"]["bf16_payload_bytes"],
+        "hipengine_resident_kv_scale_bytes": resident["persistent_kv"]["scale_bytes"],
+        "hipengine_resident_kv_bf16_mirror_bytes": resident["persistent_kv"]["bf16_mirror_bytes"],
+        "hipengine_resident_kv_total_bytes": resident["persistent_kv"]["total_bytes"],
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
         "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
         "hipengine_kv_pool_grow_events_total": pool["grow_events"],
@@ -7543,6 +7567,11 @@ def _render_prometheus_metrics(
         "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
         "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
         "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
+        "hipengine_resident_kv_int8_payload_bytes": "Current resident request-owned INT8 KV payload bytes.",
+        "hipengine_resident_kv_bf16_payload_bytes": "Current resident request-owned BF16 KV payload bytes.",
+        "hipengine_resident_kv_scale_bytes": "Current resident request-owned KV scale bytes.",
+        "hipengine_resident_kv_bf16_mirror_bytes": "Current resident request-owned persistent BF16 mirror bytes.",
+        "hipengine_resident_kv_total_bytes": "Current resident request-owned persistent KV bytes.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
@@ -7673,7 +7702,13 @@ def _render_prometheus_metrics(
             "hipengine_resident_route_manifest_info{"
             f'claim_level="{_escape_prometheus_label_value(str(manifest.get("claim_level") or "unavailable"))}",'
             f'kind="{_escape_prometheus_label_value(str(manifest.get("kind") or "unavailable"))}",'
-            f'rows="{_escape_prometheus_label_value(str(manifest.get("rows") or 0))}"'
+            f'kv_attention_source="{_escape_prometheus_label_value(str(manifest.get("kv_attention_source") or "unavailable"))}",'
+            f'logical_c="{_escape_prometheus_label_value(str(manifest.get("logical_c") or manifest.get("rows") or 0))}",'
+            f'mode="{_escape_prometheus_label_value(str(manifest.get("mode") or "unavailable"))}",'
+            f'physical_execution_width="{_escape_prometheus_label_value(str(manifest.get("physical_execution_width") or manifest.get("physical_rows") or 0))}",'
+            f'rows="{_escape_prometheus_label_value(str(manifest.get("rows") or 0))}",'
+            f'serial_decode_fallback="{str(bool(manifest.get("serial_decode_fallback", False))).lower()}",'
+            f'throughput_claim_eligible="{str(bool(manifest.get("throughput_claim_eligible", False))).lower()}"'
             "} 1"
         )
     _append_labeled_counter_metrics(
@@ -8379,8 +8414,9 @@ def _thinking_generation_budget(
     *,
     chat_default_max_tokens: int | None,
 ) -> int | None:
-    if request.max_tokens is not None:
-        return max(0, int(request.max_tokens))
+    cap = _request_completion_cap(request)
+    if cap is not None:
+        return cap
     if chat_default_max_tokens is not None:
         return max(0, int(chat_default_max_tokens))
     return None
@@ -9240,6 +9276,23 @@ def _startup_free_memory_guard(
         )
 
 
+def _request_completion_cap(
+    request: CompletionRequest | ChatCompletionRequest,
+) -> int | None:
+    """Return the total completion cap (reasoning + answer) for a request.
+
+    Prefers the legacy ``max_tokens`` and falls back to OpenAI's newer
+    ``max_completion_tokens`` when the legacy field is unset.
+    """
+
+    if getattr(request, "max_tokens", None) is not None:
+        return max(0, int(request.max_tokens))
+    max_completion_tokens = getattr(request, "max_completion_tokens", None)
+    if max_completion_tokens is not None:
+        return max(0, int(max_completion_tokens))
+    return None
+
+
 def _request_max_tokens(
     request: CompletionRequest | ChatCompletionRequest,
     prompts: Sequence[PromptInput],
@@ -9248,8 +9301,9 @@ def _request_max_tokens(
     *,
     chat_default_max_tokens: int | None = 4096,
 ) -> int:
-    if request.max_tokens is not None:
-        return max(0, int(request.max_tokens))
+    cap = _request_completion_cap(request)
+    if cap is not None:
+        return cap
     if isinstance(request, ChatCompletionRequest):
         remaining = _remaining_context_tokens(prompts, engine, max_context_tokens)
         if chat_default_max_tokens is None:
@@ -13270,11 +13324,27 @@ def _usage(
     else:
         # Compatibility placeholder for legacy generators without token IDs.
         completion_tokens = 0
-    return {
+    reasoning_tokens = _finish_reasoning_token_total(details)
+    usage: dict[str, int] = {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+    if reasoning_tokens:
+        usage["reasoning_tokens"] = reasoning_tokens
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning_tokens}
+    return usage
+
+
+def _finish_reasoning_token_total(details: Sequence[GenerationOutput] | None) -> int:
+    """Sum reasoning tokens reported by each completed generation's finish details."""
+
+    total = 0
+    for detail in (details or ()):
+        finish = getattr(detail, "finish_details", None)
+        if finish is not None:
+            total += int(getattr(finish, "reasoning_tokens", 0) or 0)
+    return total
 
 
 def _exact_prompt_token_accounting(prompts: Sequence[PromptInput]) -> dict[str, Any] | None:
@@ -13407,7 +13477,17 @@ class _ReasoningSplitter:
         return self._drain(final=False)
 
     def finish_parts(self) -> list[_ReasoningPart]:
-        return self._drain(final=True)
+        parts = self._drain(final=True)
+        if parts and parts[-1].field == "content":
+            stripped = _strip_chat_terminal_markers(parts[-1].text)
+            if stripped != parts[-1].text:
+                parts[-1] = _ReasoningPart(
+                    field="content",
+                    text=stripped,
+                    source_start=parts[-1].source_start,
+                    source_end=parts[-1].source_start + len(stripped),
+                )
+        return parts
 
     def _drain(self, *, final: bool) -> list[_ReasoningPart]:
         outputs: list[_ReasoningPart] = []
@@ -13773,12 +13853,31 @@ def _tool_arguments_json(arguments: Any) -> str:
     return json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
 
 
+def _strip_chat_terminal_markers(text: str) -> str:
+    """Remove trailing chat-template terminal markers (e.g. the EOS token).
+
+    The decoded generation includes the terminating special token (for Qwen
+    ``<|im_end|>``) in visible content. This strips trailing terminal markers
+    and trailing whitespace so clients never see them.
+    """
+
+    stripped = str(text)
+    changed = True
+    while changed:
+        changed = False
+        for marker in _CHAT_TEMPLATE_TERMINAL_MARKERS:
+            if marker and stripped.endswith(marker):
+                stripped = stripped[: -len(marker)]
+                changed = True
+    return stripped.rstrip()
+
+
 def _chat_message_from_parsed(parsed: _ParsedChatOutput) -> tuple[dict[str, Any], str]:
     split = _split_reasoning(
         parsed.text,
         initially_open=parsed.reasoning_initially_open,
     )
-    message: dict[str, Any] = {"role": "assistant", "content": split.content}
+    message: dict[str, Any] = {"role": "assistant", "content": _strip_chat_terminal_markers(split.content)}
     if split.reasoning_content:
         message["reasoning_content"] = split.reasoning_content
     if parsed.tool_calls:
