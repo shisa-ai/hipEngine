@@ -1,4 +1,11 @@
 {
+  "measurement_host": {
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "scope": "all fresh captures in this artifact",
+    "cross_host_comparison": "prohibited; only the same-process ZBook A/B ratio is binding"
+  },
   "candidate_verdict": "rejected_performance_current_baseline",
   "created_at": "2026-08-16T14:08:43.375872+00:00",
   "decision": "restore the exact local32 dual+SiLU owner for this model/quant/shape",

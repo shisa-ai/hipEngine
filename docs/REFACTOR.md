@@ -1840,7 +1840,8 @@ should be boring.
   but both bound free-running generated-ID equality as if it were request/state
   correctness. The calibrated production contract instead binds strict-teacher
   logits and keeps cross-route free-running IDs diagnostic.
-- Fresh clean evidence applies that distinction without weakening determinism:
+- Fresh clean ZBook-local evidence applies that distinction without weakening
+  determinism; its rates are independent of the other gfx1151 host:
   18 prompt+heldout cases produce **1,050/1,050 bit-identical strict-teacher
   full-logit rows** across static c4/c8, c8->c4->c2->c1 retirement, sparse
   physical c8, every category/shape/transition scope, and three exact repeats.

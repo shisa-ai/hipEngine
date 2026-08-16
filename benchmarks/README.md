@@ -83,7 +83,7 @@ generation.
 | Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
 | Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
 | Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
-| Execution-profile numerical calibration | [`2026-08-16 policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
+| Execution-profile numerical calibration | [`2026-08-16 ZBook-local policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
 | MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
 | Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
 | Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
@@ -148,7 +148,7 @@ Selective unsafe-math was rejected for that same operation: despite 100% top-1,
 mean KL `4.74e-13`, and matching NaN/Inf classes, it regressed the actual leaf
 **20.032 -> 21.569 us (-7.67%)**. No unsafe production route remains. Evidence:
 [`unsafe-math rejection`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp4-unsafe-math-rejected.json).
-The production-numerics c>N recovery also retains gfx1151 GGUF Q8T16
+The ZBook-local production-numerics c>N recovery also retains gfx1151 GGUF Q8T16
 all-projection rowtiling only at physical c4/c8. A clean 18-prompt static,
 retiring, and sparse packet is bit-identical to strict c1 over **1,050 full-logit
 rows** with exact repeats. Seven current-package p512/d128 pairs improve c4
@@ -156,7 +156,8 @@ rows** with exact repeats. Seven current-package p512/d128 pairs improve c4
 (+0.666%, 6/7)**; c2 regresses **59.412 -> 58.345 (-1.795%, 0/7)** and is
 excluded by a physical-row floor of four. Same-route free-running trajectories
 are deterministic; cross-route IDs differ and remain diagnostic under the
-production profile. Evidence: [`width-scoped Q8T16 rowtile`](results/2026-08-16-gfx1151-q8t16-batch-route-retained.json).
+production profile. These absolute rates are independent of, and not comparable
+with, the other gfx1151 host. Evidence: [`width-scoped Q8T16 rowtile`](results/2026-08-16-gfx1151-q8t16-batch-route-retained.json).
 On the admitted Q4_K_M+NextN artifact, the existing prompt-agnostic B1-probe
 adaptive MTP route is also economically sound: exact adaptive B3 reaches
 **27.054 tok/s / 37.140 ms-output**, or **1.134x** current strict-profile AR and
@@ -403,14 +404,16 @@ Vulkan remains **2.52-5.25%** ahead, so P5 stays open. Evidence:
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
 and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
-A current production-numerics rebase restores exact local32 dual+SiLU for the
+A ZBook-local production-numerics rebase restores exact local32 dual+SiLU for the
 serial-c1 rows1 H5120/N17408 gate/up pair; native B1 retains its separately
 qualified non-split Q8_1x2 owner. The former residual-Q8_1x2 split-weight owner
 passes the complete 18-prompt/450-row strict-teacher envelope (max KL
 **0.0008333**, p99 **0.0005347**, top-1 **449/450**, exact three-run repeats),
 but loses the current strict-context p512/d128 counterbalanced A/B at
 **0.998071x** with only **1/7** wins. This is a shape-scoped default correction,
-not a new public topline; the changed-arithmetic route remains diagnostic.
+not a new public topline; the changed-arithmetic route remains diagnostic. Its
+absolute rates are independent of, and not comparable with, the other gfx1151
+host.
 Evidence: [`full-logit requalification`](results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json)
 and [`counterbalanced A/B`](results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json).
 

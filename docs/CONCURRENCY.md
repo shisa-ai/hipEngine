@@ -1482,7 +1482,7 @@ multiple later gates.
 11. **Completed — F3 plus profile requalification:** singleton-indexed
     packed-AR GDN remains retained. The former blanket Q8T16 rejection conflated
     deterministic free-running ID divergence with control correctness: a fresh
-    1,050-row strict-teacher gate is bit-identical, so current A/B evidence now
+    ZBook-local 1,050-row strict-teacher gate is bit-identical, so current A/B evidence now
     retains all-projection rowtiling only at physical c4/c8; c2 remains direct
     after a measured `1.795%` regression.
 12. **Completed — F4:** clean real-Uvicorn static/ragged/fixed/Poisson,

@@ -4063,7 +4063,7 @@ Every performance claim in hipEngine must include:
 - **Quantization**: FP16, W8A16, W4, etc.
 - **Workload**: prompt/generation length, client concurrency, choices, queue
   grouping, actual backend widths, and verifier rows
-- **Hardware**: selected GPU, configured/resolved backend, target arch, ROCm and compiler versions
+- **Hardware**: physical host identity, selected GPU, configured/resolved backend, target arch, ROCm and compiler versions; same-arch results from different hosts are independent and never form an old→new comparison without a declared same-host A/B
 - **Source**: hipEngine commit plus separate staged, unstaged, and untracked state
 - **Command**: exact benchmark invocation
 - **Result**: tok/s prefill, tok/s decode, peak GiB
@@ -4072,10 +4072,12 @@ Every performance claim in hipEngine must include:
 This policy is inherited from the `LESSONS-LEARNED.md` discipline: fast rows are invalid until output sanity proves they are real.
 
 Server, retained PARO, GGUF, and microbenchmark harnesses share the stdlib-only,
-torch-free `hipengine_artifact_provenance` v1 collector and the formal
+torch-free `hipengine_artifact_provenance` v2 collector (with backward-readable
+v1) and the formal
 `benchmarks/schemas/artifact-provenance.schema.json` contract. It resolves
 `backend="auto"` to a concrete backend/target/device, fingerprints model
-content, and preserves staged, unstaged, and untracked dirtiness separately.
+content, records physical `host_name`, and preserves staged, unstaged, and
+untracked dirtiness separately.
 Legacy artifact-specific provenance fields remain readable but are not a
 substitute for this canonical block on new retained rows.
 

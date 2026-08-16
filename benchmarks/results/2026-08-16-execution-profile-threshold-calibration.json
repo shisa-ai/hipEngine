@@ -1,4 +1,11 @@
 {
+  "measurement_host": {
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "scope": "fresh_calibration only; historical context retains its original hosts",
+    "cross_host_comparison": "prohibited; use these captures as an independent ZBook calibration lane"
+  },
   "date": "2026-08-16",
   "decision": {
     "historical_peer_wave32_transfer": "rejected on current gfx1151; this does not alter its historical gfx1100 artifact scope",
