@@ -110,6 +110,16 @@ zero-cost-producer upper bound projects just **0.0400%**, so no fused
 SiLU-to-Q8 producer is implemented. Evidence:
 [`precomputed-Q8 Q6 bound`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-precomputed-q8-bound-rejected.json).
 
+One robust exact Q4 singleton subdivision survives the otherwise rejected broad
+col4 policy. Serial-c1 full-attention K/V at K5120/N1024 improves a 67.5-MiB,
+24-weight pool **16.962 -> 16.441 us/projection (1.03169x, 14/15 wins)**,
+lowers traced VGPR **96 -> 56**, and changes no BF16 bits or bytes. The bounded
+owner projects **11.821 us/token / 0.0146%** of post-grouped 4K kernel wall, so
+no request-level result is inferred; exact verified-subwindow policy still
+requires retention. Native rows/MTP, peers, and all other Q4 singleton shapes
+stay on their prior owners. Evidence:
+[`Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -682,6 +692,18 @@ needs **1.08087x**, so even this unrealizable upper bound projects only
 **0.517 ms / 0.0400%** selected wall. No fused SiLU-to-Q8 package is warranted.
 Evidence:
 [`precomputed-Q8 Q6 bound`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-precomputed-q8-bound-rejected.json).
+
+The broad exact Q4 col4 singleton policy is rejected because FFN-down regresses
+8.11% and projects a 0.772% selected-wall loss. The independent serial-c1
+K5120/N1024 full-attention K/V shape is retained: 24 immutable actual weights
+improve **16.962 -> 16.441 us/projection (1.03169x, 14/15 wins)** with BF16-bit
+identity, zero new bytes, and traced resources of 56 VGPR / zero LDS / zero
+scratch versus 96 VGPR control. Its complete projection is only **11.821
+us/token / 0.0146%** of 4K kernel wall, below request-level timing resolution,
+but it satisfies the exact non-regressive verified-subwindow rule. The
+architecture-local shape map excludes native sessions, MTP, peers, and all
+other Q4 singleton geometries. Evidence:
+[`Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
 
 ### P6 — Exact B3 MTP
 
