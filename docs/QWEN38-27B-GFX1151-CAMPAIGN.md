@@ -1,10 +1,9 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership and G2 prefill are complete. Clean P5 at
-`15a2ca45b` beats llama.cpp HIP at 512/4K and remains 0.109% behind at 1K; the
-latest exact sole-qmicro development gate beats HIP at all three rows and trails
-Vulkan by 0.845-3.253%. G5 memory parity remains open, and the K0-K3 native INT8
-K/V ladder is closed below K4 on model-level correctness.** The working
+`9c649e28d` beats llama.cpp HIP at all three rows and trails Vulkan by
+0.804-3.153%. G5 memory parity remains open, and the K0-K3 native INT8 K/V
+ladder is closed below K4 on model-level correctness.** The working
 performance set is `512/128`, `1024/128`, and `4096/128`. The model is Qwen3.8-27B Q4_K_M on
 Radeon 8060S / `gfx1151`.
 
@@ -868,10 +867,13 @@ The complete-model gate is positive at every shape: AR changes
 **12.58125 -> 12.71731 (+1.082%)** with every full/train/heldout/category scope
 positive. Native B1 improves **18.83154 -> 19.00472 (+0.920%)** with exact
 30/30 AR and B1 trajectories, 339/393 accepted/proposed tokens, 786 target
-rows, exact GPU/CPU decisions, and zero teardown. Development AR now beats
-clean llama HIP at all three rows and is within **0.845-3.253%** of Vulkan;
-P5 remains open. Evidence:
-[`sole qmicro gate/up retain`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
+rows, exact GPU/CPU decisions, and zero teardown. Clean commit `9c649e28d`
+publishes **402.062/391.452/385.780 prefill tok/s**,
+**12.4966/12.3186/12.4673 AR tok/s**, and **17.073/17.555/19.931-GiB** process
+GTT at 512/1K/4K. AR beats clean llama HIP by **2.847%/2.106%/8.334%** and
+remains **0.804-3.153%** behind Vulkan, so P5 remains open. Evidence:
+[`sole qmicro gate/up retain`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json)
+and [`clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
 
 A free-producer bound also closes cross-kernel Q6 activation fusion. The
 existing planar-Q6 Q8_1/dp4a consumer is timed with Q8 quantization performed

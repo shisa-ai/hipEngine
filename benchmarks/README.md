@@ -47,7 +47,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.836** | **12.210** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **402.062** | **12.497** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -284,27 +284,28 @@ open campaign gaps. Evidence:
 
 #### Retained clean state — G2 complete, P5 open
 
-Clean commit `15a2ca45b` includes the shared-Q6 prefill owners and the retained
-P5 decode package through fixed-H5120 norms. One right-sized process per shape,
-one warmup and three measured runs produce:
+Clean commit `9c649e28d` includes the shared-Q6 prefill owners, eight exact
+post-norm graph/dataflow units, and sole-qmicro ownership for the 128 dense
+gate/up weights. One right-sized process per shape, one warmup and three
+measured runs produce:
 
 | Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **399.836** | 352.426 | 242.956 | **12.2099** | 12.1506 | 12.7629 | **17.322 GiB** | 15.785 GiB |
-| 1K/128 | **390.793** | 364.443 | 247.610 | **12.0514** | 12.0645 | 12.7197 | **17.805 GiB** | 15.816 GiB |
-| 4K/128 | **384.712** | 367.993 | 354.368 | **12.2095** | 11.5081 | 12.5683 | **20.181 GiB** | 16.004 GiB |
+| 512/128 | **402.062** | 352.426 | 242.956 | **12.4966** | 12.1506 | 12.7629 | **17.073 GiB** | 15.785 GiB |
+| 1K/128 | **391.452** | 364.443 | 247.610 | **12.3186** | 12.0645 | 12.7197 | **17.555 GiB** | 15.816 GiB |
+| 4K/128 | **385.780** | 367.993 | 354.368 | **12.4673** | 11.5081 | 12.5683 | **19.931 GiB** | 16.004 GiB |
 
-Prefill beats clean llama.cpp HIP by **13.452%/7.230%/4.543%** and Vulkan by
-**64.571%/57.826%/8.563%** at 512/1K/4K, preserving G2. Every throughput CV is
-below 0.046%, all nine outputs finish at token 9707, and tracked teardown is
-zero. Relative to the frozen opening snapshot, prefill is
-**368.807%/362.494%/356.881%** faster and AR is
-**73.788%/73.172%/81.841%** faster. Process GTT remains
-**47.705%/47.030%/44.012%** below opening but still
-**9.741%/12.575%/26.104%** above the lower llama row. Clean AR now beats llama
-HIP by **0.488%** at 512 and **6.095%** at 4K, but remains **0.109%** behind at
-1K and **2.854-5.254%** behind Vulkan, so P5 and G5 remain open. Evidence:
-[`post-norm clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
+Prefill beats clean llama.cpp HIP by **14.084%/7.411%/4.834%** and Vulkan by
+**65.488%/58.092%/8.864%** at 512/1K/4K, preserving G2. True AR now beats clean
+llama HIP at all three shapes by **2.847%/2.106%/8.334%**, but remains
+**0.804-3.153%** behind Vulkan, so P5 remains open. Every throughput CV is below
+0.143%, all nine outputs finish at token 9707, and tracked teardown is zero.
+Relative to the frozen opening snapshot, prefill is
+**371.417%/363.276%/358.148%** faster, AR is
+**77.871%/77.011%/85.680%** faster, and process GTT is
+**48.459%/47.773%/44.705%** lower. GTT remains
+**8.158%/10.995%/24.543%** above the lower llama row, so G5 remains open.
+Evidence: [`post-qmicro clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
 
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
@@ -450,11 +451,11 @@ added, and resident/tracked peak falls exactly **178,257,920 bytes / 170 MiB**.
 Natural AR improves **12.58125 -> 12.71731 tok/s (+1.082%)**, with every
 full/train/heldout/category scope positive. Native B1 improves **18.83154 ->
 19.00472 (+0.920%)** with all 30+30 trajectories, 339/393 acceptance, 786
-target rows, and GPU/CPU decisions exact. Against frozen clean llama build
-10438, these development AR rows lead HIP by **2.002-8.290%** and trail Vulkan
-by **0.845-3.253%**; a clean post-commit publication is still required before
-changing the topline. Evidence:
-[`sole qmicro gate/up retain`](results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
+target rows, and GPU/CPU decisions exact. Clean commit `9c649e28d` confirms
+**402.062/391.452/385.780 prefill tok/s**, **12.4966/12.3186/12.4673 AR tok/s**,
+and **17.073/17.555/19.931-GiB** process GTT at 512/1K/4K. Evidence:
+[`sole qmicro gate/up retain`](results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json)
+and [`clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
 
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
