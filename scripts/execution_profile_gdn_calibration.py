@@ -97,9 +97,16 @@ def _trajectory_arrays(
 ) -> tuple[np.ndarray, tuple[int, ...]]:
     if not trajectory:
         raise ValueError("calibration trajectory cannot be empty")
-    logits = [np.asarray(step["logits"], dtype=np.float32) for step in trajectory]
-    if any(row.ndim != 1 or row.size == 0 for row in logits):
-        raise ValueError("calibration logits must be non-empty rank-1 rows")
+    logits: list[np.ndarray] = []
+    for step in trajectory:
+        row = np.asarray(step["logits"], dtype=np.float32)
+        if row.ndim > 1 and int(np.prod(row.shape[:-1])) == 1:
+            row = row.reshape(row.shape[-1])
+        if row.ndim != 1 or row.size == 0:
+            raise ValueError(
+                "calibration logits must contain one non-empty vocabulary row per step"
+            )
+        logits.append(row)
     widths = {int(row.size) for row in logits}
     if len(widths) != 1:
         raise ValueError("calibration trajectory has inconsistent vocabulary widths")

@@ -4,6 +4,7 @@ import numpy as np
 
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
+    _trajectory_arrays,
     build_candidate_quality,
     parse_mode_sources,
 )
@@ -17,6 +18,15 @@ def _trajectory(*rows: tuple[int, list[float]]) -> tuple[dict[str, object], ...]
         }
         for token_id, logits in rows
     )
+
+
+def test_trajectory_arrays_normalizes_one_singleton_sample_axis() -> None:
+    logits, token_ids = _trajectory_arrays(
+        ({"token_id": 7, "logits": np.asarray([[4.0, 1.0]], dtype=np.float32)},)
+    )
+
+    assert logits.shape == (1, 2)
+    assert token_ids == (7,)
 
 
 def test_candidate_quality_uses_full_logits_and_checks_three_run_repeat() -> None:
