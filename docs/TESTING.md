@@ -387,9 +387,13 @@ row has only `0.022 GiB` headroom.
 A different gfx1151 file (size `17,106,775,008`, SHA-256 `7e78da...`) rejects
 pure native INT8 at complete 1K/8 with `77.78%` minimum-prompt top-1. Neither
 result transfers by filename or geometry. The active
-[`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md) must first gate
-immutable artifact/backend/quant/layout/scale identity, then require no-mirror
-c2/c4/c8 primitive, model, lifecycle, memory, and kernel-ownership evidence.
+[`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md) has completed its
+first gate: demand-driven full-file SHA-256 plus backend/target/quant/layout/scale
+identity qualifies the exact gfx1100 file, preserves the gfx1151 rejection, and
+falls unknown or mismatched contracts back to BF16 unless an explicit
+non-promotable diagnostic override is set. The remaining campaign requires
+no-mirror c2/c4/c8 primitive, model, lifecycle, memory, and kernel-ownership
+evidence.
 Short mirrored continuous rows are scheduler evidence only. Pure INT8 graph
 capture still fails closed, exact natural B3 MTP is only `0.6423x` true AR, and
 BF16 remains supported/default. Any successor that changes support/default

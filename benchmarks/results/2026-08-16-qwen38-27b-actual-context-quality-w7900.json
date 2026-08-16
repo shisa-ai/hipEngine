@@ -23,6 +23,7 @@
     "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
     "quant": "gguf_q4_k_m",
     "size_bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
     "metadata_context_length": 262144,
     "tensor_inventory_sha256": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3"
   },

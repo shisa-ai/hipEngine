@@ -2861,13 +2861,18 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["object"] == "hipengine.readiness"
     assert body["ready"] is True
     assert body["status"] == "ready"
-    assert body["model"] == {
+    assert {
+        key: body["model"][key]
+        for key in ("id", "backend", "quant", "loaded", "loaded_model_count")
+    } == {
         "id": "fake-model",
         "backend": "auto",
         "quant": "auto",
         "loaded": True,
         "loaded_model_count": 1,
     }
+    assert body["model"]["kv_capability"]["status"] == "unavailable"
+    assert body["model"]["kv_capability"]["promotion_eligible"] is False
     assert body["startup"]["eager_load"] is True
     assert body["startup"]["warmup_complete"] is True
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
@@ -4769,6 +4774,20 @@ def test_generation_batcher_shutdown_forces_cancel_after_grace() -> None:
 def test_capabilities_report_controlled_streaming_backpressure_and_continuous_membership() -> None:
     fake = FakeLLM()
     fake.supports_controlled_streaming = True
+    kv_capability = {
+        "schema_version": 1,
+        "capability_id": "qualified-capability",
+        "status": "qualified",
+        "runtime_action": "admit",
+        "promotion_eligible": True,
+        "diagnostic_override": False,
+        "requested": {"kv_storage": "int8_per_token_head"},
+        "effective_kv_storage": "int8_per_token_head",
+        "artifact": {"sha256": "abc", "content_verified": True},
+        "evidence": {"quality_artifact": "benchmarks/results/quality.json"},
+        "reason": "qualified fixture",
+    }
+    fake._text_generator = SimpleNamespace(kv_capability_provenance=kv_capability)
     app = create_app(
         ServerConfig(
             model="fake-path",
@@ -4791,8 +4810,12 @@ def test_capabilities_report_controlled_streaming_backpressure_and_continuous_me
         "shutdown_grace_seconds": 1.5,
     }
     assert body["admission"]["scheduler_fairness"]["continuous_decode"] is True
+    assert body["model"]["kv_capability"] == kv_capability
     ready = client.get("/ready").json()
     assert ready["queue"]["scheduler_fairness"]["continuous_decode"] is True
+    assert ready["model"]["kv_capability"] == kv_capability
+    models = client.get("/v1/models").json()
+    assert models["data"][0]["hipengine"]["kv_capacity"]["capability"] == kv_capability
     metrics = client.get("/metrics").text
     assert 'continuous_decode="true"' in metrics
 

@@ -56,6 +56,13 @@ from hipengine.loading.qwen35_gguf import (
     qwen35_gguf_config_from_metadata,
 )
 from hipengine.loading.qwen35_gguf_nextn import required_qwen35_gguf_nextn_tensor_names
+from hipengine.models.kv_capabilities import (
+    KVCapabilityKey,
+    KVCapabilityResolution,
+    ModelArtifactIdentity,
+    model_artifact_identity,
+    resolve_kv_capability,
+)
 from hipengine.kvcache import (
     FixedPagedKVPolicy,
     RadixCache,
@@ -128,6 +135,10 @@ _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
+_GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
+)
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
@@ -638,6 +649,16 @@ class Qwen35GGUFBringupGenerator:
         init=False,
         repr=False,
     )
+    _kv_capability_resolution: KVCapabilityResolution | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _kv_artifact_identity: ModelArtifactIdentity | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _shared_session_pool: dict[
         _GGUFSessionPoolKey,
         list[Qwen35GGUFResidentSession],
@@ -674,11 +695,80 @@ class Qwen35GGUFBringupGenerator:
             self.backend = backend
         return hip_target_arch_for_backend(backend)
 
+    @staticmethod
+    def _int8_kv_diagnostic_override_enabled() -> bool:
+        return any(
+            str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+            for name in _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS
+        )
+
+    def _kv_weight_quant_key(self) -> str:
+        file_type_name = str(
+            getattr(self.weight_index, "file_type_name", "") or ""
+        ).strip()
+        if file_type_name:
+            normalized = file_type_name.lower()
+            if normalized.startswith("mostly_"):
+                normalized = normalized[len("mostly_") :]
+            return f"gguf_{normalized}"
+        return str(getattr(self.model_plugin, "default_quant", "unknown") or "unknown")
+
+    def _kv_model_artifact_identity(self) -> ModelArtifactIdentity:
+        cached = getattr(self, "_kv_artifact_identity", None)
+        if cached is not None:
+            return cached
+        path = getattr(self.weight_index, "path", None) or self.model_path
+        identity = model_artifact_identity(path)
+        self._kv_artifact_identity = identity
+        return identity
+
+    def _resolve_int8_kv_capability(self, resolved: Any) -> KVCapabilityResolution:
+        artifact = self._kv_model_artifact_identity()
+        key = KVCapabilityKey(
+            artifact_sha256=artifact.sha256,
+            artifact_size_bytes=artifact.size_bytes,
+            backend=str(self.backend),
+            target_arch=str(self.target_arch),
+            weight_quant=self._kv_weight_quant_key(),
+            kv_storage=resolved.storage_dtype.value,
+            storage_layout=str(resolved.storage_layout),
+            scale_dtype=resolved.scale_dtype.value,
+            scale_granularity=str(resolved.scale_granularity),
+        )
+        plugin_resolver = getattr(self.model_plugin, "resolve_kv_capability", None)
+        if callable(plugin_resolver):
+            return plugin_resolver(key=key, artifact=artifact)
+        return resolve_kv_capability((), key=key, artifact=artifact)
+
+    @property
+    def kv_capability_provenance(self) -> dict[str, object]:
+        resolution = getattr(self, "_kv_capability_resolution", None)
+        if resolution is not None:
+            return resolution.as_dict()
+        return {
+            "schema_version": 1,
+            "status": "not_applicable",
+            "runtime_action": "not_applicable",
+            "promotion_eligible": False,
+            "diagnostic_override": False,
+            "requested": None,
+            "effective_kv_storage": "bf16",
+            "artifact": {
+                "path": str(getattr(self.weight_index, "path", self.model_path)),
+                "size_bytes": None,
+                "sha256": None,
+                "content_verified": False,
+                "error": None,
+            },
+            "evidence": None,
+            "reason": "BF16/default KV does not require approximate-KV capability evidence",
+        }
+
     def _resolve_request_kv_policy(
         self,
         params: Any | None,
     ) -> tuple[FixedPagedKVPolicy, str, tuple[str, str, str, str]]:
-        resolved = resolve_kv_policy(
+        requested = resolve_kv_policy(
             getattr(params, "kv_storage", "auto") or "auto",
             scale_dtype=getattr(params, "kv_scale_dtype", "fp16") or "fp16",
             scale_granularity=(
@@ -686,6 +776,29 @@ class Qwen35GGUFBringupGenerator:
                 or "per_token_head"
             ),
         )
+        resolved = requested
+        if requested.storage_dtype.value == "int8_per_token_head":
+            capability = self._resolve_int8_kv_capability(requested)
+            if capability.status != "qualified":
+                if self._int8_kv_diagnostic_override_enabled():
+                    capability = capability.with_runtime_outcome(
+                        effective_kv_storage=requested.storage_dtype.value,
+                        runtime_action="diagnostic_override",
+                        reason=(
+                            f"{capability.reason}; explicit unverified INT8 KV "
+                            "diagnostic override is enabled"
+                        ),
+                    )
+                else:
+                    resolved = resolve_kv_policy("bf16")
+                    capability = capability.with_runtime_outcome(
+                        effective_kv_storage=resolved.storage_dtype.value,
+                        runtime_action="fallback_bf16",
+                        reason=f"{capability.reason}; failed closed to BF16",
+                    )
+            self._kv_capability_resolution = capability
+        else:
+            self._kv_capability_resolution = None
         signature = (
             resolved.storage_dtype.value,
             resolved.storage_layout,

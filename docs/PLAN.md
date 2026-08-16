@@ -485,9 +485,11 @@ complete admission accounting, and cancellation/grow/shrink/overload gates.
 This is a kernel/runtime and resource-accounting campaign, not a scheduler
 rewrite. Short mirrored gfx1100 c1->c4 controlled SSE already proves live
 admission/reclaim, but it is memory-negative. Long compact no-mirror INT8
-remains c1-only. BF16 stays supported/default, unknown artifact/backend
-combinations fail closed, and no kernel work starts before campaign milestone
-`IKV-C0` integrates current `origin/main`.
+remains c1-only. `IKV-C0` is complete: current origin is integrated and runtime
+admission hashes model content on demand, resolves artifact/backend/target/
+quant/KV/scale evidence through the Qwen model plugin, exposes provenance, and
+falls back to BF16 for rejected or unknown combinations. `IKV-C1` serial
+compact c>N is next; BF16 stays supported/default.
 
 #### Current status
 
