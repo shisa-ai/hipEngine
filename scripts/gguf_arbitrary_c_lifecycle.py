@@ -767,7 +767,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             provenance = collect_artifact_provenance(
                 repo_root=_REPO_ROOT,
                 configured_backend=str(args.backend),
-                resolved_backend=str(runner._shared_runner.runtime.backend),
+                resolved_backend=str(runner._shared_runner.backend),
                 target_arch=str(runner._shared_runner.target_arch),
                 model_path=model,
                 quant="gguf_q4_k_m",
