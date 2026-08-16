@@ -40,6 +40,15 @@ def test_validate_quality_artifact_requires_complete_passing_candidate(tmp_path:
         )
 
 
+def test_repetition_manifest_does_not_mislabel_natural_prompts() -> None:
+    assert perf.repetition_manifest(natural_suite=True, repetitions=5) == {
+        "repetitions_per_prompt": 1
+    }
+    assert perf.repetition_manifest(natural_suite=False, repetitions=5) == {
+        "repetitions": 5
+    }
+
+
 def test_summarize_samples_reports_median_gain_and_repeatability() -> None:
     summary = perf.summarize_samples(
         {"strict": [10.0, 11.0, 12.0], "candidate": [12.0, 13.0, 14.0]},
