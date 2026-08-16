@@ -114,7 +114,8 @@ passing a gate. Strict and candidate primary fixtures are also separate because
 their declared graph/fallback metadata can differ even when logical ownership
 is identical. Production generated-ID equality to strict remains non-binding.
 A row above the `0.02` review boundary yields `requires_review` even
-when the provisional hard envelope passes.
+when the calibrated hard envelope passes. The binding values and calibration
+evidence are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
 
 Run a completed packet with:
 

@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P1 complete, P2 evaluator core and P3 fail-closed runtime plumbing implemented; model plans/GPU smoke pending**
+Status: **approved; P0-P1 complete, P2 evaluator core, P3 fail-closed runtime plumbing, and P4 threshold calibration implemented; model plans/current-route certification pending**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -55,8 +55,8 @@ prior review at face value.
 - A hard maximum KL of `0.02` is not yet supported by repository evidence.
   Existing retained quality-gated routes report maximum KL around `0.0308` to
   `0.0439`. Calibration therefore uses mean and tail distributions plus task
-  evidence, with `0.02` as a review boundary and `0.05` as the provisional
-  absolute ceiling.
+  evidence, with `0.02` as a review boundary and `0.05` as the absolute
+  ceiling. P4 calibration subsequently froze those values.
 - Q4_K_S/IQ formats/ROCmFP4, INT8/FP8 KV, approximate routing, and changed
   speculative or sampling policies are representation/algorithm changes (T3),
   not same-quant implementation drift. They remain separate campaigns.
@@ -97,6 +97,26 @@ They seed threshold calibration and expose missing evaluator fields.
 A calibrated gate must separate broad/outlier failure from accepted sparse
 near-tie behavior without averaging away category or transition failures.
 
+### 3.4 Calibrated result
+
+The 2026-08-16 same-backend full-logit run freezes mean/p95/p99/max KL at
+`1e-3/5e-3/2e-2/5e-2`, overall/per-scope top-1 at `99%/97%`, and the manual
+review boundary at `2e-2`. The task gate is all applicable checks passing their
+predeclared paired non-inferiority margins; task types do not share a universal
+numeric margin.
+
+The native gfx1151 Qwen3.5 cluster8 positive passes every category, shape, and
+transition scope at mean/p95/p99/max KL
+`0.000244/0.000926/0.001562/0.004529` and `99.778%` top-1. Fresh gfx1151
+Qwen3.6 K2 and wave32-tree controls fail mean, p95, and max; wave32-tree's
+`99.111%` top-1 confirms that top-1 cannot stand in for distributions. The old
+gfx1100 peer-wave positive does not transfer to current gfx1151: it reaches max
+KL `0.073151` and `98.0%` top-1 and is rejected in that new scope. All controls
+are deterministic across three repeats. The compact
+[`policy artifact`](../benchmarks/results/2026-08-16-execution-profile-threshold-calibration.json)
+records commands, clean source/model/hardware provenance, capture hashes, and
+historical context. It qualifies no runtime profile and grandfathers no route.
+
 ## 4. Historical candidate queue
 
 ### 4.1 Re-certify or re-gate first
@@ -106,7 +126,7 @@ near-tie behavior without averaging away category or transition failures.
 | P1 | Post-fix A4 production route | Old performance premise was large but invalidated by the state fix | Fresh strict/current/production performance baseline; dynamic teacher-forced logits; exact ownership and transition gates. |
 | P1 | Current gfx1151 Qwen3.8 c1 Q4 residual-Q8_1x2 DP4A default | Retained development evidence improves repeated AR `+0.271%..+0.534%` by shape and natural AR `+0.785%`; leaf max KL `3.66e-11` | Re-certify rather than rediscover: add strict-teacher mean/tail rows, BF16-relative evidence where available, and profile-manifest provenance. |
 | P1 | gfx1151 GGUF Q8T16 c4/c8 rowtile | About `+1.05%/+2.61%` | Dynamic composition/transition teacher-forced gate and current-route rebase. |
-| P1 | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run against current strict and calibrated tails; old max KL `0.0731` is outside the provisional ceiling. |
+| P1 | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run against current strict and calibrated tails; old max KL `0.0731` is outside the calibrated ceiling. |
 | P2 | PARO c2 1024-thread attention | About `+2.4-2.6%` | Full category/state/isolation gate and current A/B. |
 | P2 | Laguna compact Q4 shared-down | About `+0.388%` E2E, one-ULP leaf drift | Full teacher-forced/category gate; low priority because complete gain is small. |
 | P2 | D64 fast verifier | Potential to avoid exact long-horizon fallbacks | D64/D128 strict-teacher logits, state bounds, MTP task/economics packet. |
@@ -292,8 +312,16 @@ variants as `strict` would violate the contract.
 
 ### P4 — Calibration and current-route certification
 
-Run positive and negative controls, freeze thresholds, then re-certify every
-current non-exact default that would enter production.
+Threshold calibration completed 2026-08-16. The retained policy artifact
+freezes the original numerical envelope from one native gfx1151 positive, two
+fresh negatives, a failed cross-backend portability control, and historical
+summary context. Every capture uses the package-registered strict GDN baseline
+and three exact repeats. It intentionally makes no performance or runtime-
+profile qualification claim.
+
+Current-route certification remains open. Re-certify every non-exact default
+that would enter production with a resolved profile manifest, exact controls,
+isolation/dynamic scenarios, tasks, and BF16-relative evidence where available.
 
 Exit: calibrated policy artifact and manifest; uncertified routes fall back to
 strict. No route is grandfathered.
