@@ -279,6 +279,40 @@ def test_profile_logit_summary_reports_tails_scopes_and_review_rows() -> None:
     assert result["requires_outlier_review"] is True
     assert result["eligible_for_automatic_admission"] is False
     assert result["rows_over_review_boundary"][0]["request_id"] == "request-b"
+    assert result["top1_mismatch_rows"] == []
+
+
+def test_profile_logit_summary_attributes_top1_mismatch_below_review_boundary() -> None:
+    strict = _logits()
+    candidate = strict.copy()
+    candidate[2] = np.asarray([2.9, 3.1, 0.0, -2.0], dtype=np.float32)
+    result = compare_profile_logits(
+        strict,
+        candidate,
+        _rows(),
+        thresholds=EvaluationThresholds(
+            mean_kl_max=1.0,
+            p95_kl_max=1.0,
+            p99_kl_max=1.0,
+            max_kl_max=1.0,
+            top1_min=0.0,
+            per_scope_top1_min=0.0,
+            review_kl=1.0,
+        ),
+    )
+
+    assert result["rows_over_review_boundary"] == []
+    assert len(result["top1_mismatch_rows"]) == 1
+    mismatch = result["top1_mismatch_rows"][0]
+    assert mismatch["request_id"] == "request-a"
+    assert mismatch["teacher_step"] == 1
+    assert mismatch["row_index"] == 2
+    assert mismatch["top1_equal"] is False
+    assert mismatch["strict_top1_token_id"] == 0
+    assert mismatch["candidate_top1_token_id"] == 1
+    assert mismatch["strict_top1_candidate_rank"] == 2
+    assert mismatch["strict_margin"] == pytest.approx(1.0)
+    assert mismatch["max_abs_logit_delta"] == pytest.approx(1.1)
 
 
 def test_profile_logit_summary_turns_nonfinite_candidate_into_failed_gate() -> None:

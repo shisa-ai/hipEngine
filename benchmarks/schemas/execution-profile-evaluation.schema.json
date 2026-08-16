@@ -94,6 +94,7 @@
         "by_scope",
         "scope_failures",
         "rows_over_review_boundary",
+        "top1_mismatch_rows",
         "hard_gates_passed",
         "strict_exact_logits_and_ids",
         "requires_outlier_review",
