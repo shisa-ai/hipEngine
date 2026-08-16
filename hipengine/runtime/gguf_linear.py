@@ -3338,8 +3338,9 @@ def launch_gguf_linear_pair(
 
     The pair fast paths cover registered exact raw decode pairs (including
     unequal-width F32 output), architecture-qualified dense-F32 alpha/beta,
-    Q8_0 dual decode GEMV, Q4_K pack8 dual prefill, and raw-Q4/Q8T16 dual WMMA
-    prefill. Populated resident-pack8 pairs decline
+    narrow compact K/V and heterogeneous recurrent pairs, Q8_0 dual decode
+    GEMV, Q4_K pack8 dual prefill, and raw-Q4/Q8T16 dual WMMA prefill.
+    Populated resident-pack8 pairs decline
     the legacy dual owner when the exact tile8x8 singleton is registered.
     Q8T16 WMMA pairing is architecture/shape-qualified; every miss falls back
     to two singleton WMMA projections via :func:`launch_gguf_linear`.
@@ -3412,6 +3413,48 @@ def launch_gguf_linear_pair(
             "linear_pair",
             "gguf_q6_k_t16_v1+gguf_q4_k_t16_v1",
             "mixed_grid_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
+
+    if pair_kind in {
+        "q4_q4_t16_narrow_col4",
+        "q4_q6_t16_narrow_col4_planar",
+    }:
+        if pair_kind == "q4_q4_t16_narrow_col4":
+            pair_quant = "gguf_q4_k_t16_v1"
+            pair_variant = "narrow_col4_pair_bf16_bf16_out"
+        else:
+            pair_quant = (
+                "gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1"
+            )
+            pair_variant = "narrow_col4_planar_pair_bf16_bf16_out"
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            pair_quant,
+            pair_variant,
         )
         pair_fn = resolve(
             backend=pair_key.backend,
@@ -4393,6 +4436,67 @@ def _resolve_gguf_linear_pair_kind(
         and is_registered(q6_q4_pair_key)
     ):
         return "q6_q4_t16_mixed_grid"
+
+    narrow_shapes = backend_package_capability(
+        backend,
+        "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
+        (),
+    )
+    if (
+        not _native_batch_decode_session_enabled
+        and (rows, in_features, out_features, out_features_b) in narrow_shapes
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and dispatch_a.abi == dispatch_b.abi == "t16"
+    ):
+        narrow_a = _t16_c1_variant_dispatch(
+            dispatch_a,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        narrow_b = _t16_c1_variant_dispatch(
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features_b,
+        )
+        q4_key = KernelKey(
+            backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_col4_bf16_bf16_out",
+        )
+        q6_key = KernelKey(
+            backend,
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        )
+        q4_q4_pair_key = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "narrow_col4_pair_bf16_bf16_out",
+        )
+        q4_q6_pair_key = KernelKey(
+            backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1",
+            "narrow_col4_planar_pair_bf16_bf16_out",
+        )
+        if (
+            narrow_a.key == q4_key
+            and narrow_b.key == q4_key
+            and is_registered(q4_q4_pair_key)
+        ):
+            return "q4_q4_t16_narrow_col4"
+        if (
+            narrow_a.key == q4_key
+            and narrow_b.key == q6_key
+            and is_registered(q4_q6_pair_key)
+        ):
+            return "q4_q6_t16_narrow_col4_planar"
 
     dense_f32_pair_key = KernelKey(
         backend,
