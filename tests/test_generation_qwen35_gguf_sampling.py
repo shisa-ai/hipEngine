@@ -3340,7 +3340,10 @@ def test_gguf_resident_direct_int8_c4_declares_serial_physical_width_one(monkeyp
             native_sampler=False,
             native_sampled=False,
             slot=SimpleNamespace(
-                session=SimpleNamespace(kv_attention_source="int8_direct")
+                session=SimpleNamespace(
+                    kv_attention_source="int8_direct",
+                    packed_decode_max_rows=1,
+                )
             ),
         )
         for index in range(4)
@@ -3349,7 +3352,7 @@ def test_gguf_resident_direct_int8_c4_declares_serial_physical_width_one(monkeyp
 
     runner._step_native_rows(rows)
 
-    assert calls == [((100, 101, 102, 103), "int8_direct_c1_only")]
+    assert calls == [((100, 101, 102, 103), "packed_decode_width_unqualified")]
     assert runner._last_execution_manifest["kv_attention_source"] == "int8_direct"
     assert runner._last_execution_manifest["logical_c"] == 4
     assert runner._last_execution_manifest["physical_execution_width"] == 1
@@ -3357,6 +3360,68 @@ def test_gguf_resident_direct_int8_c4_declares_serial_physical_width_one(monkeyp
     assert runner._last_execution_manifest["throughput_claim_eligible"] is False
     assert runner._last_physical_group_plan["groups"][0]["planned_physical_rows"] == 4
     assert runner._last_physical_group_plan["groups"][0]["physical_execution_width"] == 1
+
+
+def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[tuple[int, ...], int, tuple[int, ...]]] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(
+        kv_capability_provenance={
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "effective_kv_storage": "int8_per_token_head",
+            "evidence": {
+                "max_direct_rows": 1,
+                "max_serial_resident_rows": 4,
+                "persistent_bf16_mirror": False,
+            },
+        }
+    )
+    runner._last_execution_manifest = {"mode": "native_int8_batch"}
+    runner._last_physical_group_plan = {}
+
+    def step_chunk(rows, *, physical_rows, active_slot_indices):
+        calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        return True
+
+    runner._step_native_chunk = step_chunk
+    runner._step_native_serial = lambda *args, **kwargs: pytest.fail(
+        "qualified direct INT8 c4 must not execute serial c1 rows"
+    )
+    rows = [
+        SimpleNamespace(
+            request_id=200 + index,
+            native_sampler=False,
+            native_sampled=False,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(
+                    kv_attention_source="int8_direct",
+                    packed_decode_max_rows=4,
+                )
+            ),
+        )
+        for index in range(4)
+    ]
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    runner._step_native_rows(rows)
+
+    assert calls == [((200, 201, 202, 203), 4, (0, 1, 2, 3))]
+    group = runner._last_physical_group_plan["groups"][0]
+    assert group["execution_path"] == "packed_native"
+    assert group["physical_rows"] == 4
+    assert "serial_decode_fallback" not in runner._last_execution_manifest
 
 
 def test_gguf_resident_runner_compaction_flushes_and_invalidates_slot_bound_graphs() -> None:

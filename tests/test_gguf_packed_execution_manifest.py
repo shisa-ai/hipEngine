@@ -137,6 +137,24 @@ def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
     assert manifest["steady_packed_state_reused"] is True
 
 
+def test_packed_decode_manifest_accepts_registered_int8_kv_batch_route() -> None:
+    routes = _c3_routes()
+    routes["full_attention_decode_path"] = "kv_live_spans_int8_batch"
+
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 513, 513, 513),
+        scatter_state=False,
+        blocks_per_slot=4,
+        **routes,
+    )
+
+    assert manifest["full_attention_decode_path"] == "kv_live_spans_int8_batch"
+    assert manifest["layer_families"]["full_attention"]["execution"] == "packed_native"
+
+
 def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
     manifest = build_packed_decode_execution_manifest(
         rows=4,

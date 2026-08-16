@@ -41,6 +41,9 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
         max_direct_rows=1,
         max_serial_resident_rows=4,
         persistent_bf16_mirror=False,
+        decode_batch_variant=(
+            "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+        ),
     ),
     KVCapabilityEvidence(
         key=KVCapabilityKey(

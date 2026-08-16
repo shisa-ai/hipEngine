@@ -87,6 +87,7 @@ class KVCapabilityEvidence:
     max_direct_rows: int = 1
     max_serial_resident_rows: int = 1
     persistent_bf16_mirror: bool | None = None
+    decode_batch_variant: str | None = None
 
     def __post_init__(self) -> None:
         if int(self.max_direct_rows) < 0:
@@ -95,6 +96,11 @@ class KVCapabilityEvidence:
             raise ValueError(
                 "max_serial_resident_rows must cover every directly qualified row"
             )
+        if self.decode_batch_variant is not None:
+            variant = str(self.decode_batch_variant).strip()
+            if not variant:
+                raise ValueError("decode_batch_variant must not be empty")
+            object.__setattr__(self, "decode_batch_variant", variant)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -105,6 +111,7 @@ class KVCapabilityEvidence:
             "max_direct_rows": self.max_direct_rows,
             "max_serial_resident_rows": self.max_serial_resident_rows,
             "persistent_bf16_mirror": self.persistent_bf16_mirror,
+            "decode_batch_variant": self.decode_batch_variant,
         }
 
 
@@ -142,6 +149,7 @@ class KVCapabilityResolution:
                     "max_direct_rows": self.evidence.max_direct_rows,
                     "max_serial_resident_rows": self.evidence.max_serial_resident_rows,
                     "persistent_bf16_mirror": self.evidence.persistent_bf16_mirror,
+                    "decode_batch_variant": self.evidence.decode_batch_variant,
                 }
             ),
         }
