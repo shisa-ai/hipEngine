@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q6_precomputed_q8_decode_bound",
+  "status": "upper_bound_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "ac91fabc1",
+    "runtime_change_retained": false,
+    "existing_kernels_only": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "candidate": {
+    "scope": "rows1 K17408/N5120 planar-qmicro Q6 FFN-down",
+    "control": "retained exact BF16-input planar-Q6 c1 owner",
+    "upper_bound": "existing planar-Q6 Q8_1/dp4a consumer with Q8 activation quantization performed once before all timing",
+    "reason_for_bound": "a real fused SiLU-to-Q8 producer can only add work relative to precomputed Q8",
+    "resident_layout": "gguf_q6_k_t16_qmicro_planar_v1",
+    "new_resident_bytes": 0,
+    "timed_producer_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "layers": [
+      0,
+      31,
+      63
+    ],
+    "shape": [
+      5120,
+      17408
+    ],
+    "source_pool_bytes": 219340800,
+    "source_pool_mib": 209.1796875,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 8,
+    "threads": [
+      64,
+      128,
+      256
+    ],
+    "timing": "counterbalanced HIP-event elapsed time; Q8_1 producer excluded from timing",
+    "cache_contract": "every actual source weight exceeds 64 MiB and 2x the 32-MiB MALL",
+    "advance_gate": ">=1.08087x affected-family speedup for >=1% current selected 4K kernel-wall saving"
+  },
+  "results": [
+    {
+      "threads": 64,
+      "control_ms": 0.9958899915218353,
+      "candidate_ms": 0.9953281283378601,
+      "speedup": 1.0005645004576667,
+      "candidate_wins": 29,
+      "pair_count": 45,
+      "all_layers_positive": false,
+      "layer_speedups": [
+        1.0012726437807271,
+        0.9967177013554329,
+        1.0037192129592358
+      ]
+    },
+    {
+      "threads": 128,
+      "control_ms": 0.999074250459671,
+      "candidate_ms": 1.0143126249313354,
+      "speedup": 0.9849766491147677,
+      "candidate_wins": 3,
+      "pair_count": 45,
+      "all_layers_positive": false,
+      "layer_speedups": [
+        0.9863751361461026,
+        0.9840201778348072,
+        0.9845316162494748
+      ]
+    },
+    {
+      "threads": 256,
+      "control_ms": 0.9936408698558807,
+      "candidate_ms": 0.9906653761863708,
+      "speedup": 1.0030035304968103,
+      "candidate_wins": 24,
+      "pair_count": 45,
+      "all_layers_positive": true,
+      "layer_speedups": [
+        1.0019543311634165,
+        1.0036941880844978,
+        1.0033646925237512
+      ]
+    }
+  ],
+  "best_bound": {
+    "threads": 256,
+    "control_ms": 0.9936408698558807,
+    "candidate_ms": 0.9906653761863708,
+    "speedup": 1.0030035304968103,
+    "required_speedup": 1.080868715173518,
+    "required_speedup_delta_over_observed_delta": 26.925,
+    "candidate_wins": 24,
+    "pair_count": 45
+  },
+  "projection": {
+    "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json",
+    "affected_family_ms": 172.751809,
+    "selected_kernel_ms": 1292.498954,
+    "projected_saved_ms": 0.5173115656468898,
+    "projected_complete_wall_percent": 0.040024138050241694,
+    "advance_threshold_ms": 12.924989539999999,
+    "advance_threshold_percent": 1.0
+  },
+  "correctness": {
+    "all_finite": true,
+    "max_kl": 1.6238127592614137e-06,
+    "top1_agreement": 1.0,
+    "max_abs": 0.0078125,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "teardown_exact": true
+  },
+  "validation": {
+    "existing_kernel_and_wrapper_only": true,
+    "source_change": false,
+    "full_model_gate_run": false,
+    "reason_full_model_not_run": "even free activation production reaches only 0.0400% projected wall, 25x below admission"
+  },
+  "command_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q4-qmicro-split-weight-leaf/hipcc-version.txt Q6_THREADS={64|128|256} Q6_OUTPUT=/tmp/qwen38-task22-q6-planar-precomputed-q8-t{threads}/leaf.json PYTHONPATH=. python3 /tmp/qwen38-task22-q6-planar-precomputed-q8-leaf.py",
+  "evidence": {
+    "threads64": {
+      "path": "/tmp/qwen38-task22-q6-planar-precomputed-q8-t64/leaf.json",
+      "bytes": 6967,
+      "sha256": "184b424c55dff7283a665e92db6737c4acb7ebcded391e14d1ed4798686f5c18"
+    },
+    "threads128": {
+      "path": "/tmp/qwen38-task22-q6-planar-precomputed-q8-t128/leaf.json",
+      "bytes": 6958,
+      "sha256": "483825c3151d505daf16e336f2099054f0dbac2bd3e7dfad44a30b3036038ce4"
+    },
+    "threads256": {
+      "path": "/tmp/qwen38-task22-q6-planar-precomputed-q8-t256/leaf.json",
+      "bytes": 6971,
+      "sha256": "5df6711f5c74d5185d9924906f9165bb5fbf61280d84bb5209128d773ff9fdb6"
+    }
+  },
+  "decision": "Reject fused SiLU-to-Q8 planar-Q6 decode without implementation. With Q8 production artificially free, the best existing consumer is only 1.00300x and projects 0.0400% selected wall, so no realizable producer/consumer package can meet the 1% gate."
+}
