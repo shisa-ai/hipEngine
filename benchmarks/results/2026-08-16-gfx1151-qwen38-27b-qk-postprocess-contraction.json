@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_qk_postprocess_contraction",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "7639666884b885c9096f7a872f44966097521776",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "full_attention_layers": 16,
+      "q_heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256
+    }
+  },
+  "change": {
+    "scope": "gfx1151 serial rows1 Qwen3.8 24Q/4KV/D256 full-attention Q/K postprocess",
+    "control": "split packed BF16 Q/gate, cast BF16 K to FP32, then run F32-input head RMSNorm plus partial RoPE",
+    "candidate": "one local256 composite reads packed BF16 Q/gate and BF16 K directly, preserves the existing FP32 norm/RoPE trees, and copies gate BF16 bits",
+    "registry_key": "split_qgate+head_rmsnorm+partial_rotary/gguf_f32_weight/qwen35_position_qk_bf16_f32",
+    "capability": "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES={(1,24,4,256):qwen35_position_qk_bf16_f32}",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "Capability, registry, or shape misses retain split_qgate plus K cast plus the registered F32-input head RMSNorm/RoPE primitive; prefill, native verifier rows, Qwen3.5-0.8B, and peer backends are unchanged."
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 726.0,
+      "kernel_ms_per_token": 78.9154788125,
+      "host_ms_per_token": 81.91706799880194,
+      "postprocess_span_ms_per_token": 0.214227625,
+      "split_ms_per_token": 0.02658475,
+      "key_cast_ms_per_token": 0.01903325,
+      "head_norm_rope_ms_per_token": 0.042679875
+    },
+    "candidate": {
+      "dispatches_per_token": 694.0,
+      "kernel_ms_per_token": 78.9133391875,
+      "host_ms_per_token": 81.83502750034677,
+      "postprocess_span_ms_per_token": 0.106898625,
+      "composite_ms_per_token": 0.0440159375,
+      "composite_dispatches": 256,
+      "vgpr": 16,
+      "scratch_bytes": 0,
+      "workgroup_size": 256,
+      "grid_size": 7168
+    },
+    "delta": {
+      "dispatches_per_token": -32.0,
+      "postprocess_span_ms_per_token": -0.107329,
+      "postprocess_span_percent": -50.10044806312912,
+      "kernel_ms_per_token": -0.002139624999998091,
+      "kernel_percent": -0.002711286850431982,
+      "host_ms_per_token": -0.08204049845517147,
+      "host_percent": -0.1001506773367078
+    }
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.296094998579852, 12.292747725871392],
+      "median_tok_s": 12.294421362225622,
+      "decode_cv_percent": [0.03807076022202206, 0.043925052540708755]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.303913735532948, 12.302361610417307],
+      "median_tok_s": 12.303137672975128,
+      "decode_cv_percent": [0.024834876061067244, 0.019876499998968823]
+    },
+    "speedup": 1.0007089646997367,
+    "delta_percent": 0.07089646997366916,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714,
+    "tracked_teardown_bytes": 0
+  },
+  "correctness": {
+    "query_f32_bit_exact": true,
+    "key_f32_bit_exact": true,
+    "gate_bf16_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "natural_suite_not_repeated": "The composite preserves each BF16 conversion, FP32 RMSNorm reduction/RoPE expression, and gate bit, adds no prompt-sensitive branch, and makes no natural-throughput claim."
+  },
+  "validation": {
+    "red": "The focused wrapper exposure test failed before implementation.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_full_attn_qk_postprocess.py",
+    "focused_green_result": "3 passed, including GPU bit identity and CPU KL/top-1",
+    "affected_bundle": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_gguf_ops.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_gfx1151_backend.py tests/test_qwen38_full_attn_qk_postprocess.py",
+    "affected_bundle_result": "61 passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip selected no external source",
+    "kernel_trace_gate": "The expected composite executes 256 times over 16 tokens with positive plausible duration, 16 VGPR, zero scratch, local256, and 28 blocks per layer."
+  },
+  "commands": {
+    "profile": "rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/qwen38-task22-qk-postprocess/profile-ab/{control,candidate} -o p4096-ar16 -- python3 {control-wrapper,scripts/qwen35_gguf_bench.py} --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --graph-replay-decode --rocprof-selected-region measured_decode_graph --require-cached-build",
+    "request_gate": "control/candidate/candidate/control processes using scripts/qwen35_gguf_bench.py at 512/128, one warmup and three measured runs per process, graph replay, cached gfx1151 builds"
+  },
+  "evidence": {
+    "profile_summary": {
+      "path": "/tmp/qwen38-task22-qk-postprocess/profile-ab/summary.json",
+      "sha256": "9d5c3597a8112f675c0e8a2b9b18a4fcdfc26d82f46e102b34c883db2337350e",
+      "bytes": 4661
+    },
+    "request_summary": {
+      "path": "/tmp/qwen38-task22-qk-postprocess/p512-ab/summary.json",
+      "sha256": "a39c180075c49cb1e869c2d7aaf5983fc2ee02ee8943f352e481b651297e7163",
+      "bytes": 2274
+    },
+    "control_wrapper": {
+      "path": "/tmp/qwen38-qk-postprocess-control.py",
+      "sha256": "2a6df587d0268fb134922caa4037d75d56687d87705a02c4b95065b89fdd5225",
+      "bytes": 555
+    },
+    "control_trace_sha256": "bf8de41785882bb841debd4e6ddafe09995262fe0f5c3ca2d73821036787871a",
+    "candidate_trace_sha256": "da186d34ac2881f58e5e0020cdf7b9948dac7676c964ec867896a7b60dc0c993"
+  },
+  "decision": "Retain the exact gfx1151 serial Q/K postprocess composite. It removes 32 launches/token, halves the complete postprocess span, improves profiled host decode 0.100%, preserves slightly positive selected kernel wall, and improves counterbalanced 512/128 AR 0.071% with both candidates above both controls, exact outputs/final logits, unchanged peaks, and no bytes."
+}

@@ -726,6 +726,73 @@ __global__ void gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_ke
   }
 }
 
+// Exact serial full-attention postprocess contraction. Query blocks read the
+// packed BF16 Q/gate projection directly, preserve the established FP32
+// RMSNorm/RoPE tree, and copy gate BF16 bits. K blocks consume the projected
+// BF16 key directly through the same conversion and reduction sequence as the
+// primitive split/cast/head chain.
+__global__ void gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(
+    const uint16_t* __restrict__ q_projected,
+    const uint16_t* __restrict__ key,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int64_t* __restrict__ position_ptr,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    uint16_t* __restrict__ gate_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t position = position_ptr[0];
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+  const int64_t head = blockIdx.x;
+  if (head >= num_q_heads + num_kv_heads) {
+    return;
+  }
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  if (is_query) {
+    const int64_t src_offset = local_head * 2 * head_dim;
+    const int64_t out_offset = local_head * head_dim;
+    const uint16_t* __restrict__ src = q_projected + src_offset;
+    gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+        src,
+        q_weight,
+        cos,
+        sin,
+        query_out + out_offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      gate_out[out_offset + dim] = src[head_dim + dim];
+    }
+  } else {
+    const int64_t offset = local_head * head_dim;
+    gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+        key + offset,
+        k_weight,
+        cos,
+        sin,
+        key_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  }
+}
+
 template <bool PACK_QUERY_TILES>
 __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
     const float* __restrict__ query,
@@ -1271,6 +1338,59 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf
       position,
       query_out,
       key_out,
+      eps,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_qwen35_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight(
+    const uint16_t* q_projected,
+    const uint16_t* key,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* position,
+    float* query_out,
+    float* key_out,
+    uint16_t* gate_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!q_projected || !key || !q_weight || !k_weight || !cos_table ||
+      !sin_table || !position || !query_out || !key_out || !gate_out ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 ||
+      rotary_dim <= 0 || rotary_dim > head_dim || (rotary_dim % 2) != 0 ||
+      max_positions <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel<<<
+      static_cast<unsigned int>(num_q_heads + num_kv_heads),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      q_projected,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      position,
+      query_out,
+      key_out,
+      gate_out,
       eps,
       num_q_heads,
       num_kv_heads,
