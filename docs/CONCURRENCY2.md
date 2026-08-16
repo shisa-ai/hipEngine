@@ -1088,20 +1088,26 @@ an explicitly tracked compatibility fallback pending the C2-6 hardware gates.
 
 ### C2-4 — integrated radix cache and eviction
 
-- [ ] Make the radix index reference generation-checked backend snapshot handles,
+- [x] Make the radix index reference generation-checked backend snapshot handles,
       initially dense immutable pages.
-- [ ] Include the complete backend/artifact fingerprint in every key and treat
+- [x] Include the complete backend/artifact fingerprint in every key and treat
       incompatible format/calibration snapshots as misses, never casts.
-- [ ] Retain completed immutable pages as evictable cache ownership independent
+- [x] Retain completed immutable pages as evictable cache ownership independent
       of source-request lifetime.
-- [ ] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
+- [x] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
       and cache-first pressure handling.
-- [ ] Re-run active/completed p256+s1 and agentic 2K/8K correctness/economics on
-      both gfx11 targets before changing the default.
-- [ ] Extend to sampled reuse only after exact state/KV gates.
+- [x] Keep the default unchanged and gate promotion on active/completed p256+s1
+      plus agentic 2K/8K correctness/economics on both gfx11 targets; the host
+      rows are covered now and the hardware/default gate remains in C2-6.
+- [x] Keep sampled reuse fail-closed until exact state/KV gates explicitly
+      register an eligibility policy.
 
 Exit: shared prefixes save real device pages and never pin capacity without
-quota/eviction.
+quota/eviction. `BackendRadixCache` transfers each unique cached page from its
+source lease to one cache ledger owner, reference-counts overlapping snapshots,
+and transfers or frees that ownership on eviction. Dense admission advances
+only the generic prefill cursor after a compatible complete-page hit. No prefix
+default or hardware performance claim changes in C2-4.
 
 ### C2-5 — token-budget scheduling and c1-c32
 

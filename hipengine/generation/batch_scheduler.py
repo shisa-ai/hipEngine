@@ -1107,7 +1107,7 @@ class ResidentBatchScheduler:
         self,
         *,
         request_ids: Sequence[int] | None = None,
-        reserve_callback: Callable[[RequestState], None] | None = None,
+        reserve_callback: Callable[[RequestState], RequestState | None] | None = None,
         rollback_callback: Callable[[RequestState], None] | None = None,
     ) -> tuple[int, ...]:
         """Fill free slots with FCFS or an explicit fit-aware request order.
@@ -1135,9 +1135,16 @@ class ResidentBatchScheduler:
 
         admitted: list[int] = []
         for request_id in candidates:
-            request = pending_by_id[request_id]
+            pending_request = pending_by_id[request_id]
+            request = pending_request
             if reserve_callback is not None:
-                reserve_callback(request)
+                prepared = reserve_callback(pending_request)
+                if prepared is not None:
+                    if not isinstance(prepared, RequestState):
+                        raise TypeError("reserve_callback must return RequestState or None")
+                    if prepared.request_id != pending_request.request_id:
+                        raise ValueError("reserve_callback cannot change request identity")
+                    request = prepared
             try:
                 self.active_batch.admit(request)
             except Exception:

@@ -45,6 +45,15 @@ class ResourceFit:
         return tuple(block.resource for block in self.blocking)
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceOwnershipTransfer:
+    operation_id: str
+    source_owner_id: str
+    destination_owner_id: str
+    claims: ResourceClaimSet
+    destination_lifetime: ClaimLifetime
+
+
 class ResourceUnavailable(MemoryError):
     """Atomic admission failure with one named blocking resource."""
 
@@ -218,6 +227,90 @@ class ResourceLedger:
             self._owners[owner] = updated
             self._stats["deltas"] += 1
             return updated
+
+    def transfer(
+        self,
+        source_owner_id: str,
+        destination_owner_id: str,
+        claims: ResourceClaimSet,
+        *,
+        destination_lifetime: ClaimLifetime,
+        operation_id: str,
+    ) -> ResourceOwnershipTransfer:
+        source = str(source_owner_id)
+        destination = str(destination_owner_id)
+        if source == destination:
+            raise ValueError("resource ownership transfer requires distinct owners")
+        target_lifetime = ClaimLifetime(destination_lifetime)
+        with self._lock:
+            try:
+                source_claims = self._owners[source]
+            except KeyError as exc:
+                raise KeyError(f"unknown resource owner {source!r}") from exc
+            destination_claims = self._owners.get(
+                destination,
+                ResourceClaimSet(
+                    claim_id=f"owner:{destination}",
+                    request_id=None,
+                ),
+            )
+            source_entries = source_claims.entries()
+            for claim in claims.claims:
+                pool = self._pool_by_id.get(claim.pool_id)
+                if pool is None:
+                    raise KeyError(f"unknown resource pool {claim.pool_id!r}")
+                if target_lifetime not in pool.lifetimes:
+                    raise ValueError(
+                        f"resource {claim.pool_id} rejects transfer lifetime "
+                        f"{target_lifetime.value}"
+                    )
+                current = source_entries.get(claim.key)
+                if current is None or current.units < claim.units:
+                    raise ValueError(
+                        f"resource transfer exceeds {source}/{claim.pool_id}/"
+                        f"{claim.lifetime.value} ownership"
+                    )
+            source_delta = ResourceDelta(
+                operation_id=f"{operation_id}:source",
+                lease_id=source,
+                request_id=source_claims.request_id,
+                changes=tuple(
+                    ResourceChange(claim.pool_id, -claim.units, claim.lifetime)
+                    for claim in claims.claims
+                ),
+            )
+            destination_delta = ResourceDelta(
+                operation_id=f"{operation_id}:destination",
+                lease_id=destination,
+                request_id=destination_claims.request_id,
+                changes=tuple(
+                    ResourceChange(claim.pool_id, claim.units, target_lifetime)
+                    for claim in claims.claims
+                ),
+            )
+            updated_source = source_claims.apply(
+                source_delta,
+                claim_id=f"{source_claims.claim_id}@{operation_id}",
+            )
+            updated_destination = destination_claims.apply(
+                destination_delta,
+                claim_id=f"{destination_claims.claim_id}@{operation_id}",
+            )
+            for claim in claims.claims:
+                self._used_by_lifetime[claim.pool_id][claim.lifetime] -= claim.units
+                if self._used_by_lifetime[claim.pool_id][claim.lifetime] == 0:
+                    del self._used_by_lifetime[claim.pool_id][claim.lifetime]
+                self._used_by_lifetime[claim.pool_id][target_lifetime] += claim.units
+            self._owners[source] = updated_source
+            self._owners[destination] = updated_destination
+            self._stats["transfers"] += 1
+            return ResourceOwnershipTransfer(
+                operation_id=str(operation_id),
+                source_owner_id=source,
+                destination_owner_id=destination,
+                claims=claims,
+                destination_lifetime=target_lifetime,
+            )
 
     def release(self, owner_id: str, *, operation_id: str | None = None) -> ResourceDelta:
         owner = str(owner_id)
@@ -677,6 +770,7 @@ __all__ = [
     "ResourceBlock",
     "ResourceFit",
     "ResourceLedger",
+    "ResourceOwnershipTransfer",
     "ResourceReservation",
     "ResourceUnavailable",
 ]

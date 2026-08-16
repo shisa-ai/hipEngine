@@ -44,6 +44,17 @@ single-backing implementation remains an explicit compatibility path until the
 C2-6 gfx1100/gfx1151 hardware gates, as tracked in `REFACTOR.md`. This host
 substrate carries no new performance or product-support claim by itself.
 
+C2-4 integrates that pool with generation-checked backend radix snapshots.
+Only complete immutable pages are indexed; every key includes model, revision,
+adapter, hardware/model/weight quant, backend/layout/artifact, RoPE, multimodal,
+and prompt-token identity. Cache ownership survives source-request reclaim but
+is bounded by global/per-tenant page quotas, TTL, LRU, and cache-first pressure
+eviction. Overlapping snapshots count each physical page once in the resource
+ledger. Hits attach shared pages and advance only the generic prefill cursor;
+incompatible/stale handles miss or fail closed, and sampled reuse requires an
+explicit eligibility policy. The default remains unchanged pending C2-6
+p256+s1 and 2K/8K hardware correctness/economics on both gfx11 targets.
+
 ## Executive decision
 
 | Question | Answer |

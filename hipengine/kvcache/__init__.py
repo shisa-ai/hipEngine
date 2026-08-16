@@ -16,6 +16,12 @@ from hipengine.kvcache.backend import (
     ResourceClaimSet,
     ResourceDelta,
 )
+from hipengine.kvcache.backend_prefix import (
+    BackendPrefixMatch,
+    BackendRadixCache,
+    KVSnapshotHandle,
+    PrefixCompatibilityKey,
+)
 from hipengine.kvcache.dense import (
     DenseKVAdmissionManager,
     DenseKVArtifactQualification,
@@ -40,6 +46,7 @@ from hipengine.kvcache.ledger import (
     ResourceBlock,
     ResourceFit,
     ResourceLedger,
+    ResourceOwnershipTransfer,
     ResourceReservation,
     ResourceUnavailable,
 )
@@ -81,6 +88,8 @@ from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 __all__ = [
     "AdmissionGrant",
+    "BackendPrefixMatch",
+    "BackendRadixCache",
     "ClaimConfidence",
     "ClaimLifetime",
     "ChunkedKVPool",
@@ -114,6 +123,7 @@ __all__ = [
     "KVPageState",
     "KVReservation",
     "KVScaleMetadata",
+    "KVSnapshotHandle",
     "KVStorageView",
     "KVTransaction",
     "LedgerAdmissionCoordinator",
@@ -126,11 +136,13 @@ __all__ = [
     "PrefixCacheMatch",
     "PendingAdmission",
     "PrefixCacheStats",
+    "PrefixCompatibilityKey",
     "RadixCache",
     "ReservationState",
     "ResourceBlock",
     "ResourceFit",
     "ResourceLedger",
+    "ResourceOwnershipTransfer",
     "ResourceReservation",
     "ResourceUnavailable",
     "ResourceChange",
