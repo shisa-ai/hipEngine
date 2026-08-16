@@ -66,7 +66,7 @@
     "candidate_total_rows": 30,
     "fixed_exact_ar_rows": 30,
     "fixed_total_rows": 30,
-    "output_ids_compared_per_policy": 240,
+    "output_ids_compared_per_policy": 720,
     "comparison": "For each of 10 prompts and each B1/B2/B3 row, concatenate cycle output_tokens, trim to 24, and compare with the 24 timed true-AR tokens after excluding AR's initial seed and post-window final-logit token.",
     "strict_top1_policy": true,
     "all_passed": true
