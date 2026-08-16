@@ -1104,13 +1104,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_m",
             "mixed_bf16_shared_batch_spans",
         ),
-        # Dense Q5T16 ssm_out fusions remain W7900-only; D08-P1 aliases the
-        # generic direct/rowtile/WMMA leaves for its independently gated QKV.
-        (
-            "gdn_recurrent_rmsnorm_gate+cast",
-            "gguf_q5_k_t16_v1",
-            "bf16_lowp_f32_bf16_out",
-        ),
+        # The scalar Q5T16 ssm_out GDN+cast handoff is independently admitted
+        # on gfx1151; verifier-chain ownership remains W7900-only. D08-P1
+        # aliases the generic direct/rowtile/WMMA leaves for its QKV role.
         (
             "gdn_chain_recurrent_rmsnorm_gate+cast",
             "gguf_q5_k_t16_v1",

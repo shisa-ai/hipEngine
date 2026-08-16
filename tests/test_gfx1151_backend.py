@@ -738,24 +738,22 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
                 variant,
             )
         )
-    for layer, variant in (
-        (
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
             "gdn_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
             "bf16_lowp_f32_bf16_out",
-        ),
-        (
-            "gdn_chain_recurrent_rmsnorm_gate+cast",
-            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
-        ),
-    ):
-        assert not is_registered(
-            KernelKey(
-                "hip_gfx1151",
-                layer,
-                "gguf_q5_k_t16_v1",
-                variant,
-            )
         )
+    )
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "gdn_chain_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        )
+    )
 
 
 def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None:
