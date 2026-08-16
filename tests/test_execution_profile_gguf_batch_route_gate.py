@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 
+from scripts import execution_profile_gguf_batch_route_gate as gate
 from scripts.execution_profile_gguf_batch_route_gate import (
     BatchRouteCapture,
     build_batch_route_quality,
@@ -27,6 +30,23 @@ def test_validate_width_schedule_requires_descending_supported_widths() -> None:
         validate_width_schedule(((0, 4), (2, 8)), decode_steps=9)
     with pytest.raises(ValueError, match="outside decode horizon"):
         validate_width_schedule(((0, 8), (9, 4)), decode_steps=9)
+
+
+def test_bundled_router_policy_restores_caller_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(gate.ROUTER_COOP_ENV, "caller")
+    monkeypatch.delenv(gate.ROUTER_PERSISTENT_ENV, raising=False)
+
+    with gate._router_candidate_policy(True, enabled=True):
+        assert os.environ[gate.ROUTER_COOP_ENV] == "1"
+        assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "1"
+
+    assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
+    assert gate.ROUTER_PERSISTENT_ENV not in os.environ
+
+    with gate._router_candidate_policy(False, enabled=False):
+        assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
 
 
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:
