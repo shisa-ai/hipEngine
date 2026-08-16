@@ -150,6 +150,13 @@ remains **2.854-5.254%** ahead. All CVs are below 0.046%, IDs/bytes remain
 exact, and teardown is zero. Evidence:
 [`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
 
+The clean post-norm profile reconciles **79.30459 ms/token** selected kernel
+wall against **82.72545 ms/token** profiled host decode at unchanged **934
+launches/token**. Norms are now **0.376%**; Q4 dual/single own
+**38.698%/23.975%**, and the residual is **3.42086 ms/token**. This supersedes
+the post-grouped Amdahl ranking. Evidence:
+[`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -784,6 +791,19 @@ all IDs and peaks are stable, and teardown is zero. Clean AR beats HIP by
 1K does not reproduce: clean 1K remains **0.109%** behind HIP. Vulkan remains
 **4.333%/5.254%/2.854%** ahead, so P5 stays open. Evidence:
 [`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
+
+A clean selected-region rerank confirms the retained mechanism end to end:
+selected kernel wall falls **80.78118 -> 79.30459 ms/token (-1.828%)** and
+profiled host decode falls **84.21668 -> 82.72545 ms/token (-1.771%)**, with
+exactly **934 launches/token** before and after. Fixed plus output norm now
+costs only **0.29792 ms/token / 0.376%**. Q4 dual/single projections own
+**62.673%** combined, while the kernel-to-host residual is **3.42086 ms/token**.
+Q4 geometry, Q8 activation, metadata publication, and the current
+operation-incomplete qmicro package are already closed; reopen that family only
+with a new sole-payload native/prefill dataflow. Wider graph replay is also
+closed, so any residual-wall candidate needs a distinct device-scheduling or
+operation-fusion premise. Evidence:
+[`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
 
 ### P6 — Exact B3 MTP
 
