@@ -1,10 +1,11 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership complete on 2026-08-15; P4 has reopened
-and retained an exact shared-weight planar-Q6 prefill owner but remains below G2
-at 1K/4K, P5 has retained its first exact-trajectory decode wins but remains
-open, and the K0-K3 native INT8 K/V ladder is closed below K4 on model-level
-correctness.** The working performance set is
+Status: **G1 single-layout ownership complete on 2026-08-15; P4 now retains
+exact shared-weight standard+planar Q6 prefill and clears the development G2
+speed gate at all three shapes, with a clean publication refresh pending; P5 has
+retained its first exact-trajectory decode wins but remains open, and the K0-K3
+native INT8 K/V ladder is closed below K4 on model-level correctness.** The
+working performance set is
 `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
@@ -15,21 +16,22 @@ separate native INT8 K/V lane found no representation that transfers through
 1K/8 under the quality contract; BF16 therefore remains the supported route.
 
 The retained-path P4 development gate is now
-`363.521/354.231/349.204` prefill tok/s at 512/1K/4K. A same-source three-run
-control is `344.886/339.548/334.718`, so the shared-Q6 owner improves complete
-prefill **5.403%/4.325%/4.328%** with identical IDs, tracked peaks, and teardown.
-It beats clean llama HIP at 512 by 3.15% and Vulkan at 512/1K, but remains
-2.80%/5.11% below llama HIP at 1K/4K and 1.46% below Vulkan at 4K. These are
-retained dirty-development rows, not new clean publication toplines; a
-same-protocol clean three-shape refresh is still needed before rollup. Bounded
-Q5 source-F16 and rows>=512 four-wave shared planar-Q6 FFN-down are retained;
-outer chunks, Q4 row128, planar-Q6 row80, standard-Q6 48x64 tiling, the exact
-unequal-output Q4 QKV+gate pair, 16-column dual-Q4 output subdivision, and the
-byte-neutral Laguna-derived D8-MMQ transfer are rejected. The new shared-Q6
-route decodes one 48x256 slab into 24 KiB LDS and preserves the four prior
-per-wave 48x64 arithmetic sequences; narrow V, root, rows<512, and peer backends
-retain the one-wave fallback. AOTriton attention is active but nonmaterial, and
-the remaining primitive add boundary is below the >=1% request gate.
+`398.792/391.861/384.628` prefill tok/s at 512/1K/4K. A same-source three-run
+standard-Q6 control is `362.752/354.270/349.130`, so the latest owner improves
+complete prefill **9.935%/10.611%/10.168%** with identical IDs, tracked peaks,
+and teardown. The cumulative path beats clean llama HIP by
+**13.16%/7.52%/4.52%** and Vulkan by **64.14%/58.26%/8.54%**. These are retained
+dirty-development rows, not new clean publication toplines; a same-protocol
+clean three-shape refresh is still needed before rollup. Bounded Q5 source-F16,
+rows>=512 four-wave shared standard-Q6 QKV, and shared planar-Q6 FFN-down are
+retained; outer chunks, Q4 row128, planar-Q6 row80, single-wave standard-Q6
+48x64 tiling, the exact unequal-output Q4 QKV+gate pair, 16-column dual-Q4
+output subdivision, and the byte-neutral Laguna-derived D8-MMQ transfer are
+rejected. The two shared-Q6 routes decode one 48x256 slab into 24 KiB LDS while
+preserving four independent prior 48x64 arithmetic sequences; narrow V, root,
+rows<512, and peer backends retain their exact fallbacks. AOTriton attention is
+active but nonmaterial, and the remaining primitive add boundary is below the
+>=1% request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up, an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs, and an exact four-wave
@@ -461,13 +463,22 @@ The universal route is rejected because narrow K5120/N1024 V reaches only
 is BF16-bit exact and improves **1.502x/1.421x/1.474x** at 512/1K/4K with
 **45/45 wins**, projecting **5.132%/4.207%/4.606%** complete-request savings.
 
-The same-source full-model gate confirms **344.886/339.548/334.718 ->
+The first same-source full-model gate confirms **344.886/339.548/334.718 ->
 363.521/354.231/349.204 tok/s (+5.403%/+4.325%/+4.328%)** with identical
-preview IDs, byte-identical tracked peaks, and zero teardown ownership. The 512
-row now beats clean llama HIP by 3.15%; 1K remains 2.80% below HIP and 4K
-remains 5.11% below HIP / 1.46% below Vulkan. G2 therefore remains blocked
-rather than complete, but P4 is no longer mechanism-blocked: rerank the
-post-retain ledger and continue only with a new >=1% all-shape premise.
+preview IDs, byte-identical tracked peaks, and zero teardown ownership. Its
+post-retain profile exposes the 24 standard-Q6 K5120/N10240 QKV calls at
+**191.230 ms / 13.54%** of pp512 kernel wall. A second four-wave body applies
+the same inter-wave decoded-slab sharing to standard T16 while preserving the
+previous exact 48x64 sequence. Both immutable QKV weights improve
+**2.961-3.548x** across 512/1K/4K with **90/90 wins**, zero BF16 mismatches, and
+projected complete savings **8.998%/9.404%/9.668%**.
+
+The cumulative full-model gate confirms **362.752/354.270/349.130 ->
+398.792/391.861/384.628 tok/s (+9.935%/+10.611%/+10.168%)** with identical IDs,
+byte-identical tracked peaks, and zero teardown ownership. It beats clean llama
+HIP **13.16%/7.52%/4.52%** and Vulkan **64.14%/58.26%/8.54%** at 512/1K/4K.
+Development G2 therefore passes at every shape. P4 implementation is complete;
+only the explicitly approved post-commit clean publication refresh remains.
 
 ### P5 — True-AR decode
 
