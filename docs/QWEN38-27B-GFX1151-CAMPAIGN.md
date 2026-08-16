@@ -201,6 +201,16 @@ peaks, and no bytes. Verifier/native rows and peer backends keep the registered
 pair plus Conv fallback. Evidence:
 [`serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
 
+Producer-owned add-RMSNorm -> Q8_1x2 publication is not admitted. The active
+trace has 64 boundaries/token, but each Q8_1x2 pack exposes 160 independent
+local32 workgroups while fixed-H5120 norm exposes one local256 block/eight
+waves; fusion would serialize publication into 20 wave rounds. The directly
+applicable exact gfx1151 screen already regressed **0.007578 -> 0.009251 ms
+(+22.085%)** with only 96 packs/twelve rounds. No Qwen3.8 code or benchmark is
+added; preserve the standalone pack's block parallelism and require a materially
+different synchronization mechanism before reopening. Evidence:
+[`prior exact rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
