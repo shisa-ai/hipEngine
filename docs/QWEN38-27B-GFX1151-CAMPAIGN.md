@@ -211,6 +211,15 @@ added; preserve the standalone pack's block parallelism and require a materially
 different synchronization mechanism before reopening. Evidence:
 [`prior exact rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json).
 
+Concatenating serial full-attention Q and K projection blocks is rejected too.
+The transient Q4T16 kernel preserved Q's eight-column and K's four-column
+wave32 arithmetic exactly, but all 16 actual layer pairs over a 630.5-MB
+rotating pool changed **0.189805 -> 0.191481 ms/layer (+0.883%, 1/15 wins)**.
+That operation-complete timing already includes the removed sequential launch
+boundary and projects a **0.026811-ms/token regression**, so all transient code
+is removed and no graph gate is run. Evidence:
+[`Q/K launch contraction rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qk-launch-contraction-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

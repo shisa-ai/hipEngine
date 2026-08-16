@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4_qk_launch_contraction",
+  "status": "rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "base_commit": "b6a9cfcb7207f84289a930fa96cf558932d620a0",
+    "candidate_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "scope": {
+    "rows": 1,
+    "in_features": 5120,
+    "q_out_features": 12288,
+    "k_out_features": 1024,
+    "layers": [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63],
+    "source_pool_bytes": 630456320,
+    "control": "Q4T16 local32 col8 Q plus separately launched Q4T16 local32 col4 K",
+    "candidate": "one concatenated local32 Q/K grid preserving each wave32 arithmetic tree"
+  },
+  "protocol": {
+    "warmups": 3,
+    "paired_samples": 15,
+    "order": "counterbalanced AB/BA",
+    "timing": "HIP events over all 16 rotating actual-weight pairs, divided per layer",
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 /tmp/qwen38-task22-qk-pair-leaf.py --warmups 3 --samples 15 --output /tmp/qwen38-task22-qk-pair-leaf/leaf.json"
+  },
+  "result": {
+    "control_median_ms_per_layer": 0.18980543315410614,
+    "candidate_median_ms_per_layer": 0.19148112833499908,
+    "candidate_over_control": 1.008828489011336,
+    "candidate_delta_percent": 0.8828489011336149,
+    "candidate_speedup": 0.9912487711166957,
+    "candidate_wins": 1,
+    "paired_samples": 15,
+    "projected_delta_ms_per_token_for_16_layers": 0.02681112289428711
+  },
+  "correctness": {
+    "q_bf16_mismatches": 0,
+    "k_bf16_mismatches": 0,
+    "finite": true,
+    "allocation_after_free_bytes": 0
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-qk-pair-leaf/leaf.json",
+      "sha256": "aa724bad88fe65ed74c3d6e086bda7ae61364f07ed0e5fccb0df904601f967a6",
+      "bytes": 5384
+    },
+    "red_green": {
+      "red": "PYTHONPATH=. uv run pytest -q tests/test_qwen38_qk_projection_pair.py::test_qk_pair_wrapper_is_exposed (failed before implementation)",
+      "green": "PYTHONPATH=. uv run pytest -q tests/test_qwen38_qk_projection_pair.py::test_qk_pair_is_bit_exact_and_passes_cpu_kl_top1 (passed before rejection cleanup)"
+    }
+  },
+  "decision": "Reject and remove the transient Q/K bundle. It is bit exact but operation-complete actual-weight timing regresses 0.883% with only 1/15 wins, so the removed launch cannot produce a retained graph win. Keep the existing Q local32 plus independently qualified K col4 owners."
+}
