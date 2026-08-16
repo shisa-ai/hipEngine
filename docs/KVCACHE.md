@@ -242,12 +242,31 @@ Other terms:
 
 ## Architectural contract and memory math
 
-### `KVLiveSpans` remains the ABI
+### `KVLiveSpans` remains the liveness ABI
 
 Every paged K/V write and attention kernel consumes `KVLiveSpans` rather than a
 scalar `(block_table, context_len)` shortcut. Dense BF16 and dense INT8 fill
-uniform spans; compact DMS will fill per-head variable spans. Storage precision
-and eviction/compaction remain orthogonal policy axes.
+uniform spans; compact DMS will fill per-head variable spans. Generation 2
+extends that mandatory liveness object with a registered `KVStorageView` for
+stable payload/scale/zero/codebook/tier planes. The scheduler consumes neither
+raw pointers nor quantizer-specific metadata; it receives atomic resource claims
+from the resolved `KVCacheBackend`. See
+[`CONCURRENCY2.md`](CONCURRENCY2.md#swappable-kv-cache-backend-contract).
+
+KV configuration has three independently modelled concerns:
+
+| Concern | Examples | Scheduler-visible result |
+| --- | --- | --- |
+| Retention topology | dense paged, sliding/sink, DMS per-head compact | live spans and resource deltas |
+| Hot codec/layout pipeline | BF16, FP8, per-token/head INT8, HIGGS/TurboQuant, AQUA residuals, mixed BF16/INT2 | backend pool plan, storage view, and kernel bundle |
+| Tier/cold codec | device-only, host/NVMe offload, KVTC | maintenance work and tier resource claims |
+
+These concerns may compose only when a registry factory validates the complete
+combination and its quality artifact. “Storage dtype and eviction are
+orthogonal” therefore does **not** mean every format is one enum toggle; AQUA
+has cross-layer state, OSCAR-like layouts have protected BF16 and packed history
+planes, and DMS changes physical liveness dynamically. It means none of them may
+fork continuous batching, request completion, cancellation, or admission logic.
 
 ### Qwen3.6/PARO dense K/V size
 
@@ -286,9 +305,17 @@ produced the final `1.029 GiB` margin; it does not alter retained K/V fidelity.
 
 - **No persistent BF16 shadow for an INT8 claim.** Chunk-local transient BF16 is
   allowed only when its lifetime and byte count are audited.
-- **Storage dtype and eviction policy stay independent.** `paged_int8`,
-  `dms_int8`, and future formats register as policies/kernels, not engine
-  branches.
+- **Retention, hot codec/layout, and cold tiering stay composable.**
+  `paged_int8`, `dms_int8`, mixed-tier, AQUA/HIGGS-like, and future formats
+  register complete `KVCacheBackend` pool/storage/kernel bundles, not engine or
+  scheduler branches.
+- **Every backend claims every plane atomically.** Payload, scales/zeros,
+  codebooks/predictors, protected BF16 regions, transaction state, demotion or
+  reconstruction workspace, mirrors, and cold transfers are admission
+  resources; no codec may discover them after scheduling.
+- **Replacing a KV backend never replaces continuous batching.** The common
+  c1-c32 lifecycle/conservation suite is required for each promoted
+  topology+codec composition.
 - **Capacity rows record tracked peak, sampled HIP memory, retained payload and
   scales, transient metadata, and no-shadow evidence.**
 - **Quality gates precede support or speed claims.** A route that fits but fails
@@ -1181,23 +1208,20 @@ FastDMS performance evidence to keep in mind:
 
 ### hipEngine DMS shape
 
-DMS should register as a `KVPolicy` and compact attention kernel family. Start
-with BF16 to isolate compaction semantics; compressed storage is a second,
-independently gated axis:
+DMS should register as a retention-topology component and compact attention
+kernel family inside the common `KVCacheBackend` contract. Start with BF16 to
+isolate compaction semantics; compressed payloads are independently gated codec
+compositions over the same topology and scheduler:
 
 ```python
-policy = KVPolicy.dms_bf16(
-    target_cr=4 or 8,
-    window_size=256,
-)
+backend = KVBackendRegistry.resolve(
+    topology="dms_compact", hot_codec="bf16", target_cr=4 or 8, window_size=256)
 
-# Eventual shape, only after a replacement INT8 representation passes its
-# own dense/native gates (current int8_per_token_head does not):
-policy = KVPolicy.dms_int8(
-    target_cr=4 or 8,
-    window_size=256,
-    storage_dtype="int8_per_token_head",
-)
+# Eventual shape, only after a replacement representation passes its own
+# dense/native gates (current per-token/head INT8 is artifact-specific):
+backend = KVBackendRegistry.resolve(
+    topology="dms_compact", hot_codec="int8_per_token_head",
+    target_cr=4 or 8, window_size=256)
 ```
 
 Core metadata is already aligned with `KVLiveSpans`:
@@ -1205,10 +1229,10 @@ Core metadata is already aligned with `KVLiveSpans`:
 ```text
 base_offsets    [rows, layers, kv_heads] int32
 live_counts     [rows, layers, kv_heads] int32
-range_capacity  [rows, layers, kv_heads] int32 (policy-owned)
+range_capacity  [rows, layers, kv_heads] int32 (backend-owned)
 token_positions [rows, layers, kv_heads, max_live] int32
 evict_mask      [rows, layers, kv_heads, max_live] bool
-storage_dtype   bf16 initially; quality-admitted compressed dtype later
+storage_view    backend layout key + stable payload/codec plane views
 span_role       prefill | decode | verify_chain | verify_tree
 ```
 
@@ -1221,10 +1245,11 @@ span_role       prefill | decode | verify_chain | verify_tree
      non-retrofitted checkpoint.
    - For the current Qwen3.6/PARO model, train or import an eviction-head
      retrofit before any quality claim.
-2. **Compact policy and admission**
-   - Add `DMSKVPolicy` with allocator-visible compact capacity.
-   - `admission_cap()` returns compact live-token capacity, not logical context
-     length.
+2. **Compact backend and admission**
+   - Add the DMS topology's allocator-visible compact pool/extent plans,
+     storage views, and registered kernel bundle.
+   - Return atomic claims for every per-layer/head payload and metadata plane,
+     fragmentation/growth credit, and workspace—not logical context length.
    - Add no-evict and forced-stride diagnostic modes only for testing the
      compact allocator/kernels; they are not quality claims.
 3. **Streaming prefill pack**
@@ -1241,11 +1266,13 @@ span_role       prefill | decode | verify_chain | verify_tree
    - Reuse the grouped-GQA lesson: scan each KV stream once for all Q heads that
      share it when split geometry makes reuse worthwhile.
    - Tune block-N/split caps only after correctness fixtures pass.
-6. **Scheduler and c=N integration**
+6. **Common scheduler and c=N integration**
    - Start c=1, then c=2/4/8 after dense batched spans are green.
-   - Continuous batching must account by actual compact live rows. Prefix cache
-     should be disabled initially or implemented as per-sequence eviction
-     overlays; do not share evicted prefix pages blindly.
+   - Reuse the C2 scheduler, request lifecycle, resource ledger, and backend
+     conformance suite unchanged. Continuous batching accounts actual compact
+     live rows through backend claims/deltas; it is not reimplemented for DMS.
+   - Prefix cache should be disabled initially or implemented as per-sequence
+     eviction overlays; do not share evicted prefix pages blindly.
 7. **Speculative decode compatibility**
    - DMS writes must obey existing KV transaction semantics. Verify rows write
      scratch/journal spans and commit only accepted rows.
