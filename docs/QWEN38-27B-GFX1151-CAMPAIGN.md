@@ -255,6 +255,14 @@ requires a materially different persistent/global-synchronization premise, not
 the existing producer-store composite. Evidence:
 [`Q4/Q4 recurrent-grid rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-q4-unequal-grid-rejected.json).
 
+The existing split-parallel attention reducer also stays at its retained 32K
+threshold. Forcing it at 4K adds **16 launches/token**, changes the complete
+reducer **0.084902 -> 0.089330 ms/token (+5.216%)**, and changes the fixed-token
+final logit **26.059303 -> 26.155388**. The unchanged grouped-GQA context kernel
+is flat; one-run aggregate profiler variance is therefore not a retainable win,
+and no request gate is run. Evidence:
+[`4K parallel-reducer rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-4k-parallel-attention-reducer-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
