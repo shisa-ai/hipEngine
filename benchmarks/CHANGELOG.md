@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-16
 
+- [Qwen3.8 pure-INT8 actual context/quality/concurrency frontier] Qwen3.8-27B / Q4_K_M / gfx1100: guard-free RX 7900 XTX c1 highest observed working context **112K -> 126K (+12.5%)** at **23.962624/0.021751 GiB** peak/headroom, with the next 256-token page stalling startup and 127K returning HIP OOM; W7900 bounded `mixed_v1` quality extends **64K/16 -> 126K/16 (+96.9%)** at mean/max KL **0.0000104/0.0001354** and **100% top-1**, while W7900 c1 reaches the 256K model limit and c2/c4/c8 pass 8K then reject 8.25K in resident preparation. Observed c4=c2+c2, c8=c1+c3+c4, and `continuous_decode=false`, so the INT8 path is queue coalescing rather than retained continuous batching. `benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json`.
+
 - [dedicated-XTX Qwen3.8 INT8 context classification corrected; no new measurements] Qwen3.8-27B / Q4_K_M / natural ShareGPT server soak: keep dedicated-c1 **112K** after 4/4 exact natural requests, but withdraw the arbitrary 512-MiB pass/fail threshold for c>1; actual execution works through **6K/request at c2**, **1.5K at physical c4**, and **2K at offered c8** (two physical c4 waves where shape-recorded), while actual failures are **c2 8K 0/2 HTTP-500 HIP OOM**, c2 8.25K unsupported-route startup, and c1 128K startup OOM; c4/c8 have no tested execution failure. Headroom remains reported (**0.012/0.163/0.011 GiB** at those highest passes) but no longer reclassifies successful requests. `benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json`.
 
 ## 2026-08-15

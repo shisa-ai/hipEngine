@@ -194,10 +194,11 @@ Each value is the total tokens per second across all active requests:
 | 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
 #### Dedicated-server context
-| KV route | Server shape | Recommended context | Peak / headroom |
+| KV route | Server shape | Measured context | Peak / headroom |
 | --- | --- | ---: | ---: |
-| BF16 default | c1 | **32K** | 21.869 / 2.115 GiB |
-| Pure INT8 explicit | dedicated c1, AR-only | **112K** | 23.323 / 0.661 GiB |
+| BF16 default | c1 operational | **32K** | 21.869 / 2.115 GiB |
+| Pure INT8 explicit | c1 repeated natural soak | **112K** | 23.323 / 0.661 GiB |
+| Pure INT8 explicit | c1 one-request physical ceiling | **126K** | 23.963 / 0.022 GiB |
 
 #### Decode / MTP
 
@@ -234,8 +235,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX
-7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
 llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
 hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
 draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated
