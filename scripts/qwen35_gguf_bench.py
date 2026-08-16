@@ -357,7 +357,8 @@ def main() -> int:
         )
     resolved_backend = next(iter(resolved_backends))
     target_arch = next(iter(target_arches))
-    provenance = collect_artifact_provenance(
+    provenance = _collect_benchmark_provenance(
+        compiler_version=compiler_version,
         repo_root=REPO_ROOT,
         configured_backend="auto",
         resolved_backend=resolved_backend,
@@ -1637,6 +1638,18 @@ def _bytes_to_gib(value: int | None) -> float | None:
     if value is None:
         return None
     return float(value) / float(1 << 30)
+
+
+def _collect_benchmark_provenance(
+    *,
+    compiler_version: str | None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Reuse precomputed hipcc text instead of probing inside profiled runs."""
+
+    if compiler_version is not None:
+        kwargs["hipcc_version"] = compiler_version
+    return collect_artifact_provenance(**kwargs)
 
 
 def _read_compiler_version(path: Path) -> str:
