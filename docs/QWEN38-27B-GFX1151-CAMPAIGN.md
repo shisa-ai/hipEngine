@@ -1,11 +1,11 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership completed on 2026-08-15 and the clean G2
-prefill win completed on 2026-08-16; P5 now beats clean llama.cpp HIP at 4K
-through exact grouped-GQA split attention but remains open on 512/1K, natural
-AR, and the 4K Vulkan target; G5 memory parity remains open, and the K0-K3
-native INT8 K/V ladder is closed below K4 on model-level correctness.** The
-working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
+prefill win completed on 2026-08-16; retained P5 development rows now edge
+clean llama.cpp HIP at 512/1K and lead it at 4K/natural AR through exact grouped
+GQA plus fixed-H5120 norms, but remain 2.52-5.15% below Vulkan; G5 memory parity
+remains open, and the K0-K3 native INT8 K/V ladder is closed below K4 on
+model-level correctness.** The working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
@@ -50,8 +50,9 @@ leaf is BF16-bit exact and improves **0.549226 -> 0.116819 ms (4.7015x,
 teardown. This beats clean llama.cpp HIP by **4.792%** but remains **4.047%**
 below Vulkan. All tested trajectories remain exact and bytes/peaks are
 unchanged. Native rows and MTP retain their prior owners after the pre-scope B1
-diagnostic regressed; 512/1K, natural AR, and Vulkan 4K remain open, so P5
-stays open.
+diagnostic regressed. At this grouped-GQA checkpoint, 512/1K, natural AR, and
+Vulkan 4K remained open; the later fixed-H5120 norm row supersedes those
+short-context development rates.
 
 The compiler-clean post-grouped 4K rerank reconciles **80.781185 ms/token** of
 kernel work (**95.921%** of profiled host decode) across exactly **934
@@ -133,6 +134,14 @@ existing exact top-1 path preserves every FP32 logit and winner bit on the
 4/15 wins)** and projects a **0.0158%** selected-wall regression. The direct
 full-logit producer plus generic argmax remains production. Evidence:
 [`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
+
+Fixed-H5120 norm dataflow is retained. Caching 20 values/thread while preserving
+the generic local256 FP32 tree improves all 128 actual norm leaves **1.23268 ->
+0.35870 ms/token (3.4365x, 15/15)**. Complete 512/1K/4K graph AR improves
+**1.458%/1.368%/1.380%** to **12.23245/12.06500/12.21721 tok/s**, and natural
+AR improves **12.28760 -> 12.45494 (+1.362%)**. Every output/trajectory and
+byte remains exact; rows>1, Q8, output norm, and peers stay generic. Evidence:
+[`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -738,6 +747,27 @@ FP32 logits, winner IDs, and winner-value bits remain identical. That projects
 a **0.0158%** selected-wall regression, so serial AR retains the full-logit
 producer plus generic argmax. Evidence:
 [`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
+
+The next distinct boundary transfers the retained fixed-hidden wave norm
+premise from H1024 to H5120 without transferring its reduction association.
+Each local256 thread caches 20 values, but the first three reduction levels are
+reconstructed from immutable shared partials so the complete generic FP32 tree
+remains exact; only the final five levels use wave32 exchanges. Across all 64
+attention and 64 post-attention actual weights, standalone/add norm improve
+**0.60341 -> 0.17357** and **0.63016 -> 0.18538 ms/token**; combined improves
+**1.23268 -> 0.35870 ms/token (3.4365x, 15/15)** with zero BF16 mismatches.
+
+The exact gfx1151 dense-H5120/Q4/rows1 policy improves complete graph AR
+**12.05663 -> 12.23245 (+1.458%)** at 512, **11.90223 -> 12.06500 (+1.368%)**
+at 1K, and **12.05091 -> 12.21721 (+1.380%)** at 4K. Natural AR improves
+**12.28760 -> 12.45494 (+1.362%)** with every train/heldout/category scope
+positive; native B1 is non-regressive with identical acceptance and target-row
+counts. Prefill is positive at all shapes, tracked/process peaks are identical,
+and no workspace or graph node is added. Generic rows>1, Q8, output-norm,
+other-model, and peer-backend fallbacks remain registered. Development rows now
+meet clean llama HIP across the repeated set and natural AR but remain
+**2.52-5.15%** below Vulkan, so P5 remains open. Evidence:
+[`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
 
 ### P6 — Exact B3 MTP
 

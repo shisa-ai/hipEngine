@@ -313,24 +313,26 @@ and peer backends retain exact fallbacks. Evidence:
 [`shared standard-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json),
 and [`shared planar-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json).
 
-P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an exact serial-c1 Q5T16
-recurrent-output tile8 owner, and an exact four-wave Q4 split-weight gate/up
-owner. The latest exact graph-AR rows, against fresh same-source pre-split
-controls, are:
+P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, the exact serial-c1 Q5T16 tile8
+and Q4 split-weight owners, plus exact fixed-H5120 standalone/add norm kernels.
+The latest same-source generic-norm -> fixed-norm graph rows are:
 
-| Shape | Same-source control | Current AR | Split-weight delta | llama HIP | llama Vulkan |
+| Shape | Same-source control | Current AR | Fixed-norm delta | llama HIP | llama Vulkan |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | 11.93837 | **12.07616** | **+1.154%** | 12.1506 | 12.7629 |
-| 1K/128 | 11.78474 | **11.91648** | **+1.118%** | 12.0645 | 12.7197 |
-| 4K/128 | 11.00884 | **11.11492** | **+0.964%** | 11.5081 | 12.5683 |
+| 512/128 | 12.05663 | **12.23245** | **+1.458%** | 12.1506 | 12.7629 |
+| 1K/128 | 11.90223 | **12.06500** | **+1.368%** | 12.0645 | 12.7197 |
+| 4K/128 | 12.05091 | **12.21721** | **+1.380%** | 11.5081 | 12.5683 |
 
-The split-weight owner also moves natural true AR **12.17631 -> 12.31049
-tok/s (+1.102%)**, with every full/train/heldout/category scope at least
-**+1.078%** and all 30 trajectories exact. Native rows and MTP stay on their
-prior exact owners after the pre-scope B1 diagnostic regressed 0.290%,
-preserving the current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows.
-Tracked peaks and resident bytes are unchanged. Both clean llama.cpp backends
-remain faster at 512/1K, so P5 stays open. Evidence:
+The 128 actual norm leaves are BF16-bit exact and improve **1.23268 -> 0.35870
+ms/token (3.4365x, 15/15)**. Natural true AR moves **12.28760 -> 12.45494
+tok/s (+1.362%)**, with every full/train/heldout/category scope positive and
+all 30 trajectories exact. Native B1 is non-regressive **18.85366 -> 18.86475
+(+0.059%)** with identical trajectories, 339/393 accepted/proposed tokens, and
+786 target rows. Prefill improves 0.031-0.155%; tracked peaks, process GTT,
+graph nodes, and resident bytes are unchanged. Current development rows now
+edge clean llama HIP at all three repeated shapes and lead it on natural AR,
+but remain **2.52-5.15%** below Vulkan, so P5 stays open. Evidence:
+[`fixed-H5120 norm decode`](results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json),
 [`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
 and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
@@ -342,8 +344,10 @@ processes improve same-source AR **11.10932 -> 12.05960 tok/s (+8.554%)** with
 all 12 fixed-token IDs identical, finite logits, byte-identical
 **19.529302-GiB** tracked peaks, and zero teardown. The current row beats clean
 llama.cpp HIP **11.50812 tok/s by 4.792%**, but remains **4.047%** below Vulkan
-**12.56830 tok/s**; 512/1K and natural short-context routes are unchanged. This
-is retained development evidence, not a clean publication topline. Evidence:
+**12.56830 tok/s** at that checkpoint. The later fixed-H5120 norm route raises
+the current 4K development row to **12.21721 tok/s**, **6.162%** above HIP and
+**2.793%** below Vulkan. This is retained development evidence, not a clean
+publication topline. Evidence:
 [`grouped-GQA split attention`](results/2026-08-16-gfx1151-qwen38-27b-grouped-gqa-split-attention.json).
 
 One exact post-grouped sub-window also remains default despite being below

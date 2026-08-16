@@ -117,6 +117,42 @@ def gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256(
     )
 
 
+def gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
+) -> None:
+    """Run the fixed c1/hidden-5120 register-cached exact-tree reduction."""
+
+    if not _prevalidated:
+        _check_fixed5120_wave256(
+            ((x_ptr, "x_ptr"), (weight_ptr, "weight_ptr"), (out_ptr, "out_ptr")),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+        )
+    _launch_rmsnorm(
+        "hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256",
+        (x_ptr, weight_ptr, out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_rmsnorm_bf16_f32_weight_out_fp16_via_bf16(
     x_ptr: int,
     weight_ptr: int,
@@ -306,6 +342,57 @@ def gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256(
         )
     _launch_add_rmsnorm(
         "hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
+        ptrs,
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    x_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
+) -> None:
+    """Run fixed c1/hidden-5120 unrounded add plus exact-tree wave norm."""
+
+    ptrs = (x_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr)
+    if not _prevalidated:
+        _check_fixed5120_wave256(
+            tuple(
+                zip(
+                    ptrs,
+                    (
+                        "x_ptr",
+                        "add_ptr",
+                        "weight_ptr",
+                        "norm_out_ptr",
+                        "residual_out_ptr",
+                    ),
+                    strict=True,
+                )
+            ),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+        )
+    _launch_add_rmsnorm(
+        "hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
         ptrs,
         rows,
         hidden_size,
@@ -816,6 +903,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out_fixed5120_wave256",
+        ),
+        gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "rmsnorm", "gguf_f32_weight", "f32_out"),
         gguf_rmsnorm_bf16_f32_weight_out_f32,
         replace=replace,
@@ -843,6 +940,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
             "bf16_out_fixed1024_wave256",
         ),
         gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "add_rmsnorm",
+            "gguf_f32_weight",
+            "bf16_out_fixed5120_wave256",
+        ),
+        gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256,
         replace=replace,
     )
     register(
@@ -1203,6 +1310,23 @@ def _check_fixed1024_wave256(
         _check_nonzero_pointer(pointer, name)
 
 
+def _check_fixed5120_wave256(
+    pointers: tuple[tuple[int, str], ...],
+    *,
+    rows: int,
+    hidden_size: int,
+    threads: int,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1")
+    if hidden_size != 5_120:
+        raise ValueError("hidden_size must be exactly 5120")
+    if threads != 256:
+        raise ValueError("threads must be exactly 256")
+    for pointer, name in pointers:
+        _check_nonzero_pointer(pointer, name)
+
+
 def _check_positive(value: int, name: str) -> None:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
@@ -1237,6 +1361,7 @@ __all__ = [
     "build_gguf_ops",
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
+    "gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_rounded_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
@@ -1246,6 +1371,7 @@ __all__ = [
     "gguf_gate_mul_bf16",
     "gguf_rmsnorm_bf16_f32_weight",
     "gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256",
+    "gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256",
     "gguf_rmsnorm_bf16_f32_weight_out_fp16_via_bf16",
     "gguf_rmsnorm_bf16_f32_weight_out_f32",
     "gguf_rmsnorm_f32_f32_weight",

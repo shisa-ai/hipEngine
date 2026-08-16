@@ -804,12 +804,15 @@ def test_gfx1151_08b_dense_down_residual_policies_are_exact() -> None:
         )
 
 
-def test_gfx1151_08b_fixed1024_norm_residual_policy_is_exact() -> None:
+def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
     register_gfx1151_kernels(replace=True)
     expected = {
         (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 1_024): "bf16_out_fixed1024_wave256"
-        }
+        },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            (1, 5_120): "bf16_out_fixed5120_wave256"
+        },
     }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
@@ -818,14 +821,18 @@ def test_gfx1151_08b_fixed1024_norm_residual_policy_is_exact() -> None:
         "hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
     ) == {}
     for layer in ("rmsnorm", "add_rmsnorm"):
-        assert is_registered(
-            KernelKey(
-                "hip_gfx1151",
-                layer,
-                "gguf_f32_weight",
-                "bf16_out_fixed1024_wave256",
+        for variant in (
+            "bf16_out_fixed1024_wave256",
+            "bf16_out_fixed5120_wave256",
+        ):
+            assert is_registered(
+                KernelKey(
+                    "hip_gfx1151",
+                    layer,
+                    "gguf_f32_weight",
+                    variant,
+                )
             )
-        )
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:

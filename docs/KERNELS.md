@@ -109,7 +109,7 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
-| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus fixed c1/hidden-1024 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
+| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus gfx1151-qualified fixed c1/hidden-1024 and hidden-5120 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
 | Rotary/prelude | `rotary/paro_rotate.{hip,py}`, `rotary/qwen35_rotary.{hip,py}` | `paro_rotate1/2/3`, `paro_rmsnorm_rotate2`, `partial_rotary`, `head_rmsnorm+partial_rotary`, `split_qgate` | BF16/FP16 PARO rotation and Qwen partial-RoPE/head-normalization families. |
 | Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. gfx1151 rows512/K3584/N1024 dense-BF16 FFN down uses the WMMA exact rounded-residual sibling; the unfused projection+add chain remains registered. |
 | PARO AWQ projection | `quant/paro_awq_gemv.{hip,py}` | `pack8_gemv`, `dual_pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm`, rotate/SiLU composites (`w4_paro`) | Strided/transposed, BF16/FP16, selected-expert, fused-W4 prefill, and small-row routes. |
@@ -308,6 +308,19 @@ entry points retain their full validation contract. Q8, output norm, verifier
 F32, rows>1, other shapes/models, and peer backends stay generic. Evidence:
 [`0.8B retained norm/residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
 [`screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
+
+Dense-H5120 has an independently qualified pair under variants
+`bf16_out_fixed5120_wave256`. Each local256 thread caches 20 values, preserves
+the generic per-thread accumulation and complete FP32 reduction tree, replaces
+nine tree barriers with shared-partial and inverse-RMS publication barriers
+plus five wave32 exchanges, and reuses the cached values for output. On gfx1151 Qwen3.8-27B,
+all 128 actual-weight norm/residual outputs are BF16-bit exact; the package
+improves **1.23268 -> 0.35870 ms/token (3.4365x, 15/15)** and complete graph AR
+**1.37-1.46%** across 512/1K/4K. `rocprofv3` records local256/grid256, 56/80
+VGPR, 1,536-byte LDS, and zero scratch. The model/backend/shape capability is
+rows1 Q4_K_M only; generic kernels remain the rows>1, Q8, output-norm,
+other-model, and peer-backend fallbacks. Evidence:
+[`dense-H5120 norm route`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
