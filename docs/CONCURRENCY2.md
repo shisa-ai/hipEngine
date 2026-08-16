@@ -993,27 +993,29 @@ Each phase is one or more validated atomic commits, not one giant rewrite.
 
 ### C2-0 — contract and RED simulator
 
-- [ ] Add child/parent request and output-collector host types.
-- [ ] Freeze `KVBackendSpec`, `ResourceClaimSet`, `KVPoolPlan`, `KVLease`,
+- [x] Add child/parent request and output-collector host types.
+- [x] Freeze `KVBackendSpec`, `ResourceClaimSet`, `KVPoolPlan`, `KVLease`,
       `ResourceDelta`, `KVStorageView`, and `KVCacheBackend` host protocols before
       implementing the real scheduler.
-- [ ] Add a deterministic fake engine/resource ledger with queued, resident,
+- [x] Add a deterministic fake engine/resource ledger with queued, resident,
       scheduled, physical-width, and per-pool claim counters.
-- [ ] Provide fake backends with identical logical K/V but different ownership:
+- [x] Provide fake backends with identical logical K/V but different ownership:
       dense BF16; dense INT8 payload+scales; mixed BF16+packed history with
       demotion; and DMS-like variable live spans.
-- [ ] RED: short A completes and request C is admitted while long sibling B from
+- [x] RED: short A completes and request C is admitted while long sibling B from
       the old static group is still decoding.
-- [ ] RED: blocking and streaming child requests share scheduling order,
+- [x] RED: blocking and streaming child requests share scheduling order,
       cancellation, and reclaim semantics.
-- [ ] RED/property: random c1-c32 arrival/length/cancel/demotion/compaction
+- [x] RED/property: random c1-c32 arrival/length/cancel/demotion/compaction
       sequences preserve unique IDs/slots, every pool's resource conservation,
       independent c1 outputs, and final drain for all fake backends.
-- [ ] RED/architecture: selecting another fake backend changes no
+- [x] RED/architecture: selecting another fake backend changes no
       engine/scheduler/frontend type or queue implementation.
 
 Exit: the new lifecycle, concurrency dimensions, and backend-swap contract are
-executable without GPU.
+executable without GPU. The executable contracts live in
+`hipengine/generation/concurrency2.py`, `hipengine/kvcache/backend.py`, and the
+host-only conformance simulator/tests.
 
 ### C2-1 — independent outputs and sole engine driver
 
