@@ -238,6 +238,21 @@ def _manifest(profile: str = "production") -> dict[str, object]:
     )
 
 
+def test_default_thresholds_match_retained_production_policy() -> None:
+    assert EvaluationThresholds().to_dict() == {
+        "mean_kl_max": 1e-3,
+        "p95_kl_max": 5e-3,
+        "p99_kl_max": 2e-2,
+        "max_kl_max": 5e-2,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 2e-2,
+    }
+    bf16_thresholds = Bf16NoninferiorityThresholds()
+    assert bf16_thresholds.mean_kl_delta_max == 1e-3
+    assert bf16_thresholds.top1_drop_max == 1e-2
+
+
 def test_profile_logit_summary_reports_tails_scopes_and_review_rows() -> None:
     strict = _logits()
     candidate = strict.copy()

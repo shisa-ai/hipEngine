@@ -1,0 +1,536 @@
+{
+  "date": "2026-08-16",
+  "decision": {
+    "historical_peer_wave32_transfer": "rejected on current gfx1151; this does not alter its historical gfx1100 artifact scope",
+    "next": "Requalify each current non-exact default with resolved profile manifests, exact control telemetry, isolation, task, and BF16-relative evidence where available. Uncertified explicit production scopes use strict fallback.",
+    "routes_grandfathered": false,
+    "routes_profile_qualified": [],
+    "thresholds_frozen": true
+  },
+  "fresh_calibration": {
+    "controls": {
+      "qwen35_08b_chain_peer_cluster8": {
+        "candidate_logits_sha256": "eb6b6caf7f69c691faaa14e706e8c075aa444ef921fc70e2f3890bab6ab59225",
+        "expected_label": "positive",
+        "fresh_hard_gate_passed": true,
+        "historical_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json",
+        "historical_artifact_sha256": "7c400bafcaf30dc8917005f82d896dfc7679afe43c36f6ecc008b63e78d0b758",
+        "repeat_determinism": {
+          "passed": true,
+          "runs": 3
+        },
+        "requires_outlier_review": false,
+        "review_row_count": 0,
+        "scope_failures": [],
+        "strict_logits_sha256": "a2d1646dd52c613cf10966ac183a935beb79734d8989e4ac16f11569cdaf98b9",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.44493337068933064,
+          "kl_max": 0.004529431839500119,
+          "kl_mean": 0.0002443956190422268,
+          "kl_p50": 0.00010866465473305137,
+          "kl_p95": 0.0009255497124743643,
+          "kl_p99": 0.0015622088084836024,
+          "max_abs_logit_delta": 0.3622164726257324,
+          "rows": 450,
+          "strict_margin_min": 0.009552001953125,
+          "strict_teacher_nll_mean": 0.44448434278177495,
+          "teacher_delta_p_mean": -2.705411392180609e-05,
+          "teacher_nll_delta": 0.000449027907555688,
+          "top1_agreement": 0.9977777777777778,
+          "top1_matches": 449,
+          "topk_overlap_mean": 0.9902222222222222
+        }
+      },
+      "qwen36_35b_chain_k2": {
+        "candidate_logits_sha256": "0c2fd7fd984677ba0c3b20f95f8e76160651252d71e4db9ce9185a7655195bf3",
+        "expected_label": "negative",
+        "fresh_hard_gate_passed": false,
+        "historical_artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "historical_artifact_sha256": "29793599091dbcfe40ad4c883db9da78398d175bae6d190fb0b17a5b457230c3",
+        "repeat_determinism": {
+          "passed": true,
+          "runs": 3
+        },
+        "requires_outlier_review": true,
+        "review_row_count": 9,
+        "scope_failures": [
+          {
+            "dimension": "category",
+            "value": "code"
+          },
+          {
+            "dimension": "category",
+            "value": "general_en"
+          },
+          {
+            "dimension": "category",
+            "value": "general_ja"
+          },
+          {
+            "dimension": "category",
+            "value": "mixed_ja_en"
+          },
+          {
+            "dimension": "shape",
+            "value": "c1"
+          },
+          {
+            "dimension": "shape",
+            "value": "prefill_last"
+          },
+          {
+            "dimension": "transition",
+            "value": "prefill_to_c1"
+          },
+          {
+            "dimension": "transition",
+            "value": "steady"
+          }
+        ],
+        "strict_logits_sha256": "b623cb4f26a3a5f94d146d62c412d509d8ab57439e03909a4e32da9051f74a9e",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.14251369515645296,
+          "kl_max": 0.15257909409338294,
+          "kl_mean": 0.002005140201892395,
+          "kl_p50": 3.724647750673864e-05,
+          "kl_p95": 0.00839992764411906,
+          "kl_p99": 0.0391644479000774,
+          "max_abs_logit_delta": 3.7941665649414062,
+          "rows": 450,
+          "strict_margin_min": 0.01271820068359375,
+          "strict_teacher_nll_mean": 0.141508255977587,
+          "teacher_delta_p_mean": -0.00017416544316885244,
+          "teacher_nll_delta": 0.0010054391788659467,
+          "top1_agreement": 0.9866666666666667,
+          "top1_matches": 444,
+          "topk_overlap_mean": 0.972
+        }
+      },
+      "qwen36_35b_chain_peer_wave32_portability": {
+        "candidate_logits_sha256": "1ed2c352bbb6964897441189637ac4e25739005440d7e71d89e54543fef3096a",
+        "expected_label": "positive",
+        "fresh_hard_gate_passed": false,
+        "historical_artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json",
+        "historical_artifact_sha256": "066698f32586d3b6ceb05748b32e1ecd6a30e8616cff29f44cd74317f7b54ae2",
+        "repeat_determinism": {
+          "passed": true,
+          "runs": 3
+        },
+        "requires_outlier_review": true,
+        "review_row_count": 4,
+        "scope_failures": [
+          {
+            "dimension": "category",
+            "value": "general_en"
+          },
+          {
+            "dimension": "category",
+            "value": "general_ja"
+          },
+          {
+            "dimension": "category",
+            "value": "mixed_ja_en"
+          },
+          {
+            "dimension": "shape",
+            "value": "c1"
+          },
+          {
+            "dimension": "shape",
+            "value": "prefill_last"
+          },
+          {
+            "dimension": "transition",
+            "value": "prefill_to_c1"
+          },
+          {
+            "dimension": "transition",
+            "value": "steady"
+          }
+        ],
+        "strict_logits_sha256": "b623cb4f26a3a5f94d146d62c412d509d8ab57439e03909a4e32da9051f74a9e",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.1403598209545138,
+          "kl_max": 0.07315064405723176,
+          "kl_mean": 0.0013193110106012604,
+          "kl_p50": 3.998796305614714e-05,
+          "kl_p95": 0.00521785738627471,
+          "kl_p99": 0.016344803286365707,
+          "max_abs_logit_delta": 3.4885988235473633,
+          "rows": 450,
+          "strict_margin_min": 0.01271820068359375,
+          "strict_teacher_nll_mean": 0.141508255977587,
+          "teacher_delta_p_mean": 0.0011187098792362724,
+          "teacher_nll_delta": -0.0011484350230732132,
+          "top1_agreement": 0.98,
+          "top1_matches": 441,
+          "topk_overlap_mean": 0.9715555555555556
+        }
+      },
+      "qwen36_35b_chain_wave32_tree": {
+        "candidate_logits_sha256": "a470e89e536be214b205e4ff95d19dd8cf5879312507565c4d00270a6eef4391",
+        "expected_label": "negative",
+        "fresh_hard_gate_passed": false,
+        "historical_artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "historical_artifact_sha256": "29793599091dbcfe40ad4c883db9da78398d175bae6d190fb0b17a5b457230c3",
+        "repeat_determinism": {
+          "passed": true,
+          "runs": 3
+        },
+        "requires_outlier_review": true,
+        "review_row_count": 3,
+        "scope_failures": [
+          {
+            "dimension": "category",
+            "value": "general_en"
+          },
+          {
+            "dimension": "category",
+            "value": "general_ja"
+          },
+          {
+            "dimension": "category",
+            "value": "mixed_ja_en"
+          },
+          {
+            "dimension": "shape",
+            "value": "c1"
+          },
+          {
+            "dimension": "shape",
+            "value": "prefill_last"
+          },
+          {
+            "dimension": "transition",
+            "value": "prefill_to_c1"
+          },
+          {
+            "dimension": "transition",
+            "value": "steady"
+          }
+        ],
+        "strict_logits_sha256": "b623cb4f26a3a5f94d146d62c412d509d8ab57439e03909a4e32da9051f74a9e",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.1400858581489067,
+          "kl_max": 0.059872364557825464,
+          "kl_mean": 0.0012262348400261555,
+          "kl_p50": 3.652762259160317e-05,
+          "kl_p95": 0.006280578314829754,
+          "kl_p99": 0.016881234485743767,
+          "max_abs_logit_delta": 2.0207815170288086,
+          "rows": 450,
+          "strict_margin_min": 0.01271820068359375,
+          "strict_teacher_nll_mean": 0.141508255977587,
+          "teacher_delta_p_mean": 0.0007434360255335776,
+          "teacher_nll_delta": -0.0014223978286803107,
+          "top1_agreement": 0.9911111111111112,
+          "top1_matches": 446,
+          "topk_overlap_mean": 0.9720000000000001
+        }
+      }
+    },
+    "hardware": {
+      "arch": "gfx1151",
+      "backend": "hip_gfx1151",
+      "compiler": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "device": "AMD Radeon 8060S Graphics",
+      "rocm": "HIP version: 7.15.0-0000000"
+    },
+    "models": {
+      "qwen35_08b": {
+        "algorithm": "sha256-sampled-v1",
+        "exists": true,
+        "path_type": "file",
+        "sample_offsets": [
+          0,
+          265734272,
+          531468544
+        ],
+        "sampled_bytes": 3145728,
+        "size_bytes": 532517120,
+        "value": "533c6f4b5cf28570f467215ce056c9ff15efb548c85fdae66b2d86337b975735"
+      },
+      "qwen36_35b_a3b": {
+        "algorithm": "sha256-sampled-v1",
+        "exists": true,
+        "path_type": "file",
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "sampled_bytes": 3145728,
+        "size_bytes": 22663387424,
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+      }
+    },
+    "prompt_suites": [
+      {
+        "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "rows": 10,
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+      },
+      {
+        "path": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+        "rows": 8,
+        "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+      }
+    ],
+    "prompts": 18,
+    "rows_per_control": 450,
+    "same_context_rule": "each candidate consumes the strict generated token prefix at every compared transition",
+    "separation": {
+      "binding_observation": "The native positive is below every limit. Both negatives exceed mean, p95, and max limits; K2 also exceeds p99. Wave32-tree retains 99.111% top-1 while failing KL tails/max, proving top-1 alone is insufficient.",
+      "fresh_negatives_rejected": "2/2",
+      "historical_positive_portability_failures": "1/1",
+      "native_positive_passed": "1/1"
+    },
+    "source_clean": true,
+    "source_commit": "8820fb99c5c9db9a703c9d9e8048d86c0adad830",
+    "teacher_source": "backend-registered strict-exact GDN mode chain_lds32_direct_nonvolatile"
+  },
+  "historical_context": {
+    "controls": [
+      {
+        "artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json",
+        "evidence": "summary_only",
+        "label": "positive",
+        "max_kl": 0.04173686920338883,
+        "name": "gfx1100_peer_wave32",
+        "per_scope_top1_min": null,
+        "rows": 450,
+        "top1": 0.9888888888888889
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json",
+        "evidence": "summary_only",
+        "label": "positive",
+        "max_kl": 0.030835657418180357,
+        "name": "laguna_global_qrow2",
+        "per_scope_top1_min": 0.96875,
+        "rows": 320,
+        "top1": 0.990625
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json",
+        "evidence": "summary_only",
+        "label": "positive",
+        "max_kl": 0.04292364437364443,
+        "name": "laguna_swa_qrow2",
+        "per_scope_top1_min": 0.953125,
+        "rows": 320,
+        "top1": 0.9875
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json",
+        "evidence": "summary_only",
+        "label": "positive",
+        "max_kl": 0.043887929421586015,
+        "name": "laguna_comp_wmma_swa",
+        "per_scope_top1_min": 0.96875,
+        "rows": 320,
+        "top1": 0.99375
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "evidence": "summary_only",
+        "label": "negative",
+        "max_kl": 0.059030829581659554,
+        "name": "gfx1100_gdn_k2",
+        "per_scope_top1_min": null,
+        "rows": 450,
+        "top1": 0.9888888888888889
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "evidence": "summary_only",
+        "label": "negative",
+        "max_kl": 0.06875725568112254,
+        "name": "gfx1100_gdn_wave32_tree",
+        "per_scope_top1_min": null,
+        "rows": 450,
+        "top1": 0.9844444444444445
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json",
+        "evidence": "summary_only",
+        "label": "negative",
+        "max_kl": 0.1715614590917252,
+        "name": "laguna_q8_dp4a",
+        "per_scope_top1_min": 0.953125,
+        "rows": 320,
+        "top1": 0.984375
+      },
+      {
+        "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-category-rejected.json",
+        "evidence": "summary_only",
+        "label": "negative",
+        "max_kl": 0.09706200329509634,
+        "name": "laguna_direct_wmma",
+        "per_scope_top1_min": 0.96875,
+        "rows": 320,
+        "top1": 0.990625
+      },
+      {
+        "artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json",
+        "by_category": {
+          "code": {
+            "kl_max": 0.003073017056332284,
+            "kl_mean": 0.000162859313316918,
+            "kl_p95": 0.0006323710018610019,
+            "kl_p99": 0.0020380513215912605,
+            "rows": 150,
+            "top1": 0.9933333333333333
+          },
+          "general_en": {
+            "kl_max": 0.0019544740430486977,
+            "kl_mean": 0.0003317255554782423,
+            "kl_p95": 0.0014049047336923905,
+            "kl_p99": 0.001812028555574824,
+            "rows": 100,
+            "top1": 1.0
+          },
+          "general_ja": {
+            "kl_max": 0.0023416891169426197,
+            "kl_mean": 0.0003499501648762091,
+            "kl_p95": 0.0014959260662134354,
+            "kl_p99": 0.002311784076805091,
+            "rows": 100,
+            "top1": 0.99
+          },
+          "mixed_ja_en": {
+            "kl_max": 0.003848065345914718,
+            "kl_mean": 0.0004129023039651704,
+            "kl_p95": 0.0012958763903928186,
+            "kl_p99": 0.002013047993689719,
+            "rows": 100,
+            "top1": 0.99
+          }
+        },
+        "evidence": "retained_full_row_metrics",
+        "label": "positive",
+        "max_kl": 0.003848065345914718,
+        "name": "qwen35_pack8_wmma",
+        "rows": 450,
+        "tail": {
+          "max": 0.003848065345914718,
+          "mean": 0.00029752599873222196,
+          "p95": 0.0012819976904655014,
+          "p99": 0.0021561669306941027
+        },
+        "top1": 0.9933333333333333
+      }
+    ],
+    "role": "Max/top-1 boundary and prior decision context only unless evidence=retained_full_row_metrics; missing raw logits cannot establish new evaluator tails or qualify a profile."
+  },
+  "kind": "hipengine_execution_profile_threshold_calibration",
+  "limitations": [
+    "The current host is gfx1151, not the primary W7900/gfx1100 campaign host.",
+    "The Laguna model and old raw full-logit files are unavailable locally; their compact artifacts remain summary-only calibration context.",
+    "These captures isolate GDN arithmetic and do not provide runtime profile manifests or exact control-plane telemetry, so they cannot certify a production route."
+  ],
+  "performance_claim": false,
+  "policy": {
+    "bf16_relative": {
+      "mean_kl_delta_max": 0.001,
+      "status": "binding where BF16 is available; not re-estimated from same-quant controls",
+      "top1_drop_max": 0.01
+    },
+    "repeat_determinism": {
+      "minimum_runs": 3,
+      "requirement": "bit-identical logits, selected IDs, controls, manifest, and schedule"
+    },
+    "strict_teacher_full_vocabulary": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "rule": "All global and declared scope gates bind together. Rows above review_kl require explicit top-k/margin/task diagnosis and are never automatically admitted.",
+      "scope_dimensions": [
+        "category",
+        "shape",
+        "transition"
+      ],
+      "top1_min": 0.99
+    },
+    "task_quality": {
+      "reason": "Task metrics differ by product capability. The mechanical gate is all-pass; each task-specific score margin must be declared before capture.",
+      "requirement": "Every applicable declared task and heldout check passes its predeclared paired non-inferiority margin; categories cannot compensate for one another.",
+      "universal_numeric_margin": null
+    }
+  },
+  "profile_qualification_claim": false,
+  "raw_captures": {
+    "qwen35_08b_gfx1151": {
+      "bytes": 25380,
+      "command": [
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "scripts/execution_profile_gdn_calibration.py",
+        "--model",
+        "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--baseline-mode",
+        "chain_lds32_direct_nonvolatile",
+        "--positive-mode",
+        "chain_peer_cluster8",
+        "--historical-source",
+        "chain_peer_cluster8=benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json",
+        "--decode-steps",
+        "24",
+        "--repeat-runs",
+        "3",
+        "--compiler-version-file",
+        "/tmp/d08-c0/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/execution-profile-calibration/qwen35-08b-gfx1151-full.json"
+      ],
+      "committed": false,
+      "path": "/tmp/execution-profile-calibration/qwen35-08b-gfx1151-full.json",
+      "sha256": "2820714c441592ef1a57b01ed06d0a80a4ff87729fc631baccb40fc60040aad5"
+    },
+    "qwen36_gfx1151": {
+      "bytes": 68324,
+      "command": [
+        "/home/lhl/hipEngine/.venv/bin/python",
+        "scripts/execution_profile_gdn_calibration.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--baseline-mode",
+        "chain_lds32_direct_nonvolatile",
+        "--positive-mode",
+        "chain_peer_wave32",
+        "--negative-mode",
+        "chain_k2",
+        "--negative-mode",
+        "chain_wave32_tree",
+        "--historical-source",
+        "chain_peer_wave32=benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-wave32-semantic-accepted.json",
+        "--historical-source",
+        "chain_k2=benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "--historical-source",
+        "chain_wave32_tree=benchmarks/results/2026-07-15-gfx1100-gguf-gdn-peer-aligned-existing-routes-rejected.json",
+        "--decode-steps",
+        "24",
+        "--repeat-runs",
+        "3",
+        "--compiler-version-file",
+        "/tmp/d08-c0/hipcc-version.txt",
+        "--require-cached-build",
+        "--json",
+        "/tmp/execution-profile-calibration/qwen36-gfx1151-full.json"
+      ],
+      "committed": false,
+      "path": "/tmp/execution-profile-calibration/qwen36-gfx1151-full.json",
+      "sha256": "651f16eadfafd9c4e1fe7d9480801459b3c1a07a87e23520b1a9f94dc6bb0e4a"
+    }
+  },
+  "schema_version": 1,
+  "status": "retained_policy",
+  "summary": "Freeze the provisional production numerical envelope unchanged. One native gfx1151 positive passes every full-logit scope; two fresh negatives fail distribution gates; a historical W7900 positive does not transfer to current gfx1151 and is not grandfathered."
+}

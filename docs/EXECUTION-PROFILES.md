@@ -1,6 +1,6 @@
 # Execution Profiles and Numerical Contracts
 
-Status: **approved architecture; evaluator and fail-closed runtime plumbing implemented; model-plan calibration pending**
+Status: **approved architecture; evaluator, fail-closed runtime plumbing, and production threshold calibration implemented; model-plan certification pending**
 Approved: 2026-08-16
 Authority: [`PLAN.md`](PLAN.md) remains the project architecture source of
 truth. This document is the normative policy for arithmetic drift,
@@ -155,27 +155,44 @@ The initial gate compares the same model artifact, quant, KV policy, prompts,
 teacher tokens, and positions under `strict` and candidate `production`.
 Generated free-running ID equality is recorded but is not the denominator.
 
-### 6.1 Provisional calibration envelope
+### 6.1 Calibrated production envelope
 
-The following values are the initial automatic-admission envelope. They must be
-calibrated against retained positive controls and known quality failures before
-the public default changes:
+The 2026-08-16 calibration freezes the initial envelope unchanged. These are
+binding automatic-admission limits, not tuning targets:
 
-| Metric over full-vocabulary teacher-forced rows | Initial requirement |
+| Metric over full-vocabulary teacher-forced rows | Requirement |
 | --- | ---: |
 | Mean KL, production versus strict | <= `1e-3` |
 | p95 row KL | <= `5e-3` |
-| p99 row KL | target <= `2e-2` |
+| p99 row KL | <= `2e-2` |
 | Maximum row KL | <= `5e-2` absolute ceiling |
 | Top-1 agreement | >= `99%` overall |
 | Top-1 agreement | >= `97%` in every declared category/shape/transition scope |
 
-Rows with KL above `2e-2` require explicit top-k overlap, strict logit-margin,
-finite-state, and task-level diagnosis even when the absolute `5e-2` ceiling
-passes. A single maximum is not sufficient to characterize a route: existing
-accepted routes have reported maxima around `0.03-0.044`, while known rejected
-routes begin around `0.059` and extend far above `1.0`. Mean, tails, category
-localization, and task behavior are binding together.
+All global and per-scope limits bind together. Rows with KL above `2e-2`
+require explicit top-k overlap, strict logit-margin, finite-state, and
+applicable task diagnosis even when the absolute `5e-2` ceiling passes; they
+are never admitted automatically. Every applicable task/heldout check must pass
+its predeclared paired non-inferiority margin. There is no universal task score
+and categories cannot compensate for one another.
+
+The calibration used the backend-registered strict GDN route and full logits for
+18 prompts/450 teacher-forced rows, with three bit-identical repeats. Native
+gfx1151 Qwen3.5 cluster8 passed at mean/p95/p99/max KL
+`0.000244/0.000926/0.001562/0.004529` and `99.778%` top-1. Fresh Qwen3.6 K2 and
+wave32-tree controls failed at mean/p95/max KL
+`0.002005/0.008400/0.152579` and `0.001226/0.006281/0.059872`; wave32-tree still
+had `99.111%` top-1, demonstrating why top-1 alone is insufficient. The
+historically accepted gfx1100 peer-wave route also failed when transplanted to
+current gfx1151 (`0.001319/0.005218/0.073151`, `98.0%` top-1), so its old label
+was not grandfathered across backend/current arithmetic. See the compact
+[`calibration artifact`](../benchmarks/results/2026-08-16-execution-profile-threshold-calibration.json).
+
+Historical retained summaries still explain the `2e-2` review and `5e-2`
+ceiling: accepted maxima reached about `0.03-0.044`, while known rejected routes
+began around `0.059` and extended above `1.0`. Missing raw logits cannot create
+new tail evidence or qualify those routes. Mean, tails, category localization,
+repeatability, and task behavior remain binding together.
 
 The broad project floor, KL <= `0.05` and top-1 >= `90%` versus a CPU/reference
 oracle, remains a useful new-kernel smoke and an outer safety ceiling. It is not
