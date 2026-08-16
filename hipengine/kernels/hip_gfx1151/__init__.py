@@ -862,11 +862,17 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
     },
 }
 # D08-D5 admits both fixed-hidden wave-reduction leaves as one inseparable C
-# route for the exact dense-0.8B Q4 decode owner. Q8, native batches, output
-# norm, other shapes/models, and peer backends keep the generic primitives.
+# route for the exact dense-0.8B Q4 decode owner. The dense-H5120 sibling
+# preserves the generic local256 reduction tree exactly while caching 20 values
+# per lane; all 128 actual Qwen3.8 leaves are bit exact and clear the P5 package
+# gate. Q8, native batches, output norm, other shapes/models, and peer backends
+# keep the generic primitives.
 GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024): "bf16_out_fixed1024_wave256",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120): "bf16_out_fixed5120_wave256",
     },
 }
 # The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.

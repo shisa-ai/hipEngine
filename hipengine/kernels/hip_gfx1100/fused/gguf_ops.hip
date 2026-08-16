@@ -250,6 +250,70 @@ __global__ void gguf_norm_fixed1024_wave256_kernel(
   }
 }
 
+template <bool kAddResidual>
+__launch_bounds__(256, 1)
+__global__ void gguf_norm_fixed5120_wave256_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ add,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ residual_out,
+    float eps) {
+  constexpr int kHidden = 5120;
+  constexpr int kThreads = 256;
+  constexpr int kValuesPerThread = kHidden / kThreads;
+  constexpr int kWave = 32;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & (kWave - 1);
+  float values[kValuesPerThread];
+  float sum = 0.0f;
+#pragma unroll
+  for (int i = 0; i < kValuesPerThread; ++i) {
+    const int idx = tid + i * kThreads;
+    const float value = bf16_bits_to_float(x[idx]) +
+        (kAddResidual ? bf16_bits_to_float(add[idx]) : 0.0f);
+    values[i] = value;
+    sum += value * value;
+  }
+
+  // Preserve the generic local256 reduction tree exactly while replacing its
+  // nine tree barriers with two block barriers and five wave exchanges. The
+  // first three tree levels join threads 128, 64, and 32 apart from the
+  // immutable per-thread partials; the remaining levels are wholly wave-local.
+  __shared__ float partial[kThreads];
+  __shared__ float shared_inv_rms;
+  partial[tid] = sum;
+  __syncthreads();
+  if (tid < kWave) {
+    float total = partial[tid] + partial[tid + 128];
+    total += partial[tid + 64] + partial[tid + 192];
+    const float upper =
+        (partial[tid + 32] + partial[tid + 160]) +
+        (partial[tid + 96] + partial[tid + 224]);
+    total += upper;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      total += __shfl_down(total, offset, kWave);
+    }
+    if (lane == 0) {
+      shared_inv_rms =
+          rsqrtf(total / static_cast<float>(kHidden) + eps);
+    }
+  }
+  __syncthreads();
+
+  const float inv_rms = shared_inv_rms;
+#pragma unroll
+  for (int i = 0; i < kValuesPerThread; ++i) {
+    const int idx = tid + i * kThreads;
+    const float value = values[i];
+    norm_out[idx] = float_to_bf16_bits(value * inv_rms * weight[idx]);
+    if constexpr (kAddResidual) {
+      residual_out[idx] = float_to_bf16_bits(value);
+    }
+  }
+}
+
 __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ add,
@@ -875,6 +939,45 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256(
     return static_cast<int>(hipErrorInvalidValue);
   }
   gguf_norm_fixed1024_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
+      x, add, weight, norm_out, residual_out, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    const uint16_t* x,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows != 1 ||
+      hidden_size != 5120 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(1), dim3(256), 0, stream>>>(
+      x, nullptr, weight, out, nullptr, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    const uint16_t* x,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || add == nullptr || weight == nullptr || norm_out == nullptr ||
+      residual_out == nullptr || rows != 1 || hidden_size != 5120 ||
+      threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
       x, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
