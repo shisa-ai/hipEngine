@@ -2215,10 +2215,14 @@ class _GenerationBatcher:
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
         if route_name == _SPECULATIVE_MTP_DEFAULT_ROUTE:
-            registered_limit = getattr(
-                self._engine_factory(),
-                "server_plain_ar_max_active_requests",
-                None,
+            engine = self._engine_factory()
+            independent = _engine_supports_independent_generation(engine)
+            if independent:
+                route_limit = None
+            registered_limit = (
+                None
+                if independent
+                else getattr(engine, "server_plain_ar_max_active_requests", None)
             )
             if registered_limit is not None:
                 route_limit = int(registered_limit)

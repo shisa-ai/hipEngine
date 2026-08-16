@@ -982,6 +982,10 @@ class ResidentBatchScheduler:
         return self.active_batch.active_count
 
     @property
+    def pending_requests(self) -> tuple[RequestState, ...]:
+        return tuple(self._pending)
+
+    @property
     def completed(self) -> Mapping[int, CompletedRequest]:
         return self._completed
 
@@ -1102,21 +1106,36 @@ class ResidentBatchScheduler:
     def admit_pending(
         self,
         *,
+        request_ids: Sequence[int] | None = None,
         reserve_callback: Callable[[RequestState], None] | None = None,
         rollback_callback: Callable[[RequestState], None] | None = None,
     ) -> tuple[int, ...]:
-        """Fill free slots from the pending queue and return admitted request ids.
+        """Fill free slots with FCFS or an explicit fit-aware request order.
 
-        A scheduler-owned resource reservation may run immediately before the
-        request becomes active.  Reservation failures leave the request at the
-        head of the pending queue and do not publish a physical slot.  If the
-        slot commit itself fails, the paired rollback callback releases the
-        unpublished reservation before the exception escapes.
+        A scheduler-owned resource reservation may run immediately before each
+        request becomes active. Reservation failure never publishes that
+        request's physical slot; a failed slot commit invokes the paired
+        rollback callback. Format-specific fit calculations remain outside this
+        scheduler and provide only stable request IDs here.
         """
 
+        free_slots = self.capacity - self.active_batch.active_count
+        pending_by_id = {request.request_id: request for request in self._pending}
+        if request_ids is None:
+            candidates = tuple(request.request_id for request in self._pending)[:free_slots]
+        else:
+            candidates = tuple(int(request_id) for request_id in request_ids)
+            if len(candidates) != len(set(candidates)):
+                raise ValueError("admission request_ids must be unique")
+            unknown = set(candidates) - set(pending_by_id)
+            if unknown:
+                raise KeyError(f"admission request_ids are not pending: {sorted(unknown)!r}")
+            if len(candidates) > free_slots:
+                raise ValueError("admission request_ids exceed free resident slots")
+
         admitted: list[int] = []
-        while self._pending and self.active_batch.active_count < self.capacity:
-            request = self._pending[0]
+        for request_id in candidates:
+            request = pending_by_id[request_id]
             if reserve_callback is not None:
                 reserve_callback(request)
             try:
@@ -1125,7 +1144,9 @@ class ResidentBatchScheduler:
                 if reserve_callback is not None and rollback_callback is not None:
                     rollback_callback(request)
                 raise
-            self._pending.popleft()
+            self._pending = deque(
+                item for item in self._pending if item.request_id != request_id
+            )
             state = self._observability.get(request.request_id)
             if state is not None:
                 now = self._clock()

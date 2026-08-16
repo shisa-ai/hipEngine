@@ -750,7 +750,13 @@ class LLM:
             generator,
             max_sequence_length=self.max_sequence_length,
         )
-        if registered_plain_ar_capacity is not None:
+        has_resident_runner = callable(
+            getattr(generator, "create_resident_model_runner", None)
+        )
+        if registered_plain_ar_capacity is not None and not has_resident_runner:
+            # Non-resident compatibility generators still execute one static
+            # call. Native resident services separate logical residency from
+            # their registered physical kernel widths.
             resident_capacity = (
                 registered_plain_ar_capacity
                 if resident_capacity is None

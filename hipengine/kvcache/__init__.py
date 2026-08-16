@@ -16,6 +16,18 @@ from hipengine.kvcache.backend import (
     ResourceClaimSet,
     ResourceDelta,
 )
+from hipengine.kvcache.ledger import (
+    AdmissionGrant,
+    FitAwareAdmissionController,
+    LedgerAdmissionCoordinator,
+    PendingAdmission,
+    ReservationState,
+    ResourceBlock,
+    ResourceFit,
+    ResourceLedger,
+    ResourceReservation,
+    ResourceUnavailable,
+)
 from hipengine.kvcache.policy import (
     FixedPagedKVPolicy,
     KVPolicy,
@@ -53,12 +65,14 @@ from hipengine.kvcache.radix import (
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 __all__ = [
+    "AdmissionGrant",
     "ClaimConfidence",
     "ClaimLifetime",
     "ChunkedKVPool",
     "DeviceChunkedKVPool",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
+    "FitAwareAdmissionController",
     "FixedPagedKVPolicy",
     "KVBackendSpec",
     "KVBatchView",
@@ -78,6 +92,7 @@ __all__ = [
     "KVScaleMetadata",
     "KVStorageView",
     "KVTransaction",
+    "LedgerAdmissionCoordinator",
     "KV_SCALE_DTYPE_CHOICES",
     "KV_SCALE_GRANULARITY_CHOICES",
     "PREFIX_CACHE_CHOICES",
@@ -85,8 +100,15 @@ __all__ = [
     "PrefixCacheEntryState",
     "PrefixCacheInsert",
     "PrefixCacheMatch",
+    "PendingAdmission",
     "PrefixCacheStats",
     "RadixCache",
+    "ReservationState",
+    "ResourceBlock",
+    "ResourceFit",
+    "ResourceLedger",
+    "ResourceReservation",
+    "ResourceUnavailable",
     "ResourceChange",
     "ResourceClaim",
     "ResourceClaimSet",
