@@ -62,6 +62,14 @@ reduction has fallen to **2.097%**, so neither another generic attention variant
 nor graph-width work is admissible without a new premise. Evidence:
 [`post-grouped decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json).
 
+The next exact standard-Q6 screen is also closed. Splitting the rows1 recurrent-
+QKV owner from 16 columns into two col8 blocks is BF16-bit exact over a
+**123.047-MiB** actual-weight pool but measures **0.611306 -> 0.611347 ms
+(0.99993x, 9/15 wins)** and projects effectively zero complete-wall saving.
+The transient route is removed; output subdivision is not a path to the
+required **1.20305x** family speedup. Evidence:
+[`standard-Q6 c1 col8 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-standard-c1-col8-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
