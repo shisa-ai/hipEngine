@@ -54,15 +54,19 @@ should be removed or collapsed.
   gfx1100 staggered c1->c4 SSE is 4/4 exact with occupancy
   `0->1->4->3->2->1->0`, admitted/reclaimed `4/4`, and zero final ownership.
   The seam is storage/attention/prefill/admission, not continuous membership.
-- Removal trigger is the approved
-  [`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md): first qualify an
-  explicit serial c>1 no-mirror fallback as a temporary correctness anchor,
-  then replace it with row-batched direct INT8 attention, complete prefill and
-  admission ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices.
-  Remove the mirrored short route when the replacement is exact,
-  memory-positive, non-regressive, and no supported caller needs it. Remove or
-  demote the serial path after the native batch route passes; retain a separately
-  registered numerical fallback as required by `AGENTS.md`.
+- `IKV-C1` completed the explicit serial no-mirror anchor on 2026-08-16 for
+  the exact gfx1100 artifact through logical c4: shifted logits/state/KV are
+  exact, active persistent BF16 bytes are zero, and cancellation/survivor
+  ownership drains cleanly. The route deliberately reports physical width 1
+  and makes no throughput claim.
+- Removal trigger remains the approved
+  [`IKV-C2`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
+  route with row-batched direct INT8 attention, complete prefill and admission
+  ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices. Remove the
+  mirrored short route when the replacement is exact, memory-positive,
+  non-regressive, and no supported caller needs it. Remove or demote the serial
+  path after the native batch route passes; retain a separately registered
+  numerical fallback as required by `AGENTS.md`.
 ## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
 
 - Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta

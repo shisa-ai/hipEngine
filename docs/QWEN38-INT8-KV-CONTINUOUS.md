@@ -1,10 +1,11 @@
 # Qwen3.8 INT8 KV Continuous-Batching Campaign
 
-Status: **active; `IKV-C0` completed on 2026-08-16 and `IKV-C1` is next.**
+Status: **active; `IKV-C0` and `IKV-C1` completed on 2026-08-16; `IKV-C2` is next.**
 Planning baseline was local commit `c791ca3c9`; merge commit `6cff90213`
 integrated the 94 tracked `origin/main` commits before runtime implementation.
-Artifact/backend/target capability identity now fails closed before compact
-c>N work.
+Artifact/backend/target capability identity fails closed, and the exact gfx1100
+artifact now admits compact logical c2/c4 residency through an explicit
+physical-c1 serial fallback with no native-c>N or throughput claim.
 
 This campaign turns the retained Qwen3.8 c1 capacity result into an honest,
 compact, no-BF16-mirror c>N serving route. It does **not** build a second
@@ -238,10 +239,33 @@ integration.
 
 ### IKV-C1 — compact serial c>N correctness milestone
 
+**Status: completed 2026-08-16 on GPU1 / RX 7900 XTX / DRM card0.**
+
+Retained result:
+
+- The exact `7b2aec...` gfx1100 capability admits logical c2/c4 residency while
+  keeping `max_direct_rows=1`; every c>N model step reports physical execution
+  width 1, serial fallback, and no throughput eligibility.
+- Base-zero and shifted direct-INT8 sessions use one block-table-aware single-row
+  prefill contract. A shifted p512 gate is exact for token, full-vocabulary
+  logits, all 48 Conv/GDN state pairs, and all 16 retained INT8 K/V plus FP32
+  scale planes.
+- Varied-prompt p512/d24 c2 and c4 are exact across warmup, measured, and live
+  rows versus fresh independent c1 oracles. Native packed decode steps remain
+  zero.
+- Active c2/c4 layout audits report nonzero INT8 payload/scales and zero
+  persistent BF16 payload/mirror bytes. Each request remains contiguous in one
+  backing chunk.
+- Staggered p512/d128 SSE observes c1->c4, disconnects one joined member, keeps
+  all three survivors exact, records admitted/reclaimed/cancelled `4/4/1`, and
+  drains active/occupied/refcounted ownership to zero.
+- Evidence:
+  [`compact serial c4 qualification`](../benchmarks/results/2026-08-16-qwen38-27b-int8-kv-compact-serial-c4.json).
+
 **Purpose:** isolate no-mirror storage, shifted block-table prefill, allocator,
 and resident lifecycle from new batched attention math.
 
-Work:
+Original work contract:
 
 1. Permit multiple artifact-qualified no-mirror sessions without claiming
    packed native decode.
@@ -449,14 +473,14 @@ failure in a completed broad run, follow the focused-repair rule in
 | Milestone | State | Dependency | Exit |
 | --- | --- | --- | --- |
 | IKV-C0 integration + capability identity | `completed` | approved campaign | passing/rejected/unknown identities resolve correctly |
-| IKV-C1 compact serial c>N | `ready` | C0 | no-mirror c2/c4 lifecycle exact |
-| IKV-C2 row-batched INT8 attention | `blocked` | C0, C1 oracle | CPU/model/trace gates pass |
+| IKV-C1 compact serial c>N | `completed` | C0 | no-mirror c2/c4 lifecycle exact |
+| IKV-C2 row-batched INT8 attention | `ready` | C0, C1 oracle | CPU/model/trace gates pass |
 | IKV-C3 shared prefill ownership | `blocked` | C1/C2 measured ownership | c2/c4 remains memory-positive |
 | IKV-C4 complete admission | `blocked` | C3 byte plan | pressure rejects before OOM and recovers |
 | IKV-C5 lifecycle/telemetry | `blocked` | C2-C4 | cancellation/grow/shrink/overload matrix passes |
 | IKV-C6 quality/capacity | `blocked` | C2-C5 | artifact-scoped complete gates pass |
 | IKV-C7 economics/promotion | `blocked` | C6 | retained decision and cleanup published |
 
-The next executable unit is **IKV-C1**: compact no-mirror c2/c4 through the
-declared serial c1-per-row correctness route, including shifted block-table-aware
-prefill. It makes no native-c>N throughput claim.
+The next executable unit is **IKV-C2**: row-batched direct INT8 split-K
+attention for the qualified 24Q/4KV/D256 shape, retaining c1 and unfused
+fallbacks and requiring CPU-reference, model, and `rocprofv3` ownership gates.

@@ -37,6 +37,9 @@ def test_extract_hipengine_response_retains_exact_ids_and_route() -> None:
                         "serial_decode_fallback": False,
                         "native_caware_decode": True,
                     },
+                    "diagnostics": {
+                        "kv_layout": {"persistent_bf16_mirror_bytes": 0}
+                    },
                 },
             }
         ],
@@ -63,6 +66,7 @@ def test_extract_hipengine_response_retains_exact_ids_and_route() -> None:
     assert record["execution_path"] == "gguf_packed_ar_server_decode"
     assert record["serial_decode_fallback"] is False
     assert record["native_caware_decode"] is True
+    assert record["diagnostics"]["kv_layout"]["persistent_bf16_mirror_bytes"] == 0
     assert record["generation_shape"]["queue_group"]["request_count"] == 2
 
 
@@ -248,7 +252,24 @@ def test_extract_stream_responses_records_client_ttft_itl_and_tokens() -> None:
                     ]
                 },
             ),
-            (10.6, {"choices": [{"text": "", "finish_reason": "length"}]}),
+            (
+                10.6,
+                {
+                    "choices": [
+                        {
+                            "text": "",
+                            "finish_reason": "length",
+                            "hipengine": {
+                                "diagnostics": {
+                                    "kv_layout": {
+                                        "persistent_bf16_mirror_bytes": 0
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                },
+            ),
             (10.7, {"choices": [], "usage": {"prompt_tokens": 512, "completion_tokens": 2}}),
             (10.8, "[DONE]"),
         ],
@@ -283,6 +304,7 @@ def test_extract_stream_responses_records_client_ttft_itl_and_tokens() -> None:
     assert hip["client_ttft_seconds"] == pytest.approx(0.2)
     assert hip["client_inter_token_seconds"] == pytest.approx([0.3])
     assert hip["done_sentinel"] is True
+    assert hip["diagnostics"]["kv_layout"]["persistent_bf16_mirror_bytes"] == 0
     assert llama["client_ttft_seconds"] == pytest.approx(0.4)
     assert llama["client_inter_token_seconds"] == pytest.approx([0.3])
 
@@ -452,6 +474,11 @@ hipengine_resident_route_total{route="gguf_packed_ar_server_decode"} 128
 hipengine_resident_fallback_total{reason="compatibility"} 0
 hipengine_resident_bucket_info{active_mask="1100",last_work_kind="decode",policy="protect_decode"} 1
 hipengine_resident_bucket_active_rows 2
+hipengine_resident_kv_int8_payload_bytes 32768
+hipengine_resident_kv_bf16_payload_bytes 0
+hipengine_resident_kv_scale_bytes 2048
+hipengine_resident_kv_bf16_mirror_bytes 0
+hipengine_resident_kv_total_bytes 34816
 """
     samples = SCRIPT.parse_prometheus(text)
     latency = SCRIPT.hipengine_latency_snapshot(samples)
@@ -468,6 +495,12 @@ hipengine_resident_bucket_active_rows 2
     bucket = SCRIPT.prometheus_sample(samples, "hipengine_resident_bucket_info")
     assert bucket["labels"]["active_mask"] == "1100"
     assert bucket["labels"]["last_work_kind"] == "decode"
+    poll = SCRIPT._compact_poll_state(samples, at_seconds=1.25)
+    assert poll["kv_int8_payload_bytes"] == 32768.0
+    assert poll["kv_bf16_payload_bytes"] == 0.0
+    assert poll["kv_scale_bytes"] == 2048.0
+    assert poll["kv_bf16_mirror_bytes"] == 0.0
+    assert poll["kv_total_bytes"] == 34816.0
 
 
 def test_metric_summary_uses_nearest_rank_p95_and_variance() -> None:

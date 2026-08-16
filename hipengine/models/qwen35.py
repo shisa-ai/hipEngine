@@ -28,16 +28,19 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
             scale_granularity="per_token_head",
         ),
         decision="qualified",
-        scope="explicit_no_mirror_c1_capacity",
+        scope="explicit_no_mirror_c1_direct_c4_serial",
         quality_artifact=(
             "benchmarks/results/"
             "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
         ),
         reason=(
             "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on "
-            "gfx1100; direct compact execution remains c1 until IKV-C1/C2"
+            "gfx1100; direct compact execution is qualified at physical c1, with "
+            "artifact-scoped serial c1-per-row residency through logical c4"
         ),
         max_direct_rows=1,
+        max_serial_resident_rows=4,
+        persistent_bf16_mirror=False,
     ),
     KVCapabilityEvidence(
         key=KVCapabilityKey(
@@ -62,6 +65,8 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
             "0.7778 is below the 0.90 gate"
         ),
         max_direct_rows=0,
+        max_serial_resident_rows=0,
+        persistent_bf16_mirror=False,
     ),
 )
 

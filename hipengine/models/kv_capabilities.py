@@ -85,6 +85,16 @@ class KVCapabilityEvidence:
     quality_artifact: str
     reason: str
     max_direct_rows: int = 1
+    max_serial_resident_rows: int = 1
+    persistent_bf16_mirror: bool | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.max_direct_rows) < 0:
+            raise ValueError("max_direct_rows must be non-negative")
+        if int(self.max_serial_resident_rows) < int(self.max_direct_rows):
+            raise ValueError(
+                "max_serial_resident_rows must cover every directly qualified row"
+            )
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -93,6 +103,8 @@ class KVCapabilityEvidence:
             "quality_artifact": self.quality_artifact,
             "reason": self.reason,
             "max_direct_rows": self.max_direct_rows,
+            "max_serial_resident_rows": self.max_serial_resident_rows,
+            "persistent_bf16_mirror": self.persistent_bf16_mirror,
         }
 
 
@@ -128,6 +140,8 @@ class KVCapabilityResolution:
                     "scope": self.evidence.scope,
                     "quality_artifact": self.evidence.quality_artifact,
                     "max_direct_rows": self.evidence.max_direct_rows,
+                    "max_serial_resident_rows": self.evidence.max_serial_resident_rows,
+                    "persistent_bf16_mirror": self.evidence.persistent_bf16_mirror,
                 }
             ),
         }

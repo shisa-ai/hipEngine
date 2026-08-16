@@ -105,13 +105,15 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
 
     payload = resolution.as_dict()
     assert payload["capability_id"] == (
-        "d6112591f199fa22112f162ca2d0f9f17f11fc738f9df547fe54f5fe693d64d6"
+        "705a637209c4d2ecbad20934eec5770287e992b2fb2523dded69a2b0487ba778"
     )
     assert payload["status"] == "qualified"
     assert payload["runtime_action"] == "admit"
     assert payload["promotion_eligible"] is True
     assert payload["effective_kv_storage"] == "int8_per_token_head"
     assert payload["evidence"]["max_direct_rows"] == 1
+    assert payload["evidence"]["max_serial_resident_rows"] == 4
+    assert payload["evidence"]["persistent_bf16_mirror"] is False
     assert payload["evidence"]["quality_artifact"].endswith(
         "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
     )
