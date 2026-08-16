@@ -309,6 +309,15 @@ weight bytes and coalescing are the authority.
 Evidence:
 [`post-qmicro production decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-decode-profile.json).
 
+The profile's first new qmicro gate/up coalescing premise is rejected. Loading
+one packed-Q byte once and explicitly publishing both adjacent output-nibble
+dp4a packs preserves every BF16 bit, but three 95.625-MiB actual pairs regress
+**1.385357 -> 1.454068 ms (+4.960%, 0/45 wins)**. Compiler/cache reuse in the
+retained direct qloads is superior; the sibling is removed before graph or
+request measurement.
+Evidence:
+[`qmicro paired-qload rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qmicro-paired-qload-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
