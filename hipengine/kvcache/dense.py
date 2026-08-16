@@ -28,6 +28,10 @@ from hipengine.kvcache.backend_prefix import (
     PrefixCompatibilityKey,
 )
 from hipengine.kvcache.global_pool import GlobalKVPoolSet, GlobalPageLease
+from hipengine.kvcache.graph_binding import (
+    GraphReplayBinding,
+    GraphReplayBindingRegistry,
+)
 from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 from hipengine.dispatch.execution_planner import (
@@ -765,10 +769,15 @@ class DenseKVAdmissionManager:
 class DenseKVResidentRunnerAdapter:
     """Require resident runner kernels to consume backend `KVBatchView` data."""
 
+    supports_prefill_decode_same_round = True
+    supports_multiple_prefill_quanta_per_round = True
+
     def __init__(
         self,
         runner: Any,
         admission: DenseKVAdmissionManager,
+        *,
+        graph_registry: GraphReplayBindingRegistry | None = None,
     ) -> None:
         if not callable(getattr(runner, "prefill_batch_with_kv", None)):
             raise TypeError("dense KV runner requires prefill_batch_with_kv")
@@ -777,6 +786,9 @@ class DenseKVResidentRunnerAdapter:
         self.runner = runner
         self.admission = admission
         self.backend = admission.backend
+        if graph_registry is not None and graph_registry.pool is not self.backend.pool:
+            raise ValueError("graph registry must own the dense backend global pool")
+        self.graph_registry = graph_registry
         bundle_key = str(getattr(runner, "kv_kernel_bundle_key", ""))
         if bundle_key != self.backend.spec.kernel_bundle_key:
             raise ValueError(
@@ -832,12 +844,16 @@ class DenseKVResidentRunnerAdapter:
                 view = self.backend.prepare(
                     SimpleNamespace(request_ids=physical_group.request_ids)
                 )
-                physical_runner(
-                    group.work,
-                    physical_group=physical_group,
-                    kv_batch_view=view,
-                    commit=commit,
-                )
+                binding = self._bind_graph(group, physical_group, view)
+                try:
+                    physical_runner(
+                        group.work,
+                        physical_group=physical_group,
+                        kv_batch_view=view,
+                        commit=commit,
+                    )
+                finally:
+                    self._retire_graph(binding)
         return None
 
     def decode_batch(self, work: Any, *, commit: bool) -> Any:
@@ -859,14 +875,18 @@ class DenseKVResidentRunnerAdapter:
                 view = self.backend.prepare(
                     SimpleNamespace(request_ids=physical_group.request_ids)
                 )
-                generated.extend(
-                    physical_runner(
-                        group.work,
-                        physical_group=physical_group,
-                        kv_batch_view=view,
-                        commit=commit,
+                binding = self._bind_graph(group, physical_group, view)
+                try:
+                    generated.extend(
+                        physical_runner(
+                            group.work,
+                            physical_group=physical_group,
+                            kv_batch_view=view,
+                            commit=commit,
+                        )
                     )
-                )
+                finally:
+                    self._retire_graph(binding)
         generated_ids = tuple(int(item.request_id) for item in generated)
         if len(generated_ids) != len(set(generated_ids)) or set(generated_ids) != set(
             work.request_ids
@@ -893,6 +913,9 @@ class DenseKVResidentRunnerAdapter:
             "execution_path_counts": dict(sorted(self._execution_path_counts.items())),
             "physical_width_counts": dict(sorted(self._physical_width_counts.items())),
         }
+        snapshot["graph_bindings"] = (
+            None if self.graph_registry is None else self.graph_registry.snapshot()
+        )
         return snapshot
 
     def _execution_plan(self, work: Any) -> ExecutionPlan:
@@ -900,12 +923,20 @@ class DenseKVResidentRunnerAdapter:
         workspace_key = str(
             getattr(self.runner, "kv_workspace_key", "workspace:default")
         )
-        supports_masked = bool(
-            getattr(self.runner, "kv_supports_masked_rows", False)
-        )
-        supports_compaction = bool(
-            getattr(self.runner, "kv_supports_dense_compaction", False)
-        )
+        if work.kind.value == "prefill":
+            supports_masked = bool(
+                getattr(self.runner, "kv_prefill_supports_masked_rows", False)
+            )
+            supports_compaction = bool(
+                getattr(self.runner, "kv_prefill_supports_dense_compaction", False)
+            )
+        else:
+            supports_masked = bool(
+                getattr(self.runner, "kv_supports_masked_rows", False)
+            )
+            supports_compaction = bool(
+                getattr(self.runner, "kv_supports_dense_compaction", False)
+            )
 
         def resolve(request_id: int) -> ExecutionCompatibilityKey:
             context_bucket = (
@@ -928,6 +959,38 @@ class DenseKVResidentRunnerAdapter:
         plan = plan_execution_groups(work, key_resolver=resolve)
         self._planner_duration_ns += plan.planner_duration_ns
         return plan
+
+    def _bind_graph(
+        self,
+        group: Any,
+        physical_group: Any,
+        view: KVBatchView,
+    ) -> GraphReplayBinding | None:
+        if self.graph_registry is None:
+            return None
+        key = (
+            f"{group.compatibility_key.kernel_bundle_key}:"
+            f"{group.compatibility_key.work_class}:"
+            f"{group.compatibility_key.context_bucket}:"
+            f"c{physical_group.physical_rows}:"
+            f"{group.execution_path}"
+        )
+        self.graph_registry.capture(key, view)
+        return self.graph_registry.bind_replay(
+            key,
+            view,
+            request_ids=physical_group.request_ids,
+            lease_ids=tuple(
+                self.backend.lease_for_request(request_id).lease_id
+                for request_id in physical_group.request_ids
+            ),
+            slot_ids=physical_group.global_slot_indices,
+        )
+
+    def _retire_graph(self, binding: GraphReplayBinding | None) -> None:
+        if binding is not None:
+            assert self.graph_registry is not None
+            self.graph_registry.retire(binding)
 
     def _count_execution_path(self, path: str) -> None:
         self._execution_path_counts[path] = self._execution_path_counts.get(path, 0) + 1

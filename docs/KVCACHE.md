@@ -55,6 +55,15 @@ incompatible/stale handles miss or fail closed, and sampled reuse requires an
 explicit eligibility policy. The default remains unchanged pending C2-6
 p256+s1 and 2K/8K hardware correctness/economics on both gfx11 targets.
 
+C2-6 production promotion is currently blocked at the adapter boundary. The
+new global-pool graph, eviction, slot-reuse, long-context, and load/conservation
+host gates pass, but the live GGUF runner still binds Generation-1
+`DeviceChunkedKVPool` request-private backing. W7900 exact-file
+Qwen3.6-35B-A3B BF16-KV passes independent c1 p128/d8; logical c8 independent
+children fail both native packed and serial-c1 correctness, so c17/c32 and any
+default/performance promotion are stopped. See
+[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json).
+
 ## Executive decision
 
 | Question | Answer |

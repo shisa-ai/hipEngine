@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Matched gfx1151 F1 HTTP concurrency benchmark for hipEngine and llama.cpp.
+"""Matched gfx11 F1 HTTP concurrency benchmark for hipEngine and llama.cpp.
 
 The cross-engine primary metric is deliberately limited to the timing boundary
 all servers expose: exact returned completion tokens divided by client wall from
@@ -7,8 +7,8 @@ simultaneous release through the last completed response.  Backend-native decode
 timings are retained as diagnostics and are never substituted for that wall.
 
 Each engine first generates independent c1 token-ID oracles for the four prompt
-rows used by the c1/c2/c4/c8 sweep.  Every warmup, measured burst, and live-
-admission row must return exactly the c1 trajectory for its prompt.  hipEngine's
+rows used by an arbitrary logical c1-c32 sweep. Every warmup, measured burst,
+and live-admission row must return exactly the c1 trajectory for its prompt.  hipEngine's
 resident TTFT/ITL summaries and route/fallback counters are scraped separately;
 llama.cpp does not expose equivalent non-streaming percentile summaries.
 """
@@ -679,13 +679,13 @@ def _validate_concurrency_plan(
     require_c1: bool = True,
 ) -> list[int]:
     values = [int(value) for value in concurrencies]
-    allowed = {1, 2, 4, 8, 13}
+    allowed = set(range(1, 33))
     if require_c1 and 1 not in values:
         raise ValueError("concurrencies must include c1 unless focused-width repair is explicit")
     if int(live_concurrency) not in values:
         raise ValueError("live-concurrency must appear in concurrencies")
     if any(value not in allowed for value in values):
-        raise ValueError("the matched server packet is limited to c1/c2/c4/c8/c13")
+        raise ValueError("the matched server packet is limited to logical c1-c32")
     return values
 
 
@@ -1591,9 +1591,11 @@ def _server_command_and_env(
                 args.hipengine_prefill_chunk_tokens
             )
         env["HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"] = "1"
+        native_batch = args.hipengine_route_expectation == "native"
         env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = (
-            "1" if args.hipengine_route_expectation == "native" else "0"
+            "1" if native_batch else "0"
         )
+        env["HIPENGINE_GGUF_AR_PACKED_DECODE"] = "1" if native_batch else "0"
         command = [
             str(args.hipengine_python),
             "-m",
@@ -2409,7 +2411,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--hipengine-prefill-decode-policy",
-        choices=("protect_decode", "protect_ttft", "fair"),
+        choices=("protect_decode", "protect_ttft", "fair", "token_budget"),
         default="protect_ttft",
         help="Explicit hipEngine resident scheduling policy; retained F1 uses protect_ttft",
     )

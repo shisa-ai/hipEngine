@@ -414,12 +414,19 @@ def test_llm_keeps_native_resident_capacity_separate_from_physical_route_cap(
 
     observed: dict[str, int | None] = {}
 
+    class NativeRunner:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = capacity
+
+        def prepare(self) -> None:
+            observed["prepared_capacity"] = self.capacity
+
     class NativeGenerator:
         server_plain_ar_max_active_requests = 4
 
         def create_resident_model_runner(self, *, capacity):
             observed["capacity"] = capacity
-            return SimpleNamespace(capacity=int(capacity))
+            return NativeRunner(int(capacity))
 
     fake_index = SimpleNamespace(
         config={"architectures": ["FakeNativeForCausalLM"]},
@@ -446,6 +453,7 @@ def test_llm_keeps_native_resident_capacity_separate_from_physical_route_cap(
         generator = llm._get_text_generator()
         assert isinstance(generator, EngineService)
         assert observed["capacity"] == 13
+        assert observed["prepared_capacity"] == 13
         assert generator.inner._runner.capacity == 13
     finally:
         llm.close()

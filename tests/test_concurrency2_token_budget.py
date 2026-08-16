@@ -139,6 +139,8 @@ def test_token_budget_slo_derives_bounded_round_work() -> None:
 @dataclass
 class _BudgetRunner:
     capacity: int
+    supports_prefill_decode_same_round = True
+    supports_multiple_prefill_quanta_per_round = True
 
     def __post_init__(self) -> None:
         self.prefill_order: list[int] = []
@@ -197,6 +199,57 @@ def test_token_budget_round_runs_multiple_fair_prefills_then_all_due_decode() ->
     assert policy["round_decode_rows"] == 4
 
 
+def test_token_budget_legacy_runner_defers_decode_until_next_barrier() -> None:
+    runner = _BudgetRunner(capacity=1)
+    runner.supports_prefill_decode_same_round = False
+    loop = ResidentEngineLoop(
+        runner,
+        config=EngineLoopConfig(
+            prefill_decode_policy="token_budget",
+            max_active_requests=1,
+            max_prefill_chunk_tokens=128,
+            round_prefill_token_budget=128,
+            round_decode_row_budget=1,
+        ),
+    )
+    request_id = loop.submit(tuple(range(128)), max_new_tokens=1)
+    first = loop.tick()
+    assert [event.work_kind for event in first if event.kind == "work"] == [
+        WorkKind.PREFILL
+    ]
+    assert runner.decode_widths == []
+    second = loop.tick()
+    assert [event.work_kind for event in second if event.kind == "work"] == [
+        WorkKind.DECODE
+    ]
+    assert runner.decode_widths == [1]
+    assert request_id in loop.completed
+
+
+def test_token_budget_legacy_runner_limits_prefill_to_one_transition_per_barrier() -> None:
+    runner = _BudgetRunner(capacity=4)
+    runner.supports_prefill_decode_same_round = False
+    runner.supports_multiple_prefill_quanta_per_round = False
+    loop = ResidentEngineLoop(
+        runner,
+        config=EngineLoopConfig(
+            prefill_decode_policy="token_budget",
+            max_active_requests=4,
+            max_prefill_chunk_tokens=128,
+            round_prefill_token_budget=512,
+            round_decode_row_budget=4,
+        ),
+    )
+    request_ids = tuple(loop.submit((request_id,), max_new_tokens=1) for request_id in range(4))
+    for expected_prefills in range(1, 5):
+        loop.tick()
+        assert len(runner.prefill_order) == expected_prefills
+        assert runner.decode_widths == []
+    loop.tick()
+    assert runner.decode_widths == [4]
+    assert set(loop.completed) == set(request_ids)
+
+
 def test_token_budget_c32_sparse_retirement_cancel_and_refill_has_no_width_cliff() -> None:
     runner = _BudgetRunner(capacity=32)
     loop = ResidentEngineLoop(
@@ -236,6 +289,7 @@ def test_dense_runner_executes_logical_c17_as_registered_c8_c8_c1_groups() -> No
         capacity = 17
         kv_supports_masked_rows = True
         kv_supports_dense_compaction = False
+        kv_prefill_supports_dense_compaction = True
         kv_workspace_key = "workspace:c17"
 
         def __init__(self) -> None:
@@ -308,7 +362,10 @@ def test_dense_runner_executes_logical_c17_as_registered_c8_c8_c1_groups() -> No
     planner = loop.observability_snapshot()["resources"]["execution_planner"]
     assert planner["physical_width_counts"][8] == 2
     assert planner["physical_width_counts"][1] == 18
-    assert planner["execution_path_counts"] == {"registered_masked_or_exact": 18}
+    assert planner["execution_path_counts"] == {
+        "registered_dense_compaction": 17,
+        "registered_masked_or_exact": 1,
+    }
     assert planner["planner_duration_ns"] > 0
 
 
