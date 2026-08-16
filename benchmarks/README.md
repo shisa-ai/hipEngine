@@ -394,6 +394,18 @@ peaks, and no bytes. Verifier/native rows and peer backends retain the pair plus
 Conv fallback. This is retained development evidence, not a clean topline
 refresh. Evidence: [`serial alpha/beta+Conv`](results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
 
+The exact serial full-attention Q/K postprocess then folds packed-BF16 Q/gate
+split, BF16 K conversion, and the established FP32 head RMSNorm/RoPE tree into
+one local256 launch. The 4K trace removes **32 launches/token (726 -> 694)**,
+halves the complete postprocess span **0.21423 -> 0.10690 ms/token (-50.100%)**,
+and improves profiled host decode **0.100%** at slightly positive selected
+kernel wall. Counterbalanced 512/128 AR improves **12.29442 -> 12.30314 tok/s
+(+0.071%)**, with both candidates above both controls, exact outputs/IDs/logits,
+unchanged **16.753218-GiB** peaks, and no bytes. Shape/registry misses, native
+rows, prefill, and peers retain the primitive chain. This is retained
+development evidence, not a clean topline refresh. Evidence:
+[`Q/K postprocess contraction`](results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

@@ -865,6 +865,11 @@ GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
 GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES = frozenset(
     {(1, 5_120, 48, 10_240, 4)}
 )
+# Qwen3.8 serial full-attention consumes packed BF16 Q/gate and BF16 K in one
+# exact head RMSNorm/RoPE launch, removing the split and K-cast graph nodes.
+GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
+    (1, 24, 4, 256): "qwen35_position_qk_bf16_f32",
+}
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
 # Qwen3.8 P5 independently admits same-resident direct Q4/Q6 c1 siblings at
@@ -2028,6 +2033,7 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
     "GGUF_GDN_PREFILL_EXACT_MODE",
+    "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",

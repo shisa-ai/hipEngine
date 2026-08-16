@@ -143,6 +143,11 @@ def _patch_full_attention_primitives(monkeypatch):
     monkeypatch.setattr(qwen_runtime, "launch_gguf_linear_triple", record("qkv_triple", returns=True))
     monkeypatch.setattr(qwen_runtime, "launch_gguf_linear_pair", record("kv_pair", returns=True))
     monkeypatch.setattr(qwen_runtime, "launch_gguf_linear", record("linear"))
+    monkeypatch.setattr(
+        qwen_runtime.Qwen35GGUFFullStackRunner,
+        "_full_attn_qk_postprocess_fn",
+        lambda _self: None,
+    )
     monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_bf16", record("split_qgate"))
     monkeypatch.setattr(qwen_runtime, "bf16_to_f32", record("bf16_to_f32"))
     monkeypatch.setattr(

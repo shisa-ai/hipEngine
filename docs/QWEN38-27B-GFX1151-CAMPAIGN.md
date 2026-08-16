@@ -220,6 +220,18 @@ boundary and projects a **0.026811-ms/token regression**, so all transient code
 is removed and no graph gate is run. Evidence:
 [`Q/K launch contraction rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qk-launch-contraction-rejected.json).
 
+The serial full-attention Q/K postprocess contraction is retained. One
+local256 composite consumes packed BF16 Q/gate and BF16 K directly while
+preserving the existing FP32 head RMSNorm/RoPE trees and gate bits. The 4K
+trace removes **32 launches/token (726 -> 694)** and improves the complete
+postprocess span **0.214228 -> 0.106899 ms/token (-50.100%)**, selected kernel
+wall **-0.0027%**, and profiled host decode **-0.100%**. Counterbalanced
+512/128 AR improves **12.29442 -> 12.30314 tok/s (+0.071%)**, with both
+candidates above both controls, exact outputs/logits, unchanged peaks, and no
+bytes. Shape/registry misses, native rows, prefill, and peer backends retain the
+primitive chain. Evidence:
+[`Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

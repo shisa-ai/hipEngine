@@ -2261,6 +2261,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_full_attn_decode_batch_shared_native_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_k_grid_y_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_short_batch_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_qk_postprocess_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
     def _gdn_decode_output_cast_fn(self):
@@ -2426,6 +2427,39 @@ class Qwen35GGUFFullStackRunner:
                 missing="none",
             )
             self._gguf_full_attn_k_grid_y_batch_fn_cache = fn
+        return fn
+
+    def _full_attn_qk_postprocess_fn(self):
+        """Resolve the exact serial full-attention Q/K postprocess composite."""
+
+        missing = object()
+        fn = getattr(self, "_gguf_full_attn_qk_postprocess_fn_cache", missing)
+        if fn is missing:
+            assert self.weights is not None
+            cfg = self.weights.config
+            policies = backend_package_capability(
+                self.backend,
+                "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
+                {},
+            )
+            variant = (
+                policies.get(
+                    (1, cfg.head_count, cfg.head_count_kv, cfg.key_length)
+                )
+                if isinstance(policies, Mapping)
+                else None
+            )
+            fn = (
+                resolve(
+                    backend=self.backend,
+                    layer="split_qgate+head_rmsnorm+partial_rotary",
+                    quant="gguf_f32_weight",
+                    variant=str(variant),
+                )
+                if variant is not None
+                else None
+            )
+            self._gguf_full_attn_qk_postprocess_fn_cache = fn
         return fn
 
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
@@ -7454,43 +7488,66 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
-        qwen35_split_qgate_bf16(
-            scratch.full_q.ptr,
-            scratch.full_query_raw.ptr,
-            scratch.full_gate.ptr,
-            1,
-            cfg.head_count,
-            cfg.key_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        bf16_to_f32(
-            scratch.full_k.ptr,
-            scratch.full_key_raw.ptr,
-            self.kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
-        )
-        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
-            scratch.full_query_raw.ptr,
-            scratch.full_key_raw.ptr,
-            layer.weight("attn_q_norm").allocation().tensor.ptr,
-            layer.weight("attn_k_norm").allocation().tensor.ptr,
-            scratch.cos_table.ptr,
-            scratch.sin_table.ptr,
-            scratch.position_tensor.ptr,
-            scratch.full_query.ptr,
-            scratch.full_key.ptr,
-            cfg.rms_norm_eps,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.rope_dimension_count,
-            scratch.max_positions,
-            stream=stream,
-            runtime=runtime,
-        )
+        qk_postprocess = self._full_attn_qk_postprocess_fn()
+        if qk_postprocess is None:
+            qwen35_split_qgate_bf16(
+                scratch.full_q.ptr,
+                scratch.full_query_raw.ptr,
+                scratch.full_gate.ptr,
+                1,
+                cfg.head_count,
+                cfg.key_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            bf16_to_f32(
+                scratch.full_k.ptr,
+                scratch.full_key_raw.ptr,
+                self.kv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+                scratch.full_query_raw.ptr,
+                scratch.full_key_raw.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qk_postprocess(
+                scratch.full_q.ptr,
+                scratch.full_k.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                scratch.full_gate.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
         key_cache, value_cache = scratch.full_cache(layer_id)

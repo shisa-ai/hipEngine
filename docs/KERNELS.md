@@ -333,6 +333,15 @@ Capability/registry/shape misses, verifier rows, and peers retain pair plus
 ordinary Conv. Evidence:
 [`Qwen3.8 serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
 
+The gfx1151-only serial 24Q/4KV/D256 full-attention route also registers
+`split_qgate+head_rmsnorm+partial_rotary/gguf_f32_weight/qwen35_position_qk_bf16_f32`.
+One local256 grid reads packed BF16 Q/gate and BF16 K directly, reproduces the
+existing FP32 head RMSNorm reduction and partial-RoPE expression bit for bit,
+and copies gate BF16 bits. It removes the standalone split and K-cast nodes;
+the complete primitive chain remains registered for shape/capability misses,
+native rows, prefill, and peers. No payload or scratch is added. Evidence:
+[`Qwen3.8 Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
 `rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and
