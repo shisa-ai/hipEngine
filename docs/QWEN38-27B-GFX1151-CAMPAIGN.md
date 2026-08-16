@@ -588,6 +588,15 @@ Keep one-step replay and require a new runtime/driver or host-wall premise befor
 reopening submission width. Evidence:
 [`multistep graph rejection`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-multistep-graph-replay-rejected.json).
 
+The post-grouped rerank's first compressed-GEMV screen is also closed. A
+byte-neutral Q8_1x2 producer interleaves each K4 primary/residual pair so the
+split-weight consumer replaces two far-apart activation loads with one aligned
+64-bit record. It is BF16-bit exact and improves three actual gate/up layer
+medians **1.423306 -> 1.420789 ms (1.00177x)**, but wins only **24/45** pairs and
+projects **7.122 ms / 0.0685%** selected wall. Transient code is removed; the
+plane-major owner remains. Evidence:
+[`interleaved Q8_1x2 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-q8x2-interleaved-rejected.json).
+
 ### P6 — Exact B3 MTP
 
 B3 remains the production budget. Serial-exact B4 is a correctness route only:
