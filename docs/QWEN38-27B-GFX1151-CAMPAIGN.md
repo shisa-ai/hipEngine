@@ -127,6 +127,13 @@ BF16-bit exact but change three actual layers **1.434625 -> 1.435730 ms
 loads remain production. Evidence:
 [`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
 
+Producer-owned planar-Q6 root tile maxima are closed for serial AR. The
+existing exact top-1 path preserves every FP32 logit and winner bit on the
+994.629-MiB actual head, but changes **4.591176 -> 4.603906 ms (0.99723x,
+4/15 wins)** and projects a **0.0158%** selected-wall regression. The direct
+full-logit producer plus generic argmax remains production. Evidence:
+[`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -721,6 +728,16 @@ layer 8 regresses **0.621%** and the post-grouped projection is **-0.0294%**.
 Transient code is removed and the retained split-weight kernel keeps direct
 standard-T16 metadata loads. Evidence:
 [`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
+
+The existing exact planar-Q6 producer-owned top-1 route also loses on the
+Qwen3.8 root. Its one value/index pair per 16-logit tile removes the separate
+full-logit argmax scan but adds one comparison and tile publication to every
+root workgroup. On the actual 994.629-MiB K5,120/N248,320 head, the complete
+boundary changes **4.591176 -> 4.603906 ms (0.99723x, 4/15 wins)** while all
+FP32 logits, winner IDs, and winner-value bits remain identical. That projects
+a **0.0158%** selected-wall regression, so serial AR retains the full-logit
+producer plus generic argmax. Evidence:
+[`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
 
 ### P6 — Exact B3 MTP
 
