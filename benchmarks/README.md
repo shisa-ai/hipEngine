@@ -383,6 +383,17 @@ runtime rejection and rows2-4 native/MTP singleton path remain unchanged. This
 is retained development evidence, not a clean topline refresh. Evidence:
 [`dense-F32 alpha/beta pair`](results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
 
+The serial route then joins that pair with the independent in-place Conv channel
+blocks. The 4K trace removes another **48 launches/token (774 -> 726)**,
+improves the complete alpha/beta+Conv span **0.85271 -> 0.65549 ms/token
+(-23.128%)**, selected kernel wall **0.096%**, and profiled host decode
+**0.173%**. Counterbalanced 512/128 graph AR improves **12.28434 -> 12.30966
+tok/s (+0.206%)**, with both candidates above both controls, exact projection,
+Conv-state, final-ID, and final-logit results, unchanged **16.753218-GiB**
+peaks, and no bytes. Verifier/native rows and peer backends retain the pair plus
+Conv fallback. This is retained development evidence, not a clean topline
+refresh. Evidence: [`serial alpha/beta+Conv`](results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

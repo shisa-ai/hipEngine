@@ -324,6 +324,15 @@ rows2-4 retain two singleton dense-F32 projections. No payload or scratch is
 added. Evidence:
 [`Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
 
+A second gfx1151-only rows1 capability joins those pair blocks to the independent
+C10240/K4 in-place Conv blocks under
+`linear_attn_alpha_beta+conv_decode/f32/bf16_k5120_n48_c10240_k4_c1`.
+The local256 mixed grid preserves both dense-F32 reduction trees and every Conv
+state/output bit, needs 32 VGPR, 1 KiB LDS, zero scratch, and adds no bytes.
+Capability/registry/shape misses, verifier rows, and peers retain pair plus
+ordinary Conv. Evidence:
+[`Qwen3.8 serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
+
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
 `rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and

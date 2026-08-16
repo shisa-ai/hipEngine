@@ -190,6 +190,17 @@ controls, exact outputs, unchanged peaks, and no bytes. The W7900 rejection and
 rows2-4 native/MTP singleton route remain unchanged. Evidence:
 [`dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
 
+The next serial contraction joins that pair with independent in-place Conv
+channel blocks. A >64-MiB rotating proxy wins 15/15 before routing; the active
+4K trace removes **48 launches/token (774 -> 726)** and improves complete
+alpha/beta+Conv span **0.85271 -> 0.65549 ms/token (-23.128%)**, selected kernel
+wall **-0.096%**, and profiled host decode **-0.173%**. Counterbalanced 512/128
+graph AR improves **12.28434 -> 12.30966 tok/s (+0.206%)** with both candidates
+above both controls, exact projection/Conv-state/final-logit results, unchanged
+peaks, and no bytes. Verifier/native rows and peer backends keep the registered
+pair plus Conv fallback. Evidence:
+[`serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

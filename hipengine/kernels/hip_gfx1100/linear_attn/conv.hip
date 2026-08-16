@@ -733,13 +733,14 @@ __global__ void qwen35_linear_attn_chain_conv_decode_lowp_snapshot_tloop_kernel(
   }
 }
 
-// One-grid Qwen3.6 verifier owner for two independent dense-F32 alpha/beta
-// projections plus the rollback-safe chain-Conv producer. Pair blocks preserve
-// the scalar local256 FMA/reduction order; ROW_TILE=2 is selected only for four
-// rows. Final blocks preserve the existing snapshot-Conv channel body. GDN is
-// a later launch, so kernel completion is the only synchronization required
+// One-grid owner for two independent dense-F32 alpha/beta projections plus
+// Conv. Pair blocks preserve the scalar local256 FMA/reduction order;
+// ROW_TILE=2 is selected only for four verifier rows. Final blocks preserve the
+// existing Conv channel body. The serial specialization updates state in place;
+// the verifier specialization also writes the immutable initial snapshot. GDN
+// is a later launch, so kernel completion is the only synchronization required
 // between these independent block groups.
-template <int ROW_TILE>
+template <int ROW_TILE, bool WRITE_SNAPSHOT>
 __global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel(
     const uint16_t* __restrict__ norm,
     const float* __restrict__ weight_a,
@@ -857,11 +858,18 @@ __global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kern
   float state[K_MAX];
 #pragma unroll
   for (int k = 0; k < K_MAX; ++k) {
-    const float value = k < kernel_size ? base_conv_state[channel_base + k] : 0.0f;
-    state[k] = value;
+    float value = 0.0f;
     if (k < kernel_size) {
-      initial_conv_state_snapshot[channel_base + k] = value;
+      if constexpr (WRITE_SNAPSHOT) {
+        value = base_conv_state[channel_base + k];
+        initial_conv_state_snapshot[channel_base + k] = value;
+      } else {
+        // The serial entry passes one in-place state pointer. Avoid reading it
+        // through the restrict-qualified base alias in this specialization.
+        value = chain_conv_state[channel_base + k];
+      }
     }
+    state[k] = value;
   }
   for (int64_t row = 0; row < rows; ++row) {
     float* node_state = chain_conv_state + row * state_stride + channel_base;
@@ -1176,7 +1184,7 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_
   const dim3 grid(static_cast<unsigned int>(pair_blocks + conv_blocks));
   if (rows == 4) {
     hipLaunchKernelGGL(
-        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2>),
+        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2, true>),
         grid,
         dim3(256),
         0,
@@ -1199,7 +1207,7 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_
         kernel_size);
   } else {
     hipLaunchKernelGGL(
-        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>),
+        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, true>),
         grid,
         dim3(256),
         0,
@@ -1221,6 +1229,59 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_
         channels,
         kernel_size);
   }
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w(
+    const uint16_t* norm,
+    const float* weight_a,
+    const float* weight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    const uint16_t* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* conv_out,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  constexpr int64_t kInFeatures = 5120;
+  constexpr int64_t kOutFeatures = 48;
+  constexpr int64_t kChannels = 10240;
+  constexpr int64_t kKernelSize = 4;
+  if (!norm || !weight_a || !weight_b || !out_a || !out_b ||
+      !hidden_states || !conv_state || !conv_weight || !conv_out ||
+      in_features != kInFeatures || out_features != kOutFeatures ||
+      channels != kChannels || kernel_size != kKernelSize) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t pair_blocks = 2 * out_features;
+  const int64_t conv_blocks = (channels + 255) / 256;
+  const dim3 grid(static_cast<unsigned int>(pair_blocks + conv_blocks));
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, false>),
+      grid,
+      dim3(256),
+      0,
+      stream,
+      norm,
+      weight_a,
+      weight_b,
+      out_a,
+      out_b,
+      hidden_states,
+      conv_state,
+      conv_state,
+      nullptr,
+      conv_weight,
+      conv_out,
+      1,
+      in_features,
+      out_features,
+      channels,
+      kernel_size);
   return static_cast<int>(hipGetLastError());
 }
 
