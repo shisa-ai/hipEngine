@@ -2,15 +2,15 @@
   "schema_version": 1,
   "date": "2026-08-15",
   "kind": "qwen38_27b_bounded_int8_kv_serving_qualification",
-  "status": "qualified_explicit_ar_capacity_default_unchanged",
+  "status": "qualified_explicit_ar_capacity_default_unchanged_historical_frontier_superseded",
   "recommendation_superseded_by": {
-    "artifact": "benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json",
-    "decision": "The later natural-prompt c1/c2/c4/c8 soak recommends 112K for the explicitly dedicated, idle, max-active=1 contract. The historical 96K recommendation remains an optional extra-margin setting."
+    "artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+    "decision": "Later guard-free page-aligned execution finds a one-request RX 7900 XTX physical ceiling of 129,024 tokens, with first failure at the next 256-token page, and extends bounded mixed_v1 BF16-vs-INT8 quality to 129,024/16 on W7900. The four-request 114,688-token natural soak remains the strongest repeated XTX evidence. Capacity and quality fields below preserve this artifact's 2026-08-15 historical measurements."
   },
   "performance_claim": true,
   "correctness_claim": true,
   "topline_eligible": false,
-  "decision": "Retain the bounded exact-prefill implementation and qualify pure FP32-scale per-token/head INT8 KV as an explicit Qwen3.8 single-request AR capacity route. It now saves memory at request high water, matches BF16-graph prefill within overlapping sample bands, and improves eager INT8 AR decode. The highest completed 24-GiB server request is 114,688 total context tokens (112 Ki), while 98,304 (96 Ki) retains materially safer headroom. Keep BF16 as the supported/default route and keep long pure INT8 behind the existing explicit unverified-long gate: pure INT8 decode is not admitted to the HIP graph, and exact natural B3 MTP is slower than true AR.",
+  "decision": "Retain the bounded exact-prefill implementation and qualify pure FP32-scale per-token/head INT8 KV as an explicit Qwen3.8 single-request AR capacity route. This historical packet established memory savings, overlapping BF16-prefill sample bands, faster eager INT8 AR decode, and completed rows through 114,688 tokens. Its capacity and bounded-quality frontier is superseded by the linked 2026-08-16 artifact; BF16 remains the supported/default route, long pure INT8 remains behind the explicit unverified-long gate, pure INT8 decode is not admitted to the HIP graph, and exact natural B3 MTP remains slower than true AR.",
   "source": {
     "implementation_commit": "b3dd9a39f376bc7b813313c810fd59dad43a7640",
     "pre_mtp_quality_and_capacity_commit": "b3dd9a39f376bc7b813313c810fd59dad43a7640",

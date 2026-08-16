@@ -45,10 +45,11 @@ Each value is the total tokens per second across all active requests:
 | 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
 
 #### Dedicated-server context
-| KV route | Server shape | Recommended context | Peak / headroom |
+| KV route | Server shape | Measured context | Peak / headroom |
 | --- | --- | ---: | ---: |
-| BF16 default | c1 | **32K** | 21.869 / 2.115 GiB |
-| Pure INT8 explicit | dedicated c1, AR-only | **112K** | 23.323 / 0.661 GiB |
+| BF16 default | c1 operational | **32K** | 21.869 / 2.115 GiB |
+| Pure INT8 explicit | c1 repeated natural soak | **112K** | 23.323 / 0.661 GiB |
+| Pure INT8 explicit | c1 one-request physical ceiling | **126K** | 23.963 / 0.022 GiB |
 
 #### Decode / MTP
 
@@ -85,8 +86,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX
-7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
 llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
 hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
 draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated
@@ -250,41 +250,62 @@ The pure FP32-scale INT8 route now has a bounded exact-prefill owner. Reusing
 one BF16 K/V oracle pair instead of 16 lowers 32K-capacity tracked peak
 **18.943 -> 17.330 GiB**, which is also **0.590 GiB below BF16**. On matched
 4K/128 runs, prefill is within **-0.050%** of BF16 graph with overlapping
-sample ranges, while eager INT8 decode is **6.50% faster**. Real single-request
-server rows complete at **64K/96K/112K** with **3.420/1.570/0.662 GiB** sampled
-headroom; 120K fails the 1-GiB startup guard and 128K OOMs. Complete 512/8 and
-4K/16 quality plus bounded `mixed_v1` 64K/16 pass with no BF16 mirror. A later
-cold-server soak completed **four different natural 112K c1 requests** at
-**23.322876 GiB** peak with **0.661499 GiB** headroom, exact generated-ID and
-physical-shape accounting, zero leaked ownership, and clean teardown. Under the
-stated dedicated-idle-GPU assumption, use **112K** as the explicit c1 maximum;
-**96K** remains an optional extra-margin setting. Long pure INT8 still uses the
-unverified gate, graph capture rejects it, exact natural B3 is only **0.6423x**
-true AR, and BF16 remains supported/default.
+sample ranges, while eager INT8 decode is **6.50% faster**. Complete 512/8 and
+4K/16 quality pass, and the bounded W7900 `mixed_v1` gate now reaches
+**129,024 prompt tokens / 16 teacher-forced steps** with mean/max KL
+**0.0000104/0.0001354**, **100% top-1**, finite logits, all 16 full-attention
+layers INT8, and zero BF16 mirror bytes. This is a bounded one-prompt long row,
+not a complete 129K category suite.
 
-Do not transfer 112K to concurrent serving. Current packed short-context INT8
-retains a BF16 mirror and is not a compact memory route. The original rollup
-incorrectly treated a chosen 512-MiB headroom diagnostic as a failure boundary;
-that classification is withdrawn. Headroom remains measured data, while the
-limit table now reports only what executed successfully and what actually
-failed:
+Guard-free page-aligned XTX probes close the actual c1 boundary. **129,024 total
+tokens (126K, 504 pages)** completes one exact natural request at
+**23.962624 GiB** peak with **0.021751 GiB** sampled headroom and clean
+ownership. The next page, **129,280 tokens**, stalls raw warmup beyond 600
+seconds; **130,048 tokens (127K)** returns startup HIP OOM. Separately, four
+different natural **112K** requests pass at **23.322876/0.661499 GiB**
+peak/headroom, so 112K remains the strongest repeated server evidence while
+126K is the measured one-request physical ceiling. No arbitrary reserve
+reclassifies a completed row. Long pure INT8 still uses the unverified gate,
+graph capture rejects it, exact natural B3 is only **0.6423x** true AR, and BF16
+remains supported/default.
+
+Do not transfer the c1 ceiling to concurrent serving. Current packed
+short-context INT8 retains a BF16 mirror and is not a compact memory route. The
+XTX table reports only observed execution and actual failures:
 
 | Offered HTTP clients | Physical residency | Highest observed working row | Strongest repetition at/near frontier | First actual failure observed | Peak / headroom at highest pass |
 | ---: | ---: | ---: | --- | --- | ---: |
-| 1 | 1 | **112K/request** | 4/4 different natural requests | **128K** startup HIP OOM; 120K was policy-blocked and not executed | 23.323 / 0.661 GiB |
+| 1 | 1 | **126K/request** | 112K: 4/4 different natural requests | **126.25K:** startup stall; **127K:** startup HIP OOM | 23.963 / 0.022 GiB |
 | 2 | 2 | **6K/request** | 5.5K: 8/8 multi-turn; 4.5K: 16/16 | **8K:** 0/2, HTTP 500 HIP OOM; 8.25K also has an unsupported-route startup failure | 23.972 / 0.012 GiB |
 | 4 | 4 | **1.5K/request** | 16/16 multi-turn | **None tested** | 23.821 / 0.163 GiB |
-| 8 | 4 in two queue waves at shape-aware rows | **2K/request** | 1.5K: 8/8 shape-aware; 1.25K: 32/32 multi-turn | **None tested** | 23.974 / 0.011 GiB |
+| 8 | queue groups capped at physical c4 | **2K/request** | 1.5K: 8/8 shape-aware; 1.25K: 32/32 multi-turn | **None tested** | 23.974 / 0.011 GiB |
 
 The c2 interval between the 6K pass and 8K OOM is untested. The offered-c8 2K
 pass covers one burst and predates authoritative response-shape capture; it is
-still an execution pass, not a failure. No exact c4 or c8 failure ceiling was
-measured.
+still an execution pass, not a failure. No exact XTX c4 or c8 failure ceiling
+was measured.
+
+The same route on W7900 reaches the model-native **256K c1** limit with one
+exact request at **29.441/15.543 GiB** peak/headroom. More VRAM removes the
+short mirrored-route OOM but not its software boundary or scheduler limitation:
+
+| Offered HTTP clients | Highest pass | Observed physical groups | Requests | First failure | Peak / headroom |
+| ---: | ---: | --- | ---: | --- | ---: |
+| 1 | **256K/request** | c1 | 1/1 | None; model context limit reached | 29.441 / 15.543 GiB |
+| 2 | **8K/request** | c2 | 2/2 | 8.25K resident-prepare `NotImplementedError` | 25.658 / 19.326 GiB |
+| 4 | **8K/request** | c2 + c2 | 4/4 | 8.25K resident-prepare `NotImplementedError` | 30.684 / 14.301 GiB |
+| 8 | **8K/request** | c1 + c3 + c4 | 8/8 | 8.25K resident-prepare `NotImplementedError` | 30.707 / 14.277 GiB |
+
+For this Qwen3.8 INT8 route, readiness reports `continuous_decode=false` and
+offered width does not equal stable physical width. These are exact HTTP
+concurrency and queue-coalescing rows, **not** vLLM/SGLang-style continuous
+batching.
 
 Evidence:
 [`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
-[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json), and
-[`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json).
+[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json),
+[`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json), and
+[`actual context, W7900 quality, and concurrency frontier`](results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

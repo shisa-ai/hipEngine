@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_actual_context_quality_w7900",
+  "status": "qualified_measured_frontiers",
+  "performance_claim": false,
+  "capacity_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "decision": "Guard-free page-aligned execution closes the dedicated RX 7900 XTX c1 frontier at 129,024 total tokens (126 Ki, 504 pages): one natural request completes exactly at 23.962624 GiB peak with 0.021751 GiB sampled headroom and clean ownership, while the next 256-token page stalls raw startup warmup beyond 600 seconds and 130,048 tokens (127 Ki, 508 pages) returns HIP OOM. On W7900, the same pure-INT8 route passes the model-native 262,144-token c1 limit with 15.543076 GiB headroom. W7900 c2/c4/c8 all pass 8,192 tokens/request but all fail resident_prepare at 8,448 with NotImplementedError; c4 executes as two physical c2 groups and offered c8 as physical c1+c3+c4 groups, so this Qwen3.8 INT8 route is queue coalescing, not retained continuous batching. A matched W7900 BF16-vs-INT8 mixed_v1 gate at 129,024 prompt tokens and 16 teacher-forced decode steps passes with mean/max KL 0.000010379/0.000135450, 100% top-1, finite logits, all 16 full-attention layers INT8, and zero BF16 mirror bytes.",
+  "source": {
+    "xtx_frontier_measured_commit": "557d08a2d2876ec5cca22f3c64a4b965842d4af4",
+    "w7900_quality_and_frontier_measured_commit": "e610a1fdeae6439e02683bbd60ad0c26a8c40c57",
+    "tracked_source_clean": true,
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984,
+    "metadata_context_length": 262144,
+    "tensor_inventory_sha256": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3"
+  },
+  "kv": {
+    "storage": "int8_per_token_head",
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "long_c1_page_tokens": 256,
+    "long_c1_page_bytes": 8519680,
+    "long_c1_retained_bf16_mirror": false,
+    "short_packed_cN_page_bytes": 25296896,
+    "short_packed_cN_retained_bf16_mirror": true
+  },
+  "protocol": {
+    "server_surface": "OpenAI-compatible /v1/chat/completions",
+    "context_definition": "configured total tokens per request; each request uses context-max_tokens-1 rendered prompt tokens, four generated tokens, and one reserved slot",
+    "sampling": "temperature=0, top_p=1, ignore_eos=true, enable_thinking=false",
+    "prefix_cache": "off",
+    "speculative_mtp": "off",
+    "startup_min_free_mib": 0,
+    "request_gate": "server ready, HTTP 200, exact rendered prompt count, authoritative generated token IDs/count and generation shape, /ready after the burst, zero final owners, and clean teardown",
+    "quality_gate": "BF16 reference and INT8 candidate use identical prompt positions and BF16 teacher tokens for 16 decode steps; all logits must be finite; mean KL <=0.05 and top-1 agreement >=90%",
+    "headroom_interpretation": "measured data only; no arbitrary reserve reclassifies a completed request"
+  },
+  "hardware": {
+    "rx_7900_xtx": {
+      "hip_visible_device": "1",
+      "drm_card": "card0",
+      "pci_id": "0000:10:00.0",
+      "total_vram_gib": 23.984375,
+      "idle_baseline_gib": 0.060443878173828125
+    },
+    "radeon_pro_w7900": {
+      "hip_visible_device": "0",
+      "drm_card": "card1",
+      "total_vram_gib": 44.984375,
+      "idle_baseline_gib": 0.026073455810546875
+    }
+  },
+  "xtx_c1_actual_frontier": {
+    "highest_observed_working_tokens": 129024,
+    "highest_observed_working_pages": 504,
+    "highest_observed_working_prompt_tokens": 129019,
+    "highest_observed_working_request_count": 1,
+    "highest_observed_working_peak_gib": 23.962623596191406,
+    "highest_observed_working_headroom_gib": 0.02175140380859375,
+    "highest_repeated_natural_soak_tokens": 114688,
+    "highest_repeated_natural_soak_requests": 4,
+    "highest_repeated_natural_soak_peak_gib": 23.3228759765625,
+    "highest_repeated_natural_soak_headroom_gib": 0.6614990234375,
+    "rows": [
+      {
+        "context_tokens": 122880,
+        "pages": 480,
+        "requests": 1,
+        "passed": true,
+        "peak_gib": 23.775447845458984,
+        "headroom_gib": 0.20892715454101562,
+        "classification": "actual_request_pass"
+      },
+      {
+        "context_tokens": 126976,
+        "pages": 496,
+        "requests": 1,
+        "passed": true,
+        "peak_gib": 23.96112060546875,
+        "headroom_gib": 0.02325439453125,
+        "classification": "actual_request_pass"
+      },
+      {
+        "context_tokens": 129024,
+        "pages": 504,
+        "requests": 1,
+        "passed": true,
+        "peak_gib": 23.962623596191406,
+        "headroom_gib": 0.02175140380859375,
+        "classification": "highest_observed_working_page"
+      },
+      {
+        "context_tokens": 129280,
+        "pages": 505,
+        "requests": 0,
+        "passed": false,
+        "peak_gib": 23.967815399169922,
+        "headroom_gib": 0.016559600830078125,
+        "classification": "first_actual_failure_startup_stall",
+        "reason": "resident preparation completed, but raw eager warmup did not complete within the 600-second startup budget"
+      },
+      {
+        "context_tokens": 129536,
+        "pages": 506,
+        "requests": 0,
+        "passed": false,
+        "peak_gib": 23.971759796142578,
+        "headroom_gib": 0.012615203857421875,
+        "classification": "repeated_startup_stall",
+        "reason": "two attempts did not complete raw eager warmup; the retained full-budget attempt exceeded 600 seconds without returning OOM"
+      },
+      {
+        "context_tokens": 130048,
+        "pages": 508,
+        "requests": 0,
+        "passed": false,
+        "peak_gib": 23.818523406982422,
+        "headroom_gib": 0.16585159301757812,
+        "classification": "actual_startup_hip_oom",
+        "reason": "hipMalloc returned HIP error 2 during raw eager warmup"
+      }
+    ],
+    "interpretation": "129,024 is the measured one-request physical ceiling, not a reliability-margin recommendation. The strongest repeated natural-prompt row remains 114,688 with four exact requests."
+  },
+  "w7900_accuracy_at_xtx_ceiling": {
+    "prompt_id": "mixed_v1",
+    "prompt_tokens": 129024,
+    "decode_steps": 16,
+    "positions": 17,
+    "reference_kv": "bf16",
+    "candidate_kv": "int8_per_token_head_fp32_scales",
+    "mean_kl": 0.000010379161083380912,
+    "max_kl": 0.00013544956872547367,
+    "top1_agreement": 1.0,
+    "top1_mismatch_count": 0,
+    "all_logits_finite": true,
+    "passed": true,
+    "prompt_selection": "explicit bounded mixed_v1 control, not the complete 11-prompt suite",
+    "candidate_layout": {
+      "int8_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      "bf16_full_attention_indices": [],
+      "bf16_mirror_bytes": 0,
+      "int8_prefill_oracle_buffer_count_after_prefill": 0,
+      "primary_kv_bytes": 4236247040,
+      "scale_bytes": 66191360,
+      "total_kv_bytes": 4302438400
+    },
+    "existing_controls": {
+      "complete_512_mean_kl": 0.00011260640585379848,
+      "complete_512_max_kl": 0.0022932223516298317,
+      "complete_512_top1_agreement": 1.0,
+      "complete_4k_mean_kl": 0.00014561244039978832,
+      "complete_4k_max_kl": 0.014308431185781956,
+      "complete_4k_top1_agreement": 0.9946524064171123,
+      "bounded_64k_mean_kl": 0.00003343428901439429,
+      "bounded_64k_max_kl": 0.00041620865067494854,
+      "bounded_64k_top1_agreement": 1.0
+    }
+  },
+  "w7900_server_frontier": {
+    "c1": {
+      "context_tokens_per_request": 262144,
+      "model_context_limit_reached": true,
+      "requests": 1,
+      "passed": true,
+      "physical_groups": [1],
+      "peak_gib": 29.441299438476562,
+      "headroom_gib": 15.543075561523438,
+      "first_failure_observed": false,
+      "classification": "model-native context limit pass"
+    },
+    "c2": {
+      "highest_observed_working_tokens_per_request": 8192,
+      "requests": 2,
+      "passed_requests": 2,
+      "physical_groups": [2],
+      "peak_gib": 25.65829086303711,
+      "headroom_gib": 19.32608413696289,
+      "first_failure_tokens_per_request": 8448,
+      "first_failure": "resident_prepare NotImplementedError; direct no-mirror packed INT8 attention is unsupported"
+    },
+    "c4": {
+      "highest_observed_working_tokens_per_request": 8192,
+      "requests": 4,
+      "passed_requests": 4,
+      "physical_groups": [2, 2],
+      "peak_gib": 30.683670043945312,
+      "headroom_gib": 14.300704956054688,
+      "first_failure_tokens_per_request": 8448,
+      "first_failure": "resident_prepare NotImplementedError; direct no-mirror packed INT8 attention is unsupported"
+    },
+    "c8": {
+      "highest_observed_working_tokens_per_request": 8192,
+      "requests": 8,
+      "passed_requests": 8,
+      "physical_groups": [1, 3, 4],
+      "maximum_physical_group_rows": 4,
+      "peak_gib": 30.70712661743164,
+      "headroom_gib": 14.27724838256836,
+      "first_failure_tokens_per_request": 8448,
+      "first_failure": "resident_prepare NotImplementedError; direct no-mirror packed INT8 attention is unsupported"
+    },
+    "all_pass_rows_ready_after": true,
+    "all_pass_rows_zero_final_ownership": true,
+    "all_pass_rows_clean_teardown": true,
+    "scheduler_evidence": {
+      "continuous_decode": false,
+      "policy": "fifo_compatible_sampling_key",
+      "interpretation": "The measured Qwen3.8 INT8 route exposes HTTP concurrency and queue coalescing, but does not replenish or reclaim live decode membership as retained continuous batching. Offered width is not physical width."
+    }
+  },
+  "commands": {
+    "xtx_actual_frontier_pattern": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens <tokens> --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir <dir> --output <json>",
+    "w7900_accuracy": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 129024 --prompt-id mixed_v1 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 129042 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-bounded-prefill-mixed-v1-126kx16-w7900-r2.json",
+    "w7900_cN_frontier_pattern": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens <8192|8448> --concurrency <2|4|8> --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --hip-device 0 --drm-card card1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir <dir> --output <json>",
+    "w7900_c1_model_limit": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 262144 --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --startup-timeout-s 600 --request-timeout-s 3600 --hip-device 0 --drm-card card1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-w7900-c1-256k-model-max-r1 --output /tmp/qwen38-w7900-c1-256k-model-max-r1.json"
+  },
+  "raw_artifacts": [
+    {"path": "/tmp/qwen38-probe-c1-120k-actual-r1.json", "sha256": "b65b94b91b464891d35c5d546951d4cd0d80a956a2dc863eba854239bf621cc0"},
+    {"path": "/tmp/qwen38-probe-c1-124k-actual-r1.json", "sha256": "bdad285c2a032564a882b8f86a39d3ab412e51840efa41cddc54f60533d7980f"},
+    {"path": "/tmp/qwen38-probe-c1-126k-actual-r1.json", "sha256": "c4499ae9297a9ba69693c44675431be731b3083a411e37214399b56af3e74df8"},
+    {"path": "/tmp/qwen38-probe-c1-126p25k-actual-r1.json", "sha256": "9782fb21aa57308d030b45d38d3689c0267ff048db4be5ce5c323d555c7578ab"},
+    {"path": "/tmp/qwen38-probe-c1-126p5k-actual-r2.json", "sha256": "ad1c94eaf40764bd40a0ae5e6c5a954440565c90069b56acea6f904c8a143c0b"},
+    {"path": "/tmp/qwen38-probe-c1-127k-actual-r1.json", "sha256": "4123c752e0c5b12373e59fea8f85694bbb5d1d92886763887b62f80724a08dfa"},
+    {"path": "/tmp/qwen38-27b-pure-int8-bounded-prefill-mixed-v1-126kx16-w7900-r2.json", "sha256": "c81cb85cc45885f59e429485ed707b8d06788fb778e1d08ccdf30831d179a375"},
+    {"path": "/tmp/qwen38-w7900-c1-256k-model-max-r1.json", "sha256": "73aae794aa6e361591a9b67b1301f8bf35a11b1cbf27003ad1cc6382e1dc0bc8"},
+    {"path": "/tmp/qwen38-w7900-c2-8k-pass-r1.json", "sha256": "694bb25c64021a1465cce08d095e746efe1883c898a898fd0976034c036104b7"},
+    {"path": "/tmp/qwen38-w7900-c2-8448-fail-r1.json", "sha256": "e7cace21f412562c91653d85ed641f4b8466e089782f41e2377ab0885bf7d008"},
+    {"path": "/tmp/qwen38-w7900-c4-8k-pass-r1.json", "sha256": "f298be42888cd2de7f01f7e54d27f74e7cf90bd7115c121c4b07231c6358f0f6"},
+    {"path": "/tmp/qwen38-w7900-c4-8448-fail-r1.json", "sha256": "67c0570f0cd7fd7edf3bd07f2b67ae2d6ba361ac2984c70f5af0160c0f942e5c"},
+    {"path": "/tmp/qwen38-w7900-c8-8k-pass-r1.json", "sha256": "8d9febbe7ba3ae07b1e6657653eb481a35f50c952288629b87eb1b6c73bb5634"},
+    {"path": "/tmp/qwen38-w7900-c8-8448-fail-r1.json", "sha256": "fd7cf1d69fa1006edb6cba0d49e9ed3a1b4dcd8d7d0fd8a49119908534f85a16"}
+  ],
+  "limitations": [
+    "The XTX 129,024-token row is one natural request with only 0.021751 GiB sampled headroom; it is a measured physical ceiling, not a margin or reliability recommendation.",
+    "The 129,280- and 129,536-token startup failures are bounded 600-second warmup stalls, not returned OOMs. The 130,048-token row is the first returned HIP OOM in the narrowed bracket.",
+    "The 129,024/16 quality row is the explicit mixed_v1 bounded control. Complete category coverage remains at 512 and 4K; do not call the 129K row a complete long-context suite.",
+    "W7900 c2/c4/c8 8K rows retain BF16 mirrors and therefore do not demonstrate compact-INT8 memory savings.",
+    "The measured Qwen3.8 INT8 server route reports continuous_decode=false and variable static queue groups; it is not vLLM/SGLang-style continuous batching.",
+    "No throughput or latency claim is made from these capacity and correctness rows."
+  ],
+  "next": "Implement and qualify direct no-mirror c>N INT8 attention under the resident model-owning loop, with stable slots, request-sized paged allocation, live admission/reclaim, chunked prefill/decode scheduling, and truthful physical-width telemetry before claiming production continuous batching for Qwen3.8 INT8."
+}

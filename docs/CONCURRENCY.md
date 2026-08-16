@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-07-22.
+Last updated: 2026-08-16.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -184,6 +184,26 @@ vLLM/SGLang feature parity already exists. The constrained greedy
 Q4_K_M/BF16-KV loop is real continuous batching; production parity additionally
 requires adaptive low-occupancy dispatch, broad request-shape coverage,
 cache/memory economics, and SLO-based external evidence.
+
+### Qwen3.8 pure-INT8 route boundary
+
+The exact Qwen3.8-27B `Q4_K_M` pure-INT8 server route is **not** the retained
+BF16 continuous owner described above. On W7900, offered c2 executes as one c2
+group, offered c4 as c2+c2, and offered c8 as c1+c3+c4. Readiness reports
+`continuous_decode=false`; groups are selected by the compatible-sampling HTTP
+queue rather than by live resident membership with decode-time admission,
+retirement, and slot refill. All offered widths pass 8K/request, but 8.25K
+fails in resident preparation because direct no-mirror packed INT8 attention is
+not admitted. The short <=8K path retains BF16 mirrors and therefore does not
+provide graceful INT8 KV capacity scaling.
+
+These rows are valid HTTP concurrency, exact request, physical-shape, and
+lifecycle evidence. They are not continuous-batching or compact-INT8 c>N
+claims. Production promotion requires direct no-mirror c>N INT8 attention in
+the model-owning resident loop, stable request/KV identity across occupancy
+changes, request-sized page admission, decode-time refill/reclaim, and
+mixed-arrival/cancellation/SLO gates. Evidence:
+[`Qwen3.8 actual context, W7900 quality, and concurrency frontier`](../benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
 
 ### W7900 coding-agent evaluation conclusions (A1–A6)
 

@@ -5,22 +5,23 @@ model- and runtime-gated. Qwen3.6 W4-PARO still fails its final 128K/16 quality
 gate, and dense Qwen3.6-27B pure FP32-scale INT8 fails the complete 512/8 suite.
 The exact Qwen3.8-27B `Q4_K_M` file is a measured quality exception. Its pure
 FP32-scale route uses layer-outer exact prefill with one reusable BF16 K/V
-oracle pair, passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16,
+oracle pair, passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 129K/16,
 and lowers the matched 32K-capacity tracked peak `17.920 -> 17.330 GiB` while
-running eager AR decode `6.50%` above BF16 graph. On a dedicated idle 24-GiB
-XTX, four different natural 112K c1 requests pass at `23.322876 GiB` peak with
-`0.661499 GiB` headroom and zero leaked ownership. The 120K row was not executed
-because the configured 1-GiB startup guard blocked it; 128K is the first actual
-c1 failure and OOMs during eager warmup. **112K is therefore the recommended
-explicit maximum for the exact dedicated-c1 AR contract; 96K is an optional
-extra-margin setting.** Do not transfer that number to c>1: current packed
+running eager AR decode `6.50%` above BF16 graph. Guard-free page-aligned probes
+on an idle 24-GiB XTX place the one-request physical c1 ceiling at **129,024
+tokens (126K, 504 pages)**: peak/headroom is `23.962624/0.021751 GiB`; the next
+256-token page stalls startup beyond 600 seconds and 130,048 tokens OOMs. Four
+different natural 112K requests remain the strongest repeated row at
+`23.322876/0.661499 GiB`. On W7900, c1 reaches the model-native 256K limit at
+`29.441/15.543 GiB`. Do not transfer either c1 number to c>1: current packed
 short-context INT8 adds a BF16 mirror and is not a compact-INT8 capacity route.
-Observed c>1 execution passes reach 6K/request at c2, 1.5K at physical c4, and
-2K at offered c8; only c2 has a measured request failure, at 8K. Long pure INT8
-still needs the unverified-long gate, graph capture rejects it, and exact
-natural B3 MTP is only
-`0.6423x` true AR. BF16 remains supported/default. K2 compact DMS remains
-planned. Last updated: 2026-08-16._
+W7900 c2/c4/c8 pass 8K/request but all reject 8.25K in resident preparation;
+observed c4 is c2+c2 and offered c8 is c1+c3+c4 with
+`continuous_decode=false`, so this exact route is queue coalescing rather than
+retained continuous batching. Long pure INT8 still needs the unverified-long
+gate, graph capture rejects it, and exact natural B3 MTP is only `0.6423x` true
+AR. BF16 remains supported/default. K2 compact DMS remains planned. Last
+updated: 2026-08-16._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -42,12 +43,12 @@ long-context evidence controls the support decision.
 | Does pure Qwen3.6-27B INT8 pass quality? | **No.** FP32 scales improve numerical fidelity, and the 4K/16 suite passes, but the required 512/8 suite fails `mixed_ja_en_translate` at `77.78%` top-1. |
 | Does mixed BF16/INT8 solve Qwen3.6-27B? | **Quality only, not product constraints.** A selected 9-BF16/7-INT8 layer map passes complete 512/8 and 4K/16 suites plus bounded mixed 8K/16K/32K rows. It raises 32K tracked peak by `0.448 GiB`, projects `7 GiB` of prefill oracles at 256K, cannot use the supported graph route safely, and executes `10.52%` slower than BF16 graph decode. |
 | What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable BF16 setting. |
-| Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 64K/16 with no BF16 mirror. Tail-four Hadamard passed the earlier 512/4K/32K gates but was not rerun in this qualification. |
-| Does bounded Qwen3.8 INT8 save memory? | **Yes.** Layer-outer exact prefill reuses one oracle pair instead of 16, lowering the 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16. A real 64K server request peaks at `20.564 GiB`, `1.305 GiB` below the BF16 32K request. |
-| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K recommended for a dedicated idle c1 server; 96K is optional extra margin.** Four pinned ShareGPT-derived 112K requests pass consecutively at `23.322876 GiB` peak with `0.661499 GiB` headroom, exact generated-ID accounting, and zero leaked ownership. 120K was policy-blocked before execution; 128K is the first actual c1 failure and OOMs. Only 64K has a representative non-repeated-token long-context quality row. |
-| What actually worked and failed at c2/c4/c8? | **c2 works through 6K/request; 8K actually fails 0/2 with HTTP-500 HIP OOM. Physical c4 works through 1.5K/request with 16/16 multi-turn requests; no c4 failure was tested. Offered c8 works through 2K/request; no c8 failure was tested, and shape-aware rows show it queues as two physical c4 waves.** The earlier 512-MiB threshold was an arbitrary diagnostic and no longer reclassifies successful requests. These short packed routes retain a BF16 mirror (`25,296,896` bytes/page versus `8,519,680` for no-mirror long c1), so they are not efficient INT8 capacity paths. |
+| Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded W7900 `mixed_v1` 129,024/16 with mean/max KL `0.0000104/0.0001354`, 100% top-1, finite logits, all 16 full-attention layers INT8, and no BF16 mirror. The 129K row is one bounded prompt, not a complete long-context category suite. |
+| Does bounded Qwen3.8 INT8 save memory? | **Yes for long c1.** Layer-outer exact prefill reuses one oracle pair instead of 16, lowering the 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16. The 129K quality row retains `4,302,438,400` INT8-KV-plus-scale bytes with zero BF16 mirror. Short c>N remains mirrored and memory-negative. |
+| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **126K is the measured one-request physical ceiling; 112K is the strongest repeated natural soak.** The 129,024-token row passes at `23.962624/0.021751 GiB` peak/headroom. The next 256-token page stalls startup beyond 600 seconds; 130,048 tokens returns HIP OOM. Four 112K natural requests pass at `23.322876/0.661499 GiB` with exact accounting and zero leaked ownership. |
+| What actually worked and failed at c2/c4/c8? | **On XTX, c2 works through 6K/request and 8K fails 0/2 with HTTP-500 HIP OOM; physical c4 works through 1.5K/request and offered c8 through 2K/request, with no tested XTX c4/c8 failure. On W7900, all c2/c4/c8 widths pass 8K and all reject 8.25K with resident-prepare `NotImplementedError`.** W7900 physical groups are c2, c2+c2, and c1+c3+c4. These short routes retain a BF16 mirror (`25,296,896` bytes/page versus `8,519,680` for no-mirror long c1) and are queue coalescing, not compact-INT8 continuous batching. |
 | Did a recent-token BF16 tail solve 27B? | **No.** The earlier host screen favored pure INT8 over recent 4K/8K BF16 tails, and the native result identifies non-monotonic layer interactions instead. Do not add two-arena temporal storage. |
-| Product status | BF16 remains supported/default. Qwen3.6 pure INT8 is quality-rejected. Qwen3.8 pure FP32-scale INT8 is qualified only as an explicit single-request AR capacity route behind the unverified-long gate; pure-INT8 graph capture is fail-closed and exact natural B3 MTP is slower than AR. |
+| Product status | BF16 remains supported/default. Qwen3.6 pure INT8 is quality-rejected. Qwen3.8 pure FP32-scale INT8 is qualified only as an explicit single-request AR capacity route behind the unverified-long gate; pure-INT8 graph capture is fail-closed, exact natural B3 MTP is slower than AR, and the measured c>N server path is not retained continuous batching. |
 
 The retained implementation and memory reduction are still valuable. The
 product boundary is simply explicit: **capacity evidence is not quality
@@ -75,8 +76,10 @@ materially differently despite sharing the same geometry:
    a 32,786-token allocation, the complete 512/8 and 4K/16 suites pass at
    mean/max KL `0.000113/0.002293` and `0.000146/0.014308`; minimum-prompt top-1
    is `100%/94.12%`. Bounded `mixed_v1` 32K/16 also passes at mean/max KL
-   `0.003177/0.036849` and 100% top-1; the bounded-lifetime rerun extends that
-   prompt to 64K/16 at `0.000033/0.000416` and 100% top-1.
+   `0.003177/0.036849` and 100% top-1; bounded-lifetime rows extend that prompt
+   to 64K/16 at `0.000033/0.000416` and to 129,024/16 at
+   `0.0000104/0.0001354`, both with 100% top-1. The longest row is an explicit
+   one-prompt W7900 control, not the complete category suite.
 2. **Tail-four Hadamard is an even lower-error control.** BF16 full-attention
    indices `0..11` plus Hadamard-group32 INT8 indices `12..15` pass the same
    complete short/medium suites and bounded 32K row. Mean/max KL is
@@ -102,38 +105,38 @@ materially differently despite sharing the same geometry:
    prefill/decode and bounded INT8 eager is `978.626/33.761`:
    `-0.050%/+6.499%`. Prefill sample ranges overlap, final IDs are identical,
    and tracked peak/current ownership falls `0.590/0.716 GiB`.
-6. **Dedicated c1 recommends 112K, not 96K.** Pre-sized pure-INT8 pools first
-   completed repeated-token 64K/96K/112K rows at peaks/headroom of
-   `20.564/3.420`, `22.414/1.570`, and `23.322/0.662 GiB`. The follow-up natural
-   soak then completed four different pinned ShareGPT-derived 114,683-token
-   prompts plus four generated tokens each in one cold server. Peak/headroom is
-   `23.322876/0.661499 GiB`, every response has exact generated-ID and physical
-   shape accounting, ownership drains after every request, and teardown returns
-   to `0.060410 GiB`. Since recommendations assume an otherwise idle dedicated
-   GPU, **112K is the explicit c1 maximum**; 96K remains available when an
-   operator voluntarily wants `1.570 GiB` rather than `0.661 GiB` margin. The
-   120K row was not executed because the default 1-GiB startup guard blocked it;
-   128K is the first actual failure and OOMs during eager warmup.
-7. **Current c>1 INT8 is mirrored and memory-negative, but successful rows stay
-   classified as passes.** At contexts through 8K, packed AR retains BF16 K/V
-   beside INT8 to preserve its exact fallback. The measured page grows
-   `8,519,680 -> 25,296,896` bytes. The earlier 512-MiB threshold was a chosen
-   diagnostic, not a failure boundary. Actual c2 execution passes every tested
-   row through 6,144/request (2/2 at the top; 5,632 passes 8/8 multi-turn), then
-   8,192 fails both requests with HTTP-500 HIP OOM; 8,448 separately fails
-   startup on the unsupported direct no-mirror route. Physical c4 passes
-   1,536/request for 16/16 multi-turn requests with `0.162945 GiB` headroom and
-   has no tested failure. Offered c8 passes 2,048/request for 8/8 requests with
-   `0.010555 GiB` headroom and has no tested failure; shape-aware 1,536 rows show
-   two c4 queue waves, while the 2,048 raw row predates shape capture. Headroom
-   is reported as risk data and does not overwrite the observed execution
-   result. None of these mirrored c>1 rows is an INT8 memory-saving claim.
-8. **The remaining blockers are c>1 direct INT8, transport, and MTP.** Packed
-   AR fails closed above the mirror boundary because direct no-mirror INT8 is
-   not admitted. Pure-INT8 graph capture likewise rejects all but BF16 and
-   tail-four layouts. The full natural25 B3 suite is transaction-exact with
-   matching GPU/CPU acceptance, but target verification makes B3
-   `22.472 tok/s / 0.6423x` true AR. Long pure INT8 also remains behind
+6. **Dedicated XTX c1 closes at 126K by actual execution.** Pre-sized pure-INT8
+   pools first completed repeated-token 64K/96K/112K rows at peaks/headroom of
+   `20.564/3.420`, `22.414/1.570`, and `23.322/0.662 GiB`. A natural soak then
+   completed four different 112K requests with exact generated-ID/shape
+   accounting and zero leaked ownership. Guard-free page-aligned probes extend
+   the one-request physical ceiling to **129,024 total tokens (126K, 504
+   pages)** at `23.962624/0.021751 GiB`; 129,280 tokens, the next page, stalls
+   raw warmup beyond 600 seconds, and 130,048 tokens returns HIP OOM. Thus 126K
+   is the measured physical ceiling while 112K is the strongest repeated
+   natural server row. On W7900, c1 reaches the model-native 262,144-token limit
+   at `29.441/15.543 GiB` peak/headroom with clean teardown.
+7. **Current c>1 INT8 is mirrored, queue-coalesced, and memory-negative, but
+   successful rows stay classified as passes.** At contexts through 8K, packed
+   AR retains BF16 K/V beside INT8 to preserve its exact fallback. The measured
+   page grows `8,519,680 -> 25,296,896` bytes. On XTX, c2 passes every tested row
+   through 6,144/request, then 8,192 fails 0/2 with HTTP-500 HIP OOM; physical
+   c4 passes 1,536/request and offered c8 passes 2,048/request with no measured
+   XTX c4/c8 failure. On W7900, c2/c4/c8 all pass 8,192/request with
+   `19.326/14.301/14.277 GiB` headroom, then all reject 8,448 in
+   `resident_prepare` because direct no-mirror packed INT8 is unsupported. The
+   observed W7900 physical groups are c2, c2+c2, and c1+c3+c4. Headroom is risk
+   data and does not overwrite actual execution. None of these mirrored c>1
+   rows is an INT8 memory-saving or continuous-batching claim.
+8. **The remaining blockers are c>1 direct INT8, continuous membership,
+   transport, and MTP.** This exact route reports `continuous_decode=false`;
+   offered HTTP width is coalesced into static compatible groups rather than
+   admitted, reclaimed, and refilled during decode. Packed AR fails closed above
+   the mirror boundary because direct no-mirror INT8 is not admitted.
+   Pure-INT8 graph capture likewise rejects all but BF16 and tail-four layouts.
+   The full natural25 B3 suite is transaction-exact with matching GPU/CPU
+   acceptance, but target verification makes B3 `22.472 tok/s / 0.6423x` true
+   AR. Long pure INT8 also remains behind
    `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` because Qwen3.6 shares the
    geometry but fails quality.
 
@@ -141,8 +144,9 @@ The bounded route is retained and qualified for explicit single-request AR
 capacity use; BF16 remains supported/default and owns the public MTP row.
 Compact evidence:
 [`initial Qwen3.8 INT8 frontier`](../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
-[`bounded INT8 serving qualification`](../benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json), and
-[`dedicated-XTX c1/c2/c4/c8 soak`](../benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json).
+[`bounded INT8 serving qualification`](../benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json),
+[`dedicated-XTX c1/c2/c4/c8 soak`](../benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json), and
+[`actual context, W7900 quality, and concurrency frontier`](../benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
 
 ## Qwen3.6-27B scope refresh
 
