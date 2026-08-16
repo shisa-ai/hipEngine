@@ -57,6 +57,20 @@ class CalibrationError(RuntimeError):
     """Raised when a calibration capture cannot be evaluated honestly."""
 
 
+def validate_strict_baseline(
+    *,
+    requested_mode: str,
+    backend_exact_mode: str,
+) -> None:
+    """Reject a calibration denominator that is not the backend's strict route."""
+
+    if str(requested_mode) != str(backend_exact_mode):
+        raise CalibrationError(
+            "calibration baseline does not match the backend strict-exact mode: "
+            f"requested {requested_mode!r}, backend exact {backend_exact_mode!r}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class PromptCalibrationCapture:
     prompt_id: str
@@ -279,7 +293,10 @@ def _capture_controls(
 ]:
     from hipengine.loading.gguf import scan_gguf
     from hipengine.runtime.prefill import PrefillConfig
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from hipengine.runtime.qwen35_gguf_runner import (
+        Qwen35GGUFResidentSession,
+        _gguf_gdn_prefill_backend_exact_mode,
+    )
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
     compiler_version = None
@@ -310,6 +327,10 @@ def _capture_controls(
             raise CalibrationError("GGUF resident session closed during setup")
         resolved_backend = str(session.runner.backend)
         target_arch = str(session.runner.target_arch)
+        validate_strict_baseline(
+            requested_mode=str(args.baseline_mode),
+            backend_exact_mode=_gguf_gdn_prefill_backend_exact_mode(resolved_backend),
+        )
         for index, row in enumerate(prompt_rows):
             prompt_id = str(row["id"])
             tokens = prompt_tokens[prompt_id]
@@ -472,6 +493,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "complete_prompt_and_heldout_suite": complete_suite,
             "prompt_count": len(prompt_rows),
             "baseline_mode": str(args.baseline_mode),
+            "backend_strict_exact_mode_verified": True,
             "candidate_modes": list(candidate_modes),
             "decode_steps": int(args.decode_steps),
             "teacher_forced_rows": sum(len(capture.strict) for capture in captures),
@@ -496,7 +518,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
-        "--baseline-mode", choices=SUPPORTED_MODES, default="chain_lds32_direct"
+        "--baseline-mode",
+        choices=SUPPORTED_MODES,
+        default="chain_lds32_direct_nonvolatile",
     )
     parser.add_argument(
         "--positive-mode", action="append", default=[], metavar="MODE"
