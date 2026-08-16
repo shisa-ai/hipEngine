@@ -972,6 +972,7 @@ class ResidentBatchScheduler:
         self._reclaimed_total = 0
         self._work_counts: Counter[str] = Counter()
         self._recent_completed: deque[CompletedRequest] = deque(maxlen=1024)
+        self._prefill_round_robin_slot = 0
 
     @property
     def pending_count(self) -> int:
@@ -1172,25 +1173,53 @@ class ResidentBatchScheduler:
         return self.active_batch.compact(order=order)
 
     def next_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
-        """Emit one prefill chunk and advance the request's prompt cursor."""
+        """Emit one legacy FCFS prefill chunk and advance its prompt cursor."""
 
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         for request_id in self.active_batch.active_request_ids:
             request = self.active_batch.requests[request_id]
+            if request.remaining_prefill > 0:
+                return self._take_prefill_work(request_id, chunk_size=chunk_size)
+        return None
+
+    def next_round_robin_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
+        """Emit one fair prefill quantum using stable physical-slot rotation."""
+
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        for offset in range(self.capacity):
+            slot = (self._prefill_round_robin_slot + offset) % self.capacity
+            slot_state = self.active_batch.slots[slot]
+            if slot_state is None or not slot_state.active:
+                continue
+            request = self.active_batch.requests[slot_state.request_id]
             if request.remaining_prefill <= 0:
                 continue
-            updated, chunk = request.take_prefill(chunk_size)
-            self.active_batch.update_request(updated)
-            self._update_kv_pages(updated)
-            self._set_bucket_key((request_id,), self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)))
-            return WorkItem(
-                kind=WorkKind.PREFILL,
-                request_ids=(request_id,),
-                row_to_request=(request_id,),
-                token_rows=(chunk,),
+            self._prefill_round_robin_slot = (slot + 1) % self.capacity
+            return self._take_prefill_work(
+                request.request_id,
+                chunk_size=chunk_size,
             )
         return None
+
+    def _take_prefill_work(self, request_id: int, *, chunk_size: int) -> WorkItem:
+        request = self.active_batch.requests[int(request_id)]
+        if request.remaining_prefill <= 0:
+            raise ValueError(f"request_id {request_id} has no prefill work")
+        updated, chunk = request.take_prefill(chunk_size)
+        self.active_batch.update_request(updated)
+        self._update_kv_pages(updated)
+        self._set_bucket_key(
+            (request.request_id,),
+            self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)),
+        )
+        return WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(request.request_id,),
+            row_to_request=(request.request_id,),
+            token_rows=(chunk,),
+        )
 
     def bucketize_by_block_count(
         self,
@@ -1308,6 +1337,7 @@ class ResidentBatchScheduler:
     def next_decode_work(
         self,
         *,
+        request_ids: Sequence[int] | None = None,
         top_k: int = 0,
         experts_per_token: int = 0,
         replay_steps: int = 1,
@@ -1316,16 +1346,27 @@ class ResidentBatchScheduler:
     ) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
 
-        request_ids = tuple(
+        ready_ids = tuple(
             request_id
             for request_id in self.active_batch.active_request_ids
             if self.active_batch.requests[request_id].remaining_prefill == 0
             and self.active_batch.requests[request_id].remaining_decode > 0
             and not self.active_batch.requests[request_id].finished
         )
-        if not request_ids:
+        if request_ids is None:
+            selected_ids = ready_ids
+        else:
+            selected_ids = tuple(int(request_id) for request_id in request_ids)
+            if not selected_ids or len(selected_ids) != len(set(selected_ids)):
+                raise ValueError("decode request_ids must be non-empty and unique")
+            unavailable = set(selected_ids) - set(ready_ids)
+            if unavailable:
+                raise ValueError(
+                    f"decode request_ids are not ready: {sorted(unavailable)!r}"
+                )
+        if not selected_ids:
             return None
-        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in request_ids)
+        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in selected_ids)
         slot_set = set(slot_ids)
         active_mask = tuple(slot in slot_set for slot in range(self.capacity))
         shape = replace(
@@ -1337,14 +1378,14 @@ class ResidentBatchScheduler:
                 kv_storage_dtype=kv_storage_dtype,
                 layer_plan=layer_plan,
             ),
-            active_c=len(request_ids),
+            active_c=len(selected_ids),
             active_mask=active_mask,
         )
-        self._set_bucket_key(request_ids, self._bucket_key(shape))
+        self._set_bucket_key(selected_ids, self._bucket_key(shape))
         return WorkItem(
             kind=WorkKind.DECODE,
-            request_ids=request_ids,
-            row_to_request=request_ids,
+            request_ids=selected_ids,
+            row_to_request=selected_ids,
             slot_ids=slot_ids,
             active_mask=active_mask,
         )

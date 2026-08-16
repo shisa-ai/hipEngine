@@ -17,6 +17,13 @@ from hipengine.dispatch.batch_width import (
     NativeBatchWidthProfile,
     plan_batch_width_partition,
 )
+from hipengine.dispatch.execution_planner import (
+    ExecutionCompatibilityKey,
+    ExecutionPlan,
+    PlannedExecutionGroup,
+    TokenBudgetSLO,
+    plan_execution_groups,
+)
 from hipengine.dispatch.fusion import BoundKernel, FusionPlanner, KernelPlanStep, resolve_plan
 from hipengine.dispatch.kv import (
     KVKernelSelection,
@@ -60,6 +67,8 @@ __all__ = [
     "BatchWidthGroup",
     "BatchWidthPartitionPlan",
     "BoundKernel",
+    "ExecutionCompatibilityKey",
+    "ExecutionPlan",
     "FusionPlanner",
     "KVKernelSelection",
     "KernelPlanStep",
@@ -71,9 +80,11 @@ __all__ = [
     "ProjectionDispatchDecision",
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
+    "PlannedExecutionGroup",
     "NativeBatchWidthProfile",
     "RequestState",
     "SlotMove",
+    "TokenBudgetSLO",
     "WorkItem",
     "WorkKind",
     "batch_sampler_equality_payload_blockers",
@@ -90,6 +101,7 @@ __all__ = [
     "projection_dispatch_evidence_payload_blockers",
     "plan_batch_sampler_dispatch",
     "plan_batch_width_partition",
+    "plan_execution_groups",
     "plan_physical_batch_groups",
     "resolve_paged_attn_decode",
     "resolve_paged_attn_prefill",

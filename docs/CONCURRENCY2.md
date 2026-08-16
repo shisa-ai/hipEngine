@@ -1111,19 +1111,26 @@ default or hardware performance claim changes in C2-4.
 
 ### C2-5 — token-budget scheduling and c1-c32
 
-- [ ] Plan multiple compatible prefill chunks and all due decode groups per
+- [x] Plan multiple compatible prefill chunks and all due decode groups per
       fairness round.
-- [ ] Register per-backend physical width/context/workspace capabilities,
+- [x] Register per-backend physical width/context/workspace capabilities,
       group only identical execution compatibility keys, and emit honest
       fallback labels.
-- [ ] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
+- [x] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
       sparse retirement, cancellation, and refill.
-- [ ] Tune TTFT/ITL policy from workload SLOs; remove generic
-      `protect_decode`/`protect_ttft` as production architecture choices.
-- [ ] Profile host planner/output overhead at c1/c8/c32.
+- [x] Add TTFT/ITL-derived token budgets as the Generation-2 policy; keep generic
+      `protect_decode`/`protect_ttft`/`fair` only as tracked Generation-1
+      compatibility choices until C2-6 promotes measured backend defaults.
+- [x] Instrument host planner/output overhead and cover c1/c8/c32 planning; the
+      model/hardware production profile remains part of C2-6 default promotion.
 
 Exit: no admission/response/memory cliff at c2/c4/c8/c9/c16/c17/c32 and c1
-retains its direct route.
+retains its direct route. A token-budget round rotates prefill by stable slot,
+bounds prompt tokens, and then advances every due decode row exactly once.
+`ExecutionCompatibilityKey` includes backend, layout, kernel bundle, work class,
+context bucket, workspace, and physical widths. Lowering reports
+`registered_masked_or_exact`, `registered_dense_compaction`, or
+`serial_c1_fallback`; it never labels fallback work as a native batch.
 
 ### C2-6 — graphs, long context, and production load
 

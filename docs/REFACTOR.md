@@ -31,6 +31,20 @@ should be removed or collapsed.
   retain a separately registered numerical fallback as required, and remove
   the single-backing admission/identity branches and compatibility fixtures.
 
+## Generation-1 prefill/decode policy compatibility choices
+
+- Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling
+  architecture: each round rotates bounded prefill quanta by stable slot and
+  then advances every due decode row once. `protect_decode`, `protect_ttft`,
+  and `fair` remain available because current GGUF packages and their retained
+  evidence select them explicitly; they are compatibility/rollback policy
+  names, not the long-term production planner interface.
+- Removal trigger: after C2-6 derives per-model/backend round budgets from
+  measured TTFT/ITL SLO rows and passes c1-c32 production soaks on gfx1100 and
+  gfx1151, promote those registered token budgets, remove generic policy
+  selection from public production configuration, and retain only a diagnostic
+  compatibility seam while old GGUF runners remain supported.
+
 ## gfx1100 GGUF Q4_K_M fair launch-policy default (scoped registry default)
 
 - Added 2026-08-17. The `("hip_gfx1100", "gguf_q4_k_m")` generator factory now
