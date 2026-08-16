@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-16
 
+- [retained development gfx1151 Qwen3.8 P5 grouped-GQA split attention] Qwen3.8-27B / Q4_K_M / repeated-token 4K/128 AR: a BF16-bit-exact 24Q/4KV grouped producer improves the rotating-K/V leaf **0.549226 -> 0.116819 ms (4.7015x, 15/15)** and counterbalanced complete graph decode **11.10932 -> 12.05960 tok/s (+8.554%)** with identical IDs/peaks/teardown, beating clean llama HIP by **4.792%** while remaining **4.047%** below Vulkan; `benchmarks/results/2026-08-16-gfx1151-qwen38-27b-grouped-gqa-split-attention.json`.
 - [retained gfx1151 Qwen3.8 G2 clean prefill publication] Qwen3.8-27B / Q4_K_M / repeated-token 512/1K/4K: clean detached `a06589f34` moves the frozen opening prefill **85.288/84.497/84.204 -> 399.031/391.276/385.330 tok/s (+367.863%/+363.067%/+357.612%)**, beating clean llama HIP **13.224%/7.363%/4.711%** and Vulkan **64.240%/58.021%/8.737%** with CV <=0.094%, stable IDs, and zero teardown; process GTT falls **47.705%/47.030%/44.012%** to **17.322/17.805/20.181 GiB** but remains above llama, closing G2 while leaving G5 open; `benchmarks/results/2026-08-16-gfx1151-qwen38-27b-prefill-publication.json`.
 
 ## 2026-08-15

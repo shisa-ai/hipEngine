@@ -4669,8 +4669,13 @@ def _check_qwen35_gqa_shape(
     head_dim: int,
 ) -> None:
     _check_split_shape(spans, chunk_size, num_splits, block_size, num_q_heads, num_kv_heads, head_dim)
-    if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
-        raise ValueError("Qwen3.5 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256")
+    supported_gqa = (num_q_heads, num_kv_heads) in ((16, 2), (24, 4))
+    if block_size != 256 or not supported_gqa or head_dim != 256:
+        raise ValueError(
+            "Qwen3.5 GQA split-K specialization requires block_size=256, "
+            "(num_q_heads, num_kv_heads) in {(16, 2), (24, 4)}, head_dim=256"
+        )
+
 
 def _check_qwen35_gqa_batch_shape(
     spans: KVLiveSpans,
@@ -4693,8 +4698,12 @@ def _check_qwen35_gqa_batch_shape(
     )
     _check_positive(chunk_size, "chunk_size")
     _check_positive(num_splits, "num_splits")
-    if block_size != 256 or num_q_heads != 16 or num_kv_heads != 2 or head_dim != 256:
-        raise ValueError("Qwen3.5 GQA split-K specialization requires block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256")
+    supported_gqa = (num_q_heads, num_kv_heads) in ((16, 2), (24, 4))
+    if block_size != 256 or not supported_gqa or head_dim != 256:
+        raise ValueError(
+            "Qwen3.5 GQA split-K specialization requires block_size=256, "
+            "(num_q_heads, num_kv_heads) in {(16, 2), (24, 4)}, head_dim=256"
+        )
     return block_table_len
 
 

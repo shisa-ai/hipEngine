@@ -1008,6 +1008,12 @@ GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
 # 32K/64K wall wins. Shorter contexts and explicit opt-out keep the serial path.
 GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
+# P5 groups Qwen3.8 dense-27B's 24 query heads by its four K/V heads from
+# 4K onward. The 4K actual-shape gate is BF16-bit exact and 4.70x faster than
+# the generic split producer; shorter contexts and peer packages keep fallback.
+GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS = {
+    (5_120, 64, 24, 4, 256, 256, 256): 4_096,
+}
 # SH10-A1 reuses the existing exact fixed256 compact-row leaf for private-c1
 # BF16 attention below the split threshold. The rows=1 actual-shape screen is
 # F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
@@ -2009,6 +2015,7 @@ __all__ = [
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
+    "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",

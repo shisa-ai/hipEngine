@@ -609,6 +609,21 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
     ) == {}
 
 
+def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
+        {},
+    ) == {
+        (5_120, 64, 24, 4, 256, 256, 256): 4_096,
+    }
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
+        {},
+    ) == {}
+
+
 def test_gfx1151_backend_admits_dense_h5120_sole_q4_t16() -> None:
     register_gfx1151_kernels()
 
