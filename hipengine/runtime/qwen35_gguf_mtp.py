@@ -52,6 +52,22 @@ def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
     return str(requested)
 
 
+def _initial_state_only_journal_applies(
+    requested: str,
+    *,
+    max_candidate_budget: int,
+) -> bool:
+    """Return whether every possible target row uses native session journals."""
+
+    return (
+        _effective_target_verify_mode(
+            requested,
+            rows=int(max_candidate_budget) + 1,
+        )
+        == "native"
+    )
+
+
 @dataclass
 class Qwen35GGUFVerifyGraphBucket:
     """Stable shared-ABI buffers for one scheduler verify shape.
@@ -184,6 +200,7 @@ class _StateJournal:
     row_hidden: DeviceBuffer
     initial_state_copy: _InitialStatePairCopy | None
     producer_capture_initial_state: bool
+    initial_state_only: bool
     initial_state_captured: bool
     buffers: tuple[DeviceBuffer, ...]
 
@@ -194,6 +211,7 @@ class _StateJournal:
         *,
         max_rows: int,
         producer_capture_initial_state: bool = False,
+        initial_state_only: bool = False,
     ) -> "_StateJournal":
         owner = target._target_scratch_owner
         if owner is None or target.runner is None:
@@ -222,8 +240,9 @@ class _StateJournal:
                     for layer_id, state in enumerate(states):
                         if state is None:
                             continue
+                        snapshot_rows = 1 if initial_state_only else int(max_rows) + 1
                         snapshots = malloc(
-                            int(max_rows + 1) * int(state.nbytes),
+                            snapshot_rows * int(state.nbytes),
                             runtime=runtime,
                         )
                         buffers.append(snapshots)
@@ -258,6 +277,7 @@ class _StateJournal:
             row_hidden=row_hidden,
             initial_state_copy=initial_state_copy,
             producer_capture_initial_state=producer_capture_active,
+            initial_state_only=bool(initial_state_only),
             initial_state_captured=False,
             buffers=tuple(buffers),
         )
@@ -365,6 +385,8 @@ class _StateJournal:
         self.initial_state_captured = True
 
     def capture_row(self, row: int, *, stream: int = 0) -> None:
+        if self.initial_state_only:
+            raise RuntimeError("initial-state-only journal cannot capture serial rows")
         row = int(row)
         if row < 0 or row >= self.max_rows:
             raise ValueError("verify journal row outside capacity")
@@ -402,6 +424,8 @@ class _StateJournal:
         self._restore_hidden(self.initial_hidden.ptr, stream=stream)
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
+        if self.initial_state_only:
+            raise RuntimeError("initial-state-only journal cannot restore serial rows")
         row = int(row)
         if row < 0 or row >= self.max_rows:
             raise ValueError("verify commit row outside journal capacity")
@@ -565,6 +589,10 @@ class Qwen35GGUFTransactionalVerifier:
             target,
             max_rows=self.max_candidate_budget + 1,
             producer_capture_initial_state=(selected_verify_mode == "native"),
+            initial_state_only=_initial_state_only_journal_applies(
+                selected_verify_mode,
+                max_candidate_budget=self.max_candidate_budget,
+            ),
         )
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
         self._prepared: Qwen35GGUFPreparedVerify | None = None

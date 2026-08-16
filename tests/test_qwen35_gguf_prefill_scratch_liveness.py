@@ -79,6 +79,13 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
     )
 
 
+def _fake_dense_qwen38_q4ks_runner() -> SimpleNamespace:
+    runner = _fake_dense_qwen36_runner()
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q4_K_S"
+    return runner
+
+
 def _fake_dense_qwen35_08b_runner() -> SimpleNamespace:
     cfg = SimpleNamespace(
         architecture="qwen35",
@@ -961,6 +968,41 @@ def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(
     assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
+
+
+def test_gfx1151_dense_qwen38_q4ks_prefill_keeps_dedicated_fields_and_caps_rows(
+    monkeypatch,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    runner = _fake_dense_qwen38_q4ks_runner()
+
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=4_352,
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=1_280,
+    ) is None
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        runner,
+        rows=1_024,
+        capacity=4_352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "dedicated"
+    assert scratch.allocation_offsets == {}
+    assert scratch.allocation_inplace_aliases == {}
+    hidden_a, hidden_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=1_024,
+        nbytes=1_024 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert hidden_a.ptr != hidden_b.ptr
 
 
 def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None:

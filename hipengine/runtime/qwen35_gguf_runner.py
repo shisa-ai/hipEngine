@@ -2044,6 +2044,9 @@ class Qwen35GGUFFullStackRunner:
     host_token_embedding_mapped_weight: Qwen35GGUFDeviceWeight | None = field(
         default=None, init=False, repr=False
     )
+    host_token_embedding_mapped_storage: str | None = field(
+        default=None, init=False, repr=False
+    )
     host_token_embedding_registered_ptr: int = field(default=0, init=False, repr=False)
     _token_embedding_lock: object = field(default_factory=threading.Lock, init=False, repr=False)
     _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
@@ -2115,12 +2118,9 @@ class Qwen35GGUFFullStackRunner:
                         self.token_embedding_placement = "device"
                         return
                     raise ValueError("host token embedding was materialized on device")
-                mapped_host = bool(
-                    backend_package_capability(
-                        self.backend,
-                        "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
-                        False,
-                    )
+                mapped_host = _gguf_mapped_host_token_embedding_enabled(
+                    backend=self.backend,
+                    quant_key=token_weight.spec.quant_key,
                 )
                 supported_quants = {"gguf_q8_0"}
                 if mapped_host:
@@ -2159,7 +2159,12 @@ class Qwen35GGUFFullStackRunner:
 
         if self.runtime is None:
             raise RuntimeError("GGUF mapped host embedding requires a HIP runtime")
-        raw = np.asarray(raw)
+        raw, storage = _gguf_mapped_host_token_embedding_storage(
+            backend=self.backend,
+            raw=raw,
+        )
+        self.host_token_embedding_raw = raw
+        self.host_token_embedding_mapped_storage = storage
         if not raw.flags.c_contiguous:
             raise ValueError("GGUF mapped host embedding storage must be contiguous")
         host_ptr = int(raw.ctypes.data)
@@ -2198,6 +2203,7 @@ class Qwen35GGUFFullStackRunner:
     def _unmap_host_token_embedding(self) -> None:
         host_ptr = int(self.host_token_embedding_registered_ptr)
         self.host_token_embedding_mapped_weight = None
+        self.host_token_embedding_mapped_storage = None
         self.host_token_embedding_registered_ptr = 0
         if host_ptr and self.runtime is not None:
             self.runtime.host_unregister(host_ptr)
@@ -10355,6 +10361,25 @@ def _resolve_gguf_token_embedding_placement(
         return "device", "explicit_device"
     if mode == "host":
         return "host", "explicit_private_c1"
+    mapped_host_type_rejected = False
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+            False,
+        )
+    ):
+        supported_types = tuple(
+            str(value)
+            for value in backend_package_capability(
+                backend,
+                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+                (),
+            )
+        )
+        if not supported_types or str(token_embedding_type_name) in supported_types:
+            return "host", "mapped_host_private_c1_auto"
+        mapped_host_type_rejected = True
     if bool(
         backend_package_capability(
             backend,
@@ -10373,25 +10398,58 @@ def _resolve_gguf_token_embedding_placement(
         if str(token_embedding_type_name) not in supported_types:
             return "device", "host_type_device_fallback"
         return "host", "gfx1151_private_c1_auto"
-    if bool(
+    if mapped_host_type_rejected:
+        return "device", "mapped_host_type_device_fallback"
+    return "device", "backend_device_fallback"
+
+
+def _gguf_mapped_host_token_embedding_enabled(
+    *,
+    backend: str,
+    quant_key: str,
+) -> bool:
+    """Return whether this raw embedding type may use a mapped host pointer."""
+
+    if not bool(
         backend_package_capability(
             backend,
             "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
             False,
         )
     ):
-        supported_types = tuple(
-            str(value)
-            for value in backend_package_capability(
-                backend,
-                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
-                (),
-            )
+        return False
+    supported_types = tuple(
+        str(value)
+        for value in backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+            (),
         )
-        if supported_types and str(token_embedding_type_name) not in supported_types:
-            return "device", "mapped_host_type_device_fallback"
-        return "host", "mapped_host_private_c1_auto"
-    return "device", "backend_device_fallback"
+    )
+    ggml_type_name = str(quant_key).removeprefix("gguf_").upper()
+    return not supported_types or ggml_type_name in supported_types
+
+
+def _gguf_mapped_host_token_embedding_storage(
+    *,
+    backend: str,
+    raw: np.ndarray,
+) -> tuple[np.ndarray, str]:
+    """Prepare backend-qualified mapped storage without mutating GGUF bytes."""
+
+    source = np.asarray(raw)
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY",
+            False,
+        )
+    ):
+        return (
+            np.array(source, dtype=np.uint8, copy=True, order="C"),
+            "hip_registered_host_copy",
+        )
+    return source, "hip_registered_gguf_mmap"
 
 
 def _resolve_gguf_private_c1_small_weight_arena(
@@ -14568,7 +14626,7 @@ class Qwen35GGUFResidentSession:
         capacity = int(capacity)
         if capacity <= 0:
             raise ValueError("prefill capacity must be positive")
-        return max(
+        rows = max(
             1,
             min(
                 capacity,
@@ -14578,6 +14636,11 @@ class Qwen35GGUFResidentSession:
                 ),
             ),
         )
+        row_cap = _gguf_dense_prefill_scratch_row_cap(
+            self.runner,
+            capacity=capacity,
+        )
+        return rows if row_cap is None else min(rows, row_cap)
 
     def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
         if self.scratch is None:
@@ -22776,6 +22839,46 @@ def _gguf_dense_prefill_scratch_policy(runner: object) -> Mapping | None:
     identity = _gguf_policy_identity(weights)
     policy = None if identity is None else policies.get(identity)
     return policy if isinstance(policy, Mapping) else None
+
+
+def _gguf_dense_prefill_scratch_row_cap(
+    runner: object,
+    *,
+    capacity: int,
+) -> int | None:
+    """Return a geometry-qualified exact outer-chunk scratch-row ceiling."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or bool(getattr(cfg, "is_moe", False))
+        or not isinstance(backend, str)
+    ):
+        return None
+    try:
+        policies = backend_package_capability(
+            backend,
+            "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
+            {},
+        )
+    except ValueError:
+        return None
+    if not isinstance(policies, Mapping):
+        return None
+    identity = _gguf_policy_identity(weights)
+    policy = None if identity is None else policies.get(identity)
+    if not isinstance(policy, Mapping):
+        return None
+    try:
+        min_capacity = int(policy.get("min_capacity", 1))
+        max_rows = int(policy["max_rows"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if int(capacity) < max(1, min_capacity) or max_rows <= 0:
+        return None
+    return min(int(capacity), max_rows)
 
 
 def _gguf_prefill_scratch_priority_min_live_stages(

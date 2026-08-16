@@ -356,6 +356,41 @@ is **16.914 GiB**, no new workspace or persistent bytes are introduced, and
 tracked teardown is zero; whole-process GTT remains task 24. Evidence:
 [`exact Q4_K_S native B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
+#### Retained G5 candidate — clean closure refresh pending
+
+Task 24 retains only exact, fail-closed ownership changes for private-c1
+Q4_K_S/H5120: an 80-MiB selective weight arena, one 188-range decode-scratch
+owner, initial-only native B1-B3 rollback state, dedicated 1K outer chunks at
+4K capacity, and an anonymous mapped-host copy of the compressed Q4 embedding.
+One right-sized process per shape with 50-ms continuous GTT/RSS/system sampling
+measures:
+
+| Shape | Prefill | AR | Tracked peak | Process GTT delta | Lower llama GTT | Margin |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **378.433** | **13.0488** | **15.063 GiB** | **15.275 GiB** | 15.785 GiB | **-3.233%** |
+| 1K/128 | **376.167** | **12.8776** | **15.481 GiB** | **15.710 GiB** | 15.816 GiB | **-0.670%** |
+| 4K/128 | **369.867** | **13.0379** | **15.494 GiB** | **15.727 GiB** | 16.004 GiB | **-1.728%** |
+
+Relative to clean Q4_K_S, sampled prefill is within
+**-0.338%/-0.306%/-0.248%** and AR is
+**+0.077%/+0.084%/+0.096%**. All final IDs remain 9707, retained weights are
+15,331,854,336 bytes through two physical owners, BF16 K/V is
+50,331,648/83,886,080/285,212,672 bytes, RSS peaks at 4.854 GiB, and tracked
+teardown is zero. These unified-memory scopes are reported separately and are
+not additive.
+
+The selected exact B3 route reaches **15.899 GiB** process GTT versus the valid
+llama HIP B3 row's **16.358 GiB (-2.805%)**, with **15.656 GiB** tracked peak
+and zero teardown. An adjacent unsampled host/device embedding control measures
+**+0.012% true AR / -0.027% B3** while saving exactly **715,161,600 tracked
+bytes**, so the host owner is inside the frozen 1% performance guard. Every
+natural trajectory and GPU/CPU acceptance decision is exact. Unsafe owner-slot/
+single-arena liveness aliases, priority/hidden aliases, direct file mmap, and
+short-session reuse are excluded because stronger logit/trajectory gates found
+corruption. This is retained-development evidence; task 26 owns the clean
+post-commit binding refresh. Evidence:
+[`retained G5 candidate`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json).
+
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
 (+9.935%/+10.611%/+10.168%)**. Both actual standard-Q6 QKV weights improve

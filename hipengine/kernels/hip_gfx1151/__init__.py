@@ -749,17 +749,32 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
         "transport": "hipgraph"
     },
 }
-# SH3-M1 admits loader-time host ownership only for private c1 sessions. Any
-# shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
-# or transactionally restores the exact resident Q8_0 table.
+# SH3-M1 admits loader-time host ownership only for private c1 sessions. Q8_0
+# retains its CPU-copy route. Qwen3.8 Q4_K uses an anonymous immutable host
+# copy: directly registering the file-backed mmap corrupted complete-model
+# trajectories on gfx1151, while the copied mapping is graph-safe and exact.
 GGUF_HOST_TOKEN_EMBEDDING_C1 = True
-GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q8_0",)
-# gfx1151 retains its qualified CPU-copy Q8_0 route; mapped host kernel reads
-# require an independent lifecycle/performance gate on that device.
-GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = False
+GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q8_0", "Q4_K")
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q4_K",)
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY = True
 # SH16-M2 retains one bounded private-c1 owner for allocations <=16 MiB.
 # The environment selector is a temporary explicit opt-out for rollback.
 GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
+# Qwen3.8 Q4_K_S packs every non-root immutable owner through the first complete
+# inventory crossover. The matched 4K gate collapses 371 physical weight owners
+# to three while preserving exact output and complete wall.
+GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        "enabled": True,
+        "max_allocation_bytes": 80 * 1024 * 1024,
+    },
+}
+# The same private-c1 geometry exposes its 188 logical state/KV ranges through
+# one physical owner. Shared runners and wider batches retain dedicated owners.
+GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {"enabled": True},
+}
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
@@ -797,6 +812,16 @@ GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768
 GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
+# Dense Qwen3.8 Q4_K_S keeps every bulk-prefill field dedicated: both owner-slot
+# and single-arena liveness aliases changed logits despite preserving repeated-
+# token top-1. At 4K capacity, bound the already-supported exact outer chunk to
+# 1K rows instead; shorter shapes keep their established full-row allocation.
+GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        "min_capacity": 4_096,
+        "max_rows": 1_024,
+    },
+}
 # Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
 # 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
 # AOTriton. Runtime capacity remains capped at the validated 64K allocation
@@ -2086,7 +2111,11 @@ __all__ = [
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
+    "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+    "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
@@ -2108,6 +2137,7 @@ __all__ = [
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
     "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+    "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
