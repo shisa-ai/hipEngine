@@ -2,11 +2,13 @@
   "schema_version": 1,
   "date": "2026-08-15",
   "kind": "qwen38_27b_dedicated_xtx_context_soak",
-  "status": "qualified_dedicated_c1_112k_and_public_concurrency_limits",
+  "status": "qualified_actual_execution_frontier",
   "performance_claim": true,
   "correctness_claim": true,
   "topline_eligible": false,
-  "decision": "For an idle, dedicated RX 7900 XTX, recommend 114,688 total context tokens as the explicit Qwen3.8-27B pure-INT8 maximum when max-active-requests=1, AR is used, and prefix cache/MTP are off. Four different pinned ShareGPT-derived 114,683-token prompts completed consecutively with exact generated-ID accounting, zero leaked ownership, 23.322876 GiB peak, and 0.661499 GiB headroom; this supersedes the earlier conservative 96K recommendation for that exact dedicated-c1 operating contract. Keep 96K as an optional extra-margin setting. Do not transfer 112K to c>1: the current packed short-context path adds a BF16 mirror and is not an efficient INT8 capacity route. Measured 512-MiB-headroom settings are 4K/request at physical c2 and 1,280/request at physical c4; offered c8 is two c4 queue waves, not eight simultaneously resident requests.",
+  "classification_corrected_date": "2026-08-16",
+  "classification_correction": "The original rollup incorrectly used a chosen 512-MiB headroom diagnostic as a pass/fail condition. This artifact now classifies only server startup, exact request completion, post-request readiness/ownership, and actual runtime errors as pass/fail. Headroom remains measured data.",
+  "decision": "For an idle, dedicated RX 7900 XTX, 114,688 total context tokens is the highest completed Qwen3.8-27B pure-INT8 c1 row; four different pinned ShareGPT-derived requests passed with exact accounting, zero leaked ownership, 23.322876 GiB peak, and 0.661499 GiB headroom. At c2, every tested row through 6,144 tokens/request completed, while 8,192 failed both requests with HIP OOM and 8,448 failed startup because direct no-mirror packed INT8 is unsupported. Physical c4 completed 1,536/request for 16/16 multi-turn requests, and no c4 execution failure was tested. Shape-aware offered-c8 rows execute as two physical c4 waves; offered c8 completed every tested row through 2,048/request, although that highest raw row predates shape capture, and no c8 execution failure was observed. The short c>1 route retains a BF16 mirror and is not an efficient INT8 capacity path.",
   "source": {
     "implementation_commit": "b3dd9a39f376bc7b813313c810fd59dad43a7640",
     "mtp_policy_fix_commit": "12bdf8c520b6e4f5b6b9f50ca2e04dc3aa9ec27e",
@@ -55,16 +57,18 @@
     "prefix_cache": "off",
     "speculative_mtp": "off",
     "startup_min_free_mib": 1024,
-    "minimum_request_high_water_headroom_mib": 512,
-    "request_gate": "HTTP 200, exact rendered prompt count, exact authoritative generated token IDs/count, authoritative generation shape, /ready after each burst, zero final owners, and clean teardown",
+    "historical_headroom_diagnostic_mib": 512,
+    "headroom_interpretation": "The 512-MiB value was a chosen diagnostic threshold, not a measured failure boundary, and does not classify execution success in this corrected artifact.",
+    "request_gate": "server ready, HTTP 200, exact rendered prompt count, exact authoritative generated token IDs/count, authoritative generation shape where recorded, /ready after each burst, zero final owners, and clean teardown",
+    "execution_pass_definition": "A row passes when the server starts, all requested responses pass the exact request gate, post-burst readiness/ownership is clean, and no runtime error occurs. Low measured headroom alone is not failure.",
     "concurrency_release": "barrier-released concurrent HTTP requests",
-    "interpretation": "c is offered public client concurrency; effective physical residency is reported separately"
+    "interpretation": "c is offered public client concurrency; effective physical residency is reported separately when authoritative shape accounting exists"
   },
-  "recommendations": [
+  "reference_soak_rows": [
     {
       "offered_client_concurrency": 1,
       "effective_physical_resident_capacity": 1,
-      "recommended_context_tokens_per_request": 114688,
+      "context_tokens_per_request": 114688,
       "maximum_simultaneously_resident_context_tokens": 114688,
       "aggregate_offered_context_tokens": 114688,
       "cycles": 4,
@@ -85,12 +89,12 @@
       "ready_after": true,
       "zero_final_ownership": true,
       "passed": true,
-      "classification": "recommended dedicated-c1 maximum"
+      "classification": "highest tested c1 execution pass and dedicated-c1 recommendation"
     },
     {
       "offered_client_concurrency": 2,
       "effective_physical_resident_capacity": 2,
-      "recommended_context_tokens_per_request": 4096,
+      "context_tokens_per_request": 4096,
       "maximum_simultaneously_resident_context_tokens": 8192,
       "aggregate_offered_context_tokens": 8192,
       "cold_runs": 2,
@@ -107,12 +111,12 @@
       "ready_after": true,
       "zero_final_ownership": true,
       "passed": true,
-      "classification": "measured c2 safety setting, not efficient INT8 capacity"
+      "classification": "repeated cold multi-turn c2 reference pass, not the highest tested pass"
     },
     {
       "offered_client_concurrency": 4,
       "effective_physical_resident_capacity": 4,
-      "recommended_context_tokens_per_request": 1280,
+      "context_tokens_per_request": 1280,
       "maximum_simultaneously_resident_context_tokens": 5120,
       "aggregate_offered_context_tokens": 5120,
       "cycles": 2,
@@ -129,12 +133,12 @@
       "ready_after": true,
       "zero_final_ownership": true,
       "passed": true,
-      "classification": "measured c4 safety setting, not efficient INT8 capacity"
+      "classification": "longer c4 reference soak pass, not the highest tested pass"
     },
     {
       "offered_client_concurrency": 8,
       "effective_physical_resident_capacity": 4,
-      "recommended_context_tokens_per_request": 1280,
+      "context_tokens_per_request": 1280,
       "maximum_simultaneously_resident_context_tokens": 5120,
       "aggregate_offered_context_tokens": 10240,
       "queue_waves_per_turn": 2,
@@ -154,16 +158,28 @@
       "ready_after": true,
       "zero_final_ownership": true,
       "passed": true,
-      "classification": "public c8 queue/lifecycle setting; two physical c4 waves, not resident c8"
+      "classification": "shape-aware multi-turn c8 reference pass; two physical c4 waves, not resident c8, and not the highest tested pass"
     }
   ],
-  "upper_failures": [
+  "boundary_classification_rows": [
     {
       "offered_client_concurrency": 1,
       "context_tokens_per_request": 122880,
-      "passed": false,
-      "reason": "configured startup free-memory guard failed at 0.86 GiB below the required 1.00 GiB",
+      "execution_classification": "not_executed_policy_guard",
+      "actual_execution_passed": null,
+      "request_count": 0,
+      "reason": "the configured 1-GiB startup free-memory guard blocked execution at 0.86 GiB; this is not an observed runtime failure",
       "sampled_headroom_gib": 0.3467826843261719,
+      "source": "benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json"
+    },
+    {
+      "offered_client_concurrency": 1,
+      "context_tokens_per_request": 131072,
+      "request_count": 0,
+      "actual_execution_passed": false,
+      "execution_classification": "actual_startup_failure_hip_oom",
+      "reason": "server remained not-ready after HIP OOM allocating the shared BF16 prefill oracle during eager warmup",
+      "sampled_headroom_gib": 0.16773223876953125,
       "source": "benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json"
     },
     {
@@ -174,26 +190,73 @@
       "all_http_requests_exact": true,
       "peak_whole_device_vram_gib": 23.969974517822266,
       "headroom_gib": 0.014400482177734375,
-      "passed": false,
-      "reason": "fails the 512-MiB high-water headroom rule at the first 256-token step above 4K"
+      "actual_execution_passed": true,
+      "execution_classification": "multi_turn_pass"
+    },
+    {
+      "offered_client_concurrency": 2,
+      "effective_physical_resident_capacity": 2,
+      "context_tokens_per_request": 4608,
+      "request_count": 16,
+      "all_http_requests_exact": true,
+      "peak_whole_device_vram_gib": 23.973976135253906,
+      "headroom_gib": 0.01039886474609375,
+      "actual_execution_passed": true,
+      "execution_classification": "multi_turn_pass"
+    },
+    {
+      "offered_client_concurrency": 2,
+      "effective_physical_resident_capacity": 2,
+      "context_tokens_per_request": 4864,
+      "request_count": 8,
+      "all_http_requests_exact": true,
+      "peak_whole_device_vram_gib": 23.973876953125,
+      "headroom_gib": 0.010498046875,
+      "actual_execution_passed": true,
+      "execution_classification": "multi_turn_pass"
+    },
+    {
+      "offered_client_concurrency": 2,
+      "effective_physical_resident_capacity": 2,
+      "context_tokens_per_request": 5632,
+      "request_count": 8,
+      "all_http_requests_exact": true,
+      "peak_whole_device_vram_gib": 23.975780487060547,
+      "headroom_gib": 0.008594512939453125,
+      "actual_execution_passed": true,
+      "execution_classification": "multi_turn_pass"
+    },
+    {
+      "offered_client_concurrency": 2,
+      "effective_physical_resident_capacity": 2,
+      "context_tokens_per_request": 6144,
+      "request_count": 2,
+      "all_http_requests_exact": true,
+      "peak_whole_device_vram_gib": 23.971912384033203,
+      "headroom_gib": 0.012462615966796875,
+      "actual_execution_passed": true,
+      "execution_classification": "single_burst_pass_highest_tested_c2_pass"
     },
     {
       "offered_client_concurrency": 2,
       "effective_physical_resident_capacity": 2,
       "context_tokens_per_request": 8192,
       "request_count": 2,
+      "passed_request_count": 0,
       "http_status": 500,
       "peak_whole_device_vram_gib": 23.97512435913086,
       "headroom_gib": 0.009250640869140625,
-      "passed": false,
-      "reason": "both requests fail with HIP out of memory"
+      "actual_execution_passed": false,
+      "execution_classification": "actual_request_failure_hip_oom",
+      "reason": "both requests returned HTTP 500 with HIP error 2: out of memory"
     },
     {
       "offered_client_concurrency": 2,
       "context_tokens_per_request": 8448,
       "request_count": 0,
-      "passed": false,
-      "reason": "startup fails closed because packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
+      "actual_execution_passed": false,
+      "execution_classification": "actual_startup_failure_unsupported_direct_int8",
+      "reason": "server readiness timed out after resident_prepare raised NotImplementedError because packed AR direct no-mirror INT8 attention is not admitted"
     },
     {
       "offered_client_concurrency": 4,
@@ -203,8 +266,8 @@
       "all_http_requests_exact": true,
       "peak_whole_device_vram_gib": 23.821430206298828,
       "headroom_gib": 0.16294479370117188,
-      "passed": false,
-      "reason": "multi-turn run fails the 512-MiB high-water headroom rule"
+      "actual_execution_passed": true,
+      "execution_classification": "multi_turn_pass_highest_tested_c4_pass"
     },
     {
       "offered_client_concurrency": 8,
@@ -216,8 +279,55 @@
       "queue_group_request_counts": [4],
       "peak_whole_device_vram_gib": 23.491344451904297,
       "headroom_gib": 0.4930305480957031,
-      "passed": false,
-      "reason": "even one c8-offered burst fails the 512-MiB high-water headroom rule"
+      "actual_execution_passed": true,
+      "execution_classification": "shape_aware_single_burst_pass"
+    },
+    {
+      "offered_client_concurrency": 8,
+      "effective_physical_resident_capacity": null,
+      "physical_shape_evidence": "not recorded by this pre-shape-accounting raw run",
+      "context_tokens_per_request": 2048,
+      "request_count": 8,
+      "all_http_requests_exact": true,
+      "peak_whole_device_vram_gib": 23.973819732666016,
+      "headroom_gib": 0.010555267333984375,
+      "actual_execution_passed": true,
+      "execution_classification": "single_burst_pass_highest_tested_c8_pass"
+    }
+  ],
+  "observed_execution_limits": [
+    {
+      "offered_client_concurrency": 1,
+      "effective_physical_resident_capacity": 1,
+      "highest_tested_execution_pass_tokens_per_request": 114688,
+      "first_actual_execution_failure_tokens_per_request": 131072,
+      "intermediate_not_executed_tokens_per_request": [122880],
+      "note": "122,880 was blocked by a configured startup guard and is not a runtime failure"
+    },
+    {
+      "offered_client_concurrency": 2,
+      "effective_physical_resident_capacity": 2,
+      "highest_tested_execution_pass_tokens_per_request": 6144,
+      "highest_multi_turn_execution_pass_tokens_per_request": 5632,
+      "first_actual_execution_failure_tokens_per_request": 8192,
+      "failure": "both requests returned HTTP 500 HIP OOM",
+      "next_software_admission_failure_tokens_per_request": 8448
+    },
+    {
+      "offered_client_concurrency": 4,
+      "effective_physical_resident_capacity": 4,
+      "highest_tested_execution_pass_tokens_per_request": 1536,
+      "highest_multi_turn_execution_pass_tokens_per_request": 1536,
+      "actual_execution_failure_observed": false
+    },
+    {
+      "offered_client_concurrency": 8,
+      "effective_physical_resident_capacity": 4,
+      "highest_tested_execution_pass_tokens_per_request": 2048,
+      "highest_shape_aware_execution_pass_tokens_per_request": 1536,
+      "highest_shape_aware_multi_turn_execution_pass_tokens_per_request": 1280,
+      "actual_execution_failure_observed": false,
+      "note": "offered c8 queues as two physical c4 waves; the 2,048 pass predates authoritative response-shape capture"
     }
   ],
   "layout_interpretation": {
@@ -226,7 +336,7 @@
     "bf16_mirror_increment_bytes_per_page": 16777216,
     "packed_page_multiple_vs_pure_long_c1": 2.9692307692307693,
     "source_behavior": "_qwen35_gguf_session_kv_chunk_layout adds BF16 mirrors to per-token/head INT8 full-attention layers when max_positions <= 8192; packed AR rejects direct INT8 when those mirrors are absent",
-    "conclusion": "Only the long c1 row is a genuine no-mirror compact-INT8 capacity recommendation. The c2/c4/c8 rows validate current public server safety/lifecycle but should not be advertised as INT8 memory savings."
+    "conclusion": "Only the long c1 row is a genuine no-mirror compact-INT8 capacity recommendation. The c2/c4/c8 rows are observed server execution/lifecycle evidence but should not be advertised as INT8 memory savings."
   },
   "quality_link": {
     "artifact": "benchmarks/results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json",
@@ -237,27 +347,40 @@
   "commands": {
     "c1_112k_natural4": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 114688 --concurrency 1 --cycles 4 --turns 1 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c1-112k-natural4-r1 --output /tmp/qwen38-qual-c1-112k-natural4-r1.json",
     "c2_4k_multiturn": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 4096 --concurrency 2 --cycles 2 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c2-4096-r1 --output /tmp/qwen38-qual-c2-4096-r1.json",
+    "c2_6k_single_burst": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 6144 --concurrency 2 --cycles 1 --turns 1 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-frontier-c2-6144-r1 --output /tmp/qwen38-frontier-c2-6144-r1.json",
+    "c2_8k_actual_oom": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 8192 --concurrency 2 --cycles 2 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c2-8192-r1 --output /tmp/qwen38-qual-c2-8192-r1.json",
+    "c2_8448_unsupported_startup": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 8448 --concurrency 2 --cycles 1 --turns 1 --max-tokens 4 --startup-timeout-s 150 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-frontier-c2-8448-r1 --output /tmp/qwen38-frontier-c2-8448-r1.json",
     "c4_1280_multiturn": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 1280 --concurrency 4 --cycles 2 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c4-1280-r1 --output /tmp/qwen38-qual-c4-1280-r1.json",
-    "c8_1280_multiturn": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 1280 --concurrency 8 --cycles 1 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c8-1280-r3-multiturn-shape --output /tmp/qwen38-qual-c8-1280-r3-multiturn-shape.json"
+    "c4_1536_multiturn": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 1536 --concurrency 4 --cycles 1 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-frontier-c4-1536-r2-multiturn --output /tmp/qwen38-frontier-c4-1536-r2-multiturn.json",
+    "c8_1280_multiturn": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 1280 --concurrency 8 --cycles 1 --turns 4 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c8-1280-r3-multiturn-shape --output /tmp/qwen38-qual-c8-1280-r3-multiturn-shape.json",
+    "c8_1536_shape_aware": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 1536 --concurrency 8 --cycles 1 --turns 1 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-frontier-c8-1536-r2-shape --output /tmp/qwen38-frontier-c8-1536-r2-shape.json",
+    "c8_2048_single_burst": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 2048 --concurrency 8 --cycles 1 --turns 1 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-frontier-c8-2k-r1 --output /tmp/qwen38-frontier-c8-2k-r1.json"
   },
   "raw_artifacts": [
     {"path": "/tmp/qwen38-qual-c1-112k-natural4-r1.json", "sha256": "cf4bfd1c8292881255a9f608ca7dc81a3e194a7f0b1c3e3176539de8997ceee4"},
     {"path": "/tmp/qwen38-qual-c2-4096-r1.json", "sha256": "c4f0358006478baca5f397718f4005defdc4583196572ca6f33a51d1fde46c1f"},
     {"path": "/tmp/qwen38-qual-c2-4096-r2.json", "sha256": "74c522e128f22ca26f3d0399be3ac72b10bb0923ff531d47bc669ca25283623e"},
     {"path": "/tmp/qwen38-frontier-c2-4352-r1-multiturn.json", "sha256": "565cbf1a315f771866973000411758f3299a134931eb12eea33936a8e75c48ac"},
+    {"path": "/tmp/qwen38-qual-c2-4608-r1.json", "sha256": "fbb45411d4c4d9455dc72de2ec3004538b0c0b41a4423130c700e9d611023ed3"},
+    {"path": "/tmp/qwen38-frontier-c2-4864-r1-multiturn.json", "sha256": "d0bf9433a936ff5a6a13b895c17dfcc5719a63024f30d31362b5e425bc00ae2b"},
+    {"path": "/tmp/qwen38-frontier-c2-5632-r1-multiturn.json", "sha256": "dd1dcf54b8f6b6098859869ed525c2f914f9e161bf838c2b4b4a1a739a828d4e"},
+    {"path": "/tmp/qwen38-frontier-c2-6144-r1.json", "sha256": "cad1b9bc526d5099128d145bc721d8ef3fc9aa2c14ab98c2642915b98837bdbe"},
+    {"path": "/tmp/qwen38-qual-c2-8192-r1.json", "sha256": "010b5cc72415af68f302d74de1afbbca3664a1a38d7f428f4a49a2593690fd9a"},
     {"path": "/tmp/qwen38-frontier-c2-8448-r1.json", "sha256": "e52e1f5e2cd570bb8e06c6a9a4c01e64b75c0110b7f47f45fec578fad3a029d9"},
     {"path": "/tmp/qwen38-qual-c4-1280-r1.json", "sha256": "fdd703c02705abb0b3f5f58d17710a2a1b88752d89f6794ad17ead14f3d4b456"},
     {"path": "/tmp/qwen38-frontier-c4-1536-r2-multiturn.json", "sha256": "958523443c3da9cd2f7176922603428d6bee891eff428047886060085dd597a6"},
     {"path": "/tmp/qwen38-qual-c8-1280-r3-multiturn-shape.json", "sha256": "73544e1c75f90a8c86bb51a16c232b2cb169ccbd42147d382c695eac3fff2e7b"},
     {"path": "/tmp/qwen38-qual-c8-1280-r2-shape.json", "sha256": "c51c3e737758ea88937320410e67bbcec3d475707ef7153eb018405333308acf"},
-    {"path": "/tmp/qwen38-frontier-c8-1536-r2-shape.json", "sha256": "07d4a5d6d5f9f86865cf0cc594a9e84f73f7b43588ae2a78d634dcb59a336fe5"}
+    {"path": "/tmp/qwen38-frontier-c8-1536-r2-shape.json", "sha256": "07d4a5d6d5f9f86865cf0cc594a9e84f73f7b43588ae2a78d634dcb59a336fe5"},
+    {"path": "/tmp/qwen38-frontier-c8-2k-r1.json", "sha256": "26bbf2ff8dfb2353329f3d8b90531b8060b2819352e87f37b283d887bbfd88f8"}
   ],
   "limitations": [
     "The c1 112K soak proves repeated natural-prompt capacity/lifecycle with four generated tokens per request; representative long-context quality remains checked only through bounded 64K/16.",
-    "The recommendation assumes an otherwise idle dedicated GPU, one active request, AR-only execution, prefix cache off, MTP off, and the explicit unverified-long INT8 gate.",
+    "The c1 recommendation assumes an otherwise idle dedicated GPU, one active request, AR-only execution, prefix cache off, MTP off, and the explicit unverified-long INT8 gate.",
     "The c2/c4/c8 rows retain a BF16 mirror by design at these short contexts and are not compact-INT8 memory wins.",
-    "Offered c8 is two c4 physical queue groups. It validates public c8 admission, exact output accounting, and lifecycle, not eight simultaneously resident model rows.",
-    "The 512-MiB request-high-water reserve is an explicit dedicated-card operational rule. Values above the selected settings can return HTTP 200 while leaving only 9-163 MiB and are rejected as unsafe."
+    "Offered c8 is two c4 physical queue groups, not eight simultaneously resident model rows.",
+    "Several successful rows left only 9-163 MiB sampled headroom. They remain execution passes because no arbitrary reserve reclassifies them; the measured headroom is reported so operators can judge reliability separately.",
+    "No actual execution failure was observed for offered c4 or c8. The highest tested c8 pass, 2,048/request, predates authoritative response-shape capture and covers one burst only."
   ],
-  "next": "Keep 112K as the dedicated-c1 explicit maximum. If long c>1 INT8 is desired, add a no-mirror serial fallback or direct packed-INT8 attention before repeating this matrix; do not promote the current mirrored path as an INT8 memory optimization."
+  "next": "Keep 112K as the dedicated-c1 explicit maximum. Report c2 as observed pass through 6,144/request with actual OOM at 8,192; report c4 pass through 1,536 and offered c8 pass through 2,048 with no tested failure. If long c>1 compact INT8 is desired, add a no-mirror serial fallback or direct packed-INT8 attention; do not promote the current mirrored path as an INT8 memory optimization."
 }

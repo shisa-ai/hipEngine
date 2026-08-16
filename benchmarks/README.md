@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-15**
+Last updated: **2026-08-16**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -263,15 +263,23 @@ unverified gate, graph capture rejects it, exact natural B3 is only **0.6423x**
 true AR, and BF16 remains supported/default.
 
 Do not transfer 112K to concurrent serving. Current packed short-context INT8
-retains a BF16 mirror and is not a compact memory route. With the soak's explicit
-512-MiB high-water reserve, measured settings are:
+retains a BF16 mirror and is not a compact memory route. The original rollup
+incorrectly treated a chosen 512-MiB headroom diagnostic as a failure boundary;
+that classification is withdrawn. Headroom remains measured data, while the
+limit table now reports only what executed successfully and what actually
+failed:
 
-| Offered HTTP clients | Physical residency | Context / request | Max resident context | Peak / headroom | Gate |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| 1 | 1 | **112K** | 112K | 23.323 / 0.661 GiB | 4 natural requests pass; 120K startup guard fails |
-| 2 | 2 | **4K** | 8K | 23.452 / 0.532 GiB | 24 requests across two cold runs pass; 4.25K leaves 0.014 GiB |
-| 4 | 4 | **1.25K** | 5K | 23.431 / 0.554 GiB | 32 multi-turn requests pass; 1.5K leaves 0.163 GiB |
-| 8 | 4, two queue waves | **1.25K** | 5K | 23.431 / 0.554 GiB | 32 multi-turn requests pass; 1.5K leaves 0.493 GiB on its first burst |
+| Offered HTTP clients | Physical residency | Highest observed working row | Strongest repetition at/near frontier | First actual failure observed | Peak / headroom at highest pass |
+| ---: | ---: | ---: | --- | --- | ---: |
+| 1 | 1 | **112K/request** | 4/4 different natural requests | **128K** startup HIP OOM; 120K was policy-blocked and not executed | 23.323 / 0.661 GiB |
+| 2 | 2 | **6K/request** | 5.5K: 8/8 multi-turn; 4.5K: 16/16 | **8K:** 0/2, HTTP 500 HIP OOM; 8.25K also has an unsupported-route startup failure | 23.972 / 0.012 GiB |
+| 4 | 4 | **1.5K/request** | 16/16 multi-turn | **None tested** | 23.821 / 0.163 GiB |
+| 8 | 4 in two queue waves at shape-aware rows | **2K/request** | 1.5K: 8/8 shape-aware; 1.25K: 32/32 multi-turn | **None tested** | 23.974 / 0.011 GiB |
+
+The c2 interval between the 6K pass and 8K OOM is untested. The offered-c8 2K
+pass covers one burst and predates authoritative response-shape capture; it is
+still an execution pass, not a failure. No exact c4 or c8 failure ceiling was
+measured.
 
 Evidence:
 [`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),

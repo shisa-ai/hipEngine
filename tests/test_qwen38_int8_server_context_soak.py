@@ -39,6 +39,19 @@ def test_pool_pages_cover_all_near_capacity_requests() -> None:
             pages_per_request=5,
             offered_concurrency=8,
         )
+    args = module.build_parser().parse_args(
+        [
+            "--context-tokens",
+            "2048",
+            "--concurrency",
+            "2",
+            "--work-dir",
+            "/tmp/qwen38-soak-test",
+            "--output",
+            "/tmp/qwen38-soak-test.json",
+        ]
+    )
+    assert args.startup_min_free_mib == 0
 
 
 def test_pinned_sharegpt_fixture_is_complete_and_rotates_lanes() -> None:
@@ -90,7 +103,7 @@ def test_extract_chat_response_requires_authoritative_exact_ids() -> None:
         )
 
 
-def test_safety_gate_requires_headroom_and_idle_ownership() -> None:
+def test_execution_gate_records_headroom_without_reclassifying_success() -> None:
     module = _load_module()
     requests = [{"passed": True}, {"passed": True}]
     ownership = {
@@ -108,23 +121,23 @@ def test_safety_gate_requires_headroom_and_idle_ownership() -> None:
         "cache_resident_bytes": 0,
         "allowed_cache_bytes": 0,
     }
-    accepted = module.evaluate_safety_gate(
+    low_headroom_pass = module.evaluate_execution_gate(
         requests=requests,
         ready_after={"ready": True},
         ownership=ownership,
         total_vram_bytes=24 * 1024**3,
-        peak_vram_bytes=(24 * 1024**3) - (640 * 1024**2),
-        minimum_headroom_mib=512,
+        peak_vram_bytes=(24 * 1024**3) - (256 * 1024**2),
     )
-    assert accepted["passed"] is True
-    rejected = module.evaluate_safety_gate(
+    assert low_headroom_pass["passed"] is True
+    assert low_headroom_pass["headroom_bytes"] == 256 * 1024**2
+
+    ownership_failure = module.evaluate_execution_gate(
         requests=requests,
         ready_after={"ready": True},
         ownership=ownership | {"kv_refcounted_pages": 1},
         total_vram_bytes=24 * 1024**3,
-        peak_vram_bytes=(24 * 1024**3) - (256 * 1024**2),
-        minimum_headroom_mib=512,
+        peak_vram_bytes=(24 * 1024**3) - (640 * 1024**2),
     )
-    assert rejected["passed"] is False
-    assert rejected["checks"]["minimum_headroom"] is False
-    assert rejected["checks"]["idle_ownership"] is False
+    assert ownership_failure["passed"] is False
+    assert ownership_failure["headroom_bytes"] == 640 * 1024**2
+    assert ownership_failure["checks"]["idle_ownership"] is False
