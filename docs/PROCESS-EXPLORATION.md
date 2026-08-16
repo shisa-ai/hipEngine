@@ -6,8 +6,10 @@ This document defines an optional mode for cases where hipEngine has a measured
 performance gap but bounded, single-incumbent tuning is repeatedly converging on
 small local changes. It permits a broader search over algorithms, dataflows,
 representations, fusion boundaries, scheduling, compiler behavior, and runtime
-ownership. It does **not** relax correctness, benchmark integrity, architecture,
-or default-promotion rules.
+ownership. It does **not** relax the declared execution-profile contract,
+benchmark integrity, architecture, or default-promotion rules. T1/T2 production
+arithmetic may be explored only against the frozen strict-teacher evaluator;
+control/ownership remains exact.
 
 The governing principle is:
 
@@ -24,6 +26,8 @@ This methodology complements:
   authority for claim eligibility and prompt-sensitive optimization;
 - [`TESTING.md`](TESTING.md), which remains the authority for independent
   oracles, RED/GREEN work, and correctness gates;
+- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), which defines strict,
+  production, batch-invariant, T1/T2 implementation-drift, and T3 boundaries;
 - [`KERNELS.md`](KERNELS.md), [`ROOFLINE.md`](ROOFLINE.md), and the applicable
   backend tuning guide for lineage, resource, and profiling requirements;
 - [`PROCESS-IMPROVEMENT.md`](PROCESS-IMPROVEMENT.md), which separately discusses
@@ -96,7 +100,8 @@ hypothesis is uncertain; the measurement contract cannot be.
 - independent numerical or transaction oracles;
 - benchmark inputs, timing boundaries, objective extraction, and denominators;
 - anti-gaming and train/heldout rules;
-- exact model, quant, shape, hardware, software, and route identity;
+- exact model, quant, shape, hardware, software, execution profile/schema,
+  teacher source, and selected/strict-fallback route-manifest identity;
 - one hardware owner and normal thermal/idle discipline;
 - unfused fallbacks, lifecycle, memory, and public-default gates;
 - explicit staging, validation, worklog, and atomic commit requirements;
@@ -122,7 +127,8 @@ Before generating ideas, state:
 - model family and geometry, or the narrower explicitly supported model;
 - quant and physical layout;
 - operation/layer roles;
-- dtype and numerical contract;
+- execution profile, T0/T1/T2/T3 source, dtype, numerical contract, teacher,
+  and whether generated-ID equality is binding or diagnostic;
 - row, batch, context, and alignment ranges;
 - graph/eager, prefill/decode/verifier, and concurrency modes in scope;
 - required fallback behavior outside the optimized region;
@@ -155,7 +161,9 @@ narrowly labelled claim:
 - numerical range detectors or data-distribution fast paths;
 - sparsity detected from fixed model weights rather than guaranteed by format;
 - context- or occupancy-adaptive routing learned from workload traces;
-- approximate/mixed-precision policies selected from quality results.
+- approximate/mixed-precision T1/T2 production policies selected from quality
+  results; T3 representation/decision policies require a separate explicit
+  product/research campaign.
 
 A conditional specialization is acceptable only when the policy is frozen from
 a declared development set, remains mathematically valid for all routed inputs,
@@ -195,7 +203,9 @@ Record and, where practical, hash:
 - benchmark and profiler scripts;
 - objective extractor and comparison logic;
 - prompt/shape fixtures and train/heldout split;
-- CPU/reference oracle and tolerances;
+- strict/CPU/reference oracle and profile thresholds;
+- execution-profile schema, teacher, selected/fallback manifest hashes, and
+  binding-vs-diagnostic ID policy;
 - baseline and comparator commands;
 - timing and synchronization boundaries;
 - required environment and route manifest;
@@ -443,8 +453,8 @@ Record:
 - model, quant, layout, route, and shape envelope;
 - complete metric plus measured owner and maximum prize;
 - discovery, qualification, confirmation, and heldout surfaces;
-- correctness class and independent oracle;
-- evaluator identities/hashes and candidate edit allowlist;
+- execution profile, T0/T1/T2/T3 class, independent oracle, and strict fallback;
+- evaluator identities/hashes, teacher source, variant manifests, and candidate edit allowlist;
 - maturation, hardware-time, and complexity budgets;
 - human-review triggers;
 - stop, promotion, and reopen rules.
@@ -464,10 +474,11 @@ win.
 For each iteration:
 
 1. state the hypothesis and predicted observable before editing;
-2. add or identify the independent RED/correctness check when behavior or math
-   changes;
+2. add or identify the independent strict or profile-numerical RED/control check
+   when behavior or math changes;
 3. implement the smallest change that tests the mechanism;
-4. run correctness and resource guards before performance timing;
+4. run exact control/ownership and the declared strict/production/
+   batch-invariant numerical/resource guards before performance timing;
 5. measure the discovery set with all samples retained;
 6. profile when the result is major, surprising, or structurally different;
 7. classify the result as `promote-to-qualification`, `maturing`, `near-miss`,
@@ -495,10 +506,11 @@ current production parent, not with a deliberately weak intermediate.
 Freeze the implementation and run the qualification set. Require:
 
 - operation completeness and fallback coverage;
-- representative and edge correctness;
-- actual model/weight/state/KV checks;
-- full required shape, category, and heldout matrix;
-- complete-model A/B and resource accounting;
+- representative and edge declared-profile correctness;
+- exact control/ownership plus actual model/weight/state/KV checks;
+- full required shape, category, heldout, dynamic-transition, determinism, and
+  isolation matrix;
+- complete-model strict-teacher/task A/B and resource accounting;
 - a refreshed profile confirming the claimed mechanism;
 - no evaluator, prompt, denominator, or timing-boundary change.
 
@@ -511,8 +523,8 @@ it satisfies [`BENCHMARK.md`](BENCHMARK.md)'s full/train/heldout/category rules.
 Run the untouched confirmation protocol from a clean source/process state. Then
 apply the ordinary hipEngine promotion contract:
 
-- exact or explicitly quality-qualified non-regression;
-- shipping-default route parity;
+- strict exact/parent-parity or production-profile quality/task non-regression;
+- exact control/ownership and shipping-profile manifest provenance;
 - benchmark artifact, README rollup, and changelog for retained claims;
 - kernel catalog/lineage updates when applicable;
 - immutable worklog entry;
@@ -563,8 +575,10 @@ operation-local fusion, and bounded ownership changes.
 Pause for human review before:
 
 - changing benchmark scripts, fixtures, objectives, heldout splits, timing
-  boundaries, or correctness thresholds;
-- accepting approximate math, quality tradeoffs, or changed sampling semantics;
+  boundaries, execution-profile contracts, or correctness thresholds;
+- accepting T3 representation/routing/acceptance/sampling changes. T1/T2
+  implementation drift inside the approved production envelope may proceed
+  autonomously only with the frozen mechanical profile verifier;
 - changing architecture, plugin boundaries, `KVLiveSpans`, public APIs, or
   persistent state ownership;
 - adding prompt-, token-, candidate-, model-value-, or distribution-conditioned
@@ -652,11 +666,14 @@ not successful merely because it ran for a long time.
 Before starting a less-bounded optimization exploration:
 
 - [ ] Current route and baseline are certified.
+- [ ] Execution profile/schema, T0/T1/T2/T3 source, strict teacher/fallback,
+      manifests, and binding ID policy are frozen.
 - [ ] Complete metric and measured owner are distinct and both recorded.
 - [ ] The remaining prize is material.
 - [ ] The declared specialization/generalization envelope is explicit.
 - [ ] Forbidden input-conditioned behavior is understood.
-- [ ] Evaluator, fixtures, objective, timing, and oracle are frozen.
+- [ ] Evaluator, fixtures, objective, timing, strict-teacher/profile thresholds,
+      and oracle are frozen.
 - [ ] Candidate edit allowlist is narrow.
 - [ ] Discovery, qualification, confirmation, and heldout use are defined.
 - [ ] At least three genuinely different hypothesis families exist.
