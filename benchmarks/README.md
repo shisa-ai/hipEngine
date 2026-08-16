@@ -372,6 +372,17 @@ verifier-chain key remains excluded for the separate MTP gate. This is retained
 development evidence, not a clean topline refresh. Evidence:
 [`scalar GDN BF16 handoff`](results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
 
+The exact gfx1151 rows1 dense-F32 alpha/beta pair then contracts two projections
+per recurrent layer into one launch. The 4K trace removes another **48
+launches/token (822 -> 774)**, improves alpha/beta-to-Conv span **0.85573 ->
+0.67959 ms/token (-20.583%)**, selected kernel wall **0.134%**, and profiled host
+decode **0.242%**. Counterbalanced 512/128 graph AR improves **12.25916 ->
+12.27588 tok/s (+0.136%)**, with both candidates above both controls, exact
+IDs/logits, unchanged **16.753218-GiB** peaks, and no bytes. The prior gfx1100
+runtime rejection and rows2-4 native/MTP singleton path remain unchanged. This
+is retained development evidence, not a clean topline refresh. Evidence:
+[`dense-F32 alpha/beta pair`](results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph
