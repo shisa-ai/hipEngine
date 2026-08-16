@@ -737,6 +737,8 @@ def _metric_vectors(
         "teacher_delta_p": canonical["delta_p"],
         "strict_margin": np.empty(row_count, dtype=np.float64),
         "strict_top1_candidate_rank": np.empty(row_count, dtype=np.int64),
+        "strict_top1_token_id": np.argmax(reference, axis=1).astype(np.int64),
+        "candidate_top1_token_id": np.argmax(candidate, axis=1).astype(np.int64),
         "max_abs_logit_delta": canonical["max_abs_logit_delta"],
     }
     for index in range(row_count):
@@ -799,6 +801,30 @@ def _summary_passes(
     )
 
 
+def _row_diagnostic(
+    row: RowDescriptor,
+    index: int,
+    vectors: Mapping[str, np.ndarray],
+) -> dict[str, Any]:
+    return {
+        **row.to_dict(),
+        "row_index": int(index),
+        "kl": float(vectors["kl"][index]),
+        "top1_equal": bool(vectors["top1_equal"][index]),
+        "strict_top1_token_id": int(vectors["strict_top1_token_id"][index]),
+        "candidate_top1_token_id": int(vectors["candidate_top1_token_id"][index]),
+        "topk_overlap": float(vectors["topk_overlap"][index]),
+        "strict_margin": float(vectors["strict_margin"][index]),
+        "strict_top1_candidate_rank": int(
+            vectors["strict_top1_candidate_rank"][index]
+        ),
+        "strict_teacher_nll": float(vectors["reference_teacher_nll"][index]),
+        "candidate_teacher_nll": float(vectors["candidate_teacher_nll"][index]),
+        "teacher_delta_p": float(vectors["teacher_delta_p"][index]),
+        "max_abs_logit_delta": float(vectors["max_abs_logit_delta"][index]),
+    }
+
+
 def compare_profile_logits(
     strict_logits: np.ndarray,
     candidate_logits: np.ndarray,
@@ -832,6 +858,7 @@ def compare_profile_logits(
                 {"dimension": "global", "value": "non_finite_logits"}
             ],
             "rows_over_review_boundary": [],
+            "top1_mismatch_rows": [],
             "hard_gates_passed": False,
             "requires_outlier_review": False,
             "eligible_for_automatic_admission": False,
@@ -866,26 +893,15 @@ def compare_profile_logits(
         by_scope[dimension] = groups
 
     over_review = np.flatnonzero(vectors["kl"] > threshold.review_kl)
-    review_rows: list[dict[str, Any]] = []
-    for index in over_review:
-        row = row_tuple[int(index)]
-        review_rows.append(
-            {
-                **row.to_dict(),
-                "row_index": int(index),
-                "kl": float(vectors["kl"][index]),
-                "top1_equal": bool(vectors["top1_equal"][index]),
-                "topk_overlap": float(vectors["topk_overlap"][index]),
-                "strict_margin": float(vectors["strict_margin"][index]),
-                "strict_top1_candidate_rank": int(
-                    vectors["strict_top1_candidate_rank"][index]
-                ),
-                "strict_teacher_nll": float(vectors["reference_teacher_nll"][index]),
-                "candidate_teacher_nll": float(vectors["candidate_teacher_nll"][index]),
-                "teacher_delta_p": float(vectors["teacher_delta_p"][index]),
-                "max_abs_logit_delta": float(vectors["max_abs_logit_delta"][index]),
-            }
-        )
+    review_rows = [
+        _row_diagnostic(row_tuple[int(index)], int(index), vectors)
+        for index in over_review
+    ]
+    top1_mismatches = np.flatnonzero(~vectors["top1_equal"])
+    top1_mismatch_rows = [
+        _row_diagnostic(row_tuple[int(index)], int(index), vectors)
+        for index in top1_mismatches
+    ]
     hard_pass = (
         _summary_passes(overall, threshold, top1_min=threshold.top1_min)
         and not scope_failures
@@ -899,6 +915,7 @@ def compare_profile_logits(
         "by_scope": by_scope,
         "scope_failures": scope_failures,
         "rows_over_review_boundary": review_rows,
+        "top1_mismatch_rows": top1_mismatch_rows,
         "hard_gates_passed": bool(hard_pass),
         "requires_outlier_review": requires_review,
         "eligible_for_automatic_admission": bool(hard_pass and not requires_review),

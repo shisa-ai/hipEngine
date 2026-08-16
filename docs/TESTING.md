@@ -114,8 +114,11 @@ passing a gate. Strict and candidate primary fixtures are also separate because
 their declared graph/fallback metadata can differ even when logical ownership
 is identical. Production generated-ID equality to strict remains non-binding.
 A row above the `0.02` review boundary yields `requires_review` even
-when the calibrated hard envelope passes. The binding values and calibration
-evidence are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
+when the calibrated hard envelope passes. Every top-1 mismatch is also emitted
+with prompt/step, strict and candidate winners, KL, top-k overlap, strict
+margin/rank, teacher NLL/delta-p, and maximum absolute logit delta even when its
+KL is below the review boundary. The binding values and calibration evidence
+are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
 
 Run a completed packet with:
 
