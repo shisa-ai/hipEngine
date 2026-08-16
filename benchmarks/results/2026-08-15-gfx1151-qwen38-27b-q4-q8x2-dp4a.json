@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_dp4a",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "346f7911451f5d61f3a10a26340ded2c67588e9d",
+    "development_worktree_dirty": true,
+    "compiler": "AMD clang 23.0.0git"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "Qwen3.8-27B Q4_K_M / gfx1151 / rows1 / H5120 to FFN17408 dense gate+up+SiLU only",
+    "producer": "one BF16-to-primary-plus-residual-Q8_1 packer",
+    "consumer": "same-resident dual-Q4T16 dp4a gate/up projection with BF16 SiLU publication",
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "workspace_bytes_at_rows1": 11520,
+    "rows2_plus_owner": "unchanged exact T16 verifier path",
+    "fallback": "two exact local32 Q4T16 projections plus primitive BF16 SiLU",
+    "peer_geometries_changed": false
+  },
+  "actual_weight_leaf": {
+    "layers": [0, 8, 63],
+    "source_pool_mib_per_pair": 95.625,
+    "resident_t16_mib_per_pair": 98.28125,
+    "protocol": "15 counterbalanced HIP-event pairs per layer after four warmups; actual model weights; each source pair exceeds 2x 32-MiB MALL",
+    "control_ms": 1.4893900156021118,
+    "candidate_ms": 1.4400390088558197,
+    "speedup": 1.0342706040897487,
+    "candidate_wins": "44/45",
+    "all_layers_positive": true,
+    "projected_512_128_request_saving_percent": 1.2495115290261711,
+    "quality": {
+      "finite": true,
+      "max_abs_vs_exact_control": 0.00048828125,
+      "max_kl_vs_exact_control": 3.6617600332751066e-11,
+      "top1_agreement": 1.0,
+      "bf16_bit_exact": false
+    }
+  },
+  "shape_ar": {
+    "protocol": "token 9707 repeated to prompt length, BF16 KV, one warmup, three measured graph-replay runs, 128 decode tokens",
+    "rows": {
+      "512/128": {
+        "control_tok_s": 11.793221867889091,
+        "candidate_tok_s": 11.84670482716201,
+        "speedup": 1.004535059195193,
+        "control_tracked_peak_gib": 16.753218058496714,
+        "candidate_tracked_peak_gib": 16.753218058496714,
+        "final_ids_identical": true,
+        "teardown_bytes": 0,
+        "comparison": "current C3/A3 persistent-session graph pair"
+      },
+      "1K/128": {
+        "control_tok_s": 11.651986402581699,
+        "candidate_tok_s": 11.714179727868279,
+        "speedup": 1.0053375727655158,
+        "control_tracked_peak_gib": 19.529302295297384,
+        "candidate_tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true,
+        "teardown_bytes": 0,
+        "comparison": "retained post-P4 control to current candidate"
+      },
+      "4K/128": {
+        "control_tok_s": 10.918004407905913,
+        "candidate_tok_s": 10.94755464939766,
+        "speedup": 1.0027065606852428,
+        "control_tracked_peak_gib": 19.529302295297384,
+        "candidate_tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true,
+        "teardown_bytes": 0,
+        "comparison": "retained post-P4 control to current candidate"
+      }
+    }
+  },
+  "natural_suite": {
+    "protocol": "all ten mtp-bench prompts, four categories, six train/four heldout, 25 visible outputs, three runs, AR plus native exact B1-B3",
+    "status": "complete_exact",
+    "requests_per_mode": 30,
+    "timed_transitions_per_mode": 720,
+    "all_candidate_ar_and_mtp_tokens_identical": true,
+    "all_tokens_identical_to_both_retained_controls": true,
+    "all_acceptance_trajectories_identical_to_both_retained_controls": true,
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_reconciled": true,
+    "teardown_bytes": 0,
+    "rows": {
+      "true_ar": {
+        "historical_control_tok_s": 12.024508188666315,
+        "post_control_tok_s": 12.015105632503431,
+        "candidate_tok_s": 12.109450877598773,
+        "candidate_over_historical": 1.0070641299918213,
+        "candidate_over_post_control": 1.0078522193629424
+      },
+      "B1": {
+        "historical_control_tok_s": 18.831143372275452,
+        "post_control_tok_s": 18.814424015070898,
+        "candidate_tok_s": 18.96475434312315,
+        "candidate_over_historical": 1.007095212871907,
+        "candidate_over_post_control": 1.0079901637133208
+      },
+      "B2": {
+        "historical_control_tok_s": 23.072397600620086,
+        "post_control_tok_s": 23.025327211532595,
+        "candidate_tok_s": 23.169530759372698,
+        "candidate_over_historical": 1.0042099291297755,
+        "candidate_over_post_control": 1.0062628229564476
+      },
+      "B3": {
+        "historical_control_tok_s": 24.122081034457356,
+        "post_control_tok_s": 24.111219860475682,
+        "candidate_tok_s": 24.24116333708513,
+        "candidate_over_historical": 1.0049366512971112,
+        "candidate_over_post_control": 1.0053893364732847
+      }
+    },
+    "scope_guard": {
+      "scopes_per_control": 28,
+      "minimum_ratio_vs_historical": 1.0011889890954353,
+      "minimum_ratio_vs_post_control": 1.0039631050661637,
+      "all_scopes_positive": true
+    }
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task22-q4-q8x2-validation/rocprof/gfx1151/1104317_kernel_trace.csv",
+    "sha256": "8f696a4f0dc31d0046d5d8f1297ce3ecd7a2b7fe3083db4f7f0e5c86040c77fe",
+    "q8x2_quantizer": {
+      "calls": 1,
+      "duration_ns": 1643,
+      "workgroup_x": 32,
+      "vgpr": 16,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "q4t16_q8x2_dp4a_silu": {
+      "calls": 1,
+      "duration_ns": 43441,
+      "workgroup_x": 64,
+      "vgpr": 224,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    }
+  },
+  "validation": {
+    "focused_tests": "5 passed",
+    "correctness_gate": "finite, KL <= 0.05, top-1 >= 90%; actual leaf achieved max KL 3.6618e-11 and 100% top-1",
+    "full_model_exactness": "30/30 AR trajectories and 90/90 B1-B3 trajectories match both retained controls; acceptance trajectories unchanged",
+    "all_shape_non_regression": true,
+    "tracked_peak_unchanged": true,
+    "zero_tracked_bytes_after_close": true,
+    "require_cached_build": true,
+    "compiler_child_measured": false
+  },
+  "evidence": {
+    "validated_summary": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-validation/validated-summary.json",
+      "sha256": "9f20f4e4e1b59623581c68144a7e3e3d5b9d22223c5e7a7778adc2279dffb118",
+      "bytes": 6019
+    },
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-dp4a-leaf/leaf.json",
+      "sha256": "3e6dcce82a1ae80e790aca65e74577a17b116e44e9b4ec1f97b9107926aced9c",
+      "bytes": 8212
+    },
+    "shape_512_control": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-integration/control-c3-p512-d128.json",
+      "sha256": "cea83acd792ed668fbee89f41412531076cbf930ba82cf212d23907b2d1d4db8",
+      "bytes": 454723
+    },
+    "shape_512_candidate": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-integration/candidate-a3-p512-d128.json",
+      "sha256": "cbc9c37294be21c2ba7eedb2a84e3d00779357fce6591c0a7dc41ddfcd4350d1",
+      "bytes": 454652
+    },
+    "shape_1k4k_candidate": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-shapes/candidate-1k4k.json",
+      "sha256": "3a4abcb383dd42a4d50c34e9d26358cea936d67c9b4fa3496105d370624e0ba5",
+      "bytes": 867289
+    },
+    "natural_candidate": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-natural/natural.json",
+      "sha256": "f281da2639169a6b169c4c64a04ca3b808d94ca268cca3823084165e584ca900",
+      "bytes": 2068906
+    },
+    "natural_historical_control": {
+      "path": "/tmp/qwen38-task21-p4-q5-natural/natural.json",
+      "sha256": "687f8471a4393675363fcfa8a17f366e86aeeff310e38454098286ee1b9e113a",
+      "bytes": 2069065
+    },
+    "natural_post_control": {
+      "path": "/tmp/qwen38-task21-p4-q5-full-post-control/control.json",
+      "sha256": "743610bb95f8bdaefdf5d7f43170271adfcc1ebe9b6791e637a1ce02bbaba064",
+      "bytes": 2069257
+    }
+  },
+  "decision": "Retain and default the Qwen3.8/gfx1151 rows1 H5120-to-FFN17408 dense gate/up route. It has no duplicate resident weights, unchanged tracked peaks, positive AR at every required shape and every natural scope, and exactly preserves all tested model and MTP trajectories. Keep exact local32 plus primitive SiLU as the policy-miss rollback. This is development evidence, not a clean publication topline; P5 remains open because Vulkan AR is still faster."
+}

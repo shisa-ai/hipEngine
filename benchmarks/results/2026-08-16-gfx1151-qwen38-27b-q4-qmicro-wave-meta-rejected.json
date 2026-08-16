@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_qmicro_wave_meta_operation_gate",
+  "status": "rejected_removed",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "e653ed2f241c3970691358856e7cf5c9c2fe6457",
+    "development_tree_dirty": true,
+    "runtime_change_retained": false,
+    "transient_source_restored": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "candidate": {
+    "scope": "dense H5120/N17408 Q4 gate/up+SiLU sole-payload replacement",
+    "control_layout": "gguf_q4_k_t16_v1",
+    "candidate_layout": "gguf_q4_k_qmicro_t16_v1",
+    "control_tile_bytes_per_k256_n16": 2368,
+    "candidate_tile_bytes_per_k256_n16": 2304,
+    "control_pair_bytes": 103055360,
+    "candidate_pair_bytes": 100270080,
+    "resident_bytes_delta": -2785280,
+    "resident_bytes_delta_percent": -2.7027027027027026,
+    "new_workspace_bytes": 0,
+    "production_policy_added": false
+  },
+  "rows1_leaf": {
+    "dataflow": "128-thread split-weight residual-Q8_1x2 dp4a+SiLU; each eight-lane K32 group loads compressed metadata once and exchanges decoded quartets with wave shuffles",
+    "layers": [
+      0,
+      8,
+      63
+    ],
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "control_median_sum_ms": 1.4238077402114868,
+    "candidate_median_sum_ms": 1.3814987242221832,
+    "speedup": 1.030625447021766,
+    "candidate_wins": 45,
+    "pairs": 45,
+    "all_bf16_bit_exact": true,
+    "projected_selected_4k_kernel_wall_saving_percent": 1.1518175731032738,
+    "advance_threshold_percent": 1.0
+  },
+  "operation_gate": {
+    "protocol": "actual layer 0/8/63 weights; three warmups and 15 counterbalanced HIP-event pairs per layer/row; native burst four, prefill burst one",
+    "all_bf16_bit_exact": true,
+    "native_rowtile": {
+      "rows": {
+        "2": {
+          "control_median_sum_ms": 1.4308590292930603,
+          "candidate_median_sum_ms": 1.8283565640449524,
+          "speedup": 0.7825929894809517,
+          "candidate_wall_delta_percent": 27.780342201026077,
+          "candidate_wins": 0,
+          "pairs": 45
+        },
+        "3": {
+          "control_median_sum_ms": 1.4223467409610748,
+          "candidate_median_sum_ms": 1.8313334584236145,
+          "speedup": 0.7766727214089183,
+          "candidate_wall_delta_percent": 28.754361062914157,
+          "candidate_wins": 0,
+          "pairs": 45
+        },
+        "4": {
+          "control_median_sum_ms": 1.4253639876842499,
+          "candidate_median_sum_ms": 1.8819307088851929,
+          "speedup": 0.7573945103051104,
+          "candidate_wall_delta_percent": 32.031588081772334,
+          "candidate_wins": 0,
+          "pairs": 45
+        }
+      },
+      "control_median_sum_ms": 4.278569757938385,
+      "candidate_median_sum_ms": 5.54162073135376,
+      "speedup": 0.7720791380995818,
+      "candidate_wall_delta_percent": 29.52040155642972,
+      "candidate_wins": 0,
+      "pairs": 135
+    },
+    "prefill_wmma": {
+      "rows": {
+        "512": {
+          "control_median_sum_ms": 20.32377815246582,
+          "candidate_median_sum_ms": 20.454538822174072,
+          "speedup": 0.9936072540747534,
+          "candidate_wall_delta_percent": 0.6433876060214061,
+          "candidate_wins": 7,
+          "pairs": 45
+        },
+        "1024": {
+          "control_median_sum_ms": 40.44313049316406,
+          "candidate_median_sum_ms": 40.569207191467285,
+          "speedup": 0.9968923055925594,
+          "candidate_wall_delta_percent": 0.311738227891456,
+          "candidate_wins": 15,
+          "pairs": 45
+        },
+        "4096": {
+          "control_median_sum_ms": 161.0694351196289,
+          "candidate_median_sum_ms": 161.1236114501953,
+          "speedup": 0.9996637592089775,
+          "candidate_wall_delta_percent": 0.033635388691943824,
+          "candidate_wins": 22,
+          "pairs": 45
+        }
+      },
+      "control_median_sum_ms": 221.8363437652588,
+      "candidate_median_sum_ms": 222.14735746383667,
+      "speedup": 0.9985999666972023,
+      "candidate_wall_delta_percent": 0.14019961440898676,
+      "candidate_wins": 44,
+      "pairs": 135
+    }
+  },
+  "correctness": {
+    "rows1_bf16_mismatches": 0,
+    "native_and_prefill_bf16_mismatches": 0,
+    "all_finite": true,
+    "max_kl_rows1": 0.0,
+    "top1_agreement_rows1": 1.0,
+    "tracked_teardown_exact_rows1": true
+  },
+  "validation": {
+    "red": "Focused test collection failed because qmicro native-row and dense-prefill wrappers did not exist.",
+    "green": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_qmicro_q4_dense_dual_rowtile_matches_t16_bits tests/test_gguf_q4_k_t16_dense.py::test_q4_qmicro_dense_dual_wmma_silu_matches_t16_bits => 5 passed",
+    "rows1_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q4-qmicro-wave-meta-leaf/hipcc-version.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-split-weight-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-q4-qmicro-wave-meta-leaf/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-qmicro-wave-meta-leaf/leaf.json",
+    "operation_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-operation-leaf.py --output /tmp/qwen38-task22-q4-qmicro-operation-leaf/leaf.json",
+    "harness_note": "All 18 operation measurement/readback rows completed and were recovered from stdout. The temporary harness then raised AttributeError on a non-existent GGUFReader.close() after measurement; completed timing and correctness rows were not rerun.",
+    "full_model_gate_run": false,
+    "source_restored_after_rejection": true
+  },
+  "raw_evidence": {
+    "rows1_leaf": "/tmp/qwen38-task22-q4-qmicro-wave-meta-leaf/leaf.json",
+    "operation_stdout": "/tmp/qwen38-task22-q4-qmicro-operation-leaf/stdout.log",
+    "operation_recovered_leaf": "/tmp/qwen38-task22-q4-qmicro-operation-leaf/leaf.json"
+  },
+  "decision": "Reject and remove. The wave-shuffled c1 consumer clears admission, but one physical payload must also serve native B1-B3 and prefill. Exact qmicro rowtiles regress every native pair by 27.8-32.0% wall and exact qmicro prefill regresses all three aggregate shapes, so retaining c1 would require a forbidden standard-T16 sidecar or mandatory-mode regressions."
+}

@@ -86,6 +86,29 @@ def _qwen35_layer_types(block_count: int, full_attention_interval: int) -> tuple
     )
 
 
+QWEN35_DENSE_H1024_GEOMETRY = GGUFModelGeometry(
+    architecture="qwen35",
+    block_count=24,
+    hidden_size=1_024,
+    vocab_size=248_320,
+    feed_forward_length=3_584,
+    head_count=8,
+    head_count_kv=2,
+    key_length=256,
+    value_length=256,
+    full_attention_interval=4,
+    layer_types=_qwen35_layer_types(24, 4),
+    ssm_inner_size=2_048,
+    ssm_group_count=16,
+    ssm_state_size=128,
+    ssm_conv_kernel=4,
+    ssm_time_step_rank=16,
+    expert_count=0,
+    expert_used_count=0,
+    expert_feed_forward_length=0,
+    expert_shared_feed_forward_length=0,
+)
+
 QWEN35_DENSE_H5120_GEOMETRY = GGUFModelGeometry(
     architecture="qwen35",
     block_count=64,
@@ -135,6 +158,7 @@ QWEN35_MOE_H2048_E256_GEOMETRY = GGUFModelGeometry(
 
 __all__ = [
     "GGUFModelGeometry",
+    "QWEN35_DENSE_H1024_GEOMETRY",
     "QWEN35_DENSE_H5120_GEOMETRY",
     "QWEN35_MOE_H2048_E256_GEOMETRY",
 ]

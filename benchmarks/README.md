@@ -65,6 +65,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.031** | **12.063** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -89,8 +90,7 @@ Each value is the total tokens per second across all active requests:
 Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
 llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
 hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
-draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated
-suite and remains opt-in because it can differ from normal AR.
+draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Where detailed evidence lives
@@ -129,15 +129,63 @@ backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
-full Vulkan-parity campaign (D08) to a blocked closure, then the
-human-approved D08-X extension retained three prefill routes - Q5T16 QKV,
-cluster8 GDN (Q4 and, after a fresh gate, Q8_0), pack8-WMMA bulk, and
-dense-BF16 WMMA - moving exact-core pp512 to **4345/4983 tok/s Q4/Q8
-(0.73x/0.80x Vulkan)** with public decode at llama-HIP parity. Full
-per-package evidence and history live in
+full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
+Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
+pack8 gate+up+SiLU. That X3 route measures **4344 -> 4944 exact-core pp512
+(+13.81%)** over five paired blocks. A fresh six-block clean-HEAD external
+packet now measures hipEngine / same-source llama HIP / Vulkan exact-core
+pp512 at **4896 / 4848 / 5510 Q4** and **4997 / 4640 / 5704 Q8 tok/s**.
+hipEngine therefore reaches **1.010x llama HIP / 0.889x Vulkan Q4** and
+**1.077x / 0.876x Q8**. The Q4 core gap to Vulkan falls from **21.458 to 11.657
+ms**; public prefill remains 0.867x Vulkan. hipEngine still beats llama HIP
+decode, while public decode is **0.959x Vulkan Q4 / 1.047x Vulkan Q8**. All 36
+children are finite/deterministic/cross-engine exact and every metric CV is
+below 5%. Core Vulkan parity stays open. Evidence: [`post-X3 three-way`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json)
+and [`operation-complete Q4 prefill`](results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
+Full per-package evidence and history live in
 [`benchmarks/HISTORY.md`](HISTORY.md), the D08/D08-X artifacts under
 [`results/`](results/), and
 [`docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+The post-X3 Q4 marker rerank reconciles **100.08%** of its 106.338-ms wall.
+That profile's owners are dense FFN **34.007 ms**, linear-attention projections
+**31.815 ms**, and GDN **23.617 ms**; normalized historical-attribution gaps
+rerank linear projections first at **13.460 ms**. Its explicit 17.628-ms
+Q5-QKV + Q4-gate fallback screen was byte-exact but only **1.0059x / 0.114 ms**
+faster across all 18 pairs. The next GDN cluster8 wave-broadcast screen was
+also exact but regressed **0.775 -> 1.195 ms (0.648x)**. Both transient routes
+were removed. The next dense-FFN package retained exact WMMA down+residual:
+its 12-owner leaf is **9.959 -> 9.804 ms (1.0158x)**, while five paired Q4
+blocks observe **+3.09% core / +1.68% public pp512** with all guards passing.
+The causal retained claim is the 0.155-ms leaf saving. Applying the same exact
+rounded-residual store to the remaining 12 pack8-Q4 down owners instead loses
+both paired screens at **-4.22% core / -4.80% public pp512**; that candidate is
+removed and the pack8 projection+add chain remains current. Evidence:
+[`post-X3 prefill rerank`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json),
+[`projection rejection`](results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json),
+[`GDN rejection`](results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json),
+[`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json),
+and [`pack8 residual rejection`](results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
+The next same-resident operation-complete owner shares each exact activation
+tile across the 18 Q8T16 alpha/beta pairs. Its byte-exact leaf is **2.113 ->
+0.422 ms (5.010x)**; Q4/Q8 paired core pp512 improves **3.64%/2.45%** and
+public pp512 **5.05%/2.13%**, all with 5/5 and 3/3 wins. Evidence:
+[`Q8T16 alpha/beta dual WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
+The prior same-session graph replay census, whose decode route is unchanged by
+X3, leaves only **0.114/0.127 ms/token Q4/Q8** outside device stages. The clean
+fresh-process p16-p4096 threshold diagnostic then completes all **187** children
+with finite logits and exact final IDs: Q4 current/pre-X2 is **1.764x only at
+p512** and **0.997x-1.032x elsewhere**, while automatic GDN beats strict X2 at
+every Q4/Q8 length. This keeps the p512-only WMMA scope and current GDN policies;
+see [`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+The final natural+category-p512 cumulative packet then passes at **1794/1800
+current top-1 (99.667%), max KL 0.005930**, deterministic finite state, and
+**72/72 exact eager/recorded-graph trajectories**; this closes post-review
+validation without changing the blocked Vulkan-parity status. The post-X6
+rerun preserves the same **1794/1800** current top-1 and max KL, keeps all
+**72/72** recorded-graph pairs exact, and matches candidate/rollback teacher and
+state digests on **36/36** Q4 prompt/profile pairs. Evidence:
+[`cumulative baseline`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json)
+and [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
 
 ## Current single-request scoreboards
 
@@ -316,6 +364,123 @@ Evidence:
 [`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json),
 [`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json), and
 [`actual context, W7900 quality, and concurrency frontier`](results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
+### Radeon 8060S: Qwen3.8-27B Dense GGUF campaign opening
+
+This is the clean G0 **current snapshot**, not an optimization claim. hipEngine
+uses `943ec15f5`; llama.cpp HIP and Vulkan use build 10438 `9d57ce456`.
+Binding shape rows use Qwen3.8-27B Q4_K_M, BF16 K/V, explicit repeated token
+9707 arrays, one same-shape warmup, three measured runs, full output hashes,
+and one right-sized process per engine/shape. GTT is whole-device process-run
+delta on the unified-memory APU.
+
+| Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **85.288** | 352.426 | 242.956 | **7.0257** | 12.1506 | 12.7629 | **33.125 GiB** | 15.785 GiB |
+| 1K/128 | **84.497** | 364.443 | 247.610 | **6.9592** | 12.0645 | 12.7197 | **33.613 GiB** | 15.816 GiB |
+| 4K/128 | **84.204** | 367.993 | 354.368 | **6.7144** | 11.5081 | 12.5683 | **36.046 GiB** | 16.004 GiB |
+
+Every llama row has the same stable 129-token hash as the common-capacity
+hipEngine control. hipEngine tracked ownership returns to zero after close and
+peaks at 31.659/32.093/34.497 GiB, but its opening plan still carries
+10,790,502,400 alternate-layout bytes. Synthetic-input llama-bench rows and the
+first F16 profile are retained as diagnostics only, not mixed into this table.
+
+Natural exact suite (ten prompts, six train/four heldout, four categories,
+three runs and 720 timed transitions per mode):
+
+| Engine/mode | Throughput | AR ratio | AR-equivalent output | GTT delta |
+| --- | ---: | ---: | --- | ---: |
+| hipEngine true AR | **7.10844** | 1.0000x | deterministic reference | **34.555 GiB** |
+| hipEngine exact B1 | **14.79394** | 2.0812x | 30/30 | shared process |
+| hipEngine exact B2 | **18.48249** | 2.6001x | 30/30 | shared process |
+| hipEngine exact B3 | **19.72960** | **2.7755x** | 30/30; GPU accept = CPU | shared process |
+| llama.cpp HIP AR | 12.06439 | 1.0000x | deterministic reference | 15.803 GiB |
+| llama.cpp HIP B3 | 19.63473 | 1.6275x | 30/30; valid comparator | 16.358 GiB |
+| llama.cpp Vulkan AR | 12.77754 | 1.0000x | nondeterministic on 2/10 prompts | 15.871 GiB |
+| llama.cpp Vulkan B3 | 26.10541 | 2.0431x | invalid: 27/30; stretch rate | 16.722 GiB |
+
+The opening exact B3 leads the binding correctness-valid HIP comparator by
+0.483%, while prefill, AR, memory and the invalid Vulkan stretch rate remain
+open campaign gaps. Evidence:
+[`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
+[`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
+
+#### Retained clean state — G2 complete
+
+Clean detached commit `a06589f34` retains exact rows>=512 four-wave shared-Q6
+owners for both the 32 planar FFN-down and 24 standard recurrent-QKV projections.
+One right-sized process per shape, one warmup and three measured runs produce:
+
+| Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **399.031** | 352.426 | 242.956 | **12.0626** | 12.1506 | 12.7629 | **17.322 GiB** | 15.785 GiB |
+| 1K/128 | **391.276** | 364.443 | 247.610 | **11.9019** | 12.0645 | 12.7197 | **17.805 GiB** | 15.816 GiB |
+| 4K/128 | **385.330** | 367.993 | 354.368 | **11.0998** | 11.5081 | 12.5683 | **20.181 GiB** | 16.004 GiB |
+
+Prefill beats clean llama.cpp HIP by **13.224%/7.363%/4.711%** and Vulkan by
+**64.240%/58.021%/8.737%** at 512/1K/4K, closing G2. Every prefill CV is below
+0.094%, all nine outputs finish at token 9707, and tracked teardown is zero.
+Relative to the frozen opening snapshot, prefill is
+**367.863%/363.067%/357.612%** faster and process GTT is
+**47.705%/47.030%/44.012%** lower. GTT still exceeds the lower llama row by
+**9.741%/12.575%/26.104%**, and the clean AR diagnostics still trail llama.cpp;
+G3 and G5 therefore remain open.
+
+The causal same-source standard-Q6 A/B remains
+**362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
+(+9.935%/+10.611%/+10.168%)**. Both actual standard-Q6 QKV weights improve
+2.961-3.548x with 90/90 wins; the planar leaf improves 1.421-1.502x with 45/45
+wins. All are BF16-bit exact, while short rows, narrow V, root, shape misses,
+and peer backends retain exact fallbacks. Evidence:
+[`clean G2 publication`](results/2026-08-16-gfx1151-qwen38-27b-prefill-publication.json),
+[`shared standard-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json),
+and [`shared planar-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json).
+
+P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, an exact serial-c1 Q5T16
+recurrent-output tile8 owner, and an exact four-wave Q4 split-weight gate/up
+owner. The latest exact graph-AR rows, against fresh same-source pre-split
+controls, are:
+
+| Shape | Same-source control | Current AR | Split-weight delta | llama HIP | llama Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 11.93837 | **12.07616** | **+1.154%** | 12.1506 | 12.7629 |
+| 1K/128 | 11.78474 | **11.91648** | **+1.118%** | 12.0645 | 12.7197 |
+| 4K/128 | 11.00884 | **11.11492** | **+0.964%** | 11.5081 | 12.5683 |
+
+The split-weight owner also moves natural true AR **12.17631 -> 12.31049
+tok/s (+1.102%)**, with every full/train/heldout/category scope at least
+**+1.078%** and all 30 trajectories exact. Native rows and MTP stay on their
+prior exact owners after the pre-scope B1 diagnostic regressed 0.290%,
+preserving the current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows.
+Tracked peaks and resident bytes are unchanged. Both clean llama.cpp backends
+remain faster at 512/1K, so P5 stays open. Evidence:
+[`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
+[`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
+and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+
+At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
+producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
+**0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph
+processes improve same-source AR **11.10932 -> 12.05960 tok/s (+8.554%)** with
+all 12 fixed-token IDs identical, finite logits, byte-identical
+**19.529302-GiB** tracked peaks, and zero teardown. The current row beats clean
+llama.cpp HIP **11.50812 tok/s by 4.792%**, but remains **4.047%** below Vulkan
+**12.56830 tok/s**; 512/1K and natural short-context routes are unchanged. This
+is retained development evidence, not a clean publication topline. Evidence:
+[`grouped-GQA split attention`](results/2026-08-16-gfx1151-qwen38-27b-grouped-gqa-split-attention.json).
+
+One exact post-grouped sub-window also remains default despite being below
+request-level timing resolution:
+
+| Retained P5 owner | Actual-weight control | Retained | Speedup / wins | Projected 4K saving |
+| --- | ---: | ---: | ---: | ---: |
+| Q4T16 serial-c1 full-K/V K5120/N1024 col4 | 16.962 us/projection | **16.441 us/projection** | **1.03169x / 14 of 15** | **11.821 us/token / 0.0146% kernel wall** |
+
+The shape-scoped owner is BF16-bit exact across 24 immutable weights, changes no
+resident/workspace bytes, and lowers traced VGPR 96 to 56. Native rows, MTP,
+peer backends, and every other Q4 singleton shape retain their previous owner;
+no topline row is inferred from this verified sub-window. Evidence:
+[`Q4T16 c1 col4 full-K/V`](results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

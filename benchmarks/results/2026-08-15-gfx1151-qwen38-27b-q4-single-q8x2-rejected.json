@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_single_q8x2",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "software": {
+    "base_commit": "c9fc3311539c3e765833988bd9c7fb7c2a9f3899",
+    "compiler": "AMD clang 23.0.0git",
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "selection": {
+    "graph_kernel_wall_ms": 10449.636,
+    "affected_q4_single_ms": 2433.647248,
+    "family_share_percent": 23.289301636918264,
+    "required_family_saving_percent": 4.293817030626617,
+    "advance_threshold_percent": 1.0
+  },
+  "candidate": {
+    "control": "sole-Q4T16 exact local32 single projection",
+    "path": "BF16-to-primary-plus-residual-Q8_1 producer plus same-resident single-Q4T16 dp4a projection",
+    "hypothesis": "reduce scalar dequant/FMA work while each sole T16 tile is live",
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "workspace_bytes_k5120": 11520,
+    "workspace_bytes_k17408": 39168,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "roles": [
+      "ffn_down",
+      "attn_output",
+      "linear_gate",
+      "linear_qkv",
+      "full_q",
+      "full_kv"
+    ],
+    "warmups": 3,
+    "samples_per_role": 15,
+    "timing": "counterbalanced HIP events; each event cycles the complete actual-weight role pool",
+    "cache_contract": "each role pool is 67.5-95.625 MiB, exceeds 64 MiB, and exceeds 2x the 32-MiB MALL",
+    "candidate_timing_includes_q8x2_producer": true
+  },
+  "results": [
+    {
+      "role": "ffn_down",
+      "shape": [5120, 17408],
+      "control_us": 238.52349817752838,
+      "candidate_us": 241.02799594402313,
+      "speedup": 0.9896091001516837,
+      "candidate_wins": "2/15",
+      "trace_ms": 935.624532,
+      "projected_saved_ms": -9.82406164833135
+    },
+    {
+      "role": "attn_output",
+      "shape": [5120, 6144],
+      "control_us": 87.10300177335739,
+      "candidate_us": 101.48975253105164,
+      "speedup": 0.85824430152894,
+      "candidate_wins": "0/15",
+      "trace_ms": 167.268196,
+      "projected_saved_ms": -27.62758798833063
+    },
+    {
+      "role": "linear_gate",
+      "shape": [6144, 5120],
+      "control_us": 86.18125319480896,
+      "candidate_us": 91.32075309753418,
+      "speedup": 0.9437203513068269,
+      "candidate_wins": "0/15",
+      "trace_ms": 510.361819,
+      "projected_saved_ms": -30.43590597569964
+    },
+    {
+      "role": "linear_qkv",
+      "shape": [10240, 5120],
+      "control_us": 145.67266901334128,
+      "candidate_us": 155.5976668993632,
+      "speedup": 0.93621371011661,
+      "candidate_wins": "0/15",
+      "trace_ms": 426.426607,
+      "projected_saved_ms": -29.05337838377145
+    },
+    {
+      "role": "full_q",
+      "shape": [12288, 5120],
+      "control_us": 172.60299623012543,
+      "candidate_us": 174.28599298000336,
+      "speedup": 0.9903434767126063,
+      "candidate_wins": "8/15",
+      "trace_ms": 344.960061,
+      "projected_saved_ms": -3.363595500547673
+    },
+    {
+      "role": "full_kv",
+      "shape": [1024, 5120],
+      "control_us": 17.12370788057645,
+      "candidate_us": 23.286916315555573,
+      "speedup": 0.7353359993456015,
+      "candidate_wins": "0/15",
+      "trace_ms": 49.006033,
+      "projected_saved_ms": -17.638375873782874
+    }
+  ],
+  "family": {
+    "all_roles_positive": false,
+    "projected_saved_ms": -117.94290537046362,
+    "projected_complete_graph_percent": -1.1286795575507473
+  },
+  "correctness": {
+    "red": "focused test failed collection because the single-output Q8_1x2 wrapper did not exist",
+    "green": "focused synthetic GPU quality test passed",
+    "actual_weight_finite": true,
+    "max_abs_vs_local32": 0.00390625,
+    "max_kl_vs_local32": 7.640017185673794e-09,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task22-q4-single-q8x2-leaf/leaf.json",
+      "sha256": "4820718fdf71407528a0aa47f7b09d9dc4725fd9fc8ba4c662da849ad4618ded",
+      "bytes": 31976
+    },
+    "profile": {
+      "path": "/tmp/qwen38-task22-post-q8x2-rerank/rocprof-selected/gfx1151/1117555_kernel_trace.csv",
+      "sha256": "f39c0143cc477b173932a38bc55863d101a6a734a662886b20bdf805154b7f60"
+    }
+  },
+  "validation": {
+    "source_restored": true,
+    "worktree_code_diff_after_restore": false,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject and restore single-output residual-Q8_1x2 dp4a. All six actual-weight roles regress, and the call-weighted projection is -117.943 ms / -1.129% of selected graph wall. Keep exact local32 for Q4 singles; no model or natural gate is warranted."
+}

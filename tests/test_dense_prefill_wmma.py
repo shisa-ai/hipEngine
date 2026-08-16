@@ -32,11 +32,110 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (  # noqa: E402
     build_dense_gemv,
     dense_prefill_gemm_out_bf16,
     dense_prefill_wmma_out_bf16,
+    dense_prefill_wmma_out_bf16_residual_bf16_out,
+    register_dense_gemv_kernels,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits  # noqa: E402
 from hipengine.quant.gguf import bf16_to_float32  # noqa: E402
+from hipengine.kernels.registry import resolve  # noqa: E402
 
 _COMPILER = Path("/tmp/d08-c0/hipcc-version.txt")
+
+
+def test_dense_prefill_wmma_residual_sibling_is_registered() -> None:
+    register_dense_gemv_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear+residual",
+            quant="bf16",
+            variant="prefill_wmma_out_bf16_residual_bf16_out",
+        )
+        is dense_prefill_wmma_out_bf16_residual_bf16_out
+    )
+
+
+def test_dense_prefill_wmma_rejects_unaligned_k_before_launch() -> None:
+    """The BK32 kernel cannot safely consume a partial final K tile."""
+
+    with pytest.raises(ValueError, match="in_features % 32"):
+        dense_prefill_wmma_out_bf16(
+            1,
+            2,
+            3,
+            16,
+            1000,
+            128,
+            library=object(),
+            runtime=object(),
+        )
+
+
+@requires_rocm
+def test_dense_prefill_wmma_residual_preserves_rounded_bf16_boundary() -> None:
+    rng = np.random.default_rng(20260816)
+    rows, k, n = 16, 256, 128
+    weights = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.08, size=(n, k)).astype(np.float32))
+    )
+    x = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.35, size=(rows, k)).astype(np.float32))
+    )
+    residual = np.ascontiguousarray(
+        float_array_to_bf16_bits(rng.normal(0, 0.2, size=(rows, n)).astype(np.float32))
+    )
+    projection = np.empty((rows, n), dtype=np.uint16)
+    candidate = np.empty((rows, n), dtype=np.uint16)
+    runtime = get_hip_runtime()
+    compiler = _COMPILER.read_text() if _COMPILER.exists() else None
+    library = build_dense_gemv(load=True, compiler_version=compiler)
+    buffers = []
+
+    def upload(array):
+        buf = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buf)
+        copy_host_to_device(buf, host_array_ptr(array), runtime=runtime)
+        return buf
+
+    try:
+        x_dev = upload(x)
+        weight_dev = upload(weights)
+        residual_dev = upload(residual)
+        projection_dev = malloc(projection.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        buffers.extend((projection_dev, candidate_dev))
+        dense_prefill_wmma_out_bf16(
+            x_dev.ptr,
+            weight_dev.ptr,
+            projection_dev.ptr,
+            rows,
+            k,
+            n,
+            library=library,
+            runtime=runtime,
+        )
+        dense_prefill_wmma_out_bf16_residual_bf16_out(
+            x_dev.ptr,
+            weight_dev.ptr,
+            residual_dev.ptr,
+            candidate_dev.ptr,
+            rows,
+            k,
+            n,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(projection), projection_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(candidate), candidate_dev, runtime=runtime)
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+    expected = float_array_to_bf16_bits(
+        bf16_to_float32(projection) + bf16_to_float32(residual)
+    )
+    assert np.array_equal(candidate, expected)
 
 
 @pytest.mark.parametrize(
@@ -53,13 +152,18 @@ def test_dense_prefill_wmma_matches_reference(n: int, k: int, rows: int) -> None
     rng = np.random.default_rng(20260815)
     weights = rng.normal(0, 0.08, size=(n, k)).astype(np.float32)
     x = rng.normal(0, 0.35, size=(rows, k)).astype(np.float32)
-    expected = x @ weights.T
+    # Independent CPU oracle for the candidate's arithmetic contract: both BF16
+    # inputs are narrowed to F16 before F32-accumulating WMMA. Use float64 for
+    # the host contraction so the GPU candidate is not its own oracle.
+    weights_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(weights))
+    x_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(x))
+    cpu_weights = bf16_to_float32(weights_bf16).astype(np.float16).astype(np.float64)
+    cpu_x = bf16_to_float32(x_bf16).astype(np.float16).astype(np.float64)
+    expected = cpu_x @ cpu_weights.T
 
     runtime = get_hip_runtime()
     compiler = _COMPILER.read_text() if _COMPILER.exists() else None
     library = build_dense_gemv(load=True, compiler_version=compiler)
-    weights_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(weights))
-    x_bf16 = np.ascontiguousarray(float_array_to_bf16_bits(x))
     host_ref = np.empty((rows, n), dtype=np.uint16)
     host_got = np.empty((rows, n), dtype=np.uint16)
     buffers = []
@@ -97,5 +201,8 @@ def test_dense_prefill_wmma_matches_reference(n: int, k: int, rows: int) -> None
     # f16 WMMA operands round both inputs; scale-aware tolerance matches the
     # accepted quant WMMA prefill class.
     scale = max(float(np.abs(expected).max()), 1e-6)
+    candidate_error = np.abs(got.astype(np.float64) - expected)
+    assert candidate_error.max() <= 0.035 * scale
+    assert float(np.mean(np.argmax(expected, 1) == np.argmax(got, 1))) >= 0.90
     assert np.abs(got.astype(np.float64) - ref.astype(np.float64)).max() <= 0.035 * scale
     assert float(np.mean(np.argmax(ref, 1) == np.argmax(got, 1))) >= 0.99

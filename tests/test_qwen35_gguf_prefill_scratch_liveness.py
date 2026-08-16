@@ -6,7 +6,10 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.core.memory import DeviceBuffer
-from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+from hipengine.kernels.policy import (
+    GGUFModelGeometry,
+    QWEN35_DENSE_H5120_GEOMETRY,
+)
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
 
@@ -77,13 +80,40 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
 
 
 def _fake_dense_qwen35_08b_runner() -> SimpleNamespace:
+    cfg = SimpleNamespace(
+        architecture="qwen35",
+        block_count=24,
+        hidden_size=1_024,
+        vocab_size=248_320,
+        feed_forward_length=3_584,
+        head_count=8,
+        head_count_kv=2,
+        key_length=256,
+        value_length=256,
+        full_attention_interval=4,
+        layer_types=tuple(
+            "full_attention" if (index + 1) % 4 == 0 else "linear_attention"
+            for index in range(24)
+        ),
+        ssm_inner_size=2_048,
+        ssm_group_count=16,
+        ssm_state_size=128,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=16,
+        expert_count=0,
+        expert_used_count=0,
+        expert_feed_forward_length=0,
+        expert_shared_feed_forward_length=0,
+        is_moe=False,
+    )
     return SimpleNamespace(
         backend="hip_gfx1151",
         hidden_size=1_024,
         ffn_size=3_584,
         weights=SimpleNamespace(
-            config=SimpleNamespace(is_moe=False),
-            model_name="Qwen3.5-0.8B",
+            config=cfg,
+            geometry=GGUFModelGeometry.from_config(cfg),
+            model_name="arbitrary-renamed-finetune",
             file_type_name="MOSTLY_Q4_K_M",
         ),
     )
@@ -144,7 +174,48 @@ def test_unequal_q4_pair_owner_is_geometry_backend_scoped(monkeypatch) -> None:
     assert not gguf_runner._gguf_q4_t16_unequal_pair_prefill_applies(runner)
 
 
+def test_pack8_dual_wmma_silu_prefill_is_model_quant_request_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    assert gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 511)
+    runner.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+    runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
+    assert not gguf_runner._gguf_q4_pack8_dual_wmma_silu_prefill_applies(runner, 512)
+
+
+def test_q8_t16_dual_wmma_prefill_is_model_quant_request_scoped() -> None:
+    runner = _fake_dense_qwen35_08b_runner()
+    for quant in ("MOSTLY_Q4_K_M", "MOSTLY_Q8_0"):
+        runner.weights.file_type_name = quant
+        assert gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+        assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 511)
+    runner.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+    runner.backend = "hip_gfx1151"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
+    assert not gguf_runner._gguf_q8_t16_dual_wmma_prefill_applies(runner, 512)
+
+
 def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
+    dense_27b = _fake_dense_qwen36_runner()
+    dense_27b.backend = "hip_gfx1151"
+    expected_27b = "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        dense_27b, rows=1, in_features=5_120, out_features=17_408
+    ) == expected_27b
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        dense_27b, rows=2, in_features=5_120, out_features=17_408
+    ) is None
+    dense_27b.backend = "hip_gfx1100"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        dense_27b, rows=1, in_features=5_120, out_features=17_408
+    ) is None
+
     runner = _fake_dense_qwen35_08b_runner()
     expected = "pack8_dual_decode_t128_bf16_bf16_out"
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
@@ -159,6 +230,11 @@ def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
     ) is None
     runner.backend = "hip_gfx1151"
     runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        runner, rows=1, in_features=1_024, out_features=3_584
+    ) is None
+    runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
         runner, rows=1, in_features=1_024, out_features=3_584
     ) is None
@@ -178,6 +254,11 @@ def test_dense_down_residual_decode_policy_is_model_backend_shape_scoped() -> No
     )
     runner.backend = "hip_gfx1151"
     runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=3_584, out_features=1_024
+    )
+    runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
     assert not gguf_runner._gguf_dense_down_residual_decode_fused(
         runner, rows=1, in_features=3_584, out_features=1_024
     )
@@ -233,6 +314,11 @@ def test_fixed1024_norm_residual_decode_kernel_is_exactly_scoped(
     ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
     runner.backend = "hip_gfx1151"
     runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add_rmsnorm", rows=1, hidden_size=1_024
+    ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=7)
     assert gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="add_rmsnorm", rows=1, hidden_size=1_024
     ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
@@ -529,6 +615,40 @@ def test_gfx1100_dense_qwen36_hidden_reuse_is_long_row_only(monkeypatch) -> None
     )
     assert long_a.ptr == long_b.ptr
     assert len(allocations) == 3
+
+
+def test_verify_hidden_scratch_recycles_after_bounded_prefill_capacity() -> None:
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=2_048,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 2_048
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=4_096,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 0
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=4_094,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=False,
+    ) == 0
+    assert gguf_runner._gguf_verify_hidden_scratch_row_start(
+        start=2_048,
+        rows=4,
+        hidden_capacity_rows=4_096,
+        prebuilt=True,
+    ) == 0
+    with pytest.raises(ValueError, match="exceed hidden scratch capacity"):
+        gguf_runner._gguf_verify_hidden_scratch_row_start(
+            start=0,
+            rows=4_097,
+            hidden_capacity_rows=4_096,
+            prebuilt=False,
+        )
 
 
 def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:

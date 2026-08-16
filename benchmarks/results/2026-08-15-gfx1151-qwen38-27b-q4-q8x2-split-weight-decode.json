@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_split_weight_decode",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "1628c035bac1a21b4f3f81652beed4749b246d07",
+    "development_worktree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "gfx1151 serial rows1 Q4T16 H5120/N17408 dense gate/up plus SiLU",
+    "dataflow": "four wave32 owners: waves 0-1 consume gate weights and waves 2-3 consume up weights; each output preserves the retained two-wave K partition, FMA order, reduction order, BF16 round trip, and SiLU publication",
+    "accumulator_planes_per_thread": {
+      "control": 2,
+      "candidate": 1
+    },
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "activation_workspace": "existing two-plane Q8_1x2",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "native_batch_and_mtp_owner": "unchanged retained dense_dual_q8_1x2_dp4a owner",
+    "fallback": "registered dense_dual_q8_1x2_dp4a plus unfused/direct chain",
+    "peer_backends_and_shapes_changed": false
+  },
+  "actual_weight_leaf": {
+    "layers": [0, 8, 63],
+    "protocol": "15 counterbalanced HIP-event pairs per layer after four warmups; each actual gate/up source pair exceeds 64 MiB and 2x the 32-MiB MALL",
+    "control_ms": 1.4455145001411438,
+    "candidate_ms": 1.4323997497558594,
+    "speedup": 1.0091557893580474,
+    "candidate_wins": "39/45",
+    "all_layers_positive": true,
+    "projected_selected_graph_saving_ms": 36.54663667129594,
+    "projected_selected_graph_saving_percent": 0.3516735468093423,
+    "quality": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0
+    },
+    "admission_note": "The 0.352% projection is below the normal 1% request gate, but all actual layers are positive and complete-graph measurement admits retention under the exact non-regressive micro-win rule."
+  },
+  "shape_ar": {
+    "protocol": "token 9707 repeated to prompt length, BF16 KV, one warmup, three measured graph-replay runs, 128 decode tokens",
+    "rows": {
+      "512/128": {
+        "control_process_medians_tok_s": [11.931868942565066, 11.944871123365767],
+        "candidate_process_medians_tok_s": [12.07666767899505, 12.075657506035789],
+        "control_median_tok_s": 11.938370032965416,
+        "candidate_median_tok_s": 12.07616259251542,
+        "speedup": 1.0115419910062695,
+        "candidate_delta_percent": 1.1541991006269514,
+        "process_order": "control,candidate,candidate,control",
+        "every_candidate_process_over_every_control_process": true,
+        "tracked_peak_gib": 16.753218058496714,
+        "final_ids_identical": true
+      },
+      "1K/128": {
+        "control_tok_s": 11.784736598449376,
+        "candidate_tok_s": 11.916481634773557,
+        "speedup": 1.011179294099922,
+        "candidate_delta_percent": 1.1179294099922021,
+        "every_candidate_sample_over_every_control_sample": true,
+        "tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true
+      },
+      "4K/128": {
+        "control_tok_s": 11.00883861431385,
+        "candidate_tok_s": 11.114920298498838,
+        "speedup": 1.009636046807613,
+        "candidate_delta_percent": 0.9636046807613097,
+        "every_candidate_sample_over_every_control_sample": true,
+        "tracked_peak_gib": 19.529302295297384,
+        "final_ids_identical": true
+      }
+    }
+  },
+  "natural_suite": {
+    "protocol": "all ten mtp-bench prompts, four categories, six train/four heldout, 25 visible outputs, three runs",
+    "true_ar": {
+      "control_tok_s": 12.176314859510182,
+      "candidate_tok_s": 12.310491960190792,
+      "speedup": 1.0110195163502866,
+      "candidate_delta_percent": 1.101951635028664,
+      "minimum_full_train_heldout_category_ratio": 1.010781162688065,
+      "all_full_train_heldout_category_scopes_positive": true,
+      "all_30_candidate_tokens_match_control": true
+    },
+    "native_b1_diagnostic_before_final_scope": {
+      "control_tok_s": 18.87977048739832,
+      "candidate_tok_s": 18.825038927913084,
+      "candidate_delta_percent": -0.28989525864082655,
+      "minimum_full_train_heldout_category_ratio": 0.9948371634668458,
+      "all_30_tokens_and_acceptance_trajectories_match_control": true,
+      "all_gpu_accept_match_cpu": true,
+      "final_policy": "split-weight is disabled whenever native_batch_decode_session is active, so B1-B3 and all native rows retain the measured control owner"
+    },
+    "zero_tracked_bytes_after_close": true
+  },
+  "memory": {
+    "resident_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "tracked_shape_peaks_unchanged": true,
+    "natural_control_peak_bytes": 18634821232,
+    "natural_candidate_peak_bytes": 18634821232,
+    "whole_process_gtt": "not resampled; no allocation or residency change",
+    "teardown_bytes": 0
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task22-q4-q8x2-split-weight-leaf/rocprof/gfx1151/1288580_kernel_trace.csv",
+    "sha256": "9b4d526381bad97822b007d905a97c2f3116959d01a8c88c46e71fdc6d6e0a83",
+    "bytes": 2942,
+    "candidate_kernel": "q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<unsigned short>",
+    "candidate_calls": 2,
+    "candidate_duration_range_ns": [461183, 684203],
+    "candidate_median_duration_ns": 572693.0,
+    "candidate_workgroup_x": 128,
+    "candidate_grid_size_x_threads": 139264,
+    "candidate_vgpr": 120,
+    "candidate_lds_bytes": 512,
+    "candidate_scratch_bytes": 0,
+    "control_vgpr": 224,
+    "control_lds_bytes": 1024,
+    "control_scratch_bytes": 0,
+    "duration_note": "The two-call trace is a named-kernel/resource smoke, not the retained leaf timing source."
+  },
+  "validation": {
+    "focused_tests": "179 passed",
+    "test_command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3.12 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gguf_t16_selected_gemv_decode.py::test_t16_q4_dense_dual_q8_1x2_split_weight_is_bit_exact",
+    "correctness_gate": "synthetic BF16 bit identity plus actual-weight KL 0, 3/3 top-1, and zero BF16 mismatches",
+    "shape_exactness": "12/12 measured final IDs equal token 9707",
+    "natural_exactness": "30/30 AR and 30/30 diagnostic B1 trajectories match control",
+    "native_scope_guard": "dispatch test resolves native-session rows1 to dense_dual_q8_1x2_dp4a and never invokes split-weight",
+    "all_shape_non_regression": true,
+    "all_natural_ar_scopes_positive": true,
+    "zero_tracked_bytes_after_close": true
+  },
+  "commands": {
+    "leaf": "PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 python3 /tmp/qwen38-task22-q4-q8x2-split-weight-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-q8x2-split-weight-leaf/leaf.json",
+    "shape_512": "python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "shape_1k4k": "python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 1024/128 4096/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "natural": "python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build"
+  },
+  "evidence": {
+    "compiler_version": {"path": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt", "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987", "bytes": 348},
+    "actual_weight_leaf": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-leaf/leaf.json", "sha256": "5ad0b1147bb64528cc8dd98e6deddace1e967a28f78c9069ee8a4edf868da5a7", "bytes": 8183},
+    "shape_512_control_1": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-integration/c1.json", "sha256": "862ea0052f424f36700ea7288b00889faa01ee2a53cb2cf50e016c6a5399a468", "bytes": 454555},
+    "shape_512_candidate_1": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-integration/a1.json", "sha256": "a384e3d99bd1406b4a74fb982d41d1d7e4a43618fa2e01b575599da4c906420e", "bytes": 454555},
+    "shape_512_candidate_2": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-integration/a2.json", "sha256": "0b7ffb8190efdae624af55fb6ac74a48309e8635793b62f8aae2bc2194a7a678", "bytes": 454566},
+    "shape_512_control_2": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-integration/c2.json", "sha256": "2f6b3d111f88321cd499a3c3d4c0b3e043538f00ecc762f3d3356e8cd0dc43e8", "bytes": 454548},
+    "shape_512_summary": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-integration/summary.json", "sha256": "d9009d19bf4bf5e5910bdd20e603a60cc22bb282ee5b9677f3ecaaed268c172c", "bytes": 1392},
+    "shape_1k4k_control": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-shapes/control.json", "sha256": "9c0e8852a34733ba0214daa857f50d51d6d7b001b8f5ab606e8aa59a161b0181", "bytes": 867219},
+    "shape_1k4k_candidate": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-shapes/candidate.json", "sha256": "a047642f5beaee844a15f670e59559b2421b4f39c2e0abc39836d62a634c84bc", "bytes": 867222},
+    "shape_1k4k_summary": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-shapes/summary.json", "sha256": "a999b5bf12b78467a7a598f7ef9573fde699868e780e67a6c3011cc9ce38aa3d", "bytes": 1148},
+    "natural_control": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-natural/control.json", "sha256": "96d59e6eb9101f329b5e435b61bfd41ac53ee15f64b9bb410797608d431f4c96", "bytes": 840700},
+    "natural_candidate": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-natural/candidate.json", "sha256": "6d03f5f8d2aa916ffea51b2dfbf6febc9bad1268c426ad0b08f4c30a83cd3ba0", "bytes": 840726},
+    "natural_summary": {"path": "/tmp/qwen38-task22-q4-q8x2-split-weight-natural/summary.json", "sha256": "9eb6cfca083df577b52e0fafaafa2a209fe90134bb567df07cb672709055d4ef", "bytes": 3466}
+  },
+  "decision": "Retain and default the exact gfx1151 serial-c1 split-weight owner. It lowers register/LDS ownership, improves every repeated shape and every natural AR scope, preserves every tested trajectory, adds no bytes, and leaves native rows/MTP on the prior registered owner. This is development evidence, not a clean publication topline; P5 remains open because clean llama.cpp HIP and Vulkan AR are still faster."
+}

@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_27b_grouped_gqa_split_attention",
+  "status": "retained_development",
+  "performance_claim": true,
+  "baseline_eligible": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "compute_units": 40,
+    "memory": "128 GiB unified GTT aperture"
+  },
+  "software": {
+    "base_commit": "d90adbdc569330938afc48bc0da41a262490e3e8",
+    "candidate_state": "task-owned working tree; clean publication pending",
+    "compiler_version_file": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16",
+    "geometry": {
+      "hidden_size": 5120,
+      "block_count": 64,
+      "num_q_heads": 24,
+      "num_kv_heads": 4,
+      "head_dim": 256
+    }
+  },
+  "selection": {
+    "source_trace": "/tmp/qwen38-task22-post-g2-p4096-rerank/rocprof/p4096-ar128-decode128_kernel_trace.csv",
+    "source_trace_sha256": "0c5d9bd70db507a5a37f72e690399bdb2707b235fbfb671c69418a7e0585a349",
+    "decode_kernel_wall_ms": 11178.348,
+    "complete_attention_chain_ms": 1093.871,
+    "complete_attention_fraction": 0.097854,
+    "generic_producer_ms": 1082.027,
+    "generic_producer_calls": 2048,
+    "generic_producer_mean_ms": 0.528333,
+    "gated_reducer_ms": 11.844,
+    "admission_gate": "BF16-bit exact and >=1% projected complete request saving before full-model A/B"
+  },
+  "implementation": {
+    "producer": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<6,24,4>",
+    "policy": "hip_gfx1151 H5120/L64/24Q/4KV/D256/block256 at active context >=4096",
+    "fallback": "generic query-head split producer plus existing gated reducer",
+    "short_contexts_unchanged": true,
+    "peer_backends_unchanged": true,
+    "resident_bytes_delta": 0,
+    "workspace_bytes_delta": 0
+  },
+  "leaf_gate": {
+    "shape": {
+      "context_len": 4097,
+      "chunk_size": 256,
+      "num_splits": 17,
+      "block_size": 256,
+      "num_q_heads": 24,
+      "num_kv_heads": 4,
+      "head_dim": 256,
+      "rotating_slots": 5,
+      "rotating_kv_bytes": 89128960
+    },
+    "protocol": {
+      "warmups": 4,
+      "counterbalanced_pairs": 15,
+      "timing": "HIP events",
+      "cached_build": true
+    },
+    "control_ms": {
+      "median": 0.5492259860038757,
+      "min": 0.539687991142273,
+      "max": 0.5709069967269897
+    },
+    "candidate_ms": {
+      "median": 0.11681900173425674,
+      "min": 0.11577600240707397,
+      "max": 0.11850199848413467
+    },
+    "speedup": 4.701512406802371,
+    "candidate_wins": "15/15",
+    "bf16_bit_exact": true,
+    "finite": true,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "projected_complete_request_saving_percent": 7.704245366920916,
+    "tracked_bytes_before": 0,
+    "tracked_bytes_after": 0,
+    "evidence": {
+      "path": "/tmp/qwen38-task22-grouped-gqa-bf16/leaf.json",
+      "sha256": "bebc9a9a0e13febb03055c1f623e824a44d711e8718779b94bf7006a65529ba6"
+    }
+  },
+  "complete_model_gate": {
+    "workload": "4096 repeated token 9707 input / 128 true autoregressive output tokens",
+    "transport": "HIP graph replay; graph capture excluded from decode throughput",
+    "protocol": "fresh process C1/A1/A2/C2; each process has one warmup plus three measured runs",
+    "control": {
+      "environment": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0",
+      "process_median_decode_tok_s": [
+        11.112123728466932,
+        11.10651548567087
+      ],
+      "median_of_process_medians_tok_s": 11.109319607068901
+    },
+    "candidate": {
+      "environment": "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=1",
+      "process_median_decode_tok_s": [
+        12.055520852879653,
+        12.06368278163103
+      ],
+      "median_of_process_medians_tok_s": 12.059601817255341
+    },
+    "speedup": 1.0855391908593368,
+    "improvement_percent": 8.553919085933682,
+    "decode_seconds_saved_per_128_tokens": 0.9079086188674026,
+    "all_candidate_samples_above_all_control_samples": true,
+    "final_token_ids": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+    "finite_final_logits_all": true,
+    "tracked_peak_gib_control": 19.529302295297384,
+    "tracked_peak_gib_candidate": 19.529302295297384,
+    "tracked_after_close_bytes": 0,
+    "evidence": {
+      "control_c1": {
+        "path": "/tmp/qwen38-task22-grouped-gqa-bf16/control-c1.json",
+        "sha256": "7f656c36a32aa30d8a8e96c78a54434f1de6ae3db31d71aa7ca62217ac7f1f29"
+      },
+      "candidate_a1": {
+        "path": "/tmp/qwen38-task22-grouped-gqa-bf16/candidate-a1.json",
+        "sha256": "757a89a94736f42ced53b71ca8fd2944f99161c2078df73e6da44fc08d579c1a"
+      },
+      "candidate_a2": {
+        "path": "/tmp/qwen38-task22-grouped-gqa-bf16/candidate-a2.json",
+        "sha256": "d75eb62b66be093bf1d26063d1765f4733c3b71f6ef5b2deb7705fad5b7cf369"
+      },
+      "control_c2": {
+        "path": "/tmp/qwen38-task22-grouped-gqa-bf16/control-c2.json",
+        "sha256": "6cbf0a25ef46f4f86a18611efc25d603e3b1a61facab03c06e9e96f01ea5c86e"
+      }
+    }
+  },
+  "matched_llamacpp_comparison": {
+    "source": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json",
+    "workload": "4096/128, repeated token 9707, BF16 K/V",
+    "hip_decode_tok_s": 11.508123386502662,
+    "vulkan_decode_tok_s": 12.568302094065688,
+    "candidate_vs_hip_percent": 4.792079579190833,
+    "candidate_vs_vulkan_percent": -4.047486072526352,
+    "status": "candidate beats clean llama.cpp HIP at 4K but remains below Vulkan"
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task22-grouped-gqa-bf16/rocprof/grouped-gqa_kernel_trace.csv",
+    "sha256": "776a83bc26be64a7ffe20819ff4c59f09de97a16d18b2c11608335eb3e608448",
+    "rows": 23,
+    "candidate_dispatches": 3,
+    "candidate_duration_ns": [338509, 101469, 94656],
+    "workgroup_size": [256, 1, 1],
+    "grid_size": [1024, 1, 1],
+    "vgpr_count": 64,
+    "sgpr_count": 128,
+    "scratch_bytes": 0,
+    "compiler_child_observed": false
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-qwen38-gqa-bf16-leaf.py --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --context 4097 --slots 5 --warmups 4 --samples 15 --output /tmp/qwen38-task22-grouped-gqa-bf16/leaf.json",
+    "complete_model_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX={0|1} python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build",
+    "tests": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_gfx1151_backend.py tests/test_qwen35_paged_attn_decode_plan.py::test_bf16_gqa_splitk_24q4kv_matches_generic_and_cpu_at_4k"
+  },
+  "decision": "Retain and default the exact grouped-GQA BF16 split producer only for the gfx1151 dense-H5120/L64/24Q/4KV/D256 geometry from context 4096 onward. Short contexts, peer backends, explicit opt-out, and all policy misses retain the generic producer. The change is byte-neutral, exact, and materially faster, but P5 remains open because clean llama.cpp Vulkan is still 4.05% faster at 4K and the 512/1K/natural AR targets are unchanged."
+}

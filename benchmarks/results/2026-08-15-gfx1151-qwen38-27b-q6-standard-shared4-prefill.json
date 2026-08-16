@@ -1,0 +1,457 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p4_q6_standard_shared4_prefill",
+  "status": "retained_development",
+  "publishable": false,
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "cu_count": 40,
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "base_commit": "64f9641105b16b473defafd9376a2ac51073d34d",
+    "development_worktree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "24 standard-Q6 K5120/N10240 recurrent-QKV prefill owners at rows>=512 on gfx1151",
+    "candidate": "128-thread four-wave 48-column x 256-row shared-weight standard-Q6 WMMA",
+    "mechanism": "cooperatively decode one standard-T16 Q6 slab into 24 KiB LDS while preserving four independent exact 48x64 K16 WMMA sequences",
+    "resident_layout": "gguf_q6_k_t16_v1",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "fallback": "retained standard-Q6 16x16 WMMA below 512 rows and for shape misses and peer backends",
+    "peer_backends_changed": false
+  },
+  "actual_weight_leaf": {
+    "protocol": {
+      "rows": [
+        512,
+        1024,
+        4096
+      ],
+      "warmups": 3,
+      "counterbalanced_pairs_per_cell": 15,
+      "control": "retained standard-Q6 16-column x 16-row WMMA",
+      "candidate": "four-wave shared-weight standard-Q6 48-column x 256-row workgroup",
+      "leaf_gate": ">=1.10x and >=12/15 wins at every weight/row",
+      "request_gate": ">=1% projected complete-request saving at every shape"
+    },
+    "cases": {
+      "blk.0.attn_qkv.weight": {
+        "shape": {
+          "k": 5120,
+          "n": 10240
+        },
+        "source_nbytes": 43008000,
+        "rows": {
+          "512": {
+            "control_median_ms": 8.0036039352417,
+            "candidate_median_ms": 2.6880650520324707,
+            "speedup": 2.9774591687020746,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          },
+          "1024": {
+            "control_median_ms": 16.12912368774414,
+            "candidate_median_ms": 4.82216215133667,
+            "speedup": 3.34479081821694,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          },
+          "4096": {
+            "control_median_ms": 65.80345153808594,
+            "candidate_median_ms": 18.556856155395508,
+            "speedup": 3.5460452453285427,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          }
+        }
+      },
+      "blk.1.attn_qkv.weight": {
+        "shape": {
+          "k": 5120,
+          "n": 10240
+        },
+        "source_nbytes": 43008000,
+        "rows": {
+          "512": {
+            "control_median_ms": 7.920863151550293,
+            "candidate_median_ms": 2.6749789714813232,
+            "speedup": 2.9610936145654843,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          },
+          "1024": {
+            "control_median_ms": 16.176755905151367,
+            "candidate_median_ms": 4.830704212188721,
+            "speedup": 3.348736580545452,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          },
+          "4096": {
+            "control_median_ms": 65.80191040039062,
+            "candidate_median_ms": 18.548484802246094,
+            "speedup": 3.547562569230586,
+            "candidate_wins": "15/15",
+            "bf16_mismatches": 0
+          }
+        }
+      }
+    },
+    "all_90_pairs_won": true,
+    "all_bf16_bit_exact": true,
+    "request_projection": {
+      "512": {
+        "representative_mean_saved_ms_per_call": 5.280711531639099,
+        "call_count": 24,
+        "saved_ms": 126.73707675933838,
+        "complete_wall_ms": 1408.4482149919495,
+        "request_saving_percent": 8.998348353195421
+      },
+      "1024": {
+        "representative_mean_saved_ms_per_call": 11.326506614685059,
+        "call_count": 24,
+        "saved_ms": 271.8361587524414,
+        "complete_wall_ms": 2890.765181989991,
+        "request_saving_percent": 9.403605676657227
+      },
+      "4096": {
+        "representative_mean_saved_ms_per_call": 47.25001049041748,
+        "call_count": 24,
+        "saved_ms": 1134.0002517700195,
+        "complete_wall_ms": 11729.536548009492,
+        "request_saving_percent": 9.667903306567215
+      }
+    },
+    "raw_artifact": {
+      "path": "/tmp/qwen38-task21-q6-standard-shared4/leaf.json",
+      "sha256": "13abb4013f2e222ff4ea143f60d986ef6b85cf38c13709343ce72b705d7c407c",
+      "bytes": 12099
+    }
+  },
+  "complete_prefill": {
+    "protocol": "same-source control/candidate processes; repeated token 9707; BF16 K/V; one warmup plus three measured persistent-session bulk-prefill runs; cached gfx1151 builds; decode_tokens=0 with one warmup decode token",
+    "control": "same candidate source/binary with GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES monkeypatched to an empty frozenset; shared-planar Q6 remains enabled",
+    "candidate": "default gfx1151 shape-qualified standard+planar shared4 dispatch",
+    "rows": {
+      "512": {
+        "control": {
+          "prefill_tok_s_samples": [
+            361.0188928191293,
+            363.2433232648792,
+            362.7519668690173
+          ],
+          "prefill_tok_s_median": 362.7519668690173,
+          "prefill_seconds_samples": [
+            1.4182083269988652,
+            1.409523499009083,
+            1.4114327330025844
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 17988630916,
+          "tracked_peak_gib": 16.753218058496714,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/control-512.json",
+          "raw_sha256": "b49e1a36d2b5852a6259679857cc1d52457fcfceb81d33b9887c0eaf9d7753d6"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            398.21063212235254,
+            398.7924042614063,
+            398.8674924146948
+          ],
+          "prefill_tok_s_median": 398.7924042614063,
+          "prefill_seconds_samples": [
+            1.2857517070078757,
+            1.2838760079903295,
+            1.2836343139933888
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 17988630916,
+          "tracked_peak_gib": 16.753218058496714,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/candidate-512.json",
+          "raw_sha256": "e4aec8e7e16f8e206312b770457de6ba05c39e86c72bcb42fe46dcc87c80390a"
+        },
+        "speedup": 1.099352837983102,
+        "candidate_delta_percent": 9.935283798310191,
+        "clean_llamacpp_hip_tok_s": 352.42581849519684,
+        "candidate_vs_clean_llamacpp_hip": 1.1315641003947654,
+        "candidate_vs_clean_llamacpp_hip_percent": 13.15641003947654,
+        "clean_llamacpp_vulkan_tok_s": 242.95616918860227,
+        "candidate_vs_clean_llamacpp_vulkan": 1.6414170736773155,
+        "candidate_vs_clean_llamacpp_vulkan_percent": 64.14170736773156,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      },
+      "1024": {
+        "control": {
+          "prefill_tok_s_samples": [
+            353.45500132239283,
+            354.26999609322945,
+            354.61287202744103
+          ],
+          "prefill_tok_s_median": 354.26999609322945,
+          "prefill_seconds_samples": [
+            2.8971156050101854,
+            2.8904508179984987,
+            2.8876560350036016
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 18444362764,
+          "tracked_peak_gib": 17.177651416510344,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/control-1024.json",
+          "raw_sha256": "76196f7a9bb372458e5e32ae72d390d1c21557d8abe565b5a983fcd2ef630be7"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            390.9880967262277,
+            391.86060370306245,
+            391.91589135706494
+          ],
+          "prefill_tok_s_median": 391.86060370306245,
+          "prefill_seconds_samples": [
+            2.6190055619954364,
+            2.613174149999395,
+            2.6128055089939153
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 18444362764,
+          "tracked_peak_gib": 17.177651416510344,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/candidate-1024.json",
+          "raw_sha256": "fd0615e17930aa70509794cb2449789644b82ecd6fbd78080b545226cc95cc46"
+        },
+        "speedup": 1.1061072290184593,
+        "candidate_delta_percent": 10.610722901845925,
+        "clean_llamacpp_hip_tok_s": 364.442641212626,
+        "candidate_vs_clean_llamacpp_hip": 1.075232586393314,
+        "candidate_vs_clean_llamacpp_hip_percent": 7.523258639331409,
+        "clean_llamacpp_vulkan_tok_s": 247.61046231581554,
+        "candidate_vs_clean_llamacpp_vulkan": 1.5825688463973813,
+        "candidate_vs_clean_llamacpp_vulkan_percent": 58.256884639738125,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      },
+      "4096": {
+        "control": {
+          "prefill_tok_s_samples": [
+            349.10647598702826,
+            349.22054362632633,
+            349.1301460126224
+          ],
+          "prefill_tok_s_median": 349.1301460126224,
+          "prefill_seconds_samples": [
+            11.732810135988984,
+            11.728977789985947,
+            11.732014685010654
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 20969428668,
+          "tracked_peak_gib": 19.529302295297384,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/control-4096.json",
+          "raw_sha256": "13c63ea564beccf6a71b8c22778fda9796fca441a221898f1d269747dca12729"
+        },
+        "candidate": {
+          "prefill_tok_s_samples": [
+            384.55731023606575,
+            384.9782963561072,
+            384.627958196119
+          ],
+          "prefill_tok_s_median": 384.627958196119,
+          "prefill_seconds_samples": [
+            10.65120826200291,
+            10.639560823998181,
+            10.649251862007077
+          ],
+          "generated_preview_token_ids": [
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ],
+            [
+              9707,
+              9707
+            ]
+          ],
+          "tracked_peak_bytes": 20969428668,
+          "tracked_peak_gib": 19.529302295297384,
+          "tracked_after_close_bytes": [
+            0,
+            0,
+            0
+          ],
+          "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/full-model/candidate-4096.json",
+          "raw_sha256": "b39837c3f8f354246a636c6ef9a48709925c87a7418208f868bb6a7442a00294"
+        },
+        "speedup": 1.1016750131402666,
+        "candidate_delta_percent": 10.167501314026662,
+        "clean_llamacpp_hip_tok_s": 367.99291757380905,
+        "candidate_vs_clean_llamacpp_hip": 1.0452047847333188,
+        "candidate_vs_clean_llamacpp_hip_percent": 4.520478473331879,
+        "clean_llamacpp_vulkan_tok_s": 354.3677775179427,
+        "candidate_vs_clean_llamacpp_vulkan": 1.0853920209397259,
+        "candidate_vs_clean_llamacpp_vulkan_percent": 8.539202093972587,
+        "same_source_ids_identical": true,
+        "tracked_peak_unchanged": true
+      }
+    },
+    "all_shapes_positive": true,
+    "beats_clean_llamacpp_hip_all_shapes": true,
+    "beats_clean_llamacpp_vulkan_all_shapes": true,
+    "all_ids_identical": true,
+    "all_tracked_peaks_unchanged": true,
+    "all_tracked_teardown_zero": true,
+    "whole_process_gtt": "not resampled; implementation changes no allocation or resident payload",
+    "command_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task37-hipcc-version.txt PYTHONPATH=. python3 {driver} --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {rows} --decode-tokens 0 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/qwen38-task37-hipcc-version.txt --require-cached-build --json {output}",
+    "control_driver_source": "import runpy,sys; import hipengine.kernels.hip_gfx1151 as g; g.GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES=frozenset(); sys.argv[0]='scripts/qwen35_gguf_bench.py'; runpy.run_path('/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py',run_name='__main__')"
+  },
+  "kernel_trace": {
+    "tool": "rocprofv3 --kernel-trace",
+    "raw_path": "/tmp/qwen38-task21-q6-standard-shared4/trace/q6-standard-shared4_kernel_trace.csv",
+    "raw_sha256": "6213f6d09afc6f22bf1eee2cdb30bc42cfedb04e1aec5212d0337ae4090314b7",
+    "raw_bytes": 827,
+    "kernel": "(anonymous namespace)::q6_k_t16_wmma_prefill_shared4_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+    "duration_ns": 36548,
+    "control_duration_ns": 94917,
+    "synthetic_speedup": 2.59705045419722,
+    "lds_block_bytes": 24576,
+    "scratch_bytes": 0,
+    "vgpr_count": 248,
+    "sgpr_count": 128,
+    "workgroup_x": 128,
+    "grid_x": 768,
+    "grid_y": 2
+  },
+  "correctness": {
+    "red": "rows17 test failed because the shared4 wrapper was absent",
+    "synthetic_partial_rows": [
+      17,
+      257
+    ],
+    "shared4_vs_retained_bf16_bit_exact": true,
+    "cpu_reference_gate": "rows17 Q6_K fixture passes allclose plus KL <=0.05 and top-1 >=90%",
+    "actual_weight_all_shapes_bf16_bit_exact": true,
+    "complete_model_generated_preview_ids": [
+      9707,
+      9707
+    ],
+    "finite": true
+  },
+  "validation": {
+    "focused_pytest": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task37-hipcc-version.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_standard_shared4_wmma_is_bit_exact_to_retained_wmma tests/test_gfx1151_backend.py::test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes tests/test_gfx1151_backend.py::test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only tests/test_gfx1151_backend.py::test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only",
+    "focused_pytest_result": "5 passed",
+    "rocprof_pytest_result": "1 passed",
+    "compileall": "passed",
+    "diff_check": "passed",
+    "registry_smoke": "passed with the expected missing fp16 embed diagnostic",
+    "worklog_check": "241 valid entries"
+  },
+  "decision": "Retain standard shared4 only for gfx1151 rows>=512 K5120/N10240 QKV prefill. The development gate beats both clean llama.cpp backends at all three shapes; a post-commit clean publication refresh remains pending."
+}

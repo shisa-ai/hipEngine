@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_27b_clean_prefill_publication",
+  "created_at": "2026-08-16T00:20:08.846896+00:00",
+  "status": "retained",
+  "performance_claim": true,
+  "baseline_eligible": true,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture"
+  },
+  "software": {
+    "hipengine": "a06589f341d5c4a9fa3a62f67a29d2d7376fca69",
+    "llamacpp_comparator": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llamacpp_build": 10438
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv_dtype": "BF16"
+  },
+  "protocol": {
+    "workloads": [
+      "512/128",
+      "1K/128",
+      "4K/128"
+    ],
+    "input": "explicit token ID 9707 repeated to prompt length; greedy; EOS ignored",
+    "kv_dtype": "BF16",
+    "process_scope": "one clean detached right-sized process per shape",
+    "timing": "one discarded same-shape warmup plus three measured persistent-session resets; prefill and graph AR timed separately",
+    "memory": "250 ms whole-device GTT sampler plus tracked allocator and HIP phase high-water; GTT delta is process-run peak minus pre-run baseline",
+    "build": "cached gfx1151 builds required; no measured compiler child",
+    "commands": {
+      "512/128": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_LIB_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib HIP_INCLUDE_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt PYTHONPATH=/tmp/qwen38-task21-prefill-publication-a06589f34/src /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-task21-prefill-publication-a06589f34/src/scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-512-128.json",
+      "1K/128": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_LIB_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib HIP_INCLUDE_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt PYTHONPATH=/tmp/qwen38-task21-prefill-publication-a06589f34/src /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-task21-prefill-publication-a06589f34/src/scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 1K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-1K-128.json",
+      "4K/128": "env -i HOME=/home/lhl USER=lhl LOGNAME=lhl SHELL=/bin/fish TERM=tmux-256color PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx1151/lib HIP_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel ROCM_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel HIP_LIB_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib HIP_INCLUDE_PATH=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt PYTHONPATH=/tmp/qwen38-task21-prefill-publication-a06589f34/src /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-task21-prefill-publication-a06589f34/src/scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 4K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-4K-128.json"
+    },
+    "environment_path": "/tmp/qwen38-task21-prefill-publication-a06589f34/environment.txt",
+    "environment_sha256": "2d47b72284031aeed8f073d8ef7fbfb1d11780c6230ae334c088b9b0eccb73ac",
+    "prebuild": {
+      "reason": "populate the detached-source AOTriton wrapper cache before cached-only measured children",
+      "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/prebuild.json",
+      "sha256": "541d43958c8a282d4f35a67d29187f760d3112af6ebb2f9a6b00e4b41ce4329f"
+    },
+    "memory_sampler_sha256": "b0a1555b492aeba43fee92ba9ff2fa2d78a3bba535aa5a16d4e1978022d39fc6"
+  },
+  "rows": {
+    "512/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "median": 399.0305518449822,
+        "min": 398.71565526151335,
+        "max": 399.44036844201287,
+        "mean": 399.0621918495028,
+        "stdev": 0.3633911335076582
+      },
+      "diagnostic_shape_ar_tok_s": {
+        "count": 3,
+        "median": 12.062588537211045,
+        "min": 12.052735974122315,
+        "max": 12.06439246230602,
+        "mean": 12.059905657879794,
+        "stdev": 0.0062742975960467275
+      },
+      "opening_hipengine_prefill_tok_s": 85.28796746940301,
+      "clean_llamacpp_hip_prefill_tok_s": 352.42581849519684,
+      "clean_llamacpp_vulkan_prefill_tok_s": 242.95616918860227,
+      "vs_opening_ratio": 4.678626583382164,
+      "vs_opening_percent": 367.8626583382164,
+      "vs_llamacpp_hip_ratio": 1.1322398385815782,
+      "vs_llamacpp_hip_percent": 13.223983858157817,
+      "vs_llamacpp_vulkan_ratio": 1.6423972816892018,
+      "vs_llamacpp_vulkan_percent": 64.23972816892018,
+      "tracked_peak_bytes": 17988630916,
+      "tracked_peak_gib": 16.753218058496714,
+      "tracked_after_close_bytes": 0,
+      "hip_phase_peak_bytes": 18599489536,
+      "process_gtt_baseline_bytes": 18677760,
+      "process_gtt_peak_bytes": 18618560512,
+      "process_gtt_delta_bytes": 18599882752,
+      "process_gtt_delta_gib": 17.322490692138672,
+      "opening_process_gtt_delta_gib": 33.12461471557617,
+      "lower_llamacpp_process_gtt_delta_gib": 15.784839630126953,
+      "memory_gap_vs_lower_llama_percent": 9.741315705716502,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "raw_run": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-512-128.json",
+        "sha256": "3e6df8004a6d352c17c98850497a94388c6244b452bfd18f724a929c42bc7f21"
+      },
+      "raw_memory": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-512-128.memory.json",
+        "sha256": "d2666db4e0fa5a77fc782f8fa82bb3986e6d800d9213aee879563f6013f9058c",
+        "sample_count": 372
+      }
+    },
+    "1K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "median": 391.2763399360559,
+        "min": 390.68654061268313,
+        "max": 391.35755047005114,
+        "mean": 391.10681033959673,
+        "stdev": 0.36622229619175617
+      },
+      "diagnostic_shape_ar_tok_s": {
+        "count": 3,
+        "median": 11.901882830224222,
+        "min": 11.901106848165254,
+        "max": 11.905313186526781,
+        "mean": 11.902767621638752,
+        "stdev": 0.002238406238450361
+      },
+      "opening_hipengine_prefill_tok_s": 84.49664160997541,
+      "clean_llamacpp_hip_prefill_tok_s": 364.442641212626,
+      "clean_llamacpp_vulkan_prefill_tok_s": 247.61046231581554,
+      "vs_opening_ratio": 4.630673272698012,
+      "vs_opening_percent": 363.06732726980124,
+      "vs_llamacpp_hip_ratio": 1.0736294156856754,
+      "vs_llamacpp_hip_percent": 7.362941568567538,
+      "vs_llamacpp_vulkan_ratio": 1.5802092378350363,
+      "vs_llamacpp_vulkan_percent": 58.02092378350363,
+      "tracked_peak_bytes": 18444362764,
+      "tracked_peak_gib": 17.177651416510344,
+      "tracked_after_close_bytes": 0,
+      "hip_phase_peak_bytes": 19117486080,
+      "process_gtt_baseline_bytes": 18677760,
+      "process_gtt_peak_bytes": 19136557056,
+      "process_gtt_delta_bytes": 19117879296,
+      "process_gtt_delta_gib": 17.804912567138672,
+      "opening_process_gtt_delta_gib": 33.61289596557617,
+      "lower_llamacpp_process_gtt_delta_gib": 15.816089630126953,
+      "memory_gap_vs_lower_llama_percent": 12.574681754606075,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "raw_run": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-1K-128.json",
+        "sha256": "bd16cf4a639969ee551bf9a2bba1bcb2285c7929fbf8b04f5973c6d6e87f9aca"
+      },
+      "raw_memory": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-1K-128.memory.json",
+        "sha256": "d1eea40e45daf4297f5a8612887096b0971efb20fa6c085ca0d708fd82d44d4f",
+        "sample_count": 396
+      }
+    },
+    "4K/128": {
+      "prefill_tok_s": {
+        "count": 3,
+        "median": 385.3295040012155,
+        "min": 385.14011831670933,
+        "max": 385.4092124726841,
+        "mean": 385.29294493020296,
+        "stdev": 0.1382220693301784
+      },
+      "diagnostic_shape_ar_tok_s": {
+        "count": 3,
+        "median": 11.099793781601196,
+        "min": 11.099560666445173,
+        "max": 11.104274878024759,
+        "mean": 11.101209775357043,
+        "stdev": 0.002657014573110639
+      },
+      "opening_hipengine_prefill_tok_s": 84.20434631229722,
+      "clean_llamacpp_hip_prefill_tok_s": 367.99291757380905,
+      "clean_llamacpp_vulkan_prefill_tok_s": 354.3677775179427,
+      "vs_opening_ratio": 4.576123690481544,
+      "vs_opening_percent": 357.6123690481544,
+      "vs_llamacpp_hip_ratio": 1.0471111958939516,
+      "vs_llamacpp_hip_percent": 4.711119589395163,
+      "vs_llamacpp_vulkan_ratio": 1.0873717319902347,
+      "vs_llamacpp_vulkan_percent": 8.737173199023474,
+      "tracked_peak_bytes": 20969428668,
+      "tracked_peak_gib": 19.529302295297384,
+      "tracked_after_close_bytes": 0,
+      "hip_phase_peak_bytes": 21668966400,
+      "process_gtt_baseline_bytes": 18677760,
+      "process_gtt_peak_bytes": 21688037376,
+      "process_gtt_delta_bytes": 21669359616,
+      "process_gtt_delta_gib": 20.181163787841797,
+      "opening_process_gtt_delta_gib": 36.0457878112793,
+      "lower_llamacpp_process_gtt_delta_gib": 16.003589630126953,
+      "memory_gap_vs_lower_llama_percent": 26.10398200820214,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "raw_run": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-4K-128.json",
+        "sha256": "6f60a9016832ad78eb973bfa0c7fc478283884a6ac04446459ee5f0d8d2edaf2"
+      },
+      "raw_memory": {
+        "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipengine-qwen38-4K-128.memory.json",
+        "sha256": "933ad8d897bea6fc130d2c6014aaa9af8b3fb5fd85d5257eb9848d25bdd627ac",
+        "sample_count": 538
+      }
+    }
+  },
+  "gates": {
+    "all_three_shapes_beat_clean_llamacpp_hip": true,
+    "all_three_shapes_beat_clean_llamacpp_vulkan": true,
+    "all_prefill_cv_le_5_percent": true,
+    "all_final_ids_stable": true,
+    "all_tracked_teardown_zero": true,
+    "clean_provenance": true,
+    "g2_prefill_win": true,
+    "g5_memory_win": false
+  },
+  "correctness": {
+    "current_shape_output": "three stable final token IDs per shape; all are token 9707",
+    "standard_q6_owner": "BF16-bit exact on rows17/257 and both actual QKV weights across 512/1K/4K; 90/90 paired wins",
+    "planar_q6_owner": "BF16-bit exact on actual FFN-down weights across 512/1K/4K; 45/45 paired wins",
+    "cpu_reference_gate": "standard shared4 rows17 KL <=0.05 and top-1 >=90%",
+    "source_artifacts": [
+      "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json",
+      "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json"
+    ]
+  },
+  "development_reference": {
+    "artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json",
+    "prefill_tok_s": {
+      "512/128": 398.7924042614063,
+      "1K/128": 391.86060370306245,
+      "4K/128": 384.627958196119
+    },
+    "note": "The clean publication is the binding absolute row; the same-source artifact remains the causal A/B."
+  },
+  "notes": [
+    "The first cached-only child stopped before any measured row because the detached source had no matching AOTriton wrapper cache; its preserved stderr is /tmp/qwen38-task21-prefill-publication-a06589f34/prebuild-miss-512-128.stderr. One non-measured prebuild populated the cache, then the three publication children ran once.",
+    "The shape-AR values are recorded only as diagnostics for this P4 publication; Task #22 owns AR promotion.",
+    "G2 requires the prefill win and non-regressed correctness/memory, not G5 memory parity.",
+    "The current single-layout plan remains above the lower llama.cpp GTT comparator; G5 therefore remains open."
+  ]
+}

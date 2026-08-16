@@ -1,0 +1,695 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "current_snapshot",
+  "task": "Post-X3 current-HEAD exact Qwen3.5-0.8B hipEngine versus same-source llama.cpp HIP/Vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": true,
+  "source": {
+    "hipengine": {
+      "commit": "5c33d9fdfaf964018b1cb086a88eaf08f5cae2a9",
+      "describe": "v0.4.0-209-g5c33d9fdf",
+      "tracked_clean": true
+    },
+    "llamacpp_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "llamacpp_hip_tracked_clean": true,
+    "llamacpp_vulkan_tracked_clean": true
+  },
+  "hardware": {
+    "host": "zbook",
+    "platform": "Linux-7.1.8-1-cachyos-x86_64-with-glibc2.44",
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics"
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c"
+    }
+  },
+  "builds": {
+    "same_source_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "hip_helper": "/tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_hip",
+    "hip_helper_sha256": "0c00cf5a9ece52091d8961423a496a4bcf996cac55ada125900d55c8b14d62f5",
+    "vulkan_helper": "/tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_vulkan",
+    "vulkan_helper_sha256": "288dae4829a2cfd3cf63c7291bd37189a12ce7c7896311d97ababfb2118eda78",
+    "build_metadata_source": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json"
+  },
+  "protocol": {
+    "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json",
+    "fixture_sha256": "86af62a7c081cdb16994a92ab2e5c89ab1a214f11cbc20fb4582a18c1c980030",
+    "hipengine_driver": "scripts/qwen35_08b_exact_core.py",
+    "hipengine_driver_sha256": "4369db461393ff27dd4dad49c6e98b81480f4b4dca308366690d850d48bd8156",
+    "parent_harness": "/home/lhl/hipEngine/scripts/qwen35_08b_three_way.py",
+    "parent_harness_sha256": "2b8b3d1441b98360b1deb2c584ed6c8e1ef8893aa6af9b17e6beab7757f8b12e",
+    "llamacpp_helper_source": "benchmarks/llama.cpp/qwen35_08b_exact_core.cpp",
+    "llamacpp_helper_source_sha256": "6a7bd2598b88dcecdad81b19198f1c594687e51053ce833203d93855fea60def",
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "blocks": 6,
+    "child_repetitions": 1,
+    "order": "cyclic counter-rotation; every engine occupies every order position equally",
+    "scope": "shared repeated-token p512/tg128 fixture; exact forced-token core plus native greedy public path",
+    "vulkan_icd": "/usr/share/vulkan/icd.d/radeon_icd.json",
+    "command": "uv run python -u scripts/qwen35_08b_three_way.py --hip-helper /tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_hip --vulkan-helper /tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_vulkan --hip-source /tmp/d08-three-way-2f59d4ade/llama-1d --vulkan-source /home/lhl/llama.cpp/llama.cpp-vulkan --blocks 6 --raw-dir /tmp/d08-three-way-5c33d9fdf/raw --output /tmp/d08-three-way-5c33d9fdf/three-way.json",
+    "raw_aggregate_path": "/tmp/d08-three-way-5c33d9fdf/three-way.json",
+    "raw_aggregate_sha256": "792e0cc8c12be963c861f1d7f71addd41633b639d68af15cb79699ff1ef30932",
+    "raw_children": 36,
+    "kv_contract": "hipEngine production BF16 KV versus llama.cpp standard F16 KV; both are 16-bit, and pinned Vulkan reports no native BF16 capability"
+  },
+  "results": {
+    "q4": {
+      "engines": {
+        "hipengine": {
+          "prefill_tok_s": {
+            "samples": [
+              5094.26687126914,
+              4946.138627340073,
+              4883.734590315047,
+              4905.605702705309,
+              4829.942443311664,
+              4886.435190060044
+            ],
+            "median": 4896.020446382677,
+            "min": 4829.942443311664,
+            "max": 5094.26687126914,
+            "cv": 0.018544799408396075
+          },
+          "decode_tok_s": {
+            "samples": [
+              146.07799238222444,
+              144.64156469339363,
+              152.20847064801686,
+              150.3556443105968,
+              145.51968271033903,
+              142.94755207856284
+            ],
+            "median": 145.79883754628173,
+            "min": 142.94755207856284,
+            "max": 152.20847064801686,
+            "cv": 0.024231439719417536
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              5126.608403296185,
+              5042.4065405212805,
+              4904.431594578227,
+              4915.018749836566,
+              4909.307072017924,
+              4982.969048774371
+            ],
+            "median": 4948.993899305468,
+            "min": 4904.431594578227,
+            "max": 5126.608403296185,
+            "cv": 0.018033416349830744
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              126.43525635902442,
+              121.20930470272843,
+              121.04052712309843,
+              121.14689886516713,
+              122.14284879461155,
+              121.02744067265115
+            ],
+            "median": 121.17810178394778,
+            "min": 121.02744067265115,
+            "max": 126.43525635902442,
+            "cv": 0.017457963175508805
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": {
+            "samples": [
+              4772.602280036168,
+              4905.154244108066,
+              4907.222818586107,
+              4875.726121321779,
+              4809.679479953406,
+              4820.774525219618
+            ],
+            "median": 4848.250323270699,
+            "min": 4772.602280036168,
+            "max": 4907.222818586107,
+            "cv": 0.011459508058304936
+          },
+          "decode_tok_s": {
+            "samples": [
+              118.82879370207392,
+              121.85485943851565,
+              119.59598979696712,
+              127.86318639056209,
+              123.30218668721704,
+              125.2139887503057
+            ],
+            "median": 122.57852306286634,
+            "min": 118.82879370207392,
+            "max": 127.86318639056209,
+            "cv": 0.027893459721826375
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              5011.304798911608,
+              4971.163368739926,
+              5180.565997071766,
+              5318.972108640005,
+              5063.090858747676,
+              4813.477737665464
+            ],
+            "median": 5037.197828829641,
+            "min": 4813.477737665464,
+            "max": 5318.972108640005,
+            "cv": 0.03453272789681282
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              89.03790371385445,
+              90.10150497670033,
+              88.56231535103196,
+              89.0676426995846,
+              88.0748085405041,
+              88.87963059403533
+            ],
+            "median": 88.95876715394489,
+            "min": 88.0748085405041,
+            "max": 90.10150497670033,
+            "cv": 0.007572393609741509
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": {
+            "samples": [
+              5721.590959886283,
+              5520.8882591625725,
+              5496.062586412702,
+              5486.956689478975,
+              5499.5338285778125,
+              5685.622814449922
+            ],
+            "median": 5510.211043870193,
+            "min": 5486.956689478975,
+            "max": 5721.590959886283,
+            "cv": 0.019017923559068665
+          },
+          "decode_tok_s": {
+            "samples": [
+              194.71589733604313,
+              194.53922321096107,
+              193.3870687506138,
+              193.69785857937754,
+              193.75122040563636,
+              194.8596629841235
+            ],
+            "median": 194.14522180829871,
+            "min": 193.3870687506138,
+            "max": 194.8596629841235,
+            "cv": 0.0031919753905876006
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              5732.218088506791,
+              5683.836589698047,
+              5821.158546984253,
+              5610.485471362965,
+              5566.221731312388,
+              5909.190060096002
+            ],
+            "median": 5708.027339102418,
+            "min": 5566.221731312388,
+            "max": 5909.190060096002,
+            "cv": 0.022539232142908146
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              125.72932833035382,
+              126.62610674185092,
+              126.99294593870607,
+              127.3112461582837,
+              126.19167332130569,
+              125.0793961010407
+            ],
+            "median": 126.4088900315783,
+            "min": 125.0793961010407,
+            "max": 127.3112461582837,
+            "cv": 0.006560085003860139
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        }
+      },
+      "comparisons": {
+        "llamacpp_hip": {
+          "prefill_tok_s": {
+            "hipengine_median": 4896.020446382677,
+            "peer_median": 4848.250323270699,
+            "hipengine_over_peer": 1.009853064492708,
+            "peer_over_hipengine": 0.9902430711564385,
+            "hipengine_paired_wins": 5,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "hipengine_median": 145.79883754628173,
+            "peer_median": 122.57852306286634,
+            "hipengine_over_peer": 1.1894321607342788,
+            "peer_over_hipengine": 0.8407373139991982,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "hipengine_median": 4948.993899305468,
+            "peer_median": 5037.197828829641,
+            "hipengine_over_peer": 0.982489484725148,
+            "peer_over_hipengine": 1.0178225981520308,
+            "hipengine_paired_wins": 3,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "hipengine_median": 121.17810178394778,
+            "peer_median": 88.95876715394489,
+            "hipengine_over_peer": 1.3621827916550002,
+            "peer_over_hipengine": 0.7341158661863861,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          }
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": {
+            "hipengine_median": 4896.020446382677,
+            "peer_median": 5510.211043870193,
+            "hipengine_over_peer": 0.888535921292748,
+            "peer_over_hipengine": 1.1254469020735602,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "hipengine_median": 145.79883754628173,
+            "peer_median": 194.14522180829871,
+            "hipengine_over_peer": 0.7509782429270664,
+            "peer_over_hipengine": 1.3315965001893113,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "hipengine_median": 4948.993899305468,
+            "peer_median": 5708.027339102418,
+            "hipengine_over_peer": 0.8670235101017741,
+            "peer_over_hipengine": 1.1533712619656837,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "hipengine_median": 121.17810178394778,
+            "peer_median": 126.4088900315783,
+            "hipengine_over_peer": 0.9586200919387567,
+            "peer_over_hipengine": 1.0431661180578373,
+            "hipengine_paired_wins": 1,
+            "blocks": 6
+          }
+        }
+      },
+      "correctness": {
+        "all_finite": true,
+        "all_deterministic": true,
+        "cross_engine_core_top1_exact": true,
+        "cross_engine_public_top1_exact": true,
+        "core_top1_sha256": [
+          "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+        ],
+        "public_top1_sha256": [
+          "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+        ]
+      }
+    },
+    "q8": {
+      "engines": {
+        "hipengine": {
+          "prefill_tok_s": {
+            "samples": [
+              5032.653121444614,
+              5076.785689461309,
+              4978.159685594991,
+              4966.535108131121,
+              4979.696745416097,
+              5014.8018438760355
+            ],
+            "median": 4997.249294646066,
+            "min": 4966.535108131121,
+            "max": 5076.785689461309,
+            "cv": 0.0083751308441363
+          },
+          "decode_tok_s": {
+            "samples": [
+              139.65905645555875,
+              142.23294516395814,
+              140.153357774984,
+              140.0690577879596,
+              143.10315650849563,
+              142.8260455144094
+            ],
+            "median": 141.19315146947105,
+            "min": 139.65905645555875,
+            "max": 143.10315650849563,
+            "cv": 0.010943975623651127
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              4970.680508976326,
+              5479.886446049934,
+              4887.126515554488,
+              4867.067089401862,
+              4941.059767570426,
+              5218.586456367689
+            ],
+            "median": 4955.870138273376,
+            "min": 4867.067089401862,
+            "max": 5479.886446049934,
+            "cv": 0.04764442905984626
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              117.58396864801321,
+              117.14832523967146,
+              117.30114851790567,
+              116.00581253286505,
+              116.01179526363448,
+              116.65768818668235
+            ],
+            "median": 116.90300671317691,
+            "min": 116.00581253286505,
+            "max": 117.58396864801321,
+            "cv": 0.005754214933087858
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "llamacpp_hip": {
+          "prefill_tok_s": {
+            "samples": [
+              4357.928962353282,
+              4638.983772617311,
+              4691.69514977687,
+              4642.0120220858225,
+              4729.311571110557,
+              4617.313120564178
+            ],
+            "median": 4640.497897351566,
+            "min": 4357.928962353282,
+            "max": 4729.311571110557,
+            "cv": 0.028483531897266552
+          },
+          "decode_tok_s": {
+            "samples": [
+              110.02140260097471,
+              110.33056070335732,
+              110.57455575808362,
+              110.36195271680089,
+              108.3066092415999,
+              109.8995449471967
+            ],
+            "median": 110.17598165216602,
+            "min": 108.3066092415999,
+            "max": 110.57455575808362,
+            "cv": 0.007508860722734795
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              4827.228586244284,
+              5079.465862417905,
+              5040.41189615964,
+              5285.423174516002,
+              5271.253343436569,
+              4947.098893666361
+            ],
+            "median": 5059.938879288772,
+            "min": 4827.228586244284,
+            "max": 5285.423174516002,
+            "cv": 0.03544054078933199
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              85.58380861320799,
+              83.27748970416972,
+              89.57124762951094,
+              82.32305367077211,
+              85.04361807442646,
+              82.84414298381303
+            ],
+            "median": 84.16055388929809,
+            "min": 82.32305367077211,
+            "max": 89.57124762951094,
+            "cv": 0.031525837254742325
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": {
+            "samples": [
+              5900.969741394611,
+              5875.818253596643,
+              5528.166656949186,
+              5393.067170019603,
+              5559.054092202124,
+              5848.641276100418
+            ],
+            "median": 5703.847684151271,
+            "min": 5393.067170019603,
+            "max": 5900.969741394611,
+            "cv": 0.03818099429605724
+          },
+          "decode_tok_s": {
+            "samples": [
+              159.1857648129816,
+              158.29946796538187,
+              159.64399389361722,
+              158.7350798325841,
+              159.7581660761023,
+              158.91204838871874
+            ],
+            "median": 159.04890660085016,
+            "min": 158.29946796538187,
+            "max": 159.7581660761023,
+            "cv": 0.003494238047885665
+          },
+          "public_prefill_tok_s": {
+            "samples": [
+              6152.012380924916,
+              5989.095634861684,
+              5526.800123057659,
+              5527.766771427923,
+              5627.2764641360045,
+              5962.348699579142
+            ],
+            "median": 5794.812581857574,
+            "min": 5526.800123057659,
+            "max": 6152.012380924916,
+            "cv": 0.04657609067643674
+          },
+          "public_decode_tok_s": {
+            "samples": [
+              111.02437331945528,
+              111.26177810229129,
+              112.70185077570571,
+              111.64316054809814,
+              112.15673904281233,
+              111.75623171956171
+            ],
+            "median": 111.69969613382992,
+            "min": 111.02437331945528,
+            "max": 112.70185077570571,
+            "cv": 0.005439121600960408
+          },
+          "all_finite": true,
+          "all_deterministic": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        }
+      },
+      "comparisons": {
+        "llamacpp_hip": {
+          "prefill_tok_s": {
+            "hipengine_median": 4997.249294646066,
+            "peer_median": 4640.497897351566,
+            "hipengine_over_peer": 1.0768778275921869,
+            "peer_over_hipengine": 0.928610446215538,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "hipengine_median": 141.19315146947105,
+            "peer_median": 110.17598165216602,
+            "hipengine_over_peer": 1.2815238798164612,
+            "peer_over_hipengine": 0.780321003572106,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "hipengine_median": 4955.870138273376,
+            "peer_median": 5059.938879288772,
+            "hipengine_over_peer": 0.9794328067002217,
+            "peer_over_hipengine": 1.0209990855514333,
+            "hipengine_paired_wins": 3,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "hipengine_median": 116.90300671317691,
+            "peer_median": 84.16055388929809,
+            "hipengine_over_peer": 1.3890474968468853,
+            "peer_over_hipengine": 0.7199177870231099,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          }
+        },
+        "llamacpp_vulkan": {
+          "prefill_tok_s": {
+            "hipengine_median": 4997.249294646066,
+            "peer_median": 5703.847684151271,
+            "hipengine_over_peer": 0.8761189939435863,
+            "peer_over_hipengine": 1.141397466454643,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "decode_tok_s": {
+            "hipengine_median": 141.19315146947105,
+            "peer_median": 159.04890660085016,
+            "hipengine_over_peer": 0.8877341849561406,
+            "peer_over_hipengine": 1.1264633230829182,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "public_prefill_tok_s": {
+            "hipengine_median": 4955.870138273376,
+            "peer_median": 5794.812581857574,
+            "hipengine_over_peer": 0.8552252671275751,
+            "peer_over_hipengine": 1.169282572015998,
+            "hipengine_paired_wins": 0,
+            "blocks": 6
+          },
+          "public_decode_tok_s": {
+            "hipengine_median": 116.90300671317691,
+            "peer_median": 111.69969613382992,
+            "hipengine_over_peer": 1.0465830325367473,
+            "peer_over_hipengine": 0.9554903614060725,
+            "hipengine_paired_wins": 6,
+            "blocks": 6
+          }
+        }
+      },
+      "correctness": {
+        "all_finite": true,
+        "all_deterministic": true,
+        "cross_engine_core_top1_exact": true,
+        "cross_engine_public_top1_exact": true,
+        "core_top1_sha256": [
+          "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+        ],
+        "public_top1_sha256": [
+          "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+        ]
+      }
+    },
+    "q4_wall": {
+      "hipengine": {
+        "core_prefill_ms": 104.57472667996731,
+        "core_decode_ms_per_token": 6.858765246894129,
+        "public_prefill_ms": 103.45537101426878,
+        "public_decode_ms_per_token": 8.252316097366595
+      },
+      "llamacpp_hip": {
+        "core_prefill_ms": 105.60510820625234,
+        "core_decode_ms_per_token": 8.158035967582462,
+        "public_prefill_ms": 101.64381415985794,
+        "public_decode_ms_per_token": 11.241162979130324
+      },
+      "llamacpp_vulkan": {
+        "core_prefill_ms": 92.91840111452208,
+        "core_decode_ms_per_token": 5.15078347376178,
+        "public_prefill_ms": 89.69823891567266,
+        "public_decode_ms_per_token": 7.910836015965248
+      }
+    },
+    "q4_gap_decomposition_ms": {
+      "hipengine_to_llamacpp_hip_core_prefill": -1.0303815262850264,
+      "llamacpp_hip_to_vulkan_core_prefill": 12.686707091730256,
+      "hipengine_to_vulkan_core_prefill": 11.65632556544523
+    }
+  },
+  "comparison_to_pre_x3_snapshot": {
+    "artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json",
+    "classification": "Independent current snapshots, not a paired optimization A/B; the retained paired X3 claim is in the operation-complete artifact.",
+    "retained_x3_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json",
+    "q4_hipengine_core_prefill_tok_s_old": 4354.158824,
+    "q4_hipengine_core_prefill_tok_s_new": 4896.020446382677,
+    "q4_hipengine_snapshot_ratio": 1.124446912546219,
+    "q4_core_over_llamacpp_hip_old": 0.892947,
+    "q4_core_over_llamacpp_hip_new": 1.009853064492708,
+    "q4_core_over_vulkan_old": 0.817521,
+    "q4_core_over_vulkan_new": 0.888535921292748,
+    "q4_core_gap_to_vulkan_ms_old": 21.458,
+    "q4_core_gap_to_vulkan_ms_new": 11.65632556544523
+  },
+  "correctness": {
+    "all_36_children_finite": true,
+    "all_36_children_deterministic": true,
+    "cross_engine_core_top1_exact_both_quants": true,
+    "cross_engine_public_top1_exact_both_quants": true,
+    "shared_digest": "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0",
+    "max_metric_cv": 0.04764442905984626,
+    "variance_gate": 0.05,
+    "variance_passed": true
+  },
+  "decision": {
+    "q4_core_prefill": "hipEngine now leads same-source llama HIP by 1.0% median and 5/6 paired blocks, but remains 0.889x Vulkan with an 11.657-ms core wall gap.",
+    "q4_public_prefill": "hipEngine is 0.982x llama HIP and 0.867x Vulkan.",
+    "decode": "No X3 decode claim; hipEngine still beats llama HIP core/public decode and remains 0.959x Vulkan on Q4 public decode. Q8 public decode remains 1.047x Vulkan.",
+    "next": "Run one post-X3 Q4 marker rerank because dense FFN ownership changed materially; do not reuse the pre-X3 owner order."
+  },
+  "caveats": [
+    "This current snapshot confirms external position; the optimization delta remains the separately paired X3 A/B.",
+    "Q4 decode remains mildly bimodal but every metric CV is below the predeclared 5% bound.",
+    "llama HIP and Vulkan use one source revision but different backend compilers and standard F16 KV; hipEngine uses production BF16 KV."
+  ]
+}

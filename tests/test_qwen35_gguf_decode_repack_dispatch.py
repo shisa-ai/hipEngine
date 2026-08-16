@@ -47,6 +47,7 @@ def _runner(
     is_moe: bool = True,
     backend: str = "hip_gfx1100",
     head_count: int = 16,
+    head_count_kv: int = 2,
     hidden_size: int = 2048,
     block_count: int = 40,
 ) -> Qwen35GGUFFullStackRunner:
@@ -55,7 +56,7 @@ def _runner(
         is_moe=is_moe,
         rms_norm_eps=1.0e-6,
         head_count=head_count,
-        head_count_kv=2,
+        head_count_kv=head_count_kv,
         key_length=256,
         value_length=256,
         rope_dimension_count=64,
@@ -222,6 +223,63 @@ def test_long_context_routes_full_attention_through_split_k_gqa_gate(monkeypatch
         scratch.full_attn_split_l.ptr,
     )
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_dense_24q4kv_grouped_gqa_is_gfx1151_4k_only(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(
+        is_moe=False,
+        backend="hip_gfx1151",
+        head_count=24,
+        head_count_kv=4,
+        hidden_size=5120,
+        block_count=64,
+    )
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    below = _scratch(position=4094, max_positions=4096)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, below, position=4094, stream=5)
+    below_names = [name for name, _, _ in calls]
+    assert "split_k_gate" in below_names
+    assert "split_k_gqa_gate" not in below_names
+
+    calls.clear()
+    admitted = _scratch(position=4095, max_positions=4096)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, admitted, position=4095, stream=5)
+    admitted_names = [name for name, _, _ in calls]
+    assert "split_k_gqa_gate" in admitted_names
+    assert "split_k_gate" not in admitted_names
+    split_args = next(args for name, args, _ in calls if name == "split_k_gqa_gate")
+    assert split_args[9:18] == (
+        256,
+        admitted.full_attn_split_count,
+        256,
+        24,
+        4,
+        256,
+        256,
+        1,
+        256 ** -0.5,
+    )
+
+    calls.clear()
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX", "0")
+    opt_out = _scratch(position=4095, max_positions=4096)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, opt_out, position=4095, stream=5)
+    opt_out_names = [name for name, _, _ in calls]
+    assert "split_k_gate" in opt_out_names
+    assert "split_k_gqa_gate" not in opt_out_names
+    assert "split_k_warp_gate" not in opt_out_names
+
+    calls.clear()
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX", "1")
+    runner.backend = "hip_gfx1100"
+    fallback = _scratch(position=4095, max_positions=4096)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, fallback, position=4095, stream=5)
+    fallback_names = [name for name, _, _ in calls]
+    assert "split_k_gate" in fallback_names
+    assert "split_k_gqa_gate" not in fallback_names
 
 
 def test_long_context_parallel_reduce_is_gfx1100_default(monkeypatch) -> None:

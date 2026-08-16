@@ -1,0 +1,3451 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained_correctness",
+  "task": "D08 final cumulative natural and category-derived p512 semantic packet",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "gate_passed": true,
+  "source": {
+    "commit": "faac857b1de12b0ed07df538ec0c0940d413067e",
+    "tracked_source_clean": true,
+    "harness": "scripts/qwen35_08b_cumulative_semantic.py",
+    "harness_sha256": "f7a2baab16132e319ca1e69ebecc52ed00be77b08ce79a8931ce112730044001"
+  },
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen35_08b_cumulative_semantic.py",
+    "script": "/home/lhl/hipEngine/scripts/qwen35_08b_cumulative_semantic.py",
+    "script_sha256": "f7a2baab16132e319ca1e69ebecc52ed00be77b08ce79a8931ce112730044001",
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompt_suite_sha256": {
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280"
+    },
+    "prompt_count": 18,
+    "profiles": {
+      "natural": "unaltered build_chat_prompt token IDs",
+      "category_p512": "repeat each complete category-derived chat-token sequence and truncate to exactly 512 IDs"
+    },
+    "decode_steps": 24,
+    "same_context_rule": "candidate teacher-forced decode consumes strict-X2 free-running token prefixes",
+    "kl_threshold": 0.05,
+    "top1_threshold": 0.9,
+    "state_contract": "prefill Conv/GDN and live full-attention KV fingerprints; exactness versus strict is diagnostic, within-role repeat determinism and finiteness are binding",
+    "graph_contract": "recorded public graph free-running trajectory and final logits must match same-role eager on all category_p512 prompts"
+  },
+  "results": {
+    "q4": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "model_sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "role_env": {
+        "strict_x2": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+        },
+        "pre_x2": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        },
+        "current": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": null,
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": null,
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        }
+      },
+      "summary": {
+        "natural": {
+          "strict_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 450,
+            "top1_agreement": 1.0,
+            "kl_max": 0.0,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 18,
+            "free_running_exact_vs_strict_prompts": 18,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          },
+          "pre_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 449,
+            "top1_agreement": 0.9977777777777778,
+            "kl_max": 0.004529431839500105,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 0,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          },
+          "current": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 449,
+            "top1_agreement": 0.9977777777777778,
+            "kl_max": 0.004529431839500105,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 17,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          }
+        },
+        "category_p512": {
+          "strict_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 450,
+            "top1_agreement": 1.0,
+            "kl_max": 0.0,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 18,
+            "free_running_exact_vs_strict_prompts": 18,
+            "graph_prompts": 18,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.00047472958829106865,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": [
+              287
+            ]
+          },
+          "pre_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 449,
+            "top1_agreement": 0.9977777777777778,
+            "kl_max": 0.004846386835589362,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 0,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          },
+          "current": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 449,
+            "top1_agreement": 0.9977777777777778,
+            "kl_max": 0.005930369204291595,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 17,
+            "graph_prompts": 18,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.00019207557399396571,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": [
+              287
+            ]
+          }
+        }
+      },
+      "prompts": {
+        "natural": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+            "natural_tokens": 40,
+            "profile_tokens": 40,
+            "profile_token_sha256_i64": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005194863040124126,
+                  "kl_max": 0.0005194863040124126,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005194863040124126,
+                  "kl_max": 0.0005194863040124126,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_topological_sort",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+            "natural_tokens": 50,
+            "profile_tokens": 50,
+            "profile_token_sha256_i64": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001431369289728697,
+                  "kl_max": 0.001431369289728697,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001431369289728697,
+                  "kl_max": 0.001431369289728697,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+            "natural_tokens": 47,
+            "profile_tokens": 47,
+            "profile_token_sha256_i64": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.000975839895770652,
+                  "kl_max": 0.000975839895770652,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.000975839895770652,
+                  "kl_max": 0.000975839895770652,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_markdown_table",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0004109363024772639,
+                  "kl_max": 0.0004109363024772639,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0004109363024772639,
+                  "kl_max": 0.0004109363024772639,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+            "natural_tokens": 39,
+            "profile_tokens": 39,
+            "profile_token_sha256_i64": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001686728167278693,
+                  "kl_max": 0.001686728167278693,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001686728167278693,
+                  "kl_max": 0.001686728167278693,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_en_explain",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+            "natural_tokens": 40,
+            "profile_tokens": 40,
+            "profile_token_sha256_i64": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0008652853151007498,
+                  "kl_max": 0.0008652853151007498,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0008652853151007498,
+                  "kl_max": 0.0008652853151007498,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_ja_plan",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+            "natural_tokens": 43,
+            "profile_tokens": 43,
+            "profile_token_sha256_i64": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0010578104619149119,
+                  "kl_max": 0.0010578104619149119,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0010578104619149119,
+                  "kl_max": 0.0010578104619149119,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_ja_explain",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+            "natural_tokens": 43,
+            "profile_tokens": 43,
+            "profile_token_sha256_i64": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005901967089798855,
+                  "kl_max": 0.0005901967089798855,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005901967089798855,
+                  "kl_max": 0.0005901967089798855,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+            "natural_tokens": 64,
+            "profile_tokens": 64,
+            "profile_token_sha256_i64": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001123798733746612,
+                  "kl_max": 0.001123798733746612,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001123798733746612,
+                  "kl_max": 0.001123798733746612,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+            "natural_tokens": 71,
+            "profile_tokens": 71,
+            "profile_token_sha256_i64": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.004529431839500105,
+                  "kl_max": 0.004529431839500105,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.004529431839500105,
+                  "kl_max": 0.004529431839500105,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+            "natural_tokens": 55,
+            "profile_tokens": 55,
+            "profile_token_sha256_i64": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0020985217272018407,
+                  "kl_max": 0.0020985217272018407,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 6
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0020985217272018407,
+                  "kl_max": 0.0020985217272018407,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 6
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011430642677035857,
+                  "kl_max": 0.0011430642677035857,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011430642677035857,
+                  "kl_max": 0.0011430642677035857,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+            "natural_tokens": 45,
+            "profile_tokens": 45,
+            "profile_token_sha256_i64": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011184995171891986,
+                  "kl_max": 0.0011184995171891986,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011184995171891986,
+                  "kl_max": 0.0011184995171891986,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+            "natural_tokens": 56,
+            "profile_tokens": 56,
+            "profile_token_sha256_i64": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0020303341720302012,
+                  "kl_max": 0.0020303341720302012,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0020303341720302012,
+                  "kl_max": 0.0020303341720302012,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+            "natural_tokens": 53,
+            "profile_tokens": 53,
+            "profile_token_sha256_i64": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.00118879785170504,
+                  "kl_max": 0.00118879785170504,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.00118879785170504,
+                  "kl_max": 0.00118879785170504,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+            "natural_tokens": 45,
+            "profile_tokens": 45,
+            "profile_token_sha256_i64": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014047881385400984,
+                  "kl_max": 0.0014047881385400984,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014047881385400984,
+                  "kl_max": 0.0014047881385400984,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001760286619349927,
+                  "kl_max": 0.001760286619349927,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001760286619349927,
+                  "kl_max": 0.001760286619349927,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+            "natural_tokens": 56,
+            "profile_tokens": 56,
+            "profile_token_sha256_i64": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014193001805525391,
+                  "kl_max": 0.0014193001805525391,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014193001805525391,
+                  "kl_max": 0.0014193001805525391,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          }
+        ],
+        "category_p512": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+            "natural_tokens": 40,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "b093db582957ee6154467d649ee710301e514a25bf1946eab83994c755fe23b1",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0006482828857834189,
+                  "kl_max": 0.0006482828857834189,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 9.295599893758321e-05,
+                  "kl_max": 9.295599893758321e-05,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "code_topological_sort",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+            "natural_tokens": 50,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "7bea83473005567cd49fb9c78e2951050946dbefcfa8e3be75fe03bcd59763c7",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 5.372201531018662e-07,
+                  "kl_max": 5.372201531018662e-07,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 3.988377406053766e-06,
+                  "kl_max": 3.988377406053766e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 6.163929369759602e-09,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+            "natural_tokens": 47,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2e9f6cbba0d160d06d41f559a4813389bd433aa9145746eb1f3f8dcb6fcc60d6",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005863494121276935,
+                  "kl_max": 0.0005863494121276935,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0003274591554722845,
+                  "kl_max": 0.0003274591554722845,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 9.358005779842969e-05,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "code_markdown_table",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "991eae31ede058ae832676ed1034774b152555a20eda090283da13349eac967f",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0009003358112968175,
+                  "kl_max": 0.0009003358112968175,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0009443747427075714,
+                  "kl_max": 0.0009443747427075714,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+            "natural_tokens": 39,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2e1ac219cd21077b02dd758139579befb82676709f86446dcbc74a2153a04ba3",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 4.641352567195123e-06,
+                  "kl_max": 4.641352567195123e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 6.688357378601296e-07,
+                  "kl_max": 6.688357378601296e-07,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 1.418962215285401e-07,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "general_en_explain",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+            "natural_tokens": 40,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "81b00a8ef90dd6e956cf027975bd6c7ec8b25e286a7c569800a71a02142d93ad",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0013183212134078848,
+                  "kl_max": 0.0013183212134078848,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.002924332717561356,
+                  "kl_max": 0.002924332717561356,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "general_ja_plan",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+            "natural_tokens": 43,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "f0881db3655af0164a21dbb5371cf4e6929eeaf6e30103adaed4d72f8307576f",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0009232171422466108,
+                  "kl_max": 0.0009232171422466108,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001616830984124738,
+                  "kl_max": 0.001616830984124738,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "general_ja_explain",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+            "natural_tokens": 43,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "871dc167eee08a6ecf4913b79694767efd0c1b2953285e0cd37fc4f5c63e6d83",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005325152617299371,
+                  "kl_max": 0.0005325152617299371,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 21
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0022941454623922088,
+                  "kl_max": 0.0022941454623922088,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 21
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 2.3417541002364587e-06,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+            "natural_tokens": 64,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "640073a0d76e3b33b2b52865467502b26fc826c88c3a0542d68dda35fc06f257",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0028671940285657995,
+                  "kl_max": 0.0028671940285657995,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0007181485140821389,
+                  "kl_max": 0.0007181485140821389,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.00019207557399396571,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+            "natural_tokens": 71,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4b81054e83cdf25b8a47bccb3f85ab9642a14315f42916f79bc3c4963435881d",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 6.567470656181204e-06,
+                  "kl_max": 6.567470656181204e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.553835386268549e-05,
+                  "kl_max": 2.553835386268549e-05,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 3.7391881526152796e-06,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+            "natural_tokens": 55,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2c07cbd58cf61c226b202c4d33f9a96de4493f9f360c14e62f44c36bb01109a2",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 1.0566225482506079e-06,
+                  "kl_max": 1.0566225482506079e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.4036834257028407e-06,
+                  "kl_max": 2.4036834257028407e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 1.5727945449589398e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4a2f680bd0a6a7dfe107a5a2b7cb69b59317af90352e4dac8cd76c54db24efec",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0025932345505784884,
+                  "kl_max": 0.0025932345505784884,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014882169792600642,
+                  "kl_max": 0.0014882169792600642,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+            "natural_tokens": 45,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "1acd213801841bb8fcfede34d0357117fbfecba5f80c0a26ff5e6840e34b2012",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.004846386835589362,
+                  "kl_max": 0.004846386835589362,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.005930369204291595,
+                  "kl_max": 0.005930369204291595,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 1.0162601344243192e-07,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+            "natural_tokens": 56,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "9a861e01e1750310fc276beac3de4f8ca29ac99f71a7fb54725b9f335fc6722f",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 6.3693645745559196e-06,
+                  "kl_max": 6.3693645745559196e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 5.956552693082541e-06,
+                  "kl_max": 5.956552693082541e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 8.919052930467534e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+            "natural_tokens": 53,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "c8a911103d3e1959c446dda0bd302413ecfc67d3a8f0d8c10ddb5c610cf477b9",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0009002967640960456,
+                  "kl_max": 0.0009002967640960456,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014368538119124065,
+                  "kl_max": 0.0014368538119124065,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 1.7559639642135028e-06,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+            "natural_tokens": 45,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "86081e8a74bcceea77513ea759c7872a0c535eb6090650b1f5713d1b90bafbb9",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 3.248074319579444e-05,
+                  "kl_max": 3.248074319579444e-05,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0033736481569910885,
+                  "kl_max": 0.0033736481569910885,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 5.823118677036834e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4f674a21bfcb2def1e730fd88076a4ed1fe20159a91a65f64a53502fea793546",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0003657597483385823,
+                  "kl_max": 0.0003657597483385823,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.000869044875052572,
+                  "kl_max": 0.000869044875052572,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+            "natural_tokens": 56,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "825c967d83da23bb7c9995300f35c668841d49da75090f2e404a55dffbc239e0",
+            "roles": {
+              "pre_x2": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 1.2807204690005293e-06,
+                  "kl_max": 1.2807204690005293e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": null,
+                "graph": null
+              },
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.5749028069946876e-06,
+                  "kl_max": 2.5749028069946876e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 287
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "q8": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "model_sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "role_env": {
+        "strict_x2": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": "0",
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+        },
+        "current": {
+          "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK": null,
+          "HIPENGINE_GGUF_DENSE_WMMA_BULK": null,
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": null
+        }
+      },
+      "summary": {
+        "natural": {
+          "strict_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 450,
+            "top1_agreement": 1.0,
+            "kl_max": 0.0,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 18,
+            "free_running_exact_vs_strict_prompts": 18,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          },
+          "current": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 448,
+            "top1_agreement": 0.9955555555555555,
+            "kl_max": 0.003259258404580838,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 16,
+            "graph_prompts": 0,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": []
+          }
+        },
+        "category_p512": {
+          "strict_x2": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 450,
+            "top1_agreement": 1.0,
+            "kl_max": 0.0,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 18,
+            "free_running_exact_vs_strict_prompts": 18,
+            "graph_prompts": 18,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.0003266207494973328,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": [
+              289
+            ]
+          },
+          "current": {
+            "prompts": 18,
+            "transitions": 450,
+            "top1_matches": 448,
+            "top1_agreement": 0.9955555555555555,
+            "kl_max": 0.002204539610863523,
+            "passed": true,
+            "teacher_forced_deterministic": true,
+            "state_deterministic": true,
+            "state_finite": true,
+            "state_exact_vs_strict_prompts": 0,
+            "free_running_exact_vs_strict_prompts": 16,
+            "graph_prompts": 18,
+            "graph_trajectory_exact": true,
+            "graph_kl_max": 0.00028038519627179154,
+            "graph_top1_min": 1.0,
+            "graph_node_sets": [
+              289
+            ]
+          }
+        }
+      },
+      "prompts": {
+        "natural": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+            "natural_tokens": 40,
+            "profile_tokens": 40,
+            "profile_token_sha256_i64": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0017129015666079196,
+                  "kl_max": 0.0017129015666079196,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_topological_sort",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+            "natural_tokens": 50,
+            "profile_tokens": 50,
+            "profile_token_sha256_i64": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0006506533835454855,
+                  "kl_max": 0.0006506533835454855,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+            "natural_tokens": 47,
+            "profile_tokens": 47,
+            "profile_token_sha256_i64": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0007359107068072809,
+                  "kl_max": 0.0007359107068072809,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "code_markdown_table",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014401621429543233,
+                  "kl_max": 0.0014401621429543233,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 6
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+            "natural_tokens": 39,
+            "profile_tokens": 39,
+            "profile_token_sha256_i64": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0010176188223991064,
+                  "kl_max": 0.0010176188223991064,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_en_explain",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+            "natural_tokens": 40,
+            "profile_tokens": 40,
+            "profile_token_sha256_i64": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0006876197907011959,
+                  "kl_max": 0.0006876197907011959,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_ja_plan",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+            "natural_tokens": 43,
+            "profile_tokens": 43,
+            "profile_token_sha256_i64": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0015635218800330933,
+                  "kl_max": 0.0015635218800330933,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "general_ja_explain",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+            "natural_tokens": 43,
+            "profile_tokens": 43,
+            "profile_token_sha256_i64": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0007197735138586693,
+                  "kl_max": 0.0007197735138586693,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+            "natural_tokens": 64,
+            "profile_tokens": 64,
+            "profile_token_sha256_i64": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0010632597521036187,
+                  "kl_max": 0.0010632597521036187,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+            "natural_tokens": 71,
+            "profile_tokens": 71,
+            "profile_token_sha256_i64": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.003259258404580838,
+                  "kl_max": 0.003259258404580838,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+            "natural_tokens": 55,
+            "profile_tokens": 55,
+            "profile_token_sha256_i64": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011071846786336623,
+                  "kl_max": 0.0011071846786336623,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0004596874489984631,
+                  "kl_max": 0.0004596874489984631,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+            "natural_tokens": 45,
+            "profile_tokens": 45,
+            "profile_token_sha256_i64": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0011557238695523411,
+                  "kl_max": 0.0011557238695523411,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+            "natural_tokens": 56,
+            "profile_tokens": 56,
+            "profile_token_sha256_i64": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0026115518981808796,
+                  "kl_max": 0.0026115518981808796,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+            "natural_tokens": 53,
+            "profile_tokens": 53,
+            "profile_token_sha256_i64": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0010260468049598315,
+                  "kl_max": 0.0010260468049598315,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 24
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+            "natural_tokens": 45,
+            "profile_tokens": 45,
+            "profile_token_sha256_i64": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0006999824678771617,
+                  "kl_max": 0.0006999824678771617,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+            "natural_tokens": 52,
+            "profile_tokens": 52,
+            "profile_token_sha256_i64": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.001742709781399151,
+                  "kl_max": 0.001742709781399151,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+            "natural_tokens": 56,
+            "profile_tokens": 56,
+            "profile_token_sha256_i64": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0015374797590721858,
+                  "kl_max": 0.0015374797590721858,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": null
+              }
+            }
+          }
+        ],
+        "category_p512": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+            "natural_tokens": 40,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "b093db582957ee6154467d649ee710301e514a25bf1946eab83994c755fe23b1",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0003729968630625368,
+                  "kl_max": 0.0003729968630625368,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 3.93670794382074e-09,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "code_topological_sort",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+            "natural_tokens": 50,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "7bea83473005567cd49fb9c78e2951050946dbefcfa8e3be75fe03bcd59763c7",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.1980624873209616e-07,
+                  "kl_max": 2.1980624873209616e-07,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 4.9598121531453625e-09,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+            "natural_tokens": 47,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2e9f6cbba0d160d06d41f559a4813389bd433aa9145746eb1f3f8dcb6fcc60d6",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.00019516177634231217,
+                  "kl_max": 0.00019516177634231217,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 6.273845569688439e-06,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "code_markdown_table",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "991eae31ede058ae832676ed1034774b152555a20eda090283da13349eac967f",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0009638302137939977,
+                  "kl_max": 0.0009638302137939977,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 8.59331025362544e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+            "natural_tokens": 39,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2e1ac219cd21077b02dd758139579befb82676709f86446dcbc74a2153a04ba3",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 3.956294276305171e-06,
+                  "kl_max": 3.956294276305171e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 4.685683634179415e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "general_en_explain",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+            "natural_tokens": 40,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "81b00a8ef90dd6e956cf027975bd6c7ec8b25e286a7c569800a71a02142d93ad",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0015950687028572605,
+                  "kl_max": 0.0015950687028572605,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 8.844278495246711e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "general_ja_plan",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+            "natural_tokens": 43,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "f0881db3655af0164a21dbb5371cf4e6929eeaf6e30103adaed4d72f8307576f",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.002204539610863523,
+                  "kl_max": 0.002204539610863523,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 12
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.00028038519627179154,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "general_ja_explain",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+            "natural_tokens": 43,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "871dc167eee08a6ecf4913b79694767efd0c1b2953285e0cd37fc4f5c63e6d83",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0007024607016750492,
+                  "kl_max": 0.0007024607016750492,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0001336844800208857,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+            "natural_tokens": 64,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "640073a0d76e3b33b2b52865467502b26fc826c88c3a0542d68dda35fc06f257",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0008076470185547714,
+                  "kl_max": 0.0008076470185547714,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 24,
+                  "top1_agreement": 0.96,
+                  "transitions_total": 25,
+                  "first_top1_divergence": 21
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": false,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+            "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+            "natural_tokens": 71,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4b81054e83cdf25b8a47bccb3f85ab9642a14315f42916f79bc3c4963435881d",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.9337829231067187e-06,
+                  "kl_max": 2.9337829231067187e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 2.1051952098406553e-07,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_code_rate_limiter",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+            "natural_tokens": 55,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "2c07cbd58cf61c226b202c4d33f9a96de4493f9f360c14e62f44c36bb01109a2",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 4.987860134393183e-07,
+                  "kl_max": 4.987860134393183e-07,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 8.226165220482795e-09,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_code_interval_schedule",
+            "category": "code",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4a2f680bd0a6a7dfe107a5a2b7cb69b59317af90352e4dac8cd76c54db24efec",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0005927733899016926,
+                  "kl_max": 0.0005927733899016926,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 5.184061829417109e-05,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_incident",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+            "natural_tokens": 45,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "1acd213801841bb8fcfede34d0357117fbfecba5f80c0a26ff5e6840e34b2012",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0007612700717313226,
+                  "kl_max": 0.0007612700717313226,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 6.743989045487378e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_en_quant",
+            "category": "general_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+            "natural_tokens": 56,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "9a861e01e1750310fc276beac3de4f8ca29ac99f71a7fb54725b9f335fc6722f",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 1.3450781581183515e-06,
+                  "kl_max": 1.3450781581183515e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 2.645057624761771e-07,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_migration",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+            "natural_tokens": 53,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "c8a911103d3e1959c446dda0bd302413ecfc67d3a8f0d8c10ddb5c610cf477b9",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0014540904328235044,
+                  "kl_max": 0.0014540904328235044,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 2.3961200862181715e-05,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_general_ja_speculative",
+            "category": "general_ja",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+            "natural_tokens": 45,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "86081e8a74bcceea77513ea759c7872a0c535eb6090650b1f5713d1b90bafbb9",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0017347887734541312,
+                  "kl_max": 0.0017347887734541312,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 6.628424915555505e-09,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_summary",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+            "natural_tokens": 52,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "4f674a21bfcb2def1e730fd88076a4ed1fe20159a91a65f64a53502fea793546",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 0.0017099187045456956,
+                  "kl_max": 0.0017099187045456956,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 0.0,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          },
+          {
+            "id": "heldout_mixed_review",
+            "category": "mixed_ja_en",
+            "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+            "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+            "natural_tokens": 56,
+            "profile_tokens": 512,
+            "profile_token_sha256_i64": "825c967d83da23bb7c9995300f35c668841d49da75090f2e404a55dffbc239e0",
+            "roles": {
+              "current": {
+                "correctness": {
+                  "passed": true,
+                  "kl_passed": true,
+                  "kl_threshold": 0.05,
+                  "kl_mean_max": 2.4550310016381935e-06,
+                  "kl_max": 2.4550310016381935e-06,
+                  "top1_threshold": 0.9,
+                  "top1_matches": 25,
+                  "top1_agreement": 1.0,
+                  "transitions_total": 25,
+                  "first_top1_divergence": null
+                },
+                "teacher_forced_deterministic": true,
+                "state_deterministic": true,
+                "state_finite": true,
+                "state_exact_vs_strict_diagnostic": false,
+                "free_running_exact_vs_strict_diagnostic": true,
+                "graph": {
+                  "trajectory_exact_vs_eager": true,
+                  "final_kl_max_vs_eager": 5.789030469281333e-08,
+                  "final_top1_vs_eager": 1.0,
+                  "nodes": 289
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "decision": {
+    "current_top1_matches": 1794,
+    "current_transitions": 1800,
+    "current_top1_agreement": 0.9966666666666667,
+    "max_current_kl": 0.005930369204291595,
+    "all_role_deterministic": true,
+    "all_state_finite": true,
+    "recorded_graph_prompt_role_pairs": 72,
+    "all_recorded_graph_trajectories_exact": true,
+    "max_recorded_graph_kl": 0.00047472958829106865,
+    "min_recorded_graph_top1": 1.0,
+    "recorded_graph_node_sets": [
+      287,
+      289
+    ],
+    "candidate_state_exact_vs_strict": "0 prompts by design: reassociated GDN/WMMA changes state bytes; repeat determinism, finiteness, KL, top-1, and graph/eager trajectory gates are binding",
+    "campaign_action": "Final cumulative semantic packet passes; retain current routes and close post-review validation. Vulkan parity status itself remains open/blocked by the published G2 comparison.",
+    "current_free_running_exact_vs_strict_prompt_profiles": 66,
+    "current_free_running_prompt_profiles": 72
+  },
+  "raw_artifact": "/tmp/d08-review/cumulative-semantic.json (untracked full prompt/category rows)"
+}

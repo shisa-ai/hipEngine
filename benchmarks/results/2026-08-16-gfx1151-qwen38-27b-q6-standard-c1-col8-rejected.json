@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_q6_standard_c1_col8_leaf",
+  "created_at": "2026-08-16T01:34:37.055444+00:00",
+  "status": "rejected",
+  "performance_claim": false,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": {
+    "layers": [
+      0,
+      28,
+      62
+    ],
+    "warmups": 4,
+    "samples": 15,
+    "timed_order": "counterbalanced by sample",
+    "target_arch": "gfx1151",
+    "control": "exact standard-Q6 local128 c1 with 16-column ownership",
+    "candidate": "same exact standard-Q6 local128 c1 split into two 8-column owners",
+    "cache_contract": "three actual QKV weights rotate 123.05 MiB of standard-T16 bytes; more than 64 MiB lies between repeats of each role",
+    "advance_gate": ">=12/15 paired wins and >=1% projected selected graph wall"
+  },
+  "pool": {
+    "source_nbytes": 129024000,
+    "source_mib": 123.046875,
+    "tiles_nbytes": 129024000,
+    "tiles_mib": 123.046875
+  },
+  "results": [
+    {
+      "layer": 0,
+      "name": "blk.0.attn_qkv.weight",
+      "shape": [
+        10240,
+        5120
+      ],
+      "source_nbytes": 43008000,
+      "tiles_nbytes": 43008000,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "max_abs_vs_control": 0.0,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "32e00b7eb90c40e6ec9e567abdcf84dc4aef8a4bcb9ff31bafd417b7edda7c78",
+      "candidate_sha256": "32e00b7eb90c40e6ec9e567abdcf84dc4aef8a4bcb9ff31bafd417b7edda7c78"
+    },
+    {
+      "layer": 28,
+      "name": "blk.28.attn_qkv.weight",
+      "shape": [
+        10240,
+        5120
+      ],
+      "source_nbytes": 43008000,
+      "tiles_nbytes": 43008000,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "max_abs_vs_control": 0.0,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "d6a0d3e043e9406a126acae9669741a0a6921806d3510f34e2d7f5119c9377b1",
+      "candidate_sha256": "d6a0d3e043e9406a126acae9669741a0a6921806d3510f34e2d7f5119c9377b1"
+    },
+    {
+      "layer": 62,
+      "name": "blk.62.attn_qkv.weight",
+      "shape": [
+        10240,
+        5120
+      ],
+      "source_nbytes": 43008000,
+      "tiles_nbytes": 43008000,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "max_abs_vs_control": 0.0,
+      "kl_vs_control": 0.0,
+      "top1_matches_control": true,
+      "control_sha256": "5304040b03d036ba6ae676d2589726422d244af40cfce0a035d969caaa70c396",
+      "candidate_sha256": "5304040b03d036ba6ae676d2589726422d244af40cfce0a035d969caaa70c396"
+    }
+  ],
+  "family": {
+    "control_median_ms": 0.6113060116767883,
+    "candidate_median_ms": 0.6113470196723938,
+    "speedup": 0.9999329219014964,
+    "candidate_wins": 9,
+    "pair_count": 15,
+    "samples": {
+      "control_ms": [
+        0.6110649704933167,
+        0.6132699847221375,
+        0.6182399988174438,
+        0.6081809997558594,
+        0.6070989966392517,
+        0.6095430254936218,
+        0.6080610156059265,
+        0.6073799729347229,
+        0.6063370108604431,
+        0.6226879954338074,
+        0.6189209818840027,
+        0.6113060116767883,
+        0.6122289896011353,
+        0.6131100058555603,
+        0.6138709783554077
+      ],
+      "candidate_ms": [
+        0.6110270023345947,
+        0.6110259890556335,
+        0.6143929958343506,
+        0.6119080185890198,
+        0.6059370040893555,
+        0.6072589755058289,
+        0.6083809733390808,
+        0.6083009839057922,
+        0.6102250218391418,
+        0.6200029850006104,
+        0.618520975112915,
+        0.6210049986839294,
+        0.6113470196723938,
+        0.6113470196723938,
+        0.6143519878387451
+      ]
+    }
+  },
+  "projection": {
+    "trace_family_ms": 76.579996,
+    "selected_kernel_ms": 1292.498954,
+    "projected_saved_ms": -0.005137185107699449,
+    "projected_complete_wall_percent": -0.00039746145184883834,
+    "advance_threshold_ms": 12.924989539999999,
+    "advance_threshold_percent": 1.0,
+    "required_family_speedup": 1.2030474939645461
+  },
+  "correctness": {
+    "all_finite": true,
+    "all_bit_exact": true,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "max_abs": 0.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0,
+    "teardown_exact": true
+  },
+  "decision": "reject before runtime integration",
+  "provenance": {
+    "commit": "4674ab10cbd3f8b2b6f2c277ff24f2be86f13fcb",
+    "tracked_dirty": [
+      " M hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_t16_gemv.hip",
+      " M tests/test_gguf_q6_k_t16_gemv_decode.py"
+    ],
+    "compiler_version_file": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt",
+    "require_cached": true
+  },
+  "baseline_eligible": false,
+  "source_leaf": {
+    "path": "/tmp/qwen38-task22-q6-standard-c1-col8/leaf.json",
+    "sha256": "c015ece926a0a406f8a7eb2b0f950c73d4f1441f2d7ebe7e05f3e598378d3372"
+  },
+  "cleanup": {
+    "transient_source_and_test_restored": true,
+    "full_model_run_warranted": false
+  }
+}

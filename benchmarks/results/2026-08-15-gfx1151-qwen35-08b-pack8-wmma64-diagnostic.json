@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "diagnostic_not_routed",
+  "task": "D08-X2-K1 LDS-staged large-tile pack8 WMMA screen",
+  "hardware": {
+    "host": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "source_commit": "f3d08448b",
+  "control_source_commit": "47c2af156",
+  "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+  "protocol": {
+    "rows": 512,
+    "repeats": 5,
+    "calls_per_repeat": 4,
+    "timing": "device wall-clock markers, rotated candidate order, same resident actual weights",
+    "control": "routed small-tile pack8 WMMA leaf",
+    "command_record": "The exact shell invocation was not preserved. The recovered source was /tmp/d08-x/screen_v2.py; this diagnostic is not eligible as a topline claim.",
+    "screen_script_sha256": "9e3e10d8c5f4a751fe69e6467e627650c93c91ea3d06453e80b01ca7242df0ab",
+    "raw_screen_sha256": "63d7df1e65c3082c141e10b207e4b7afb1bb972fc80b351dd8ae4c088f2b1e24",
+    "correctness_command": "uv run pytest -q tests/test_gguf_q4_k_pack8_wmma64_prefill.py",
+    "correctness_result": "4 passed in the retained X2-K1 unit"
+  },
+  "measurements_ms": [
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "shape_n_k": [3584, 1024],
+      "control_small_tile": 0.3507063420498948,
+      "lds_candidates": {
+        "128_64_2_2": 0.6508641418695522,
+        "128_128_4_2": 0.4158801723274221,
+        "64_64_2_2": 0.3951407674581705,
+        "128_64_4_2": 0.6586013425508466,
+        "64_128_2_2": 0.4255485422302375,
+        "128_128_2_2": 0.48112413585813046
+      },
+      "max_abs_diff_vs_control": 0.0
+    },
+    {
+      "tensor": "blk.3.ffn_down.weight",
+      "shape_n_k": [1024, 3584],
+      "control_small_tile": 0.3521565975353171,
+      "lds_candidates": {
+        "128_64_2_2": 0.63320308586314,
+        "128_128_4_2": 0.46431219316701736,
+        "64_64_2_2": 0.400250475904218,
+        "128_64_4_2": 0.5787596433223124,
+        "64_128_2_2": 0.4341849514076746,
+        "128_128_2_2": 0.5531910630197375
+      },
+      "max_abs_diff_vs_control": 0.0
+    }
+  ],
+  "timing_unit_correction": "The recovered raw JSON mislabeled seconds as median_ms. All values above are converted to milliseconds.",
+  "decision": "Do not route. The screened LDS schedules did not beat the qualified small-tile owner on gfx1151 wave32. Keep the registered 128x64 kernel as diagnostic lineage only; wave64 remains untested."
+}

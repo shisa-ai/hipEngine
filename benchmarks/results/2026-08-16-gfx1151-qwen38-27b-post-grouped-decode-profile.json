@@ -1,0 +1,665 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_post_grouped_gqa_decode_profile",
+  "status": "profile_checkpoint",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "commit": "e5a7d77e57d7c0e6ed4cedd46fee1f322272692f",
+    "branch": "main",
+    "tracked_tree_clean": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "workload": {
+    "prompt_source": "repeated token 9707",
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "warmup_decode_tokens": 1,
+    "graph_replay": true,
+    "graph_steps_per_replay": 1,
+    "selected_region": "measured_decode_graph",
+    "command": "scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --json /tmp/qwen38-task22-post-grouped-p4096-d16/p4096-ar16.json"
+  },
+  "correctness": {
+    "finite_final_logits": true,
+    "final_token_ids": [
+      9707
+    ],
+    "tracked_peak_gib": 19.529302295297384,
+    "tracked_before_close_gib": 19.529302295297384
+  },
+  "reconciliation": {
+    "host_decode_seconds": 1.3474668480048422,
+    "host_ms_per_token": 84.21667800030264,
+    "profiled_kernel_ms": 1292.498954,
+    "profiled_kernel_ms_per_token": 80.781184625,
+    "kernel_to_host_ratio": 0.9592064961848733,
+    "residual_ms_per_token": 3.4354933753026424,
+    "dispatches": 14944,
+    "dispatches_per_token": 934.0,
+    "unique_symbols": 24
+  },
+  "categories": [
+    {
+      "category": "q4_gate_up_silu",
+      "duration_ms": 493.324681,
+      "ms_per_token": 30.8327925625,
+      "share_percent": 38.16828473812444
+    },
+    {
+      "category": "q4_single_projections",
+      "duration_ms": 305.788495,
+      "ms_per_token": 19.1117809375,
+      "share_percent": 23.658703479306645
+    },
+    {
+      "category": "q6_planar_bf16",
+      "duration_ms": 172.751809,
+      "ms_per_token": 10.7969880625,
+      "share_percent": 13.365721377597339
+    },
+    {
+      "category": "q5_recurrent_output",
+      "duration_ms": 81.615164,
+      "ms_per_token": 5.10094775,
+      "share_percent": 6.314524568659729
+    },
+    {
+      "category": "q6_standard_qkv",
+      "duration_ms": 76.579996,
+      "ms_per_token": 4.78624975,
+      "share_percent": 5.924956129596992
+    },
+    {
+      "category": "q6_root_f32",
+      "duration_ms": 73.710366,
+      "ms_per_token": 4.606897875,
+      "share_percent": 5.702934286475252
+    },
+    {
+      "category": "full_attention_core",
+      "duration_ms": 27.097867,
+      "ms_per_token": 1.6936166875,
+      "share_percent": 2.0965484665297454
+    },
+    {
+      "category": "norm_residual",
+      "duration_ms": 25.864435,
+      "ms_per_token": 1.6165271875,
+      "share_percent": 2.0011184473268053
+    },
+    {
+      "category": "gdn_core",
+      "duration_ms": 18.166405,
+      "ms_per_token": 1.1354003125,
+      "share_percent": 1.4055257022668353
+    },
+    {
+      "category": "dense_bf16_projections",
+      "duration_ms": 10.901609,
+      "ms_per_token": 0.6813505625,
+      "share_percent": 0.8434520559000778
+    },
+    {
+      "category": "conversion_rope_kv",
+      "duration_ms": 3.531598,
+      "ms_per_token": 0.220724875,
+      "share_percent": 0.27323797741348116
+    },
+    {
+      "category": "conv",
+      "duration_ms": 2.890041,
+      "ms_per_token": 0.1806275625,
+      "share_percent": 0.22360103202064177
+    },
+    {
+      "category": "root_sampling_transport",
+      "duration_ms": 0.276488,
+      "ms_per_token": 0.0172805,
+      "share_percent": 0.021391738782018388
+    }
+  ],
+  "symbols": [
+    {
+      "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<unsigned short>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+      "category": "q4_gate_up_silu",
+      "dispatches": 1024,
+      "duration_ms": 493.324681,
+      "ms_per_token": 30.8327925625,
+      "share_percent": 38.16828473812444,
+      "median_dispatch_us": 481.103,
+      "resources": [
+        {
+          "vgpr": 120,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 139264
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "category": "q4_single_projections",
+      "dispatches": 2560,
+      "duration_ms": 305.788495,
+      "ms_per_token": 19.1117809375,
+      "share_percent": 23.658703479306645,
+      "median_dispatch_us": 84.699,
+      "resources": [
+        {
+          "vgpr": 96,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 4096
+        },
+        {
+          "vgpr": 96,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 20480
+        },
+        {
+          "vgpr": 96,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 24576
+        },
+        {
+          "vgpr": 96,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 40960
+        },
+        {
+          "vgpr": 96,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 49152
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "category": "q6_planar_bf16",
+      "dispatches": 640,
+      "duration_ms": 172.751809,
+      "ms_per_token": 10.7969880625,
+      "share_percent": 13.365721377597339,
+      "median_dispatch_us": 327.014,
+      "resources": [
+        {
+          "vgpr": 80,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 8192
+        },
+        {
+          "vgpr": 80,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 40960
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "category": "q5_recurrent_output",
+      "dispatches": 768,
+      "duration_ms": 81.615164,
+      "ms_per_token": 5.10094775,
+      "share_percent": 6.314524568659729,
+      "median_dispatch_us": 105.719,
+      "resources": [
+        {
+          "vgpr": 56,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 81920
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "category": "q6_standard_qkv",
+      "dispatches": 384,
+      "duration_ms": 76.579996,
+      "ms_per_token": 4.78624975,
+      "share_percent": 5.924956129596992,
+      "median_dispatch_us": 197.651,
+      "resources": [
+        {
+          "vgpr": 72,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 81920
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+      "category": "q6_root_f32",
+      "dispatches": 16,
+      "duration_ms": 73.710366,
+      "ms_per_token": 4.606897875,
+      "share_percent": 5.702934286475252,
+      "median_dispatch_us": 4602.2995,
+      "resources": [
+        {
+          "vgpr": 80,
+          "sgpr": 128,
+          "lds_bytes": 512,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 1986560
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<6l, 24l, 4l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+      "category": "full_attention_core",
+      "dispatches": 256,
+      "duration_ms": 25.712305,
+      "ms_per_token": 1.6070190625,
+      "share_percent": 1.9893482250353913,
+      "median_dispatch_us": 99.848,
+      "resources": [
+        {
+          "vgpr": 64,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 1024
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+      "category": "gdn_core",
+      "dispatches": 768,
+      "duration_ms": 18.166405,
+      "ms_per_token": 1.1354003125,
+      "share_percent": 1.4055257022668353,
+      "median_dispatch_us": 23.524,
+      "resources": [
+        {
+          "vgpr": 56,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 6144
+        }
+      ]
+    },
+    {
+      "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+      "category": "norm_residual",
+      "dispatches": 1024,
+      "duration_ms": 13.777337,
+      "ms_per_token": 0.8610835625,
+      "share_percent": 1.065945698243095,
+      "median_dispatch_us": 13.385,
+      "resources": [
+        {
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 256
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+      "category": "dense_bf16_projections",
+      "dispatches": 1536,
+      "duration_ms": 10.901609,
+      "ms_per_token": 0.6813505625,
+      "share_percent": 0.8434520559000778,
+      "median_dispatch_us": 7.093,
+      "resources": [
+        {
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_bytes": 1024,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 12288
+        }
+      ]
+    },
+    {
+      "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+      "category": "norm_residual",
+      "dispatches": 1040,
+      "duration_ms": 9.850978,
+      "ms_per_token": 0.615686125,
+      "share_percent": 0.7621652589747473,
+      "median_dispatch_us": 9.378,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 256
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+      "category": "conv",
+      "dispatches": 768,
+      "duration_ms": 2.890041,
+      "ms_per_token": 0.1806275625,
+      "share_percent": 0.22360103202064177,
+      "median_dispatch_us": 3.727,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 10240
+        }
+      ]
+    },
+    {
+      "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+      "category": "norm_residual",
+      "dispatches": 1024,
+      "duration_ms": 1.556482,
+      "ms_per_token": 0.097280125,
+      "share_percent": 0.12042423672243839,
+      "median_dispatch_us": 1.523,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 5120
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_quantize_q8_1x2_kernel<unsigned short>(unsigned short const*, (anonymous namespace)::gguf_q8_1_block*, int, int, int)",
+      "category": "conversion_rope_kv",
+      "dispatches": 1024,
+      "duration_ms": 1.464154,
+      "ms_per_token": 0.091509625,
+      "share_percent": 0.11328086537082026,
+      "median_dispatch_us": 1.402,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 32,
+          "grid_x_threads": 5120
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+      "category": "full_attention_core",
+      "dispatches": 256,
+      "duration_ms": 1.385562,
+      "ms_per_token": 0.086597625,
+      "share_percent": 0.10720024149435405,
+      "median_dispatch_us": 5.37,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 6144
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+      "category": "conversion_rope_kv",
+      "dispatches": 768,
+      "duration_ms": 0.867271,
+      "ms_per_token": 0.0542044375,
+      "share_percent": 0.06710032509627857,
+      "median_dispatch_us": 1.122,
+      "resources": [
+        {
+          "vgpr": 8,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 6144
+        }
+      ]
+    },
+    {
+      "kernel": "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+      "category": "norm_residual",
+      "dispatches": 256,
+      "duration_ms": 0.679638,
+      "ms_per_token": 0.042477375,
+      "share_percent": 0.0525832533865246,
+      "median_dispatch_us": 2.605,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 7168
+        }
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+      "category": "conversion_rope_kv",
+      "dispatches": 256,
+      "duration_ms": 0.52575,
+      "ms_per_token": 0.032859375,
+      "share_percent": 0.040677015511147566,
+      "median_dispatch_us": 2.0635,
+      "resources": [
+        {
+          "vgpr": 8,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 1024
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+      "category": "conversion_rope_kv",
+      "dispatches": 256,
+      "duration_ms": 0.417464,
+      "ms_per_token": 0.0260915,
+      "share_percent": 0.03229898165163235,
+      "median_dispatch_us": 1.603,
+      "resources": [
+        {
+          "vgpr": 24,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 6144
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+      "category": "conversion_rope_kv",
+      "dispatches": 256,
+      "duration_ms": 0.256959,
+      "ms_per_token": 0.0160599375,
+      "share_percent": 0.019880789783602408,
+      "median_dispatch_us": 1.002,
+      "resources": [
+        {
+          "vgpr": 8,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 1024
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+      "category": "root_sampling_transport",
+      "dispatches": 16,
+      "duration_ms": 0.181822,
+      "ms_per_token": 0.011363875,
+      "share_percent": 0.014067477535459576,
+      "median_dispatch_us": 11.081,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 62080
+        }
+      ]
+    },
+    {
+      "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "category": "root_sampling_transport",
+      "dispatches": 16,
+      "duration_ms": 0.045689,
+      "ms_per_token": 0.0028555625,
+      "share_percent": 0.0035349351625084567,
+      "median_dispatch_us": 2.365,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 256,
+          "grid_x_threads": 5120
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "category": "root_sampling_transport",
+      "dispatches": 16,
+      "duration_ms": 0.029177,
+      "ms_per_token": 0.0018235625,
+      "share_percent": 0.002257409950677608,
+      "median_dispatch_us": 1.803,
+      "resources": [
+        {
+          "vgpr": 16,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 128,
+          "grid_x_threads": 128
+        }
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+      "category": "root_sampling_transport",
+      "dispatches": 16,
+      "duration_ms": 0.0198,
+      "ms_per_token": 0.0012375,
+      "share_percent": 0.001531916133372747,
+      "median_dispatch_us": 1.1625,
+      "resources": [
+        {
+          "vgpr": 8,
+          "sgpr": 128,
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "workgroup_x": 1,
+          "grid_x_threads": 1
+        }
+      ]
+    }
+  ],
+  "selection": {
+    "llamacpp_hip_tok_s": 11.50812,
+    "llamacpp_vulkan_tok_s": 12.5683,
+    "current_unprofiled_tok_s": 12.0596,
+    "current_vs_hip_percent": 4.792094625360188,
+    "current_vs_vulkan_percent": -4.0474845444491425,
+    "admission": "open a follow-up only for a materially distinct operation-complete dataflow with credible >=1% complete-wall saving",
+    "decision": "Attention is now 2.0965% of selected kernel wall. Re-rank compressed GEMV; do not reopen generic attention or graph-width mechanisms."
+  },
+  "evidence": {
+    "benchmark": {
+      "path": "/tmp/qwen38-task22-post-grouped-p4096-d16/p4096-ar16.json",
+      "bytes": 152569,
+      "sha256": "2cd9b8e75992d9fe39ce616d3024cbb31954faebcc456fb26aaa4852f31b547a"
+    },
+    "kernel_trace": {
+      "path": "/tmp/qwen38-task22-post-grouped-p4096-d16/rocprof/p4096-ar16_kernel_trace.csv",
+      "bytes": 4057952,
+      "sha256": "019e025bdc438f6a9c7626270e921fb8372ab99507614319bc6106a8bc5746e3"
+    },
+    "agent_info": {
+      "path": "/tmp/qwen38-task22-post-grouped-p4096-d16/rocprof/p4096-ar16_agent_info.csv",
+      "bytes": 1336,
+      "sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    },
+    "compiler_version": {
+      "path": "/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt",
+      "bytes": 348,
+      "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987"
+    }
+  }
+}

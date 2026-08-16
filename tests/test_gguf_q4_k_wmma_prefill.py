@@ -37,12 +37,14 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     _ALLOWED_TILES,
     _default_q4_pack8_tiles,
     _default_q6_tiles,
     _default_tiles,
     build_gguf_q4_k_prefill,
+    gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out,
     gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q4_k_wmma_prefill_bf16_bf16_out,
@@ -124,6 +126,15 @@ def test_gguf_q4_k_wmma_prefill_registry_and_build_plan() -> None:
             variant="pack8_wmma_prefill_bf16_bf16_out",
         )
         is gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_pair_silu",
+            quant="gguf_q4_k",
+            variant="pack8_dual_wmma_prefill_bf16_bf16_out",
+        )
+        is gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out
     )
     assert (
         resolve(
@@ -626,6 +637,117 @@ def test_gguf_q4_k_pack8_gfx1151_tiles_are_bf16_exact_to_rollback(
                 out_dev,
                 runtime=runtime,
             )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate, rollback)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_gguf_q4_k_pack8_dual_wmma_silu_is_exact_to_unfused_chain() -> None:
+    rows, in_features, out_features = 37, 512, 64
+    activation = _make_activation(rows, in_features, seed=47)
+    host_in = _prepare_input(activation, "bf16")
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, 1, axis=0).copy()
+    packed_a = repack_gguf_q4_k_pack8(raw_a)
+    packed_b = repack_gguf_q4_k_pack8(raw_b)
+    candidate = np.empty((rows, out_features), dtype=np.uint16)
+    rollback = np.empty_like(candidate)
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_prefill(load=True)
+    buffers = []
+
+    def upload(array: np.ndarray):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(np.ascontiguousarray(array)),
+            runtime=runtime,
+        )
+        buffers.append(buffer)
+        return buffer
+
+    try:
+        x_dev = upload(host_in)
+        qa_dev = upload(packed_a.qweight)
+        sa_dev = upload(packed_a.scales)
+        ma_dev = upload(packed_a.mins)
+        qb_dev = upload(packed_b.qweight)
+        sb_dev = upload(packed_b.scales)
+        mb_dev = upload(packed_b.mins)
+        gate_dev = malloc(candidate.nbytes, runtime=runtime)
+        up_dev = malloc(candidate.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate.nbytes, runtime=runtime)
+        rollback_dev = malloc(rollback.nbytes, runtime=runtime)
+        buffers.extend((gate_dev, up_dev, candidate_dev, rollback_dev))
+
+        gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            qa_dev.ptr,
+            sa_dev.ptr,
+            ma_dev.ptr,
+            gate_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=16,
+            tile_n=32,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out(
+            x_dev.ptr,
+            qb_dev.ptr,
+            sb_dev.ptr,
+            mb_dev.ptr,
+            up_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=16,
+            tile_n=32,
+            library=library,
+            runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            gate_dev.ptr,
+            up_dev.ptr,
+            rollback_dev.ptr,
+            rows,
+            out_features,
+            runtime=runtime,
+        )
+        gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out(
+            x_dev.ptr,
+            qa_dev.ptr,
+            sa_dev.ptr,
+            ma_dev.ptr,
+            qb_dev.ptr,
+            sb_dev.ptr,
+            mb_dev.ptr,
+            candidate_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(candidate),
+            candidate_dev,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(rollback),
+            rollback_dev,
+            runtime=runtime,
+        )
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)

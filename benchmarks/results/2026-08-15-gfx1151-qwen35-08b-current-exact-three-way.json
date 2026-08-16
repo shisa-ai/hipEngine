@@ -1,0 +1,1026 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained_diagnostic",
+  "task": "current-HEAD exact Qwen3.5-0.8B hipEngine versus same-source llama.cpp HIP/Vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "source": {
+    "hipengine": {
+      "commit": "27c1d9901fc5def6c82edb78308a079de21a6be1",
+      "describe": "v0.4.0-207-g27c1d9901",
+      "tracked_clean": true
+    },
+    "llamacpp_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "llamacpp_hip_tracked_clean": true,
+    "llamacpp_vulkan_tracked_clean": true
+  },
+  "hardware": {
+    "host": "zbook",
+    "platform": "Linux-7.1.8-1-cachyos-x86_64-with-glibc2.44",
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics"
+  },
+  "builds": {
+    "source_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "hip_source_tracked_clean": true,
+    "vulkan_source_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+    "vulkan_source_tracked_clean": true,
+    "files": {
+      "hip_llama_bench": {
+        "path": "/tmp/d08-three-way-2f59d4ade/llama-1d/build-hip/bin/llama-bench",
+        "sha256": "b851dfe8d5692e8e588a45e1b67bb320b0f5d8d4e4a1a155bcad0984e8fcedd9",
+        "bytes": 15992
+      },
+      "hip_libggml": {
+        "path": "/tmp/d08-three-way-2f59d4ade/llama-1d/build-hip/bin/libggml-hip.so.0",
+        "sha256": "6951ac4ea3cf956fc41b9126e59b0cf4b1ccc7e7570dd5b7a7989d606286b093",
+        "bytes": 65570976
+      },
+      "hip_cmake_cache": {
+        "path": "/tmp/d08-three-way-2f59d4ade/llama-1d/build-hip/CMakeCache.txt",
+        "sha256": "b18e3e04a98372af58bf2a536372cf6f5054ea93839d40443d90f4deb1b4b652",
+        "bytes": 40884
+      },
+      "hip_helper": {
+        "path": "/tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_hip",
+        "sha256": "0c00cf5a9ece52091d8961423a496a4bcf996cac55ada125900d55c8b14d62f5",
+        "bytes": 31760
+      },
+      "vulkan_llama_bench": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+        "sha256": "715be28316a74c25cab14625fd9b62b043d23179c298f4289bc794f952ccddb4",
+        "bytes": 15992
+      },
+      "vulkan_libggml": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libggml-vulkan.so.0",
+        "sha256": "07f7855c5c749a8aa6f46ee3314e821fcf1d5f1e38d1a2651222bc174a3841c4",
+        "bytes": 54879632
+      },
+      "vulkan_cmake_cache": {
+        "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/CMakeCache.txt",
+        "sha256": "f5f797e1b3582fe3849507a45b32ee853a8d94c08c1dbd30f3b32aba57c13b86",
+        "bytes": 37662
+      },
+      "vulkan_helper": {
+        "path": "/tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_vulkan",
+        "sha256": "288dae4829a2cfd3cf63c7291bd37189a12ce7c7896311d97ababfb2118eda78",
+        "bytes": 31760
+      }
+    },
+    "hip_config": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "GGML_HIP": true,
+      "GGML_VULKAN": false,
+      "GGML_NATIVE": false,
+      "GGML_HIP_GRAPHS": true,
+      "GGML_HIP_MMQ_MFMA": true,
+      "GGML_HIP_NO_VMM": true,
+      "AMDGPU_TARGETS": "gfx1151",
+      "CMAKE_HIP_COMPILER": "TheRock 7.15 clang++ 23.0.0git"
+    },
+    "vulkan_config": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "GGML_HIP": false,
+      "GGML_VULKAN": true,
+      "GGML_NATIVE": true
+    },
+    "commands": {
+      "hip_configure": "cmake -S /tmp/d08-three-way-2f59d4ade/llama-1d -B /tmp/d08-three-way-2f59d4ade/llama-1d/build-hip -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<TheRock component roots> -DGGML_HIP=ON -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF -DGGML_HIP_GRAPHS=ON -DGGML_HIP_MMQ_MFMA=ON -DGGML_HIP_NO_VMM=ON -DAMDGPU_TARGETS=gfx1151",
+      "hip_build": "cmake --build /tmp/d08-three-way-2f59d4ade/llama-1d/build-hip --parallel 16 --target llama-bench",
+      "helper_build": "g++ -std=c++17 -O2 -I<source>/include -I<source>/ggml/include benchmarks/llama.cpp/qwen35_08b_exact_core.cpp -L<build>/bin -Wl,-rpath,<build>/bin -lllama -lggml -o <helper>"
+    }
+  },
+  "protocol": {
+    "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen35_08b_vulkan_parity_p512_t128.json",
+    "fixture_sha256": "86af62a7c081cdb16994a92ab2e5c89ab1a214f11cbc20fb4582a18c1c980030",
+    "hipengine_driver": "scripts/qwen35_08b_exact_core.py",
+    "hipengine_driver_sha256": "4369db461393ff27dd4dad49c6e98b81480f4b4dca308366690d850d48bd8156",
+    "parent_harness": "/home/lhl/hipEngine/scripts/qwen35_08b_three_way.py",
+    "parent_harness_sha256": "2b8b3d1441b98360b1deb2c584ed6c8e1ef8893aa6af9b17e6beab7757f8b12e",
+    "llamacpp_helper_source": "benchmarks/llama.cpp/qwen35_08b_exact_core.cpp",
+    "llamacpp_helper_source_sha256": "6a7bd2598b88dcecdad81b19198f1c594687e51053ce833203d93855fea60def",
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "blocks": 6,
+    "child_repetitions": 1,
+    "order": "cyclic counter-rotation; every engine occupies every order position equally",
+    "scope": "shared repeated-token p512/tg128 fixture; exact forced-token core plus native greedy public path",
+    "vulkan_icd": "/usr/share/vulkan/icd.d/radeon_icd.json",
+    "command": "uv run python -u scripts/qwen35_08b_three_way.py --hip-helper /tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_hip --vulkan-helper /tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_vulkan --hip-source /tmp/d08-three-way-2f59d4ade/llama-1d --vulkan-source /home/lhl/llama.cpp/llama.cpp-vulkan --blocks 6 --raw-dir /tmp/d08-three-way-2f59d4ade/raw-run2 --output /tmp/d08-three-way-2f59d4ade/three-way-run2.json",
+    "kv_contract": "hipEngine production BF16 KV versus llama.cpp standard F16 KV; both are 16-bit, and pinned Vulkan reports no native BF16 capability",
+    "raw_aggregate_sha256": "f899f876d323e35bc31a12d43d39b363968304dca688920e6e8aca072a954551"
+  },
+  "results": {
+    "q4": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "model_sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517",
+      "summary": {
+        "engines": {
+          "hipengine": {
+            "prefill_tok_s": {
+              "samples": [
+                4449.961624295789,
+                4382.645078156472,
+                4325.6782908569185,
+                4253.666222039466,
+                4302.896987587201,
+                4462.857217072067
+              ],
+              "median": 4354.161684506695,
+              "min": 4253.666222039466,
+              "max": 4462.857217072067,
+              "stdev": 83.52108669311679,
+              "stdev_pct_of_median": 1.918189831817863
+            },
+            "decode_tok_s": {
+              "samples": [
+                144.33963429889232,
+                154.54424188903494,
+                142.33618052213103,
+                144.01939042868125,
+                142.81096677992656,
+                145.1666343241832
+              ],
+              "median": 144.17951236378678,
+              "min": 142.33618052213103,
+              "max": 154.54424188903494,
+              "stdev": 4.531686197758088,
+              "stdev_pct_of_median": 3.143086090015311
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                4394.810703657606,
+                4474.792510557255,
+                4357.552131472795,
+                4228.461879317749,
+                4292.005666654606,
+                4640.152040381793
+              ],
+              "median": 4376.1814175652,
+              "min": 4228.461879317749,
+              "max": 4640.152040381793,
+              "stdev": 145.7112669916172,
+              "stdev_pct_of_median": 3.329644114084452
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                125.42392244670442,
+                124.63985496485817,
+                120.72750864528746,
+                121.98491191687272,
+                124.6122993751107,
+                120.36098644486862
+              ],
+              "median": 123.2986056459917,
+              "min": 120.36098644486862,
+              "max": 125.42392244670442,
+              "stdev": 2.205111661482824,
+              "stdev_pct_of_median": 1.788431953410748
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "owned_session_mib": 1017.6345863342285
+          },
+          "llamacpp_hip": {
+            "prefill_tok_s": {
+              "samples": [
+                4872.1071863581,
+                4879.164443089121,
+                4873.127367559438,
+                4727.041075401845,
+                4932.515101010587,
+                4885.402950325375
+              ],
+              "median": 4876.14590532428,
+              "min": 4727.041075401845,
+              "max": 4932.515101010587,
+              "stdev": 69.64684811662927,
+              "stdev_pct_of_median": 1.4283175579422602
+            },
+            "decode_tok_s": {
+              "samples": [
+                119.5680603818705,
+                119.61722488038278,
+                117.81923951362744,
+                119.52451653266847,
+                119.40632666958963,
+                118.81114597063137
+              ],
+              "median": 119.46542160112905,
+              "min": 117.81923951362744,
+              "max": 119.61722488038278,
+              "stdev": 0.7043946001846134,
+              "stdev_pct_of_median": 0.5896221607424155
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5045.726900031536,
+                5068.303306275985,
+                5192.513450333913,
+                4987.288259416916,
+                4977.784691367627,
+                4891.937857101909
+              ],
+              "median": 5016.507579724226,
+              "min": 4891.937857101909,
+              "max": 5192.513450333913,
+              "stdev": 101.67783514319791,
+              "stdev_pct_of_median": 2.026864975828213
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                89.83086532388238,
+                89.12221580109035,
+                89.31374943306702,
+                88.66906350228946,
+                88.95251464589255,
+                89.51549737048227
+              ],
+              "median": 89.21798261707869,
+              "min": 88.66906350228946,
+              "max": 89.83086532388238,
+              "stdev": 0.4129726172990677,
+              "stdev_pct_of_median": 0.46288047004104055
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ]
+          },
+          "llamacpp_vulkan": {
+            "prefill_tok_s": {
+              "samples": [
+                5520.602522009629,
+                5273.90303846859,
+                5339.969357753958,
+                5517.85381351594,
+                5269.837283481222,
+                5312.145619191786
+              ],
+              "median": 5326.057488472872,
+              "min": 5269.837283481222,
+              "max": 5520.602522009629,
+              "stdev": 116.63952786995928,
+              "stdev_pct_of_median": 2.189978762384764
+            },
+            "decode_tok_s": {
+              "samples": [
+                192.5228921751477,
+                193.73362534641237,
+                194.527692840773,
+                193.2591801885183,
+                194.01670665734983,
+                194.1980304071635
+              ],
+              "median": 193.8751660018811,
+              "min": 192.5228921751477,
+              "max": 194.527692840773,
+              "stdev": 0.7230332353037918,
+              "stdev_pct_of_median": 0.37293751964951327
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5635.594946016064,
+                5668.294087039313,
+                5418.895434368921,
+                5469.249890241128,
+                5556.279029387507,
+                5729.806070684768
+              ],
+              "median": 5595.936987701785,
+              "min": 5418.895434368921,
+              "max": 5729.806070684768,
+              "stdev": 120.09235243069459,
+              "stdev_pct_of_median": 2.146063343719239
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                126.3997788003871,
+                125.81583706849099,
+                125.87275051627496,
+                126.33989379552678,
+                126.72389042343599,
+                126.28131135249258
+              ],
+              "median": 126.31060257400968,
+              "min": 125.81583706849099,
+              "max": 126.72389042343599,
+              "stdev": 0.3423868737563116,
+              "stdev_pct_of_median": 0.271067405885975
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ]
+          }
+        },
+        "comparisons": {
+          "llamacpp_hip": {
+            "prefill_tok_s": {
+              "hipengine_median": 4354.161684506695,
+              "peer_median": 4876.14590532428,
+              "hipengine_over_peer": 0.8929514762370772,
+              "peer_over_hipengine": 1.1198816807090441,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "decode_tok_s": {
+              "hipengine_median": 144.17951236378678,
+              "peer_median": 119.46542160112905,
+              "hipengine_over_peer": 1.2068723353705904,
+              "peer_over_hipengine": 0.8285880541730483,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            },
+            "public_prefill_tok_s": {
+              "hipengine_median": 4376.1814175652,
+              "peer_median": 5016.507579724226,
+              "hipengine_over_peer": 0.8723561856565106,
+              "peer_over_hipengine": 1.146320753428748,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "public_decode_tok_s": {
+              "hipengine_median": 123.2986056459917,
+              "peer_median": 89.21798261707869,
+              "hipengine_over_peer": 1.3819927555993523,
+              "peer_over_hipengine": 0.7235927944979081,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            }
+          },
+          "llamacpp_vulkan": {
+            "prefill_tok_s": {
+              "hipengine_median": 4354.161684506695,
+              "peer_median": 5326.057488472872,
+              "hipengine_over_peer": 0.8175205945355188,
+              "peer_over_hipengine": 1.2232107749752266,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "decode_tok_s": {
+              "hipengine_median": 144.17951236378678,
+              "peer_median": 193.8751660018811,
+              "hipengine_over_peer": 0.7436718963912473,
+              "peer_over_hipengine": 1.3446790242479434,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "public_prefill_tok_s": {
+              "hipengine_median": 4376.1814175652,
+              "peer_median": 5595.936987701785,
+              "hipengine_over_peer": 0.7820283586435574,
+              "peer_over_hipengine": 1.27872600647695,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "public_decode_tok_s": {
+              "hipengine_median": 123.2986056459917,
+              "peer_median": 126.31060257400968,
+              "hipengine_over_peer": 0.976154045134468,
+              "peer_over_hipengine": 1.0244284751821595,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            }
+          }
+        },
+        "correctness": {
+          "all_finite": true,
+          "all_deterministic": true,
+          "cross_engine_core_top1_exact": true,
+          "cross_engine_public_top1_exact": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "declared_device_mib": {
+          "llamacpp_hip": 1014.67,
+          "llamacpp_vulkan": 1015.4376,
+          "scope": "model + F16 KV + F32 recurrent state + reserved compute; excludes host output/model buffers"
+        }
+      },
+      "wall_decomposition": {
+        "core_prefill": {
+          "unit": "ms/request",
+          "wall": {
+            "hipengine": 117.58865129465377,
+            "llamacpp_hip": 105.00095976228798,
+            "llamacpp_vulkan": 96.13114411703516
+          },
+          "hipengine_minus_vulkan": 21.45750717761861,
+          "hipengine_minus_llamacpp_hip": 12.587691532365795,
+          "llamacpp_hip_minus_vulkan": 8.869815645252814,
+          "identity_check": 0.0
+        },
+        "public_prefill": {
+          "unit": "ms/request",
+          "wall": {
+            "hipengine": 116.99697776351883,
+            "llamacpp_hip": 102.06303725512288,
+            "llamacpp_vulkan": 91.49495448666141
+          },
+          "hipengine_minus_vulkan": 25.502023276857415,
+          "hipengine_minus_llamacpp_hip": 14.933940508395949,
+          "llamacpp_hip_minus_vulkan": 10.568082768461466,
+          "identity_check": 0.0
+        },
+        "core_decode": {
+          "unit": "ms/token",
+          "wall": {
+            "hipengine": 6.935798183842156,
+            "llamacpp_hip": 8.370622951792681,
+            "llamacpp_vulkan": 5.157958188364865
+          },
+          "hipengine_minus_vulkan": 1.777839995477291,
+          "hipengine_minus_llamacpp_hip": -1.4348247679505253,
+          "llamacpp_hip_minus_vulkan": 3.2126647634278163,
+          "identity_check": 0.0
+        },
+        "public_decode": {
+          "unit": "ms/token",
+          "wall": {
+            "hipengine": 8.110391798518355,
+            "llamacpp_hip": 11.208502710624769,
+            "llamacpp_vulkan": 7.916991761749106
+          },
+          "hipengine_minus_vulkan": 0.19340003676924944,
+          "hipengine_minus_llamacpp_hip": -3.0981109121064137,
+          "llamacpp_hip_minus_vulkan": 3.291510948875663,
+          "identity_check": 0.0
+        }
+      },
+      "owner_ranking": {
+        "contract": "hipEngine current marker-normalized roles versus same-source historical Vulkan logger; attribution-only, not additive or a same-session denominator",
+        "prefill": [
+          {
+            "role": "dense_ffn_projections",
+            "median_ms": 44.54102795311091,
+            "historical_vulkan_logger_ms": 24.49522,
+            "historical_matched_gap_ms": 20.045807953110913
+          },
+          {
+            "role": "gdn_recurrence",
+            "median_ms": 29.26632601943693,
+            "historical_vulkan_logger_ms": 12.585055,
+            "historical_matched_gap_ms": 16.68127101943693
+          },
+          {
+            "role": "linear_attention_projections",
+            "median_ms": 33.87708646428214,
+            "historical_vulkan_logger_ms": 17.82819,
+            "historical_matched_gap_ms": 16.048896464282137
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "median_ms": 8.243582807333935,
+            "historical_vulkan_logger_ms": 4.38531,
+            "historical_matched_gap_ms": 3.858272807333935
+          },
+          {
+            "role": "full_attention_core_kv",
+            "median_ms": 2.8201983769161405,
+            "historical_vulkan_logger_ms": 1.765358,
+            "historical_matched_gap_ms": 1.0548403769161405
+          }
+        ],
+        "decode": [
+          {
+            "role": "full_attention_core_kv",
+            "production_wall_normalized_ms": 1.1449185619905522,
+            "historical_vulkan_logger_ms": 0.156845,
+            "historical_matched_gap_ms": 0.9880735619905522
+          },
+          {
+            "role": "linear_attention_projections",
+            "production_wall_normalized_ms": 2.0267239522856833,
+            "historical_vulkan_logger_ms": 1.051429,
+            "historical_matched_gap_ms": 0.9752949522856833
+          },
+          {
+            "role": "dense_ffn_projections",
+            "production_wall_normalized_ms": 2.0413148664919065,
+            "historical_vulkan_logger_ms": 1.102156,
+            "historical_matched_gap_ms": 0.9391588664919066
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "production_wall_normalized_ms": 0.6070297025772325,
+            "historical_vulkan_logger_ms": 0.250669,
+            "historical_matched_gap_ms": 0.35636070257723257
+          },
+          {
+            "role": "attention_norm",
+            "production_wall_normalized_ms": 0.3020676777675789,
+            "historical_vulkan_logger_ms": 0.108414,
+            "historical_matched_gap_ms": 0.1936536777675789
+          }
+        ]
+      }
+    },
+    "q8": {
+      "model": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "model_sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c",
+      "summary": {
+        "engines": {
+          "hipengine": {
+            "prefill_tok_s": {
+              "samples": [
+                5001.140738713224,
+                4979.180219210743,
+                4950.583363883686,
+                5065.56037202623,
+                5004.528903167957,
+                5046.368189429623
+              ],
+              "median": 5002.83482094059,
+              "min": 4950.583363883686,
+              "max": 5065.56037202623,
+              "stdev": 42.35940119521045,
+              "stdev_pct_of_median": 0.8467079708069672
+            },
+            "decode_tok_s": {
+              "samples": [
+                140.88413228445918,
+                139.60164176373146,
+                141.03414805176044,
+                145.90763325711944,
+                139.06342963868764,
+                140.29716752985283
+              ],
+              "median": 140.590649907156,
+              "min": 139.06342963868764,
+              "max": 145.90763325711944,
+              "stdev": 2.4574624665185576,
+              "stdev_pct_of_median": 1.747955833578854
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5024.907790733829,
+                5015.342196259293,
+                5052.369237998612,
+                5061.450907410889,
+                4974.408900803117,
+                5055.593857603551
+              ],
+              "median": 5038.638514366221,
+              "min": 4974.408900803117,
+              "max": 5061.450907410889,
+              "stdev": 33.08466505299078,
+              "stdev_pct_of_median": 0.6566191434185926
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                116.29474272371188,
+                119.710782490465,
+                119.16581974835852,
+                116.31492853564447,
+                117.07727246969856,
+                116.99569849867382
+              ],
+              "median": 117.03648548418619,
+              "min": 116.29474272371188,
+              "max": 119.710782490465,
+              "stdev": 1.4765125784809805,
+              "stdev_pct_of_median": 1.2615831485135334
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "owned_session_mib": 981.7798500061035
+          },
+          "llamacpp_hip": {
+            "prefill_tok_s": {
+              "samples": [
+                4694.878730915592,
+                4717.024589333259,
+                4687.65736154473,
+                4584.40407224018,
+                4551.758472316063,
+                4647.194437889157
+              ],
+              "median": 4667.425899716944,
+              "min": 4551.758472316063,
+              "max": 4717.024589333259,
+              "stdev": 66.08771936700172,
+              "stdev_pct_of_median": 1.4159350525738312
+            },
+            "decode_tok_s": {
+              "samples": [
+                111.70844096907074,
+                109.65475884519833,
+                109.12190963341858,
+                109.10330719399931,
+                109.3045498018855,
+                109.6622744641113
+              ],
+              "median": 109.47965432354192,
+              "min": 109.10330719399931,
+              "max": 111.70844096907074,
+              "stdev": 0.9861930902713747,
+              "stdev_pct_of_median": 0.9008003325959616
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5037.882515005412,
+                5178.161105537396,
+                5105.551289849725,
+                4978.510725190097,
+                5040.808892301937,
+                5197.7901270413
+              ],
+              "median": 5073.180091075831,
+              "min": 4978.510725190097,
+              "max": 5197.7901270413,
+              "stdev": 86.25370797405039,
+              "stdev_pct_of_median": 1.7001901455416146
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                83.71922664364388,
+                84.63425439205496,
+                82.73490572745312,
+                84.20443257395847,
+                82.98593777351321,
+                85.77248847432186
+              ],
+              "median": 83.96182960880117,
+              "min": 82.73490572745312,
+              "max": 85.77248847432186,
+              "stdev": 1.1218706175849142,
+              "stdev_pct_of_median": 1.3361674260934828
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ]
+          },
+          "llamacpp_vulkan": {
+            "prefill_tok_s": {
+              "samples": [
+                5884.590762341837,
+                5649.686343097065,
+                5805.962905340126,
+                5623.2283261340635,
+                5720.076014447661,
+                5554.5490346258875
+              ],
+              "median": 5684.881178772363,
+              "min": 5554.5490346258875,
+              "max": 5884.590762341837,
+              "stdev": 122.5107501439998,
+              "stdev_pct_of_median": 2.1550274542493733
+            },
+            "decode_tok_s": {
+              "samples": [
+                159.13074828747963,
+                160.1281024819856,
+                159.24260237246597,
+                159.45923387312777,
+                159.8719026380113,
+                159.62826567630628
+              ],
+              "median": 159.543749774717,
+              "min": 159.13074828747963,
+              "max": 160.1281024819856,
+              "stdev": 0.3789830306521947,
+              "stdev_pct_of_median": 0.23754175966613286
+            },
+            "public_prefill_tok_s": {
+              "samples": [
+                5927.970526871537,
+                5720.344427300791,
+                6131.259243292438,
+                5805.943153919862,
+                5775.977798585337,
+                5737.562544474514
+              ],
+              "median": 5790.9604762526,
+              "min": 5720.344427300791,
+              "max": 6131.259243292438,
+              "stdev": 156.24279691167055,
+              "stdev_pct_of_median": 2.6980463353598494
+            },
+            "public_decode_tok_s": {
+              "samples": [
+                112.30335944971354,
+                111.5303179485392,
+                111.71429070153084,
+                113.01230774664054,
+                111.46136296347898,
+                111.91256830601093
+              ],
+              "median": 111.81342950377089,
+              "min": 111.46136296347898,
+              "max": 113.01230774664054,
+              "stdev": 0.5858459985289095,
+              "stdev_pct_of_median": 0.5239495838101915
+            },
+            "all_finite": true,
+            "all_deterministic": true,
+            "core_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ],
+            "public_top1_sha256": [
+              "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+            ]
+          }
+        },
+        "comparisons": {
+          "llamacpp_hip": {
+            "prefill_tok_s": {
+              "hipengine_median": 5002.83482094059,
+              "peer_median": 4667.425899716944,
+              "hipengine_over_peer": 1.071861648889592,
+              "peer_over_hipengine": 0.9329562271734996,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            },
+            "decode_tok_s": {
+              "hipengine_median": 140.590649907156,
+              "peer_median": 109.47965432354192,
+              "hipengine_over_peer": 1.2841714816862018,
+              "peer_over_hipengine": 0.7787122002483143,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            },
+            "public_prefill_tok_s": {
+              "hipengine_median": 5038.638514366221,
+              "peer_median": 5073.180091075831,
+              "hipengine_over_peer": 0.9931913363828002,
+              "peer_over_hipengine": 1.0068553393165882,
+              "hipengine_paired_wins": 1,
+              "blocks": 6
+            },
+            "public_decode_tok_s": {
+              "hipengine_median": 117.03648548418619,
+              "peer_median": 83.96182960880117,
+              "hipengine_over_peer": 1.3939249064662833,
+              "peer_over_hipengine": 0.7173987604074626,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            }
+          },
+          "llamacpp_vulkan": {
+            "prefill_tok_s": {
+              "hipengine_median": 5002.83482094059,
+              "peer_median": 5684.881178772363,
+              "hipengine_over_peer": 0.8800245182997724,
+              "peer_over_hipengine": 1.1363319762181434,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "decode_tok_s": {
+              "hipengine_median": 140.590649907156,
+              "peer_median": 159.543749774717,
+              "hipengine_over_peer": 0.8812043725039456,
+              "peer_over_hipengine": 1.1348105288657344,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "public_prefill_tok_s": {
+              "hipengine_median": 5038.638514366221,
+              "peer_median": 5790.9604762526,
+              "hipengine_over_peer": 0.8700868422481075,
+              "peer_over_hipengine": 1.1493105646974575,
+              "hipengine_paired_wins": 0,
+              "blocks": 6
+            },
+            "public_decode_tok_s": {
+              "hipengine_median": 117.03648548418619,
+              "peer_median": 111.81342950377089,
+              "hipengine_over_peer": 1.0467122420231207,
+              "peer_over_hipengine": 0.9553724126386124,
+              "hipengine_paired_wins": 6,
+              "blocks": 6
+            }
+          }
+        },
+        "correctness": {
+          "all_finite": true,
+          "all_deterministic": true,
+          "cross_engine_core_top1_exact": true,
+          "cross_engine_public_top1_exact": true,
+          "core_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ],
+          "public_top1_sha256": [
+            "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+          ]
+        },
+        "declared_device_mib": {
+          "llamacpp_hip": 1281.05,
+          "llamacpp_vulkan": 1281.8175999999999,
+          "scope": "model + F16 KV + F32 recurrent state + reserved compute; excludes host output/model buffers"
+        }
+      },
+      "wall_decomposition": {
+        "core_prefill": {
+          "unit": "ms/request",
+          "wall": {
+            "hipengine": 102.34197576480011,
+            "llamacpp_hip": 109.6964388938773,
+            "llamacpp_vulkan": 90.06344792426519
+          },
+          "hipengine_minus_vulkan": 12.27852784053492,
+          "hipengine_minus_llamacpp_hip": -7.354463129077189,
+          "llamacpp_hip_minus_vulkan": 19.63299096961211,
+          "identity_check": 0.0
+        },
+        "public_prefill": {
+          "unit": "ms/request",
+          "wall": {
+            "hipengine": 101.61475139369098,
+            "llamacpp_hip": 100.92289073290596,
+            "llamacpp_vulkan": 88.41365816596306
+          },
+          "hipengine_minus_vulkan": 13.201093227727924,
+          "hipengine_minus_llamacpp_hip": 0.6918606607850251,
+          "llamacpp_hip_minus_vulkan": 12.509232566942899,
+          "identity_check": 0.0
+        },
+        "core_decode": {
+          "unit": "ms/token",
+          "wall": {
+            "hipengine": 7.112848547612415,
+            "llamacpp_hip": 9.134117258396982,
+            "llamacpp_vulkan": 6.267873241114398
+          },
+          "hipengine_minus_vulkan": 0.844975306498017,
+          "hipengine_minus_llamacpp_hip": -2.0212687107845673,
+          "llamacpp_hip_minus_vulkan": 2.8662440172825843,
+          "identity_check": 0.0
+        },
+        "public_decode": {
+          "unit": "ms/token",
+          "wall": {
+            "hipengine": 8.54434406384425,
+            "llamacpp_hip": 11.91017400000984,
+            "llamacpp_vulkan": 8.943469531683357
+          },
+          "hipengine_minus_vulkan": -0.39912546783910763,
+          "hipengine_minus_llamacpp_hip": -3.365829936165591,
+          "llamacpp_hip_minus_vulkan": 2.9667044683264834,
+          "identity_check": 0.0
+        }
+      },
+      "owner_ranking": {
+        "contract": "hipEngine current marker-normalized roles versus same-source historical Vulkan logger; attribution-only, not additive or a same-session denominator",
+        "prefill": [
+          {
+            "role": "linear_attention_projections",
+            "median_ms": 28.178929966937183,
+            "historical_vulkan_logger_ms": 19.832127,
+            "historical_matched_gap_ms": 8.346802966937183
+          },
+          {
+            "role": "gdn_recurrence",
+            "median_ms": 24.919266606552448,
+            "historical_vulkan_logger_ms": 16.751519,
+            "historical_matched_gap_ms": 8.16774760655245
+          },
+          {
+            "role": "dense_ffn_projections",
+            "median_ms": 34.29924857228735,
+            "historical_vulkan_logger_ms": 27.80216,
+            "historical_matched_gap_ms": 6.497088572287346
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "median_ms": 8.479350766456268,
+            "historical_vulkan_logger_ms": 6.227453,
+            "historical_matched_gap_ms": 2.251897766456268
+          },
+          {
+            "role": "input_setup",
+            "median_ms": 1.2570283538723575,
+            "historical_vulkan_logger_ms": 0.285205,
+            "historical_matched_gap_ms": 0.9718233538723575
+          }
+        ],
+        "decode": [
+          {
+            "role": "full_attention_core_kv",
+            "production_wall_normalized_ms": 1.1612464935460527,
+            "historical_vulkan_logger_ms": 0.163598,
+            "historical_matched_gap_ms": 0.9976484935460527
+          },
+          {
+            "role": "dense_ffn_projections",
+            "production_wall_normalized_ms": 2.262651136559121,
+            "historical_vulkan_logger_ms": 1.556757,
+            "historical_matched_gap_ms": 0.7058941365591209
+          },
+          {
+            "role": "linear_attention_projections",
+            "production_wall_normalized_ms": 1.7714017454131297,
+            "historical_vulkan_logger_ms": 1.326941,
+            "historical_matched_gap_ms": 0.44446074541312974
+          },
+          {
+            "role": "attention_norm",
+            "production_wall_normalized_ms": 0.37090884712212085,
+            "historical_vulkan_logger_ms": 0.108168,
+            "historical_matched_gap_ms": 0.26274084712212087
+          },
+          {
+            "role": "full_attention_projections_rope",
+            "production_wall_normalized_ms": 0.578402080454861,
+            "historical_vulkan_logger_ms": 0.319515,
+            "historical_matched_gap_ms": 0.258887080454861
+          }
+        ]
+      }
+    }
+  },
+  "llamacpp_hip_profile": {
+    "command": "QWEN35_08B_ENGINE_LABEL=llamacpp_hip rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/d08-three-way-2f59d4ade/rocprof-hip-q4 --output-file llama-hip-q4 -- /tmp/d08-three-way-2f59d4ade/helpers/qwen35_08b_exact_core_hip /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf 9707 512 9707 128 1",
+    "rocprofv3": "1.3.5 / ROCm 7.15.0",
+    "dispatch_rows": 712685,
+    "unique_kernel_names": 44,
+    "nonzero_durations": 0,
+    "duration_sum_ns": 0,
+    "dominant_structure": {
+      "quantize_q8_1_dispatches": 166920,
+      "matched_wave32_gemv_dispatches": 166920,
+      "pair_share_of_all_dispatches": 0.46842574208801924,
+      "gdn_dispatches": 18576,
+      "flash_attention_tile_dispatches": 6144,
+      "flash_attention_combine_dispatches": 6192
+    },
+    "physical_observations": [
+      "Q4 prefill mul_mat_q kernels use local256 (wave32x8), VGPR240-248, LDS0, scratch0.",
+      "Decode exposes one separate q8_1 activation-quantization launch for every wave32 GEMV launch.",
+      "Flash-attention tile uses local128, VGPR240, LDS19,456 B, scratch0, followed by a combine kernel."
+    ],
+    "limitation": "All start/end timestamps are equal on this known gfx1151 rocprof stack; names/counts/resources are usable, durations are not."
+  },
+  "correctness": {
+    "q4": {
+      "all_finite": true,
+      "all_deterministic": true,
+      "cross_engine_core_top1_exact": true,
+      "cross_engine_public_top1_exact": true,
+      "core_top1_sha256": [
+        "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+      ],
+      "public_top1_sha256": [
+        "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+      ]
+    },
+    "q8": {
+      "all_finite": true,
+      "all_deterministic": true,
+      "cross_engine_core_top1_exact": true,
+      "cross_engine_public_top1_exact": true,
+      "core_top1_sha256": [
+        "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+      ],
+      "public_top1_sha256": [
+        "8b722e92906a9baab35a401ecd10bbef45b8d0c5917a02765377aee1362f1bc0"
+      ]
+    },
+    "cumulative_semantic_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json",
+    "cumulative_current_top1": "1794/1800 (99.667%), max KL 0.005930"
+  },
+  "decision": {
+    "headline": "llama.cpp Vulkan still leads synchronized core prefill/decode, but not every public path; hipEngine beats llama.cpp HIP in both core/public decode and wins Q8 Vulkan public decode.",
+    "q4": "Vulkan leads core pp/tg by 1.223x/1.345x and public pp/tg by 1.279x/1.024x. llama HIP leads core/public pp by 1.120x/1.146x, while hipEngine leads core/public tg by 1.207x/1.382x.",
+    "q8": "Vulkan leads core pp/tg by 1.136x/1.135x and public pp by 1.149x; hipEngine leads Vulkan public tg by 1.047x. hipEngine leads llama HIP core pp/tg by 1.072x/1.284x and public tg by 1.394x; public pp is parity at 0.993x.",
+    "priority": "Treat Q4 prefill as the remaining hipEngine-specific priority. Q8 prefill and core decode are mostly a HIP-versus-Vulkan backend/codegen gap. Do not chase graph launch/API residual or reopen the small standalone attention rewrite from marker-normalized ownership.",
+    "supersession": "Supersedes the old shape-only three-way diagnostic for exact core/public conclusions. Explicit llama_synchronize repairs the prior asynchronous core-prefill boundary; old llama-bench tg rows do not include the exact public top-1 loop."
+  },
+  "caveats": [
+    "Fixed repeated-token p512/tg128 is a parity diagnostic, not a natural-prompt topline.",
+    "The same llama.cpp source commit and shared token trajectories are exact, but backend production defaults retain F16 KV for llama.cpp and BF16 KV for hipEngine.",
+    "Current hipEngine/Vulkan semantic owner joins use a marker-perturbed hipEngine run and historical same-source Vulkan logger; use them only to rank roles.",
+    "No llama HIP per-op duration attribution is claimed because rocprof reports zero durations on gfx1151."
+  ]
+}

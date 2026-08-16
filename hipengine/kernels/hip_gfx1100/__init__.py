@@ -251,6 +251,9 @@ GGUF_DENSE_Q5_T16_SSM_OUT = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": 4,
 }
+# Exact c1 sibling selection is architecture/shape qualified. W7900 retains
+# the established direct owners until an independent device gate admits one.
+GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {}
 # Full-suite row policy for exact FFN-down plus residual composites. Rotating
 # row-4 planar-Q6 loses despite positive isolated leaves, while compact Q4 wins;
 # rows 2-3 retain both independently qualified owners.
@@ -830,6 +833,7 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",

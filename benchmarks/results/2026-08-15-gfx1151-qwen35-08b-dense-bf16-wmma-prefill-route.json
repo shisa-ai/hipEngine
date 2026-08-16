@@ -7,12 +7,13 @@
     "gpu": "AMD Radeon 8060S Graphics",
     "arch": "gfx1151"
   },
-  "source_commit": "1dd951ab3",
-  "mechanism": "new dense_prefill_wmma_out_kernel (128x64 tile, 256 threads, BK=32 LDS f16 staging, wave32 WMMA f32-acc) registered as dense_gemv/prefill_wmma_out; capability GGUF_DENSE_BF16_WMMA_BULK_PREFILL on gfx1151; rollback HIPENGINE_GGUF_DENSE_WMMA_BULK=0; naive 32x8 scalar tile remains rows<16 and unaligned fallback",
+  "source_commit": "2a55194db",
+  "current_scope_commit": "033f0ee3c",
+  "mechanism": "new dense_prefill_wmma_out_kernel (128x64 tile, 256 threads, BK=32 LDS f16 staging, wave32 WMMA f32-acc) registered as dense_gemv/prefill_wmma_out; capability GGUF_DENSE_BF16_WMMA_BULK_PREFILL on gfx1151; rollback HIPENGINE_GGUF_DENSE_WMMA_BULK=0; current default is limited to the two Qwen3.5-0.8B p512 dense-BF16 shapes covered by the complete-model A/B, with the naive 32x8 scalar tile as fallback",
   "leaf_screen": {
     "shape": "[1024,3584] x 512 rows",
-    "wmma_ms": 0.0006,
-    "naive_ms": 0.0031,
+    "wmma_ms": 0.6,
+    "naive_ms": 3.1,
     "speedup": 5.2,
     "top1_vs_reference": 1.0
   },
@@ -83,6 +84,6 @@
     "top1_agreement": 0.9911111111111112,
     "kl_max": 0.004214550112460941
   },
-  "fixtures": "tests/test_dense_prefill_wmma.py (4 shapes incl. row guards) pass",
-  "decision": "Retained as gfx1151 default for dense_bf16 abi bulk rows (out_features%128==0)."
+  "fixtures": "tests/test_dense_prefill_wmma.py (4 GPU/reference shapes plus launch-contract guard) pass",
+  "decision": "Retained as the gfx1151 default only for the two qualified Qwen3.5-0.8B p512 dense-BF16 shapes; all other rows/shapes use the scalar fallback. Timing values above are milliseconds; the original artifact accidentally stored seconds under *_ms labels."
 }

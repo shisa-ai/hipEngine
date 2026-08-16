@@ -51,10 +51,10 @@ def _row(
     }
 
 
-def test_candidate_budget_parser_accepts_unique_b1_b2_b3_subset() -> None:
-    assert parse_candidate_budgets("3,1") == (3, 1)
-    with pytest.raises(ValueError, match="subset of 1,2,3"):
-        parse_candidate_budgets("1,4")
+def test_candidate_budget_parser_accepts_unique_b1_through_b4_subset() -> None:
+    assert parse_candidate_budgets("4,3,1") == (4, 3, 1)
+    with pytest.raises(ValueError, match="subset of 1,2,3,4"):
+        parse_candidate_budgets("1,5")
     with pytest.raises(ValueError, match="duplicates"):
         parse_candidate_budgets("2,2")
 

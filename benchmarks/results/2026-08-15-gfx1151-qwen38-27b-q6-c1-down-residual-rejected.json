@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "status": "leaf_rejected",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "title": "Qwen3.8-27B gfx1151 planar-Q6 c1 down+residual screen",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "repo_revision": "8d40b8ac545fee98a47846587a44490b5c153205",
+    "rocm_version": "7.15.0",
+    "compiler": "AMD clang 23.0.0git",
+    "development_worktree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "sampled_bytes": 3145728
+    },
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "leaf": {
+    "weights": [
+      "blk.0.ffn_down.weight",
+      "blk.31.ffn_down.weight",
+      "blk.63.ffn_down.weight"
+    ],
+    "source_pool_bytes": 219340800,
+    "shape": {
+      "k": 17408,
+      "n": 5120,
+      "rows": 1
+    },
+    "control": "retained planar-Q6 c1 BF16 projection plus primitive BF16 add",
+    "candidate": "planar-Q6 c1 projection with rounded-BF16 residual in the producer store",
+    "candidate_change": "Preserve the direct producer's weight bytes, K/FMA order, reduction tree, and rounded projection; fold only the final BF16 residual read/add/write into the lane-0 store.",
+    "protocol": {
+      "warmups": 5,
+      "samples_per_weight": 21,
+      "launches_per_sample": 100,
+      "timing": "counterbalanced HIP events",
+      "admission": ">=1% projected complete 512/128 request saving before a production policy or full-model gate",
+      "environment": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-p4-chunk-screen/hipcc-version.txt PYTHONPATH=.",
+      "command": "python3 /tmp/qwen38-task22-q6-down-residual-leaf.py"
+    },
+    "results": {
+      "blk.0.ffn_down.weight": {
+        "control_median_ms": 0.33442604064941406,
+        "candidate_median_ms": 0.33199443817138674,
+        "speedup": 1.0073242265485545,
+        "candidate_wins": "18/21",
+        "bf16_mismatches": 0
+      },
+      "blk.31.ffn_down.weight": {
+        "control_median_ms": 0.33441959381103514,
+        "candidate_median_ms": 0.33207557678222654,
+        "speedup": 1.0070586854098753,
+        "candidate_wins": "18/21",
+        "bf16_mismatches": 0
+      },
+      "blk.63.ffn_down.weight": {
+        "control_median_ms": 0.33458065032958983,
+        "candidate_median_ms": 0.3319304656982422,
+        "speedup": 1.0079841560363336,
+        "candidate_wins": "19/21",
+        "bf16_mismatches": 0
+      }
+    }
+  },
+  "request_projection": {
+    "preserved_profile": "/tmp/qwen38-task21-p4-postprofile/profile-summary.json",
+    "preserved_profile_commit": "fdb3791e7",
+    "shape": "512/128 eager",
+    "complete_wall_ms": 11087.43057900574,
+    "decode_ffn_down_residual_owner_ms": 2370.248792706142,
+    "model_ffn_down_quant_counts": {
+      "Q6_K": 32,
+      "Q4_K": 32
+    },
+    "affected_q6_calls": 4096,
+    "median_leaf_delta_ms": 0.002431602478027317,
+    "projected_saving_ms": 9.95984374999989,
+    "projected_complete_wall_percent": 0.08983004384134809,
+    "advance_threshold_percent": 1.0,
+    "advance": false
+  },
+  "validation": {
+    "red": "The rows1 exact-residual test failed because the retained wrapper rejects rows1.",
+    "green": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_qmicro_planar_down_residual_is_bit_exact[1] => 1 passed",
+    "all_bf16_exact": true,
+    "tracked_teardown_bytes": 0,
+    "candidate_wins": "55/63",
+    "source_restored_byte_exact": true
+  },
+  "raw_artifact": {
+    "path": "/tmp/qwen38-task22-q6-down-residual-leaf/leaf.json",
+    "sha256": "46d20ff2e8320b045da689322f6720de65c7cde9d48ec4872c0e4ea36dbdc197",
+    "bytes": 8378
+  },
+  "decision": "Reject the exact c1 Q6 down+residual sibling. It saves only 2.34-2.65 us per affected projection, a median 1.0073x leaf speedup and 9.960 ms / 0.090% projected complete 512/128 wall across 4,096 Q6 calls. This is an order of magnitude below the 1% request gate. Restore the retained projection-plus-add source byte-for-byte and do not spend a full-model gate."
+}
