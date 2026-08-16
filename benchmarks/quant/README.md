@@ -1,81 +1,80 @@
 # Quantization quality
 
 This directory is the canonical index for hipEngine quantization-quality work.
-It is deliberately separate from throughput/latency tables: speed and model
-fidelity answer different questions and neither substitutes for the other.
+It is deliberately separate from throughput and latency tables: model fidelity
+and speed answer different questions, and neither substitutes for the other.
+
+## Current status
+
+The Qwen3.6-35B-A3B exact-artifact gate is complete for the local Q4_K_M,
+PARO W4, and ROCmFP4 STRIX_LEAN artifacts. All candidates were scored against
+one BF16 teacher fixture over the same 90 full-vocabulary positions. PARO also
+passes an independent same-checkpoint ParoQuant/Transformers implementation
+gate and a bit-identical repeat.
+
+Q4_K_M is the distribution-fidelity baseline. PARO and ROCmFP4 are both
+**quality-traded**, not Q4-equivalent. They remain valid cross-format product
+and performance candidates only when that label and their measured tradeoffs
+are shown.
+
+Authoritative evidence:
+[`2026-08-16-zbook-qwen36-quant-quality.json`](../results/2026-08-16-zbook-qwen36-quant-quality.json).
 
 ## Repository layout
 
-- `benchmarks/quant/` — protocols, provenance, compact comparison tables, and
-  small token fixtures.
-- `scripts/quant_quality/` — reusable capture and comparison tooling.
+- `benchmarks/quant/` — current protocols, provenance, and compact comparison
+  tables.
+- `scripts/quant_quality/` — reusable fixture, capture, comparison, and paired
+  bootstrap tooling.
 - `benchmarks/results/` — compact committed JSON summaries from completed runs.
 - Large full-logit caches (`*.npy`, raw llama.cpp captures, and KLD streams) —
   local output directories only; never commit them.
 
-## Evidence tiers
+## Binding exact-artifact protocol
 
-Do not compare absolute PPL values across tiers.
+The current gate uses every prompt in
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`: code, English, Japanese,
+and mixed Japanese/English, including the fixed train/heldout split. BF16
+greedily defines nine teacher tokens per prompt. Every candidate consumes the
+same rendered prompt IDs and the same BF16 teacher contexts, producing 90
+full-vocabulary rows in total.
 
-1. **Canonical rolling-corpus gate** — the primary quantization-quality result.
-   It scores a held-out multilingual/code/math corpus with `ctx=2048`, a
-   1025-token warmup, 1023 scored positions/window, and stride 1023. Every
-   candidate uses the original BF16 HF model and identical token IDs/positions.
-2. **Portable BF16-teacher prompt suite** — a fast cross-runtime gate over all
-   ten prompts in `benchmarks/prompts/mtpbench-code-general-ja.jsonl`. BF16
-   greedily defines nine teacher tokens per prompt; all candidates consume the
-   same prompt IDs and teacher contexts. It reports full-distribution KL,
-   teacher-trajectory ΔNLL, top-1 agreement, top-k overlap, and RMS Δp. Its
-   teacher PPL is **not** held-out-corpus PPL.
-3. **Task quality** — execution/human/task metrics for code, multilingual,
-   tool-use, or long-context behavior. These are a later complement, not a
-   replacement for distribution metrics.
+This design answers two distinct questions:
+
+1. **Quantization quality:** how far each exact local artifact drifts from the
+   original BF16 distribution at identical contexts.
+2. **Implementation correctness:** how closely two runtimes executing the same
+   artifact agree, separated from quantization loss.
+
+The 90-row suite is a precise, reproducible cross-runtime gate and ranking
+signal. It is not held-out-corpus perplexity or downstream task accuracy. Add a
+larger exact-artifact corpus or task suite when a deployment decision needs
+more coverage; do not mix those metrics into this table.
 
 ## Metric definitions
 
-All drift metrics use the original BF16 HF distribution as `P_ref`:
+All drift metrics use the original BF16 HF distribution as `P_ref` unless the
+row explicitly names a same-artifact runtime reference:
 
-- `PPL = exp(mean(-log P_model(true token)))`; lower is better.
-- `ΔNLL = mean_NLL_candidate - mean_NLL_BF16`; zero is ideal.
-- `KL = mean KL(P_BF16 || P_candidate)` over the full vocabulary; zero is ideal.
-- `Top-1 agreement` is BF16/candidate argmax agreement; higher is better. It is
-  not downstream benchmark accuracy.
-- `RMS Δp` is the RMS percentage-point change in true-token probability; lower
-  is better.
+- `KL = mean KL(P_ref || P_candidate)` over the full vocabulary; lower is
+  better.
+- `Top-1 agreement` is reference/candidate argmax agreement; higher is better.
+  It is not downstream benchmark accuracy.
+- `Top-5 overlap` compares the two top-five token sets.
+- `Teacher ΔNLL` measures candidate minus BF16 NLL on the fixed BF16 teacher
+  trajectory; zero is ideal.
+- `Teacher PPL/BF16 = exp(Teacher ΔNLL)`; it is a trajectory diagnostic, not
+  held-out-corpus PPL.
+- `RMS Δp` is the RMS percentage-point change in teacher-token probability;
+  lower is better.
 - `BPW = active artifact bytes * 8 / 35,000,000,000` for this model family.
 
-These definitions and the rolling layout mirror
-`~/paroquant/docs/QUANTIZATION-QUALITY.md` at paroquant commit `7bfbf5e`.
+## Current exact-artifact results (2026-08-16)
 
-## Existing canonical Qwen3.6-35B-A3B evidence
-
-The downloaded PARO checkpoint contains its original canonical evaluation
-payload. The GGUF row below comes from the same ParoQuant tx4/quality3 protocol,
-but its historical artifact is not yet hash-matched to the current local GGUF;
-treat that row as a recipe-level control until the portable exact-artifact run
-lands.
-
-| Model | Artifact / status | BPW ↓ | PPL ↓ | ΔNLL ↓ | KL nats ↓ | RMS Δp % ↓ | Top-1 % ↑ |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Original BF16 HF | revision `995ad96e` | 16.435 | 6.5590 | +0.000000 | 0.000000 | 0.000 | 100.000 |
-| Local GGUF UD-Q4_K_M | exact 21.107 GiB artifact | 5.180 | pending | pending | pending | pending | pending |
-| GGUF UD-Q4_K_M | historical same-protocol control | 5.059 | **6.5643** | **+0.001718** | **0.010849** | pending import | **95.354** |
-| PARO full8192 old+fresh rbparams e5 | local snapshot `437eba06`; canonical payload bundled | 4.680 | 6.6090 | +0.007594 | 0.027939 | **4.646** | 92.856 |
-| ROCmFP4 STRIX_LEAN | exact local 17.739 GiB artifact | **4.354** | pending | pending | pending | pending | pending |
-
-Measured canonical interpretation: the historical Q4_K_M control preserves the
-BF16 distribution better than PARO full8192 (`0.010849` vs `0.027939` mean KL,
-`95.354%` vs `92.856%` top-1). For the exact local artifacts, ROCmFP4 is smallest
-at 17.739 GiB / 4.354 BPW, then PARO at 19.068 GiB / 4.680 BPW, then Q4_K_M at
-21.107 GiB / 5.180 BPW. PARO's latest calibration materially improves earlier
-PARO runs. ROCmFP4's canonical corpus row remains pending; the portable exact-
-artifact gate below supplies the current diagnostic ranking.
-
-## Portable exact-artifact results (2026-08-16)
-
-These are the 90-row BF16-teacher results, not canonical corpus PPL. Q4_K_M and
-ROCmFP4 were both captured through ROCmFPX HIP commit `0d313da1849f` so their
-direct format comparison uses one runtime/backend.
+Q4_K_M and ROCmFP4 were captured through ROCmFPX HIP commit `0d313da1849f`,
+so their direct format comparison uses one runtime/backend. The additional
+Q4_K_M rows quantify backend/runtime drift. PARO uses hipEngine because it is
+the native packed-PARO product route.
 
 | Exact local artifact / runtime | BPW ↓ | Mean KL ↓ | P95 KL ↓ | Max KL ↓ | Teacher PPL/BF16 ↓ | Top-1 % ↑ | Status |
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -85,49 +84,41 @@ direct format comparison uses one runtime/backend.
 | Q4_K_M / hipEngine HIP | 5.180 | 0.011807 | **0.041929** | 0.286379 | 1.00740 | 95.556 | runtime control |
 | PARO W4 / hipEngine HIP | 4.680 | 0.027038 | 0.143607 | 0.321606 | 1.02733 | 92.222 | `quality-traded`; runtime-correct |
 
+### ROCmFP4 interpretation
+
 ROCmFP4 is 15.96% smaller than the exact local Q4_K_M and preserves BF16
 argmax unusually well (88/90 rows), but its full-distribution drift is 3.35x
 the matched Q4_K_M row. The paired 10,000-sample prompt-block bootstrap gives a
-ROCmFP4-minus-Q4 mean-KL 95% interval of `[+0.00690, +0.07168]`, above the
+ROCmFP4-minus-Q4 mean-KL 95% interval of `[+0.00690,+0.07168]`, above the
 predeclared `+0.005` margin. Japanese is the clear distribution outlier
 (ROCmFP4 mean KL `0.135091` despite 100% top-1). It is therefore
-**quality-traded**, not Q4-equivalent; downstream Japanese and calibration/task
-tests are required before deployment.
+**quality-traded**, not Q4-equivalent; Japanese and task-level validation are
+required before deployment.
+
+### PARO interpretation
 
 PARO's packed-runtime blocker is closed. The checkpoint retains Transformers'
 grouped V-head order, while hipEngine had applied the tiled order used only
 after llama.cpp's GGUF converter explicitly permutes V-head tensors. With the
 grouped GDN sibling, hipEngine matches the independent ParoQuant/Transformers
 90-row capture at mean/max KL `0.001151/0.023016` and `98.889%` top-1; two
-hipEngine captures are bit-identical. Against BF16 it measures KL `0.027038`
-and top-1 `92.222%`, consistent with the bundled 129,921-token canonical PARO
-result (`0.027939`, `92.856%`).
+hipEngine captures are bit-identical. Against BF16 it measures mean KL
+`0.027038` and top-1 `92.222%`.
 
 PARO is nevertheless **quality-traded** versus hipEngine Q4_K_M. Its paired
 prompt-block PARO-minus-Q4 mean-KL 95% interval is
 `[+0.00741,+0.02317]`, top-1 delta is `[-6.667,0.000]` percentage points, and
 teacher-PPL-ratio delta is `[-0.00799,+0.05153]`; all predeclared noninferiority
-gates fail and category point margins veto equivalence. PARO speed may now be
-measured, but every comparison must retain this quality and cross-format caveat.
+gates fail and category point margins veto equivalence. PARO speed may be
+measured, but every comparison must retain this quality and cross-format
+caveat.
 
-Evidence:
-[`2026-08-16-zbook-qwen36-quant-quality.json`](../results/2026-08-16-zbook-qwen36-quant-quality.json).
-
-Canonical PARO source:
-
-```text
-~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/
-  snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1/
-  canonical_eval_results.json
-```
-
-## Portable exact-artifact runbook
+## Reproduction
 
 Create the BF16 teacher fixture and reference cache (about 45 MiB). This CPU
-step loads the 72 GB BF16 checkpoint and may take several minutes:
-
-Use a Python environment with the optional Torch/Transformers dependencies
-(the current ZBook uses `/home/lhl/miniforge3/bin/python3`):
+step loads the 72 GB BF16 checkpoint and may take several minutes. Use a Python
+environment with the optional Torch/Transformers dependencies (the current
+ZBook uses `/home/lhl/miniforge3/bin/python3`):
 
 ```bash
 PYTHONPATH=. python3 scripts/quant_quality/qwen36_teacher.py capture-bf16 \
@@ -148,12 +139,25 @@ uv run python scripts/quant_quality/qwen36_teacher.py capture-hipengine-paro \
   --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-hipengine.npy
 ```
 
+Capture the optional same-checkpoint ParoQuant/Transformers implementation
+reference in the Torch environment:
+
+```bash
+PYTHONPATH=. /home/lhl/miniforge3/bin/python3 \
+  scripts/quant_quality/qwen36_teacher.py capture-transformers-paro \
+  --model ~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --model-sha256 a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60 \
+  --fixture /models/eval-results/hipengine-qwen36-teacher-v1/fixture.json \
+  --output /models/eval-results/hipengine-qwen36-teacher-v1/paro-transformers.npy \
+  --device cuda:0 --dtype float16 --local-files-only
+```
+
 `scripts/quant_quality/llama_teacher_logits.cpp` captures the same rows from a
 llama.cpp-compatible runtime. Build it against `~/ROCmFPX`, run it once for
 Q4_K_M and once for ROCmFP4, then use `register-raw` to create manifests. This
 same-runtime Q4_K_M control separates format drift from runtime drift.
 
-Finally compare each candidate manifest to `bf16.manifest.json`:
+Compare each candidate manifest to `bf16.manifest.json`:
 
 ```bash
 uv run python scripts/quant_quality/qwen36_teacher.py compare \
@@ -166,10 +170,12 @@ uv run python scripts/quant_quality/qwen36_teacher.py compare \
 ## Acceptance and reporting
 
 - Require exact fixture and row-manifest hashes before comparing logits.
-- Report overall and category-level metrics across all four prompt categories.
-- Treat the portable suite as a smoke/ranking signal because it has only 90
-  scored rows; canonical held-out-corpus evidence remains stronger.
+- Require every scored row to be finite.
+- Report overall, train/heldout, and all four category metrics.
+- Use paired prompt-block bootstrap intervals for Q4-equivalence claims.
+- Keep same-artifact runtime controls separate from BF16 quantization drift.
 - A quantization-quality regression cannot be hidden by a speed win.
-- Every retained result records exact model revision/hash, runtime revision,
-  hardware, command, token fixture hash, and whether the result is canonical or
-  portable.
+- Record exact model revision/hash, runtime revision, hardware, command, token
+  fixture hash, and result scope for every retained row.
+- Treat downstream tasks and larger exact-artifact corpora as additive evidence,
+  never as permission to relabel a failed exact-artifact gate.
