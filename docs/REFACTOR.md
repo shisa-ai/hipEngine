@@ -24,19 +24,25 @@ should be removed or collapsed.
   explicit compatibility path for current gfx1100/gfx1151 kernels; they are not
   the Generation-2 allocator contract and must not leak same-chunk constraints
   into the new scheduler or backend ledger.
-- C2-6 makes the blocker concrete: W7900 independent c1 p128/d8 is exact, but
-  independently submitted logical c8 children fail native packed decode with
-  sentinel `2147483647`; disabling the real packed selector yields honest
-  serial-c1 execution but only 2/8 rows match their independent c1 oracles.
-  Eager load-time preparation and legacy work-barrier gates fix timeout/hang
-  failure modes but do not repair row/KV isolation. Do not use this fallback as
-  evidence that the Generation-2 pool is production-wired.
-- Removal trigger: after the BF16 and artifact-qualified no-mirror INT8 global
-  pool adapters execute the C2-6 correctness, graph-pointer, lifecycle,
-  cancellation, pressure, and production-load gates on both gfx1100 and
-  gfx1151, switch the registered GGUF packages to the KV-aware runner adapter,
-  retain a separately registered numerical fallback as required, and remove
-  the single-backing admission/identity branches and compatibility fixtures.
+- C2-6 now gives this compatibility path one batch-shaped target scratch plus
+  lightweight slot-local state/KV/cursor views. Owner-packed prefill and honest
+  physical-c1 decode pass same-loaded-server exact p128/d8 at
+  c1/c2/c4/c8/c17/c32 on W7900, including exact c17 live refill. This removes
+  per-row session/workspace duplication and retains a usable numerical fallback,
+  but does not make the old pool a Generation-2 allocator.
+- Native shared-slot physical c8 and c4 both emit sentinel `2147483647` at the
+  second packed row and fail closed to serial c1. The live path still consumes
+  chunk-local base pointers and IDs, not arbitrary-page `GlobalKVPoolSet`
+  tables. Do not use fallback exactness or its 26.31-28.58 diagnostic tok/s as
+  evidence that Generation-2 native execution or performance is production
+  qualified.
+- Removal trigger: after registered BF16 and artifact-qualified no-mirror INT8
+  arbitrary-page GGUF kernels plus the repaired shared-slot packed-state path
+  execute the C2-6 correctness, graph-pointer, lifecycle, cancellation,
+  pressure, and production-load gates on both gfx1100 and gfx1151, switch the
+  registered GGUF packages to the KV-aware runner adapter, retain a separately
+  registered numerical fallback as required, and remove the single-backing
+  admission/identity branches and compatibility fixtures.
 
 ## Generation-1 prefill/decode policy compatibility choices
 

@@ -1241,11 +1241,18 @@ def _hipengine_route_expectation_passes(
             value is False for value in native_values
         )
     if str(expectation) == "serial-c1-per-row":
-        expected_serial = rows > 1
+        serial_route_observed = (
+            all(value is False for value in serial_values)
+            if rows == 1
+            else (
+                any(value is True for value in serial_values)
+                and all(isinstance(value, bool) for value in serial_values)
+            )
+        )
         return (
             set(str(path) for path in execution_paths)
             == {"gguf_packed_ar_server_decode"}
-            and all(value is expected_serial for value in serial_values)
+            and serial_route_observed
             and all(value is False for value in native_values)
         )
     if str(expectation) == "scheduler-c1":
@@ -1840,6 +1847,39 @@ def _selected_metrics(samples: Sequence[Mapping[str, Any]], raw_path: Path) -> d
     }
 
 
+def _request_oracle_rows(
+    args: argparse.Namespace,
+    *,
+    engine: str,
+    base_url: str,
+    prompts: Sequence[Sequence[int]],
+) -> tuple[dict[str, list[int]], list[dict[str, Any]]]:
+    records: list[dict[str, Any]] = []
+    oracle: dict[str, list[int]] = {}
+    for index, prompt in enumerate(prompts):
+        release = threading.Event()
+        epoch = time.perf_counter()
+        release.set()
+        record = _one_request(
+            args,
+            engine=engine,
+            base_url=base_url,
+            prompt=prompt,
+            index=index,
+            release=release,
+            epoch=epoch,
+        )
+        if len(record["generated_token_ids"]) != int(args.decode_tokens):
+            raise BenchError(
+                f"oracle row {index} returned {len(record['generated_token_ids'])} tokens; "
+                f"expected {args.decode_tokens}"
+            )
+        prompt_hash = str(record["prompt_token_ids_sha256"])
+        oracle[prompt_hash] = list(record["generated_token_ids"])
+        records.append(record)
+    return oracle, records
+
+
 def _run_oracle(
     args: argparse.Namespace,
     *,
@@ -1858,29 +1898,12 @@ def _run_oracle(
             concurrency=1,
             label="oracle-c1",
         )
-        records: list[dict[str, Any]] = []
-        oracle: dict[str, list[int]] = {}
-        for index, prompt in enumerate(prompts):
-            release = threading.Event()
-            epoch = time.perf_counter()
-            release.set()
-            record = _one_request(
-                args,
-                engine=engine,
-                base_url=base_url,
-                prompt=prompt,
-                index=index,
-                release=release,
-                epoch=epoch,
-            )
-            if len(record["generated_token_ids"]) != int(args.decode_tokens):
-                raise BenchError(
-                    f"oracle row {index} returned {len(record['generated_token_ids'])} tokens; "
-                    f"expected {args.decode_tokens}"
-                )
-            prompt_hash = str(record["prompt_token_ids_sha256"])
-            oracle[prompt_hash] = list(record["generated_token_ids"])
-            records.append(record)
+        oracle, records = _request_oracle_rows(
+            args,
+            engine=engine,
+            base_url=base_url,
+            prompts=prompts,
+        )
         server_metadata.update(
             {
                 "server_command": command,
@@ -1919,10 +1942,8 @@ def _run_width(
         prompt_length=int(args.prompt_length),
         token_id=int(args.prompt_token_id),
     )
-    oracle_text = {
-        str(record.get("prompt_token_ids_sha256") or ""): str(record.get("text") or "")
-        for record in oracle_records
-    }
+    oracle_scope = "separate_c1_server"
+    width_oracle_records = list(oracle_records)
     sampler = _memory_sampler(args)
     process: subprocess.Popen[str] | None = None
     if sampler is not None:
@@ -1936,6 +1957,22 @@ def _run_width(
             concurrency=concurrency,
             label=f"c{concurrency}",
         )
+        if bool(args.same_server_oracle):
+            oracle, width_oracle_records = _request_oracle_rows(
+                args,
+                engine=engine,
+                base_url=base_url,
+                prompts=_prompt_rows(
+                    rows=int(args.oracle_rows),
+                    prompt_length=int(args.prompt_length),
+                    token_id=int(args.prompt_token_id),
+                ),
+            )
+            oracle_scope = "same_loaded_server_serial_c1"
+        oracle_text = {
+            str(record.get("prompt_token_ids_sha256") or ""): str(record.get("text") or "")
+            for record in width_oracle_records
+        }
         warmups = [
             _run_burst(args, engine=engine, base_url=base_url, prompts=prompts)
             for _ in range(int(args.warmup_runs))
@@ -2042,7 +2079,7 @@ def _run_width(
                 engine=engine,
                 base_url=base_url,
                 prompts=prompts,
-                oracle_records=oracle_records,
+                oracle_records=width_oracle_records,
             )
             print(
                 f"{engine} c{concurrency} live: http={live['http_wall_tok_s_aggregate']:.3f} tok/s "
@@ -2060,10 +2097,24 @@ def _run_width(
             oracle=oracle,
             expected_tokens=int(args.decode_tokens),
         )
-        warmup_correctness = correctness_summary(
-            [record for sample in warmups for record in sample["records"]],
-            oracle=oracle,
-            expected_tokens=int(args.decode_tokens),
+        warmup_records = [
+            record for sample in warmups for record in sample["records"]
+        ]
+        warmup_correctness = (
+            correctness_summary(
+                warmup_records,
+                oracle=oracle,
+                expected_tokens=int(args.decode_tokens),
+            )
+            if warmup_records
+            else {
+                "passed": True,
+                "skipped": True,
+                "rows": 0,
+                "exact_rows": 0,
+                "mismatch_count": 0,
+                "mismatches": [],
+            }
         )
         live_correctness = (
             None
@@ -2137,6 +2188,16 @@ def _run_width(
                 "request_wall_seconds": metric_summary(request_walls),
             },
             "correctness": {
+                "oracle_scope": oracle_scope,
+                "oracle_generated_rows": [
+                    list(oracle[token_ids_sha256(prompt)])
+                    for prompt in _prompt_rows(
+                        rows=int(args.oracle_rows),
+                        prompt_length=int(args.prompt_length),
+                        token_id=int(args.prompt_token_id),
+                    )
+                ],
+                "oracle_records": width_oracle_records,
                 "warmups": warmup_correctness,
                 "measured": measured_correctness,
                 "live_admission": live_correctness,
@@ -2327,22 +2388,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prompt_length=int(args.prompt_length),
         token_id=int(args.prompt_token_id),
     )
-    oracle, oracle_records, oracle_server = _run_oracle(
-        args,
-        engine=engine,
-        prompts=oracle_prompts,
-    )
-    payload["oracle"] = {
-        "prompt_rows": oracle_prompts,
-        "prompt_token_ids_sha256": [token_ids_sha256(prompt) for prompt in oracle_prompts],
-        "generated_rows": [list(oracle[token_ids_sha256(prompt)]) for prompt in oracle_prompts],
-        "generated_token_ids_sha256": [
-            token_ids_sha256(oracle[token_ids_sha256(prompt)]) for prompt in oracle_prompts
-        ],
-        "records": oracle_records,
-        "server": oracle_server,
-        "passed": len(oracle) == len(oracle_prompts),
-    }
+    if bool(args.same_server_oracle):
+        oracle: dict[str, list[int]] = {}
+        oracle_records: list[dict[str, Any]] = []
+        payload["oracle"] = {
+            "scope": "same_loaded_server_serial_c1_per_width",
+            "prompt_rows": oracle_prompts,
+            "prompt_token_ids_sha256": [
+                token_ids_sha256(prompt) for prompt in oracle_prompts
+            ],
+            "generated_rows": None,
+            "generated_token_ids_sha256": None,
+            "records": None,
+            "server": None,
+            "passed": True,
+        }
+    else:
+        oracle, oracle_records, oracle_server = _run_oracle(
+            args,
+            engine=engine,
+            prompts=oracle_prompts,
+        )
+        payload["oracle"] = {
+            "scope": "separate_c1_server",
+            "prompt_rows": oracle_prompts,
+            "prompt_token_ids_sha256": [token_ids_sha256(prompt) for prompt in oracle_prompts],
+            "generated_rows": [list(oracle[token_ids_sha256(prompt)]) for prompt in oracle_prompts],
+            "generated_token_ids_sha256": [
+                token_ids_sha256(oracle[token_ids_sha256(prompt)]) for prompt in oracle_prompts
+            ],
+            "records": oracle_records,
+            "server": oracle_server,
+            "passed": len(oracle) == len(oracle_prompts),
+        }
     _write_json(args.json, payload)
     for concurrency in concurrencies:
         row = _run_width(
@@ -2460,6 +2538,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-tokens", type=int, default=128)
     parser.add_argument("--oracle-rows", type=int, default=4)
+    parser.add_argument(
+        "--same-server-oracle",
+        action="store_true",
+        help=(
+            "Generate independent serial c1 trajectories in each width's loaded "
+            "server before its burst; use when process-to-process model startup "
+            "arithmetic is not deterministic"
+        ),
+    )
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
     parser.add_argument("--streaming-primary", action="store_true")

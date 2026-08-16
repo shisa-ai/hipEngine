@@ -359,6 +359,48 @@ def test_shifted_direct_int8_prefill_keeps_paged_payload_at_backing_base() -> No
     assert bound.retained_append_spans.scale_metadata is scale_metadata
 
 
+def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> None:
+    slot_scratch = object()
+    target_owner = SimpleNamespace(
+        slot_count=4,
+        for_slot=lambda slot: slot_scratch if slot == 2 else object(),
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.max_batch_size = 4
+    session.scratch = object()
+    session._target_scratch_owner = target_owner
+    session._target_layout = gguf_runner.Qwen35GGUFResidentTargetLayout(
+        max_batch_size=4,
+        hidden_size=8,
+        vocab_size=16,
+        max_sequence_length=256,
+    )
+    session._decode_graphs = [object()]
+    session._decode_graph_submission_contexts = {"old": object()}
+    session._device_kv_graph_handles = {1: object()}
+    session._int8_prefill_oracle_buffers = {1: (object(), object())}
+    session._linear_state_snapshot_backups = (object(),)
+    session._packed_verify_state = object()
+    session._packed_verify_scratch = object()
+    session._native_sampler_workspace = object()
+
+    view = session.resident_slot_view(2)
+
+    assert view is not session
+    assert view.max_batch_size == 1
+    assert view.scratch is slot_scratch
+    assert view._target_scratch_owner is target_owner
+    assert view._reset_current_slot_only is True
+    assert view._target_layout.max_batch_size == 1
+    assert view._buffers == ()
+    assert view._position == 0
+    assert view._decode_graphs == []
+    assert view._device_kv_graph_handles == {}
+    assert view._packed_verify_state is None
+    assert view._resident_batch_owner is session
+    assert view._resident_slot_index == 2
+
+
 def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkeypatch) -> None:
     expected = gguf_runner.Qwen35GGUFKVChunkLayout(
         storage_dtype=DType.INT8_PER_TOKEN_HEAD,

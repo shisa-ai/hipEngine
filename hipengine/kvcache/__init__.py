@@ -1,5 +1,10 @@
 """KV-cache policies, pool substrates, and Generation-2 backend contracts."""
 
+# Dispatch primitives import the public liveness ABI while dense backends import
+# the execution planner. Publish spans before importing dense to keep that
+# package initialization cycle well-defined.
+from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
+
 from hipengine.kvcache.backend import (
     ClaimConfidence,
     ClaimLifetime,
@@ -89,8 +94,6 @@ from hipengine.kvcache.radix import (
     RadixCache,
     resolve_prefix_cache_mode,
 )
-from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
-
 __all__ = [
     "AdmissionGrant",
     "BackendPrefixMatch",

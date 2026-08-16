@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+from copy import copy
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
@@ -13190,6 +13191,62 @@ class Qwen35GGUFResidentSession:
                 granularity=self.prefill_flight_recorder_granularity,
             )
         self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
+
+    def resident_slot_view(self, slot: int) -> "Qwen35GGUFResidentSession":
+        """Create one lightweight logical session over a preallocated state slot.
+
+        The returned view owns no device allocation. Model weights, temporary
+        execution buffers, bulk-prefill scratch, and packed workspaces remain
+        owned by this batch session; only recurrent state, metadata, cursor,
+        graph bookkeeping, and the eventual KV lease are slot-local. Execution
+        is scheduler-serialized, so sharing temporary buffers is intentional.
+        """
+
+        owner = self._target_scratch_owner
+        if owner is None or self.scratch is None or self._target_layout is None:
+            raise RuntimeError("resident slot views require a live target scratch owner")
+        index = int(slot)
+        if index <= 0 or index >= int(owner.slot_count):
+            raise ValueError(
+                f"resident slot view {index} outside [1, {int(owner.slot_count)})"
+            )
+        view = copy(self)
+        view.max_batch_size = 1
+        view.scratch = owner.for_slot(index)
+        view._target_scratch_owner = owner
+        view._reset_current_slot_only = True
+        view._target_layout = replace(self._target_layout, max_batch_size=1)
+        view._owns_runner = False
+        view._buffers = ()
+        view._position = 0
+        view._device_kv_pool = None
+        view._device_kv_allocation = None
+        view._decode_graphs = []
+        view._decode_graph_submission_contexts = {}
+        view._device_kv_graph_handles = {}
+        view._int8_prefill_oracle_buffers = {}
+        view._linear_state_snapshot_backups = ()
+        view._packed_verify_state = None
+        view._packed_verify_scratch = None
+        view._packed_verify_session_ids = ()
+        view._packed_verify_max_written_positions = ()
+        view._packed_decode_sessions = ()
+        view._packed_decode_last_layout = None
+        view._packed_decode_state_dirty = False
+        view._packed_decode_session_ids = ()
+        view._packed_decode_positions = ()
+        view._packed_ar_attention_workspace = None
+        view._native_sampler_workspace = None
+        view._last_layer_output_hidden = {}
+        view.last_verify_stage_timings_ms = {}
+        view.last_packed_verify_stage_timings_ms = {}
+        view.last_prefill_gpu_stage_timings_ms = {}
+        view.last_decode_gpu_stage_timings_ms = {}
+        view.last_packed_prefill_plan = {}
+        view.last_packed_execution_manifest = {}
+        view._resident_batch_owner = self
+        view._resident_slot_index = index
+        return view
 
     @property
     def position(self) -> int:
