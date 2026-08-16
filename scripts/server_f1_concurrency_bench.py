@@ -141,6 +141,11 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
             "serial_decode_fallback": decode_state.get("serial_decode_fallback"),
             "native_caware_decode": decode_state.get("native_caware_decode"),
             "sampler_mode": decode_state.get("sampler_mode"),
+            "diagnostics": (
+                dict(choice_hip["diagnostics"])
+                if isinstance(choice_hip.get("diagnostics"), Mapping)
+                else None
+            ),
             "generation_shape": generation_shape,
         }
 
@@ -221,6 +226,7 @@ def extract_stream_response(
     done_sentinel = False
     streamed_total = 0
     last_decode_state: Mapping[str, Any] = {}
+    last_diagnostics: Mapping[str, Any] = {}
     for observed_at, payload in events:
         if payload == "[DONE]":
             done_sentinel = True
@@ -245,6 +251,9 @@ def extract_stream_response(
                 decode_state = choice_hip.get("decode_state")
                 if isinstance(decode_state, Mapping):
                     last_decode_state = decode_state
+                diagnostics = choice_hip.get("diagnostics")
+                if isinstance(diagnostics, Mapping):
+                    last_diagnostics = diagnostics
                 raw_ids = _int_tokens_or_none(choice_hip.get("generated_token_ids"))
                 if raw_ids is not None:
                     _append_stream_ids(generated_ids, raw_ids)
@@ -317,6 +326,7 @@ def extract_stream_response(
         ),
         "serial_decode_fallback": last_decode_state.get("serial_decode_fallback"),
         "native_caware_decode": last_decode_state.get("native_caware_decode"),
+        "diagnostics": dict(last_diagnostics) if last_diagnostics else None,
         "client_ttft_seconds": ttft,
         "client_inter_token_seconds": inter_token,
         "wall_seconds": float(completed_at - started_at),
@@ -1186,6 +1196,21 @@ def _compact_poll_state(samples: Sequence[Mapping[str, Any]], *, at_seconds: flo
         "generation_requests_active": prometheus_value(samples, "hipengine_generation_requests_active"),
         "decode_work_total": prometheus_value(samples, "hipengine_resident_work_decode_total"),
         "prefill_work_total": prometheus_value(samples, "hipengine_resident_work_prefill_total"),
+        "kv_int8_payload_bytes": prometheus_value(
+            samples, "hipengine_resident_kv_int8_payload_bytes"
+        ),
+        "kv_bf16_payload_bytes": prometheus_value(
+            samples, "hipengine_resident_kv_bf16_payload_bytes"
+        ),
+        "kv_scale_bytes": prometheus_value(
+            samples, "hipengine_resident_kv_scale_bytes"
+        ),
+        "kv_bf16_mirror_bytes": prometheus_value(
+            samples, "hipengine_resident_kv_bf16_mirror_bytes"
+        ),
+        "kv_total_bytes": prometheus_value(
+            samples, "hipengine_resident_kv_total_bytes"
+        ),
         "active_mask": labels.get("active_mask"),
         "last_work_kind": labels.get("last_work_kind"),
     }

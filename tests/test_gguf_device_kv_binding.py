@@ -10,7 +10,11 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import DType, Tensor
-from hipengine.kvcache import DeviceChunkedKVPool, DeviceKVPoolAllocation, KVScaleMetadata
+from hipengine.kvcache import (
+    DeviceChunkedKVPool,
+    DeviceKVPoolAllocation,
+    KVScaleMetadata,
+)
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 
 
@@ -252,6 +256,23 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     assert session.scratch.full_v_scale_caches == (None, v_scale)
     assert session.scratch.full_kv_scale_metadata == (None, metadata)
     assert copied_tables[0].tolist() == [0, 1]
+    assert session.device_kv_layout_audit() == {
+        "storage_dtype": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp16",
+        "scale_granularity": "per_token_head",
+        "kv_attention_source": "int8_direct",
+        "request_pages": 2,
+        "request_capacity_tokens": 512,
+        "request_block_ids": [4, 5],
+        "one_backing_chunk": True,
+        "contiguous_in_backing": True,
+        "persistent_int8_payload_bytes": 8192,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_scale_bytes": 512,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_total_bytes": 8704,
+    }
 
     assert session.unbind_device_kv_allocation() is allocation
     assert session.scratch.full_key_caches == (None, None)
@@ -260,6 +281,82 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     assert session.scratch.full_v_scale_caches == (None, None)
     assert session.scratch.full_kv_scale_metadata == (None, None)
     assert copied_tables[1].tolist() == [0, 0]
+
+
+def test_shifted_direct_int8_prefill_repeats_physical_page_table_per_row() -> None:
+    allocation = DeviceKVPoolAllocation(
+        request_id=2,
+        block_ids=(11, 12, 13),
+        pointers=(0x1000, 0x2000, 0x3000),
+        reused_block_ids=(),
+        allocated_block_ids=(11, 12, 13),
+        first_divergent_token=None,
+        chunk_start_block_id=8,
+        backing=object(),
+    )
+
+    table = gguf_runner._gguf_retained_prefill_block_table_host(
+        allocation,
+        rows=3,
+        blocks_per_row=4,
+    )
+
+    assert table.dtype == np.int32
+    assert table.shape == (3, 4)
+    assert table.tolist() == [[3, 4, 5, 0]] * 3
+
+
+def test_shifted_direct_int8_prefill_oracle_covers_backing_physical_pages() -> None:
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.scratch = SimpleNamespace(max_positions=768, block_size=256)
+    session._device_kv_allocation = DeviceKVPoolAllocation(
+        request_id=3,
+        block_ids=(7, 8, 9),
+        pointers=(0x810000, 0x820000, 0x830000),
+        chunk_start_block_id=4,
+        backing=SimpleNamespace(pages=6),
+    )
+
+    assert session._int8_prefill_oracle_capacity_positions() == 1536
+
+
+def test_shifted_direct_int8_prefill_keeps_paged_payload_at_backing_base() -> None:
+    backing = SimpleNamespace(pages=4)
+    allocation = DeviceKVPoolAllocation(
+        request_id=9,
+        block_ids=(6, 7),
+        pointers=(0x220000, 0x230000),
+        chunk_start_block_id=4,
+        backing=backing,
+    )
+    session = SimpleNamespace(_device_kv_allocation=allocation)
+    retained_key = DeviceBuffer(0x210000, 4 * 256 * 128)
+    retained_value = DeviceBuffer(0x310000, 4 * 256 * 128)
+    scale_metadata = object()
+    retained_spans = SimpleNamespace(
+        block_table=DeviceBuffer(0x410000, 8),
+        scale_metadata=scale_metadata,
+    )
+    scratch = SimpleNamespace(
+        key_cache=DeviceBuffer(0x510000, 2 * 256 * 256),
+        value_cache=DeviceBuffer(0x610000, 2 * 256 * 256),
+        retained_key_cache=retained_key,
+        retained_value_cache=retained_value,
+        retained_append_spans=retained_spans,
+    )
+
+    bound = gguf_runner._gguf_slot_local_prefill_cache_views(
+        session,
+        scratch,
+        row_nbytes=256,
+        direct_int8=True,
+    )
+
+    assert bound is scratch
+    assert bound.retained_key_cache is retained_key
+    assert bound.retained_value_cache is retained_value
+    assert bound.retained_append_spans is retained_spans
+    assert bound.retained_append_spans.scale_metadata is scale_metadata
 
 
 def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkeypatch) -> None:

@@ -186,6 +186,32 @@ def test_gguf_int8_prefill_plan_preserves_short_bf16_mirror_route() -> None:
     assert plan.projected_peak_delta_bytes == 0
 
 
+def test_qualified_short_no_mirror_session_does_not_inherit_mirror_lifetime() -> None:
+    session = SimpleNamespace(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        kv_scale_granularity="per_token_head",
+        int8_kv_no_mirror_qualified=True,
+        int8_bf16_full_attention_layer_indices=(),
+        scratch=SimpleNamespace(max_positions=512),
+        runner=SimpleNamespace(
+            hidden_size=5_120,
+            weights=SimpleNamespace(
+                config=SimpleNamespace(
+                    layer_types=(LINEAR_ATTENTION,) * 48 + (FULL_ATTENTION,) * 16,
+                    head_count_kv=4,
+                    key_length=256,
+                )
+            ),
+        ),
+    )
+
+    plan = _plan_gguf_int8_prefill_lifetime_for_session(session, scratch_rows=512)
+
+    assert plan.mode == "layer_outer_shared_oracle"
+    assert plan.oracle_buffer_count == 1
+    assert plan.required_hidden_capacity == 512
+
+
 def test_qwen38_session_plan_selects_full_hidden_capacity_without_model_name_gate() -> None:
     session = SimpleNamespace(
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,

@@ -672,6 +672,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         expert_count=4,
         expert_shared_feed_forward_length=8,
         ssm_inner_size=6,
+        ssm_group_count=1,
         ssm_conv_kernel=4,
         ssm_time_step_rank=2,
         ssm_state_size=3,
@@ -1064,6 +1065,66 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
     ]
 
 
+@dataclass(frozen=True)
+class _DirectInt8PrefillSpans:
+    storage_dtype: DType = DType.BF16
+    scale_metadata: object | None = None
+
+
+@dataclass(frozen=True)
+class _DirectInt8PrefillScratch:
+    append_spans: _DirectInt8PrefillSpans
+    key_cache: object | None = None
+    value_cache: object | None = None
+    retained_key_cache: object | None = None
+    retained_value_cache: object | None = None
+    retained_append_spans: object | None = None
+    int8_kv_value_bf16: bool = False
+
+
+def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent_mirror() -> None:
+    metadata = object()
+    retained_key = DeviceBuffer(0x1000, 1024)
+    retained_value = DeviceBuffer(0x2000, 1024)
+    oracle_key = DeviceBuffer(0x3000, 2048)
+    oracle_value = DeviceBuffer(0x4000, 2048)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP32,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+    )
+    state = SimpleNamespace(
+        kv_layout=layout,
+        full_cache=lambda layer_id: (retained_key, retained_value),
+        full_scale_metadata=lambda layer_id: metadata,
+        full_bf16_mirror_cache=lambda layer_id: None,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
+    scratch = _DirectInt8PrefillScratch(append_spans=_DirectInt8PrefillSpans())
+
+    with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
+        owner._packed_full_attention_scratch_for_layer(scratch, state, 0)
+
+    direct = owner._packed_full_attention_scratch_for_layer(
+        scratch,
+        state,
+        0,
+        allow_direct_int8_prefill=True,
+    )
+
+    assert (direct.key_cache, direct.value_cache) == (oracle_key, oracle_value)
+    assert (direct.retained_key_cache, direct.retained_value_cache) == (
+        retained_key,
+        retained_value,
+    )
+    assert direct.retained_append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+    assert direct.retained_append_spans.scale_metadata is metadata
+
+
 def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -> None:
     mirrored = gguf_runner.Qwen35GGUFKVChunkLayout(
         storage_dtype=DType.INT8_PER_TOKEN_HEAD,
@@ -1091,6 +1152,16 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
 
     owner._device_kv_layout = direct
     peer._device_kv_layout = direct
+    assert owner._resident_ar_kv_layout_for_sessions((owner, peer)) == direct
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner,),
+        allow_direct_int8_prefill=True,
+    ) == direct
+    with pytest.raises(NotImplementedError, match="single-row prefill"):
+        owner._packed_ar_kv_layout_for_sessions(
+            (owner, peer),
+            allow_direct_int8_prefill=True,
+        )
     with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
         owner._packed_ar_kv_layout_for_sessions((owner, peer))
 

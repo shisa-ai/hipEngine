@@ -1,0 +1,267 @@
+{
+  "campaign_milestone": "IKV-C1",
+  "correctness_claim": true,
+  "date": "2026-08-16",
+  "decision": "Qualify the exact artifact/backend FP32-scale INT8 KV contract for compact logical c2/c4 residency on RX 7900 XTX. Every model transition remains an explicit physical-c1 replay, so this is a correctness/capacity milestone with no native-c>N or throughput claim; IKV-C2 remains required.",
+  "hardware": {
+    "excluded_gpu": {
+      "card_series": "AMD Radeon Pro W7900",
+      "gpu_index": 0,
+      "reason": "reserved for another worker; no retained C1 qualification ran there"
+    },
+    "selected_card_series": "AMD Radeon RX 7900 XTX",
+    "selected_drm_card_index": 0,
+    "selected_gpu_index": 1,
+    "selected_pci_id": "0000:10:00.0",
+    "target_arch": "gfx1100",
+    "vram_total_bytes": 25753026560,
+    "vram_total_gib": 23.984375
+  },
+  "kind": "qwen38_int8_kv_compact_serial_continuous_qualification",
+  "layout_audits": {
+    "base_row_request": {
+      "contiguous_in_backing": true,
+      "kv_attention_source": "int8_direct",
+      "one_backing_chunk": true,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_bf16_payload_bytes": 0,
+      "persistent_int8_payload_bytes": 33554432,
+      "persistent_scale_bytes": 524288,
+      "persistent_total_bytes": 34078720,
+      "request_block_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "request_capacity_tokens": 1024,
+      "request_pages": 4,
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "storage_dtype": "int8_per_token_head",
+      "storage_layout": "uniform"
+    },
+    "c2_active": {
+      "active_rows": 2,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_bf16_payload_bytes": 0,
+      "persistent_int8_payload_bytes": 50331648,
+      "persistent_scale_bytes": 786432,
+      "persistent_total_bytes": 51118080
+    },
+    "c4_active": {
+      "active_rows": 4,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_bf16_payload_bytes": 0,
+      "persistent_int8_payload_bytes": 100663296,
+      "persistent_scale_bytes": 1572864,
+      "persistent_total_bytes": 102236160
+    },
+    "shifted_request": {
+      "contiguous_in_backing": true,
+      "kv_attention_source": "int8_direct",
+      "one_backing_chunk": true,
+      "persistent_bf16_mirror_bytes": 0,
+      "persistent_bf16_payload_bytes": 0,
+      "persistent_int8_payload_bytes": 33554432,
+      "persistent_scale_bytes": 524288,
+      "persistent_total_bytes": 34078720,
+      "request_block_ids": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "request_capacity_tokens": 1024,
+      "request_pages": 4,
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "storage_dtype": "int8_per_token_head",
+      "storage_layout": "uniform"
+    }
+  },
+  "lifecycle": {
+    "active_rows_observed": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "cancelled_member": "request index 1 disconnected after its first streamed token",
+    "exact_survivors": {
+      "0": true,
+      "2": true,
+      "3": true
+    },
+    "final_active_rows": 0.0,
+    "final_occupied_slots": 0.0,
+    "final_refcounted_pages": 0.0,
+    "first_request_done_before_join": false,
+    "metric_deltas": {
+      "hipengine_request_cancelled_total": 1.0,
+      "hipengine_resident_requests_admitted_total": 4.0,
+      "hipengine_resident_requests_reclaimed_total": 4.0
+    },
+    "no_persistent_bf16": true,
+    "passed": true
+  },
+  "limitations": [
+    "No throughput claim: every logical c>N model step replays the complete c1 transition once per active row.",
+    "The quality decision remains scoped to the exact model SHA/backend/KV-scale contract.",
+    "IKV-C2 row-batched direct INT8 attention, IKV-C3 shared prefill ownership, and complete admission/economics remain open."
+  ],
+  "model": {
+    "backend": "hip_gfx1100",
+    "capability_id": "705a637209c4d2ecbad20934eec5770287e992b2fb2523dded69a2b0487ba778",
+    "kv_storage": "int8_per_token_head",
+    "max_direct_rows": 1,
+    "max_serial_resident_rows": 4,
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "persistent_bf16_mirror": false,
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984,
+    "weight_quant": "gguf_q4_k_m"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "protocol": {
+    "compiler_version_file": "/tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt",
+    "gpu_binding": "outer HIP_VISIBLE_DEVICES=1 with ROCR_VISIBLE_DEVICES unset; harness --gpu 1 --drm-card-index 0",
+    "independent_oracle": "fresh c1 server trajectories for every varied prompt row",
+    "lifecycle": "p512/d128 staggered SSE c1->c4; disconnect one joined member after first token; verify three survivors",
+    "route_expectation": "logical c2/c4; serial-c1-per-row; physical execution width 1",
+    "server_decode_tokens": 24,
+    "server_prompt_construction": "512 tokens filled with 9707; terminal token cycles through 9707..9710",
+    "server_sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP off"
+  },
+  "raw_evidence": {
+    "c2": {
+      "path": "/tmp/qwen38-ikv-c1-xtx-c2-exact-r1.json",
+      "sha256": "ff4cf15ec63ff6bd4fcf41fa84a0a4949fd6bb5982e7d175ace04f254c15eea7",
+      "size_bytes": 80229
+    },
+    "c4": {
+      "path": "/tmp/qwen38-ikv-c1-xtx-c4-exact-r1.json",
+      "sha256": "aa20452a6adafea733c8553fd38174db580ed8caa9af5d8828712c0dee406c82",
+      "size_bytes": 121506
+    },
+    "cancellation": {
+      "path": "/tmp/qwen38-ikv-c1-xtx-c4-cancel-r1.json",
+      "sha256": "89a60e268337783a100700e4d30e4e01ef2136a8c4d20d78950436ba414a0599",
+      "size_bytes": 131285
+    },
+    "shifted_exact": {
+      "path": "/tmp/qwen38-ikv-c1-xtx-shifted-state-kv-exact-r1.json",
+      "sha256": "c1cf0ad614d88dc9d9ed88221bf1ff05729312e0c8768d232b1cfe8caa88e29e",
+      "size_bytes": 21185
+    }
+  },
+  "schema": 1,
+  "server_correctness": {
+    "c2": {
+      "live_admission": {
+        "exact_rows": 2,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 2
+      },
+      "measured": {
+        "exact_rows": 2,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 2
+      },
+      "native_caware_decode_values": [
+        false
+      ],
+      "native_packed_decode_steps": 0.0,
+      "peak_vram_gib": 18.515438079833984,
+      "raw_command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-int8-serial-c2-xtx --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python3 --hipengine-route-expectation serial-c1-per-row --hipengine-prefill-decode-policy fair --hipengine-kv-storage int8_per_token_head --hipengine-kv-scale-dtype fp32 --hipengine-kv-scale-granularity per_token_head --gpu 1 --drm-card-index 0 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --concurrencies 2 --focused-width-repair --prompt-length 512 --decode-tokens 24 --oracle-rows 2 --warmup-runs 1 --measured-runs 1 --stream-warmup-runs 0 --stream-measured-runs 0 --batch-window-ms 5 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --live-concurrency 2 --live-join-after-tokens 1 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --memory-domain vram --memory-poll-ms 20 --metrics-poll-ms 20 --work-dir /tmp/qwen38-ikv-c1-xtx-c2-exact-r1 --json /tmp/qwen38-ikv-c1-xtx-c2-exact-r1.json",
+      "route_ok": true,
+      "serial_c1_row_steps": 84.0,
+      "serial_decode_fallback_values": [
+        true
+      ],
+      "serial_model_steps": 42.0,
+      "warmup": {
+        "exact_rows": 2,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 2
+      }
+    },
+    "c4": {
+      "live_admission": {
+        "exact_rows": 4,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 4
+      },
+      "measured": {
+        "exact_rows": 4,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 4
+      },
+      "native_caware_decode_values": [
+        false
+      ],
+      "native_packed_decode_steps": 0.0,
+      "peak_vram_gib": 20.60724639892578,
+      "raw_command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-int8-serial-c4-xtx --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python3 --hipengine-route-expectation serial-c1-per-row --hipengine-prefill-decode-policy fair --hipengine-kv-storage int8_per_token_head --hipengine-kv-scale-dtype fp32 --hipengine-kv-scale-granularity per_token_head --gpu 1 --drm-card-index 0 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --concurrencies 4 --focused-width-repair --prompt-length 512 --decode-tokens 24 --oracle-rows 4 --warmup-runs 1 --measured-runs 1 --stream-warmup-runs 0 --stream-measured-runs 0 --batch-window-ms 5 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --live-concurrency 4 --live-join-after-tokens 1 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --memory-domain vram --memory-poll-ms 20 --metrics-poll-ms 10 --work-dir /tmp/qwen38-ikv-c1-xtx-c4-exact-r1 --json /tmp/qwen38-ikv-c1-xtx-c4-exact-r1.json",
+      "route_ok": true,
+      "serial_c1_row_steps": 176.0,
+      "serial_decode_fallback_values": [
+        true
+      ],
+      "serial_model_steps": 50.0,
+      "warmup": {
+        "exact_rows": 4,
+        "mismatch_count": 0,
+        "mismatches": [],
+        "passed": true,
+        "rows": 4
+      }
+    }
+  },
+  "shifted_independent_c1_exactness": {
+    "full_attention_layers_compared": 16,
+    "full_vocabulary_logits_exact": true,
+    "linear_state_exact": true,
+    "linear_state_layers_compared": 48,
+    "logit_max_abs": 0.0,
+    "prompt_length": 512,
+    "reference_base_row": 0,
+    "retained_kv_and_scale_exact": true,
+    "shifted_base_row": 1024,
+    "token_exact": true,
+    "token_id": 264
+  },
+  "source": {
+    "candidate_paths": [
+      "hipengine/generation/qwen35_gguf.py",
+      "hipengine/models/kv_capabilities.py",
+      "hipengine/models/qwen35.py",
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "scripts/server_f1_concurrency_bench.py",
+      "tests/test_generation_qwen35_gguf_sampling.py",
+      "tests/test_gguf_device_kv_binding.py",
+      "tests/test_gguf_packed_verify_layout.py",
+      "tests/test_qwen35_gguf_int8_kv_policy.py",
+      "tests/test_qwen38_int8_kv_capability.py",
+      "tests/test_server_f1_concurrency_bench.py"
+    ],
+    "measured_head": "7867363802f571bee9394a4683caf74efad7ffc3",
+    "working_tree_dirty_for_candidate": true
+  },
+  "status": "accepted_correctness_milestone",
+  "topline_eligible": false
+}

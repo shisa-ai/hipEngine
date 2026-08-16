@@ -317,9 +317,10 @@ reclassifies a completed row. Long pure INT8 still uses the unverified gate,
 graph capture rejects it, exact natural B3 is only **0.6423x** true AR, and BF16
 remains supported/default.
 
-Do not transfer the c1 ceiling to concurrent serving. Current packed
-short-context INT8 retains a BF16 mirror and is not a compact memory route. The
-XTX table reports only observed execution and actual failures:
+Do not transfer the c1 ceiling to concurrent serving. The native-packed
+short-context INT8 route retains a BF16 mirror and is not a compact memory route;
+the later C1 compact route is serial physical-c1 only. This pre-C1 XTX table
+reports observed mirrored-route execution and actual failures:
 
 | Offered HTTP clients | Physical residency | Highest observed working row | Strongest repetition at/near frontier | First actual failure observed | Peak / headroom at highest pass |
 | ---: | ---: | ---: | --- | --- | ---: |
@@ -371,6 +372,17 @@ file retains its rejected decision, and unknown/mismatched combinations fall
 back to BF16 unless an explicit non-promotable diagnostic override is set. Server
 readiness and capability manifests expose the evidence and effective storage;
 this provenance hardening changes no benchmark metric.
+
+The RX 7900 XTX compact correctness milestone now admits logical **c2/c4** for
+the exact gfx1100 artifact with no persistent BF16 payload or mirror. Varied
+p512/d24 warmup, measured, and live rows are all exact versus fresh c1 oracles;
+a shifted request is byte-exact for full-vocabulary logits, 48 Conv/GDN state
+pairs, and 16 INT8 K/V plus FP32-scale planes. Staggered p512/d128 SSE reaches
+c4, disconnects one member, keeps all three survivors exact, records
+admitted/reclaimed/cancelled **4/4/1**, and drains ownership to zero. Every c>N
+model step still executes as serial physical c1, so this is **not** a native-c>N
+or throughput result. Evidence:
+[`compact serial c4 qualification`](results/2026-08-16-qwen38-27b-int8-kv-compact-serial-c4.json).
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF campaign opening
 

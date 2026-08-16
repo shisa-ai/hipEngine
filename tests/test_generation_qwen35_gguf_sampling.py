@@ -311,6 +311,8 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
     assert kwargs["kv_policy"].scale_granularity == "per_token_head"
     assert kwargs["kv_scale_dtype"] == "fp16"
     assert kwargs["kv_scale_granularity"] == "per_token_head"
+    assert kwargs["kv_capability"]["runtime_action"] == "diagnostic_override"
+    assert kwargs["kv_capability"]["promotion_eligible"] is False
     assert generator._prepared_kv_signature == (
         "int8_per_token_head",
         "uniform",
@@ -372,6 +374,9 @@ def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) 
     assert generator.kv_capability_provenance["status"] == "qualified"
     assert generator.kv_capability_provenance["runtime_action"] == "admit"
     assert generator.kv_capability_provenance["promotion_eligible"] is True
+    kwargs = generator._prepared_session_kv_kwargs()
+    assert kwargs["kv_capability"]["evidence"]["persistent_bf16_mirror"] is False
+    assert kwargs["kv_capability"]["evidence"]["max_serial_resident_rows"] == 4
 
 
 def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
@@ -2648,19 +2653,28 @@ def test_gguf_resident_prepare_is_idempotent_at_full_occupancy() -> None:
     assert len(runner._rows) == 8
 
 
-def test_gguf_resident_full_prefill_rebases_reused_dynamic_kv_through_packed_path() -> None:
+@pytest.mark.parametrize(
+    ("attention_source", "block_ids"),
+    ((None, (9,)), ("int8_direct", (8,))),
+    ids=("shifted-allocation", "direct-int8-base-zero"),
+)
+def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
+    attention_source: str | None,
+    block_ids: tuple[int, ...],
+) -> None:
     calls: list[tuple] = []
 
     class FakeSession:
         position = 0
+        kv_attention_source = attention_source
         _device_kv_allocation = SimpleNamespace(
-            block_ids=(9,),
+            block_ids=block_ids,
             chunk_start_block_id=8,
         )
 
         def prefill(self, token_ids, **kwargs):
             raise AssertionError(
-                f"shifted dynamic KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
+                f"block-table-aware KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
             )
 
         def prefill_batch_native(self, token_rows, *, sessions, **kwargs):
@@ -2713,19 +2727,28 @@ def test_gguf_resident_full_prefill_rebases_reused_dynamic_kv_through_packed_pat
     assert runner._route_counts["native_full_prefill_rows"] == 1
 
 
-def test_gguf_resident_sampled_prefill_rebases_shifted_dynamic_kv_through_packed_path() -> None:
+@pytest.mark.parametrize(
+    ("attention_source", "block_ids"),
+    ((None, (9,)), ("int8_direct", (8,))),
+    ids=("shifted-allocation", "direct-int8-base-zero"),
+)
+def test_gguf_resident_sampled_prefill_uses_block_table_path_when_required(
+    attention_source: str | None,
+    block_ids: tuple[int, ...],
+) -> None:
     calls: list[tuple] = []
 
     class FakeSession:
         position = 0
+        kv_attention_source = attention_source
         _device_kv_allocation = SimpleNamespace(
-            block_ids=(9,),
+            block_ids=block_ids,
             chunk_start_block_id=8,
         )
 
         def prefill(self, token_ids, **kwargs):
             raise AssertionError(
-                f"shifted sampled KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
+                f"block-table-aware sampled KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
             )
 
         def prefill_batch_native(self, token_rows, *, sessions, **kwargs):
@@ -2998,6 +3021,12 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "packed_workspace_current_bytes": 0,
         "packed_workspace_release_events": 0,
         "packed_workspace_released_bytes": 0,
+        "kv_layout_audits": [],
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_kv_total_bytes": 0,
     }
     assert observability["routes"]["counts"] == {
         "native_full_prefill_rows": 3,
@@ -3013,6 +3042,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "native_sampler_row_launches": 0,
         "host_sampler_requests": 1,
         "serial_decode_fallback_steps": 0,
+        "serial_c1_row_steps": 0,
         "resident_fallback_requests": 1,
     }
     assert observability["routes"]["physical_width_decode_steps"] == {
@@ -3216,6 +3246,117 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     assert runner._last_execution_manifest["logical_c"] == 13
     assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
     assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
+
+
+def test_gguf_compact_serial_capability_is_artifact_scoped_and_bounded() -> None:
+    qualified = SimpleNamespace(
+        kv_capability_provenance={
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "effective_kv_storage": "int8_per_token_head",
+            "evidence": {
+                "max_direct_rows": 1,
+                "max_serial_resident_rows": 4,
+                "persistent_bf16_mirror": False,
+            },
+        }
+    )
+    diagnostic = SimpleNamespace(
+        kv_capability_provenance={
+            **qualified.kv_capability_provenance,
+            "runtime_action": "diagnostic_override",
+            "promotion_eligible": False,
+        }
+    )
+
+    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(qualified) == 4
+    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(diagnostic) == 0
+
+
+def test_gguf_resident_request_diagnostics_retain_kv_layout_audit() -> None:
+    audit = {
+        "kv_attention_source": "int8_direct",
+        "persistent_int8_payload_bytes": 33_554_432,
+        "persistent_scale_bytes": 524_288,
+        "persistent_bf16_mirror_bytes": 0,
+    }
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._prefix_request_telemetry = lambda row: {"mode": "off"}
+    row = SimpleNamespace(
+        slot=SimpleNamespace(
+            session=SimpleNamespace(device_kv_layout_audit=lambda: audit)
+        )
+    )
+
+    assert runner._request_diagnostics(row, include_kv_layout=False) == {
+        "prefix_cache": {"mode": "off"}
+    }
+    diagnostics = runner._request_diagnostics(row)
+    audit["persistent_bf16_mirror_bytes"] = 1
+
+    assert diagnostics == {
+        "prefix_cache": {"mode": "off"},
+        "kv_layout": {
+            "kv_attention_source": "int8_direct",
+            "persistent_int8_payload_bytes": 33_554_432,
+            "persistent_scale_bytes": 524_288,
+            "persistent_bf16_mirror_bytes": 0,
+        },
+    }
+
+
+def test_gguf_resident_direct_int8_c4_declares_serial_physical_width_one(monkeypatch) -> None:
+    calls: list[tuple[tuple[int, ...], str]] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(
+        kv_capability_provenance={
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "effective_kv_storage": "int8_per_token_head",
+            "evidence": {
+                "max_direct_rows": 1,
+                "max_serial_resident_rows": 4,
+                "persistent_bf16_mirror": False,
+            },
+        }
+    )
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    runner._step_native_chunk = lambda *args, **kwargs: pytest.fail(
+        "compact direct INT8 C4 must not enter packed decode before IKV-C2"
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: calls.append(
+        (tuple(int(row.request_id) for row in rows), str(fallback_reason))
+    )
+    rows = [
+        SimpleNamespace(
+            request_id=100 + index,
+            native_sampler=False,
+            native_sampled=False,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(kv_attention_source="int8_direct")
+            ),
+        )
+        for index in range(4)
+    ]
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    runner._step_native_rows(rows)
+
+    assert calls == [((100, 101, 102, 103), "int8_direct_c1_only")]
+    assert runner._last_execution_manifest["kv_attention_source"] == "int8_direct"
+    assert runner._last_execution_manifest["logical_c"] == 4
+    assert runner._last_execution_manifest["physical_execution_width"] == 1
+    assert runner._last_execution_manifest["serial_decode_fallback"] is True
+    assert runner._last_execution_manifest["throughput_claim_eligible"] is False
+    assert runner._last_physical_group_plan["groups"][0]["planned_physical_rows"] == 4
+    assert runner._last_physical_group_plan["groups"][0]["physical_execution_width"] == 1
 
 
 def test_gguf_resident_runner_compaction_flushes_and_invalidates_slot_bound_graphs() -> None:
@@ -3944,6 +4085,46 @@ def test_gguf_resident_runner_skips_sampling_for_nonfinal_prefill_chunks() -> No
     assert runner._route_counts["native_incremental_prefill_chunks"] == 1
     assert runner._route_counts["native_incremental_prefill_unsampled_chunks"] == 1
     assert row.slot is None
+
+
+def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefill() -> None:
+    events: list[str] = []
+
+    class FakeSession:
+        kv_attention_source = "int8_direct"
+
+        def reset(self) -> None:
+            events.append("reset")
+
+        def prefill_batch_native(self, *args, **kwargs):
+            pytest.fail("direct INT8 must not release its exact oracle between chunks")
+
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=(10, 11, 12, 13),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        incremental_prefill=True,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._fallback_reasons = Counter()
+
+    runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
+
+    assert events == ["reset"]
+    assert row.incremental_prefill is False
+    assert row.prefill_chunk_count == 0
+    assert runner._fallback_reasons["int8_direct_full_prompt_prefill"] == 1
 
 
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:

@@ -9640,6 +9640,7 @@ def _plan_gguf_int8_prefill_lifetime_for_session(
         kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
         and str(getattr(session, "kv_scale_granularity", "per_token_head"))
         != "hadamard_group32"
+        and not bool(getattr(session, "int8_kv_no_mirror_qualified", False))
         and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
     )
     return _plan_gguf_int8_prefill_lifetime(
@@ -11960,6 +11961,29 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
+def _qualified_no_mirror_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether immutable model evidence admits persistent mirror-free INT8."""
+
+    if not isinstance(capability, Mapping):
+        return False
+    evidence = capability.get("evidence")
+    requested = capability.get("requested")
+    return bool(
+        isinstance(evidence, Mapping)
+        and isinstance(requested, Mapping)
+        and capability.get("status") == "qualified"
+        and capability.get("runtime_action") == "admit"
+        and capability.get("promotion_eligible") is True
+        and capability.get("effective_kv_storage") == "int8_per_token_head"
+        and requested.get("kv_storage") == "int8_per_token_head"
+        and requested.get("storage_layout") == "uniform"
+        and evidence.get("persistent_bf16_mirror") is False
+        and int(evidence.get("max_direct_rows", 0)) >= 1
+    )
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFKVChunkLayout:
     """Complete policy identity for one scheduler-owned GGUF KV chunk.
@@ -12031,6 +12055,19 @@ class Qwen35GGUFKVChunkLayout:
             raise ValueError("GGUF dynamic KV mirrors are valid only for INT8 layers")
         if mirrors and self.scale_granularity == "hadamard_group32":
             raise ValueError("Hadamard-group32 GGUF dynamic KV does not use BF16 mirrors")
+
+
+def _gguf_kv_attention_source(layout: Qwen35GGUFKVChunkLayout) -> str:
+    int8_layers = {
+        layer_id
+        for layer_id, storage in enumerate(layout.layer_storage_dtypes)
+        if storage == DType.INT8_PER_TOKEN_HEAD
+    }
+    if not int8_layers:
+        return "bf16"
+    if int8_layers - set(layout.bf16_mirror_layer_indices):
+        return "int8_direct"
+    return "bf16_mirror"
 
 
 @dataclass(frozen=True)
@@ -12323,6 +12360,7 @@ def _qwen35_gguf_session_kv_chunk_layout(
         )
         if session.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
         and session.kv_scale_granularity != "hadamard_group32"
+        and not bool(getattr(session, "int8_kv_no_mirror_qualified", False))
         and int(session.scratch.max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         else ()
     )
@@ -12387,6 +12425,73 @@ def _gguf_device_kv_contiguous_cache_view(
     return DeviceBuffer(
         ptr=int(cache.ptr) + offset,
         nbytes=int(cache.nbytes) - offset,
+    )
+
+
+def _gguf_retained_prefill_block_table_host(
+    allocation: DeviceKVPoolAllocation,
+    *,
+    rows: int,
+    blocks_per_row: int,
+) -> np.ndarray:
+    """Repeat one scheduler page table for every packed prompt-write row."""
+
+    row_count = int(rows)
+    table_width = int(blocks_per_row)
+    if row_count <= 0 or table_width <= 0:
+        raise ValueError("GGUF retained prefill table shape must be positive")
+    local_blocks = [
+        int(block_id) - int(allocation.chunk_start_block_id)
+        for block_id in allocation.block_ids
+    ]
+    if len(local_blocks) > table_width:
+        raise ValueError("GGUF retained prefill allocation exceeds block-table width")
+    table_row = np.zeros((table_width,), dtype=np.int32)
+    table_row[: len(local_blocks)] = np.asarray(local_blocks, dtype=np.int32)
+    return np.ascontiguousarray(np.tile(table_row, (row_count, 1)))
+
+
+def _gguf_slot_local_prefill_cache_views(
+    session: object,
+    layer_scratch: object,
+    *,
+    row_nbytes: int,
+    direct_int8: bool,
+):
+    """Bind slot-local oracle caches without double-applying paged INT8 offsets."""
+
+    if direct_int8:
+        retained_spans = getattr(layer_scratch, "retained_append_spans", None)
+        if (
+            getattr(layer_scratch, "retained_key_cache", None) is None
+            or getattr(layer_scratch, "retained_value_cache", None) is None
+            or retained_spans is None
+            or getattr(retained_spans, "scale_metadata", None) is None
+        ):
+            raise RuntimeError(
+                "direct INT8 slot-local prefill requires retained payload/scales"
+            )
+        # The transient BF16 oracle is session-local. Retained INT8 payload and
+        # scales remain at the backing-plane base because their paged writer
+        # consumes the session block table.
+        return layer_scratch
+
+    key_cache = _gguf_device_kv_contiguous_cache_view(
+        session,
+        layer_scratch.key_cache,
+        row_nbytes=row_nbytes,
+    )
+    value_cache = _gguf_device_kv_contiguous_cache_view(
+        session,
+        layer_scratch.value_cache,
+        row_nbytes=row_nbytes,
+    )
+    if key_cache is None or value_cache is None:
+        raise RuntimeError("slot-local GGUF prefill requires contiguous device KV")
+    return replace(
+        layer_scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
     )
 
 
@@ -12495,6 +12600,7 @@ class Qwen35GGUFResidentSession:
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
+    kv_capability: Mapping[str, object] | None = None
     defer_kv_allocation: bool = False
     token_embedding_placement: str = "auto"
     use_small_weight_arena: bool | None = None
@@ -12576,6 +12682,7 @@ class Qwen35GGUFResidentSession:
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
+    _int8_prefill_retained_block_table: DeviceBuffer | None = field(default=None, init=False)
     _int8_prefill_lifetime_plan: _GGUFInt8PrefillLifetimePlan | None = field(default=None, init=False)
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
@@ -12635,6 +12742,7 @@ class Qwen35GGUFResidentSession:
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
     kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
+    int8_kv_no_mirror_qualified: bool = field(default=False, init=False)
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
@@ -12833,6 +12941,10 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("unsupported GGUF resident INT8 KV scale granularity")
         if self.int8_kv_value_bf16 and self.kv_scale_granularity != "per_token_head":
             raise ValueError("GGUF grouped INT8 KV scales are not supported with the key-only diagnostic")
+        self.int8_kv_no_mirror_qualified = bool(
+            self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and _qualified_no_mirror_int8_capability(self.kv_capability)
+        )
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
             int(self.runner.weights.config.context_length),
@@ -12842,14 +12954,22 @@ class Qwen35GGUFResidentSession:
             1 for layer_type in self.runner.weights.config.layer_types if layer_type == FULL_ATTENTION
         )
         if self.kv_storage_layout == "uniform":
-            self.int8_bf16_prefix_full_attention_layers = _gguf_int8_bf16_prefix_full_attention_layers(
-                kv_storage_dtype=self.kv_storage_dtype,
-                max_positions=rounded_positions,
+            self.int8_bf16_prefix_full_attention_layers = (
+                0
+                if self.int8_kv_no_mirror_qualified
+                else _gguf_int8_bf16_prefix_full_attention_layers(
+                    kv_storage_dtype=self.kv_storage_dtype,
+                    max_positions=rounded_positions,
+                )
             )
-            self.int8_bf16_full_attention_layer_indices = _gguf_int8_bf16_full_attention_layer_indices(
-                kv_storage_dtype=self.kv_storage_dtype,
-                max_positions=rounded_positions,
-                full_attention_layers=full_attention_layer_count,
+            self.int8_bf16_full_attention_layer_indices = (
+                ()
+                if self.int8_kv_no_mirror_qualified
+                else _gguf_int8_bf16_full_attention_layer_indices(
+                    kv_storage_dtype=self.kv_storage_dtype,
+                    max_positions=rounded_positions,
+                    full_attention_layers=full_attention_layer_count,
+                )
             )
         else:
             selector = getattr(self.kv_policy, "full_attention_storage_dtype", None)
@@ -12880,15 +13000,16 @@ class Qwen35GGUFResidentSession:
             bf16_full_attention_layer_count=len(self.int8_bf16_full_attention_layer_indices),
             scale_granularity=self.kv_scale_granularity,
         )
-        _validate_gguf_int8_kv_context(
-            kv_storage_dtype=self.kv_storage_dtype,
-            max_positions=rounded_positions,
-            bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
-            bf16_full_attention_layer_indices=(
-                self.int8_bf16_full_attention_layer_indices if custom_bf16_layers else None
-            ),
-            storage_layout=self.kv_storage_layout,
-        )
+        if not self.int8_kv_no_mirror_qualified:
+            _validate_gguf_int8_kv_context(
+                kv_storage_dtype=self.kv_storage_dtype,
+                max_positions=rounded_positions,
+                bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
+                bf16_full_attention_layer_indices=(
+                    self.int8_bf16_full_attention_layer_indices if custom_bf16_layers else None
+                ),
+                storage_layout=self.kv_storage_layout,
+            )
         runtime = self.runtime or get_hip_runtime()
         build_kwargs = {
             "load": True,
@@ -12923,6 +13044,7 @@ class Qwen35GGUFResidentSession:
             int8_kv_value_bf16=self.int8_kv_value_bf16,
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+            retain_int8_bf16_mirrors=not self.int8_kv_no_mirror_qualified,
             allocate_kv_cache=not bool(self.defer_kv_allocation),
             use_single_arena=self.decode_scratch_arena_enabled,
         )
@@ -13118,6 +13240,93 @@ class Qwen35GGUFResidentSession:
     @property
     def device_kv_allocation(self) -> DeviceKVPoolAllocation | None:
         return self._device_kv_allocation
+
+    @property
+    def kv_attention_source(self) -> str:
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        return _gguf_kv_attention_source(layout)
+
+    def device_kv_layout_audit(self) -> dict[str, object]:
+        """Return exact persistent request-KV ownership, including shadow bytes."""
+
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            request_pages = 0
+            block_ids: tuple[int, ...] = ()
+            backing = None
+        else:
+            request_pages = len(allocation.block_ids)
+            block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
+            backing = allocation.backing
+        int8_payload_bytes = 0
+        bf16_payload_bytes = 0
+        scale_bytes = 0
+        mirror_bytes = 0
+        if isinstance(backing, Qwen35GGUFKVChunkBacking):
+            backing_pages = int(backing.pages)
+            if backing_pages <= 0:
+                raise RuntimeError("GGUF device KV backing has no pages")
+
+            def request_bytes(buffer: DeviceBuffer | None) -> int:
+                if buffer is None or request_pages == 0:
+                    return 0
+                nbytes = int(buffer.nbytes)
+                if nbytes % backing_pages:
+                    raise RuntimeError("GGUF device KV plane is not page divisible")
+                return (nbytes // backing_pages) * request_pages
+
+            for layer_id, storage in enumerate(layout.layer_storage_dtypes):
+                key_bytes = request_bytes(backing.full_key_caches[layer_id])
+                value_bytes = request_bytes(backing.full_value_caches[layer_id])
+                if storage == DType.INT8_PER_TOKEN_HEAD:
+                    int8_payload_bytes += key_bytes
+                    if layout.int8_kv_value_bf16:
+                        bf16_payload_bytes += value_bytes
+                    else:
+                        int8_payload_bytes += value_bytes
+                elif storage == DType.BF16:
+                    bf16_payload_bytes += key_bytes + value_bytes
+                scale_bytes += request_bytes(backing.full_k_scale_caches[layer_id])
+                scale_bytes += request_bytes(backing.full_v_scale_caches[layer_id])
+                mirror_bytes += request_bytes(
+                    backing.full_bf16_mirror_key_caches[layer_id]
+                )
+                mirror_bytes += request_bytes(
+                    backing.full_bf16_mirror_value_caches[layer_id]
+                )
+        total_bytes = (
+            int8_payload_bytes
+            + bf16_payload_bytes
+            + scale_bytes
+            + mirror_bytes
+        )
+        return {
+            "storage_dtype": layout.storage_dtype.value,
+            "storage_layout": str(layout.storage_layout),
+            "scale_dtype": layout.scale_dtype.value,
+            "scale_granularity": str(layout.scale_granularity),
+            "kv_attention_source": _gguf_kv_attention_source(layout),
+            "request_pages": int(request_pages),
+            "request_capacity_tokens": int(request_pages) * 256,
+            "request_block_ids": list(block_ids),
+            "one_backing_chunk": bool(allocation is not None and backing is not None),
+            "contiguous_in_backing": bool(
+                allocation is not None
+                and _gguf_device_kv_contiguous_base_row(self) is not None
+            ),
+            "persistent_int8_payload_bytes": int(int8_payload_bytes),
+            "persistent_bf16_payload_bytes": int(bf16_payload_bytes),
+            "persistent_scale_bytes": int(scale_bytes),
+            "persistent_bf16_mirror_bytes": int(mirror_bytes),
+            "persistent_total_bytes": int(total_bytes),
+        }
 
     @property
     def device_kv_capacity_tokens(self) -> int:
@@ -14608,6 +14817,56 @@ class Qwen35GGUFResidentSession:
             ),
         )
 
+    def _int8_retained_prefill_spans(
+        self,
+        oracle_append_spans: KVLiveSpans,
+        metadata: KVScaleMetadata,
+    ) -> KVLiveSpans:
+        """Keep packed prompt positions but write retained KV through physical pages."""
+
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            return replace(
+                oracle_append_spans,
+                storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+                scale_metadata=metadata,
+            )
+        if len(oracle_append_spans.base_offsets.shape) != 2:
+            raise ValueError("GGUF retained prefill requires a row-major block table")
+        rows, blocks_per_row = (
+            int(dim) for dim in oracle_append_spans.base_offsets.shape
+        )
+        table_host = _gguf_retained_prefill_block_table_host(
+            allocation,
+            rows=rows,
+            blocks_per_row=blocks_per_row,
+        )
+        runtime = self.runtime or get_hip_runtime()
+        table = self._int8_prefill_retained_block_table
+        if table is None or int(table.nbytes) < int(table_host.nbytes):
+            if table is not None:
+                free(table, runtime=runtime)
+            table = malloc(table_host.nbytes, runtime=runtime)
+            self._int8_prefill_retained_block_table = table
+        copy_host_to_device(
+            table,
+            host_array_ptr(table_host),
+            table_host.nbytes,
+            runtime=runtime,
+        )
+        table_tensor = Tensor.from_handle(
+            table.ptr,
+            table_host.shape,
+            DType.INT32,
+            oracle_append_spans.base_offsets.device,
+        )
+        return replace(
+            oracle_append_spans,
+            base_offsets=table_tensor,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            scale_metadata=metadata,
+        )
+
     def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -14634,10 +14893,9 @@ class Qwen35GGUFResidentSession:
         else:
             oracle_key_cache, oracle_value_cache = bf16_mirror_cache
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
-        retained_append_spans = replace(
+        retained_append_spans = self._int8_retained_prefill_spans(
             bulk_scratch.append_spans,
-            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
-            scale_metadata=metadata,
+            metadata,
         )
         return replace(
             bulk_scratch,
@@ -14654,6 +14912,8 @@ class Qwen35GGUFResidentSession:
         packed_scratch,
         packed_state: _GGUFPackedTargetState,
         layer_id: int,
+        *,
+        allow_direct_int8_prefill: bool = False,
     ):
         key_cache, value_cache = packed_state.full_cache(layer_id)
         metadata = packed_state.full_scale_metadata(layer_id)
@@ -14669,9 +14929,11 @@ class Qwen35GGUFResidentSession:
             )
         mirror = packed_state.full_bf16_mirror_cache(layer_id)
         if mirror is None:
-            raise NotImplementedError(
-                "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
-            )
+            if not allow_direct_int8_prefill:
+                raise NotImplementedError(
+                    "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
+                )
+            mirror = self._int8_prefill_oracle_cache_for_layer(layer_id)
         retained_append_spans = replace(
             packed_scratch.append_spans,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
@@ -14686,6 +14948,22 @@ class Qwen35GGUFResidentSession:
             retained_append_spans=retained_append_spans,
             int8_kv_value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
         )
+
+    def _int8_prefill_oracle_capacity_positions(self) -> int:
+        """Cover every physical page address visible through this session's table."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        positions = int(self.scratch.max_positions)
+        allocation = self._device_kv_allocation
+        backing = None if allocation is None else allocation.backing
+        backing_pages = int(getattr(backing, "pages", 0) or 0)
+        if backing_pages > 0:
+            positions = max(
+                positions,
+                backing_pages * int(self.scratch.block_size),
+            )
+        return positions
 
     def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
         """Return the planned BF16 oracle owner for INT8-retained prefill.
@@ -14711,7 +14989,12 @@ class Qwen35GGUFResidentSession:
         if cached is not None:
             return cached
         cfg = self.runner.weights.config
-        nbytes = int(self.scratch.max_positions) * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+        nbytes = (
+            self._int8_prefill_oracle_capacity_positions()
+            * int(cfg.head_count_kv)
+            * int(cfg.key_length)
+            * DType.BF16.itemsize
+        )
         runtime = self.runtime or get_hip_runtime()
         key_cache = malloc(nbytes, runtime=runtime)
         value_cache = malloc(nbytes, runtime=runtime)
@@ -14720,13 +15003,19 @@ class Qwen35GGUFResidentSession:
         return cached
 
     def _release_int8_prefill_oracle_buffers(self) -> None:
-        if not self._int8_prefill_oracle_buffers:
+        if (
+            not self._int8_prefill_oracle_buffers
+            and self._int8_prefill_retained_block_table is None
+        ):
             return
         runtime = self.runtime or get_hip_runtime()
         for key_cache, value_cache in reversed(tuple(self._int8_prefill_oracle_buffers.values())):
             free(value_cache, runtime=runtime)
             free(key_cache, runtime=runtime)
         self._int8_prefill_oracle_buffers.clear()
+        if self._int8_prefill_retained_block_table is not None:
+            free(self._int8_prefill_retained_block_table, runtime=runtime)
+            self._int8_prefill_retained_block_table = None
 
     def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
@@ -17631,10 +17920,14 @@ class Qwen35GGUFResidentSession:
 
         return self._read_sample(return_logits=False)
 
-    def _packed_ar_kv_layout_for_sessions(
+    def _resident_ar_kv_layout_for_sessions(
         self,
         sessions: tuple["Qwen35GGUFResidentSession", ...],
     ) -> Qwen35GGUFKVChunkLayout:
+        """Validate stable resident layout identity without claiming packed math."""
+
+        if not sessions:
+            raise ValueError("resident AR layout validation requires a session")
         layout = self._device_kv_layout
         if layout is None:
             layout = _qwen35_gguf_session_kv_chunk_layout(self)
@@ -17645,20 +17938,80 @@ class Qwen35GGUFResidentSession:
                 session_layout = _qwen35_gguf_session_kv_chunk_layout(session)
                 session._device_kv_layout = session_layout
             if session_layout != layout:
-                raise NotImplementedError("packed AR requires identical KV layouts across resident sessions")
+                raise NotImplementedError(
+                    "resident AR requires identical KV layouts across sessions"
+                )
+        return layout
+
+    def _packed_ar_kv_layout_for_sessions(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        *,
+        allow_direct_int8_prefill: bool = False,
+    ) -> Qwen35GGUFKVChunkLayout:
+        layout = self._resident_ar_kv_layout_for_sessions(sessions)
         int8_layers = tuple(
             layer_id
             for layer_id, storage in enumerate(layout.layer_storage_dtypes)
             if storage == DType.INT8_PER_TOKEN_HEAD
         )
         mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
-        if any(layer_id not in mirror_layers for layer_id in int8_layers):
+        has_direct_int8 = any(
+            layer_id not in mirror_layers for layer_id in int8_layers
+        )
+        if has_direct_int8 and allow_direct_int8_prefill and len(sessions) != 1:
+            raise NotImplementedError(
+                "packed AR direct INT8 is admitted only for single-row prefill until row-batched attention is qualified"
+            )
+        if has_direct_int8 and not allow_direct_int8_prefill:
             raise NotImplementedError(
                 "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
             )
         return layout
 
     def prefill_batch_native(
+        self,
+        prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        full_prompt_lengths: list[int] | tuple[int, ...] | None = None,
+        return_logits: bool = False,
+        return_hidden_seeds: bool = False,
+        sample_output: bool = True,
+        require_logits: bool = False,
+        capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        stream: int = 0,
+    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
+        """Run bounded packed prefill and release every transient BF16 oracle."""
+
+        session_tuple = (self,) if sessions is None else tuple(sessions)
+        try:
+            return self._prefill_batch_native_impl(
+                prompt_token_ids,
+                sessions=sessions,
+                full_prompt_lengths=full_prompt_lengths,
+                return_logits=return_logits,
+                return_hidden_seeds=return_hidden_seeds,
+                sample_output=sample_output,
+                require_logits=require_logits,
+                capture_layer_output_hidden=capture_layer_output_hidden,
+                stream=stream,
+            )
+        finally:
+            seen: set[int] = set()
+            for session in session_tuple:
+                if id(session) in seen:
+                    continue
+                seen.add(id(session))
+                release = getattr(
+                    session,
+                    "_release_int8_prefill_oracle_buffers",
+                    None,
+                )
+                if callable(release):
+                    release()
+
+    def _prefill_batch_native_impl(
         self,
         prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
         *,
@@ -17899,7 +18252,11 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed AR prefill requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed AR prefill job session is closed")
-        self._packed_ar_kv_layout_for_sessions(session_tuple)
+        kv_layout = self._packed_ar_kv_layout_for_sessions(
+            session_tuple,
+            allow_direct_int8_prefill=True,
+        )
+        direct_int8_prefill = _gguf_kv_attention_source(kv_layout) == "int8_direct"
 
         slot_blocks = tuple(
             _GGUFPackedVerifySlotBlock(
@@ -17934,6 +18291,13 @@ class Qwen35GGUFResidentSession:
             # non-contiguous COW suffix. Keep those sessions in packed scratch
             # and scatter through their scheduler-owned block table below.
             slot_local_full_prefill = False
+            force_aotriton_slots.clear()
+        elif direct_int8_prefill:
+            # The c1 correctness route keeps one transient BF16 oracle but uses
+            # the scheduler's physical page table. Shifted rows therefore stay
+            # on native paged prefill: AOTriton consumes a raw contiguous base
+            # and cannot share the same pointer/table contract as the writer.
+            slot_local_full_prefill = True
             force_aotriton_slots.clear()
         self.last_packed_prefill_plan["device_kv_nonidentity_scatter"] = bool(
             device_kv_nonidentity_scatter
@@ -18063,24 +18427,17 @@ class Qwen35GGUFResidentSession:
                                 slot_scratch,
                                 layer_id,
                             )
-                            key_cache_view = _gguf_device_kv_contiguous_cache_view(
-                                session,
-                                layer_scratch.key_cache,
-                                row_nbytes=full_kv_row_nbytes,
+                            transient_direct_oracle = bool(
+                                direct_int8_prefill
+                                and layer_scratch.retained_key_cache is not None
+                                and session.scratch.full_bf16_mirror_cache(layer_id)
+                                is None
                             )
-                            value_cache_view = _gguf_device_kv_contiguous_cache_view(
+                            layer_scratch = _gguf_slot_local_prefill_cache_views(
                                 session,
-                                layer_scratch.value_cache,
-                                row_nbytes=full_kv_row_nbytes,
-                            )
-                            if key_cache_view is None or value_cache_view is None:
-                                raise RuntimeError(
-                                    "slot-local GGUF prefill requires contiguous device KV"
-                                )
-                            layer_scratch = replace(
                                 layer_scratch,
-                                key_cache=key_cache_view,
-                                value_cache=value_cache_view,
+                                row_nbytes=full_kv_row_nbytes,
+                                direct_int8=transient_direct_oracle,
                             )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
                             self.runner._run_full_attention_prefill_layer_aotriton(
@@ -18093,6 +18450,7 @@ class Qwen35GGUFResidentSession:
                                 max_positions=int(session.scratch.max_positions),
                                 stream=stream,
                                 expert_sidecar=None,
+                                allow_aotriton=not transient_direct_oracle,
                                 aotriton_min_tokens=(
                                     1 if slot_index in force_aotriton_slots else None
                                 ),
@@ -18103,6 +18461,7 @@ class Qwen35GGUFResidentSession:
                                 packed_scratch,
                                 packed_state,
                                 layer_id,
+                                allow_direct_int8_prefill=direct_int8_prefill,
                             ),
                             cos_table=self.scratch.cos_table,
                             sin_table=self.scratch.sin_table,
@@ -23820,6 +24179,7 @@ class _FullStackScratch:
         int8_kv_value_bf16: bool = False,
         int8_bf16_prefix_full_attention_layers: int = 0,
         int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
+        retain_int8_bf16_mirrors: bool = True,
         allocate_kv_cache: bool = True,
         use_single_arena: bool = False,
     ):
@@ -23916,7 +24276,8 @@ class _FullStackScratch:
         bf16_cache_nbytes = total_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
         mirror_bf16_nbytes = bf16_cache_nbytes
         short_int8_bf16_mirror = (
-            kv_storage == DType.INT8_PER_TOKEN_HEAD
+            bool(retain_int8_bf16_mirrors)
+            and kv_storage == DType.INT8_PER_TOKEN_HEAD
             and kv_scale_granularity != "hadamard_group32"
             and max_positions <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
         )

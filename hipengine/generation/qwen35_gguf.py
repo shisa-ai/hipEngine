@@ -180,6 +180,36 @@ def _gguf_ar_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
+    """Use one prefill route for direct INT8 and all shifted KV allocations."""
+
+    return bool(
+        getattr(session, "kv_attention_source", None) == "int8_direct"
+        or _gguf_device_kv_contiguous_base_row(session) != 0
+    )
+
+
+def _qualified_compact_serial_int8_max_rows(generator: object) -> int:
+    """Return the artifact-qualified logical residency bound for serial c1 INT8."""
+
+    provenance = getattr(generator, "kv_capability_provenance", None)
+    if not isinstance(provenance, Mapping):
+        return 0
+    evidence = provenance.get("evidence")
+    if not isinstance(evidence, Mapping):
+        return 0
+    if not (
+        provenance.get("status") == "qualified"
+        and provenance.get("runtime_action") == "admit"
+        and provenance.get("promotion_eligible") is True
+        and provenance.get("effective_kv_storage") == "int8_per_token_head"
+        and evidence.get("persistent_bf16_mirror") is False
+        and int(evidence.get("max_direct_rows", 0)) >= 1
+    ):
+        return 0
+    return max(0, int(evidence.get("max_serial_resident_rows", 0)))
+
+
 def _gguf_ar_stream_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -830,6 +860,7 @@ class Qwen35GGUFBringupGenerator:
             "kv_policy": self._prepared_kv_policy,
             "kv_scale_dtype": self._prepared_kv_scale_dtype,
             "kv_scale_granularity": signature[3],
+            "kv_capability": copy.deepcopy(self.kv_capability_provenance),
         }
 
     @_target_arch_scoped
@@ -5054,6 +5085,13 @@ class Qwen35GGUFResidentModelRunner:
         for label, row in buckets.items():
             row["entries"] = int(active_entries.get(label, 0))
         prefix_observability = self._prefix_cache_observability()
+        kv_layout_audits = [
+            copy.deepcopy(audit())
+            for session in sessions
+            for audit in (getattr(session, "device_kv_layout_audit", None),)
+            if callable(audit)
+            and getattr(session, "device_kv_allocation", None) is not None
+        ]
         return {
             "model_runner": {
                 "capacity": int(self.capacity),
@@ -5071,6 +5109,27 @@ class Qwen35GGUFResidentModelRunner:
                 ),
                 "packed_workspace_released_bytes": int(
                     getattr(self, "_packed_workspace_released_bytes", 0)
+                ),
+                "kv_layout_audits": kv_layout_audits,
+                "persistent_int8_payload_bytes": sum(
+                    int(audit.get("persistent_int8_payload_bytes", 0))
+                    for audit in kv_layout_audits
+                ),
+                "persistent_bf16_payload_bytes": sum(
+                    int(audit.get("persistent_bf16_payload_bytes", 0))
+                    for audit in kv_layout_audits
+                ),
+                "persistent_scale_bytes": sum(
+                    int(audit.get("persistent_scale_bytes", 0))
+                    for audit in kv_layout_audits
+                ),
+                "persistent_bf16_mirror_bytes": sum(
+                    int(audit.get("persistent_bf16_mirror_bytes", 0))
+                    for audit in kv_layout_audits
+                ),
+                "persistent_kv_total_bytes": sum(
+                    int(audit.get("persistent_total_bytes", 0))
+                    for audit in kv_layout_audits
                 ),
             },
             "kv_pool": pool_stats,
@@ -5121,6 +5180,9 @@ class Qwen35GGUFResidentModelRunner:
                     ),
                     "serial_decode_fallback_steps": int(
                         self._route_counts["serial_decode_fallback_steps"]
+                    ),
+                    "serial_c1_row_steps": int(
+                        self._route_counts["serial_c1_row_steps"]
                     ),
                     "resident_fallback_requests": int(
                         self._route_counts["resident_fallback_requests"]
@@ -5580,6 +5642,27 @@ class Qwen35GGUFResidentModelRunner:
             "cache_resident_pages": int(residency["retained_kv_pages"]),
             "cache_resident_bytes": int(residency["resident_bytes"]),
         }
+
+    def _request_diagnostics(
+        self,
+        row: _GGUFResidentLoopRow,
+        *,
+        include_kv_layout: bool = True,
+    ) -> dict[str, Any]:
+        diagnostics: dict[str, Any] = {
+            "prefix_cache": self._prefix_request_telemetry(row)
+        }
+        slot = row.slot
+        audit = (
+            None
+            if slot is None
+            else getattr(slot.session, "device_kv_layout_audit", None)
+        )
+        if include_kv_layout and callable(audit):
+            payload = audit()
+            if isinstance(payload, Mapping):
+                diagnostics["kv_layout"] = copy.deepcopy(dict(payload))
+        return diagnostics
 
     def _capture_prefix_snapshot(
         self,
@@ -6145,14 +6228,29 @@ class Qwen35GGUFResidentModelRunner:
                     defer_kv_allocation=True,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
-            if self.capacity > 1 and acquired:
-                admit_layout = getattr(
+            if acquired:
+                sessions = tuple(lease.session for lease in acquired)
+                validate_layout = getattr(
                     acquired[0].session,
-                    "_packed_ar_kv_layout_for_sessions",
+                    "_resident_ar_kv_layout_for_sessions",
                     None,
                 )
-                if callable(admit_layout):
-                    admit_layout(tuple(lease.session for lease in acquired))
+                if callable(validate_layout):
+                    validate_layout(sessions)
+                attention_source = getattr(
+                    acquired[0].session,
+                    "kv_attention_source",
+                    None,
+                )
+                if attention_source == "int8_direct" and self.capacity > 1:
+                    qualified_rows = _qualified_compact_serial_int8_max_rows(
+                        self.generator
+                    )
+                    if self.capacity > qualified_rows:
+                        raise NotImplementedError(
+                            "compact direct INT8 residency is artifact-qualified only "
+                            f"through logical c{qualified_rows}; requested c{self.capacity}"
+                        )
         except Exception:
             for lease in reversed(acquired):
                 lease.session.close()
@@ -6259,17 +6357,16 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         start = time.perf_counter()
         native_compact_prefill = False
-        # Raw single-session bulk prefill addresses logical KV row zero from the
-        # cache base. A reused dynamic allocation may begin later in its backing
-        # chunk (or be non-contiguous), so route it through the block-table-aware
-        # packed prefill path instead of overwriting another live request's KV.
-        if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
+        # Direct no-mirror INT8 uses one block-table-aware single-row prefill
+        # route at every physical base. Keeping base-zero c1 on scalar bulk
+        # prefill would compare different GDN state-capture arithmetic at c>N.
+        if not _gguf_single_row_block_table_prefill_required(lease.session):
             result = lease.session.prefill(row.prompt_ids, return_logits=False)
         else:
             prefill_batch = getattr(lease.session, "prefill_batch_native", None)
             if not callable(prefill_batch):
                 raise RuntimeError(
-                    "shifted dynamic GGUF KV requires block-table-aware prefill"
+                    "GGUF KV route requires block-table-aware single-row prefill"
                 )
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 results = prefill_batch(
@@ -6414,7 +6511,7 @@ class Qwen35GGUFResidentModelRunner:
         sampling_request, sampling_state = self._prepare_sampled_prefill(row)
         start = time.perf_counter()
         native_compact_prefill = False
-        if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
+        if not _gguf_single_row_block_table_prefill_required(lease.session):
             result = lease.session.prefill(
                 row.prompt_ids,
                 return_logits=not row.native_sampler,
@@ -6423,7 +6520,7 @@ class Qwen35GGUFResidentModelRunner:
             prefill_batch = getattr(lease.session, "prefill_batch_native", None)
             if not callable(prefill_batch):
                 raise RuntimeError(
-                    "shifted sampled GGUF KV requires block-table-aware prefill"
+                    "sampled GGUF KV requires block-table-aware single-row prefill"
                 )
             native_logits_kwargs = (
                 {"require_logits": True} if row.native_sampler else {}
@@ -6535,7 +6632,7 @@ class Qwen35GGUFResidentModelRunner:
                     "processed-argmax radix prefill requires an aligned prompt boundary"
                 )
             operation_start = time.perf_counter()
-            if _gguf_device_kv_contiguous_base_row(session) == 0:
+            if not _gguf_single_row_block_table_prefill_required(session):
                 result = session.prefill(
                     aligned_prompt,
                     return_logits=not tail,
@@ -6637,6 +6734,14 @@ class Qwen35GGUFResidentModelRunner:
                     native_compact_prefill=False,
                 )
             return
+        if getattr(lease.session, "kv_attention_source", None) == "int8_direct":
+            # Exact no-mirror prefill owns one bounded transient BF16 oracle.
+            # Releasing it between scheduler chunks would lose prior BF16 K/V,
+            # so IKV-C1 buffers scheduler work and executes the complete prompt
+            # once through the shifted block-table-aware single-row route.
+            self._fallback_reasons["int8_direct_full_prompt_prefill"] += 1
+            self._disable_incremental_prefill(row, final_chunk=final_chunk)
+            return
         prefill_batch = getattr(lease.session, "prefill_batch_native", None)
         if not callable(prefill_batch):
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
@@ -6702,6 +6807,18 @@ class Qwen35GGUFResidentModelRunner:
         if lease is None:
             raise RuntimeError("GGUF resident prefill finished without a session lease")
         token = int(getattr(result, "token_id"))
+        vocab_size = int(
+            getattr(getattr(self, "_shared_runner", None), "vocab_size", 0) or 0
+        )
+        if token < 0 or (vocab_size > 0 and token >= vocab_size):
+            session = lease.session
+            raise RuntimeError(
+                "GGUF prefill produced an invalid token: "
+                f"request_id={row.request_id} token={token} vocab={vocab_size} "
+                f"position={getattr(session, 'position', None)} "
+                f"kv_attention_source={getattr(session, 'kv_attention_source', None)} "
+                f"kv_base_row={_gguf_device_kv_contiguous_base_row(session)}"
+            )
         timing = {
             "tokenize_ms": float(row.tokenize_ms),
             "prompt_encode_ms": float(row.prompt_encode_ms),
@@ -6792,8 +6909,22 @@ class Qwen35GGUFResidentModelRunner:
                 and not bool(getattr(row, "native_sampler", False))
                 for row in group_rows
             )
+            group_slots = [getattr(row, "slot", None) for row in group_rows]
+            direct_int8_serial = bool(group_slots) and all(
+                slot is not None
+                and getattr(slot.session, "kv_attention_source", None)
+                == "int8_direct"
+                for slot in group_slots
+            )
             if native_sampler_rows and host_sampler_rows:
                 serial_fallback_reason = "mixed_sampler_routes"
+            elif (
+                group.active_rows > 1
+                and direct_int8_serial
+                and _qualified_compact_serial_int8_max_rows(self.generator)
+                >= group.active_rows
+            ):
+                serial_fallback_reason = "int8_direct_c1_only"
             elif _gguf_ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
@@ -6843,14 +6974,29 @@ class Qwen35GGUFResidentModelRunner:
                     }
                 else:
                     execution_path = "serial_fallback"
+                    attention_sources = {
+                        str(getattr(slot.session, "kv_attention_source", "unknown"))
+                        for slot in group_slots
+                        if slot is not None
+                    }
+                    attention_source = (
+                        next(iter(attention_sources))
+                        if len(attention_sources) == 1
+                        else "mixed"
+                    )
                     self._last_execution_manifest = {
                         "schema": 1,
                         "kind": "gguf_ar_serial_fallback_execution_manifest",
-                        "mode": "serial_fallback",
+                        "mode": "serial_c1_per_row",
                         "rows": group.active_rows,
-                        "physical_rows": group.physical_rows,
+                        "physical_rows": 1,
+                        "physical_execution_width": 1,
                         "active_rows": group.active_rows,
                         "active_mask": list(group.active_mask),
+                        "kv_attention_source": attention_source,
+                        "serial_decode_fallback": True,
+                        "throughput_claim_eligible": False,
+                        "fallback_reason": serial_fallback_reason,
                         "model_step": {
                             "complete_c1_session_replays": group.active_rows,
                             "complete_c1_layer_replays": 0,
@@ -6865,6 +7011,9 @@ class Qwen35GGUFResidentModelRunner:
                 self._last_execution_manifest = direct_manifest
             group_payload = group.to_json_dict()
             group_payload["execution_path"] = execution_path
+            if execution_path == "serial_fallback":
+                group_payload["planned_physical_rows"] = int(group.physical_rows)
+                group_payload["physical_execution_width"] = 1
             group_payloads.append(group_payload)
 
         self._last_physical_group_plan = {
@@ -7120,6 +7269,7 @@ class Qwen35GGUFResidentModelRunner:
             self._route_counts["native_c1_decode_steps"] += 1
         else:
             self._route_counts["serial_decode_fallback_steps"] += 1
+            self._route_counts["serial_c1_row_steps"] += len(rows)
             self._fallback_reasons[str(fallback_reason)] += 1
         for row in rows:
             slot = row.slot
@@ -7287,6 +7437,17 @@ class Qwen35GGUFResidentModelRunner:
         if slot is None:
             raise RuntimeError("GGUF resident row is missing its session slot")
         token = int(token_id)
+        vocab_size = int(
+            getattr(getattr(self, "_shared_runner", None), "vocab_size", 0) or 0
+        )
+        if token < 0 or (vocab_size > 0 and token >= vocab_size):
+            raise RuntimeError(
+                "GGUF decode produced an invalid token: "
+                f"request_id={row.request_id} token={token} vocab={vocab_size} "
+                f"position={slot.seq_position} "
+                f"kv_attention_source={getattr(slot.session, 'kv_attention_source', None)} "
+                f"kv_base_row={_gguf_device_kv_contiguous_base_row(slot.session)}"
+            )
         slot.generated_ids.append(token)
         slot.prev_token = token
         slot.seq_position += 1
@@ -7412,7 +7573,10 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=row.native_sampler,
                 timing=dict(slot.timing),
                 sampler_plan=row.sampler_plan,
-                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
+                diagnostics=self._request_diagnostics(
+                    row,
+                    include_kv_layout=slot.done,
+                ),
             ),
             generated_token_ids=generated_ids if slot.done else None,
         )
@@ -7479,7 +7643,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=row.native_sampler,
                 timing=timing,
                 sampler_plan=row.sampler_plan,
-                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
+                diagnostics=self._request_diagnostics(row),
             ),
         )
 
@@ -7515,7 +7679,7 @@ class Qwen35GGUFResidentModelRunner:
                     "admission_prepare_ms": float(row.admission_prepare_ms),
                     "request_total_ms": _timing_ms_since(row.submitted_at),
                 },
-                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
+                diagnostics=self._request_diagnostics(row),
             ),
         )
 
