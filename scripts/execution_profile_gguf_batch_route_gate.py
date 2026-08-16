@@ -58,6 +58,9 @@ DEFAULT_HISTORICAL_SOURCE = Path(
 )
 POLICY_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_ALL"
 POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+ROUTER_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
+ROUTER_PERSISTENT_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
+_router_candidate_enabled = False
 DEFAULT_GDN_MODE = "chain_lds32_direct_nonvolatile"
 SUPPORTED_WIDTHS = frozenset({1, 2, 4, 8})
 DEFAULT_DYNAMIC_SCHEDULE = ((0, 8), (6, 4), (12, 2), (18, 1))
@@ -205,11 +208,37 @@ def build_batch_route_quality(
 
 
 @contextlib.contextmanager
+def _router_candidate_policy(candidate: bool, *, enabled: bool) -> Iterator[None]:
+    if not enabled:
+        yield
+        return
+    previous = {
+        ROUTER_COOP_ENV: os.environ.get(ROUTER_COOP_ENV),
+        ROUTER_PERSISTENT_ENV: os.environ.get(ROUTER_PERSISTENT_ENV),
+    }
+    value = "1" if candidate else "0"
+    try:
+        os.environ[ROUTER_COOP_ENV] = value
+        os.environ[ROUTER_PERSISTENT_ENV] = value
+        yield
+    finally:
+        for key, prior in previous.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+@contextlib.contextmanager
 def _rowtile_policy(enabled: bool) -> Iterator[None]:
     previous = os.environ.get(POLICY_ENV)
     os.environ[POLICY_ENV] = "1" if enabled else "0"
     try:
-        yield
+        with _router_candidate_policy(
+            enabled,
+            enabled=_router_candidate_enabled,
+        ):
+            yield
     finally:
         if previous is None:
             os.environ.pop(POLICY_ENV, None)
@@ -446,6 +475,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             f"current package {POLICY_CAPABILITY} must be False, got {package_value!r}"
         )
 
+    global _router_candidate_enabled
+    previous_router_candidate = _router_candidate_enabled
+    _router_candidate_enabled = bool(args.include_router_candidate)
     stack = ExitStack()
     captures: list[BatchRouteCapture] = []
     strict: dict[str, tuple[Mapping[str, object], ...]] = {}
@@ -595,6 +627,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             print(f"sparse c8: captured x {args.repeat_runs}", flush=True)
     finally:
         stack.close()
+        _router_candidate_enabled = previous_router_candidate
 
     evaluated = build_batch_route_quality(captures)
     provenance = collect_artifact_provenance(
@@ -610,6 +643,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
             POLICY_ENV: os.environ.get(POLICY_ENV),
+            ROUTER_COOP_ENV: os.environ.get(ROUTER_COOP_ENV),
+            ROUTER_PERSISTENT_ENV: os.environ.get(ROUTER_PERSISTENT_ENV),
         },
         build_profile="execution_profile_gguf_q8t16_batch_requalification",
         timing_protocol="none_full_logits_only_v1",
@@ -645,8 +680,39 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "route": {
             "policy_capability": POLICY_CAPABILITY,
             "package_value_verified": False,
-            "candidate_environment": {POLICY_ENV: "1"},
-            "policy_restored_after_capture": POLICY_ENV not in os.environ,
+            "candidate_environment": {
+                POLICY_ENV: "1",
+                **(
+                    {
+                        ROUTER_COOP_ENV: "1",
+                        ROUTER_PERSISTENT_ENV: "1",
+                    }
+                    if args.include_router_candidate
+                    else {}
+                ),
+            },
+            "strict_environment": {
+                POLICY_ENV: "0",
+                **(
+                    {
+                        ROUTER_COOP_ENV: "0",
+                        ROUTER_PERSISTENT_ENV: "0",
+                    }
+                    if args.include_router_candidate
+                    else {}
+                ),
+            },
+            "router_candidate_included": bool(args.include_router_candidate),
+            "policy_restored_after_capture": (
+                POLICY_ENV not in os.environ
+                and (
+                    not args.include_router_candidate
+                    or (
+                        ROUTER_COOP_ENV not in os.environ
+                        and ROUTER_PERSISTENT_ENV not in os.environ
+                    )
+                )
+            ),
             "strict_variants": {
                 "c1_c2_c4": {
                     "single": "t16_gemv_decode_bf16_bf16_out",
@@ -726,6 +792,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dynamic", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--sparse", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--gdn-mode", default=DEFAULT_GDN_MODE)
+    parser.add_argument(
+        "--include-router-candidate",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Bundle the cooperative/persistent c1 router with the Q8T16 rowtile candidate.",
+    )
     parser.add_argument("--historical-source", type=Path, default=DEFAULT_HISTORICAL_SOURCE)
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
