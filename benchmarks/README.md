@@ -135,6 +135,15 @@ PARO speed rows must be labeled cross-format and quality-traded. See the
 [`artifact`](results/2026-08-16-zbook-qwen36-quant-quality.json) and
 [`protocol`](quant/README.md).
 
+The repaired Qwen3.6-35B packed-PARO transfer campaign retained one exact
+shared-prefill boundary reduction on Radeon 8060S: fused SiLU+down-rotation
+improves the actual 512x512/group128/krot8 leaf **29.643 -> 21.617 us
+(1.371x)** and removes **69 launches** from the c8/L4 batch+oracle trace, with
+bit-exact primitive output and exact c4/c8 generated tokens. Bracketed complete
+wall remains neutral, so this is a retained sub-window/launch-count result—not
+a new aggregate PARO topline. Evidence:
+[`SiLU/rotate fusion`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-silu-rotate-retained.json).
+
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
 Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
