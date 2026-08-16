@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_post_qmicro_production_decode_profile",
+  "status": "diagnostic_complete",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "9c649e28d6850faf89c597425493dd04c09e19e0",
+    "worktree": "clean detached",
+    "require_cached_build": true,
+    "compiler_subprocesses_in_profile": 0
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "workload": {
+    "prompt": "token 9707 repeated 4096 times",
+    "decode_tokens": 16,
+    "persistent_session": true,
+    "force_bulk_prefill": true,
+    "bulk_prefill_attention_mode": "bulk",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "graph_replay_decode": true,
+    "profile_region": "measured_decode_graph"
+  },
+  "summary": {
+    "profiled_decode_tok_s": 12.301593,
+    "profiled_host_ms_per_token": 81.29028492488737,
+    "selected_kernel_ms_per_token": 78.527446125,
+    "selected_kernel_reconciliation_percent": 96.60126815591771,
+    "residual_ms_per_token": 2.7628387998873762,
+    "launches": 10464,
+    "launches_per_token": 654,
+    "all_profiled_kernels_zero_scratch": true
+  },
+  "ranked_families": [
+    {
+      "family": "qmicro Q4 dense gate/up Q8_1x2 split-weight + SiLU",
+      "launches_per_token": 64,
+      "ms_per_token": 30.06949575,
+      "selected_percent": 38.291702116652786,
+      "mean_us": 469.83587109375,
+      "max_vgpr": 120
+    },
+    {
+      "family": "planar-qmicro Q6 FFN-down + residual",
+      "launches_per_token": 32,
+      "ms_per_token": 10.58352425,
+      "selected_percent": 13.47748433478041,
+      "mean_us": 330.7351328125,
+      "max_vgpr": 88
+    },
+    {
+      "family": "standard-Q4 singleton",
+      "launches_per_token": 80,
+      "ms_per_token": 9.411691125,
+      "selected_percent": 11.985225025678883,
+      "mean_us": 117.64613906250001,
+      "max_vgpr": 96
+    },
+    {
+      "family": "standard-Q4 FFN-down + residual",
+      "launches_per_token": 32,
+      "ms_per_token": 7.362213375,
+      "selected_percent": 9.375337844657302,
+      "mean_us": 230.06916796875,
+      "max_vgpr": 96
+    },
+    {
+      "family": "standard-Q6 QKV + Q4 gate mixed grid",
+      "launches_per_token": 24,
+      "ms_per_token": 6.7992423125,
+      "selected_percent": 8.658427910258236,
+      "mean_us": 283.30176302083333,
+      "max_vgpr": 96
+    },
+    {
+      "family": "Q5 recurrent output",
+      "launches_per_token": 48,
+      "ms_per_token": 5.118797,
+      "selected_percent": 6.518481438772246,
+      "mean_us": 106.64160416666667,
+      "max_vgpr": 56
+    },
+    {
+      "family": "planar-qmicro Q6 FP32 root",
+      "launches_per_token": 1,
+      "ms_per_token": 4.62906325,
+      "selected_percent": 5.894834836003015,
+      "mean_us": 4629.06325,
+      "max_vgpr": 80
+    },
+    {
+      "family": "grouped-GQA attention plus reducer",
+      "launches_per_token": 32,
+      "ms_per_token": 1.681256,
+      "selected_percent": 2.1409788334689717
+    },
+    {
+      "family": "GDN recurrent gate",
+      "launches_per_token": 48,
+      "ms_per_token": 1.1220779375,
+      "selected_percent": 1.4288990574249367
+    },
+    {
+      "family": "alpha/beta + Conv snapshot",
+      "launches_per_token": 48,
+      "ms_per_token": 0.6513158125,
+      "selected_percent": 0.8294116829716268
+    }
+  ],
+  "commands": {
+    "prebuild": "same production flags outside rocprofv3; cached artifact /tmp/qwen38-task22-post-qmicro-profile-clean/prebuild-production.json",
+    "profile": "rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/qwen38-task22-post-qmicro-production-profile-c318 -o production-p4096-ar16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "evidence": {
+    "trace": "/tmp/qwen38-task22-post-qmicro-production-profile-c318/production-p4096-ar16_kernel_trace.csv",
+    "trace_sha256": "1b1ac1805188995300164dde74fe7a301a59dfaa6236fbee53e1ec16a570e9f5",
+    "trace_bytes": 3237746,
+    "summary": "/tmp/qwen38-task22-post-qmicro-production-profile-c318/summary.json",
+    "summary_sha256": "74d1af5906e35ea2d6243b68f91fa7ac9bede79c75623d35d29d54a609544d5d"
+  },
+  "decision": "The exact production graph is 654 launches/token, not the discarded 719-launch non-GEMV route. It is device-critical: selected kernels reconcile 96.60% of profiled host decode. Qmicro Q4 gate/up alone owns 38.29%; the next six projection families own another 55.91%. Continue with exact weight-byte/coalescing work, not graph-width or generic attention work."
+}

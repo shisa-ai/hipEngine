@@ -297,6 +297,18 @@ do not authorize a throughput regression, so the transient owner is removed.
 Evidence:
 [`qmicro Q4 FFN-down rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-down-rejected.json).
 
+The corrected clean post-qmicro production profile explicitly enables the
+persistent session, bulk attention, WMMA prefill, GEMV decode, and graph replay.
+It reconciles **78.52745 ms/token (96.601%)** of an **81.29028-ms** profiled host
+decode at exactly **654 launches/token**, superseding the discarded 719-launch
+non-GEMV trace. Qmicro Q4 gate/up leads at **30.06950 ms / 38.292%**, followed
+by planar-Q6 down **13.477%**, standard-Q4 singleton **11.985%**, standard-Q4
+down **9.375%**, mixed Q6/Q4 **8.658%**, Q5 output **6.518%**, and Q6 root
+**5.895%**. Graph width and generic attention remain closed; exact streaming
+weight bytes and coalescing are the authority.
+Evidence:
+[`post-qmicro production decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-decode-profile.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
