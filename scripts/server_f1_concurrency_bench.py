@@ -666,11 +666,12 @@ def _validate_concurrency_plan(
     concurrencies: Sequence[int],
     *,
     live_concurrency: int,
+    require_c1: bool = True,
 ) -> list[int]:
     values = [int(value) for value in concurrencies]
     allowed = {1, 2, 4, 8, 13}
-    if 1 not in values:
-        raise ValueError("concurrencies must include c1")
+    if require_c1 and 1 not in values:
+        raise ValueError("concurrencies must include c1 unless focused-width repair is explicit")
     if int(live_concurrency) not in values:
         raise ValueError("live-concurrency must appear in concurrencies")
     if any(value not in allowed for value in values):
@@ -1214,6 +1215,14 @@ def _hipengine_route_expectation_passes(
         return all(value is True for value in serial_values) and all(
             value is False for value in native_values
         )
+    if str(expectation) == "serial-c1-per-row":
+        expected_serial = rows > 1
+        return (
+            set(str(path) for path in execution_paths)
+            == {"gguf_packed_ar_server_decode"}
+            and all(value is expected_serial for value in serial_values)
+            and all(value is False for value in native_values)
+        )
     if str(expectation) == "scheduler-c1":
         return (
             set(str(path) for path in execution_paths)
@@ -1543,6 +1552,12 @@ def _server_command_and_env(
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     if engine == "hipengine":
+        # hipEngine returns from this branch before the llama.cpp device-env
+        # setup below. HIP_VISIBLE_DEVICES alone is intentional: applying the
+        # same numeric selector again through ROCR_VISIBLE_DEVICES can filter
+        # the already-remapped one-device view down to zero devices.
+        env["HIP_VISIBLE_DEVICES"] = str(args.gpu)
+        env.pop("ROCR_VISIBLE_DEVICES", None)
         env["HIPENGINE_PREFILL_DECODE_POLICY"] = str(
             args.hipengine_prefill_decode_policy
         )
@@ -1756,6 +1771,11 @@ def _selected_metrics(samples: Sequence[Mapping[str, Any]], raw_path: Path) -> d
         "hipengine_resident_packed_workspace_current_bytes",
         "hipengine_resident_packed_workspace_release_events_total",
         "hipengine_resident_packed_workspace_released_bytes_total",
+        "hipengine_resident_kv_int8_payload_bytes",
+        "hipengine_resident_kv_bf16_payload_bytes",
+        "hipengine_resident_kv_scale_bytes",
+        "hipengine_resident_kv_bf16_mirror_bytes",
+        "hipengine_resident_kv_total_bytes",
         "hipengine_kv_pool_current_bytes",
         "hipengine_kv_pool_high_water_observed_bytes",
         "hipengine_kv_pool_current_pages",
@@ -1776,6 +1796,14 @@ def _selected_metrics(samples: Sequence[Mapping[str, Any]], raw_path: Path) -> d
         "fallbacks": [
             dict(sample) for sample in samples if sample.get("name") == "hipengine_resident_fallback_total"
         ],
+        "route_manifest": next(
+            (
+                dict(sample)
+                for sample in samples
+                if sample.get("name") == "hipengine_resident_route_manifest_info"
+            ),
+            None,
+        ),
         "graph_buckets": [
             dict(sample)
             for sample in samples
@@ -2176,6 +2204,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     concurrencies = _validate_concurrency_plan(
         args.concurrencies,
         live_concurrency=int(args.live_concurrency),
+        require_c1=not bool(args.focused_width_repair),
     )
     if not args.model.exists():
         raise ValueError(f"model does not exist: {args.model}")
@@ -2338,11 +2367,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hipengine-python", type=Path, default=Path(sys.executable))
     parser.add_argument(
         "--hipengine-route-expectation",
-        choices=("native", "serial", "scheduler-c1"),
+        choices=("native", "serial", "serial-c1-per-row", "scheduler-c1"),
         default="native",
         help=(
-            "Expected hipEngine model route; scheduler-c1 is native scheduler "
-            "ownership with exact serial c=1 physical model transitions"
+            "Expected hipEngine model route; serial-c1-per-row is Qwen GGUF "
+            "resident ownership with exact serial physical-c1 model transitions, "
+            "while scheduler-c1 is the corresponding Laguna route"
         ),
     )
     parser.add_argument(
@@ -2391,6 +2421,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gpu-max-hw-queues", type=int, default=1)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--concurrencies", type=_parse_concurrencies, default=[1, 2, 4, 8, 13])
+    parser.add_argument(
+        "--focused-width-repair",
+        action="store_true",
+        help=(
+            "Permit a width list without c1 after an earlier broad packet established "
+            "the independent oracle/c1 result; the oracle server still runs"
+        ),
+    )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-tokens", type=int, default=128)

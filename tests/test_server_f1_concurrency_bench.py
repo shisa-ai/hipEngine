@@ -183,6 +183,13 @@ def test_generation_shape_accepts_c13_as_complete_route_cap_four_groups() -> Non
 
 def test_matched_concurrency_plan_is_bounded_at_c13() -> None:
     assert SCRIPT._validate_concurrency_plan([1, 2, 4, 8, 13], live_concurrency=13) == [1, 2, 4, 8, 13]
+    with pytest.raises(ValueError, match="must include c1"):
+        SCRIPT._validate_concurrency_plan([2], live_concurrency=2)
+    assert SCRIPT._validate_concurrency_plan(
+        [2],
+        live_concurrency=2,
+        require_c1=False,
+    ) == [2]
     with pytest.raises(ValueError, match="limited to c1/c2/c4/c8/c13"):
         SCRIPT._validate_concurrency_plan([1, 2, 16], live_concurrency=2)
 
@@ -583,13 +590,15 @@ def test_hipengine_command_forwards_explicit_int8_kv_policy(tmp_path: Path) -> N
         ]
     )
 
-    command, _env, _cwd = SCRIPT._server_command_and_env(
+    command, env, _cwd = SCRIPT._server_command_and_env(
         args,
         engine="hipengine",
         concurrency=2,
         port=19123,
     )
 
+    assert env["HIP_VISIBLE_DEVICES"] == str(args.gpu)
+    assert "ROCR_VISIBLE_DEVICES" not in env
     assert command[command.index("--kv-storage") + 1] == "int8_per_token_head"
     assert command[command.index("--kv-scale-dtype") + 1] == "fp32"
     assert command[command.index("--kv-scale-granularity") + 1] == "per_token_head"
@@ -628,6 +637,33 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         native_values=[False] * 8,
         shape_passed=False,
         resident_capacity=8.0,
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=1,
+        expectation="serial-c1-per-row",
+        serial_values=[False] * 3,
+        native_values=[False] * 3,
+        shape_passed=True,
+        resident_capacity=1.0,
+        execution_paths=["gguf_packed_ar_server_decode"],
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=4,
+        expectation="serial-c1-per-row",
+        serial_values=[True] * 12,
+        native_values=[False] * 12,
+        shape_passed=True,
+        resident_capacity=4.0,
+        execution_paths=["gguf_packed_ar_server_decode"],
+    )
+    assert not SCRIPT._hipengine_route_expectation_passes(
+        concurrency=4,
+        expectation="serial-c1-per-row",
+        serial_values=[False] * 12,
+        native_values=[False] * 12,
+        shape_passed=True,
+        resident_capacity=4.0,
+        execution_paths=["gguf_packed_ar_server_decode"],
     )
     assert SCRIPT._hipengine_route_expectation_passes(
         concurrency=2,
