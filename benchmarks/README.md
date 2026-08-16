@@ -143,6 +143,10 @@ bit-exact primitive output and exact c4/c8 generated tokens. Bracketed complete
 wall remains neutral, so this is a retained sub-window/launch-count result—not
 a new aggregate PARO topline. Evidence:
 [`SiLU/rotate fusion`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-silu-rotate-retained.json).
+Selective unsafe-math was rejected for that same operation: despite 100% top-1,
+mean KL `4.74e-13`, and matching NaN/Inf classes, it regressed the actual leaf
+**20.032 -> 21.569 us (-7.67%)**. No unsafe production route remains. Evidence:
+[`unsafe-math rejection`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp4-unsafe-math-rejected.json).
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
