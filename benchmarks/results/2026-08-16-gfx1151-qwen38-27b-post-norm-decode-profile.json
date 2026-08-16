@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_post_norm_decode_profile",
+  "status": "profile_checkpoint",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "software": {
+    "commit": "79ec62697",
+    "tracked_tree_clean": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "workload": {
+    "prompt_source": "repeated token 9707",
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "warmup_decode_tokens": 1,
+    "graph_replay": true,
+    "graph_steps_per_replay": 1,
+    "selected_region": "measured_decode_graph",
+    "command": "rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/qwen38-task22-post-norm-profile-79ec62697/rocprof -o p4096-ar16 -- python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build --json /tmp/qwen38-task22-post-norm-profile-79ec62697/p4096-ar16.json"
+  },
+  "correctness": {
+    "finite_final_logits": true,
+    "final_token_ids": [9707],
+    "tracked_peak_gib": 19.529302295297384,
+    "tracked_teardown_bytes": 0
+  },
+  "reconciliation": {
+    "host_decode_seconds": 1.3236072410072666,
+    "host_ms_per_token": 82.72545256295416,
+    "profiled_kernel_ms": 1268.873519,
+    "profiled_kernel_ms_per_token": 79.3045949375,
+    "kernel_to_host_ratio": 0.9586480639335169,
+    "residual_ms_per_token": 3.420857625454161,
+    "dispatches": 14944,
+    "dispatches_per_token": 934.0,
+    "unique_symbols": 26,
+    "profiled_decode_tok_s": 12.088178051839595
+  },
+  "comparison_to_post_grouped_profile": {
+    "prior_artifact": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json",
+    "prior_kernel_ms_per_token": 80.781184625,
+    "current_kernel_ms_per_token": 79.3045949375,
+    "kernel_delta_ms_per_token": -1.4765896874999953,
+    "kernel_delta_percent": -1.8278881330529795,
+    "prior_host_ms_per_token": 84.21667800030264,
+    "current_host_ms_per_token": 82.72545256295416,
+    "host_delta_ms_per_token": -1.4912254373484757,
+    "host_delta_percent": -1.7707008549341263,
+    "dispatches_per_token_delta": 0
+  },
+  "categories": [
+    {"name": "q4_dual_gate_up_silu", "dispatches": 1024, "ms_per_token": 30.689113125, "share_percent": 38.69777425782971},
+    {"name": "q4_singletons", "dispatches": 2560, "ms_per_token": 19.0135820625, "share_percent": 23.975385130564774},
+    {"name": "planar_q6_bf16", "dispatches": 640, "ms_per_token": 10.77192325, "share_percent": 13.582974931640921},
+    {"name": "q5_recurrent_output", "dispatches": 768, "ms_per_token": 5.083814, "share_percent": 6.4104910995467},
+    {"name": "standard_q6_qkv", "dispatches": 384, "ms_per_token": 4.7774228125, "share_percent": 6.024143766530917},
+    {"name": "q6_root", "dispatches": 16, "ms_per_token": 4.6157395625, "share_percent": 5.820267496653463},
+    {"name": "full_attention_core", "dispatches": 512, "ms_per_token": 1.68009775, "share_percent": 2.1185377106132197},
+    {"name": "gdn_core", "dispatches": 768, "ms_per_token": 1.12912625, "share_percent": 1.4237841462904706},
+    {"name": "fixed_and_output_norm", "dispatches": 2064, "ms_per_token": 0.2979160625, "share_percent": 0.3756605310635378},
+    {"name": "all_other_kernels", "dispatches": 6208, "ms_per_token": 1.2458600625, "share_percent": 1.5709809292662844}
+  ],
+  "top_symbols": [
+    {"kernel": "q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<bf16>", "dispatches": 1024, "total_ms": 491.02581, "median_dispatch_us": 479.42},
+    {"kernel": "q4_k_t16_dense_single_local32_gemv_kernel<bf16>", "dispatches": 2176, "total_ms": 298.300094, "median_dispatch_us": 137.178},
+    {"kernel": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<bf16>", "dispatches": 640, "total_ms": 172.350772, "median_dispatch_us": 326.6935},
+    {"kernel": "q5_k_t16_dense_tile8_gemv_kernel<bf16>", "dispatches": 768, "total_ms": 81.341024, "median_dispatch_us": 105.2975},
+    {"kernel": "q6_k_t16_gemv_kernel<bf16,bf16>", "dispatches": 384, "total_ms": 76.438765, "median_dispatch_us": 197.45},
+    {"kernel": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>", "dispatches": 16, "total_ms": 73.851833, "median_dispatch_us": 4618.226},
+    {"kernel": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<6,24,4>", "dispatches": 256, "total_ms": 25.503779, "median_dispatch_us": 99.487},
+    {"kernel": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<bf16,false>", "dispatches": 768, "total_ms": 18.06602, "median_dispatch_us": 23.444},
+    {"kernel": "gguf_norm_fixed5120_wave256_kernel<true>", "dispatches": 1024, "total_ms": 2.623158, "median_dispatch_us": 2.485},
+    {"kernel": "gguf_norm_fixed5120_wave256_kernel<false>", "dispatches": 1024, "total_ms": 1.992017, "median_dispatch_us": 1.844}
+  ],
+  "evidence": {
+    "kernel_trace": {"path": "/tmp/qwen38-task22-post-norm-profile-79ec62697/rocprof/p4096-ar16_kernel_trace.csv", "sha256": "f687401cc892103f567e01b05217206bea50550eb3c410fcc5b8ac18bb21134a", "bytes": 4110560},
+    "benchmark_json": {"path": "/tmp/qwen38-task22-post-norm-profile-79ec62697/p4096-ar16.json", "sha256": "a93a75befdb00e0d0537c42beaa8a2ab4e109e0ce958e6d524380769ebd7746b", "bytes": 152503}
+  },
+  "decision": "Fixed-H5120 norms reduce selected kernel wall by 1.477 ms/token and host decode by 1.491 ms/token without changing 934 launches/token. Norms are now only 0.376% and are closed. Q4 projection families own 62.673% but their geometry, Q8, metadata, and current operation-incomplete compaction ladders are already closed. Reopen Q4 only with a new sole-payload native/prefill dataflow; otherwise target the 3.421-ms/token graph/device-gap boundary rather than stale norm or generic-attention work."
+}

@@ -342,6 +342,14 @@ Vulkan remains **2.52-5.25%** ahead, so P5 stays open. Evidence:
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
 and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
+The clean post-norm selected-region profile reconciles **79.30459 ms/token**
+of kernel work against **82.72545 ms/token** profiled host decode at unchanged
+**934 launches/token**. Relative to the post-grouped checkpoint, kernel and
+host wall fall **1.828%/1.771%**. Norms are now only **0.376%**; Q4 dual and
+single projections own **38.698%/23.975%**, and the profiler-to-host residual
+is **3.42086 ms/token**. This supersedes the prior Amdahl ranking. Evidence:
+[`post-norm decode profile`](results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph
