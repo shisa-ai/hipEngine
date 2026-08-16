@@ -125,7 +125,7 @@ historical context. It qualifies no runtime profile and grandfathers no route.
 | --- | --- | ---: | --- |
 | P1 | Post-fix A4 production route | Old performance premise was large but invalidated by the state fix | Fresh strict/current/production performance baseline; dynamic teacher-forced logits; exact ownership and transition gates. |
 | P1 closed | Former gfx1151 Qwen3.8 c1 Q4 residual-Q8_1x2 DP4A default | Full requalification passes 450-row quality at max KL `0.0008333`, `99.778%` top-1, and exact repeats | Seven current same-session p512/d128 pairs measure `0.998071x` the exact local32 route with one win; restore exact local32 as the serial package owner, preserve the separately qualified native B1 owner, and retain split-weight only as a diagnostic. |
-| P1 | gfx1151 GGUF Q8T16 c4/c8 rowtile | About `+1.05%/+2.61%` | Dynamic composition/transition teacher-forced gate and current-route rebase. |
+| P1 closed | gfx1151 GGUF Q8T16 c4/c8 rowtile | Fresh strict-teacher static/dynamic/sparse gate is bit-identical over 1,050 rows with exact repeats; current p512/d128 A/B is `1.00445x` at c4 (7/7 wins) and `1.00666x` at c8 (6/7) | Retain a physical-width floor of 4. The same policy loses at c2 (`0.98205x`, 0/7), so c2 and gfx1100 keep the direct owner. Free-running strict/candidate IDs differ deterministically and remain diagnostic for production; runtime-profile qualification is still blocked on actual control/task evidence. |
 | P1 | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run against current strict and calibrated tails; old max KL `0.0731` is outside the calibrated ceiling. |
 | P2 | PARO c2 1024-thread attention | About `+2.4-2.6%` | Full category/state/isolation gate and current A/B. |
 | P2 | Laguna compact Q4 shared-down | About `+0.388%` E2E, one-ULP leaf drift | Full teacher-forced/category gate; low priority because complete gain is small. |
@@ -322,6 +322,12 @@ profile qualification claim.
 Current-route certification remains open. Re-certify every non-exact default
 that would enter production with a resolved profile manifest, exact controls,
 isolation/dynamic scenarios, tasks, and BF16-relative evidence where available.
+The first historical c>N recovery is complete at the package-policy level:
+gfx1151 Q8T16 all-projection rowtiling is retained only from physical c4 after
+a 1,050-row bit-identical strict-teacher gate and positive current c4/c8 A/B;
+c2 is explicitly excluded by a `1.795%` median regression. This is not a public
+profile certification because the adapter does not emit complete actual-control
+or task/BF16-relative evidence.
 
 Exit: calibrated policy artifact and manifest; uncertified routes fall back to
 strict. No route is grandfathered.

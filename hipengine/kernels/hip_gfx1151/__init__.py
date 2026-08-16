@@ -802,13 +802,15 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
-# F3's canonical p512/d128 gate rejects automatic Q8T16 row amortization:
-# one non-repeated prompt trajectory diverges consistently at c2/c4/c8 even
-# though the shorter d64 screen passed. Keep the env-only diagnostic available.
+# The unrestricted historical policy remains false because current
+# counterbalanced p512/d128 evidence rejects c2. Production free-running IDs are
+# diagnostic, not binding; the complete strict-teacher gate admits exact c4/c8
+# logits, and width-scoped timing wins both shapes. Keep c2 on the direct owner.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 4
 # The repaired 128-thread pair-only route preserves production reduction order.
-# Scope its small repeatable win to the independently gated physical-c8 shape;
-# c2/c4 stay on their faster per-row schedule.
+# Its independent fallback floor remains physical c8; the all-projection c4
+# policy above may still select the same rowtile pair under that broader scope.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
 # Exact dynamic expert-ID pairing removes duplicate C8 Q4T16 gate/up weight
 # reads while keeping each row's production 128-thread reduction order.
@@ -2074,6 +2076,7 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",
