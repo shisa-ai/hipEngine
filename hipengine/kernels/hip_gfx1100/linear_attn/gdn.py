@@ -12,6 +12,8 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gdn.hip")
 _OUTPUT_NAME = "qwen35_linear_attn_gdn.so"
+_GROUPED_OUTPUT_NAME = "qwen35_linear_attn_gdn_grouped_heads.so"
+_GROUPED_BUILD_FLAG = "-DHIPENGINE_GDN_GROUPED_HEADS=1"
 _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
 _SYMBOL_LOWP_F32_BF16 = (
     "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out"
@@ -186,6 +188,56 @@ def build_qwen35_linear_attn_gdn(
         cache_root=cache_root,
         compiler_version=compiler_version,
         output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def plan_qwen35_linear_attn_gdn_grouped_heads_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+) -> BuildArtifact:
+    """Plan the canonical HF/PARO grouped-V-head GDN sibling."""
+
+    return plan_hip_build(
+        sources=[_SOURCE],
+        family="qwen35_linear_attn_gdn_grouped_heads",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=(_GROUPED_BUILD_FLAG,),
+        output_name=_GROUPED_OUTPUT_NAME,
+    )
+
+
+def build_qwen35_linear_attn_gdn_grouped_heads(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    """Build GDN kernels for canonical HF/PARO grouped V-head tensors.
+
+    llama.cpp GGUF conversion reorders linear-attention V-head tensors to a
+    tiled layout before quantization. Packed PARO safetensors retain the
+    canonical Transformers ``repeat_interleave`` layout, so they require this
+    separately cached compile-time sibling while sharing the same C ABI.
+    """
+
+    return build_hip(
+        sources=[_SOURCE],
+        family="qwen35_linear_attn_gdn_grouped_heads",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        extra_flags=(_GROUPED_BUILD_FLAG,),
+        output_name=_GROUPED_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
