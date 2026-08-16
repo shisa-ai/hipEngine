@@ -3,10 +3,12 @@ from __future__ import annotations
 import numpy as np
 
 from scripts.execution_profile_gdn_calibration import (
+    CalibrationError,
     PromptCalibrationCapture,
     _trajectory_arrays,
     build_candidate_quality,
     parse_mode_sources,
+    validate_strict_baseline,
 )
 
 
@@ -18,6 +20,19 @@ def _trajectory(*rows: tuple[int, list[float]]) -> tuple[dict[str, object], ...]
         }
         for token_id, logits in rows
     )
+
+
+def test_strict_baseline_must_match_backend_exact_mode() -> None:
+    validate_strict_baseline(
+        requested_mode="chain_lds32_direct_nonvolatile",
+        backend_exact_mode="chain_lds32_direct_nonvolatile",
+    )
+
+    with np.testing.assert_raises(CalibrationError):
+        validate_strict_baseline(
+            requested_mode="chain_lds32_direct",
+            backend_exact_mode="chain_lds32_direct_nonvolatile",
+        )
 
 
 def test_trajectory_arrays_normalizes_one_singleton_sample_axis() -> None:
