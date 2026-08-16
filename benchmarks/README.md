@@ -307,6 +307,27 @@ Relative to the frozen opening snapshot, prefill is
 **8.158%/10.995%/24.543%** above the lower llama row, so G5 remains open.
 Evidence: [`post-qmicro clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
 
+#### Retained development closure — Q4_K_S true AR
+
+The isolated `95a8a8e9a` + policy-diff gate qualifies Q4_K_S as the P5 route;
+a post-commit clean publication refresh remains separate. Relative to a matched
+policy-disabled Q4_K_S control, 512/128 AR improves **12.42932 -> 13.06854
+tok/s (+5.143%)**. The required shape rows already exceed both frozen clean
+llama Q4_K_M backends:
+
+| Shape | hipEngine Q4_K_S prefill | llama HIP | llama Vulkan | hipEngine Q4_K_S AR | llama HIP | llama Vulkan | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **379.203** | 352.426 | 242.956 | **13.0685** | 12.1506 | 12.7629 | **15.729 GiB** |
+| 1K/128 | **375.952** | 364.443 | 247.610 | **12.8805** | 12.0645 | 12.7197 | **16.147 GiB** |
+| 4K/128 | **370.804** | 367.993 | 354.368 | **13.0410** | 11.5081 | 12.5683 | **18.465 GiB** |
+
+Natural true AR is **13.33276 tok/s** with all 30 repeated trajectories exact;
+same-file Q4_K_S llama HIP/Vulkan are **5.53853/7.51888 tok/s**. The 512
+tracked peak is **0.858 GiB** below the clean Q4_K_M row, but this is not a
+whole-GTT claim. Native Q4_K_S MTP is correctness-blocked on both Japanese
+prompts and none of its rates are retained. Evidence:
+[`Q4_K_S true-AR policy retention`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
 (+9.935%/+10.611%/+10.168%)**. Both actual standard-Q6 QKV weights improve

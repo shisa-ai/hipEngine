@@ -729,6 +729,11 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
                 "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
             ),
         },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+            (1, 5_120, 17_408): (
+                "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+            ),
+        },
     }
     assert backend_package_capability(
         "hip_gfx1100",
@@ -820,6 +825,9 @@ def test_gfx1151_dense_down_residual_policies_are_exact() -> None:
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 17_408, 5_120): True
         },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+            (1, 17_408, 5_120): True
+        },
     }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
@@ -850,6 +858,9 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
             (1, 1_024): "bf16_out_fixed1024_wave256"
         },
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            (1, 5_120): "bf16_out_fixed5120_wave256"
+        },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
             (1, 5_120): "bf16_out_fixed5120_wave256"
         },
     }
@@ -1425,6 +1436,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {
         ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
         ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
+        ("MOSTLY_Q4_K_S", 16, 48, 128, 128): "chain_compact_peer_wave32",
         # D08-X2-K2: fresh five-block gate admitted Q8_0 after P2's 0.0108%
         # rejection was superseded by exact-core graph-decode evidence.
         ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",

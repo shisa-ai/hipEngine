@@ -335,6 +335,22 @@ reopen only with matched whole-GTT evidence.
 Evidence:
 [`wide weight arena rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-wide-weight-arena-rejected.json).
 
+P5 closes through the fully qualified Q4_K_S model representation, not a
+prompt-conditioned route. The 0.835-GiB smaller planned weight payload plus
+three exact representation-independent policy transfers—qmicro Q4 gate/up+
+SiLU, Q4 down+residual, and fixed-H5120 norms—move matched 512/128 AR
+**12.42932 -> 13.06854 tok/s (+5.143%)**. The retained 512/1K/4K rows are
+**13.06854/12.88049/13.04100 tok/s**, respectively **2.395%/1.264%/3.761%**
+above frozen clean llama Vulkan and further above llama HIP; prefill also beats
+both backends at every required shape. Natural true AR is **13.33276 tok/s**
+with identical trajectories across all 30 requests and all categories, versus
+same-file Q4_K_S llama HIP/Vulkan at **5.53853/7.51888 tok/s**. Native Q4_K_S
+MTP is a separate task-23 correctness blocker: B1-B3 differ from scalar AR on
+`general_ja_plan` and `general_ja_explain` despite GPU/CPU acceptance agreement,
+so no MTP rate from that run is publishable.
+Evidence:
+[`Q4_K_S true-AR policy retention`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
