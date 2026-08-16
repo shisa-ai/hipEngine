@@ -15,8 +15,9 @@ Related source-of-truth documents:
   FastDMS-derived compact DMS.
 - [`BENCHMARK.md`](BENCHMARK.md) — correctness and performance evidence.
 - [`TESTING.md`](TESTING.md) — RED/GREEN workflow and test tiers.
-- [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) — the separate
-  no-mirror INT8 storage/kernel campaign.
+- [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) — the
+  no-mirror INT8 storage/kernel qualification campaign; it plugs into this
+  scheduler and must not create a second concurrency implementation.
 - [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — speculative transaction and
   verification work classes.
 
@@ -28,7 +29,7 @@ will be the sole owner of:
 
 - request admission and scheduling;
 - resident model state and physical execution-row maps;
-- one policy-shaped device KV arena shared by all compatible requests;
+- one resolved KV-cache-backend pool set shared by all compatible requests;
 - prefix-cache ownership and eviction;
 - graph/workspace selection;
 - token commit, completion, cancellation, and reclaim.
@@ -41,20 +42,28 @@ before resolving. A multi-prompt or `n>1` API call may aggregate its child
 results at the HTTP boundary, but each child frees backend resources as soon as
 that child terminates.
 
-The dense baseline will use one preplanned global device page arena with stable
-block IDs. Full immutable prefix pages may be shared by refcount; writable tails
-are private or copy-on-write; zero-active-reference cache pages are LRU-evictable.
-The scheduler admits by a complete resource estimate and current pool state,
-not by a hardcoded physical c4/c8 route width. Physical c1/c2/c4/c8 kernels are
-execution buckets: 23 ready rows may be lowered to several certified groups in
-one fairness round without limiting resident concurrency to eight.
+The first backend will use one preplanned global dense page-pool set with stable
+block IDs. A pool set may contain several format-owned planes (for example K/V
+payload, scales/zeros, protected BF16 windows, or codec metadata); the scheduler
+never assumes that one logical token is one BF16 page. Full immutable prefix
+pages may be shared by refcount; writable tails are private or copy-on-write;
+zero-active-reference cache pages are LRU-evictable. The scheduler admits by a
+backend-produced resource-claim vector and current pool state, not by a
+hardcoded physical c4/c8 route width or dtype-specific byte formula. Physical
+c1/c2/c4/c8 kernels are execution buckets: 23 ready rows may be lowered to
+several certified groups in one fairness round without limiting resident
+concurrency to eight.
 
 FastDMS contributes the compact allocator, per-layer/per-head metadata, and
 streaming no-dense-shadow shape. It does **not** supply the production request
 frontend or scheduler design. Initial DMS serving will use the same engine
-service and a global compact arena, but cross-request DMS prefix sharing stays
+service and a global compact pool set, but cross-request DMS prefix sharing stays
 disabled until immutable-snapshot or per-request eviction-overlay semantics pass
-independent correctness and lifecycle gates.
+independent correctness and lifecycle gates. BF16, FP8, INT8, INT4/HIGGS-like,
+AQUA residual, mixed BF16/INT2, and future hot formats resolve to different
+KV-cache backend descriptors and kernel bundles over that same lifecycle; none
+gets a format-specific scheduler, admission queue, output path, or cancellation
+implementation.
 
 The first production qualification target is smooth correctness, bounded
 memory, and useful throughput from concurrency 1 through 32. Offered load may be
@@ -81,9 +90,11 @@ number of resident requests.
    long prompt or a slow output consumer stalling unrelated work.
 8. Keep c=1 on its fastest exact route while scaling through c=32 and beyond by
    composing measured physical buckets.
-9. Make DMS a `KVPolicy` over the same scheduler rather than a second serving
-   architecture.
+9. Make DMS a KV retention topology over the same scheduler rather than a
+   second serving architecture.
 10. Preserve speculative KV transactions, plugin dispatch, and `KVLiveSpans`.
+11. Replace BF16, INT8, or any later KV format by resolving another registered
+    KV-cache backend, without editing request lifecycle or scheduling policy.
 
 ### Non-goals
 
@@ -133,8 +144,8 @@ failures.
 | `ResidentEngineLoop` admission/prefill/decode/reclaim contract | Keep the lifecycle semantics. Replace caller-driven polling and one-work-item ticks with one service-owned scheduling loop and multi-item rounds. |
 | Native GGUF/PARO c1/c2/c4/c8 runners | Keep as certified execution buckets behind model/backend capability registration. |
 | Row-scoped cancellation and reclaim callbacks | Keep. Move command handling into the sole engine service. |
-| `KVPolicy`, `KVLiveSpans`, and speculative `begin/commit/rollback` | Keep as invariants. Expand policy allocation/accounting; do not replace the kernel ABI. |
-| `DeviceChunkedKVPool` refcounts, COW tests, and pointer-stability checks | Reuse their invariants and fixtures. Replace one-backing/contiguous-per-request constraints with a production global arena. |
+| `KVPolicy`, `KVLiveSpans`, and speculative `begin/commit/rollback` | Keep the liveness and transaction invariants. Evolve the fixed-page `KVPolicy` shim into the `KVCacheBackend` contract below so storage codecs do not leak into the scheduler. |
+| `DeviceChunkedKVPool` refcounts, COW tests, and pointer-stability checks | Reuse their invariants and fixtures. Replace one-backing/contiguous-per-request constraints with the production global pool substrate. |
 | `RadixCache` complete-page matching scaffolding | Reuse token-prefix semantics. Integrate cache-owned eviction, generation checks, quotas, and the real device arena. |
 | Per-row sampler and stop state | Keep. Attach it to child request records rather than submission-wide completion. |
 | Exact lifecycle/profiler/evidence gates from `CONCURRENCY.md` | Keep as migration gates. |
@@ -180,6 +191,14 @@ failures.
 9. **Completion storage remains submission-owned.** Scheduler completions are
    independently keyed, but the public result path consumes and releases a
    complete submission together.
+10. **The current KV protocol still exposes fixed-format assumptions.**
+    `KVPolicy.admission_cap()` is scalar, `KVReservation` is one block table,
+    and `KVLiveSpans` special-cases one INT8 scale structure. Those are useful
+    compatibility seams, but they are not sufficient for multi-plane INT8,
+    HIGGS/TurboQuant codebooks, AQUA cross-layer residuals, OSCAR-style
+    BF16+INT2 tiers, or cold KVTC storage. Leaving them as the C2 contract would
+    recreate the v1 mistake: each format would grow its own admission and
+    continuous-batching path.
 
 ## Reference review
 
@@ -190,6 +209,7 @@ The review used local read-only source as present on 2026-08-17:
 | FastDMS | `/home/lhl/FastDMS` at `c602b0e` | `fastdms/engine/{llm_engine,scheduler,block_manager,compact_kv,sequence}.py`, model runner, compact attention, README |
 | SGLang | `/home/lhl/ai/sglang/sglang` at `00ce7e31` (`v0.4.3.post2-109`; local tree dirty) | `srt/managers/{scheduler,schedule_batch,tokenizer_manager}.py`, `srt/mem_cache/{memory_pool,radix_cache}.py` |
 | vLLM | `/home/lhl/ai/vllm/vllm` at `42d9a2c4c` (`v0.8.4-378`) | V1 scheduler, KV cache manager, block pool/free queue, async LLM, output processor |
+| KV quantization research | `/home/lhl/kvcache-quantization-research` at `31979ce` | `README.md`, `docs/{PLAN-COMPOSE,PLAN-PROD,PLAN-KVTC,OSCAR}.md`, `DMS-to-vLLM.md`, packed/AQUA cache prototypes, FastDMS compact manager/scheduler |
 
 These are design references, not claims about every newer upstream release.
 
@@ -246,13 +266,38 @@ These are design references, not claims about every newer upstream release.
   solve safe cross-request prefix reuse after per-head, per-sequence eviction
   diverges.
 
+### KV quantization research lessons
+
+- Hot storage is not one `dtype` field. HIGGS/TurboQuant-style caches own packed
+  indices plus scales/codebooks; AQUA owns heterogeneous full-KV and predicted
+  residual layers plus a calibration artifact; OSCAR owns BF16 sink/recent
+  regions, an INT2 historical region, scale/zero planes, and a demotion step.
+- Retention topology, hot codec/layout, and cold tiering are separate concerns.
+  Dense paging or DMS can in principle compose with several hot codecs; KVTC is
+  a turn/offload codec that restores into a hot format rather than an attention
+  dtype.
+- Composition order is backend behavior, not scheduler behavior. In a proposed
+  DMS+OSCAR path, a token lives in a BF16 grace ring and is either evicted or
+  demoted to INT2 when it ages out. The scheduler needs honest resource deltas
+  and maintenance work, not knowledge of that algorithm.
+- Mixed-layout concurrency requires stronger ownership gates than c1 quality.
+  The reviewed OSCAR evidence includes a reported concurrent long-context
+  corruption after mixed-KV slot-accounting changes. Abort, retract, demotion,
+  page reuse, and reclaim must therefore be backend-conformance tests, not
+  optional format-specific cleanup.
+- FastDMS demonstrates why allocation failure discovered in model-runner
+  preparation is too late. Every format must expose provisional reserve,
+  commit/release deltas, fragmentation, and all transient workspace before a
+  work item is scheduled.
+
 ### Synthesis
 
 Adopt vLLM's central token-budget owner and per-request output collectors,
 SGLang's global token pool plus lock-aware radix lifetime, and FastDMS's compact
-metadata/no-shadow storage. Keep hipEngine's smaller torch-free host,
-backend-neutral registry, `KVLiveSpans`, exact c-aware kernels, and explicit KV
-transactions.
+metadata/no-shadow storage. Add a format-neutral resource-claim/pool-set
+contract so the research formats are replaceable rather than scheduler forks.
+Keep hipEngine's smaller torch-free host, backend-neutral registry,
+`KVLiveSpans`, exact c-aware kernels, and explicit KV transactions.
 
 ## Target architecture
 
@@ -274,9 +319,10 @@ HTTP / library callers
 |  OutputRouter (one collector/mailbox per child request)      |
 |  ResourceLedger + AdmissionController                        |
 |  PrefixIndex                                                 |
-|  KVPolicy                                                    |
-|    dense -> GlobalPagedKVArena                               |
-|    DMS   -> GlobalCompactKVArena                             |
+|  KVCacheBackend (resolved plugin)                            |
+|    KVPoolSet -> payload/scale/tier/metadata pools            |
+|    topology -> dense/sliding/DMS/...                         |
+|    codec    -> BF16/INT8/FP8/HIGGS/AQUA/OSCAR/...            |
 |  ExecutionPlanner -> c1/c2/c4/c8/verify/prefill groups       |
 |  ModelRunner + graph/workspace caches                        |
 +---------------------------+----------------------------------+
@@ -307,7 +353,7 @@ prompt and output tokens   canonical token history
 sampling/stop state        independent per row
 priority/deadline          scheduling metadata
 resident_slot              stable model-state slot, if admitted
-kv_lease                   policy-owned pages/extents, if admitted
+kv_lease                   backend-owned typed resources, if admitted
 output_collector           blocking buffer or streaming mailbox
 resource_estimate          admission and growth accounting
 ```
@@ -384,15 +430,15 @@ not one giant kernel.
 
 The scheduler keeps peer work classes:
 
-- `PREFILL`: one or more bounded chunks, grouped by compatible shape/policy;
+- `PREFILL`: one or more bounded chunks, grouped by execution compatibility key;
 - `DECODE`: ready resident requests, lowered into certified physical groups;
 - `VERIFY_CHAIN` / `VERIFY_TREE`: speculative rows with scratch/journal KV;
 - `MAINTENANCE`: cancellation, cache eviction, DMS compaction, graph rebind;
 - `RECLAIM`: normally part of commit, never a separately delayed batch.
 
 A work item always carries stable request IDs, resident slots, ephemeral
-execution rows, token positions, policy key, `KVLiveSpans`, and an honest route
-label.
+execution rows, token positions, the KV execution compatibility key, a
+`KVBatchView` containing `KVLiveSpans`, and an honest route label.
 
 ### Token-budget planning
 
@@ -425,7 +471,7 @@ items later if exact and faster.
 Pure FCFS can let one temporarily non-fitting long request block many fitting
 short requests. Pure best-fit can starve long requests. Use bounded bypass:
 
-- reject requests that can never fit the configured model/policy envelope;
+- reject requests that can never fit the configured model/backend-spec envelope;
 - keep temporary no-fit requests queued with a named blocking resource;
 - consider a bounded lookahead for fitting requests;
 - increment an explicit bypass count/age;
@@ -462,9 +508,160 @@ route capability. If an operator value exceeds a hard metadata/state limit,
 startup rejects it or reports the explicit effective limit and reason. The
 normal primary gate is the resource ledger.
 
-## Global dense KV architecture
+## Swappable KV-cache backend contract
 
-### One planned arena per compatible policy
+### Resolve a composition, not a dtype branch
+
+A loaded model replica resolves one immutable `KVBackendSpec` before its engine
+starts. The specification identifies at least:
+
+```text
+topology_key            paged_dense | sliding_sink | dms_compact | ...
+hot_codec_key           bf16 | fp8 | int8_per_token_head | higgs4 | aqua_higgs | ...
+tier_key                device_only | host_offload | kvtc_cold | ...
+layout_fingerprint      plane shapes, strides, grouping, protected regions
+artifact_fingerprint    scales, codebooks, predictors, rotations, DMS metadata
+prefix_mode             unsupported | immutable_pages | snapshot_overlay
+transaction_mode        journal | scratch | snapshot | unsupported
+kernel_bundle_key       prefill/store/decode/verify/maintenance capabilities
+```
+
+These dimensions describe composition; they do not assert that every Cartesian
+combination is valid. A registry factory validates the complete combination and
+returns one resolved `KVCacheBackend`. A DMS+BF16 backend and a DMS+INT8 backend
+may share the DMS topology implementation while supplying different pool plans,
+store/attention kernels, and quality artifacts. The engine sees the same
+protocol in both cases.
+
+`storage_dtype` remains useful kernel metadata, but it is not the policy object.
+AQUA cross-layer dependencies, HIGGS codebooks, or an OSCAR BF16+INT2 layout
+cannot be represented honestly by one dtype enum. Model and scheduler code must
+not switch on any of these keys.
+
+### Scheduler-facing protocol
+
+The Generation-2 target replaces scalar `admission_cap()` as the scheduling
+contract with operations shaped like:
+
+```python
+class KVCacheBackend(Protocol):
+    spec: KVBackendSpec
+
+    def plan_pools(self, load_plan: DeviceLoadPlan) -> KVPoolPlan: ...
+    def estimate(self, request, prefix, stage) -> ResourceClaimSet: ...
+    def reserve(self, claims: ResourceClaimSet) -> KVLease: ...
+    def prepare(self, work_item) -> KVBatchView: ...
+    def begin_transaction(self, rows, draft) -> KVTransaction: ...
+    def commit(self, operation, result) -> ResourceDelta: ...
+    def rollback(self, operation) -> ResourceDelta: ...
+    def reclaim(self, lease) -> ResourceDelta: ...
+    def prefix_lookup(self, tokens) -> PrefixMatch: ...
+    def maintenance(self, budget) -> list[MaintenanceWork]: ...
+```
+
+The scheduler decides **when** a request or work item may run and owns every
+commit barrier. The backend decides **what** storage resources that work needs,
+how logical K/V maps to physical planes, and which registered kernels implement
+it. Backend methods may return plans/deltas; they may not run an independent
+queue, await frontend output, mutate another request, or make a hidden HIP
+allocation after admission.
+
+The existing `KVPolicy`/`FixedPagedKVPolicy` becomes a compatibility adapter to
+this protocol while C2 lands. New codecs do not add methods to
+`EngineService`; they implement the backend contract and kernel capabilities.
+
+### Resource claims and pool sets
+
+`ResourceClaimSet` is an atomic vector of named resources and lifetimes, not one
+page count or one bytes-per-token estimate. Common claim classes include:
+
+```text
+pool_id + units/bytes          persistent payload or metadata capacity
+resident metadata rows        request/head/layer descriptors
+prefill staging               hidden/oracle/pack buffers
+attention workspace           split-K or dequant/reconstruction partials
+maintenance workspace         demotion, compaction, or tier transfer
+transaction scratch/journal   speculative uncommitted state
+graph/static slab delta       newly required execution bucket
+whole-device reserve          unclassified runtime safety margin
+lifetime                      load | lease | work_item | transaction | cache
+confidence                    exact | bounded | unknown
+```
+
+A `KVPoolPlan` may create one or many stable pools. Examples:
+
+- BF16 dense: K and V page planes;
+- per-token/head INT8: K/V payload plus K/V scale planes;
+- HIGGS/TurboQuant: packed indices plus scale/codebook metadata;
+- AQUA: full base layers plus residual planes and predictor artifacts;
+- OSCAR-like: BF16 sink/recent pages, INT2 history, scale/zero planes, and
+  demotion workspace;
+- DMS plus a codec: per-layer/per-head compact payload planes plus live-span
+  metadata and any codec planes;
+- KVTC: a hot backend plus host/NVMe cold objects and transfer/decode workspace.
+
+The central ledger only understands pool IDs, capacities, share/lifetime rules,
+and deltas. It never derives format bytes from logical token count. Reserve is
+all-or-nothing across every plane. Commit can release unused provisional units
+or publish newly freed DMS/demotion capacity; rollback and reclaim must return
+exactly the ownership they acquired. Every delta is tied to a lease/operation ID
+so conservation is mechanically checkable.
+
+### `KVLiveSpans` and storage views
+
+`KVLiveSpans` remains the mandatory attention and K/V-write ABI for liveness:
+`base_offsets`, `live_counts`, `token_positions`, and `evict_mask` retain their
+meaning for every backend. It must be extended with, or reference, a registered
+`KVStorageView` rather than accumulating a special field for each quantizer:
+
+```text
+KVStorageView
+  layout_key / generation
+  stable raw-pointer plane views: role, dtype, shape, strides
+  device metadata descriptor pointer/size
+  calibration/artifact fingerprint
+```
+
+A `KVBatchView` is `KVLiveSpans` plus this storage view and the selected
+registered kernel bundle. Current `KVScaleMetadata` is the INT8 compatibility
+adapter, not the universal format interface. Kernel wrappers resolve the exact
+layout key and receive raw pointers; the scheduler does not inspect scale
+strides, codebooks, predictor state, protected windows, or tier merge rules.
+Unknown layout/kernel combinations fail before admission.
+
+Execution groups require the same **execution compatibility key**: model and
+hardware backend, topology/layout fingerprint, kernel bundle, work class,
+context bucket, and physical width. This prevents accidental batching of
+incompatible storage while allowing all requests using the same resolved
+backend to share its global pools at arbitrary logical concurrency.
+
+### Sharing domain and backend replacement
+
+“All requests share the KV pool” means all requests compatible with one resolved
+backend draw from its global pool set. It does not mean an INT8 page can be
+reinterpreted as BF16, or that pages with different calibration artifacts may be
+prefix-shared. Initial production uses one active KV backend per loaded model
+replica; requests asking for another format route to another replica or fail
+validation. This keeps every pool fungible within its compatibility domain.
+
+Changing the configured backend is a replica lifecycle operation:
+
+1. stop or redirect new admission;
+2. drain active leases, or use an explicitly registered lossless transcode/
+   snapshot operation;
+3. invalidate backend-keyed graphs and prefix snapshots that cannot transfer;
+4. destroy the old pool set and initialize the new load-time plan;
+5. resume the unchanged engine service and scheduler with the new spec.
+
+A live in-place reinterpretation is forbidden. Later multi-backend co-residency
+may expose several pool sets under one ledger, but it uses the same protocol and
+separate compatibility queues; it is not required for C2. The essential gate is
+that adding such a pool set does not change request lifecycle, fairness,
+completion, cancellation, or overload code.
+
+## First backend: global dense paging
+
+### One planned pool set per compatible backend
 
 At model load, a resource planner measures or declares:
 
@@ -479,26 +676,27 @@ device_limit
 = allocatable KV arena budget
 ```
 
-The production dense path allocates one policy-shaped arena from that budget,
-ideally at startup after model/workspace profiling. A conceptual layout is:
+The production dense path allocates the backend's complete pool set from that
+budget, ideally at startup after model/workspace profiling. A simple dense
+codec may plan:
 
 ```text
-K[layer][page_id][token_in_page][kv_head][head_dim]
-V[layer][page_id][token_in_page][kv_head][head_dim]
-optional_scale[layer][page_id][token_in_page][kv_head]
+K_payload[layer][page_id][token_in_page][kv_head][packed_or_head_dim]
+V_payload[layer][page_id][token_in_page][kv_head][packed_or_head_dim]
+codec_planes[...]       # scales/zeros/codebooks only when the backend declares them
 ```
 
-The arena base pointers, block metadata arrays, resident-slot metadata, and
+The pool-plane base pointers, block metadata arrays, resident-slot metadata, and
 graph input slabs remain stable. Kernels consume changing block IDs and
-`KVLiveSpans`; graph capture must not embed request-private allocation pointers.
-A page is protected only while referenced or in flight, not forever because a
-graph once saw it.
+`KVLiveSpans`/`KVStorageView`; graph capture must not embed request-private
+allocation pointers. A page is protected only while referenced or in flight,
+not forever because a graph once saw it.
 
-If a backend cannot allocate the final arena in one object, it must implement a
+If a backend cannot allocate a pool plane in one object, it must implement a
 registered page-pointer/segment-table ABI with stable indirection. The current
 “all pages for one request must fit contiguously in one backing chunk” rule is a
 compatibility fallback, not the Generation-2 production design. Hot-path HIP
-allocation and surprise arena growth are disabled in the promoted server mode.
+allocation and surprise pool growth are disabled in the promoted server mode.
 
 ### Page states and ownership
 
@@ -521,14 +719,14 @@ commit barriers.
 ### KV leases and growth credits
 
 A `KVLease` belongs to one child request and identifies shared prefix pages,
-private full pages, writable tail, policy metadata, and reserved next-step
+private full pages, writable tail, backend metadata, and reserved next-step
 credits. Admission does not reserve the request's entire declared `max_tokens`;
 that would waste most of the pool. It must reserve:
 
 - all uncached prompt pages needed for the admitted prefill chunk/window;
 - writable-tail/COW cost;
 - enough growth credit for the next decode allocation quantum;
-- policy metadata and model state;
+- backend metadata and model state;
 - applicable workspace share and safety reserve.
 
 Before each growth boundary the scheduler renews credits. When credits cannot
@@ -538,8 +736,9 @@ through a commit while still allowing high utilization.
 
 ### Complete resource estimate
 
-`KVPolicy.estimate(request, prefix_match)` returns a structured estimate, not a
-single page count:
+`KVCacheBackend.estimate(request, prefix_match, stage)` returns an atomic
+`ResourceClaimSet`, not a single page count. The following are common claims,
+not a format-hardcoded schema:
 
 ```text
 payload pages/bytes
@@ -554,9 +753,10 @@ whole-device safety reserve
 confidence: exact | bounded | unknown
 ```
 
-Unknown estimates fail closed to a conservative registered policy or explicit
-rejection. Admission reserve is atomic: either every component is leased and the
-request becomes resident, or all provisional mutations roll back.
+Unknown estimates fail closed to a conservative registered backend or explicit
+rejection. Admission reserve is atomic: either every component in every pool is
+leased and the request becomes resident, or all provisional mutations roll
+back.
 
 ## Prefix cache
 
@@ -564,7 +764,7 @@ request becomes resident, or all provisional mutations roll back.
 
 Use a token radix index for longest-prefix lookup, but share only complete,
 immutable KV pages. The radix entry stores page handles plus a generation; the
-arena owns bytes, refs, and eviction state. A stale generation is a miss, never a
+backend pool set owns bytes, refs, and eviction state. A stale generation is a miss, never a
 use-after-free.
 
 The cache key includes every value that changes KV meaning:
@@ -572,8 +772,8 @@ The cache key includes every value that changes KV meaning:
 ```text
 model artifact fingerprint and revision
 adapter/LoRA identity
-backend/model/quant policy key
-KV storage dtype/layout/scale policy
+hardware/model/weight-quant identity
+resolved KV backend topology/codec/tier/layout/artifact fingerprint
 RoPE/scaling and position semantics
 relevant multimodal/input hashes
 prompt token IDs
@@ -604,14 +804,15 @@ without bound.
 2. Completed-prefix LRU ownership, pressure eviction, and stale-generation tests.
 3. Sampled requests whose KV semantics are unchanged by sampling.
 4. Broader historical/session boundaries with quotas and graph-safe metadata.
-5. DMS prefix semantics only after the policy below is proven.
+5. DMS prefix semantics only after the backend below is proven.
 
 ## DMS integration
 
-### Same scheduler, different policy
+### Same scheduler, different resolved backend
 
-`DMSKVPolicy` plugs into the same request table, admission controller, output
-router, and execution planner. It owns global per-layer compact arenas and
+The DMS topology component plugs into a resolved `KVCacheBackend` and therefore
+uses the same request table, admission controller, output router, and execution
+planner. The resolved backend owns global per-layer compact pool planes and
 per-resident-sequence metadata compatible with `KVLiveSpans`:
 
 ```text
@@ -623,18 +824,22 @@ evict_mask      [rows, layers, kv_heads, capacity] bool
 ```
 
 Port FastDMS count/rank/scatter, streaming prefill pack, append/expiry, and
-compact grouped split-K attention into registered HIP kernels. Start with BF16
-storage and no retained dense shadow. Compressed storage is an independent
-quality/capacity gate under `KVCACHE.md`.
+compact grouped split-K attention into registered HIP kernels. Qualify the DMS
+topology first with BF16 payload and no retained dense shadow, then compose the
+same topology with each qualified codec through `KVCacheBackend` pool plans and
+kernel bundles. That ordering is a correctness ladder, not a second concurrency
+implementation. Compressed storage has an independent quality/capacity gate
+under `KVCACHE.md`; switching DMS BF16 to DMS FP8/INT8/HIGGS-like storage must
+not change scheduler code.
 
 ### Scheduler-owned compact admission
 
 Do not copy the FastDMS boundary where model-runner preparation discovers
-compact allocation failure. Before scheduling a DMS prefill chunk, the policy
-reserves a bounded extent for every affected layer/head plus metadata and
-workspace. The kernel commits actual survivors and releases unused provisional
-capacity. Decode append/expiry similarly mutates canonical live counts only at
-commit.
+compact allocation failure. Before scheduling a DMS prefill chunk, the backend
+atomically reserves bounded extents for every affected layer/head and codec
+plane plus metadata and workspace. The kernel commits actual survivors and
+releases unused provisional capacity. Decode append/expiry/demotion similarly
+mutates canonical live counts and resource claims only at commit.
 
 Admission uses actual and projected physical live rows, fragmentation, and
 near-term growth—not logical context length and not dense pages. Export both
@@ -642,17 +847,19 @@ logical tokens and physical live cells/bytes.
 
 ### Fragmentation and compaction
 
-Compact arenas need extent/slab accounting in addition to free bytes. Track
-largest free extent, per-layer utilization, internal fragmentation, and
-compaction moves. A compaction plan may relocate policy-owned ranges only at a
-barrier, then atomically update stable metadata before any graph replay. Graphs
-consume metadata indirection rather than captured range addresses.
+Compact pool planes need extent/slab accounting in addition to free bytes.
+Track largest free extent, per-layer utilization, internal fragmentation, and
+compaction moves for every coupled plane. A compaction plan may relocate
+backend-owned ranges only at a barrier, then atomically update stable metadata
+before any graph replay. Graphs consume metadata indirection rather than
+captured range addresses.
 
 ### DMS and shared prefixes
 
-Initial rule: **one global compact capacity pool, private sequence/head ranges,
-no cross-request DMS KV sharing.** This still shares the arena and obtains DMS
-capacity benefits without corrupting per-sequence eviction decisions.
+Initial rule: **one global compact pool set, private sequence/head ranges, no
+cross-request DMS KV sharing.** This still shares physical capacity across all
+compatible requests and obtains DMS capacity benefits without corrupting
+per-sequence eviction decisions.
 
 Future prefix reuse requires one of two independently gated designs:
 
@@ -673,7 +880,7 @@ When a request or growth quantum does not fit:
 1. reclaim all terminal/cancelled ownership;
 2. release unused provisional credits/workspace;
 3. evict zero-active-reference prefix-cache pages by quota/LRU;
-4. shrink or compact policy metadata/extents at a safe barrier;
+4. shrink or compact backend metadata/extents at a safe barrier;
 5. stop admitting new resident requests;
 6. optionally preempt/recompute the lowest-priority eligible live request;
 7. reject new work explicitly if the bounded queue/resource SLO is exhausted.
@@ -706,8 +913,9 @@ blocking the queue. Readiness reports configured and effective limits.
 ## Graphs, workspaces, and state
 
 - Graph keys describe execution shape, not request ownership:
-  `(work class, physical width, context/page bucket, KV policy/layout, active
-  mask class, sampler mode, draft/tree shape, expert/top-k shape, replay steps)`.
+  `(work class, physical width, context/page bucket, KV backend execution
+  compatibility key, active mask class, sampler mode, draft/tree shape,
+  expert/top-k shape, replay steps)`.
 - Graph inputs point to stable execution/state/metadata slabs. Per-request page
   IDs and span counts are copied into those slabs before replay.
 - KV page allocation or cache eviction does not invalidate a graph when arena
@@ -750,8 +958,8 @@ planning/output overhead is material after those fixes.
 - queue time, TTFT, ITL samples, service time, and response-publication delay;
 - parent/choice IDs, priority, deadline, finish/cancel reason;
 - prefix matched/recomputed tokens and COW pages;
-- KV policy, logical tokens, owned/shared/live bytes, peak bytes, and growth
-  credits;
+- resolved KV topology/codec/tier/artifact fingerprint, logical tokens,
+  per-plane owned/shared/live bytes, peak bytes, and growth credits;
 - preemption/bypass counts and admission-blocked resource;
 - physical groups/routes/fallbacks used;
 - output mailbox high-water and backpressure outcome.
@@ -767,7 +975,8 @@ planning/output overhead is material after those fixes.
   generations;
 - DMS live cells, allocated extents, target/actual compression, largest free
   extent, fragmentation, and compaction moves;
-- complete resource-ledger budget versus measured current/peak GPU memory;
+- complete per-pool/per-plane resource-ledger budget versus measured
+  current/peak GPU, host, and cold-tier memory;
 - graph hits/misses/invalidations and workspace usage;
 - queue rejections, no-fit bypasses, preemptions, and recovery;
 - backend-terminal-to-HTTP-response delay and slots reclaimed while a parent
@@ -785,16 +994,26 @@ Each phase is one or more validated atomic commits, not one giant rewrite.
 ### C2-0 — contract and RED simulator
 
 - [ ] Add child/parent request and output-collector host types.
+- [ ] Freeze `KVBackendSpec`, `ResourceClaimSet`, `KVPoolPlan`, `KVLease`,
+      `ResourceDelta`, `KVStorageView`, and `KVCacheBackend` host protocols before
+      implementing the real scheduler.
 - [ ] Add a deterministic fake engine/resource ledger with queued, resident,
-      scheduled, and physical-width counters.
+      scheduled, physical-width, and per-pool claim counters.
+- [ ] Provide fake backends with identical logical K/V but different ownership:
+      dense BF16; dense INT8 payload+scales; mixed BF16+packed history with
+      demotion; and DMS-like variable live spans.
 - [ ] RED: short A completes and request C is admitted while long sibling B from
       the old static group is still decoding.
 - [ ] RED: blocking and streaming child requests share scheduling order,
       cancellation, and reclaim semantics.
-- [ ] RED/property: random c1-c32 arrival/length/cancel sequences preserve unique
-      IDs/slots, resource conservation, independent c1 outputs, and final drain.
+- [ ] RED/property: random c1-c32 arrival/length/cancel/demotion/compaction
+      sequences preserve unique IDs/slots, every pool's resource conservation,
+      independent c1 outputs, and final drain for all fake backends.
+- [ ] RED/architecture: selecting another fake backend changes no
+      engine/scheduler/frontend type or queue implementation.
 
-Exit: the new lifecycle and concurrency dimensions are executable without GPU.
+Exit: the new lifecycle, concurrency dimensions, and backend-swap contract are
+executable without GPU.
 
 ### C2-1 — independent outputs and sole engine driver
 
@@ -813,37 +1032,50 @@ Exit: the new lifecycle and concurrency dimensions are executable without GPU.
 Exit: the observed non-streaming head-of-line barrier is gone in host and real
 server tests; one driver owns progress and shutdown.
 
-### C2-2 — resource ledger and concurrency separation
+### C2-2 — generic resource ledger and concurrency separation
 
-- [ ] Add registered resource estimators for model state, dense BF16/INT8 KV,
-      scales/mirrors, prefill scratch, attention workspace, graphs, and reserve.
+- [ ] Implement atomic named-resource claim sets, per-pool capacities/lifetimes,
+      provisional reserve, commit/release deltas, rollback, and conservation
+      checks; the ledger contains no BF16/INT8/DMS formulas.
+- [ ] Add registered backend estimators for model state, all persistent codec
+      planes, mirrors/protected regions, prefill/maintenance scratch, attention
+      workspace, graphs, cold transfers, and reserve.
 - [ ] Split resident metadata capacity from supported physical widths.
 - [ ] Replace route-cap clamping with fit-aware admission plus an optional clear
       operator resident cap.
 - [ ] Add bounded lookahead/starvation control and impossible-request rejection.
-- [ ] Expose effective limits and blocking resources.
+- [ ] Expose effective limits, per-plane estimates, and blocking resources.
 
-Exit: overload is atomic/retryable and never first appears as HIP OOM; c9-c32
-can remain resident while using certified <=c8 physical groups.
+Exit: overload is atomic/retryable and never first appears as HIP OOM for any
+conforming backend; c9-c32 can remain resident while using certified <=c8
+physical groups.
 
-### C2-3 — production global dense arena
+### C2-3 — production global pool substrate and first dense backends
 
-- [ ] Allocate one stable policy-shaped device arena from the load-time plan.
-- [ ] Bind runner graphs/kernels to global arena and stable metadata slabs rather
-      than request-private backing bases.
-- [ ] Implement page leases, growth credits, complete page-state accounting,
-      COW tails, and in-flight epochs.
-- [ ] Port current dynamic-pool lifecycle fixtures; add fragmentation and
-      pressure recovery tests.
+- [ ] Allocate one stable backend-declared pool set from the load-time plan.
+- [ ] Bind runner graphs/kernels to global pool planes, `KVStorageView`, and
+      stable metadata slabs rather than request-private backing bases.
+- [ ] Implement typed page/plane leases, growth credits, complete state
+      accounting, COW tails, and in-flight epochs.
+- [ ] Port current dynamic-pool lifecycle fixtures; add cross-plane
+      fragmentation, partial-reserve rollback, and pressure recovery tests.
+- [ ] Run the same lifecycle/scheduler suite with dense BF16 and the
+      artifact-qualified no-mirror INT8 backend; only pool plans, storage views,
+      and registered kernels may differ.
 - [ ] Keep the old chunked backing path only as an explicit fallback until the
-      new arena passes both gfx11 gates; track its removal in `REFACTOR.md`.
+      new pool substrate passes both gfx11 gates; track its removal in
+      `REFACTOR.md`.
 
-Exit: all compatible requests draw from one fungible dense page pool and a
-request may use arbitrary free pages without same-chunk constraints.
+Exit: all requests compatible with a resolved backend draw from one fungible
+pool set, a request may use arbitrary free pages without same-chunk constraints,
+and BF16-to-INT8 replacement does not fork continuous batching.
 
 ### C2-4 — integrated radix cache and eviction
 
-- [ ] Make the radix index reference generation-checked arena pages.
+- [ ] Make the radix index reference generation-checked backend snapshot handles,
+      initially dense immutable pages.
+- [ ] Include the complete backend/artifact fingerprint in every key and treat
+      incompatible format/calibration snapshots as misses, never casts.
 - [ ] Retain completed immutable pages as evictable cache ownership independent
       of source-request lifetime.
 - [ ] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
@@ -859,8 +1091,9 @@ quota/eviction.
 
 - [ ] Plan multiple compatible prefill chunks and all due decode groups per
       fairness round.
-- [ ] Register per-backend physical width/context/workspace capabilities and
-      honest fallback labels.
+- [ ] Register per-backend physical width/context/workspace capabilities,
+      group only identical execution compatibility keys, and emit honest
+      fallback labels.
 - [ ] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
       sparse retirement, cancellation, and refill.
 - [ ] Tune TTFT/ITL policy from workload SLOs; remove generic
@@ -885,17 +1118,36 @@ retains its direct route.
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
 
-### C2-7 — FastDMS policy
+### C2-7 — FastDMS topology and codec composition
 
 - [ ] Complete the metadata/checkpoint gate from `KVCACHE.md`.
-- [ ] Add global compact arena/extent accounting and scheduler-owned admission.
+- [ ] Add global compact pool-set/extent accounting and scheduler-owned atomic
+      admission through the existing backend protocol.
 - [ ] Port streaming no-shadow prefill pack and compact decode in BF16 first.
 - [ ] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
 - [ ] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
+- [ ] Replace the BF16 payload with at least one qualified compressed codec by
+      changing topology/codec composition, pool plan, and kernel bundle only;
+      rerun the same scheduler/lifecycle suite.
 - [ ] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
 
 Exit: DMS provides allocator-visible capacity and attention-work savings without
-forking the concurrency architecture.
+forking the concurrency architecture, and changing its payload format does not
+fork it either.
+
+### C2-8 — optional hot/cold tiering
+
+- [ ] Add backend-declared offload/restore maintenance work and host/NVMe
+      resource pools without blocking due decode work.
+- [ ] Treat KVTC-style storage as a cold codec that restores to the resolved hot
+      backend; do not present it as an attention dtype.
+- [ ] Key cold objects by complete hot-backend/artifact identity and validate
+      deterministic restore, cancellation, eviction, quotas, and final drain.
+- [ ] Measure transfer/decompression workspace and TTFT against prefix
+      recomputation before promotion.
+
+Exit: tiering adds a backend capability and maintenance work class, not another
+scheduler or request lifecycle.
 
 ## Acceptance gates
 
@@ -938,8 +1190,8 @@ unless one physical group actually has that width.
 
 ### Performance
 
-- Compare against the exact same model, quant, KV policy, context, output shape,
-  hardware, and command.
+- Compare against the exact same model, weight quant, KV backend composition,
+  context, output shape, hardware, and command.
 - Keep c1 transition/complete-request performance within the retained regression
   budget from `BENCHMARK.md`; occupancy one must select physical c1.
 - c=N promotion must beat the old server path and honest serial composition on
@@ -962,6 +1214,29 @@ unless one physical group actually has that width.
   claim.
 - Speculative reject/partial/full transactions leave canonical KV exact.
 
+### KV-cache backend conformance
+
+Every promoted backend or topology+codec composition runs one common suite:
+
+- load-time pool planning exactly accounts all persistent planes and artifacts;
+- estimate/reserve is atomic under injected failure at every claim boundary;
+- prefill, decode, growth, terminal, cancellation, rollback, and reclaim conserve
+  every pool independently;
+- c1-c32 stagger/refill behavior and outputs match the backend's independent c1
+  oracle without engine or scheduler special cases;
+- prefix attach/COW/eviction either passes under the declared mode or fails
+  closed as unsupported;
+- graph replay sees only current storage-view generations after page reuse,
+  demotion, compaction, or restore;
+- mixed-format backends additionally pass concurrent demotion, abort, retract,
+  slot reuse, pressure, and long-context soak guards;
+- telemetry identifies topology, codec, tier, artifact, kernel bundle, every
+  persistent plane, transient workspace, and any shadow/mirror bytes.
+
+The minimum architecture matrix is dense BF16, dense no-mirror INT8, a synthetic
+mixed-tier backend, and a synthetic per-head-variable backend at C2-0/C2-3;
+FastDMS and real mixed/tiered codecs replace the synthetic rows as they qualify.
+
 ## Migration from `CONCURRENCY.md`
 
 The old document remains useful evidence, but its active queue is no longer the
@@ -970,12 +1245,12 @@ architecture order. Unresolved work is mapped as follows:
 | Old work | Generation-2 disposition |
 | --- | --- |
 | A4 late physical-width exactness and frozen rerun | Preserve as a required gfx1100 correctness gate before promoting that affected route through C2-5; it does not block C2-0/C2-4 infrastructure. |
-| IKV-C1 through IKV-C7 | Continue under `QWEN38-INT8-KV-CONTINUOUS.md`; implement resource estimates, no-mirror page layout, and lifecycle through the C2 policy/arena interfaces rather than another scheduler. |
+| IKV-C1 through IKV-C7 | Continue under `QWEN38-INT8-KV-CONTINUOUS.md`; implement the dense-INT8 `KVCacheBackend` pool plan, storage view, kernels, claims, and conformance tests rather than another scheduler. |
 | Sampled/general historical prefix reuse | C2-4 after deterministic dense arena/cache ownership is proven. |
 | Long-context pressure and graph invalidation | C2-3 and C2-6. |
 | Route-cap follow-up / KV-budget admission | Replaced by C2-2 and C2-3; physical route widths cease to be primary admission caps. |
 | Prefill co-admission | C2-5 token-budget rounds. |
-| DMS/KV tier movement | C2-7 plus `KVCACHE.md`; DMS is a policy, not a new loop. |
+| DMS/KV tier movement | C2-7/C2-8 plus `KVCACHE.md`; DMS is a topology/backend composition, not a new loop. |
 | MTP/DFlash verify/commit/scatter | Keep as peer work classes in the C2 scheduler under `NATIVE_SPEC_CYCLE.md`. |
 | gfx1100 PARO c4/c8 owner and broader GGUF/PARO/quant coverage | Migrate each runner after C2-1/C2-3, preserving its existing direct correctness/profiler gate. |
 | Tensor parallel | Later replica/shard integration under `TENSOR_PARALLEL.md`; each replica/shard group still exposes one engine/KV owner. |
@@ -985,9 +1260,19 @@ oracle in `CONCURRENCY.md` and retained benchmark artifacts.
 
 ## Guardrails
 
-- No `if backend == ...` or `if quant == ...` in engine, scheduler, or model
-  dispatch. Register capabilities and policy factories.
-- `KVLiveSpans` remains the only attention/KV-write ABI.
+- No `if backend == ...`, `if quant == ...`, `if kv_dtype == ...`, or codec-key
+  switch in engine, scheduler, or model dispatch. Register backend factories,
+  capabilities, storage views, and kernel bundles.
+- `KVLiveSpans` remains the mandatory attention/KV-write liveness ABI; new
+  formats add registered `KVStorageView` planes, not scalar shortcuts or
+  quantizer-specific scheduler fields.
+- The resource ledger never computes codec bytes from dtype/token count; the
+  resolved backend submits named claims and deltas for all planes.
+- A KV backend may not own a request queue, output collector, scheduling loop,
+  or hidden allocation path.
+- One active backend per loaded replica is the initial production rule. Backend
+  replacement drains/transcodes leases and invalidates incompatible snapshots;
+  it never reinterprets live bytes.
 - Fused kernels keep numerically equivalent unfused fallbacks.
 - Canonical KV mutates only through scheduler-owned commit/rollback points.
 - Never call a per-row complete model/session loop and label it native c=N.
@@ -1011,9 +1296,12 @@ oracle in `CONCURRENCY.md` and retained benchmark artifacts.
 | Freed resident slot is not refillable | Inspect delayed KV/model refs and admission credits; frontend response formatting cannot own backend resources. |
 | Width 9/17 collapses | Inspect route-cap leakage, group planning, repeated prefill, graph rebuild, and workspace serialization. |
 | Pool has free bytes but request cannot fit | Report fragmentation/largest extent; compact safely or use page indirection, never hide the failure. |
-| Estimated fit reaches HIP OOM | Resource estimator/reserve bug; add the missing resource and fail admission earlier. |
+| Estimated fit reaches HIP OOM | Backend claim/pool plan or whole-device reserve bug; add the missing plane/workspace and fail admission earlier. |
 | Prefix hit changes output/state | Invalidate cache entry, capture the first divergent page/layer, and add a COW/key-generation fixture. |
 | DMS shared prefix diverges | Disable DMS prefix reuse; private ranges are canonical until overlay/snapshot semantics are proven. |
+| New KV codec requires scheduler/HTTP branching | Reject the integration; extend the generic backend/claim/storage-view contract or declare the composition unsupported. |
+| One codec plane leaks or aliases after cancellation/demotion | Reject backend conformance; quarantine that layout and add operation-ID conservation plus concurrent slot-reuse fixtures. |
+| Backend replacement reuses incompatible prefix/graph state | Treat as a fingerprint/generation bug; invalidate and drain rather than transcode implicitly. |
 | Slow client stalls GPU | Cancel only its collector/request; engine output routing must be non-blocking. |
 | Cancellation harms neighbor | Reject lifecycle gate and locate mutation outside request-owned commit. |
 | Graph sees stale page/range | Disable that bucket, increment arena generation, and require stable metadata indirection before replay. |
@@ -1021,12 +1309,13 @@ oracle in `CONCURRENCY.md` and retained benchmark artifacts.
 
 ## Definition of done
 
-Generation 2 is complete for a model/backend/KV-policy combination only when:
+Generation 2 is complete for a model/hardware/KV-cache-backend combination only
+when:
 
 - [ ] one engine service owns all blocking, SSE, and library child requests;
 - [ ] independent terminal publication/reclaim removes the head-of-line barrier;
-- [ ] one complete resource ledger governs atomic admission and pressure;
-- [ ] all dense requests share one global device page arena;
+- [ ] one format-neutral resource ledger governs atomic admission and pressure;
+- [ ] all compatible requests share one backend-declared global pool set;
 - [ ] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
       evictable;
 - [ ] logical resident concurrency is independent of physical kernel width;
@@ -1034,9 +1323,14 @@ Generation 2 is complete for a model/backend/KV-policy combination only when:
 - [ ] c1 retains its direct route and c=N beats honest old/serial baselines under
       declared SLOs;
 - [ ] graph, pool, state, collectors, and completion ownership drain cleanly;
+- [ ] the common conformance suite passes for dense BF16 and a format-distinct
+      compact backend without scheduler/frontend forks;
+- [ ] replacing topology/codec/tier requires only a registered backend,
+      artifacts, pool/storage plans, and kernels—not a new concurrency path;
 - [ ] documentation, artifacts, and telemetry disclose exact routes and memory.
 
 DMS is complete only after the same list passes with compact allocator-visible
 storage, DMS checkpoint quality gates, per-head live-span accounting, and no
-dense shadow. Until then, dense global paging is the canonical Generation-2 KV
-path and DMS prefix sharing remains off.
+dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
+reuse the same engine and backend contract. Until then, dense global paging is
+the canonical Generation-2 KV path and DMS prefix sharing remains off.

@@ -191,7 +191,7 @@ This is why we can defer multi-GPU without architectural risk. The kernel layer 
 
 ## Tiered Memory & Offloading
 
-hipEngine treats memory as a hierarchy of tiers with async migration, not a single GPU buffer. This enables running models and contexts far exceeding single-GPU memory without kernel changes.
+hipEngine treats memory as a hierarchy of tiers with async migration, not a single GPU buffer. This can run models and contexts beyond single-GPU memory without changing request lifecycle or scheduling. Hot/cold codecs may still require registered transform, restore, or attention kernels; “tiering” is not permission to hide format work.
 
 ### TieredTensor Abstraction
 
@@ -223,23 +223,16 @@ class TieredTensor:
 ### KV Cache: 3-Layer GPU-CPU-Disk (ktransformers-style)
 
 ```python
-# hipengine/kvcache/tiered_policy.py
-class TieredKVPolicy(KVPolicy):
-    def __init__(self, 
-                 device_budget: int,      # blocks on GPU
-                 host_budget: int,        # blocks in pinned CPU RAM
-                 disk_path: Path | None,  # SSD spillover
-                 compression: str | None):  # "fp16", "int8", "q4"
-        ...
-    
-    def evict(self, pressure_tokens: int) -> list[BlockRange]:
-        # Device → Host (compress) → Disk
-        # Uses per-head/layer DMS importance scores
-        ...
-    
-    def prefetch(self, block_ids: list[int], stream):
-        # Async device←host←disk for upcoming decode
-        ...
+# hipengine/kvcache/tiering.py
+class KVColdTier(Protocol):
+    """Optional component of one resolved KVCacheBackend."""
+
+    def plan_pools(self, hot_spec: KVBackendSpec) -> KVPoolPlan: ...
+    def estimate_store(self, snapshot: KVSnapshotHandle) -> ResourceClaimSet: ...
+    def store(self, snapshot: KVSnapshotHandle) -> MaintenanceWork: ...
+    def estimate_restore(self, object_id: str) -> ResourceClaimSet: ...
+    def restore(self, object_id: str, hot_backend: KVCacheBackend) -> MaintenanceWork: ...
+    def evict(self, pressure: ResourceClaimSet) -> list[str]: ...
 ```
 
 | Tier | Latency | Bandwidth | Use Case |
@@ -327,23 +320,30 @@ class TieredExpertManager:
         return combine(out_device, out_host)
 ```
 
-### Integration with KVPolicy
+### Integration with `KVCacheBackend`
 
 ```python
-# Usage: pick your memory/performance tradeoff
-policy = KVPolicy.device_only()              # 24 GiB limit, fastest
-policy = KVPolicy.tiered(                     # Balanced
-    device_budget=4096, host_budget=16384,
-    disk_path="/mnt/kvcache", compression="int8")
-policy = KVPolicy.kvtc_offload(                # Aggressive offloading
-    host_budget=8*1024**3, disk_path="/mnt/kvcache",
-    prefetch_depth=2)
-policy = KVPolicy.dms_per_head()               # Smart eviction
+# Registry factories validate complete compositions before engine startup.
+backend = KVBackendRegistry.resolve(
+    topology="paged_dense", hot_codec="bf16", tier="device_only")
+backend = KVBackendRegistry.resolve(
+    topology="paged_dense", hot_codec="int8_per_token_head", tier="host_lru")
+backend = KVBackendRegistry.resolve(
+    topology="dms_compact", hot_codec="fp8", tier="kvtc_cold")
 ```
 
-### Why No Kernel Changes
+One resolved composition owns one global hot pool set plus optional cold pools.
+DMS is a retention topology; KVTC is a cold codec. Neither owns a second
+scheduler.
 
-The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the active HIP/CUDA device. The host ensures tensors are on the right tier before calling kernels. Async prefetch hides latency. This is **memory management, not math**.
+### Why No Scheduler Changes
+
+The kernel layer sees raw device pointers through the hot backend's
+`KVStorageView`. The common scheduler reserves transfer/restore claims and
+schedules maintenance work before a request becomes ready. Lossless byte
+migration may reuse the same attention kernels; compression, reconstruction,
+or mixed-tier attention requires separately registered codec kernels. Async
+prefetch can hide latency, but promotion requires measured TTFT/ITL behavior.
 
 ### Offloading Roadmap (LoC)
 
@@ -389,7 +389,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 ├─────────────────────────────────────────────────────────────────┤
 │  DISPATCH (~700 new + ~10,900 adapted, Python)                   │
 │  • Scheduler        — chunked prefill, decode batching           │
-│  • Block Manager    — paged KV with pluggable KVPolicy           │
+│  • KV Pool/Ledger   — backend-declared global pools + claims     │
 │  • Prefix Cache     — RadixCache trie (default) or prefix_lru    │
 │  • Fusion Planner   — op chain → kernel plan, prefers fused      │
 │  • Model Plugin     — Qwen3.5, Gemma 4, sansho, Llama            │
@@ -473,12 +473,13 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 - **Batch-shaped runtime ABI.** Hidden/logit buffers are `[C, hidden]` or `[rows, hidden]`; token ids, positions, context lengths, finish flags, and active masks are `[C]`; per-layer state is indexed by physical batch row plus stable request id. New scalar-only host state is a design bug unless it is explicitly a test wrapper.
 - **Stable request identity is separate from physical slots.** The scheduler owns `request_id -> slot` and `slot -> request_id` maps, can compact/reorder slots between graph launches, and passes row maps to kernels whose routed lanes are not simply `row == request`.
-- **Continuous batching is the scheduler contract.** Prefill chunks, decode steps, and speculative verification steps are separate work classes sharing the same active-request table, KV allocator, sampler, and completion/reclaim path.
-- **`KVLiveSpans` is the only attention/KV-write ABI.** Dense paged KV, DMS/H2O/SnapKV, c>1 decode, and speculative verification all pass per-sequence spans rather than scalar `(block_table, context_len)` tuples.
+- **Continuous batching is the scheduler contract.** Prefill chunks, decode steps, and speculative verification steps are separate work classes sharing the same active-request table, resolved KV-cache backend, sampler, and completion/reclaim path.
+- **KV formats do not own concurrency.** Retention topology, hot codec/layout, and cold tiering resolve to a `KVCacheBackend` that supplies pool plans, atomic resource claims/deltas, storage views, and kernel capabilities. BF16, INT8, DMS, and future formats never add request queues or scheduler branches.
+- **`KVLiveSpans` is the mandatory attention/KV-write liveness ABI.** Dense paged KV, DMS/H2O/SnapKV, c>1 decode, and speculative verification all pass per-sequence spans rather than scalar `(block_table, context_len)` tuples; a registered `KVStorageView` supplies format planes without leaking codec metadata into the scheduler.
 - **KV mutation is transactional.** Canonical KV is changed only through scheduler-owned commit points. Speculative draft/verify writes go to scratch pages or an append journal and are committed by accepted-token count, then rolled back/discarded for rejected candidates.
 - **Draft/verify rows are first-class.** MTP, EAGLE3, DFlash, Medusa, and Lookahead all produce `DraftBatch` metadata: `request_id`, candidate token(s), parent position, draft depth, optional tree parent, and active mask. Verification kernels consume that metadata instead of assuming a linear c=1 chain.
 - **Graph capture buckets include shape, not just batch size.** Buckets are keyed by active `C`, context/page bucket, prefill/decode/verify mode, draft length or tree shape, active-mask density, top-k/experts, and graph-steps-per-replay.
-- **Dispatch remains plugin-based.** c-aware or specdec-aware behavior registers new model/speculative/layer/kernel variants; engine code must not grow `if backend == ...`, `if quant == ...`, or one-off `if spec_method == ...` hot-path branches.
+- **Dispatch remains plugin-based.** c-aware, KV-format-aware, or specdec-aware behavior registers new backend/model/speculative/layer/kernel variants; engine code must not grow `if backend == ...`, `if quant == ...`, `if kv_dtype == ...`, or one-off `if spec_method == ...` hot-path branches.
 
 #### Next campaign: artifact-scoped compact INT8 KV continuous batching
 
@@ -525,7 +526,7 @@ Why the design is better positioned:
   benchmark aggregation counts one timing owner per batch.
 - The hot path owns raw HIP pointers and `hipGraph` replay directly instead of depending on torch tensors or PyTorch graph wrappers.
 - Many wrappers already expose `tokens`, `rows`, or row-shaped grids, so partial batching can be tested without changing the public API.
-- `KVLiveSpans` and `KVPolicy.batch_spans(...)` are intended to represent per-sequence KV state rather than a single scalar `(block_table, context_len)` pair.
+- `KVLiveSpans` plus a registered `KVStorageView` represent per-sequence K/V liveness and format planes rather than a single scalar `(block_table, context_len)` pair; `KVCacheBackend.prepare(...)` builds the batch view.
 - The kernel registry can add c-specific variants such as `(layer="selected_pack8_gemv", variant="batch8")` or `(layer="paged_attn_decode", variant="gqa_batch")` without engine-wide backend/quant branches.
 - Decode graph capture is already framed as shape buckets rather than one global graph.
 - Model plugins can advertise optional speculative heads, while speculative methods live under their own plugin boundary instead of forking the engine.
@@ -691,7 +692,7 @@ The key distinction is that many current "batched" kernels are row-parallel GEMV
 #### Implementation plan
 
 1. **Request and batch-state containers.** Add `RequestState` plus `ResidentBatchSession` (or equivalent) with `[C, hidden]` buffers, device token ids, per-request positions/context lengths, active masks, finish flags, per-layer linear-attention recurrent/conv state, and per-request/per-layer full-attention KV spans.
-2. **Continuous-batching scheduler.** Add admission, chunked prefill, decode-step batching, slot compaction, sampler/output routing, and reclaim around `KVPolicy.batch_spans(...)`. The scheduler owns physical slots and stable request ids; kernels only see row metadata.
+2. **Continuous-batching scheduler.** Add admission, chunked prefill, decode-step batching, slot compaction, sampler/output routing, and reclaim around `KVCacheBackend` claims/leases/batch views. The scheduler owns physical slots and stable request IDs; kernels see row and registered storage metadata.
 3. **Correctness harness first.** For fixed prompts and greedy sampling, compare c=2/4/8 batch output against independent c=1 runs. Require finite logits, matching generated ids for deterministic fixtures, and per-layer state/KV bounds checks before any perf claim.
 4. **Transactional KV hooks.** Extend the KV policy contract with scratch/journal allocation and `commit(request_id, accepted_tokens)` / `rollback(request_id)` semantics before speculative verification writes can touch canonical KV.
 5. **Attention batch kernels.** Add batched paged GQA decode and KV append variants with a batch grid dimension and per-sequence span metadata. Uniform paged KV is first; DMS/variable spans reuse the same public ABI later.
@@ -1061,16 +1062,23 @@ No engine, dispatch, or quant changes.
 
 Detailed INT8-KV and FastDMS-derived compact-DMS delivery plan: [docs/KVCACHE.md](KVCACHE.md).
 
-KV cache has **two orthogonal axes**, plus the standard block-manager concerns. Designing for both from day 0 is the specific lesson from `~/FastDMS` — integrating DMS into vLLM is "major surgery" ([FastDMS README](/home/lhl/FastDMS/README.md)) precisely because vLLM's KV pool assumes fixed-page uniform-per-sequence blocks. hipEngine avoids that trap by designing the interface around per-(seq, layer, head) live spans from the start, even if the default policy has uniform spans.
+KV cache has **three independently modelled concerns**, plus the standard
+block-manager concerns. Designing for all three from day 0 is the specific
+lesson from `~/FastDMS` and `~/kvcache-quantization-research/`: integrating DMS
+into a fixed-page scheduler is major surgery, while treating every low-bit
+layout as one `dtype` toggle fails for multi-plane and cross-layer formats. The
+normative scheduler/backend boundary is
+[`CONCURRENCY2.md`](CONCURRENCY2.md#swappable-kv-cache-backend-contract).
 
-| Axis | What varies | Examples |
+| Concern | What varies | Examples |
 |------|-------------|----------|
-| **Eviction / compaction** | How live spans change over time | fixed-page (standard paged KV); sliding-window; attention-sink + sliding (StreamingLLM); DMS per-head learned eviction; H2O heavy-hitter; SnapKV prompt-time pruning |
-| **Storage dtype** | KV precision | `bf16`, `fp16`, `fp8_e4m3`, `int8_per_channel`, `int4_packed`, `turboquant_4bit`, `higgs_4bit`, `aqua_kv` (cross-layer predicted residual) |
+| **Retention topology** | How live spans change over time | fixed-page (standard paged KV); sliding-window; attention-sink + sliding (StreamingLLM); DMS per-head learned eviction; H2O heavy-hitter; SnapKV prompt-time pruning |
+| **Hot codec/layout pipeline** | How active K/V and its metadata are represented and reconstructed | `bf16`, `fp8_e4m3`, `int8_per_token_head`, `int4_packed`, TurboQuant/HIGGS codebooks, AQUA cross-layer predicted residuals, OSCAR-like BF16+INT2 regions |
+| **Tier/cold codec** | How inactive/reusable K/V is offloaded and restored | device-only, host/NVMe tiers, KVTC-style transform/entropy coding |
 
 #### `KVLiveSpans` — the fundamental kernel interface
 
-Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it. `num_seqs` is intentionally a row count: it can mean active decode requests (`C`), prefill chunks, or speculative verification rows (`V`). Stable request identity remains scheduler metadata, not an implicit row index.
+Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it. `num_seqs` is intentionally a row count: it can mean active decode requests (`C`), prefill chunks, or speculative verification rows (`V`). Stable request identity remains scheduler metadata, not an implicit row index. The liveness object references a registered `KVStorageView`; quantizer planes and reconstruction rules do not become scheduler fields.
 
 ```python
 # hipengine/kvcache/spans.py
@@ -1090,64 +1098,71 @@ class KVLiveSpans:
     request_ids:     Tensor | None   # [num_seqs] int64 — stable scheduler ids for row ownership
     row_positions:   Tensor | None   # [num_seqs] int32 — decode/verify query or write positions
     span_role:       str             # "prefill", "decode", "verify_chain", "verify_tree"
-    storage_dtype:   DType           # dtype of the K/V arena (bf16, fp8, int4, ...)
+    storage_view:    KVStorageView   # registered layout key + stable payload/metadata planes
 ```
 
-#### `KVPolicy` protocol
+#### `KVCacheBackend` protocol
+
+Generation 2 resolves one validated topology+hot-codec+tier composition per
+loaded model replica. The scheduler receives resource claims and storage views;
+it never branches on dtype or retention mode.
 
 ```python
-class KVPolicy(Protocol):
-    spans_mode: str                  # "uniform", "per_head_variable"
-    storage_dtype: DType
+class KVCacheBackend(Protocol):
+    spec: KVBackendSpec
 
-    def allocate(self, seq: Sequence, prefill_len: int, decode_budget: int) -> KVReservation: ...
-    def admission_cap(self, seq: Sequence) -> int:
-        """Token budget used by the scheduler — compact tokens for DMS,
-        dense page-equivalent for fixed-page."""
-    def prefill_spans(self, seq: Sequence) -> KVLiveSpans: ...
-    def decode_step(self, seqs: list[Sequence],
-                    new_k: Tensor, new_v: Tensor, q: Tensor | None) -> None:
-        """Store committed decode K/V. q is passed for policies that need
-        query-conditional eviction (DMS uses the last query channel as the
-        eviction signal)."""
-    def batch_spans(self, batch: list[Sequence], *, role: str = "decode") -> KVLiveSpans: ...
-    def begin_transaction(self, seqs: list[Sequence], draft: DraftBatch) -> KVTransaction: ...
-    def commit(self, txn: KVTransaction, accepted_counts: Tensor) -> None: ...
-    def rollback(self, txn: KVTransaction) -> None: ...
-    def reclaim(self, seq: Sequence) -> None: ...
-
-# Built-in policies (Phase 0/2)
-policy = KVPolicy.paged_bf16()        # fixed pages, BF16, the nano-vllm default
-policy = KVPolicy.paged_fp8()         # fixed pages, FP8 KV (works on any GPU via software)
-policy = KVPolicy.radix_cache()       # prefix-sharing trie, BF16
-policy = KVPolicy.sliding_sink(sink=4, window=1024)  # StreamingLLM
-
-# Phase 4 (DMS support)
-policy = KVPolicy.dms_fp8(            # FastDMS compact default
-    retention_mode="dms",
-    storage_dtype="fp8_e4m3")
-policy = KVPolicy.dms_int4_shadow()   # FastDMS B46/B25 storage-for-speed profile
-
-# Phase 5+ (research)
-policy = KVPolicy.h2o(heavy_budget=256)
-policy = KVPolicy.snapkv(compression=8)
-policy = KVPolicy.aqua_kv(higgs_bits=4)  # DMS + AQUA + HIGGS (sansho's 25.6x stack)
+    def plan_pools(self, load_plan: DeviceLoadPlan) -> KVPoolPlan: ...
+    def estimate(self, request, prefix, stage) -> ResourceClaimSet: ...
+    def reserve(self, claims: ResourceClaimSet) -> KVLease: ...
+    def prepare(self, work_item) -> KVBatchView: ...
+    def begin_transaction(self, rows, draft) -> KVTransaction: ...
+    def commit(self, operation, result) -> ResourceDelta: ...
+    def rollback(self, operation) -> ResourceDelta: ...
+    def reclaim(self, lease) -> ResourceDelta: ...
+    def prefix_lookup(self, tokens) -> PrefixMatch: ...
+    def maintenance(self, budget) -> list[MaintenanceWork]: ...
 ```
 
-**Scheduler admission** queries `KVPolicy.admission_cap()` per sequence. Fixed-page policies return `num_pages * block_size - current_usage`. DMS returns the per-(layer,head) `range_capacity - live_counts` minimum across all layers/heads. The scheduler doesn't know which policy it's talking to.
+`ResourceClaimSet` atomically accounts named persistent planes, resident
+metadata, prefill/attention/maintenance workspace, transactions, graph slabs,
+and whole-device reserve. `KVBatchView` combines `KVLiveSpans`, a registered
+`KVStorageView`, and the matching kernel bundle. The existing
+`KVPolicy`/`FixedPagedKVPolicy` is a compatibility adapter while C2 lands; scalar
+`admission_cap()` is not the final scheduler contract.
 
-**Attention kernels** are registered under a `layer` key that matches the span mode: `paged_attn_decode` for uniform, `compact_attn_decode` for per-head-variable (which DMS uses). The kernel registry naturally routes.
+Example resolved compositions include `paged_dense+bf16`,
+`paged_dense+int8_per_token_head`, `sliding_sink+bf16`, `dms_compact+bf16`,
+`dms_compact+fp8`, and later `dms_compact+aqua_higgs`. KVTC is a cold tier codec
+that restores into one of those hot backends, not an attention dtype. Registry
+factories reject unsupported combinations before engine startup.
 
-#### Why this shape avoids the vLLM-DMS pain
+**Scheduler admission** atomically reserves the backend-produced claim vector.
+It does not calculate page bytes, scales, codebooks, protected BF16 windows,
+predictor state, compact live-token budgets, or tier-transfer scratch. Commit,
+rollback, DMS expiry, mixed-tier demotion, and reclaim return mechanically
+conserved resource deltas.
 
-The FastDMS README lists seven subsystems that a DMS port to vLLM has to change (PagedAttention memory pool, prefill kernel, decode kernel, attention scoring, scheduler/admission, prefix caching, continuous batching). hipEngine pays that design cost once, up front, by making `KVLiveSpans` + `KVPolicy.admission_cap()` the fundamental contract. Adding DMS later is **one new KVPolicy subclass** (`DMSKVPolicy`) plus **three new HIP kernels** (`dms_rope_store_compact_decode`, `compact_decode_grouped_splitk`, `streaming_pack_scatter`) ported from the `~/FastDMS` Triton reference. No engine rewrite.
+**Attention kernels** are registered under the exact topology/layout/kernel
+bundle and consume `KVLiveSpans` plus stable storage-plane views. Execution rows
+batch only when their complete compatibility keys match. The kernel registry
+naturally routes without engine-wide format branches.
+
+#### Why this shape avoids the vLLM-DMS and v1-INT8 pain
+
+FastDMS identifies memory pool, prefill, decode, attention, admission, prefix,
+and continuous-batching changes for a DMS port. The local quantization research
+adds multi-plane HIGGS/TurboQuant, heterogeneous cross-layer AQUA, mixed
+BF16+INT2 demotion, and cold KVTC requirements. hipEngine pays the host design
+cost once through `KVCacheBackend` claims/pools plus `KVLiveSpans` storage views.
+Adding a format still requires real allocator, codec, and kernel work, but not a
+new queue, scheduler, output path, cancellation path, or resident lifecycle.
 
 
 ## Advanced Features Roadmap
 
 ### Speculative Decoding (SpecDec)
 
-SpecDec is planned as a scheduler + plugin feature that reuses the same target-model batch runner, KV policy, and kernel registry described in the c>1 readiness section. Drafting changes the work shape; it must not fork the engine.
+SpecDec is planned as a scheduler + plugin feature that reuses the same target-model batch runner, KV-cache backend, and kernel registry described in the c>1 readiness section. Drafting changes the work shape; it must not fork the engine.
 
 | Draft Type | Status | Integration shape |
 |------------|--------|-------------------|
@@ -1181,11 +1196,14 @@ Device (24 GiB) → Host (64 GiB) → NVMe/SATA
      (evicted to disk)
 ```
 
-The `KVPolicy.kvtc_offload()` plugin manages:
-- Which blocks stay device-resident
-- Which blocks are pinned host-resident (fast prefetch)
-- Which blocks are compressed before offloading
-- Prefetch scheduling for decode-time block retrieval
+A KV-cache backend's optional cold-tier capability manages:
+- which backend snapshot handles stay device-resident;
+- which objects are pinned host-resident for restore;
+- which objects are encoded by KVTC or another cold codec;
+- restore/prefetch maintenance work and its resource claims.
+
+The common EngineService still schedules requests. Tier code may not own a
+parallel request lifecycle or block due decode work.
 
 ### RadixCache vs. vLLM Prefix Caching
 
@@ -1197,7 +1215,7 @@ The `KVPolicy.kvtc_offload()` plugin manages:
 | Eviction | LRU on blocks | LRU on trie nodes (finer-grained) |
 | Overhead | Lower | Slightly higher CPU, better hit rate |
 
-hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn chat and API serving. vLLM-style is available as `KVPolicy.prefix_lru()`.
+hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn chat and API serving. Each resolved KV backend declares whether radix entries hold immutable pages, snapshot overlays, or are unsupported; incompatible backend/artifact fingerprints never share physical state.
 
 ### DMS Support Plan (and why it shapes Phase-0 design)
 
@@ -1224,26 +1242,31 @@ From `~/FastDMS/README.md`, a DMS port touches seven vLLM subsystems:
 | hipEngine design choice | Why it helps DMS |
 |---|---|
 | `KVLiveSpans` = `(base_offsets, live_counts, token_positions, evict_mask)` as the kernel contract | DMS needs per-(seq, layer, head) variable spans. Dense policies fill uniformly; DMS fills variably. Same kernel ABI. |
-| `KVPolicy.admission_cap(seq)` as the scheduler's unit | Fixed-page returns page-equivalent; DMS returns compact-token budget. Scheduler doesn't care which. |
+| `KVCacheBackend.estimate()` returns atomic `ResourceClaimSet` vectors | Dense, DMS, mixed-tier, and quantized formats claim every payload/metadata/workspace plane without scheduler formulas. |
 | Fusion planner with chain-matching (not hardcoded ops) | DMS needs fused `rotate + dms_decide + compact_store + decode` kernels. These register as fused composites for `(quant, layer="rotate+dms+store+attn"`. |
-| `storage_dtype` as a `KVPolicy` property, separate from eviction | DMS + BF16, DMS + FP8, DMS + int4-shadow, DMS + AQUA all compose. (`~/kvcache-quantization-research/` showed DMS + AQUA + HIGGS hitting 25.6× at +0.09% PPL.) |
+| Retention topology and hot codec/layout are resolved composition keys | DMS + BF16, DMS + FP8, DMS + int4/HIGGS-like, and DMS + AQUA can share topology/lifecycle code while owning different planes and kernels. (`~/kvcache-quantization-research/` showed DMS + AQUA + HIGGS hitting 25.6× at +0.09% PPL.) |
 | Model plugin accepts "DMS-trained" as a model subtype | DMS-trained checkpoints carry per-head eviction head weights (borrowed query channel, alpha scale/offset). Loader gets a `dms_config` sub-block. |
-| `KVPolicy` + Attention kernel registration under `layer="compact_attn_decode"` key | When a user picks `KVPolicy.dms_fp8()`, the dispatcher routes to compact-decode kernels. No engine-wide branches. |
+| `KVCacheBackend` storage views + registered compact attention/store bundles | A resolved `dms_compact+fp8` or later compressed composition routes without engine-wide branches. |
 
 #### Phase 4 DMS delivery
 
-With the Phase-0 groundwork, adding DMS is:
+With the Phase-0/C2 groundwork, adding DMS is:
 
-1. **One KVPolicy subclass** — `DMSKVPolicy` (~400 Python, most of it the compaction bookkeeping from `~/FastDMS/fastdms/engine/compact_kv.py` 1,850 lines → our ~400 because the `KVLiveSpans` plumbing is already there)
-2. **Three new HIP kernels** ported from `~/FastDMS` Triton reference:
+1. **One DMS topology component and backend composition** — compact
+   per-layer/head allocation, live-span bookkeeping, pool plans, claims/deltas,
+   storage views, and prefix/transaction capabilities. BF16 is qualified first;
+   compressed payload codecs replace only this composition's codec/pools/kernels.
+2. **Three new HIP kernel families** ported from `~/FastDMS` Triton reference:
    - `dms_rope_store_compact_decode` (fuses RoPE + eviction decision + compact store at decode)
    - `compact_decode_grouped_splitk` (attention over variable per-head live spans)
    - `streaming_pack_scatter` (prefill surviving-K/V pack)
-   - ~1,500 HIP total
-3. **Model-plugin extension**: `DMSRetrofitConfig` dataclass loaded from the checkpoint, wires per-head eviction heads into the attention layer
-4. **Scheduler glue**: `admission_cap()` already exists; just needs a DMS-specific calculator (~50 LoC)
+3. **Model-plugin extension**: `DMSRetrofitConfig` dataclass loaded from the checkpoint, wires per-head eviction heads into the attention layer.
+4. **No scheduler subclass or glue branch**: the common scheduler consumes the
+   DMS backend's claims, maintenance work, transactions, and resource deltas.
 
-Total DMS support: **~2,000 LoC** in Phase 4, vs a "multi-week major surgery" port inside vLLM. The Phase-0 `KVLiveSpans` design is the reason the port is this small.
+The exact LoC depends on allocator and kernel evidence; the architectural win is
+not a small estimate but the absence of a second queue, admission algorithm,
+continuous batch, output path, or cancellation lifecycle.
 
 #### What's deferred beyond DMS
 
@@ -1253,7 +1276,7 @@ Total DMS support: **~2,000 LoC** in Phase 4, vs a "multi-week major surgery" po
 | HIGGS 4-bit KV | ~50% BF16 speed in `kvcache-quantization-research/`; defer until kernel faster |
 | H2O / SnapKV heavy-hitter | Research; same `KVLiveSpans` fits; ~300 LoC policy |
 | StreamingLLM + attention sinks | Phase 3, ~200 LoC policy; no new kernels |
-| TurboQuant 4-bit KV | vLLM-compatible format; implement as `KVPolicy.turboquant_4bit()` if users need it |
+| TurboQuant 4-bit KV | Add a registered dense topology + TurboQuant codec/layout backend composition and kernel bundle if users need it; no scheduler branch |
 
 ## Project Structure
 
@@ -1282,7 +1305,7 @@ hipengine/
 │   │   ├── __init__.py
 │   │   ├── engine.py            # Forward loop, hipGraph capture+replay
 │   │   ├── scheduler.py         # Chunked prefill + decode scheduling
-│   │   ├── block_manager.py     # Paged allocation with KVPolicy
+│   │   ├── block_manager.py     # Paged backend compatibility adapter
 │   │   ├── prefix_cache.py      # RadixCache or prefix_lru
 │   │   └── fusion.py            # Op chain -> kernel plan (longest-match)
 │   ├── models/
@@ -1335,7 +1358,7 @@ hipengine/
 │   ├── kvcache/
 │   │   ├── __init__.py
 │   │   ├── base.py              # KVCache, BlockRange
-│   │   ├── policy.py            # KVPolicy interface + built-ins
+│   │   ├── policy.py            # Legacy KVPolicy adapter + backend contracts
 │   │   ├── radix.py             # RadixCache implementation
 │   │   └── offload.py           # KVTC tiered offloading (device -> host -> disk)
 │   ├── distributed/             # Multi-GPU (Phase 3+)
@@ -3906,7 +3929,7 @@ numerics waiver.
 | **0. Foundation** | Core host (scheduler, block manager, engine loop, model registry, fusion planner) | ~700 | ~0 | **~700** |
 | | Torch-free core primitives (`hipengine.core.*`: Tensor, device, memory, graph, blas, build, stream) | ~1,900 | ~0 | **~1,900** |
 | | Torch-free loading (safetensors + HF config + chat template + tokenizer glue) | ~900 | ~0 | **~900** |
-| | `KVLiveSpans` + `KVPolicy.admission_cap()` + per-head-variable-span attention kernel ABI | ~250 | ~0 | **~250** |
+| | `KVLiveSpans` + `KVStorageView` + `KVCacheBackend` claim/pool contract + per-head-variable-span attention kernel ABI | ~400 | ~0 | **~400** |
 | | Port + split nano-vllm-amd HIP kernels into `hipengine/kernels/hip_gfx1100/<family>/` | ~300 (split scaffolding) | **~17,590** (HIP) + **~1,040** (retyped bindings) | **~18,930** |
 | | Retype kernel launch wrappers from `torch::Tensor` to raw-pointer signatures | ~200 | ~1,040 | **~1,240** |
 | | Port Python dispatch wrappers from `nano-vllm-amd/nanovllm/native/qwen35/` (retyped to `hipengine.Tensor`) | ~500 | **~10,900** | **~11,400** |
@@ -3924,8 +3947,8 @@ numerics waiver.
 | | Qwen3.5 MoE hybrid model plugin (`full_attention` + `linear_attention` + `gdn` + `moe_top2`) | ~400 | ~100 | **~500** |
 | | Qwen3.6 35B-A3B perf target | ~50 | ~0 | **~50** |
 | **3. Advanced KV + Prefix + TP + more models** | RadixCache implementation | ~200 | ~0 | **~200** |
-| | Sliding-window + attention-sink `KVPolicy` (StreamingLLM) | ~200 | ~0 | **~200** |
-| | `KVPolicy.paged_fp8()` (software FP8 KV, works on any backend) | ~250 | ~0 | **~250** |
+| | Sliding-window + attention-sink topology (StreamingLLM) | ~200 | ~0 | **~200** |
+| | Paged FP8 codec/backend composition (software FP8 where qualified) | ~250 | ~0 | **~250** |
 | | Basic multi-GPU TP (rccl all-reduce via ctypes) | ~150 | ~0 | **~150** |
 | | Gemma 4 model plugin + sliding_attention kernels | ~500 | ~0 | **~500** |
 | | Llama 3 model plugin | ~200 | ~0 | **~200** |
@@ -3933,14 +3956,14 @@ numerics waiver.
 | **4. SpecDec + DMS** | `DraftModel` interface | ~50 | ~0 | **~50** |
 | | Medusa / Lookahead / MTP / DFlash paths | ~200 each | ~0 | **~800** |
 | | Scheduler speculation awareness | ~100 | ~0 | **~100** |
-| | `DMSKVPolicy` + model-plugin DMS config loader (eviction head weights) | ~500 | ~0 | **~500** |
+| | DMS topology/backend component + model-plugin DMS config loader (eviction head weights) | ~500 | ~0 | **~500** |
 | | DMS HIP kernels: `dms_rope_store_compact_decode`, `compact_decode_grouped_splitk`, `streaming_pack_scatter` | ~1,500 (HIP) | ~0 | **~1,500** |
 | **5. Advanced Features** | C++ engine-step extension (lever #2) if profiling demands | ~1,500 | ~0 | **~1,500** |
 | | CUDA backend (`kernels/cuda_sm86/`) — reuse kernel tree shape | ~500 scaffolding | **~18,630** (retyped + recompiled per-kernel porting) | **~19,130** |
 | | EXL3 / QTIP codebook kernel family (new `codebook_lut` tree, ~14 kernels) | ~300 | ~8,000 (port from ExLlamaV3) | **~8,300** |
 | | FastKron `kronecker` kernel family (compute pattern rewrite) | ~1,500 | ~0 | **~1,500** |
 | | FP8 weight quant (only on `hip_gfx1200`+ / `cuda_sm90`+; skipped on gfx1100) | ~400 | ~0 | **~400** |
-| | H2O / SnapKV `KVPolicy` plugins | ~600 | ~0 | **~600** |
+| | H2O / SnapKV topology plugins | ~600 | ~0 | **~600** |
 | | AQUA-KV cross-layer predictor (requires per-layer scalar-quant codec) | ~800 | ~0 | **~800** |
 | | Tiered offloading (host pinning, disk spill) | ~400 | ~0 | **~400** |
 | | Session save/restore (ds4-style) | ~150 | ~0 | **~150** |
@@ -3950,14 +3973,14 @@ numerics waiver.
 | | Expert Parallelism | ~250 | ~0 | **~250** |
 
 **Cumulative totals:**
-- Phase 0 (MVP): ~36,640 lines (~700 host + ~1,900 core + ~900 loading + ~250 KVLiveSpans + ~18,930 HIP+bindings + ~1,240 retype + ~11,400 dispatch + ~1,500 FA2 + ~800 cpu_reference + ~20 smoke)
-- Phase 1 (server+bench): +750 lines → **~37,390**
-- Phase 2 (quant+MoE): +2,400 lines → **~39,790** (adds GPTQ/GPTAQ/AWQ line)
-- Phase 3 (KV+prefix+TP+models): +1,950 lines → **~41,740** (adds StreamingLLM, paged_fp8)
-- Phase 4 (specdec+DMS): +2,950 lines → **~44,690** (adds DMS policy + kernels)
-- Phase 5 (advanced, incl. CUDA backend + codebook + FastKron + H2O/AQUA): +34,130 lines → **~78,820**
+- Phase 0 (MVP): ~36,790 lines (~700 host + ~1,900 core + ~900 loading + ~400 KV backend ABI + ~18,930 HIP+bindings + ~1,240 retype + ~11,400 dispatch + ~1,500 FA2 + ~800 cpu_reference + ~20 smoke)
+- Phase 1 (server+bench): +750 lines → **~37,540**
+- Phase 2 (quant+MoE): +2,400 lines → **~39,940** (adds GPTQ/GPTAQ/AWQ line)
+- Phase 3 (KV+prefix+TP+models): +1,950 lines → **~41,890** (adds StreamingLLM, paged_fp8)
+- Phase 4 (specdec+DMS): +2,950 lines → **~44,840** (adds DMS topology/backend + kernels)
+- Phase 5 (advanced, incl. CUDA backend + codebook + FastKron + H2O/AQUA): +34,130 lines → **~78,970**
 
-> **Note:** LoC is an imperfect proxy for effort. ~17,590 HIP lines + ~1,040 retyped bindings are **copied and repartitioned kernels** (known working; split + retype are mechanical and gated by `rocprofv3` + KL). ~10,900 Python dispatch lines are **adapted** — real porting work because they encode kernel-selection policy and weight layout. The torch-free core (~1,900) and loading (~900) and CPU reference (~800) are **new engineering** but ~80% straightforward and testable against the existing torch-based workspace as oracle. The FA2 prefill kernel (~1,500 HIP) and the DMS compact-decode kernels (~1,500 HIP) are the two hardest new HIP pieces. Phase-5 CUDA backend is the largest single deferred item because each of the 120 kernels needs a CUDA variant (though most are straightforward: wavefront=32, `cub::WarpReduce` instead of AMD shuffle, `wmma` instead of ROCm WMMA). **The Phase-4 DMS delivery is ~2,500 LoC total, not a multi-week surgical port**, because the Phase-0 `KVLiveSpans` + `KVPolicy.admission_cap()` interface was designed for it from day 0.
+> **Note:** LoC is an imperfect proxy for effort. ~17,590 HIP lines + ~1,040 retyped bindings are **copied and repartitioned kernels** (known working; split + retype are mechanical and gated by `rocprofv3` + KL). ~10,900 Python dispatch lines are **adapted** — real porting work because they encode kernel-selection policy and weight layout. The torch-free core (~1,900) and loading (~900) and CPU reference (~800) are **new engineering** but ~80% straightforward and testable against the existing torch-based workspace as oracle. The FA2 prefill kernel (~1,500 HIP) and the DMS compact-decode kernels (~1,500 HIP) are the two hardest new HIP pieces. Phase-5 CUDA backend is the largest single deferred item because each of the 120 kernels needs a CUDA variant (though most are straightforward: wavefront=32, `cub::WarpReduce` instead of AMD shuffle, `wmma` instead of ROCm WMMA). The Phase-4 DMS estimate remains provisional; its architectural advantage is that Phase-0/C2 `KVLiveSpans`, backend pool plans, and atomic resource claims are designed before the topology, so it does not require a second continuous-batching implementation.
 
 ## Comparison to Existing Engines
 
@@ -3974,9 +3997,9 @@ numerics waiver.
 | Library API | No | No | Bindings | No | Yes | **Primary** |
 | Benchmark harness | Internal | No | llama-bench | — | Yes | **Built-in, comparable** |
 | Speculative decode | Medusa | No | No | Yes | No | **Phase 4 (Medusa, Lookahead, MTP, EAGLE3, DFlash)** |
-| KV compression: DMS | Major surgery (per FastDMS README) | No | No | No | Yes (reference impl) | **Phase 4 via `DMSKVPolicy`; `KVLiveSpans` interface designed day-1** |
+| KV compression: DMS | Major surgery (per FastDMS README) | No | No | No | Yes (reference impl) | **Phase 4 via DMS topology/backend composition; `KVLiveSpans` and generic claims designed first** |
 | KV compression: H2O / SnapKV / sliding | Sliding (via model) | No | No | — | — | **Phase 3 sliding, Phase 5 H2O/SnapKV** |
-| KV storage dtype (orthogonal to eviction) | bf16, fp8, TurboQuant-4bit | bf16 | Various | — | bf16, fp8, int4-shadow | **Orthogonal `storage_dtype` axis on every `KVPolicy`** |
+| KV backend composition | bf16, fp8, TurboQuant-4bit | bf16 | Various | — | bf16, fp8, int4-shadow | **Retention topology + hot codec/layout + cold tier resolve to one backend; no concurrency fork** |
 | Torch-free runtime | No | No | Yes | Yes | No | **Yes** (`~100 MiB` vs `~2 GiB`) |
 | Multi-backend kernel tree | CUDA-only | CUDA-only | All (per-backend dirs) | CUDA-only | CUDA-only | **HIP + CUDA + CPU reference** |
 | Single-binary shipping | No | No | Yes | Yes | No | Via C++ engine-core extract (Phase 3+, optional) |
@@ -3998,8 +4021,8 @@ numerics waiver.
 | Build | `hipcc` / `nvcc` via `subprocess.run` + `ctypes.CDLL` + hash cache | Drop `torch.utils.cpp_extension`; 3 profiles (decode `-mcumode`, prefill WGP, baseline) |
 | Correctness oracle | `kernels/cpu_reference/` torch-free numpy | Every `layer` key has a CPU implementation; KL ≤ 0.05 / top-1 ≥ 90% gate |
 | Quantization | Plugin registry with six orthogonal axes (weight storage / activation preprocess / compute dtype / scale granularity / calibration artifact / kernel family) | Lets GPTQ, GPTAQ, AWQ, PARO-W4, W8A16 all share the `gemm_dequant` kernel family. EXL3/QTIP adds `codebook_lut` family (Phase 5). FastKron adds `kronecker` family (research). FP8 weight is backend-gated (not gfx1100). |
-| KV cache | `KVPolicy` with `KVLiveSpans` as the kernel ABI and `admission_cap()` as the scheduler unit | Makes DMS, H2O, SnapKV, StreamingLLM all drop-in policy plugins. Avoids the vLLM-DMS "major surgery" (per `~/FastDMS/README.md`). RadixCache default; others plug in. |
-| DMS support | Phase 4, ~2,500 LoC total (`DMSKVPolicy` + 3 HIP kernels + loader) | `KVLiveSpans` + `admission_cap()` designed day-1 so DMS is a policy drop, not a rewrite |
+| KV cache | `KVCacheBackend` with `KVLiveSpans` + registered `KVStorageView` as the kernel ABI and atomic `ResourceClaimSet`/delta accounting as the scheduler boundary | Makes retention topology, hot codec/layout, and cold tiering replaceable without request-lifecycle forks. Avoids both vLLM-DMS surgery and the current separate-INT8-concurrency trap. RadixCache uses backend snapshot capabilities. |
+| DMS support | Phase 4 topology/backend composition + compact HIP kernel families + loader | `KVLiveSpans`, global backend pool sets, and generic resource claims are designed before DMS so BF16/FP8/INT8 payload changes do not rewrite concurrency |
 | Server | FastAPI installed by default, launched via `hipengine serve` | Most users want the OpenAI-compatible API; server deps remain outside the torch-free inference hot path |
 | Wavefront | Wave32 default for gfx1100 HIP device code | `-mcumode` is orthogonal to wavefront size; wave64 is only an isolated experiment with explicit flags/probes/gates |
 | Native binary path | Phase 3+ (conditional on profiling) | Extract C++ engine-step extension once dispatch layer is stable; keeps Shape A as Phase 0 |
