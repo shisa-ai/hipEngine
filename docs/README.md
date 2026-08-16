@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -53,7 +53,8 @@ working on.
 
 | Document | Use it for |
 | --- | --- |
-| [`CONCURRENCY.md`](CONCURRENCY.md) | c=N serving roadmap, readiness ledger, architecture contract, and active punchlist. |
+| [`CONCURRENCY2.md`](CONCURRENCY2.md) | Active Generation-2 request lifecycle, scheduler, global KV pool/prefix cache, c1-c32, and FastDMS integration redesign. |
+| [`CONCURRENCY.md`](CONCURRENCY.md) | Legacy retained c=N kernel/resident-runner roadmap, readiness ledger, and evidence history. |
 | [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 speculative-cycle milestone glossary, ownership boundaries, current W7900/gfx1151 scorecard, and evidence index. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
 | [`AGENTIC.md`](AGENTIC.md) | Serving features and functional contract for local agent harnesses built on top of sampling/decode-state primitives. |

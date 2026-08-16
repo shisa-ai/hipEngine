@@ -7,19 +7,25 @@ Artifact/backend/target capability identity now fails closed before compact
 c>N work.
 
 This campaign turns the retained Qwen3.8 c1 capacity result into an honest,
-compact, no-BF16-mirror c>N serving route. It does **not** rebuild the resident
-scheduler. The shared GGUF owner already provides live admission, chunked work
-selection, stable request/session/KV identity, cancellation hooks, compaction,
-reclaim, request-budget-sized device-KV allocation, retryable pool rejection,
-and detailed telemetry. The missing feature is packed no-mirror residency and
-block-table-aware prefill for multiple rows, a direct row-batched INT8 decode
-consumer, complete memory admission, and artifact-scoped quality promotion.
+compact, no-BF16-mirror c>N serving route. It does **not** build a second
+scheduler. The current shared GGUF owner already provides live admission,
+chunked work selection, stable request/session/KV identity, cancellation hooks,
+compaction, reclaim, request-budget-sized device-KV allocation, retryable pool
+rejection, and detailed telemetry. Its no-mirror policy/resource work must plug
+into the active Generation-2 ownership and global-arena interfaces in
+[`CONCURRENCY2.md`](CONCURRENCY2.md) as those phases land. The missing feature is
+packed no-mirror residency and block-table-aware prefill for multiple rows, a
+direct row-batched INT8 decode consumer, complete memory admission, and
+artifact-scoped quality promotion.
 
 Related authorities:
 
 - [`PLAN.md`](PLAN.md) — architecture and registry invariants.
 - [`KVCACHE.md`](KVCACHE.md) — K1 storage, accuracy, and capacity evidence.
-- [`CONCURRENCY.md`](CONCURRENCY.md) — resident scheduler and c>N gates.
+- [`CONCURRENCY2.md`](CONCURRENCY2.md) — active scheduler, resource-ledger, and
+  global-KV ownership design.
+- [`CONCURRENCY.md`](CONCURRENCY.md) — retained legacy resident/c>N evidence
+  gates used during migration.
 - [`KERNELS.md`](KERNELS.md) — kernel catalog, lineage, and port rules.
 - [`TESTING.md`](TESTING.md) — RED/GREEN and CPU-reference gates.
 - [`BENCHMARK.md`](BENCHMARK.md) — evidence and anti-gaming contract.
