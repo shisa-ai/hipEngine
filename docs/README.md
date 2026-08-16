@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-15
+Last updated: 2026-08-16
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -12,6 +12,8 @@ working on.
 | Document | Use it for |
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
+| [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | Normative strict/production/batch-invariant contracts, exact ownership rules, numerical gates, and registry resolution policy. |
+| [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, historical-recovery, c1, and c>N/A4 campaign. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
 | [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Active cross-path gfx1151/gfx1100 PARO, GGUF, concurrency, MTP/DFlash, and HIP/Vulkan optimization ledger. |
@@ -41,7 +43,7 @@ working on.
 | --- | --- |
 | [`KERNELS.md`](KERNELS.md) | Kernel catalog, source-lineage drift workflow, Qwen/PARO path map, JIT cache gotchas, and build profiles. |
 | [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 / W7900 roofline model, occupancy rules, decision tree, and rejected hardware-level approaches. |
-| [`RELAXED.md`](RELAXED.md) | Strict/exact vs opt-in relaxed precision policy, per-kernel savings candidates, and relaxed-mode backlog. |
+| [`RELAXED.md`](RELAXED.md) | Historical relaxed-mode inventory and first changed-arithmetic kernel provenance; superseded as normative policy by `EXECUTION-PROFILES.md`. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
 | [`QUANTS.md`](QUANTS.md) | GGUF tensor-type coverage, Qwen3.5 quality cliffs, Laguna S 2.1 quant targets, hardware headroom, and BF16 K/V capacity math. |
 | [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | Active IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
@@ -84,7 +86,9 @@ working on.
   [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md), freeze the evaluator and
   generalization envelope, then seed genuinely distinct hypothesis families.
 - **Before changing math or correctness-sensitive code:** read
-  [`TESTING.md`](TESTING.md) and add or update a CPU-reference / fixture gate
+  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) and
+  [`TESTING.md`](TESTING.md), declare the applicable strict/production/
+  batch-invariant contract, and add or update a CPU-reference / fixture gate
   before relying on benchmark output.
 
 Project-wide workflow rules live in [`../AGENTS.md`](../AGENTS.md). Current

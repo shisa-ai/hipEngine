@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0 policy landing in progress**
+Status: **approved; P0 policy complete, P1 procedure alignment next**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -77,6 +77,7 @@ under semantic gates:
 | gfx1151 Laguna SWA qrow2 online attention | `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json` | 320 teacher rows, max KL `0.042924`, top-1 `98.75%`, deterministic, category-positive. |
 | gfx1151 Laguna compensated F16 WMMA SWA | `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json` | Large prefill win with compensated changed association and semantic promotion. |
 | gfx1151 Qwen3.5-0.8B cumulative semantic packet | `benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json` | 1,800 current transitions, `99.6667%` top-1, max current KL `0.005930`, repeat/state/graph gates. |
+| gfx1151 Qwen3.8 rows1 Q4 residual-Q8_1x2 DP4A | `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json` | Current retained-development/default route: natural AR `+0.785%` versus its post-control, all 120 AR/B1-B3 trajectories exact, and leaf max KL `3.66e-11`; it still lacks the new strict-teacher tail/BF16/profile-manifest packet. |
 
 These controls are not automatically certified for the new production profile.
 They seed threshold calibration and expose missing evaluator fields.
@@ -98,12 +99,12 @@ near-tie behavior without averaging away category or transition failures.
 
 ## 4. Historical candidate queue
 
-### 4.1 Re-gate first
+### 4.1 Re-certify or re-gate first
 
 | Priority | Candidate | Existing upside | Missing evidence / action |
 | --- | --- | ---: | --- |
 | P1 | Post-fix A4 production route | Old performance premise was large but invalidated by the state fix | Fresh strict/current/production performance baseline; dynamic teacher-forced logits; exact ownership and transition gates. |
-| P1 | gfx1151 Qwen3.8 c1 Q4 DP4A | About `+0.67%`; leaf KL around `1.4e-8` | Complete model/category/BF16-relative gate. |
+| P1 | Current gfx1151 Qwen3.8 c1 Q4 residual-Q8_1x2 DP4A default | Retained development evidence improves repeated AR `+0.271%..+0.534%` by shape and natural AR `+0.785%`; leaf max KL `3.66e-11` | Re-certify rather than rediscover: add strict-teacher mean/tail rows, BF16-relative evidence where available, and profile-manifest provenance. |
 | P1 | gfx1151 GGUF Q8T16 c4/c8 rowtile | About `+1.05%/+2.61%` | Dynamic composition/transition teacher-forced gate and current-route rebase. |
 | P1 | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run against current strict and calibrated tails; old max KL `0.0731` is outside the provisional ceiling. |
 | P2 | PARO c2 1024-thread attention | About `+2.4-2.6%` | Full category/state/isolation gate and current A/B. |
