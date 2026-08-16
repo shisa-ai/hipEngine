@@ -1019,20 +1019,22 @@ host-only conformance simulator/tests.
 
 ### C2-1 — independent outputs and sole engine driver
 
-- [ ] Introduce one `EngineService` command/output loop around the existing
+- [x] Introduce one `EngineService` command/output loop around the existing
       resident runner.
-- [ ] Submit every blocking/SSE/library child independently; remove static HTTP
+- [x] Submit every blocking/SSE/library child independently; remove static HTTP
       groups from model ownership.
-- [ ] Resolve/reclaim each child at terminal commit; keep only parent aggregation
+- [x] Resolve/reclaim each child at terminal commit; keep only parent aggregation
       at the API boundary.
-- [ ] Move stop holdback, timeout, disconnect, and slow-consumer handling to
+- [x] Move stop holdback, timeout, disconnect, and slow-consumer handling to
       request-owned collectors/commands.
-- [ ] Preserve a compatibility adapter for synchronous `LLM.generate()` that
+- [x] Preserve a compatibility adapter for synchronous `LLM.generate()` that
       submits children then waits, without preventing other clients from using
       the engine.
 
 Exit: the observed non-streaming head-of-line barrier is gone in host and real
-server tests; one driver owns progress and shutdown.
+server tests; one driver owns progress and shutdown. Native resident generators
+are wrapped by `hipengine/generation/engine_service.py`; non-resident generators
+retain the explicit serial compatibility adapter.
 
 ### C2-2 — generic resource ledger and concurrency separation
 

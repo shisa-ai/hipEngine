@@ -321,6 +321,12 @@ class SubmitPollTextGenerator:
         return self._inner
 
     @property
+    def canonical_token_events(self) -> bool:
+        """Whether scheduler token events are real generated-token events."""
+
+        return self._has_resident_runner
+
+    @property
     def supports_speculative_mtp(self) -> bool:
         """Whether the wrapped model exposes its out-of-band MTP route."""
 
@@ -616,9 +622,19 @@ class SubmitPollTextGenerator:
             self._unregister_submission_cancellation_locked(submission)
             return outputs
 
-    def _abort_submission(self, submission: GenerationSubmission) -> None:
+    def abort_submission(
+        self,
+        submission: GenerationSubmission,
+        *,
+        reason: str = "cancel",
+    ) -> None:
+        """Synchronously reclaim one child submission on the sole driver thread."""
+
         with self._loop_lock:
-            self._abort_submission_locked(submission, reason="cancel")
+            self._abort_submission_locked(submission, reason=str(reason))
+
+    def _abort_submission(self, submission: GenerationSubmission) -> None:
+        self.abort_submission(submission, reason="cancel")
 
     def live_loop_snapshot(self) -> dict[str, object]:
         """Return one lock-consistent scheduler plus model-runner snapshot."""

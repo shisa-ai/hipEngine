@@ -1,0 +1,446 @@
+from __future__ import annotations
+
+import asyncio
+import threading
+import time
+from dataclasses import dataclass, replace
+
+import pytest
+
+from hipengine.generation import (
+    EngineLoopEvent,
+    EngineService,
+    FinishDetails,
+    GeneratedToken,
+    GenerationCancelled,
+    GenerationOutput,
+    GenerationRequest,
+    GenerationStreamChunk,
+    GenerationSubmission,
+    SubmitPollTextGenerator,
+)
+from hipengine.server.api import SamplingParams, _GenerationBatcher
+
+
+def _request(
+    prompt: str,
+    *,
+    max_tokens: int = 8,
+    cancellation_token=None,
+) -> GenerationRequest:
+    target = int(prompt.rsplit(":", 1)[1]) if ":" in prompt else 0
+    return GenerationRequest(
+        prompts=(prompt,),
+        max_tokens=max(int(max_tokens), target),
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        cancellation_token=cancellation_token,
+    )
+
+
+@dataclass
+class _DriverState:
+    submission: GenerationSubmission
+    prompt: str
+    target_tokens: int
+    tokens: list[int]
+
+
+class _FakeSoleDriver:
+    supports_controlled_streaming = True
+    supports_stream_many = True
+    supports_speculative_mtp = False
+
+    def __init__(self) -> None:
+        self._next_request_id = 1
+        self._active: dict[int, _DriverState] = {}
+        self._outputs: dict[int, GenerationOutput] = {}
+        self.submitted_prompt_groups: list[tuple[str, ...]] = []
+        self.poll_thread_ids: set[int] = set()
+        self.release_order: list[int] = []
+        self.abort_reasons: dict[int, str] = {}
+        self.closed = False
+
+    def submit_detailed(self, request: GenerationRequest) -> GenerationSubmission:
+        assert len(request.prompts) == 1
+        prompt = str(request.prompts[0])
+        self.submitted_prompt_groups.append(tuple(str(item) for item in request.prompts))
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        target = int(prompt.rsplit(":", 1)[1]) if ":" in prompt else int(request.max_tokens)
+        submission = GenerationSubmission(
+            request_ids=(request_id,),
+            request=request,
+            max_ticks=max(4, target + 4),
+        )
+        self._active[request_id] = _DriverState(submission, prompt, target, [])
+        return submission
+
+    def poll(self, *, max_ticks: int = 1):
+        assert max_ticks == 1
+        self.poll_thread_ids.add(threading.get_ident())
+        events: list[EngineLoopEvent] = []
+        for request_id in tuple(sorted(self._active)):
+            state = self._active[request_id]
+            token_index = len(state.tokens)
+            token_id = 1000 + request_id * 100 + token_index
+            state.tokens.append(token_id)
+            finish = len(state.tokens) >= state.target_tokens
+            finish_details = None
+            if finish:
+                finish_details = (
+                    FinishDetails(reason="stop", stop_sequence=tuple(state.tokens))
+                    if state.prompt.startswith("stop:")
+                    else FinishDetails(reason="length")
+                )
+            chunk = GenerationStreamChunk(
+                text=f"{state.prompt}:{token_index}",
+                finish_details=finish_details,
+                generated_token_ids=tuple(state.tokens),
+                telemetry={"decode_state": {"row_index": 0}},
+            )
+            events.append(
+                EngineLoopEvent(
+                    kind="token",
+                    request_id=request_id,
+                    request_ids=(request_id,),
+                    token_id=token_id,
+                    stream_chunk=chunk,
+                )
+            )
+            if finish:
+                self._outputs[request_id] = GenerationOutput(
+                    text="".join(f"{state.prompt}:{index}" for index in range(state.target_tokens)),
+                    finish_details=finish_details,
+                    generated_token_ids=tuple(state.tokens),
+                )
+                events.append(
+                    EngineLoopEvent(
+                        kind="completed",
+                        request_id=request_id,
+                        request_ids=(request_id,),
+                    )
+                )
+        return tuple(events)
+
+    def generation_complete(self, submission: GenerationSubmission) -> bool:
+        return all(request_id in self._outputs for request_id in submission.request_ids)
+
+    def take_result(self, submission: GenerationSubmission) -> list[GenerationOutput]:
+        outputs = [self._outputs.pop(request_id) for request_id in submission.request_ids]
+        for request_id in submission.request_ids:
+            self._active.pop(request_id, None)
+            self.release_order.append(request_id)
+        return outputs
+
+    def abort_submission(self, submission: GenerationSubmission, *, reason: str = "cancel") -> None:
+        for request_id in submission.request_ids:
+            self._active.pop(request_id, None)
+            self._outputs.pop(request_id, None)
+            self.abort_reasons[request_id] = str(reason)
+            self.release_order.append(request_id)
+
+    def live_loop_snapshot(self):
+        return {"active_request_ids": sorted(self._active)}
+
+    def close(self) -> None:
+        self.closed = True
+        self._active.clear()
+        self._outputs.clear()
+
+
+def test_engine_service_is_sole_driver_and_refills_before_long_neighbor_finishes() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=32, idle_wait_seconds=0.001)
+    caller_thread_id = threading.get_ident()
+    try:
+        long_handle = service.submit_child(_request("long:20"))
+        short_handle = service.submit_child(_request("short:1"))
+
+        short = short_handle.result(timeout=2.0)
+        assert short.finish_details is not None
+        assert short.finish_details.reason == "length"
+        assert long_handle.done is False
+        assert driver.release_order == [short_handle.backend_request_id]
+
+        refill_handle = service.submit_child(_request("refill:1"))
+        refill_handle.result(timeout=2.0)
+        assert long_handle.done is False
+        assert driver.release_order[:2] == [
+            short_handle.backend_request_id,
+            refill_handle.backend_request_id,
+        ]
+
+        long_handle.result(timeout=2.0)
+        assert driver.poll_thread_ids == {service.driver_thread_id}
+        assert caller_thread_id not in driver.poll_thread_ids
+    finally:
+        service.close()
+    assert driver.closed is True
+
+
+def test_engine_service_splits_parent_rows_and_preserves_public_order() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=16)
+    request = GenerationRequest(
+        prompts=("first:3", "second:1", "third:2"),
+        max_tokens=8,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        row_seeds=(11, 22, 33),
+    )
+    try:
+        outputs = service.generate_detailed(request)
+    finally:
+        service.close()
+
+    assert len(outputs) == 3
+    assert [output.generated_tokens for output in outputs] == [3, 1, 2]
+    assert driver.submitted_prompt_groups == [("first:3",), ("second:1",), ("third:2",)]
+    assert driver.release_order[0] == 2
+
+
+def test_engine_service_drives_real_submit_poll_adapter_with_independent_children() -> None:
+    class ResidentRunner:
+        capacity = 3
+
+        def __init__(self) -> None:
+            self.targets: dict[int, int] = {}
+            self.counts: dict[int, int] = {}
+            self.outputs: dict[int, GenerationOutput] = {}
+            self.reclaims: list[int] = []
+
+        def prompt_tokens(self, prompt):
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request):
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows):
+            del request
+            for request_id, prompt_row in zip(request_ids, prompt_rows, strict=True):
+                self.targets[int(request_id)] = int(prompt_row[0])
+
+        def prefill_batch(self, work, *, commit: bool):
+            assert commit is True
+
+        def decode_batch(self, work, *, commit: bool):
+            assert commit is True
+            generated = []
+            for request_id in work.request_ids:
+                rid = int(request_id)
+                count = self.counts.get(rid, 0) + 1
+                self.counts[rid] = count
+                generated.append(
+                    GeneratedToken(
+                        rid,
+                        2000 + rid * 100 + count,
+                        finished=count >= self.targets[rid],
+                        stream_chunk=GenerationStreamChunk(text=f"row{rid}:{count}"),
+                    )
+                )
+            return tuple(generated)
+
+        def compact_batch(self, moves):
+            del moves
+
+        def reclaim(self, completed):
+            rid = int(completed.request_id)
+            self.reclaims.append(rid)
+            self.outputs[rid] = GenerationOutput(
+                text=f"done:{rid}",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+
+        def has_outputs(self, request_ids):
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids):
+            return [int(request_id) for request_id in request_ids if int(request_id) not in self.outputs]
+
+        def take_outputs(self, request_ids):
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids):
+            for request_id in request_ids:
+                self.outputs.pop(int(request_id), None)
+                self.targets.pop(int(request_id), None)
+
+        def close(self):
+            pass
+
+    class Inner:
+        def __init__(self) -> None:
+            self.runner = ResidentRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 3}
+            return self.runner
+
+    inner = Inner()
+    adapter = SubmitPollTextGenerator(inner, capacity=3, prefill_chunk_size=4)
+    service = EngineService(adapter)
+    request = GenerationRequest(
+        prompts=((3,), (1,), (2,)),
+        max_tokens=8,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+    try:
+        outputs = service.generate_detailed(request)
+    finally:
+        service.close()
+
+    assert [output.generated_tokens for output in outputs] == [3, 1, 2]
+    assert inner.runner.reclaims[0] == 1
+    assert inner.runner.reclaims.index(1) < inner.runner.reclaims.index(0)
+
+
+def test_engine_service_blocking_and_streaming_share_one_driver() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=16)
+    blocking_output: list[GenerationOutput] = []
+
+    def run_blocking() -> None:
+        blocking_output.extend(service.generate_detailed(_request("blocking:12")))
+
+    thread = threading.Thread(target=run_blocking)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while not driver._active and time.monotonic() < deadline:
+            time.sleep(0.001)
+        chunks = list(service.stream_detailed(_request("stream:2")))
+        assert [chunk.text for chunk in chunks] == ["stream:2:0", "stream:2:1"]
+        assert thread.is_alive()
+        thread.join(timeout=2.0)
+        assert not thread.is_alive()
+        assert blocking_output[0].generated_tokens == 12
+        assert len(driver.poll_thread_ids) == 1
+    finally:
+        service.close()
+        thread.join(timeout=2.0)
+
+
+def test_engine_service_stop_holdback_is_owned_per_child_collector() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=8)
+    request = _request("stop:2")
+    request = replace(
+        request,
+        stop_token_sequences=((1100, 1101),),
+    )
+    try:
+        chunks = list(service.stream_detailed(request))
+    finally:
+        service.close()
+
+    assert len(chunks) == 1
+    assert chunks[0].text == ""
+    assert chunks[0].finish_details is not None
+    assert chunks[0].finish_details.reason == "stop"
+
+
+def test_engine_service_backpressure_and_cancel_are_child_scoped() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=16, stream_queue_max_chunks=1)
+    try:
+        slow = service.submit_child(_request("slow:20"), streaming=True)
+        neighbor = service.submit_child(_request("neighbor:4"))
+
+        with pytest.raises(GenerationCancelled) as overflow:
+            slow.result(timeout=2.0)
+        assert overflow.value.finish_details.budget_pressure == "client_backpressure"
+        assert neighbor.result(timeout=2.0).generated_tokens == 4
+        assert slow.backend_request_id in driver.abort_reasons
+
+        cancelled = service.submit_child(_request("cancelled:20"))
+        survivor = service.submit_child(_request("survivor:3"))
+        assert cancelled.cancel(reason="disconnect") is True
+        with pytest.raises(GenerationCancelled):
+            cancelled.result(timeout=2.0)
+        assert survivor.result(timeout=2.0).generated_tokens == 3
+    finally:
+        service.close()
+
+
+def test_engine_service_timeout_is_child_scoped_and_reclaimed() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    expiring_request = replace(
+        _request("expiring:100"),
+        deadline_at=time.perf_counter() + 0.01,
+    )
+    try:
+        expiring = service.submit_child(expiring_request)
+        survivor = service.submit_child(_request("survivor:4"))
+        with pytest.raises(GenerationCancelled) as timed_out:
+            expiring.result(timeout=2.0)
+        assert timed_out.value.finish_details.deadline_exceeded is True
+        assert survivor.result(timeout=2.0).generated_tokens == 4
+        assert driver.abort_reasons[expiring.backend_request_id] == "timeout"
+    finally:
+        service.close()
+
+
+def test_engine_service_shutdown_reclaims_active_children_and_rejects_new_work() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    active = service.submit_child(_request("active:100"))
+
+    service.close()
+
+    with pytest.raises(GenerationCancelled):
+        active.result(timeout=1.0)
+    with pytest.raises(RuntimeError, match="closed"):
+        service.submit_child(_request("late:1"))
+    assert driver.closed is True
+    assert active.backend_request_id in driver.release_order
+
+
+def test_generation_batcher_publishes_fast_independent_result_before_slow_neighbor() -> None:
+    class IndependentLLM:
+        supports_independent_generation = True
+
+        def __init__(self) -> None:
+            self.slow_started = threading.Event()
+            self.release_slow = threading.Event()
+            self.calls: list[tuple[str, ...]] = []
+
+        def generate_detailed(self, prompts, sampling_params):
+            del sampling_params
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            assert len(prompt_tuple) == 1
+            self.calls.append(prompt_tuple)
+            if prompt_tuple == ("slow",):
+                self.slow_started.set()
+                assert self.release_slow.wait(timeout=5.0)
+            return [GenerationOutput(text=f"generated:{prompt_tuple[0]}")]
+
+    async def run() -> None:
+        fake = IndependentLLM()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=2,
+        )
+        sampling = SamplingParams(max_tokens=4)
+        slow = asyncio.create_task(batcher.submit(("slow",), sampling, detailed=True))
+        fast = asyncio.create_task(batcher.submit(("fast",), sampling, detailed=True))
+
+        assert await asyncio.to_thread(fake.slow_started.wait, 2.0)
+        fast_result = await asyncio.wait_for(fast, timeout=1.0)
+        assert [output.text for output in fast_result] == ["generated:fast"]
+        assert not slow.done()
+
+        fake.release_slow.set()
+        slow_result = await asyncio.wait_for(slow, timeout=2.0)
+        assert [output.text for output in slow_result] == ["generated:slow"]
+        assert set(fake.calls) == {("slow",), ("fast",)}
+        await batcher.shutdown(grace_seconds=0.1)
+
+    asyncio.run(run())
