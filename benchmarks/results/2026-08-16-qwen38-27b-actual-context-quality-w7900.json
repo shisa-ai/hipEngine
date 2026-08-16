@@ -7,11 +7,14 @@
   "capacity_claim": true,
   "correctness_claim": true,
   "topline_eligible": false,
-  "decision": "Guard-free page-aligned execution closes the dedicated RX 7900 XTX c1 frontier at 129,024 total tokens (126 Ki, 504 pages): one natural request completes exactly at 23.962624 GiB peak with 0.021751 GiB sampled headroom and clean ownership, while the next 256-token page stalls raw startup warmup beyond 600 seconds and 130,048 tokens (127 Ki, 508 pages) returns HIP OOM. On W7900, the same pure-INT8 route passes the model-native 262,144-token c1 limit with 15.543076 GiB headroom. W7900 c2/c4/c8 all pass 8,192 tokens/request but all fail resident_prepare at 8,448 with NotImplementedError; c4 executes as two physical c2 groups and offered c8 as physical c1+c3+c4 groups, so this Qwen3.8 INT8 route is queue coalescing, not retained continuous batching. A matched W7900 BF16-vs-INT8 mixed_v1 gate at 129,024 prompt tokens and 16 teacher-forced decode steps passes with mean/max KL 0.000010379/0.000135450, 100% top-1, finite logits, all 16 full-attention layers INT8, and zero BF16 mirror bytes.",
+  "decision": "Guard-free page-aligned execution closes the dedicated RX 7900 XTX c1 frontier at 129,024 total tokens (126 Ki, 504 pages): one natural request completes exactly at 23.962624 GiB peak with 0.021751 GiB sampled headroom and clean ownership, while the next 256-token page stalls raw startup warmup beyond 600 seconds and 130,048 tokens (127 Ki, 508 pages) returns HIP OOM. On W7900, the same pure-INT8 route passes the model-native 262,144-token c1 limit with 15.543076 GiB headroom. W7900 c2/c4/c8 all pass 8,192 tokens/request but all fail resident_prepare at 8,448 with NotImplementedError; the non-streaming soak's HTTP coalescer submitted c4 as two c2 groups and offered c8 as c1+c3+c4 groups, so those rows do not test live continuous membership. A separate W7900 staggered-SSE gate at 512 prompt + 24 decode tokens qualifies the short mirrored route's resident lifecycle: the first c1 was observed decoding before c4 joined, occupancy moved 0->1->4->3->2->1->0, all four outputs exactly matched their c1 token oracles, admitted/reclaimed deltas were 4/4, and final active/occupied/refcounted ownership was zero. A matched W7900 BF16-vs-INT8 mixed_v1 gate at 129,024 prompt tokens and 16 teacher-forced decode steps passes with mean/max KL 0.000010379/0.000135450, 100% top-1, finite logits, all 16 full-attention layers INT8, and zero BF16 mirror bytes.",
   "source": {
     "xtx_frontier_measured_commit": "557d08a2d2876ec5cca22f3c64a4b965842d4af4",
     "w7900_quality_and_frontier_measured_commit": "e610a1fdeae6439e02683bbd60ad0c26a8c40c57",
-    "tracked_source_clean": true,
+    "controlled_sse_audit_measured_commit": "3ed2185da996f4375ef9f2dcb0b344d8760a89a7",
+    "frontier_tracked_source_clean": true,
+    "controlled_sse_audit_tracked_source_clean": false,
+    "controlled_sse_audit_tree_state": "measured with the engine-aware telemetry and SSE stagger-harness changes included in this logical unit",
     "backend": "hip_gfx1100",
     "target_arch": "gfx1100",
     "compiler_version_first_line": "HIP version: 7.2.53211-3d9ef42"
@@ -213,16 +216,42 @@
     "all_pass_rows_zero_final_ownership": true,
     "all_pass_rows_clean_teardown": true,
     "scheduler_evidence": {
-      "continuous_decode": false,
-      "policy": "fifo_compatible_sampling_key",
-      "interpretation": "The measured Qwen3.8 INT8 route exposes HTTP concurrency and queue coalescing, but does not replenish or reclaim live decode membership as retained continuous batching. Offered width is not physical width."
+      "request_protocol": "non_streaming_blocking",
+      "http_queue_policy": "fifo_compatible_sampling_key",
+      "raw_ready_continuous_decode": false,
+      "raw_ready_field_validity": "invalid as an engine-capability verdict: /ready called _scheduler_fairness_capability() without the loaded engine, while /v1/hipengine/capabilities used the engine-aware path",
+      "source_audit": "Qwen35GGUFBringupGenerator creates Qwen35GGUFResidentModelRunner under SubmitPollTextGenerator; the resident loop implements request admission, chunked prefill/decode selection, occupancy-adaptive physical groups, compaction, reclaim, and request-sized device-KV allocation",
+      "controlled_sse_audit": {
+        "hardware": "AMD Radeon Pro W7900, gfx1100, GPU0",
+        "shape": "512 prompt tokens + 24 decode tokens; c1/c2/c4 simultaneous SSE plus staggered c1->c4",
+        "status": "accepted_backend_packet",
+        "all_blocking_warmup_and_measured_rows_exact": true,
+        "all_simultaneous_sse_rows_exact": true,
+        "staggered_rows_exact": "4/4",
+        "join_trigger": "resident metrics observed c1 active_mask=1000 and last_work_kind=decode before releasing the other three SSE requests",
+        "join_during_observed_first_stream_decode": true,
+        "resident_overlap_before_first_completion": true,
+        "observed_active_rows": [0, 1, 4, 3, 2, 1, 0],
+        "staggered_admitted_delta": 4,
+        "staggered_reclaimed_delta": 4,
+        "final_active_rows": 0,
+        "final_occupied_slots": 0,
+        "final_refcounted_pages": 0,
+        "scheduler_metric_continuous_decode": true,
+        "diagnostic_only_sse_tok_s": {"c1": 11.974171281687939, "c2": 8.265654224086083, "c4": 10.759643768698849},
+        "raw_harness_performance_claim": true,
+        "retained_performance_claim": false,
+        "performance_exclusion": "single measured repetition with active metrics polling; retained for correctness and lifecycle only"
+      },
+      "interpretation": "The blocking capacity soak proves HTTP queue coalescing and physical call shapes only. The separate staggered controlled-SSE gate qualifies live admission, occupancy-adaptive decode, retirement, and reclaim for the <=8K mirrored INT8 route. It does not qualify cancellation, elastic pool growth/shrink, overload behavior, or compact no-mirror c>N INT8."
     }
   },
   "commands": {
     "xtx_actual_frontier_pattern": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens <tokens> --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir <dir> --output <json>",
     "w7900_accuracy": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none PYTHONPATH=. .venv/bin/python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1100 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 129024 --prompt-id mixed_v1 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kv-scale-dtype fp32 --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 129042 --require-no-bf16-mirror --expected-bf16-full-layers none --expected-int8-full-layers 0-15 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --require-cached-build --json /tmp/qwen38-27b-pure-int8-bounded-prefill-mixed-v1-126kx16-w7900-r2.json",
     "w7900_cN_frontier_pattern": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens <8192|8448> --concurrency <2|4|8> --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --hip-device 0 --drm-card card1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir <dir> --output <json>",
-    "w7900_c1_model_limit": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 262144 --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --startup-timeout-s 600 --request-timeout-s 3600 --hip-device 0 --drm-card card1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-w7900-c1-256k-model-max-r1 --output /tmp/qwen38-w7900-c1-256k-model-max-r1.json"
+    "w7900_c1_model_limit": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 262144 --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --startup-timeout-s 600 --request-timeout-s 3600 --hip-device 0 --drm-card card1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-w7900-c1-256k-model-max-r1 --output /tmp/qwen38-w7900-c1-256k-model-max-r1.json",
+    "w7900_controlled_sse_audit": "HIPENGINE_HIP_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-int8-continuous-audit --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python3 --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage int8_per_token_head --hipengine-kv-scale-dtype fp32 --hipengine-kv-scale-granularity per_token_head --gpu 0 --drm-card-index 1 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --concurrencies 1,2,4 --prompt-length 512 --decode-tokens 24 --oracle-rows 4 --warmup-runs 1 --measured-runs 1 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 1 --batch-window-ms 5 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --live-concurrency 4 --live-join-after-tokens 4 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --memory-domain vram --memory-poll-ms 20 --metrics-poll-ms 20 --work-dir /tmp/qwen38-w7900-int8-continuous-audit-r2 --json /tmp/qwen38-w7900-int8-continuous-audit-r2.json"
   },
   "raw_artifacts": [
     {"path": "/tmp/qwen38-probe-c1-120k-actual-r1.json", "sha256": "b65b94b91b464891d35c5d546951d4cd0d80a956a2dc863eba854239bf621cc0"},
@@ -238,15 +267,18 @@
     {"path": "/tmp/qwen38-w7900-c4-8k-pass-r1.json", "sha256": "f298be42888cd2de7f01f7e54d27f74e7cf90bd7115c121c4b07231c6358f0f6"},
     {"path": "/tmp/qwen38-w7900-c4-8448-fail-r1.json", "sha256": "67c0570f0cd7fd7edf3bd07f2b67ae2d6ba361ac2984c70f5af0160c0f942e5c"},
     {"path": "/tmp/qwen38-w7900-c8-8k-pass-r1.json", "sha256": "8d9febbe7ba3ae07b1e6657653eb481a35f50c952288629b87eb1b6c73bb5634"},
-    {"path": "/tmp/qwen38-w7900-c8-8448-fail-r1.json", "sha256": "fd7cf1d69fa1006edb6cba0d49e9ed3a1b4dcd8d7d0fd8a49119908534f85a16"}
+    {"path": "/tmp/qwen38-w7900-c8-8448-fail-r1.json", "sha256": "fd7cf1d69fa1006edb6cba0d49e9ed3a1b4dcd8d7d0fd8a49119908534f85a16"},
+    {"path": "/tmp/qwen38-w7900-int8-continuous-audit-r1.json", "sha256": "06ebe6774c641d98e801069b4411626911d4add5db27641f185998f805351cd8", "status": "failed_gate", "failure": "Configured zero warmups made the generic gate false, and the live helper still sent blocking requests; it proved only queue arrival before the first HTTP response, not controlled-SSE resident admission."},
+    {"path": "/tmp/qwen38-w7900-int8-continuous-audit-r2.json", "sha256": "b528fbdcd801c6e7566afd197c6a37b841971ce4a27fd2062b36f3702d0e2330", "status": "accepted_backend_packet"}
   ],
   "limitations": [
     "The XTX 129,024-token row is one natural request with only 0.021751 GiB sampled headroom; it is a measured physical ceiling, not a margin or reliability recommendation.",
     "The 129,280- and 129,536-token startup failures are bounded 600-second warmup stalls, not returned OOMs. The 130,048-token row is the first returned HIP OOM in the narrowed bracket.",
     "The 129,024/16 quality row is the explicit mixed_v1 bounded control. Complete category coverage remains at 512 and 4K; do not call the 129K row a complete long-context suite.",
     "W7900 c2/c4/c8 8K rows retain BF16 mirrors and therefore do not demonstrate compact-INT8 memory savings.",
-    "The measured Qwen3.8 INT8 server route reports continuous_decode=false and variable static queue groups; it is not vLLM/SGLang-style continuous batching.",
-    "No throughput or latency claim is made from these capacity and correctness rows."
+    "The capacity soak used non-streaming blocking requests and therefore did not test live admission/reclaim. Its /ready continuous_decode=false field was a hardcoded telemetry default, not an engine-capability verdict.",
+    "The separate 512/24 controlled-SSE gate qualifies short mirrored-INT8 live admission and reclaim only; cancellation, default elastic pool behavior, overload rejection, and compact no-mirror c>N remain untested.",
+    "No throughput or latency claim is made from these capacity, correctness, and lifecycle rows."
   ],
-  "next": "Implement and qualify direct no-mirror c>N INT8 attention under the resident model-owning loop, with stable slots, request-sized paged allocation, live admission/reclaim, chunked prefill/decode scheduling, and truthful physical-width telemetry before claiming production continuous batching for Qwen3.8 INT8."
+  "next": "Qualify cancellation, default elastic pool growth/shrink, and overload rejection on the controlled-SSE route. Then implement and qualify direct no-mirror c>N INT8 attention; the existing short mirrored path is not an INT8 memory-saving route even though its continuous admission/reclaim lifecycle now passes."
 }

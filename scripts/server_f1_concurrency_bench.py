@@ -1272,6 +1272,26 @@ def _oracle_join_delay_seconds(
     return max(0.001, float(statistics.median(delays)))
 
 
+def _live_request_function(args: argparse.Namespace):
+    return _one_stream_request if bool(args.streaming_primary) else _one_request
+
+
+def _live_admission_passes(
+    engine: str,
+    args: argparse.Namespace,
+    live: Mapping[str, Any],
+) -> bool:
+    if not bool(live.get("admission_during_first_request")):
+        return False
+    if engine != "hipengine" or not bool(args.streaming_primary):
+        return True
+    return bool(
+        live.get("request_protocol") == "streaming_sse"
+        and live.get("join_during_observed_first_stream_decode") is True
+        and live.get("resident_overlap_before_first_completion") is True
+    )
+
+
 def _run_live_admission(
     args: argparse.Namespace,
     *,
@@ -1297,10 +1317,11 @@ def _run_live_admission(
         join_after_tokens=int(args.live_join_after_tokens),
         expected_tokens=int(args.decode_tokens),
     )
+    request_function = _live_request_function(args)
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(prompts)) as pool:
         futures = [
             pool.submit(
-                _one_request,
+                request_function,
                 args,
                 engine=engine,
                 base_url=base_url,
@@ -1316,17 +1337,20 @@ def _run_live_admission(
         if engine == "hipengine":
             planned_join_at = epoch[0] + fallback_delay
             poll_seconds = max(0.005, float(args.metrics_poll_ms) / 1000.0)
+            metrics_timeout = max(0.1, poll_seconds)
             last_signature: tuple[Any, ...] | None = None
             while time.perf_counter() < planned_join_at and not futures[0].done():
                 remaining = max(0.001, planned_join_at - time.perf_counter())
                 try:
                     samples, _ = _metrics_state(
                         base_url,
-                        timeout=min(poll_seconds, remaining),
+                        timeout=min(metrics_timeout, remaining),
                     )
                 except Exception:
                     continue
                 state = _compact_poll_state(samples, at_seconds=time.perf_counter() - epoch[0])
+                state["phase"] = "before_join"
+                state["first_request_done"] = futures[0].done()
                 signature = tuple(state.get(key) for key in state if key != "at_seconds")
                 if signature != last_signature:
                     poll_events.append(state)
@@ -1357,16 +1381,57 @@ def _run_live_admission(
                 "first_request_done_before_join": futures[0].done(),
             }
         join_release.set()
+        if engine == "hipengine" and bool(args.streaming_primary):
+            while not all(future.done() for future in futures):
+                try:
+                    samples, _ = _metrics_state(base_url, timeout=metrics_timeout)
+                except Exception:
+                    continue
+                state = _compact_poll_state(samples, at_seconds=time.perf_counter() - epoch[0])
+                state["phase"] = "after_join"
+                state["first_request_done"] = futures[0].done()
+                signature = tuple(state.get(key) for key in state if key != "at_seconds")
+                if signature != last_signature:
+                    poll_events.append(state)
+                    last_signature = signature
+                time.sleep(poll_seconds)
         records = [future.result() for future in futures]
     wall = max(float(record["completed_offset_seconds"]) for record in records)
     result = _batch_summary(records, batch_wall_seconds=wall)
+    first_record = min(records, key=lambda record: int(record["request_index"]))
+    first_ttft = first_record.get("client_ttft_seconds")
+    join_at = trigger.get("at_seconds")
+    join_during_observed_stream_decode = bool(
+        request_function is _one_stream_request
+        and _is_number(first_ttft)
+        and _is_number(join_at)
+        and float(first_ttft) <= float(join_at) < float(first_record["completed_offset_seconds"])
+    )
+    overlap_observed = any(
+        _is_number(state.get("active_rows"))
+        and float(state["active_rows"]) >= 2.0
+        and state.get("first_request_done") is False
+        for state in poll_events
+    )
     result.update(
         {
             "strategy": strategy,
+            "request_protocol": (
+                "streaming_sse" if request_function is _one_stream_request else "blocking_http"
+            ),
             "oracle_timing_fallback_seconds": fallback_delay,
             "join_after_decode_tokens_target": int(args.live_join_after_tokens),
             "join_trigger": trigger,
             "observed_decode_trigger": trigger.get("source") == "observed_resident_decode",
+            "join_during_observed_first_stream_decode": join_during_observed_stream_decode,
+            "resident_overlap_before_first_completion": overlap_observed,
+            "observed_active_rows": sorted(
+                {
+                    int(float(state["active_rows"]))
+                    for state in poll_events
+                    if _is_number(state.get("active_rows"))
+                }
+            ),
             "poll_events": poll_events,
             "admission_during_first_request": not bool(trigger.get("first_request_done_before_join")),
         }
@@ -2250,7 +2315,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for row in rows
     )
     live_row = payload["rows"][str(args.live_concurrency)]
-    passed = passed and bool(live_row["live_admission"]["admission_during_first_request"])
+    passed = passed and _live_admission_passes(
+        engine,
+        args,
+        live_row["live_admission"],
+    )
     payload["passed"] = passed
     payload["performance_claim"] = passed
     payload["status"] = "accepted_backend_packet" if passed else "failed_gate"

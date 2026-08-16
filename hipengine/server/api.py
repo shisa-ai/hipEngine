@@ -4877,7 +4877,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "worker_active": generation_batcher.active(),
                 "active_requests": generation_batcher.active_requests(),
                 "max_active_requests": generation_batcher.max_active_requests(),
-                "scheduler_fairness": _scheduler_fairness_capability(),
+                "scheduler_fairness": _scheduler_fairness_capability(
+                    continuous_decode=_engine_supports_controlled_streaming(engine)
+                ),
                 "batch_window_ms": float(config.generation_batch_window_ms),
             },
             "sessions": chat_session_summary(),
@@ -7559,7 +7561,9 @@ def _render_prometheus_metrics(
         lines.append(f"# HELP {name} {help_text[name]}")
         lines.append(f"# TYPE {name} {'counter' if name in counter_names else 'gauge'}")
         lines.append(f"{name} {_format_metric_value(value)}")
-    scheduler = _scheduler_fairness_capability()
+    scheduler = _scheduler_fairness_capability(
+        continuous_decode=_engine_supports_controlled_streaming(engine)
+    )
     lines.append("# HELP hipengine_generation_scheduler_fairness_policy_info Generation scheduler fairness policy.")
     lines.append("# TYPE hipengine_generation_scheduler_fairness_policy_info gauge")
     lines.append(

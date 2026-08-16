@@ -296,10 +296,20 @@ short mirrored-route OOM but not its software boundary or scheduler limitation:
 | 4 | **8K/request** | c2 + c2 | 4/4 | 8.25K resident-prepare `NotImplementedError` | 30.684 / 14.301 GiB |
 | 8 | **8K/request** | c1 + c3 + c4 | 8/8 | 8.25K resident-prepare `NotImplementedError` | 30.707 / 14.277 GiB |
 
-For this Qwen3.8 INT8 route, readiness reports `continuous_decode=false` and
-offered width does not equal stable physical width. These are exact HTTP
-concurrency and queue-coalescing rows, **not** vLLM/SGLang-style continuous
-batching.
+This capacity soak used non-streaming blocking requests. Its c2/c4/c8 shapes
+therefore describe the compatible-sampling HTTP coalescer, not live resident
+membership; offered width does not equal one submitted physical width. The raw
+`/ready` field also reported `continuous_decode=false` because that endpoint
+used a hardcoded default rather than the loaded engine capability.
+
+A separate W7900 controlled-SSE gate at 512 prompt + 24 decode tokens qualifies
+the short mirrored route's resident lifecycle. With c1 already observed in
+decode, three more requests joined; sampled occupancy moved
+`0 -> 1 -> 4 -> 3 -> 2 -> 1 -> 0`, all four rows exactly matched independent c1
+token oracles, admitted/reclaimed deltas were `4/4`, and final
+active/occupied/refcounted ownership was zero. Cancellation, elastic-pool and
+overload gates remain open, and this does **not** turn the mirrored <=8K route
+into compact INT8 KV.
 
 Evidence:
 [`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
