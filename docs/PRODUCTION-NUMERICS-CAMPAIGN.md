@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P1 complete, P2 evaluator next**
+Status: **approved; P0-P1 complete, P2 evaluator core implemented; exact-control GPU smoke pending**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -257,8 +257,18 @@ profile-specific.
 Implement RED-first fixture schema, metrics, metadata/isolation comparator,
 profile provenance, and adapters for the primary Qwen3.6 PARO lane.
 
+Implemented 2026-08-16: the torch-free core, five JSON schemas, generic gate
+CLI, and Qwen3.6 teacher-cache adapter now cover strict-teacher tails,
+category/shape/transition scopes, exact controls, dynamic scenarios, repeats,
+isolation/composition, BF16-relative paired prompt bootstrap, task verdicts,
+and manifest/capture hashes. The adapter intentionally refuses to infer exact
+control ownership from a legacy logits cache.
+
 Exit: CPU unit tests cover metric/metadata/metamorphic failure cases; one strict
-GPU smoke reproduces existing evidence without changing kernels.
+GPU smoke reproduces existing evidence without changing kernels. The CPU exit
+is complete. The GPU smoke remains open until P3 runtime plumbing emits exact
+control telemetry and a resolved profile manifest; a logits-only smoke would
+not satisfy the approved contract.
 
 ### P3 — Runtime profiles
 
@@ -326,37 +336,21 @@ suite metric.
 
 ## 9. Artifact additions
 
-Profile-aware benchmark artifacts add:
+The implemented profile-aware artifact contract is
+`benchmarks/schemas/execution-profile-evaluation.schema.json`, with companion
+variant-manifest, external-logit-capture, actual-control-capture, and separate
+expected-control-fixture schemas in the same directory.
+`scripts/execution_profile_gate.py` validates and writes the compact artifact;
+full logits remain external and are represented by
+capture hashes.
 
-```json
-{
-  "execution_profile": "production",
-  "execution_profile_schema": 1,
-  "variant_manifest_sha256": "...",
-  "strict_manifest_sha256": "...",
-  "arithmetic_class": "T2",
-  "teacher_source": "strict",
-  "quality": {
-    "kl_mean": 0.0,
-    "kl_p95": 0.0,
-    "kl_p99": 0.0,
-    "kl_max": 0.0,
-    "top1_overall": 1.0,
-    "categories": {},
-    "rows_over_review_boundary": []
-  },
-  "control_semantics": {},
-  "determinism": {},
-  "task_quality": {},
-  "generated_id_equality": {
-    "binding": false,
-    "diagnostic": {}
-  }
-}
-```
-
-The final schema is implemented and tested in P2; this example freezes intent,
-not a Python module layout.
+The top level binds `execution_profile`, `execution_profile_schema`, selected
+and strict manifest hashes, `arithmetic_class`, and `teacher_source=strict`.
+Separate sections record quality summaries/outlier rows, exact control
+semantics, determinism, isolation, optional batch invariance, BF16-relative
+non-inferiority, task quality, binding-vs-diagnostic generated-ID equality, and
+the final automatic-admission decision. This replaces the pre-P2 illustrative
+shape rather than preserving an incompatible legacy artifact layout.
 
 ## 10. Stop conditions
 

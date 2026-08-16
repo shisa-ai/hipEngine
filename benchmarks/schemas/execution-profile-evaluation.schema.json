@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hipEngine execution-profile evaluation artifact",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "manifest": {
+      "$ref": "execution-profile-manifest.schema.json"
+    },
+    "check": {
+      "type": "object",
+      "required": ["passed"],
+      "properties": {"passed": {"type": ["boolean", "null"]}}
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "schema_version",
+    "execution_profile",
+    "execution_profile_schema",
+    "variant_manifest_sha256",
+    "strict_manifest_sha256",
+    "arithmetic_class",
+    "teacher_source",
+    "manifests",
+    "captures",
+    "scenario",
+    "quality",
+    "control_semantics",
+    "determinism",
+    "isolation",
+    "batch_invariance",
+    "bf16_noninferiority",
+    "task_quality",
+    "generated_id_equality",
+    "decision"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_execution_profile_evaluation"},
+    "schema_version": {"const": 1},
+    "execution_profile": {
+      "enum": ["strict", "production", "batch_invariant"]
+    },
+    "execution_profile_schema": {"const": 1},
+    "variant_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "strict_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "arithmetic_class": {"enum": ["T0", "T1", "T2", "T3"]},
+    "teacher_source": {"const": "strict"},
+    "manifests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate", "strict"],
+      "properties": {
+        "candidate": {"$ref": "#/$defs/manifest"},
+        "strict": {"$ref": "#/$defs/manifest"}
+      }
+    },
+    "captures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strict_sha256",
+        "candidate_sha256",
+        "repeat_sha256",
+        "isolation_sha256",
+        "batch_invariant_sha256",
+        "strict_control_fixture_sha256",
+        "candidate_control_fixture_sha256",
+        "comparison_control_fixture_sha256"
+      ],
+      "properties": {
+        "strict_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_sha256": {"$ref": "#/$defs/sha256"},
+        "repeat_sha256": {"type": "array", "items": {"$ref": "#/$defs/sha256"}},
+        "isolation_sha256": {"type": "array", "items": {"$ref": "#/$defs/sha256"}},
+        "batch_invariant_sha256": {"type": "array", "items": {"$ref": "#/$defs/sha256"}},
+        "strict_control_fixture_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_control_fixture_sha256": {"$ref": "#/$defs/sha256"},
+        "comparison_control_fixture_sha256": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "scenario": {"type": "object"},
+    "quality": {
+      "type": "object",
+      "required": [
+        "finite",
+        "top_k",
+        "thresholds",
+        "summary",
+        "by_scope",
+        "scope_failures",
+        "rows_over_review_boundary",
+        "hard_gates_passed",
+        "strict_exact_logits_and_ids",
+        "requires_outlier_review",
+        "eligible_for_automatic_admission"
+      ]
+    },
+    "control_semantics": {"$ref": "#/$defs/check"},
+    "determinism": {"$ref": "#/$defs/check"},
+    "isolation": {"$ref": "#/$defs/check"},
+    "batch_invariance": {"$ref": "#/$defs/check"},
+    "bf16_noninferiority": {"$ref": "#/$defs/check"},
+    "task_quality": {"$ref": "#/$defs/check"},
+    "generated_id_equality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding", "matches", "total", "agreement", "all_equal"],
+      "properties": {
+        "binding": {"type": "boolean"},
+        "matches": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 0},
+        "agreement": {"type": "number", "minimum": 0, "maximum": 1},
+        "all_equal": {"type": "boolean"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "eligible_for_automatic_admission",
+        "binding_gates_passed"
+      ],
+      "properties": {
+        "status": {"enum": ["passed", "requires_review", "failed"]},
+        "eligible_for_automatic_admission": {"type": "boolean"},
+        "binding_gates_passed": {"type": "boolean"}
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hipEngine execution-profile actual control capture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "scenario_id", "run_id", "controls"],
+  "properties": {
+    "kind": {"const": "hipengine_execution_profile_control_capture"},
+    "schema_version": {"const": 1},
+    "scenario_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "execution-profile-capture.schema.json#/$defs/control"
+      }
+    }
+  }
+}
