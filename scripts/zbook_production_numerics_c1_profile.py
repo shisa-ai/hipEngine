@@ -65,6 +65,42 @@ def rank_candidate_roles(
     return attributed[:limit]
 
 
+def resolve_roctx_sdk(
+    configured: Path,
+    *,
+    base_prefix: Path | None = None,
+    python_version: str | None = None,
+) -> Path:
+    """Resolve ROCTX from the project venv or its base Python environment."""
+
+    selected_base = Path(sys.base_prefix) if base_prefix is None else Path(base_prefix)
+    version = python_version or f"{sys.version_info.major}.{sys.version_info.minor}"
+    candidates = (
+        Path(configured),
+        selected_base
+        / "lib"
+        / f"python{version}"
+        / "site-packages"
+        / "_rocm_sdk_core"
+        / "lib"
+        / "librocprofiler-sdk-roctx.so.1",
+        selected_base
+        / "lib"
+        / f"python{version}"
+        / "site-packages"
+        / "_rocm_sdk_devel"
+        / "lib"
+        / "librocprofiler-sdk-roctx.so.1",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise ValueError(
+        "rocprofiler SDK ROCTX library was not found in the configured or base-Python paths: "
+        + ", ".join(str(path) for path in candidates)
+    )
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -194,7 +230,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         require_cached=True,
         compiler_file=compiler_file,
     )
-    roctx_override, roctx_dependencies = _prepare_roctx_override(Path(args.roctx_sdk))
+    resolved_roctx_sdk = resolve_roctx_sdk(Path(args.roctx_sdk))
+    roctx_override, roctx_dependencies = _prepare_roctx_override(resolved_roctx_sdk)
     profile_env = env.copy()
     ld_prefix = os.pathsep.join(
         [str(roctx_override), *(str(path) for path in roctx_dependencies)]
