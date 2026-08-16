@@ -70,6 +70,14 @@ The transient route is removed; output subdivision is not a path to the
 required **1.20305x** family speedup. Evidence:
 [`standard-Q6 c1 col8 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-standard-c1-col8-rejected.json).
 
+The changed-arithmetic QKV layout route is closed too. Moving recurrent QKV to
+planar-qmicro and consuming one Q8_1 activation improves a three-weight family
+**1.01080x**, but projects only **0.0633%** complete wall. A separately measured
+precomputed-Q8 dot proves that even perfectly free quantization through a
+hypothetical mixed Q6-QKV/Q4-gate producer reaches only **0.1262%**, still 7.9x
+below admission. No mixed runtime package is warranted. Evidence:
+[`planar-Q6 Q8 QKV rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-qkv-planar-q8-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
