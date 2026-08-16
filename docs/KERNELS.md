@@ -230,17 +230,23 @@ resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
 independently shape-qualified. Evidence:
 [`Qwen3.8 Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
-Qwen3.8-27B Q4_K_S has a gfx1151 qualification checkpoint using the same
-operation-complete Q5T16 family. Its 60 rank-2 Q5 owners consist of the 48
-existing recurrent outputs plus eight K17,408/N5,120 FFN-down, three
-K5,120/N10,240 recurrent-QKV, and one K5,120/N1,024 full-attention-V tensor;
-all own only `tiles`, with no dense-BF16 Q5 shadow. The exact
-16K/48V/128x128 GDN geometry also selects `chain_compact_peer_wave32`; other
-Q4_K_M-only file-type policies remain fail-closed. Complete-file
-materialization, 27 actual-weight operation checks, CPU-reference KL/top-1,
-and a cache-only 512/8 full-model smoke pass, while full natural AR/MTP and
-512/1K/4K publication gates remain deferred. Evidence:
-[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json).
+Qwen3.8-27B Q4_K_S is qualified on gfx1151 using the same operation-complete
+Q5T16 family. Its 60 rank-2 Q5 owners consist of the 48 existing recurrent
+outputs plus eight K17,408/N5,120 FFN-down, three K5,120/N10,240 recurrent-QKV,
+and one K5,120/N1,024 full-attention-V tensor; all own only `tiles`, with no
+dense-BF16 Q5 shadow. The exact 16K/48V/128x128 GDN geometry also selects
+`chain_compact_peer_wave32`. True AR independently transfers three exact
+Q4_K_M policies whose representation and math are unchanged: qmicro Q4
+split-weight gate+up+SiLU, Q4 down+residual (Q5 down remains unfused), and
+quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
+**12.42932 -> 13.06854 tok/s (+5.143%)** and produce **13.06854/12.88049/
+13.04100 tok/s** at 512/1K/4K, above both frozen clean llama backends at every
+shape. Natural true AR is **13.33276 tok/s**, repeat-exact across 30 requests.
+Native Q4_K_S MTP remains fail-closed for publication: B1-B3 diverge from
+scalar AR on both Japanese prompts even though every GPU acceptance decision
+matches its CPU oracle. Evidence:
+[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json) and
+[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
 
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
