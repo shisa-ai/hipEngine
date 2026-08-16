@@ -46,6 +46,10 @@ class GlobalPageLease:
     def owned_page_ids(self) -> tuple[int, ...]:
         return (*self.private_page_ids, *self.shared_page_ids)
 
+    @property
+    def logical_page_ids(self) -> tuple[int, ...]:
+        return (*self.shared_page_ids, *self.private_page_ids)
+
 
 @dataclass(slots=True)
 class _Page:
@@ -67,7 +71,11 @@ class _Page:
             return KVPageState.CACHED_EVICTABLE
         if self.credit_owner_id is not None:
             return KVPageState.RESERVED_CREDIT
-        if len(self.active_lease_ids) > 1:
+        if self.active_lease_ids and (
+            len(self.active_lease_ids) > 1
+            or self.cache_references > 0
+            or self.private_owner_id not in self.active_lease_ids
+        ):
             return KVPageState.ACTIVE_SHARED
         if self.active_lease_ids:
             return KVPageState.ACTIVE_PRIVATE
@@ -304,6 +312,32 @@ class GlobalKVPoolSet:
                 if target in page.in_flight_epochs:
                     page.in_flight_epochs.remove(target)
                     self._maybe_free(page)
+
+    def retain_cache(self, page_ids: tuple[int, ...]) -> None:
+        pages = tuple(int(page_id) for page_id in page_ids)
+        if not pages or len(pages) != len(set(pages)):
+            raise ValueError("cache page_ids must be non-empty and unique")
+        with self._lock:
+            for page_id in pages:
+                page = self._get_page(page_id)
+                if page.credit_owner_id is not None or not page.active_lease_ids:
+                    raise ValueError(f"KV page {page_id} is not active and cacheable")
+            for page_id in pages:
+                self._pages[page_id].cache_references += 1
+
+    def release_cache(self, page_ids: tuple[int, ...]) -> None:
+        pages = tuple(int(page_id) for page_id in page_ids)
+        if not pages or len(pages) != len(set(pages)):
+            raise ValueError("cache page_ids must be non-empty and unique")
+        with self._lock:
+            for page_id in pages:
+                page = self._get_page(page_id)
+                if page.cache_references <= 0:
+                    raise ValueError(f"KV page {page_id} has no cache reference")
+            for page_id in pages:
+                page = self._pages[page_id]
+                page.cache_references -= 1
+                self._maybe_free(page)
 
     def pin_session(self, lease_id: str, page_ids: tuple[int, ...]) -> None:
         with self._lock:

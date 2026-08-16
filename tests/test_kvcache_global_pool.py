@@ -156,6 +156,7 @@ def test_dense_bf16_backend_reserve_growth_view_and_reclaim_share_one_lifecycle(
     assert claims.metadata_dict() == {
         "growth_credit_pages": 1,
         "private_pages": 2,
+        "shared_page_ids": "",
     }
     assert claims.units_by_pool() == {
         "kv.k_payload.pages": 3,

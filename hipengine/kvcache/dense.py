@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import ceil
 from types import SimpleNamespace
+from collections.abc import Callable
 from typing import Any, Mapping, Sequence
 
 from hipengine.core import DType, Device, Tensor
@@ -20,6 +21,11 @@ from hipengine.kvcache.backend import (
     ResourceClaim,
     ResourceClaimSet,
     ResourceDelta,
+)
+from hipengine.kvcache.backend_prefix import (
+    BackendRadixCache,
+    KVSnapshotHandle,
+    PrefixCompatibilityKey,
 )
 from hipengine.kvcache.global_pool import GlobalKVPoolSet, GlobalPageLease
 from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
@@ -162,7 +168,6 @@ class DenseKVCacheBackend:
         return self._plan
 
     def estimate(self, request: Any, prefix: Any, stage: Any) -> ResourceClaimSet:
-        del prefix
         request_id = int(getattr(request, "request_id"))
         if request_id < 0:
             raise ValueError("request_id must be non-negative")
@@ -173,12 +178,36 @@ class DenseKVCacheBackend:
                 claim_id=f"dense-work:{request_id}",
                 request_id=request_id,
             )
-        prompt_tokens = int(
-            stage_map.get("tokens", len(tuple(getattr(request, "prompt_tokens", ()))))
-        )
+        request_tokens = tuple(int(token) for token in getattr(request, "prompt_tokens", ()))
+        prompt_tokens = int(stage_map.get("tokens", len(request_tokens)))
         if prompt_tokens < 0:
             raise ValueError("prompt token count must be non-negative")
-        private_pages = ceil(prompt_tokens / self.block_size) if prompt_tokens else 0
+        total_prompt_pages = ceil(prompt_tokens / self.block_size) if prompt_tokens else 0
+        shared_page_ids: tuple[int, ...] = ()
+        if prefix is not None:
+            try:
+                prefix_backend = str(prefix.backend_fingerprint)
+                prefix_artifact = str(prefix.artifact_fingerprint)
+                prefix_generation = int(prefix.generation)
+                prefix_tokens = tuple(int(token) for token in prefix.matched_tokens)
+                shared_page_ids = tuple(int(page_id) for page_id in prefix.page_ids)
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise TypeError("dense prefix must be a KV snapshot handle") from exc
+            if (
+                prefix_backend != self.spec.fingerprint
+                or prefix_artifact != self.spec.artifact_fingerprint
+                or prefix_generation != self.generation
+            ):
+                raise ValueError("dense prefix snapshot is backend-incompatible or stale")
+            if request_tokens[: len(prefix_tokens)] != prefix_tokens:
+                raise ValueError("dense prefix snapshot tokens do not match request")
+            if len(prefix_tokens) % self.block_size != 0:
+                raise ValueError("dense prefix snapshot must end at a complete page")
+            if len(shared_page_ids) != len(prefix_tokens) // self.block_size:
+                raise ValueError("dense prefix snapshot pages do not match token boundary")
+            if len(shared_page_ids) > total_prompt_pages:
+                raise ValueError("dense prefix snapshot exceeds prompt page count")
+        private_pages = total_prompt_pages - len(shared_page_ids)
         max_new_tokens = int(stage_map.get("max_new_tokens", getattr(request, "max_new_tokens", 1)))
         growth_credit_pages = int(
             stage_map.get("growth_credit_pages", 1 if max_new_tokens > 0 else 0)
@@ -191,9 +220,7 @@ class DenseKVCacheBackend:
             for pool_id in self.page_pool_ids
             if total_pages
         ]
-        claims.append(
-            ResourceClaim("kv.request_rows", 1, ClaimLifetime.LEASE)
-        )
+        claims.append(ResourceClaim("kv.request_rows", 1, ClaimLifetime.LEASE))
         return ResourceClaimSet(
             claim_id=f"dense-admission:{request_id}:{private_pages}:{growth_credit_pages}",
             request_id=request_id,
@@ -201,19 +228,25 @@ class DenseKVCacheBackend:
             metadata=(
                 ("growth_credit_pages", growth_credit_pages),
                 ("private_pages", private_pages),
+                ("shared_page_ids", ",".join(str(page_id) for page_id in shared_page_ids)),
             ),
         )
 
     def reserve(self, claims: ResourceClaimSet) -> KVLease:
-        _request_id, lease_id, private_pages, growth_credit_pages = self._claim_pages(
-            claims
-        )
+        (
+            _request_id,
+            lease_id,
+            private_pages,
+            growth_credit_pages,
+            shared_page_ids,
+        ) = self._claim_pages(claims)
         reservation = self.ledger.reserve_provisional(claims)
         try:
             lease = self._materialize_lease(
                 claims,
                 private_pages=private_pages,
                 growth_credit_pages=growth_credit_pages,
+                shared_page_ids=shared_page_ids,
             )
             self.ledger.commit(reservation, owner_id=lease_id)
             return lease
@@ -227,15 +260,20 @@ class DenseKVCacheBackend:
     def materialize_committed(self, claims: ResourceClaimSet) -> KVLease:
         """Bind physical pages after fit-aware admission committed the ledger."""
 
-        _request_id, lease_id, private_pages, growth_credit_pages = self._claim_pages(
-            claims
-        )
+        (
+            _request_id,
+            lease_id,
+            private_pages,
+            growth_credit_pages,
+            shared_page_ids,
+        ) = self._claim_pages(claims)
         if not self.ledger.has_owner(lease_id):
             raise RuntimeError(f"dense resource owner {lease_id!r} is not committed")
         return self._materialize_lease(
             claims,
             private_pages=private_pages,
             growth_credit_pages=growth_credit_pages,
+            shared_page_ids=shared_page_ids,
         )
 
     def page_lease(self, lease: KVLease | str) -> GlobalPageLease:
@@ -437,7 +475,7 @@ class DenseKVCacheBackend:
     def _claim_pages(
         self,
         claims: ResourceClaimSet,
-    ) -> tuple[int, str, int, int]:
+    ) -> tuple[int, str, int, int, tuple[int, ...]]:
         if claims.request_id is None:
             raise ValueError("dense backend reservations require request_id")
         request_id = int(claims.request_id)
@@ -452,7 +490,24 @@ class DenseKVCacheBackend:
             raise ValueError("dense reservation claims lack typed page metadata") from exc
         if private_pages < 0 or growth_credit_pages < 0:
             raise ValueError("dense reservation page counts must be non-negative")
-        return request_id, lease_id, private_pages, growth_credit_pages
+        shared_text = str(metadata.get("shared_page_ids", ""))
+        try:
+            shared_page_ids = (
+                ()
+                if not shared_text
+                else tuple(int(page_id) for page_id in shared_text.split(","))
+            )
+        except ValueError as exc:
+            raise ValueError("dense shared prefix page IDs must be integers") from exc
+        if len(shared_page_ids) != len(set(shared_page_ids)):
+            raise ValueError("dense shared prefix page IDs must be unique")
+        return (
+            request_id,
+            lease_id,
+            private_pages,
+            growth_credit_pages,
+            shared_page_ids,
+        )
 
     def _materialize_lease(
         self,
@@ -460,6 +515,7 @@ class DenseKVCacheBackend:
         *,
         private_pages: int,
         growth_credit_pages: int,
+        shared_page_ids: tuple[int, ...],
     ) -> KVLease:
         if claims.request_id is None:
             raise ValueError("dense backend reservations require request_id")
@@ -471,6 +527,7 @@ class DenseKVCacheBackend:
             lease_id,
             private_pages=private_pages,
             growth_credit_pages=growth_credit_pages,
+            shared_page_ids=shared_page_ids,
         )
         try:
             growth_claims = ResourceClaimSet(
@@ -489,6 +546,9 @@ class DenseKVCacheBackend:
                 backend_fingerprint=self.spec.fingerprint,
                 generation=self.generation,
                 claims=claims.with_claim_id(f"dense-ownership:{request_id}"),
+                shared_handles=tuple(
+                    f"page:{page_id}" for page_id in page_lease.shared_page_ids
+                ),
                 private_handles=tuple(
                     f"page:{page_id}" for page_id in page_lease.private_page_ids
                 ),
@@ -527,13 +587,34 @@ class DenseKVAdmissionManager:
         *,
         lookahead: int = 32,
         max_bypasses: int = 8,
+        prefix_cache: BackendRadixCache | None = None,
+        prefix_scope: PrefixCompatibilityKey | None = None,
+        tenant_resolver: Callable[[Any], str] | None = None,
+        reuse_eligibility: Callable[[Any], bool] | None = None,
     ) -> None:
+        if (prefix_cache is None) != (prefix_scope is None):
+            raise ValueError("prefix_cache and prefix_scope must be configured together")
+        if prefix_cache is not None and prefix_cache.spec != backend.spec:
+            raise ValueError("prefix cache backend does not match dense backend")
+        if prefix_cache is not None and reuse_eligibility is None:
+            raise ValueError(
+                "prefix cache requires an explicit deterministic reuse eligibility policy"
+            )
         self.backend = backend
+        self.prefix_cache = prefix_cache
+        self.prefix_scope = prefix_scope
+        self.tenant_resolver = tenant_resolver or (
+            lambda request: str(getattr(request, "tenant_id", "default"))
+        )
+        self.reuse_eligibility = reuse_eligibility or (lambda request: False)
         self.controller = FitAwareAdmissionController(
             backend.ledger,
             lookahead=lookahead,
             max_bypasses=max_bypasses,
         )
+        self._pending_snapshots: dict[int, KVSnapshotHandle] = {}
+        self._tenant_by_request: dict[int, str] = {}
+        self._cacheable_by_request: dict[int, bool] = {}
 
     def plan_admission(
         self,
@@ -547,6 +628,9 @@ class DenseKVAdmissionManager:
         for request_id in self.controller.pending_request_ids:
             if request_id not in pending_by_id:
                 self.controller.cancel(request_id)
+                self._pending_snapshots.pop(request_id, None)
+                self._tenant_by_request.pop(request_id, None)
+                self._cacheable_by_request.pop(request_id, None)
         known = set(self.controller.pending_request_ids)
         known.update(
             request_id
@@ -556,13 +640,47 @@ class DenseKVAdmissionManager:
         for request_id, request in pending_by_id.items():
             if request_id in known:
                 continue
-            claims = self.backend.estimate(request, None, {"kind": "admission"})
+            snapshot = None
+            cacheable = self.reuse_eligibility(request)
+            self._cacheable_by_request[request_id] = bool(cacheable)
+            if (
+                cacheable
+                and self.prefix_cache is not None
+                and self.prefix_scope is not None
+            ):
+                match = self.prefix_cache.lookup(
+                    self.prefix_scope,
+                    tuple(int(token) for token in request.prompt_tokens),
+                )
+                snapshot = match.snapshot
+                if snapshot is not None:
+                    self._pending_snapshots[request_id] = snapshot
+                self._tenant_by_request[request_id] = self.tenant_resolver(request)
+            claims = self.backend.estimate(
+                request,
+                snapshot,
+                {"kind": "admission"},
+            )
             self.controller.enqueue(
                 request_id,
                 claims,
                 owner_id=f"lease:{request_id}",
             )
         grants = self.controller.admit(max_items=max_items)
+        if not grants and self.prefix_cache is not None and self.controller.pending_count:
+            required_pages = 0
+            for request_id in self.controller.pending_request_ids:
+                claims = self.controller.pending_state(request_id).claims
+                required_pages = max(
+                    required_pages,
+                    max(
+                        (claims.units_by_pool().get(pool_id, 0) for pool_id in self.backend.page_pool_ids),
+                        default=0,
+                    ),
+                )
+            if required_pages:
+                self.prefix_cache.evict_for_pressure(required_pages)
+                grants = self.controller.admit(max_items=max_items)
         materialized: list[int] = []
         for grant in grants:
             try:
@@ -577,26 +695,65 @@ class DenseKVAdmissionManager:
             materialized.append(grant.request_id)
         return tuple(materialized)
 
-    def reserve_admission(self, request: Any) -> None:
+    def reserve_admission(self, request: Any) -> Any:
         request_id = int(request.request_id)
         if not self.backend.has_request(request_id):
             raise RuntimeError(
                 f"request_id {request_id} has no materialized dense KV lease"
             )
+        snapshot = self._pending_snapshots.pop(request_id, None)
+        if snapshot is None:
+            return None
+        return replace(request, next_prompt_index=snapshot.matched_token_count)
 
     def rollback_admission(self, request: Any) -> None:
-        self.reclaim_request(request)
+        request_id = int(request.request_id)
+        self._pending_snapshots.pop(request_id, None)
+        self._tenant_by_request.pop(request_id, None)
+        self._cacheable_by_request.pop(request_id, None)
+        if self.backend.has_request(request_id):
+            self.backend.reclaim(self.backend.lease_for_request(request_id))
+        else:
+            self.controller.cancel(request_id)
 
     def reclaim_request(self, request: Any) -> ResourceDelta | None:
         request_id = int(request.request_id)
+        self._pending_snapshots.pop(request_id, None)
         if not self.backend.has_request(request_id):
             self.controller.cancel(request_id)
+            self._tenant_by_request.pop(request_id, None)
+            self._cacheable_by_request.pop(request_id, None)
             return None
-        return self.backend.reclaim(self.backend.lease_for_request(request_id))
+        lease = self.backend.lease_for_request(request_id)
+        finish_reason = str(getattr(request, "finish_reason", ""))
+        cacheable = self._cacheable_by_request.get(request_id, False) and finish_reason not in {
+            "cancel",
+            "disconnect",
+            "timeout",
+            "error",
+            "shutdown",
+        }
+        if (
+            cacheable
+            and self.prefix_cache is not None
+            and self.prefix_scope is not None
+        ):
+            self.prefix_cache.publish(
+                self.prefix_scope,
+                lease,
+                tuple(int(token) for token in getattr(request, "prompt_tokens", ())),
+                tenant_id=self._tenant_by_request.get(request_id, "default"),
+            )
+        self._tenant_by_request.pop(request_id, None)
+        self._cacheable_by_request.pop(request_id, None)
+        return self.backend.reclaim(lease)
 
     def resource_observability_snapshot(self) -> dict[str, Any]:
         snapshot = self.backend.observability_snapshot()
         snapshot["admission"] = self.controller.snapshot()
+        snapshot["prefix_cache"] = (
+            None if self.prefix_cache is None else self.prefix_cache.snapshot()
+        )
         return snapshot
 
 
@@ -643,8 +800,8 @@ class DenseKVResidentRunnerAdapter:
             max_items=max_items,
         )
 
-    def reserve_admission(self, request: Any) -> None:
-        self.admission.reserve_admission(request)
+    def reserve_admission(self, request: Any) -> Any:
+        return self.admission.reserve_admission(request)
 
     def rollback_admission(self, request: Any) -> None:
         self.admission.rollback_admission(request)
