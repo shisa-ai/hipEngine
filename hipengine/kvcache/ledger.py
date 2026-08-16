@@ -97,6 +97,7 @@ class ResourceLedger:
         }
         self._owners: dict[str, ResourceClaimSet] = {}
         self._reservations: dict[str, ResourceReservation] = {}
+        self._reservation_by_owner: dict[str, str] = {}
         self._next_reservation_id = 0
         self._stats: Counter[str] = Counter()
         self._blocking_counts: Counter[str] = Counter()
@@ -158,6 +159,7 @@ class ResourceLedger:
                 raise ValueError(f"resource owner {owner!r} already exists")
             committed = replace(current, state=ReservationState.COMMITTED, owner_id=owner)
             self._reservations[current.reservation_id] = committed
+            self._reservation_by_owner[owner] = current.reservation_id
             self._owners[owner] = current.claims
             self._stats["commits"] += 1
             return committed
@@ -169,7 +171,7 @@ class ResourceLedger:
                 raise ValueError("only a provisional reservation can roll back")
             self._apply_claim_totals(current.claims, sign=-1)
             rolled_back = replace(current, state=ReservationState.ROLLED_BACK)
-            self._reservations[current.reservation_id] = rolled_back
+            self._reservations.pop(current.reservation_id)
             self._stats["rollbacks"] += 1
             return rolled_back
 
@@ -225,6 +227,9 @@ class ResourceLedger:
             except KeyError as exc:
                 raise KeyError(f"unknown resource owner {owner!r}") from exc
             self._apply_claim_totals(claims, sign=-1)
+            reservation_id = self._reservation_by_owner.pop(owner, None)
+            if reservation_id is not None:
+                self._reservations.pop(reservation_id, None)
             self._stats["releases"] += 1
             return ResourceDelta(
                 operation_id=(f"release:{owner}" if operation_id is None else str(operation_id)),
@@ -276,6 +281,7 @@ class ResourceLedger:
                     for owner, claims in sorted(self._owners.items())
                 },
                 "provisional_reservations": provisional,
+                "active_reservations": len(self._reservations),
                 "stats": dict(sorted(self._stats.items())),
                 "blocking_counts": dict(sorted(self._blocking_counts.items())),
             }
@@ -306,6 +312,15 @@ class ResourceLedger:
             for pool_id, used in self._used.items():
                 if used < 0 or used > self._pool_by_id[pool_id].capacity:
                     raise AssertionError(f"pool {pool_id} used={used} is outside capacity")
+            for owner, reservation_id in self._reservation_by_owner.items():
+                reservation = self._reservations.get(reservation_id)
+                if owner not in self._owners or reservation is None:
+                    raise AssertionError("resource reservation owner index is stale")
+                if (
+                    reservation.state is not ReservationState.COMMITTED
+                    or reservation.owner_id != owner
+                ):
+                    raise AssertionError("resource committed reservation state drift")
 
     def _fit_locked(self, claims: ResourceClaimSet) -> ResourceFit:
         blocks: list[ResourceBlock] = []
@@ -520,10 +535,7 @@ class FitAwareAdmissionController:
                     break
             if selected is None:
                 break
-            reservation = self.ledger.reserve_provisional(
-                selected.claims,
-                reservation_id=f"admission:{selected.request_id}",
-            )
+            reservation = self.ledger.reserve_provisional(selected.claims)
             committed = self.ledger.commit(reservation, owner_id=selected.owner_id)
             self._pending.pop(selected.request_id)
             if selected.request_id != head.request_id:

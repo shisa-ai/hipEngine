@@ -14,6 +14,23 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Generation-1 GGUF single-backing KV compatibility path
+
+- Added 2026-08-17 with C2-3. Generation-2 dense backends use one load-time
+  `GlobalKVPoolSet`, stable per-plane arbitrary-page pointer tables,
+  `KVStorageView`, typed leases, growth credits, and a runner adapter that
+  requires KV-aware prefill/decode entry points. The existing
+  `DeviceChunkedKVPool` plus GGUF base-pointer identity checks remain the
+  explicit compatibility path for current gfx1100/gfx1151 kernels; they are not
+  the Generation-2 allocator contract and must not leak same-chunk constraints
+  into the new scheduler or backend ledger.
+- Removal trigger: after the BF16 and artifact-qualified no-mirror INT8 global
+  pool adapters execute the C2-6 correctness, graph-pointer, lifecycle,
+  cancellation, pressure, and production-load gates on both gfx1100 and
+  gfx1151, switch the registered GGUF packages to the KV-aware runner adapter,
+  retain a separately registered numerical fallback as required, and remove
+  the single-backing admission/identity branches and compatibility fixtures.
+
 ## gfx1100 GGUF Q4_K_M fair launch-policy default (scoped registry default)
 
 - Added 2026-08-17. The `("hip_gfx1100", "gguf_q4_k_m")` generator factory now
