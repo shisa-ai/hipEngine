@@ -406,6 +406,19 @@ rows, prefill, and peers retain the primitive chain. This is retained
 development evidence, not a clean topline refresh. Evidence:
 [`Q/K postprocess contraction`](results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
 
+The exact rows1 recurrent Q6-QKV/Q4-gate route then replaces 24 serial
+projection pairs per token with one block-parallel mixed grid per pair. A
+233.438-MiB resident-weight leaf improves four representative layers **1.16623
+-> 1.14551 ms (1.01809x, 14/15)** with both outputs BF16-bit exact. The clean
+4K trace removes **24 launches/token (694 -> 670)**, improves complete pair span
+**6.91087 -> 6.74110 ms/token (-2.457%)**, selected kernel wall **0.052%**, and
+profiled host decode **0.253%**. Counterbalanced 512/128 AR improves **12.31947
+-> 12.33892 tok/s (+0.158%)**, with both candidates above both controls, exact
+IDs/logits, unchanged **16.753218-GiB** peaks, and no bytes. Native rows,
+prefill, shape/registry misses, and peers retain the primitive projections.
+This is retained development evidence, not a clean topline refresh. Evidence:
+[`Q6/Q4 mixed grid`](results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

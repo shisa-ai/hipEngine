@@ -159,6 +159,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. The p512 pack8-Q4 rounded-residual output-store sibling is rejected (0.958x core / 0.952x public complete-model prefill) and is not registered. |
 | Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear`, `linear_pair` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. gfx1151 rows512/K1024/N16+N16 alpha/beta uses the exact two-wave dual owner; singleton WMMA remains the fallback. |
 | Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. |
+| Heterogeneous Q6/Q4 mixed grid | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (`gguf_q6_k_t16_v1+gguf_q4_k_t16_v1`) | Exact block-parallel rows1 pair; gfx1151 Qwen3.8 K5120/N10240+N6144 is qualified while primitive projections remain fallback. |
 | Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Rows<512, narrow V, root, shape misses, and peer backends retain exact one-wave/16x16 primitives. |
 | IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. |
 | IQ selected prefill | `quant/gguf_iq_selected_prefill.{hip,py}` | `moe_linear` | Grouped/expert-major, active-expert, rowbatch, and output-ownership variants. |
@@ -341,6 +342,16 @@ and copies gate BF16 bits. It removes the standalone split and K-cast nodes;
 the complete primitive chain remains registered for shape/capability misses,
 native rows, prefill, and peers. No payload or scratch is added. Evidence:
 [`Qwen3.8 Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
+The gfx1151 rows1 recurrent QKV/gate boundary independently registers
+`linear_pair/gguf_q6_k_t16_v1+gguf_q4_k_t16_v1/mixed_grid_bf16_bf16_out` for
+K5120/N10240+N6144. One local128 grid assigns the established Q6 local128
+blocks and four independent Q4 local32 waves per Q4 workgroup, preserving both
+primitive arithmetic trees without serializing either owner. It removes 24
+launches/token, uses 96 VGPR, 512-byte LDS, zero scratch, and adds no payload or
+workspace. Native rows, prefill, capability/registry misses, and peers retain
+the two primitive projections. Evidence:
+[`Qwen3.8 Q6/Q4 mixed grid`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
 
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
