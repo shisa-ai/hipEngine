@@ -15,7 +15,6 @@ The root README exports this compact retained summary verbatim.
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
 | Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
@@ -116,20 +115,23 @@ diagnostic never replaces a retained row.
 
 The portable rows score 90 full-vocabulary BF16-teacher positions across all ten
 code/English/Japanese/mixed prompts. They are useful exact-artifact diagnostics,
-not held-out-corpus PPL. The PARO row is the checkpoint's bundled canonical
-129,921-token rolling-corpus result.
+not held-out-corpus PPL. PARO's bundled 129,921-token rolling-corpus result is
+reported separately in the linked quantization report and corroborates its
+portable row.
 
 | Exact local artifact | Size / BPW | Evidence scope | Mean KL vs BF16 ↓ | Top-1 agreement ↑ | Status |
 | --- | ---: | --- | ---: | ---: | --- |
 | GGUF `UD-Q4_K_M` | 21.107 GiB / 5.180 | portable, ROCmFPX HIP | **0.013713** | 92.222% | Matched-runtime quality baseline |
 | ROCmFP4 STRIX_LEAN | **17.739 GiB / 4.354** | portable, ROCmFPX HIP | 0.045984 | **97.778%** | Quality-traded: KL/category margin fails |
-| PARO full8192 packed | 19.068 GiB / 4.680 | canonical tx4/quality3 | 0.027939 | 92.856% | Quant usable; current hipEngine path blocked at 0/90 portable top-1 |
+| PARO full8192 packed | 19.068 GiB / 4.680 | portable, hipEngine HIP | 0.027038 | 92.222% | Quality-traded; runtime-correct and deterministic |
 
 ROCmFP4 is 15.96% smaller than local Q4_K_M and has stronger portable greedy
 argmax retention, but 3.35x its matched-runtime mean KL and a Japanese KL
-outlier. PARO's quant is independently healthy; the exact downloaded checkpoint
-currently exposes a hipEngine packed-loader/runtime correctness bug, so no PARO
-speed row for that checkpoint is quality-valid yet. See the
+outlier. PARO's packed-runtime bug is fixed: hipEngine now matches the same
+checkpoint in ParoQuant/Transformers at mean/max KL `0.001151/0.023016` and
+`98.889%` top-1, with bit-identical repeat captures. Its BF16-relative quality
+is still below hipEngine Q4_K_M under the paired noninferiority protocol, so
+PARO speed rows must be labeled cross-format and quality-traded. See the
 [`artifact`](results/2026-08-16-zbook-qwen36-quant-quality.json) and
 [`protocol`](quant/README.md).
 
@@ -196,21 +198,23 @@ and [`dense residual retention`](results/2026-08-15-gfx1151-qwen35-08b-dense-bf1
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B
 
-These are the current six-shape hipEngine publication sweeps. PARO and GGUF use
-different weight formats and should not be treated as a same-math A/B. `Peak`
-is hipEngine tracked allocator high-water.
+The current valid six-shape publication is GGUF. `Peak` is hipEngine tracked
+allocator high-water.
 
-| Workload | PARO prefill | PARO decode | PARO peak | GGUF prefill | GGUF decode | GGUF peak |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **2917.732** | **115.599** | 18.144 GiB | **2716.648** | **92.833** | 21.228 GiB |
-| 1K/128 | **2995.876** | **103.238** | 18.367 GiB | **3052.541** | **98.148** | 21.295 GiB |
-| 4K/128 | **2943.038** | **105.943** | 19.161 GiB | **2953.101** | **100.522** | 21.670 GiB |
-| 32K/128 | **2108.868** | **92.438** | 19.864 GiB | **2078.038** | **88.240** | 22.234 GiB |
-| 64K/128 | **1584.131** | **78.260** | 20.403 GiB | **1559.878** | **76.691** | 22.879 GiB |
-| 128K/128 | **1056.252** | **60.663** | 22.124 GiB | **1037.378** | **62.669** | 24.168 GiB |
+| Workload | GGUF prefill | GGUF decode | GGUF peak |
+| --- | ---: | ---: | ---: |
+| 512/128 | **2716.648** | **92.833** | 21.228 GiB |
+| 1K/128 | **3052.541** | **98.148** | 21.295 GiB |
+| 4K/128 | **2953.101** | **100.522** | 21.670 GiB |
+| 32K/128 | **2078.038** | **88.240** | 22.234 GiB |
+| 64K/128 | **1559.878** | **76.691** | 22.879 GiB |
+| 128K/128 | **1037.378** | **62.669** | 24.168 GiB |
 
-Evidence: [`PARO five-run sweep`](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json)
-and [`GGUF final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
+The former PARO speed row is withdrawn: its sweep predates the grouped-V-head
+runtime fix and therefore followed the wrong generated trajectory. It remains a
+[`pre-fix diagnostic`](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
+not current performance evidence; a fresh repaired-runtime sweep is required.
+GGUF evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
 The matched llama.cpp HIP/Vulkan comparison columns and their differing memory
 scopes remain in the linked artifacts and the archived rollup rather than being
 repeated here.
