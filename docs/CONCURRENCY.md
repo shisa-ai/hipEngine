@@ -187,22 +187,49 @@ cache/memory economics, and SLO-based external evidence.
 
 ### Qwen3.8 pure-INT8 route boundary
 
-The exact Qwen3.8-27B `Q4_K_M` pure-INT8 server route is **not** the retained
-BF16 continuous owner described above. On W7900, offered c2 executes as one c2
-group, offered c4 as c2+c2, and offered c8 as c1+c3+c4. Readiness reports
-`continuous_decode=false`; groups are selected by the compatible-sampling HTTP
-queue rather than by live resident membership with decode-time admission,
-retirement, and slot refill. All offered widths pass 8K/request, but 8.25K
-fails in resident preparation because direct no-mirror packed INT8 attention is
-not admitted. The short <=8K path retains BF16 mirrors and therefore does not
-provide graceful INT8 KV capacity scaling.
+The W7900 Qwen3.8-27B `Q4_K_M` pure-INT8 capacity soak used non-streaming
+blocking requests. Its compatible-sampling HTTP queue submitted offered c2 as
+one c2 call, c4 as c2+c2, and c8 as c1+c3+c4. Those are valid exact-request,
+call-shape, memory, and lifecycle rows, but they do not test decode-time
+admission, retirement, or slot refill. The raw `/ready`
+`continuous_decode=false` value was also a telemetry bug: readiness called the
+capability helper without the loaded engine, while the engine-aware
+capabilities endpoint already reported controlled membership correctly.
 
-These rows are valid HTTP concurrency, exact request, physical-shape, and
-lifecycle evidence. They are not continuous-batching or compact-INT8 c>N
-claims. Production promotion requires direct no-mirror c>N INT8 attention in
-the model-owning resident loop, stable request/KV identity across occupancy
-changes, request-sized page admission, decode-time refill/reclaim, and
-mixed-arrival/cancellation/SLO gates. Evidence:
+Source audit confirms that this GGUF generator does construct the shared
+resident owner: `SubmitPollTextGenerator` wraps
+`Qwen35GGUFResidentModelRunner`, whose scheduler admits requests, interleaves
+bounded prefill/decode work, plans occupancy-adaptive physical groups, compacts
+slots, reclaims completed rows, and binds request-sized allocations from the
+dynamic device-KV pool. The server launches independent controlled tasks for
+SSE requests, while the blocking endpoint intentionally coalesces one static
+call at a time.
+
+A separate W7900 controlled-SSE gate now qualifies that short-route lifecycle
+at 512 prompt + 24 decode tokens. After resident metrics observed c1 in decode,
+three new SSE requests joined; sampled occupancy moved
+`0 -> 1 -> 4 -> 3 -> 2 -> 1 -> 0`, all four outputs exactly matched independent
+c1 token oracles, admission/reclaim counters advanced `4/4`, and final
+active rows, occupied slots, and refcounted pages were zero. Thus <=8K mirrored
+Qwen3.8 INT8 has measured live admission, occupancy-adaptive decode, retirement,
+and reclaim. The first attempted audit is explicitly rejected: its stagger
+helper still sent blocking requests and zero configured warmups also made its
+generic gate false, so it proved only HTTP queue arrival.
+
+The storage blocker remains real. All offered widths pass 8K/request on W7900,
+but 8.25K fails resident preparation because packed AR direct no-mirror INT8
+attention is not admitted. The <=8K route retains BF16 mirrors and cannot be a
+compact-INT8 capacity claim. The telemetry and basic live-admission/reclaim
+items are closed; remaining closure order:
+
+1. qualify cancellation, default elastic pool growth/shrink, and overload
+   rejection before HIP OOM on the controlled-SSE route;
+2. add direct no-mirror packed INT8 prefill/decode attention with CPU-reference
+   KL/top-1 and `rocprofv3` kernel gates;
+3. only then widen registry capacities and run mixed-length/SLO/external
+   serving comparisons.
+
+Evidence:
 [`Qwen3.8 actual context, W7900 quality, and concurrency frontier`](../benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
 
 ### W7900 coding-agent evaluation conclusions (A1–A6)

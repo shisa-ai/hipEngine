@@ -4776,11 +4776,13 @@ def test_capabilities_report_controlled_streaming_backpressure_and_continuous_me
             eager_load=False,
             stream_queue_max_chunks=7,
             shutdown_grace_seconds=1.5,
+            metrics="prometheus",
         ),
         llm=fake,
     )
 
-    body = TestClient(app).get("/v1/hipengine/capabilities").json()
+    client = TestClient(app)
+    body = client.get("/v1/hipengine/capabilities").json()
 
     assert body["admission"]["streaming"] == {
         "controlled_model_loop": True,
@@ -4789,6 +4791,10 @@ def test_capabilities_report_controlled_streaming_backpressure_and_continuous_me
         "shutdown_grace_seconds": 1.5,
     }
     assert body["admission"]["scheduler_fairness"]["continuous_decode"] is True
+    ready = client.get("/ready").json()
+    assert ready["queue"]["scheduler_fairness"]["continuous_decode"] is True
+    metrics = client.get("/metrics").text
+    assert 'continuous_decode="true"' in metrics
 
 
 def test_server_shutdown_drains_batcher_and_closes_long_lived_engine() -> None:

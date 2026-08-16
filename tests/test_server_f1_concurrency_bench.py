@@ -187,6 +187,32 @@ def test_matched_concurrency_plan_is_bounded_at_c13() -> None:
         SCRIPT._validate_concurrency_plan([1, 2, 16], live_concurrency=2)
 
 
+def test_live_admission_uses_sse_when_streaming_is_primary() -> None:
+    streaming = type("Args", (), {"streaming_primary": True})()
+    blocking = type("Args", (), {"streaming_primary": False})()
+
+    assert SCRIPT._live_request_function(streaming) is SCRIPT._one_stream_request
+    assert SCRIPT._live_request_function(blocking) is SCRIPT._one_request
+
+
+def test_streaming_live_gate_requires_decode_interval_and_resident_overlap() -> None:
+    args = type("Args", (), {"streaming_primary": True})()
+    live = {
+        "admission_during_first_request": True,
+        "request_protocol": "streaming_sse",
+        "join_during_observed_first_stream_decode": True,
+        "resident_overlap_before_first_completion": True,
+    }
+
+    assert SCRIPT._live_admission_passes("hipengine", args, live) is True
+    for field in (
+        "join_during_observed_first_stream_decode",
+        "resident_overlap_before_first_completion",
+    ):
+        rejected = live | {field: False}
+        assert SCRIPT._live_admission_passes("hipengine", args, rejected) is False
+
+
 def test_extract_stream_responses_records_client_ttft_itl_and_tokens() -> None:
     hip = SCRIPT.extract_stream_response(
         "hipengine",
