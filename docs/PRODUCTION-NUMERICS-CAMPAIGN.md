@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P4 infrastructure complete; ZBook historical recovery and first package-level c1 result complete; W7900/specialized recovery, real model plans/control capture, and c>N/default certification remain open**
+Status: **approved; P0-P4 infrastructure complete; ZBook package-level c1/cN recovery complete with public-default decision blocked on soak; W7900/specialized recovery and named-profile model plans/certification remain open**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -353,10 +353,28 @@ chain. Its complete 18-prompt/450-row full-logit gate, three candidate repeats,
 and 18 live-state fingerprints are byte-exact. Natural pN/d128 eager AR improves
 `30.438 -> 33.219 tok/s` (`+9.136%`, 18/18 wins) with matching free-running IDs;
 a fixed p512/d128 five-repeat control independently improves `+8.748%`. These
-are package-level current-route results, not public profile certification: both
-adapters still lack the approved exact request/control records and a resolved
-Qwen3.6 manifest. Candidate-versus-strict logits are identical, so this route
-consumes no additional BF16-relative quality budget.
+are package-level current-route results, not public profile certification.
+Candidate-versus-strict logits are identical, so this route consumes no
+additional BF16-relative quality budget.
+
+The combined ZBook c1/cN decision is now measured. The corrected bundle leaves
+Q8T16 rowtiling to package `MIN_ROWS=4` (c2 direct, c4/c8 rowtile) and enables
+the cooperative router. Its 18-prompt static/dynamic/sparse packet is exact over
+1,050 rows with three repeats. A separate c8 lifecycle run binds token
+ownership, active masks, cancel/re-admit, state/KV preservation across
+compaction, resource identity, graph invalidation, session reuse, and drain;
+c1-versus-cN BF16 KV value differences remain reported as arithmetic rather
+than ownership errors and are bound to the distributional gate. Seven graph
+pairs are neutral at c2, positive at c4 (`1.00475x`, 6/7), and positive at c8
+(`1.01006x` paired median, 6/7).
+
+This closes package-level c>N recovery but not named-profile certification. The
+complete server packet passes static, ragged, fixed/Poisson arrival,
+cancellation, overload, and idle-recovery workloads, then fails the 60-second
+soak with 87 completed and 33 overloaded requests out of 120. A resolved
+Qwen3.6 strict/production manifest, standardized complete control capture,
+and fresh task/BF16-relative verdicts are also absent. Evidence:
+[`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
 Exit: calibrated policy artifact and manifest; uncertified routes fall back to
 strict. No route is grandfathered.
@@ -395,8 +413,19 @@ conclusion with a refreshed profile.
 Optimize fixed widths, then admission/compaction/width transitions. Use SLO
 rather than only fixed-batch aggregate throughput for the public decision.
 
+ZBook package-level decision recorded 2026-08-16: retain the incumbent direct
+c2 and rowtile c4/c8 implementation routes after exact numerical, repeat,
+lifecycle, and paired-performance gates. Do **not** switch the public profile
+default. The canonical server packet fails soak completion (87 completed,
+33 rejected of 120), and the c>N gains do not reach the 3% materiality target.
+This is a concrete blocker, not a numerical rejection; all completed server
+requests are exact and the route/ownership/memory gates pass. Named-profile
+manifest, standardized controls, task, and BF16-relative debt remains open.
+
 Exit: retain qualified wins; either switch the public default to production or
-record the concrete blocker and keep the migration debt open.
+record the concrete blocker and keep the migration debt open. The auxiliary
+ZBook package-level branch has taken the latter exit; global W7900 and public
+named-profile work remain open.
 
 ## 8. Candidate workflow
 

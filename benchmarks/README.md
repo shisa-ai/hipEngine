@@ -164,11 +164,25 @@ all three repeats, and **18/18** live Conv/GDN/KV fingerprints are byte-exact.
 Across the complete natural pN/d128 suite, aggregate eager decode improves
 **30.438 -> 33.219 tok/s (+9.136%, 18/18 paired wins)** with matching
 free-running IDs; the fixed-token p512/d128 control independently improves
-**30.738 -> 33.427 (+8.748%)**. This retains the package route but is not yet a
-public profile certification: a real immutable Qwen3.6 profile plan, approved
-exact-control records, and the dynamic c>N default-decision packet remain open.
-Evidence: [`c1 retained result`](results/2026-08-16-zbook-qwen36-c1-router-retained.json)
+**30.738 -> 33.427 (+8.748%)**. This retains the package route; the following
+bundle decision supplies the dynamic c>N packet but does not certify a public
+profile. Evidence: [`c1 retained result`](results/2026-08-16-zbook-qwen36-c1-router-retained.json)
 and [`full quality packet`](results/2026-08-16-zbook-qwen36-c1-router-quality.json).
+
+The combined current-package route has now been gated without forcing the
+rejected c2 rowtile: c2 stays direct, while c4/c8 use the package row floor and
+c1 uses the cooperative router. The complete 18-prompt static/dynamic/sparse
+matrix is exact over **1,050/1,050** rows with three deterministic repeats; a
+c8 cancel/re-admit/compaction control independently passes token ownership,
+active masks, state/KV preservation across moves, graph invalidation, session
+reuse, and final drain. Seven p512/d128 graph pairs are neutral at c2
+(**1.0005x paired median**), improve c4 **77.380 -> 77.748 tok/s (+0.475%,
+6/7)**, and improve c8 **1.0101x paired median (6/7)**. These implementation
+routes remain package defaults. They are **not** promoted to the public
+`production` profile: the complete server packet passes eight workloads but
+fails the 60-second soak with **87 completed / 33 overloaded of 120**, and the
+c>N gains are below the 3% default-switch materiality target. Evidence:
+[`bundle/default decision`](results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 On the admitted Q4_K_M+NextN artifact, the existing prompt-agnostic B1-probe
 adaptive MTP route is also economically sound: exact adaptive B3 reaches
 **27.054 tok/s / 37.140 ms-output**, or **1.134x** current strict-profile AR and

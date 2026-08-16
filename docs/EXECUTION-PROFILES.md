@@ -64,6 +64,24 @@ This materiality rule applies to changing the **public profile default**. It
 does not discard smaller exact or production-qualified kernel/cycle-wall wins;
 those remain first-class under the repository performance policy.
 
+### 2.2 First ZBook c1/cN default decision
+
+The 2026-08-16 Qwen3.6 GGUF package-level campaign retains the incumbent
+implementation routes but **does not change the public profile default**. The
+actual bundle (cooperative c1 router, direct Q8T16 c2, rowtile c4/c8) is exact
+against strict over 1,050 static/dynamic/sparse full-logit rows and passes a
+separate c8 lifecycle control for tokens, ownership, masks, cancellation,
+re-admission, compaction preservation, graph invalidation, session reuse, and
+clean drain. Seven paired graph runs retain small c4/c8 wins.
+
+The complete production-server packet nevertheless fails soak completion:
+87/120 requests complete exactly and 33 are rejected under sustained offered
+load. The cN wins are also below the 3% public-default materiality target.
+Therefore omitted-profile package behavior stays unchanged, no route is
+certified through a named runtime profile, and migration debt remains open.
+The compact evidence and raw hashes are in
+[`2026-08-16-zbook-qwen36-production-profile-cn-blocked.json`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It
