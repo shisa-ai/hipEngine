@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_4k_parallel_attention_reducer",
+  "status": "profile_rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "183203ed80f3e1ba2863ee428f8fd1ede767e5db",
+    "tracked_clean": true,
+    "require_cached_build": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "candidate": {
+    "scope": "4K serial full-attention grouped-GQA split reducer",
+    "control": "one local256 serial split reducer plus BF16 gate per full-attention layer",
+    "mechanism": "existing prepare-weights kernel plus split-parallel output/gate kernel, forced below its retained 32K threshold",
+    "environment": "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=1 HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT=0",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "source_change": false
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 670.0,
+      "kernel_ms_per_token": 79.1321496875,
+      "host_ms_per_token": 81.92137137484679,
+      "context_ms_per_token": 1.596067875,
+      "reducer_ms_per_token": 0.0849016875,
+      "final_token_id": 9707,
+      "final_logit": 26.059303283691406
+    },
+    "candidate": {
+      "dispatches_per_token": 686.0,
+      "kernel_ms_per_token": 79.00274725,
+      "host_ms_per_token": 81.82916418809327,
+      "context_ms_per_token": 1.5964481875,
+      "prepare_ms_per_token": 0.0460460625,
+      "parallel_output_gate_ms_per_token": 0.0432836875,
+      "reducer_package_ms_per_token": 0.08932975,
+      "final_token_id": 9707,
+      "final_logit": 26.15538787841797
+    },
+    "operation_delta": {
+      "dispatches_per_token": 16.0,
+      "reducer_ms_per_token": 0.004428062499999996,
+      "reducer_percent": 5.215517653874668,
+      "final_logit_exact": false
+    },
+    "complete_profile_note": "The one-run aggregate kernel/host walls moved -0.164%/-0.113%, but that movement is not attributable to the candidate: the unchanged context kernel is flat, the complete reducer package regresses, and final-logit exactness fails.",
+    "tracked_peak_gib": 19.529302295297384,
+    "tracked_teardown_bytes": 0
+  },
+  "validation": {
+    "kernel_trace_gate": "The control reducer executes 256 times. The candidate executes 256 prepare and 256 parallel-output kernels over 16 tokens, adding exactly one launch per full-attention layer.",
+    "correctness_gate": "Final token ID remains 9707, but the fixed-token final logit changes 26.059303283691406 -> 26.15538787841797.",
+    "request_gate_not_run": "The operation-complete reducer regressed 5.216% and exactness failed."
+  },
+  "commands": {
+    "profile": "control/candidate rocprofv3 --kernel-trace --selected-regions around scripts/qwen35_gguf_bench.py at token 9707, 4096/16, graph replay, cached gfx1151 builds; candidate forces HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=1 and MIN_CONTEXT=0"
+  },
+  "evidence": {
+    "summary": {
+      "path": "/tmp/qwen38-task22-parallel-reduce-4k/summary.json",
+      "sha256": "799274cdf513d4667ac38f2a5854a1778881356974f0f51dd54b0eac60b4fb05",
+      "bytes": 2032
+    },
+    "control_trace_sha256": "faf956218429d78c191d19e31b668ec15c1fb4d3f2a694bc172622485dc21baa",
+    "candidate_trace_sha256": "1c8dae99d3d724e5c47bf87f2525f95fa53e34f2368859087de8516ffbfe335c"
+  },
+  "decision": "Keep the split-parallel reducer at its retained 32K threshold. At 4K it adds 16 launches/token, regresses the complete reducer 5.216%, and changes the fixed-token final logit. Do not run a request gate."
+}
