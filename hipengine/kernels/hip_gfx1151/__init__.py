@@ -859,6 +859,13 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
     {(1, 5_120, 48, 48)}
 )
+# Qwen3.8's 24 standard-Q6 recurrent QKV owners and Q4 gates consume the same
+# BF16 norm row. One local128 mixed grid preserves both singleton arithmetic
+# trees while removing their serial launch boundary. Shape/backend misses and
+# native rows retain the two registered primitive projections.
+GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 10_240, 6_144)}
+)
 # The graph-safe serial composite joins those independent projections with the
 # current in-place Conv channel blocks. Wider/native rows and peer backends keep
 # the separately registered pair plus Conv fallback.
@@ -2076,6 +2083,7 @@ __all__ = [
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",

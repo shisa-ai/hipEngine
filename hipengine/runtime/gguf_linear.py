@@ -3383,6 +3383,7 @@ def launch_gguf_linear_pair(
             is None
             else id(source_f16_session)
         ),
+        bool(_native_batch_decode_session_enabled),
         bool(registered_decode_only),
         registered_decode_variant,
     )
@@ -3404,6 +3405,37 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "q6_q4_t16_mixed_grid":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q6_k_t16_v1+gguf_q4_k_t16_v1",
+            "mixed_grid_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
 
     if pair_kind == "dense_f32_alpha_beta":
         pair_key = KernelKey(
@@ -4337,6 +4369,31 @@ def _resolve_gguf_linear_pair_kind(
             # A mixed candidate/exact pair has no ordinary shared-activation
             # ABI. Decline unless an explicit ordered pair-only policy matched.
             return "none"
+    q6_q4_pair_key = KernelKey(
+        backend,
+        "linear_pair",
+        "gguf_q6_k_t16_v1+gguf_q4_k_t16_v1",
+        "mixed_grid_bf16_bf16_out",
+    )
+    q6_q4_shapes = backend_package_capability(
+        backend,
+        "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
+        (),
+    )
+    if (
+        not _native_batch_decode_session_enabled
+        and (rows, in_features, out_features, out_features_b) in q6_q4_shapes
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and dispatch_a.abi == dispatch_b.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q6_k_t16_v1"
+        and dispatch_a.key.variant == "t16_gemv_decode_bf16_bf16_out"
+        and dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+        and dispatch_b.key.variant == "dense_single_local32_bf16_bf16_out"
+        and is_registered(q6_q4_pair_key)
+    ):
+        return "q6_q4_t16_mixed_grid"
+
     dense_f32_pair_key = KernelKey(
         backend,
         "linear_pair",
