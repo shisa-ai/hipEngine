@@ -50,6 +50,62 @@ def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
     assert preserved == explicit
 
 
+def test_gfx1100_gguf_q4_k_m_factory_defaults_to_fair_launch_policy(monkeypatch) -> None:
+    """The gfx1100 Q4_K_M plain-AR path launches with the measured fair default."""
+
+    import hipengine.generation.qwen35_gguf as qwen35_gguf
+    from hipengine.generation import (
+        EngineLoopConfig,
+        register_builtin_generators,
+        resolve_text_generator,
+    )
+    from hipengine.llm import _engine_loop_config_with_generator_defaults
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, weight_index: object()),
+    )
+    register_builtin_generators()
+    generator = resolve_text_generator(
+        model="qwen3_5_gguf",
+        backend="hip_gfx1100",
+        quant="gguf_q4_k_m",
+    )(
+        model_path="/tmp/fake.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+    assert generator.backend == "hip_gfx1100"
+    assert generator.engine_loop_config_defaults == {
+        "prefill_decode_policy": "fair",
+        "max_prefill_chunk_tokens": 256,
+        "fair_prefill_burst_chunks": 1,
+    }
+    # The registry-owned plain-AR route cap is unchanged by the policy default.
+    assert generator.server_plain_ar_max_active_requests == 4
+
+    # The explicit env pin must still override the scoped default.
+    pinned = _engine_loop_config_with_generator_defaults(
+        EngineLoopConfig(),
+        generator,
+        environ={"HIPENGINE_PREFILL_DECODE_POLICY": "protect_decode"},
+    )
+    assert pinned.prefill_decode_policy == "protect_decode"
+
+    # Other GGUF quants on gfx1100 must not inherit the scoped loop default.
+    other = resolve_text_generator(
+        model="qwen3_5_gguf",
+        backend="hip_gfx1100",
+        quant="gguf_q8_0",
+    )(
+        model_path="/tmp/fake-q8.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+    assert other.engine_loop_config_defaults == {}
+
+
 def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading
