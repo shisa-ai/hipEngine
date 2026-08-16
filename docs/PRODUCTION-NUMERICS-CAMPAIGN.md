@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P4 infrastructure complete; ZBook-available P1 historical candidates closed; W7900, model-blocked, and specialized historical recovery plus model plans/current-route certification remain open**
+Status: **approved; P0-P4 infrastructure complete; ZBook historical recovery and first package-level c1 result complete; W7900/specialized recovery, real model plans/control capture, and c>N/default certification remain open**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -342,11 +342,21 @@ Current-route certification remains open. Re-certify every non-exact default
 that would enter production with a resolved profile manifest, exact controls,
 isolation/dynamic scenarios, tasks, and BF16-relative evidence where available.
 The first historical c>N recovery is complete at the ZBook package-policy
-level; its rates are not comparable with the other gfx1151 host: gfx1151 Q8T16 all-projection rowtiling is retained only from physical c4 after
-a 1,050-row bit-identical strict-teacher gate and positive current c4/c8 A/B;
-c2 is explicitly excluded by a `1.795%` median regression. This is not a public
-profile certification because the adapter does not emit complete actual-control
-or task/BF16-relative evidence.
+level; its rates are not comparable with the other gfx1151 host: gfx1151 Q8T16
+all-projection rowtiling is retained only from physical c4 after a 1,050-row
+bit-identical strict-teacher gate and positive current c4/c8 A/B; c2 is
+explicitly excluded by a `1.795%` median regression.
+
+The independent ZBook c1 opening result also retains the incumbent
+cooperative/persistent F32 router against the strict separate projection/select
+chain. Its complete 18-prompt/450-row full-logit gate, three candidate repeats,
+and 18 live-state fingerprints are byte-exact. Natural pN/d128 eager AR improves
+`30.438 -> 33.219 tok/s` (`+9.136%`, 18/18 wins) with matching free-running IDs;
+a fixed p512/d128 five-repeat control independently improves `+8.748%`. These
+are package-level current-route results, not public profile certification: both
+adapters still lack the approved exact request/control records and a resolved
+Qwen3.6 manifest. Candidate-versus-strict logits are identical, so this route
+consumes no additional BF16-relative quality budget.
 
 Exit: calibrated policy artifact and manifest; uncertified routes fall back to
 strict. No route is grandfathered.
@@ -365,6 +375,17 @@ presented as promotable.
 Profile the primary lane, select one mechanism at a time, run strict-teacher and
 task gates before final performance retention, and keep exact/production wins
 according to project policy.
+
+The auxiliary ZBook lane has its first retained package result. Corrected HIP
+stage attribution ranks linear QKV/gate at `6.022 ms/token` and selected-expert
+MoE at `5.949 ms/token`; the independently re-gated cooperative/persistent
+router improves complete natural eager AR `30.438 -> 33.219 tok/s` (`+9.136%`,
+18/18 wins) versus the strict separate chain. The candidate is byte-exact over
+450 teacher-forced rows, all repeated live state, and all 18 free-running d128
+trajectories. Because it was already the omitted-profile incumbent, this is not
+a new runtime default. It satisfies the auxiliary package-level c1 result but
+not the public-profile exit: exact control capture and a real Qwen3.6
+strict/production manifest remain required.
 
 Exit: at least one retained result or a reconciled no-first-order-target
 conclusion with a refreshed profile.
