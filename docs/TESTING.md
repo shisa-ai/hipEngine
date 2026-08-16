@@ -373,18 +373,30 @@ train prompt, GGUF prefill-oracle peak rises, graph capture is unsafe, and no
 all category/heldout prompts, require no BF16 mirror, audit the exact layer
 partition, then pass graph/eager safety and a 24GB long-context capacity gate.
 Qwen3.8-27B must also be gated independently from Qwen3.6 despite identical
-24Q/4KV geometry. Pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus
-bounded `mixed_v1` 64K/16. Its retained layer-outer/shared-oracle successor
-lowers the 33,024-position tracked peak `18.943 -> 17.330 GiB`, runs matched
-prefill within `-0.050%` of BF16 graph with overlapping sample ranges, improves
-AR decode `+6.499%`, and completes real 64K/96K/112K single-request server rows.
-Those facts qualify explicit AR capacity use, not a default/support transfer:
-112K leaves only `0.662 GiB`, representative long quality stops at 64K, pure
-INT8 graph capture fails closed, and exact natural B3 MTP reaches only `0.6423x`
-true AR. Any successor that changes support/default status must preserve the
-complete and long quality rows, prove graph/eager safety for its claimed
-transport, retain actual server headroom, and make every enabled AR/MTP mode
-same-suite non-regressive. The `4K` forced-long gate below is a quick 35B guard;
+24Q/4KV geometry, and each artifact/backend combination is independent. The
+local gfx1100 file (size `17,106,773,984`, SHA-256 `7b2aec...`) passes pure
+FP32-scale INT8 complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16 and
+129,024/16. At 129,024/16 mean/max KL is `0.0000104/0.0001354`, top-1 is 100%,
+and the layout has no BF16 mirror. Its layer-outer/shared-oracle route lowers
+the 33,024-position tracked peak `18.943 -> 17.330 GiB`, runs matched prefill
+within `-0.050%` of BF16 graph with overlapping samples, improves AR decode
+`+6.499%`, and closes the XTX c1 physical ceiling at 126K. Four natural 112K
+requests with `0.662 GiB` headroom remain the service recommendation; the 126K
+row has only `0.022 GiB` headroom.
+
+A different gfx1151 file (size `17,106,775,008`, SHA-256 `7e78da...`) rejects
+pure native INT8 at complete 1K/8 with `77.78%` minimum-prompt top-1. Neither
+result transfers by filename or geometry. The active
+[`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md) must first gate
+immutable artifact/backend/quant/layout/scale identity, then require no-mirror
+c2/c4/c8 primitive, model, lifecycle, memory, and kernel-ownership evidence.
+Short mirrored continuous rows are scheduler evidence only. Pure INT8 graph
+capture still fails closed, exact natural B3 MTP is only `0.6423x` true AR, and
+BF16 remains supported/default. Any successor that changes support/default
+status must preserve complete and long quality rows, prove graph/eager safety
+for its claimed transport, retain actual server headroom, and make every
+enabled AR/MTP mode same-suite non-regressive. The `4K` forced-long gate below
+is a quick 35B guard;
 promotion of a 24GB `128K/128` row also requires the same gate at
 `--prompt-lengths 128K`,
 `--decode-steps 128`, and `--max-sequence-length 131202`.

@@ -895,8 +895,12 @@ The core capacity path is landed:
    - FP32 QK/softmax accumulation and inline V dequantization.
    - No cache-sized INT8-to-BF16 decode workspace.
    - Separate c1 template instantiations cover block-256/head-dim-256 16Q/2KV
-     and dense-Qwen3.6-27B 24Q/4KV geometries. Both are CPU-reference gated; the
-     24Q/4KV path is additionally confirmed by cached `rocprofv3` tracing.
+     and dense-Qwen3.6/Qwen3.8-27B 24Q/4KV geometries. Both are CPU-reference
+     gated; the 24Q/4KV path is additionally confirmed by cached `rocprofv3`
+     tracing.
+   - The direct consumer remains c1-shaped: it has no row-batched producer or
+     reducer. Current packed c>N INT8 therefore reads bounded BF16 mirrors and
+     fails closed when a direct no-mirror layout is requested.
 3. **Transient exact-prefill bridge**
    - Full-attention prefill uses temporary BF16 oracle K/V, then appends
      retained INT8 plus scales.
@@ -931,13 +935,20 @@ spans:   KVLiveSpans(storage_dtype=int8_per_token_head)
 ### Current promotion policy
 
 - BF16 remains the default/supported route.
-- INT8 can remain explicitly selectable for diagnostics and capacity research,
+- INT8 remains explicitly selectable for diagnostics and capacity research,
   with a warning/contract that it is approximate for current Qwen3.6 PARO.
-- Do not advertise usable 256K INT8, even though allocation passes.
+- The exact local Qwen3.8 file `7b2aec...` on gfx1100 is an artifact-scoped
+  exception for explicit no-mirror c1 capacity; it does not admit another file
+  or backend with the same filename/geometry.
+- Short Qwen3.8 c>N INT8 is continuous but mirrored and memory-negative. Do not
+  advertise it as an INT8 memory saving.
+- Do not advertise usable Qwen3.6/PARO 256K INT8 merely because allocation
+  passes.
 - Do not add native group32/group64, mixed-cache, or residual-window production
   complexity from the rejected screens.
-- A future representation must pass native matched-context, memory/no-shadow,
-  and broader natural-task gates before default or support status changes.
+- A future representation or artifact/backend combination must pass native
+  matched-context, memory/no-shadow, and broader natural-task gates before
+  default or support status changes.
 
 ### Required gates for any replacement
 
@@ -949,6 +960,28 @@ spans:   KVLiveSpans(storage_dtype=int8_per_token_head)
 6. `rocprofv3` kernel trace proving the intended writer/attention kernels ran.
 7. Performance measurement only after correctness; neutral speed is acceptable
    for a genuine capacity feature.
+
+### Active K1-CB campaign
+
+The approved next campaign is
+[`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md). It does not
+redo the scheduler: gfx1100 short mirrored c1->c4 SSE already passes live
+admission/reclaim. It closes the remaining compact path in this order:
+
+1. `IKV-C0`: integrate current origin and bind support to artifact/backend/
+   quant/layout/scale evidence;
+2. `IKV-C1`: permit compact c>N through an honest serial c1-per-row fallback,
+   including shifted block-table-aware no-mirror prefill;
+3. `IKV-C2`: add the true row-batched INT8 split-K producer/reducer;
+4. `IKV-C3/C4`: share/model prefill workspace and admit the complete memory
+   budget before allocation;
+5. `IKV-C5/C6`: close cancellation, grow/shrink, overload/recovery, telemetry,
+   complete quality, and capacity;
+6. `IKV-C7`: compare BF16/serial/direct economics and promote or reject.
+
+Per-token request extension is not part of the campaign. The allocator retains
+request-budget-sized upfront pages in one backing chunk until a separate
+pointer-table/chunk-aware ABI is approved.
 
 ## Reproduction and evidence map
 
@@ -1287,8 +1320,21 @@ These are deliberately after dense INT8 and DMS:
     prompts before implementing another native storage contract.
 14. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
     capacity work; do not confuse this with a fidelity fix.
-15. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
+15. [ ] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
+    fail-closed artifact/backend/quant/layout/scale capability identity.
+16. [ ] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
+    fallback with shifted block-table prefill and zero BF16 shadow.
+17. [ ] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8
+    split-K attention plus row-batched gated reduction.
+18. [ ] Complete `IKV-C3/C4`: shared prefill ownership and complete admission
+    accounting for KV, scales, mirrors, workspace, oracle, graphs, and reserve.
+19. [ ] Complete `IKV-C5/C6`: cancellation, compaction, grow/shrink,
+    overload/recovery, explicit direct-vs-mirror telemetry, and artifact-scoped
+    quality/capacity matrices.
+20. [ ] Complete `IKV-C7`: compare BF16/serial/direct economics, publish the
+    retained decision, and remove the mirrored seam when safe.
+21. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
     matching DMS retrofit before any DMS quality claim.
-16. [ ] Port DMS streaming pack/compact decode and combine DMS with a
+22. [ ] Port DMS streaming pack/compact decode and combine DMS with a
     quality-admitted storage dtype; do not assume current dense INT8 is that
     dtype.

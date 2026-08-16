@@ -16,23 +16,31 @@ should be removed or collapsed.
 
 ## Qwen3.8 c>1 mirrored-INT8 serving seam
 
-- Added 2026-08-15 after the dedicated-XTX context soak and classification
-  corrected after review. Long c1 uses genuine no-mirror FP32-scale INT8 at
-  `8,519,680` bytes/page and reaches 112K. Current c>1 packed AR admits
-  per-token/head INT8 only at short contexts where it also retains BF16 K/V,
-  raising each page to `25,296,896` bytes; above 8K it fails closed because
-  direct packed INT8 attention is not admitted. Actual execution passes reach
-  6K/request at c2 (8K is 0/2 HIP OOM), 1.5K at physical c4 (no failure tested),
-  and 2K at offered c8 (no failure tested; shape-aware rows queue as two c4
-  waves). The former 4K/1,280 rows came from an arbitrary 512-MiB diagnostic,
-  not execution failures. Do not advertise any mirrored row as an INT8 memory
-  saving.
-- Removal trigger: implement and quality-gate either direct no-mirror packed
-  INT8 attention or an explicit serial c>1 no-mirror fallback, then rerun the
-  pinned ShareGPT c1/c2/c4/c8 context matrix. Remove the mirrored short route if
-  the replacement is exact, non-regressive, and no supported caller still needs
-  the BF16 fallback; retain a separately registered numerical fallback as
-  required by `AGENTS.md`.
+- Added 2026-08-15 after the dedicated-XTX context soak and corrected after the
+  actual-limit and controlled-SSE audits. Long c1 uses genuine no-mirror
+  FP32-scale INT8 at `8,519,680` bytes/page. The XTX one-request physical
+  ceiling is now 126K while four natural 112K requests remain the recommended
+  repeated row; W7900 reaches the model-native 256K limit.
+- Current c>1 packed AR admits per-token/head INT8 only at short contexts where
+  it also retains BF16 K/V, raising each page to `25,296,896` bytes. W7900
+  c2/c4/c8 pass 8K/request and all fail closed at 8.25K because direct packed
+  INT8 attention is not admitted. XTX actual execution passes reach 6K/request
+  at c2 (8K is 0/2 HIP OOM), 1.5K at physical c4 (no failure tested), and 2K at
+  offered c8 (no failure tested). Do not advertise any mirrored row as an INT8
+  memory saving.
+- The short mirrored scheduler lifecycle itself is no longer a blocker:
+  gfx1100 staggered c1->c4 SSE is 4/4 exact with occupancy
+  `0->1->4->3->2->1->0`, admitted/reclaimed `4/4`, and zero final ownership.
+  The seam is storage/attention/prefill/admission, not continuous membership.
+- Removal trigger is the approved
+  [`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md): first qualify an
+  explicit serial c>1 no-mirror fallback as a temporary correctness anchor,
+  then replace it with row-batched direct INT8 attention, complete prefill and
+  admission ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices.
+  Remove the mirrored short route when the replacement is exact,
+  memory-positive, non-regressive, and no supported caller needs it. Remove or
+  demote the serial path after the native batch route passes; retain a separately
+  registered numerical fallback as required by `AGENTS.md`.
 
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
