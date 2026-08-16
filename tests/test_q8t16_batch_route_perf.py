@@ -4,7 +4,9 @@ import pytest
 
 from scripts.q8t16_batch_route_perf import (
     KIND,
+    PerformanceQualityError,
     revalidate_generated_id_policy,
+    validate_quality_artifact,
     summarize_by_configuration,
 )
 
@@ -33,6 +35,23 @@ def test_summarize_by_configuration_keeps_matched_pair_ratios() -> None:
     assert summary["c4"]["paired_ratios"] == pytest.approx([1.01, 0.98])
     assert summary["c8"]["candidate_over_strict"] == pytest.approx(1.0)
     assert summary["c8"]["paired_ratios"] == pytest.approx([1.02, 0.98])
+
+
+def test_validate_quality_artifact_requires_bundled_router_when_requested() -> None:
+    artifact = {
+        "kind": "hipengine_execution_profile_gguf_batch_route_requalification_capture",
+        "status": "complete",
+        "measurement_valid": True,
+        "protocol": {"complete_prompt_and_heldout_suite": True},
+        "quality": {"hard_gates_passed": True},
+        "repeat_determinism": {"passed": True},
+        "route": {"router_candidate_included": True},
+    }
+
+    validate_quality_artifact(artifact, include_router_candidate=True)
+    artifact["route"]["router_candidate_included"] = False
+    with pytest.raises(PerformanceQualityError, match="router candidate"):
+        validate_quality_artifact(artifact, include_router_candidate=True)
 
 
 def test_revalidate_generated_id_policy_keeps_mismatch_diagnostic() -> None:
