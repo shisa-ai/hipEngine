@@ -25,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from hipengine import LLM, SamplingParams  # noqa: E402
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
 from hipengine.generation import GenerationRequest  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     Qwen35GGUFResidentSession,
@@ -763,6 +764,34 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 bit_exact=state_exact,
                 allow_c1_arithmetic_drift=bool(args.allow_c1_arithmetic_drift),
             )
+            provenance = collect_artifact_provenance(
+                repo_root=_REPO_ROOT,
+                configured_backend=str(args.backend),
+                resolved_backend=str(runner._shared_runner.runtime.backend),
+                target_arch=str(runner._shared_runner.target_arch),
+                model_path=model,
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                command=[sys.executable, *sys.argv],
+                environment={
+                    "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+                    "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
+                    "HIPENGINE_GGUF_GDN_PREFILL_MODE": os.environ.get(
+                        "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+                    ),
+                    "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
+                        "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+                    ),
+                    "HIPENGINE_GGUF_ROUTER_F32W_COOP": os.environ.get(
+                        "HIPENGINE_GGUF_ROUTER_F32W_COOP"
+                    ),
+                },
+                build_profile="gguf_arbitrary_c_lifecycle",
+                timing_protocol="none_correctness_only_v1",
+                warmups=0,
+                repetitions=1,
+                profiler={"enabled": False, "kind": None, "command": None},
+            )
             passed = bool(
                 original_tokens_exact
                 and newcomer_tokens_exact
@@ -787,6 +816,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "passed" if passed else "failed",
                 "passed": passed,
                 "performance_claim": False,
+                "provenance": provenance,
                 "model": str(model),
                 "backend": str(args.backend),
                 "target_arch": str(runner._shared_runner.target_arch),
