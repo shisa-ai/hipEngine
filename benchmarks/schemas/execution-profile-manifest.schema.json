@@ -49,6 +49,10 @@
           "evidence_artifact": {
             "type": ["string", "null"],
             "minLength": 1
+          },
+          "registry_quant": {
+            "type": ["string", "null"],
+            "minLength": 1
           }
         }
       }

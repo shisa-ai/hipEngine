@@ -1,6 +1,6 @@
 # Execution Profiles and Numerical Contracts
 
-Status: **approved architecture; evaluator and runtime plumbing pending**
+Status: **approved architecture; evaluator and fail-closed runtime plumbing implemented; model-plan calibration pending**
 Approved: 2026-08-16
 Authority: [`PLAN.md`](PLAN.md) remains the project architecture source of
 truth. This document is the normative policy for arithmetic drift,
@@ -285,6 +285,22 @@ through the public profile/variant plan and recorded in logs and artifacts.
 Missing or uncertified production variants fail closed to the registered strict
 fallback. Unsupported batch-invariant scenarios either use a certified strict
 fallback or reject clearly; they do not silently run production arithmetic.
+
+The public selectors are `LLM(..., execution_profile=...)`, server
+`--execution-profile`, and `HIPENGINE_EXECUTION_PROFILE`. Resolution is a
+cold-path plugin registry keyed by model/backend/quant/profile. Every plan names
+real `(backend, layer, registry_quant, variant)` keys; resolution verifies the
+selected and strict-fallback keys are registered before constructing the model
+plugin's profile-specific factory or invoking its binder. Production and
+batch-invariant plans may override only a subset of strict scopes; absent scopes
+are written into the manifest as strict selections. Captures bind to the
+resulting immutable manifest hash.
+
+During migration, omitting the selector bypasses the profile-plan registry and
+preserves the incumbent package behavior. An explicit selector never falls back
+to that unclassified route: without a registered strict plan it errors, and
+without a certified production/batch-invariant override it constructs the
+registered strict plan while reporting `fell_back_to_strict`.
 
 ## 9. Evidence and promotion
 

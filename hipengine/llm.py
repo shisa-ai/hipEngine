@@ -231,6 +231,7 @@ class LLM:
         *,
         backend: str = "auto",
         quant: str = AUTO_QUANT,
+        execution_profile: str | None = None,
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
@@ -259,9 +260,15 @@ class LLM:
         candidate_budget = int(speculative_candidate_budget)
         if candidate_budget <= 0:
             raise ValueError("speculative_candidate_budget must be positive")
+        from hipengine.execution_profiles import resolve_requested_execution_profile
+
+        requested_profile = resolve_requested_execution_profile(execution_profile)
         self.model = model
         self.backend = backend
         self.quant = quant
+        self.execution_profile = (
+            None if requested_profile is None else requested_profile.value
+        )
         self.max_active_requests = (
             None if max_active_requests is None else int(max_active_requests)
         )
@@ -279,6 +286,7 @@ class LLM:
             self.prefix_cache = resolve_prefix_cache_mode(prefix_cache)
         self._resolved_backend: str | None = None
         self._resolved_quant: str | None = None
+        self._resolved_execution_profile: Any | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
         self._text_generator: Any | None = None
@@ -694,10 +702,20 @@ class LLM:
             backend=backend,
             quant=quant,
         )
-        generator = factory(
-            model_path=self.model,
-            weight_index=weight_index,
+        profile_resolution = self._resolve_execution_profile(
             model_plugin=model_plugin,
+            backend=backend,
+            quant=quant,
+        )
+        factory_kwargs = {
+            "model_path": self.model,
+            "weight_index": weight_index,
+            "model_plugin": model_plugin,
+        }
+        generator = (
+            factory(**factory_kwargs)
+            if profile_resolution is None
+            else profile_resolution.construct_generator(factory, **factory_kwargs)
         )
         if self.speculative_provider is not None:
             from hipengine.speculative.registry import (
@@ -798,6 +816,63 @@ class LLM:
             self._resolve_quant(model_plugin)
         assert self._resolved_quant is not None
         return self._resolved_quant
+
+    def _resolve_execution_profile(
+        self,
+        *,
+        model_plugin: Any | None = None,
+        backend: str | None = None,
+        quant: str | None = None,
+    ) -> Any | None:
+        if self.execution_profile is None:
+            return None
+        if self._resolved_execution_profile is not None:
+            return self._resolved_execution_profile
+        if model_plugin is None:
+            _weight_index, model_plugin = self._load_model_metadata()
+        concrete_backend = self._resolve_backend() if backend is None else backend
+        concrete_quant = self._resolve_quant(model_plugin) if quant is None else quant
+        from hipengine.execution_profiles import resolve_runtime_profile
+
+        self._resolved_execution_profile = resolve_runtime_profile(
+            model=model_plugin.name,
+            backend=concrete_backend,
+            quant=concrete_quant,
+            profile=self.execution_profile,
+        )
+        return self._resolved_execution_profile
+
+    @property
+    def resolved_execution_profile(self) -> str | None:
+        """Return the explicit resolved profile, or ``None`` for legacy migration."""
+
+        resolution = self._resolve_execution_profile()
+        return None if resolution is None else resolution.profile.value
+
+    @property
+    def execution_profile_manifest(self) -> dict[str, Any] | None:
+        """Return a plain copy of the immutable resolved variant manifest."""
+
+        resolution = self._resolve_execution_profile()
+        if resolution is None:
+            return None
+        from hipengine.execution_profiles import validate_variant_manifest
+
+        return validate_variant_manifest(resolution.manifest)
+
+    @property
+    def execution_profile_manifest_sha256(self) -> str | None:
+        """Return the resolved manifest hash without constructing a generator."""
+
+        resolution = self._resolve_execution_profile()
+        return None if resolution is None else resolution.manifest_sha256
+
+    @property
+    def execution_profile_fell_back_to_strict(self) -> bool | None:
+        """Report whether any selected scope came from the strict plan."""
+
+        resolution = self._resolve_execution_profile()
+        return None if resolution is None else bool(resolution.fell_back_to_strict)
 
     def _load_model_metadata(self) -> tuple[Any, Any]:
         if self._weight_index is not None and self._model_plugin is not None:

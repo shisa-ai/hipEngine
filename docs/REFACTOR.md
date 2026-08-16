@@ -20,11 +20,15 @@ should be removed or collapsed.
 
 ## Execution-profile migration seam
 
-- Planned for campaign P3: public `strict|production|batch_invariant` selection
-  resolves to an immutable variant manifest. To avoid an unannounced behavior
-  change during calibration, an omitted profile may temporarily preserve the
-  pre-profile package selection internally. That compatibility behavior is not
-  a fourth named profile and must be visibly logged as migration behavior.
+- Implemented for campaign P3: public `strict|production|batch_invariant`
+  selection resolves to an immutable variant manifest through
+  model/backend/quant plugin plans, with per-scope strict fallback and exact-key
+  registry validation. `LLM.execution_profile_manifest_sha256` and server model
+  discovery expose the resolution. To avoid an unannounced behavior change
+  during calibration, an omitted profile temporarily bypasses plan resolution
+  and preserves the pre-profile package selection. That compatibility behavior
+  is not a fourth named profile. `HIPENGINE_EXECUTION_PROFILE` is the sole
+  environment adapter; explicit API/CLI values win.
 - Removal trigger: after P4 re-certifies or replaces every current non-exact
   default, P7 passes the public-default SLO/c1 guard, API/server docs name the
   default, and one release window confirms strict fallback and
