@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4ks_clean_publication",
+  "status": "clean_publication",
+  "publishable": true,
+  "baseline_eligible": true,
+  "performance_claim": true,
+  "performance_claim_scope": "true autoregressive decode and non-speculative prefill; native Q4_K_S MTP remains correctness-blocked",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "3118943eb13a3b21278041d2d158fd4a1ef1967e",
+    "tracked_tree_clean": true,
+    "llama_cpp_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llama_cpp_build": 10438,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "kv_storage": "BF16"
+  },
+  "protocol": {
+    "prompt_token": 9707,
+    "shapes": ["512/128", "1024/128", "4096/128"],
+    "process_contract": "one right-sized clean detached process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "prefill_mode": "production bulk WMMA",
+    "decode_mode": "production HIP graph replay",
+    "timing": "load, JIT prebuild, and graph capture excluded",
+    "memory": "hipEngine tracked allocator only; no whole-process GTT claim in this task-22 publication"
+  },
+  "rows": {
+    "512/128": {
+      "prefill_tok_s": 379.71564032983935,
+      "prefill_cv_percent": 0.12058601074946868,
+      "decode_tok_s": 13.038833150443706,
+      "decode_cv_percent": 0.02807188329229955,
+      "llama_hip_q4km_prefill_tok_s": 352.42581849519684,
+      "prefill_vs_llama_hip_percent": 7.743422985059878,
+      "llama_vulkan_q4km_prefill_tok_s": 242.95616918860227,
+      "prefill_vs_llama_vulkan_percent": 56.28977094838588,
+      "llama_hip_q4km_decode_tok_s": 12.15062791692198,
+      "decode_vs_llama_hip_percent": 7.309953358745647,
+      "llama_vulkan_q4km_decode_tok_s": 12.762900799954693,
+      "decode_vs_llama_vulkan_percent": 2.1619877394172926,
+      "tracked_peak_gib": 15.728742960840464,
+      "tracked_after_close_bytes": 0
+    },
+    "1024/128": {
+      "prefill_tok_s": 377.3209118457803,
+      "prefill_cv_percent": 0.18860914911908241,
+      "decode_tok_s": 12.866789753162417,
+      "decode_cv_percent": 0.03741560216387767,
+      "llama_hip_q4km_prefill_tok_s": 364.442641212626,
+      "prefill_vs_llama_hip_percent": 3.5336893043865336,
+      "llama_vulkan_q4km_prefill_tok_s": 247.61046231581554,
+      "prefill_vs_llama_vulkan_percent": 52.38488241442931,
+      "llama_hip_q4km_decode_tok_s": 12.064500969354377,
+      "decode_vs_llama_hip_percent": 6.64999560152526,
+      "llama_vulkan_q4km_decode_tok_s": 12.71970179454124,
+      "decode_vs_llama_vulkan_percent": 1.1563789858996643,
+      "tracked_peak_gib": 16.147072803229094,
+      "tracked_after_close_bytes": 0
+    },
+    "4096/128": {
+      "prefill_tok_s": 370.7882216593072,
+      "prefill_cv_percent": 0.1476886156189326,
+      "decode_tok_s": 13.025437495028262,
+      "decode_cv_percent": 0.026856262479333558,
+      "llama_hip_q4km_prefill_tok_s": 367.99291757380905,
+      "prefill_vs_llama_hip_percent": 0.7596081207018157,
+      "llama_vulkan_q4km_prefill_tok_s": 354.3677775179427,
+      "prefill_vs_llama_vulkan_percent": 4.6337294706579435,
+      "llama_hip_q4km_decode_tok_s": 11.508123386502662,
+      "decode_vs_llama_hip_percent": 13.18472228326284,
+      "llama_vulkan_q4km_decode_tok_s": 12.568302094065688,
+      "decode_vs_llama_vulkan_percent": 3.6372088890067156,
+      "tracked_peak_gib": 18.465154346078634,
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "delta_vs_prior_clean_q4km_9c649e28d_percent": {
+    "prefill": {
+      "512/128": -5.558031766248228,
+      "1024/128": -3.610006880565053,
+      "4096/128": -3.886190063065731
+    },
+    "decode": {
+      "512/128": 4.338989124405002,
+      "1024/128": 4.449776865829058,
+      "4096/128": 4.477191592738428
+    },
+    "tracked_peak_512_delta_gib": -0.85845947265625,
+    "note": "Q4_K_S is a different complete model representation. These are route-level deltas, not a causal policy-only A/B."
+  },
+  "natural_true_ar": {
+    "hipengine_tok_s": 13.332758980564911,
+    "all_30_trajectories_repeat_exact": true,
+    "same_file_llama_hip_tok_s": 5.538531366560844,
+    "delta_vs_same_file_llama_hip_percent": 140.72733542798187,
+    "same_file_llama_vulkan_tok_s": 7.518880143004088,
+    "delta_vs_same_file_llama_vulkan_percent": 77.32373341487992,
+    "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json",
+    "not_repeated": "The exact commit-equivalent isolated tree already ran the greater-than-five-minute ten-prompt, three-run suite. Per the focused validation rule, the clean publication carries that exact source instead of repeating expensive equivalent evidence."
+  },
+  "same_file_llama_prefill_512": {
+    "hipengine_tok_s": 379.71564032983935,
+    "llama_hip_tok_s": 170.45621006597185,
+    "delta_vs_llama_hip_percent": 122.7643335393164,
+    "llama_vulkan_tok_s": 176.83618648619242,
+    "delta_vs_llama_vulkan_percent": 114.72734052624914
+  },
+  "correctness": {
+    "final_token_ids": {
+      "512/128": [9707, 9707, 9707],
+      "1024/128": [9707, 9707, 9707],
+      "4096/128": [9707, 9707, 9707]
+    },
+    "final_token_ids_stable_all": true,
+    "all_natural_ar_trajectories_repeat_exact": true,
+    "prior_cpu_reference_max_kl": 3.1573721e-07,
+    "prior_cpu_reference_top1": "48/48",
+    "all_rates_finite_positive": true,
+    "tracked_teardown_zero_all": true,
+    "mtp_publication_eligible": false,
+    "mtp_blocker": "Native B1-B3 differs from scalar AR on general_ja_plan and general_ja_explain despite all GPU accept decisions matching CPU."
+  },
+  "commands": {
+    "prebuild": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q4ks-publication-3118943eb-output/hipcc-version-gfx1151.txt",
+    "measured": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads <512/128|1024/128|4096/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q4ks-publication-3118943eb-output/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "evidence": {
+    "shape_512": {"path": "/tmp/qwen38-task22-q4ks-publication-3118943eb-output/512/result.json", "sha256": "143879dea3ad9181a222a1d772b93fd5611d96a46e13c3b23a2b31fa56111276"},
+    "shape_1024": {"path": "/tmp/qwen38-task22-q4ks-publication-3118943eb-output/1024/result.json", "sha256": "781a251f3bd25f76a757961b5f7ccb87ea77a4d3144fa5f67ca7b2c60a41b84b"},
+    "shape_4096": {"path": "/tmp/qwen38-task22-q4ks-publication-3118943eb-output/4096/result.json", "sha256": "92b3bea2cfe02ed91d10530019289e8e1cf73a5554eb1b7222fdc43cb9d6d53a"},
+    "natural": {"path": "/tmp/qwen38-task22-q4ks-natural-policies/result.json", "sha256": "54fe720082136c444b08e5f64fd234abe7be7de53ba93f070e7cee9d92f1e38a"},
+    "llama_hip": {"path": "/tmp/qwen38-task22-q4ks-llama-hip/result.json", "sha256": "17c2251fb8618eb4a6383a188aae99121b3243c15393dcb41c65675949934fa6"},
+    "llama_vulkan": {"path": "/tmp/qwen38-task22-q4ks-llama-vulkan/result.json", "sha256": "8f9f7162aaea65a4a0ae6e677f4372427ff7fbb2e15cd2caa076a405488d6299"}
+  },
+  "decision": "Promote clean commit 3118943eb and Q4_K_S as the current Qwen3.8-27B gfx1151 true-AR/prefill baseline. It beats both frozen clean llama backends on all required shape rows and same-file llama on natural AR and p512 prefill. P5/task 22 closes; native Q4_K_S MTP and whole-GTT memory remain task-23/task-24 obligations."
+}

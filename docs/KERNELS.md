@@ -239,14 +239,16 @@ dense-BF16 Q5 shadow. The exact 16K/48V/128x128 GDN geometry also selects
 Q4_K_M policies whose representation and math are unchanged: qmicro Q4
 split-weight gate+up+SiLU, Q4 down+residual (Q5 down remains unfused), and
 quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
-**12.42932 -> 13.06854 tok/s (+5.143%)** and produce **13.06854/12.88049/
-13.04100 tok/s** at 512/1K/4K, above both frozen clean llama backends at every
-shape. Natural true AR is **13.33276 tok/s**, repeat-exact across 30 requests.
+**12.42932 -> 13.06854 tok/s (+5.143%)**. Clean commit `3118943eb` publishes
+**13.03883/12.86679/13.02544 tok/s** at 512/1K/4K, above both frozen clean
+llama backends at every shape. Natural true AR is **13.33276 tok/s**,
+repeat-exact across 30 requests.
 Native Q4_K_S MTP remains fail-closed for publication: B1-B3 diverge from
 scalar AR on both Japanese prompts even though every GPU acceptance decision
 matches its CPU oracle. Evidence:
-[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json) and
-[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
+[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json), and
+[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json).
 
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow

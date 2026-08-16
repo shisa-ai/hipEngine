@@ -47,7 +47,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **402.062** | **12.497** |
+| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **379.716** | **13.039** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -282,7 +282,7 @@ open campaign gaps. Evidence:
 [`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
-#### Retained clean state — G2 complete, P5 open
+#### Prior retained clean state — G2 complete, P5 open
 
 Clean commit `9c649e28d` includes the shared-Q6 prefill owners, eight exact
 post-norm graph/dataflow units, and sole-qmicro ownership for the 128 dense
@@ -307,26 +307,29 @@ Relative to the frozen opening snapshot, prefill is
 **8.158%/10.995%/24.543%** above the lower llama row, so G5 remains open.
 Evidence: [`post-qmicro clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
 
-#### Retained development closure — Q4_K_S true AR
+#### Clean P5 closure — Q4_K_S true AR
 
-The isolated `95a8a8e9a` + policy-diff gate qualifies Q4_K_S as the P5 route;
-a post-commit clean publication refresh remains separate. Relative to a matched
-policy-disabled Q4_K_S control, 512/128 AR improves **12.42932 -> 13.06854
-tok/s (+5.143%)**. The required shape rows already exceed both frozen clean
-llama Q4_K_M backends:
+Clean commit `3118943eb` promotes Q4_K_S as the current Qwen3.8 true-AR and
+prefill route. Relative to the matched policy-disabled development control,
+512/128 AR improves **12.42932 -> 13.06854 tok/s (+5.143%)**; the clean route
+reproduces the win at **13.03883 tok/s**. All required clean rows exceed both
+frozen clean llama Q4_K_M backends:
 
 | Shape | hipEngine Q4_K_S prefill | llama HIP | llama Vulkan | hipEngine Q4_K_S AR | llama HIP | llama Vulkan | Tracked peak |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **379.203** | 352.426 | 242.956 | **13.0685** | 12.1506 | 12.7629 | **15.729 GiB** |
-| 1K/128 | **375.952** | 364.443 | 247.610 | **12.8805** | 12.0645 | 12.7197 | **16.147 GiB** |
-| 4K/128 | **370.804** | 367.993 | 354.368 | **13.0410** | 11.5081 | 12.5683 | **18.465 GiB** |
+| 512/128 | **379.716** | 352.426 | 242.956 | **13.0388** | 12.1506 | 12.7629 | **15.729 GiB** |
+| 1K/128 | **377.321** | 364.443 | 247.610 | **12.8668** | 12.0645 | 12.7197 | **16.147 GiB** |
+| 4K/128 | **370.788** | 367.993 | 354.368 | **13.0254** | 11.5081 | 12.5683 | **18.465 GiB** |
 
-Natural true AR is **13.33276 tok/s** with all 30 repeated trajectories exact;
-same-file Q4_K_S llama HIP/Vulkan are **5.53853/7.51888 tok/s**. The 512
-tracked peak is **0.858 GiB** below the clean Q4_K_M row, but this is not a
-whole-GTT claim. Native Q4_K_S MTP is correctness-blocked on both Japanese
-prompts and none of its rates are retained. Evidence:
-[`Q4_K_S true-AR policy retention`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+Clean prefill leads llama HIP by **7.743%/3.534%/0.760%** and Vulkan by
+**56.290%/52.385%/4.634%**; AR leads HIP by **7.310%/6.650%/13.185%** and
+Vulkan by **2.162%/1.156%/3.637%**. Natural true AR is **13.33276 tok/s** with
+all 30 repeated trajectories exact; same-file Q4_K_S llama HIP/Vulkan are
+**5.53853/7.51888 tok/s**. The 512 tracked peak is **0.858 GiB** below the
+clean Q4_K_M row, but this is not a whole-GTT claim. Native Q4_K_S MTP is
+correctness-blocked on both Japanese prompts and none of its rates are retained.
+Evidence: [`clean Q4_K_S publication`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json) and
+[`causal policy retention`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
 
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
