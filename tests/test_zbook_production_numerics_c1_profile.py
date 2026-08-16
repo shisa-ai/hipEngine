@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from scripts.zbook_production_numerics_c1_profile import (
     rank_candidate_roles,
+    rank_device_stages,
     resolve_roctx_sdk,
+    summarize_role_launches,
 )
 
 
@@ -36,3 +38,29 @@ def test_resolve_roctx_sdk_falls_back_to_base_prefix(tmp_path) -> None:
     fallback.write_bytes(b"sdk")
 
     assert resolve_roctx_sdk(missing, base_prefix=base, python_version="3.13") == fallback
+
+
+def test_zero_duration_fallback_ranks_device_stages_and_launches() -> None:
+    stages = rank_device_stages(
+        {"decode_lm_head_sample": 12.0, "decode_layers": 36.0},
+        decode_steps=24,
+        limit=2,
+    )
+    assert [row["name"] for row in stages] == ["decode_layers", "decode_lm_head_sample"]
+    assert stages[0]["ms_per_token"] == 1.5
+
+    launches = summarize_role_launches(
+        [
+            {"role": "lm_head", "family": "q6", "kernel": "head"},
+            {"role": "lm_head", "family": "q6", "kernel": "head"},
+            {"role": "gdn_input_projections", "family": "q8", "kernel": "qkv"},
+        ],
+        decode_steps=2,
+    )
+    assert launches[0] == {
+        "name": "lm_head",
+        "calls": 2,
+        "calls_per_token": 1.0,
+        "kernel_families": ["q6"],
+        "kernels": ["head"],
+    }

@@ -65,6 +65,62 @@ def rank_candidate_roles(
     return attributed[:limit]
 
 
+def rank_device_stages(
+    timings_ms: Mapping[str, Any],
+    *,
+    decode_steps: int,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Rank same-stream device wall-clock stages by per-token time."""
+
+    if decode_steps <= 0 or limit <= 0:
+        raise ValueError("decode steps and device-stage limit must be positive")
+    rows = [
+        {
+            "name": str(name),
+            "total_ms": float(value),
+            "ms_per_token": float(value) / float(decode_steps),
+        }
+        for name, value in timings_ms.items()
+        if float(value) >= 0.0
+    ]
+    rows.sort(key=lambda row: row["ms_per_token"], reverse=True)
+    return rows[:limit]
+
+
+def summarize_role_launches(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    decode_steps: int,
+) -> list[dict[str, Any]]:
+    """Summarize role launch counts when rocprof kernel durations are unavailable."""
+
+    if decode_steps <= 0:
+        raise ValueError("decode steps must be positive")
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        name = str(row.get("role", "unattributed"))
+        entry = grouped.setdefault(
+            name,
+            {"name": name, "calls": 0, "kernel_families": set(), "kernels": set()},
+        )
+        entry["calls"] += 1
+        entry["kernel_families"].add(str(row.get("family", "unknown")))
+        entry["kernels"].add(str(row.get("kernel", "unknown")))
+    result = [
+        {
+            "name": value["name"],
+            "calls": int(value["calls"]),
+            "calls_per_token": float(value["calls"]) / float(decode_steps),
+            "kernel_families": sorted(value["kernel_families"]),
+            "kernels": sorted(value["kernels"]),
+        }
+        for value in grouped.values()
+    ]
+    result.sort(key=lambda row: row["calls"], reverse=True)
+    return result
+
+
 def resolve_roctx_sdk(
     configured: Path,
     *,
@@ -286,17 +342,89 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         launches=hip_launches,
         windows=role_windows,
     )
-    profile_summary = _summarize_rows(
-        role_kernels,
-        steps=int(args.profile_steps),
-        top=int(args.top),
-    )
-    roles = _summarize_role_rows(role_kernels, steps=int(args.profile_steps))
     attributed = sum(row["role"] != "unattributed" for row in role_kernels)
+    positive_durations = any(int(row.get("duration_ns", 0)) > 0 for row in role_kernels)
+    stage_command: list[str] | None = None
+    stage_json: Path | None = None
+    if positive_durations:
+        profile_summary = _summarize_rows(
+            role_kernels,
+            steps=int(args.profile_steps),
+            top=int(args.top),
+        )
+        roles = _summarize_role_rows(role_kernels, steps=int(args.profile_steps))
+        candidate_targets = rank_candidate_roles(roles, limit=int(args.role_limit))
+        profile_summary.update(
+            {
+                "timing_authority": "rocprofv3_kernel_duration",
+                "rocprof_kernel_durations_available": True,
+                "roles": roles,
+                "role_launches": summarize_role_launches(
+                    role_kernels, decode_steps=int(args.profile_steps)
+                ),
+            }
+        )
+    else:
+        stage_json = raw_root / "device-stage-timings.json"
+        stage_command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "qwen35_gguf_bench.py"),
+            "--model",
+            str(Path(args.model)),
+            "--quant",
+            "gguf_q4_k_m",
+            "--token-id",
+            str(int(args.prompt_token_id)),
+            "--prompt-length",
+            str(int(args.prompt_length)),
+            "--decode-tokens",
+            str(int(args.profile_steps)),
+            "--warmup-decode-tokens",
+            str(int(args.profile_warmup_steps)),
+            "--warmup-runs",
+            "0",
+            "--measured-runs",
+            "1",
+            "--persistent-session",
+            "--force-bulk-prefill",
+            "--gpu-stage-timings",
+            "--compiler-version-file",
+            str(compiler_file),
+            "--require-cached-build",
+            "--use-wmma-prefill",
+            "--use-gemv-decode",
+            "--json",
+            str(stage_json),
+        ]
+        _run_command(stage_command, cwd=REPO_ROOT, env=env)
+        stage_payload = json.loads(stage_json.read_text(encoding="utf-8"))
+        measured_stage_runs = [
+            row for row in stage_payload.get("runs", []) if row.get("measured") is True
+        ]
+        if len(measured_stage_runs) != 1:
+            raise ValueError("device-stage fallback must emit one measured run")
+        stage_run = measured_stage_runs[0]
+        stage_timings = stage_run.get("gpu_stage_timings_ms", {}).get("decode", {})
+        if not isinstance(stage_timings, Mapping) or not stage_timings:
+            raise ValueError("device-stage fallback emitted no decode stage timings")
+        candidate_targets = rank_device_stages(
+            stage_timings,
+            decode_steps=int(args.profile_steps),
+            limit=int(args.role_limit),
+        )
+        profile_summary = {
+            "timing_authority": "same_stream_device_wall_clock_stages",
+            "rocprof_kernel_durations_available": False,
+            "rocprof_zero_duration_dispatches": len(selected_kernels),
+            "device_stage_timings_ms": dict(stage_timings),
+            "device_stage_child_summary": stage_payload.get("summary"),
+            "role_launches": summarize_role_launches(
+                role_kernels, decode_steps=int(args.profile_steps)
+            ),
+        }
     profile_summary.update(
         {
-            "roles": roles,
-            "candidate_roles": rank_candidate_roles(roles, limit=int(args.role_limit)),
+            "candidate_targets": candidate_targets,
             "marker_windows": len(windows),
             "role_marker_windows": len(role_windows),
             "hip_kernel_launch_apis": len(hip_launches),
@@ -334,7 +462,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "kernel_trace_sha256": _sha256(kernel_csv),
             "marker_trace_sha256": _sha256(marker_csv),
             "hip_api_trace_sha256": _sha256(hip_api_csv),
+            "kernel_durations_available": positive_durations,
+            "device_stage_command": stage_command,
         },
+    )
+    timing_available = bool(
+        positive_durations
+        or profile_summary.get("device_stage_timings_ms")
     )
     measurement_valid = bool(
         provenance["host_name"] == str(args.expected_host)
@@ -342,7 +476,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and baseline_summary["all_tokens_exact"]
         and profile_wall["all_tokens_exact"]
         and len(windows) == int(args.profile_steps)
+        and len(selected_kernels) > 0
         and attributed > 0
+        and timing_available
     )
     return {
         "schema_version": 1,
@@ -380,6 +516,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "marker_csv_sha256": _sha256(marker_csv),
             "hip_api_csv_sha256": _sha256(hip_api_csv),
             "profile_child_sha256": _sha256(profile_json),
+            "device_stage_json_sha256": (
+                _sha256(stage_json) if stage_json is not None else None
+            ),
         },
         "provenance": provenance,
         "limitations": [
@@ -431,7 +570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(args.output)
-    print(json.dumps(artifact["decode_ownership"]["candidate_roles"], indent=2))
+    print(json.dumps(artifact["decode_ownership"]["candidate_targets"], indent=2))
     return 0 if artifact["measurement_valid"] else 1
 
 
