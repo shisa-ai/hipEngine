@@ -95,7 +95,13 @@ def test_post_attention_c1_moe_closes_device_stage_interval(
         "_gguf_norm_residual_decode_kernel",
         lambda *args, **kwargs: lambda *args, **kwargs: None,
     )
-    monkeypatch.setattr(runner, "_run_post_attention_moe_c1", lambda *args, **kwargs: None)
+    def fake_moe(*args, **kwargs):
+        recorder = kwargs["gpu_stage_recorder"]
+        prefix = kwargs["stage_prefix"]
+        recorder.mark(f"{prefix}_router")
+        recorder.mark(f"{prefix}_combine")
+
+    monkeypatch.setattr(runner, "_run_post_attention_moe_c1", fake_moe)
     recorder = SimpleNamespace(mark=lambda name: marks.append(name))
 
     runner._run_post_attention_ffn_rows(
@@ -109,7 +115,11 @@ def test_post_attention_c1_moe_closes_device_stage_interval(
         gpu_stage_recorder=recorder,
     )
 
-    assert marks == ["decode_ffn_post_norm_residual", "decode_ffn_moe_total"]
+    assert marks == [
+        "decode_ffn_post_norm_residual",
+        "decode_ffn_moe_router",
+        "decode_ffn_moe_combine",
+    ]
 
 
 def test_post_attention_f32_attn_out_falls_back_without_flag(

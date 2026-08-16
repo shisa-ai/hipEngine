@@ -7935,9 +7935,9 @@ class Qwen35GGUFFullStackRunner:
                     post_norm_f32_ptr=post_norm_f32_ptr,
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
+                    gpu_stage_recorder=gpu_stage_recorder,
+                    stage_prefix=f"{stage_prefix}_moe",
                 )
-                if gpu_stage_recorder is not None:
-                    gpu_stage_recorder.mark(f"{stage_prefix}_moe_total")
             else:
                 self._run_post_attention_moe_rows(
                     layer_id,
@@ -8172,6 +8172,8 @@ class Qwen35GGUFFullStackRunner:
         post_norm_f32_ptr: int | None = None,
         next_norm_weight_ptr: int | None = None,
         next_norm_out_ptr: int | None = None,
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        stage_prefix: str = "decode_ffn_moe",
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -8264,6 +8266,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_router")
 
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
@@ -8272,7 +8276,7 @@ class Qwen35GGUFFullStackRunner:
         if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
             raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
 
-        if (
+        compact_moe = bool(
             not f32_residual
             and _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
             and _try_run_post_attention_moe_c1_compact_gemv(
@@ -8289,7 +8293,10 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        ):
+        )
+        if compact_moe:
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_compact")
             return
         selected_rows = top_k
         selected_down_is_f32 = False
@@ -8321,6 +8328,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_selected")
 
         if _try_launch_shared_gate_up_from_f32_post_norm(
             layer.weight("ffn_gate_shexp"),
@@ -8404,6 +8413,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up")
         shared_down_is_f32 = False
         if (
             _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
@@ -8438,6 +8449,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_down")
         if f32_residual:
             if selected_down_is_f32 and shared_down_is_f32:
                 weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(
@@ -8550,6 +8563,8 @@ class Qwen35GGUFFullStackRunner:
                         stream=stream,
                         runtime=runtime,
                     )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_combine")
 
     def _run_post_attention_moe_c1_unfused_selected_ffn(
         self,
