@@ -12,6 +12,7 @@ import argparse
 import gc
 import hashlib
 import json
+import os
 import platform
 import struct
 import time
@@ -268,11 +269,70 @@ def capture_bf16(args: argparse.Namespace) -> int:
     return 0
 
 
+def _torch_depthwise_causal_conv1d(
+    hidden_states: Any,
+    weight: Any,
+    bias: Any | None = None,
+    activation: str | None = None,
+    **kwargs: Any,
+) -> Any:
+    """MIOpen-independent Qwen3.5 causal depthwise convolution.
+
+    Transformers' grouped ``conv1d`` fallback has no usable MIOpen algorithm on
+    the gfx1151 ROCm stack used by the ZBook campaign. Padding on the left and
+    reducing unfolded windows is algebraically identical to that fallback's
+    symmetric-padding output cropped back to the original sequence length.
+    """
+
+    del kwargs
+    import torch.nn.functional as F
+    from transformers.activations import ACT2FN
+
+    output_dtype = hidden_states.dtype
+    x = hidden_states.to(weight.dtype)
+    kernel_size = int(weight.shape[-1])
+    windows = F.pad(x, (kernel_size - 1, 0)).unfold(-1, kernel_size, 1)
+    output = (windows * weight.unsqueeze(0).unsqueeze(2)).sum(dim=-1)
+    if bias is not None:
+        output = output + bias.reshape(1, -1, 1)
+    if activation is not None:
+        output = ACT2FN[activation](output)
+    return output.to(output_dtype)
+
+
+def _configure_paroquant_transformers_rocm(torch: Any) -> dict[str, Any]:
+    """Select the visible ROCm architecture and install required oracle shims."""
+
+    if torch.version.hip is None or not torch.cuda.is_available():
+        return {"hip": False}
+    properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+    arch = str(getattr(properties, "gcnArchName", "")).split(":", 1)[0]
+    if not arch:
+        raise RuntimeError("unable to determine the visible ROCm device architecture")
+    os.environ.setdefault("PAROQUANT_HIP_ARCH", arch)
+    os.environ.setdefault("PYTORCH_ROCM_ARCH", arch)
+
+    depthwise_fallback = arch == "gfx1151" and os.environ.get(
+        "HIPENGINE_QUANT_QUALITY_MIOPEN_DEPTHWISE", "0"
+    ) != "1"
+    if depthwise_fallback:
+        import transformers.models.qwen3_5_moe.modeling_qwen3_5_moe as qwen35_moe
+
+        qwen35_moe.causal_conv1d_fn = _torch_depthwise_causal_conv1d
+    return {
+        "hip": True,
+        "arch": arch,
+        "paroquant_hip_arch": os.environ["PAROQUANT_HIP_ARCH"],
+        "qwen35_depthwise_fallback": depthwise_fallback,
+    }
+
+
 def capture_transformers_paro(args: argparse.Namespace) -> int:
     import torch
     import transformers
     from transformers import AutoModelForImageTextToText
 
+    rocm_compat = _configure_paroquant_transformers_rocm(torch)
     try:
         import paroquant.inference.backends.transformers.quantizer  # noqa: F401
     except Exception as exc:
@@ -344,7 +404,7 @@ def capture_transformers_paro(args: argparse.Namespace) -> int:
         dtype="float32",
         elapsed_seconds=time.perf_counter() - started,
         model_sha256=args.model_sha256,
-        extra={"role": "candidate", "teacher_forced": True},
+        extra={"role": "candidate", "teacher_forced": True, "rocm_compat": rocm_compat},
     )
     _json_dump(manifest_path, manifest)
     print(json.dumps({"manifest": str(manifest_path), "rows": int(labels.size)}))
