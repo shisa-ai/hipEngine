@@ -276,6 +276,16 @@ unchanged peaks, and no bytes. Native rows/MTP, prefill, NextN, misses, and
 peer backends retain the two qualified singleton projections. Evidence:
 [`narrow K/V pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
 
+Laguna's exact adjacent-Q/paired-coefficient transport does not materially
+transfer to the dominant Qwen3.8 split-weight gate/up owner. Reusing each
+packed-Q byte plus aligned d/dmin and scale/min pairs is BF16-bit exact and
+positive on all three 95.625-MiB actual layer pairs, but changes the family only
+**1.431580 -> 1.425980 ms (1.00393x, 38/45 wins)**. The projected selected-4K
+saving is **0.1200 ms/token / 0.1524%**, below the predeclared 1% operation-
+complete gate. Transient code is removed and direct per-column loads remain.
+Evidence:
+[`Q4 pair-coefficient rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-paircoeff-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
