@@ -43,7 +43,7 @@ _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
 _POST_MERGE_PACKAGE_SHA256 = (
-    "a718a33fd13216e4db29a3bd32cde70c01e5fa71f9e2b3f8caaaa52b4bf0f0c2"
+    "272ce5406a77501eb6259aa4be3e43824c4f85aadbc09c2d8cb32942cacd7836"
 )
 _POST_MERGE_SOURCE_SHA256 = {
     # Maple P1 templates the existing stable parallel count/scatter bodies so
@@ -55,10 +55,10 @@ _POST_MERGE_SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/moe/group_scatter.py": (
         "4ede6f2c6932eb992b148f8b3040d2aa49a27f0b7e11d69c708b166ef5c8916b"
     ),
-    # The later bounded head-major AOTriton capability is orthogonal to H7U's
+    # The later Qwen3.8 dense policy additions are orthogonal to H7U's
     # unchanged gfx1151 parallel-compaction owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "53c7d2e41d54098c5c5befa670d76ca1476b8e10146b5188057888d499b2594c"
+        "c2829fb14c6bbd690d12cd8cd56b58d1ec1d064c5fa1bf992e676bc5eb2237d9"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

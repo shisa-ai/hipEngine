@@ -248,6 +248,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
     )
     session.use_wmma_prefill = None
     session.use_gemv_decode = None
+    session._bulk_prefill_scratch = object()
     bulk_calls: list[dict[str, object]] = []
 
     def fake_bulk_prefill_and_sample(
@@ -301,6 +302,7 @@ def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
     )
     session.use_wmma_prefill = None
     session.use_gemv_decode = None
+    session._bulk_prefill_scratch = object()
     target_hidden_rows = DeviceBuffer(0xD000, 32)
     bulk_calls: list[dict[str, object]] = []
 
