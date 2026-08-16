@@ -220,14 +220,21 @@ The storage blocker remains real. All offered widths pass 8K/request on W7900,
 but 8.25K fails resident preparation because packed AR direct no-mirror INT8
 attention is not admitted. The <=8K route retains BF16 mirrors and cannot be a
 compact-INT8 capacity claim. The telemetry and basic live-admission/reclaim
-items are closed; remaining closure order:
+items are closed.
 
-1. qualify cancellation, default elastic pool growth/shrink, and overload
-   rejection before HIP OOM on the controlled-SSE route;
-2. add direct no-mirror packed INT8 prefill/decode attention with CPU-reference
-   KL/top-1 and `rocprofv3` kernel gates;
-3. only then widen registry capacities and run mixed-length/SLO/external
-   serving comparisons.
+The approved next campaign is
+[`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md):
+
+1. `IKV-C0` integrates current origin and adds fail-closed artifact/backend/
+   quant/layout/scale capability identity;
+2. `IKV-C1` proves no-mirror c2/c4 through a declared serial c1-per-row route,
+   including shifted block-table-aware prefill;
+3. `IKV-C2` adds the true row-batched INT8 split-K producer/reducer;
+4. `IKV-C3/C4` shares/models prefill ownership and admits KV, scales, mirrors,
+   workspace, oracle, graphs, and reserve before allocation;
+5. `IKV-C5/C6` closes cancellation, grow/shrink, overload/recovery, explicit
+   source telemetry, and artifact-scoped quality/capacity;
+6. `IKV-C7` runs matched BF16/serial/direct economics and promotes or rejects.
 
 Evidence:
 [`Qwen3.8 actual context, W7900 quality, and concurrency frontier`](../benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
@@ -1517,9 +1524,23 @@ multiple later gates.
 18. **Then — A3/A4 rerun:** rerun the frozen W7900 gates and promote only a
     candidate that passes every correctness, ownership, C1/medium-C4, and SLO
     requirement.
-19. **Ready — F5/H:** broaden sampled prefix reuse and graph-safe historical
-    boundaries, close long-context/memory pressure, and run matched external
-    serving comparisons.
+19. **Next campaign — IKV-C0:** integrate the divergent Qwen3.8 branches and
+    lock INT8 admission to immutable artifact/backend/quant/layout/scale
+    evidence before changing high-conflict runtime/kernel files.
+20. **Then — IKV-C1:** qualify compact no-mirror c2/c4 through an honest serial
+    c1-per-row route with shifted block-table-aware prefill; make no throughput
+    claim.
+21. **Then — IKV-C2:** add and trace the row-batched 24Q/4KV/D256 INT8 split-K
+    producer/reducer, preserving c1 and unfused fallbacks.
+22. **Then — IKV-C3/C4:** prevent N-copy prefill scratch from erasing savings
+    and reject the complete resource budget before HIP OOM.
+23. **Then — IKV-C5/C6:** close cancellation, grow/shrink, overload/recovery,
+    direct-vs-mirror telemetry, and artifact-scoped quality/capacity.
+24. **Then — IKV-C7:** run matched BF16/serial/direct economics, promote or
+    reject, and remove the mirrored seam when safe.
+25. **After IKV — F5/H:** broaden sampled prefix reuse and graph-safe historical
+    boundaries, close other long-context/memory pressure, and run matched
+    external serving comparisons.
 
 Do not label C>8 grouping, general prefix caching, DMS, speculative
 integration, or external-engine parity from the retained gfx11 GGUF results;
@@ -1547,6 +1568,9 @@ Use only these status values:
 | GGUF Q4_K_M / BF16, live admission | `retained` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, arbitrary-C lowering | `retained` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, sampled OpenAI API | `direct_eq_ok` | `retained` | `retained` |
+| Qwen3.8 `7b2aec...` / no-mirror INT8 c1 (explicit artifact) | `retained` | `not_started` | `retained` |
+| Qwen3.8 `7b2aec...` / short mirrored INT8 live admission (diagnostic) | `continuous_eq_ok` | `not_started` | `retained` |
+| Qwen3.8 `7b2aec...` / direct no-mirror INT8 c>N (IKV-C0-C7) | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c2 | `retained` | `retained` | `retained` |
 | PARO W4 / BF16, c4 | `not_started` | `retained` | `retained` |
 | PARO W4 / BF16, c8 | `not_started` | `retained` | `retained` |
@@ -1610,6 +1634,13 @@ Report both:
 The difference is unattributed runtime/driver/workspace overhead and remains
 visible. Prefix sharing claims report bytes avoided, extra metadata, refcounts,
 and copy-on-write cost.
+
+INT8 c>N admission additionally reports and budgets persistent payload, K/V
+scale planes, any BF16 mirrors, packed/split-K workspace, the selected prefill
+hidden/oracle workspace share, graph-pinned ownership, and a configured
+whole-device reserve. A page-only estimate is incomplete even when pool
+high-water rejection works. Estimated versus measured bytes and the rejecting
+resource are required campaign evidence.
 
 ### No benchmark gaming
 
