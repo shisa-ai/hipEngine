@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P1 complete, P2 evaluator core, P3 fail-closed runtime plumbing, and P4 threshold calibration implemented; model plans/current-route certification pending**
+Status: **approved; P0-P4 infrastructure complete; ZBook-available P1 historical candidates closed; W7900, model-blocked, and specialized historical recovery plus model plans/current-route certification remain open**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -127,18 +127,18 @@ historical context. It qualifies no runtime profile and grandfathers no route.
 
 | Priority | Candidate | Existing upside | Missing evidence / action |
 | --- | --- | ---: | --- |
-| P1 | Post-fix A4 production route | Old performance premise was large but invalidated by the state fix | Fresh strict/current/production performance baseline; dynamic teacher-forced logits; exact ownership and transition gates. |
+| P1 blocked (W7900) | Post-fix A4 production route | Old performance premise was large but invalidated by the state fix | Requires the frozen real-server gfx1100/W7900 lane; ZBook values cannot substitute or form its baseline. |
 | P1 closed (ZBook-local) | Former gfx1151 Qwen3.8 c1 Q4 residual-Q8_1x2 DP4A default | Full requalification passes 450-row quality at max KL `0.0008333`, `99.778%` top-1, and exact repeats | Seven current same-session p512/d128 pairs measure `0.998071x` the exact local32 route with one win; restore exact local32 as the serial package owner, preserve the separately qualified native B1 owner, and retain split-weight only as a diagnostic. |
 | P1 closed (ZBook-local) | gfx1151 GGUF Q8T16 c4/c8 rowtile | Fresh strict-teacher static/dynamic/sparse gate is bit-identical over 1,050 rows with exact repeats; current p512/d128 A/B is `1.00445x` at c4 (7/7 wins) and `1.00666x` at c8 (6/7) | Retain a physical-width floor of 4. The same policy loses at c2 (`0.98205x`, 0/7), so c2 and gfx1100 keep the direct owner. Free-running strict/candidate IDs differ deterministically and remain diagnostic for production; runtime-profile qualification is still blocked on actual control/task evidence. |
-| P1 | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run against current strict and calibrated tails; old max KL `0.0731` is outside the calibrated ceiling. |
-| P2 | PARO c2 1024-thread attention | About `+2.4-2.6%` | Full category/state/isolation gate and current A/B. |
-| P2 | Laguna compact Q4 shared-down | About `+0.388%` E2E, one-ULP leaf drift | Full teacher-forced/category gate; low priority because complete gain is small. |
-| P2 | D64 fast verifier | Potential to avoid exact long-horizon fallbacks | D64/D128 strict-teacher logits, state bounds, MTP task/economics packet. |
-| P2 | DFlash multirow down projection | Prior single-prompt speed opportunity | Full prompt suite, verifier state/KV/transaction and acceptance/economics gates. |
+| P1 blocked (W7900) | W7900 PARO native c4 | About `153.3 tok/s`, roughly `1.145x` c1 in the historical packet | Re-run on the original/current W7900 lane against strict and calibrated tails; ZBook rates are independent. |
+| P2 blocked (W7900) | PARO c2 1024-thread attention | About `+2.4-2.6%` | Full category/state/isolation gate and current same-W7900 A/B. |
+| P2 blocked (model) | Laguna compact Q4 shared-down | About `+0.388%` E2E, one-ULP leaf drift | Laguna weights are not present on ZBook; full teacher-forced/category gate remains open. |
+| P2 deferred (specialized) | D64 fast verifier | Potential to avoid exact long-horizon fallbacks | Separate D64/D128 strict-teacher, state-bound, MTP task/economics packet; do not fold into the core AR lane. |
+| P2 deferred (specialized) | DFlash multirow down projection | Prior single-prompt speed opportunity | Separate full prompt-suite verifier state/KV/transaction and acceptance/economics campaign. |
 
 ### 4.2 Diagnose before optimization
 
-- **PARO c8:** localize the max-KL `2.575` rows by prompt, token, layer, width,
+- **PARO c8 (blocked on W7900 lane):** localize the max-KL `2.575` rows by prompt, token, layer, width,
   margin, state boundary, and graph/eager route. Do not optimize the old route
   until the outlier is explained or eliminated.
 - **Same-quant engine disagreement:** the 2026-08-16 Qwen3.6 quality audit found
@@ -153,6 +153,20 @@ exact route, or already fail model quality by a wide margin. In particular,
 Laguna Q8 DP4A, qrow4 online, F32 hipBLASLt attention, source-Q5 SGEMM, source
 attention/MMQ families, and the rejected GDN K2/wave32 variants need a materially
 new numerical repair—not merely the new profile label.
+
+### 4.4 Host-qualified recovery checkpoint
+
+The locally available historical-recovery checkpoint is complete, not the
+global queue. On physical host `zbook`, Qwen3.8 dense-pair and Q8T16 batch-route
+have current full-logit, repeat, and same-host performance dispositions. No
+other P1 candidate can be honestly completed there: post-fix A4 and PARO c4/c2
+belong to W7900/gfx1100, and Laguna weights are absent. D64/DFlash remain
+specialized campaigns with their own task/economics contracts rather than
+blockers for starting core ZBook c1/c>N work.
+
+Accordingly, the campaign may proceed on an explicitly independent ZBook lane.
+This does not close W7900 historical recovery, unblock a W7900 default decision,
+or permit comparisons with the other gfx1151 host.
 
 ## 5. Evaluator design
 
