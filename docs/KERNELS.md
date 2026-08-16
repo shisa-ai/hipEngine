@@ -195,21 +195,22 @@ and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-x
 For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
 plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
 `gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
-absent. The rows1 H=5,120/N=17,408 gate/up pair uses a model/quant/shape-
-qualified primary-plus-residual Q8_1 producer and same-resident dual-Q4T16
-dp4a+SiLU consumer. Serial true AR defaults to the exact four-wave split-weight
-sibling: independent two-wave gate/up owners preserve the prior K/FMA/reduction
-order while lowering traced resources from 224 to 120 VGPR and 1,024 to 512 B
-LDS. It reuses the same 11,520-byte rows1 workspace and adds no resident bytes.
-`native_batch_decode_session` retains the prior Q8_1x2 consumer after the
-split-weight B1 diagnostic regressed; the exact two-local32-plus-primitive-SiLU
-chain remains the policy-miss rollback. Exact rows-2-4 rowtile, same-T16
-residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
+absent. The rows1 H=5,120/N=17,408 gate/up pair defaults to the exact sole-Q4T16
+local32 dual+SiLU owner. The previously retained primary-plus-residual Q8_1
+producer and split-weight dual-Q4T16 dp4a+SiLU consumer remain registered for
+historical comparison only: a fresh strict-teacher gate passes at max KL
+`0.0008333` and `99.778%` top-1, but seven same-session p512/d128 pairs measure
+the changed-arithmetic route `0.998071x` the exact owner with only one win. It is
+therefore not a production performance candidate. `native_batch_decode_session`
+retains its separately qualified prior Q8_1x2 consumer; rows-2-4 rowtile,
+same-T16 residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
 attention-pair owners cover the remaining operation set. The raw token
 embedding remains raw GGUF, peer geometries retain prior policy, and no
 `KVLiveSpans` ABI changes are involved. Evidence:
-[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json) and
-[`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+[`current strict requalification`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json),
+[`current counterbalanced A/B`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json),
+[`historical Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json), and
+[`historical Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 The serial-c1 K=5,120/N=1,024 full-attention K/V subset independently selects
 the exact four-column Q4T16 owner; native sessions, peers, and all shape misses
 retain local32 direct. Evidence:

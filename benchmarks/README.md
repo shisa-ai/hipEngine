@@ -366,9 +366,11 @@ and peer backends retain exact fallbacks. Evidence:
 [`shared standard-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json),
 and [`shared planar-Q6 prefill`](results/2026-08-15-gfx1151-qwen38-27b-q6-shared4-prefill.json).
 
-P5 retains rows1 Q4T16 Q8_1x2 dp4a gate/up, the exact serial-c1 Q5T16 tile8
-and Q4 split-weight owners, plus exact fixed-H5120 standalone/add norm kernels.
-The latest same-source generic-norm -> fixed-norm graph rows are:
+P5 historically retained rows1 Q4T16 Q8_1x2 dp4a gate/up, the exact serial-c1
+Q5T16 tile8 and Q4 split-weight owners, plus exact fixed-H5120 standalone/add
+norm kernels. The production-numerics rebase below supersedes the Q4 rows1
+owner; the other P5 decisions remain. The latest same-source generic-norm ->
+fixed-norm graph rows are:
 
 | Shape | Same-source control | Current AR | Fixed-norm delta | llama HIP | llama Vulkan |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -391,6 +393,17 @@ Vulkan remains **2.52-5.25%** ahead, so P5 stays open. Evidence:
 [`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
 and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+
+A current production-numerics rebase restores exact local32 dual+SiLU for the
+serial-c1 rows1 H5120/N17408 gate/up pair; native B1 retains its separately
+qualified non-split Q8_1x2 owner. The former residual-Q8_1x2 split-weight owner
+passes the complete 18-prompt/450-row strict-teacher envelope (max KL
+**0.0008333**, p99 **0.0005347**, top-1 **449/450**, exact three-run repeats),
+but loses the current strict-context p512/d128 counterbalanced A/B at
+**0.998071x** with only **1/7** wins. This is a shape-scoped default correction,
+not a new public topline; the changed-arithmetic route remains diagnostic.
+Evidence: [`full-logit requalification`](results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json)
+and [`counterbalanced A/B`](results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json).
 
 The clean post-norm selected-region profile reconciles **79.30459 ms/token**
 of kernel work against **82.72545 ms/token** profiled host decode at unchanged

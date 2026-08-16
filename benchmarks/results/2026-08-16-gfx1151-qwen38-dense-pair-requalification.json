@@ -1,0 +1,631 @@
+{
+  "candidate_logits_sha256": "bd3bdc5746354511f7fe734f1ba2339d4dd95a5559a730a8eeba12883c988808",
+  "created_at": "2026-08-16T14:01:35.100066+00:00",
+  "historical_source": {
+    "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_dp4a",
+    "label_does_not_affect_fresh_verdict": true,
+    "path": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json",
+    "sha256": "03265e4e98d71fbee1d096d806c875f0ad4840d640f1fd6970cd6b45df8c581d",
+    "status": "retained_development"
+  },
+  "kind": "hipengine_execution_profile_gguf_dense_pair_requalification_capture",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "profile_qualification_claim": false,
+  "prompts": [
+    {
+      "category": "code",
+      "id": "code_merge_intervals",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_token_ids_sha256": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+      "prompt_tokens": 40,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_topological_sort",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+      "prompt_tokens": 50,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_lru_cache",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_token_ids_sha256": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+      "prompt_tokens": 47,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_markdown_table",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_token_ids_sha256": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e",
+      "prompt_tokens": 52,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "general_en_plan",
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "prompt_token_ids_sha256": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+      "prompt_tokens": 39,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "general_en_explain",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+      "prompt_tokens": 40,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "general_ja_plan",
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "prompt_token_ids_sha256": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+      "prompt_tokens": 43,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "general_ja_explain",
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "prompt_token_ids_sha256": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814",
+      "prompt_tokens": 43,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "mixed_ja_en_translate",
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "prompt_token_ids_sha256": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467",
+      "prompt_tokens": 64,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "mixed_ja_en_review",
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "prompt_token_ids_sha256": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6",
+      "prompt_tokens": 71,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "heldout_code_rate_limiter",
+      "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+      "prompt_token_ids_sha256": "8da39cefeba185e7467ba519faedbc1d41365b1cbc5cf2b16cd867fa784ad413",
+      "prompt_tokens": 55,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "heldout_code_interval_schedule",
+      "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+      "prompt_token_ids_sha256": "0526022dc0093d1d3f2ca55d3eb3340ab5a997204d9892fb8216a42db2b978f5",
+      "prompt_tokens": 52,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "heldout_general_en_incident",
+      "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+      "prompt_token_ids_sha256": "d38575ce43649f7a5914b4e8e4f63f1d6d32229c08dd0e4fc3acb276c021339c",
+      "prompt_tokens": 45,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "heldout_general_en_quant",
+      "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+      "prompt_token_ids_sha256": "f1ed6521944613b3452e787a4cccb8c519fa1de7d6ff9d249b09fe6a0c4112b4",
+      "prompt_tokens": 56,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "heldout_general_ja_migration",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_token_ids_sha256": "337a40f73abf2f5814cbc626bfa520b90e66bf01e405d1472508253776f4a411",
+      "prompt_tokens": 53,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "heldout_general_ja_speculative",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_token_ids_sha256": "f4d1c423950e44fa485b2f84300fbffb8d3295059ad6992da9649947e0552d8e",
+      "prompt_tokens": 45,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "heldout_mixed_summary",
+      "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+      "prompt_token_ids_sha256": "af7ae719ee89715769bd4a6010f670aa984f6bfaad9a3d2158970b8e266b33f7",
+      "prompt_tokens": 52,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "heldout_mixed_review",
+      "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+      "prompt_token_ids_sha256": "089b3b0916f856689985204fdaf1e55636f47aedcacf7c44fe0e3876505fce11",
+      "prompt_tokens": 56,
+      "suite": "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    }
+  ],
+  "protocol": {
+    "backend_strict_gdn_mode_verified": true,
+    "candidate_repeat_runs": 3,
+    "complete_prompt_and_heldout_suite": true,
+    "decode_steps": 24,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_count": 18,
+    "prompt_suites": [
+      "/tmp/hipengine-profile-requal-554/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/tmp/hipengine-profile-requal-554/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "same_context_rule": "candidate consumes the strict generated token prefix at every compared transition",
+    "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+    "teacher_forced_rows": 450,
+    "thresholds_evaluated": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    }
+  },
+  "provenance": {
+    "build_profile": "execution_profile_gguf_dense_pair_requalification",
+    "collected_at": "2026-08-16T14:01:35.099811+00:00",
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/execution_profile_gguf_dense_pair_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--decode-steps",
+      "24",
+      "--repeat-runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/d08-c0/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/execution-profile-calibration/qwen38-dense-pair-full-554.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "explicit chain_lds32_direct_nonvolatile",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "5542370105b0b23fbb97798f1fdb60537b0e2f30",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106775008,
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/tmp/hipengine-profile-requal-554",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "none_full_logits_only_v1",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "qualification_blockers": [
+    "route manifest is evidentiary and is not resolved by a runtime profile plan",
+    "adapter does not emit exact request/control ownership telemetry",
+    "fresh task verdicts and BF16-relative logits are not available"
+  ],
+  "quality": {
+    "by_scope": {
+      "category": {
+        "code": {
+          "candidate_teacher_nll_mean": 0.0524290444054976,
+          "kl_max": 0.00048569343147815587,
+          "kl_mean": 2.3032423306008405e-05,
+          "kl_p50": 6.507450801696838e-08,
+          "kl_p95": 0.00013963469344705577,
+          "kl_p99": 0.000358570002345828,
+          "max_abs_logit_delta": 0.5335044860839844,
+          "passed": true,
+          "rows": 150,
+          "strict_margin_min": 0.06317138671875,
+          "strict_teacher_nll_mean": 0.052413266277106914,
+          "teacher_delta_p_mean": -7.130964932468971e-05,
+          "teacher_nll_delta": 1.5778128390687984e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 150,
+          "topk_overlap_mean": 0.9946666666666666
+        },
+        "general_en": {
+          "candidate_teacher_nll_mean": 0.23457449348231996,
+          "kl_max": 0.0008333353209586976,
+          "kl_mean": 7.502693057698458e-05,
+          "kl_p50": 8.341543356583648e-06,
+          "kl_p95": 0.0003865165102009277,
+          "kl_p99": 0.0005268024953351897,
+          "max_abs_logit_delta": 0.3328118324279785,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.0328369140625,
+          "strict_teacher_nll_mean": 0.23443686673477315,
+          "teacher_delta_p_mean": 3.953703138584647e-05,
+          "teacher_nll_delta": 0.00013762674754680404,
+          "top1_agreement": 1.0,
+          "top1_matches": 100,
+          "topk_overlap_mean": 0.9940000000000001
+        },
+        "general_ja": {
+          "candidate_teacher_nll_mean": 0.2738604596113348,
+          "kl_max": 0.0007035584430134228,
+          "kl_mean": 8.337060859545778e-05,
+          "kl_p50": 7.726775825253305e-06,
+          "kl_p95": 0.0004654442345282623,
+          "kl_p99": 0.0005737685818732928,
+          "max_abs_logit_delta": 0.2900514602661133,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.013299942016601562,
+          "strict_teacher_nll_mean": 0.2737187544154309,
+          "teacher_delta_p_mean": -0.00020772339437582165,
+          "teacher_nll_delta": 0.00014170519590389619,
+          "top1_agreement": 0.99,
+          "top1_matches": 99,
+          "topk_overlap_mean": 0.9940000000000001
+        },
+        "mixed_ja_en": {
+          "candidate_teacher_nll_mean": 0.19156322911326132,
+          "kl_max": 0.00040683921700110566,
+          "kl_mean": 3.995418197023381e-05,
+          "kl_p50": 6.004074985810357e-06,
+          "kl_p95": 0.00018894857375747573,
+          "kl_p99": 0.0003574875000615718,
+          "max_abs_logit_delta": 0.2742033004760742,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.00508880615234375,
+          "strict_teacher_nll_mean": 0.1916456988235249,
+          "teacher_delta_p_mean": -0.000127981714908931,
+          "teacher_nll_delta": -8.246971026357186e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 100,
+          "topk_overlap_mean": 0.9880000000000001
+        }
+      },
+      "shape": {
+        "c1": {
+          "candidate_teacher_nll_mean": 0.17066400560794706,
+          "kl_max": 0.0008333353209586976,
+          "kl_mean": 5.391211946798352e-05,
+          "kl_p50": 2.714755467221993e-06,
+          "kl_p95": 0.0003276132496945425,
+          "kl_p99": 0.0005386292301648446,
+          "max_abs_logit_delta": 0.5335044860839844,
+          "passed": true,
+          "rows": 432,
+          "strict_margin_min": 0.00508880615234375,
+          "strict_teacher_nll_mean": 0.17061295712975882,
+          "teacher_delta_p_mean": -9.331772034396777e-05,
+          "teacher_nll_delta": 5.104847818823699e-05,
+          "top1_agreement": 0.9976851851851852,
+          "top1_matches": 431,
+          "topk_overlap_mean": 0.9925925925925925
+        },
+        "prefill_last": {
+          "candidate_teacher_nll_mean": 0.22985135882683932,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.11936759948730469,
+          "strict_teacher_nll_mean": 0.22985135882683932,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "topk_overlap_mean": 1.0
+        }
+      },
+      "transition": {
+        "prefill_to_c1": {
+          "candidate_teacher_nll_mean": 0.22985135882683932,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.11936759948730469,
+          "strict_teacher_nll_mean": 0.22985135882683932,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "topk_overlap_mean": 1.0
+        },
+        "steady": {
+          "candidate_teacher_nll_mean": 0.17066400560794706,
+          "kl_max": 0.0008333353209586976,
+          "kl_mean": 5.391211946798352e-05,
+          "kl_p50": 2.714755467221993e-06,
+          "kl_p95": 0.0003276132496945425,
+          "kl_p99": 0.0005386292301648446,
+          "max_abs_logit_delta": 0.5335044860839844,
+          "passed": true,
+          "rows": 432,
+          "strict_margin_min": 0.00508880615234375,
+          "strict_teacher_nll_mean": 0.17061295712975882,
+          "teacher_delta_p_mean": -9.331772034396777e-05,
+          "teacher_nll_delta": 5.104847818823699e-05,
+          "top1_agreement": 0.9976851851851852,
+          "top1_matches": 431,
+          "topk_overlap_mean": 0.9925925925925925
+        }
+      }
+    },
+    "eligible_for_automatic_admission": true,
+    "finite": true,
+    "hard_gates_passed": true,
+    "requires_outlier_review": false,
+    "rows_over_review_boundary": [],
+    "scope_failures": [],
+    "summary": {
+      "candidate_teacher_nll_mean": 0.1730314997367028,
+      "kl_max": 0.0008333353209586976,
+      "kl_mean": 5.1755634689264166e-05,
+      "kl_p50": 1.9372106518693002e-06,
+      "kl_p95": 0.00032604804437704924,
+      "kl_p99": 0.0005347362668611304,
+      "max_abs_logit_delta": 0.5335044860839844,
+      "rows": 450,
+      "strict_margin_min": 0.00508880615234375,
+      "strict_teacher_nll_mean": 0.17298249319764206,
+      "teacher_delta_p_mean": -8.958501153020906e-05,
+      "teacher_nll_delta": 4.9006539060730825e-05,
+      "top1_agreement": 0.9977777777777778,
+      "top1_matches": 449,
+      "topk_overlap_mean": 0.9928888888888888
+    },
+    "thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    },
+    "top1_mismatch_rows": [
+      {
+        "candidate_teacher_nll": 2.0828030683779115,
+        "candidate_top1_token_id": 5205,
+        "category": "general_ja",
+        "kl": 0.00032446676845952413,
+        "max_abs_logit_delta": 0.09495210647583008,
+        "request_id": "general_ja_explain",
+        "row_index": 186,
+        "scenario_id": "Qwen3.8-27B-Q4_K_M-dense-pair-c1-teacher-forced",
+        "scenario_step": 186,
+        "shape": "c1",
+        "strict_margin": 0.013299942016601562,
+        "strict_teacher_nll": 2.0559504919900298,
+        "strict_top1_candidate_rank": 3,
+        "strict_top1_token_id": 153585,
+        "teacher_delta_p": -0.0033906275933699853,
+        "teacher_step": 11,
+        "teacher_token_id": 153585,
+        "top1_equal": false,
+        "topk_overlap": 1.0,
+        "transition": "steady"
+      }
+    ],
+    "top_k": 5
+  },
+  "repeat_determinism": {
+    "mismatches": [],
+    "passed": true,
+    "runs": 3,
+    "trajectory_sha256_by_prompt": [
+      [
+        "62d8604689bcaaf99697e1d68144f9231160a1e1a42c3e3aaa4ee9bf791f3fbb",
+        "62d8604689bcaaf99697e1d68144f9231160a1e1a42c3e3aaa4ee9bf791f3fbb",
+        "62d8604689bcaaf99697e1d68144f9231160a1e1a42c3e3aaa4ee9bf791f3fbb"
+      ],
+      [
+        "6b4650695fc68c05082d0db032a078fcc2d6c250a4b04e3dd04044bcd6f05655",
+        "6b4650695fc68c05082d0db032a078fcc2d6c250a4b04e3dd04044bcd6f05655",
+        "6b4650695fc68c05082d0db032a078fcc2d6c250a4b04e3dd04044bcd6f05655"
+      ],
+      [
+        "433f6cf0803a87c96792c86bb77f1fc5a5e37926a6341d36551a2205d6c7b43a",
+        "433f6cf0803a87c96792c86bb77f1fc5a5e37926a6341d36551a2205d6c7b43a",
+        "433f6cf0803a87c96792c86bb77f1fc5a5e37926a6341d36551a2205d6c7b43a"
+      ],
+      [
+        "1ecdc21a535dacd60776f469d9e3ac3c56ea832f9ad3df06ff6f2337448b21ca",
+        "1ecdc21a535dacd60776f469d9e3ac3c56ea832f9ad3df06ff6f2337448b21ca",
+        "1ecdc21a535dacd60776f469d9e3ac3c56ea832f9ad3df06ff6f2337448b21ca"
+      ],
+      [
+        "632a04e36beded296d74701365bbe69c60062a0653b673719604ad2eeb072d45",
+        "632a04e36beded296d74701365bbe69c60062a0653b673719604ad2eeb072d45",
+        "632a04e36beded296d74701365bbe69c60062a0653b673719604ad2eeb072d45"
+      ],
+      [
+        "18863db60d31fb7b7559e58209cc61297c7dfd01f4f55efe816c8d1e843fbac3",
+        "18863db60d31fb7b7559e58209cc61297c7dfd01f4f55efe816c8d1e843fbac3",
+        "18863db60d31fb7b7559e58209cc61297c7dfd01f4f55efe816c8d1e843fbac3"
+      ],
+      [
+        "71d89f746051fb84f8c2945051dfa00f58f68401c77c03e1f7b2611fd96ac136",
+        "71d89f746051fb84f8c2945051dfa00f58f68401c77c03e1f7b2611fd96ac136",
+        "71d89f746051fb84f8c2945051dfa00f58f68401c77c03e1f7b2611fd96ac136"
+      ],
+      [
+        "c855187f9d1e092b310e30c8fe940cc39eaf486caaa5e05e1b5cc229b06e8184",
+        "c855187f9d1e092b310e30c8fe940cc39eaf486caaa5e05e1b5cc229b06e8184",
+        "c855187f9d1e092b310e30c8fe940cc39eaf486caaa5e05e1b5cc229b06e8184"
+      ],
+      [
+        "721131bbf23bb8c7e5dcafb9807e71817db0b4db8a20a09a71c8ba8e6fc56d28",
+        "721131bbf23bb8c7e5dcafb9807e71817db0b4db8a20a09a71c8ba8e6fc56d28",
+        "721131bbf23bb8c7e5dcafb9807e71817db0b4db8a20a09a71c8ba8e6fc56d28"
+      ],
+      [
+        "98fd2c36a3d74d3f85dc7b1fe3c518ea978b41d7823b861754a418a1bd7dee83",
+        "98fd2c36a3d74d3f85dc7b1fe3c518ea978b41d7823b861754a418a1bd7dee83",
+        "98fd2c36a3d74d3f85dc7b1fe3c518ea978b41d7823b861754a418a1bd7dee83"
+      ],
+      [
+        "c09232d25ba176732e76608169d1e45a543270c14f9a5edd3b559aad1d44bcba",
+        "c09232d25ba176732e76608169d1e45a543270c14f9a5edd3b559aad1d44bcba",
+        "c09232d25ba176732e76608169d1e45a543270c14f9a5edd3b559aad1d44bcba"
+      ],
+      [
+        "dc061f02f3bce32de4981c9b255d1695a6dbf4fad3b2013f4e34fb3fe1e25e82",
+        "dc061f02f3bce32de4981c9b255d1695a6dbf4fad3b2013f4e34fb3fe1e25e82",
+        "dc061f02f3bce32de4981c9b255d1695a6dbf4fad3b2013f4e34fb3fe1e25e82"
+      ],
+      [
+        "255c74e0c4bc8eb4e490631b07dd4d2ac7763f568298cfc394946a5dde7df008",
+        "255c74e0c4bc8eb4e490631b07dd4d2ac7763f568298cfc394946a5dde7df008",
+        "255c74e0c4bc8eb4e490631b07dd4d2ac7763f568298cfc394946a5dde7df008"
+      ],
+      [
+        "522f6779e889e2b43b1675967d3df043a57e80242f9b0624a8ce77dbb35006f7",
+        "522f6779e889e2b43b1675967d3df043a57e80242f9b0624a8ce77dbb35006f7",
+        "522f6779e889e2b43b1675967d3df043a57e80242f9b0624a8ce77dbb35006f7"
+      ],
+      [
+        "b3ff956d4dd4274533b7edc15684c6987e50b48534fa229535e893f23d3d0ab1",
+        "b3ff956d4dd4274533b7edc15684c6987e50b48534fa229535e893f23d3d0ab1",
+        "b3ff956d4dd4274533b7edc15684c6987e50b48534fa229535e893f23d3d0ab1"
+      ],
+      [
+        "7912252c687cba5b82b28066e0f09bf4cbc48682a3d4d3eb38dbeba244d01482",
+        "7912252c687cba5b82b28066e0f09bf4cbc48682a3d4d3eb38dbeba244d01482",
+        "7912252c687cba5b82b28066e0f09bf4cbc48682a3d4d3eb38dbeba244d01482"
+      ],
+      [
+        "792b934b320c913ed07e052453d3025776b321f196534713591116538125abcb",
+        "792b934b320c913ed07e052453d3025776b321f196534713591116538125abcb",
+        "792b934b320c913ed07e052453d3025776b321f196534713591116538125abcb"
+      ],
+      [
+        "c422de7172bca145d210e3659ed5b64ad4f09561ec254991ca05ae651bf4440d",
+        "c422de7172bca145d210e3659ed5b64ad4f09561ec254991ca05ae651bf4440d",
+        "c422de7172bca145d210e3659ed5b64ad4f09561ec254991ca05ae651bf4440d"
+      ]
+    ]
+  },
+  "route": {
+    "candidate_variant": "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+    "current_package_owner_verified": true,
+    "policy_capability": "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "policy_identity": "(GGUFModelGeometry(architecture='qwen35', block_count=64, hidden_size=5120, vocab_size=248320, feed_forward_length=17408, head_count=24, head_count_kv=4, key_length=256, value_length=256, full_attention_interval=4, layer_types=('linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention', 'linear_attention', 'linear_attention', 'linear_attention', 'full_attention'), ssm_inner_size=6144, ssm_group_count=16, ssm_state_size=128, ssm_conv_kernel=4, ssm_time_step_rank=48, expert_count=0, expert_used_count=0, expert_feed_forward_length=0, expert_shared_feed_forward_length=0), 'MOSTLY_Q4_K_M')",
+    "policy_restored_after_capture": true,
+    "registry_layer": "linear_pair_silu",
+    "registry_quant": "gguf_q4_k_t16_v1",
+    "scope": "rows1_h5120_ffn17408",
+    "shape": [
+      1,
+      5120,
+      17408
+    ],
+    "strict_variant": "dense_dual_local32_bf16_bf16_out"
+  },
+  "schema_version": 1,
+  "status": "complete",
+  "strict_logits_sha256": "8f2c5c4c8927f180c2bf8a24ceb9540abeea11ad02f9d772128d21da5ad463e2",
+  "strict_selected_token_ids_sha256": "4405654975ee35e0e538f4f7fe3c71d7713aee340893044938221c0d0c48052f",
+  "variant_manifests": {
+    "candidate": {
+      "backend": "hip_gfx1151",
+      "execution_profile": "production",
+      "graph_policy": "serial_c1",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16",
+      "model": "qwen3_8_27b_gguf_dense_h5120",
+      "quant": "gguf_q4_k_m",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json",
+          "layer": "linear_pair_silu",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "scope": "rows1_h5120_ffn17408",
+          "selected_variant": "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_local32_bf16_bf16_out"
+        }
+      ]
+    },
+    "candidate_sha256": "863ef3f880397aa203e8faea7be7bb5837283cd08eca0b4f2219008b13ab8cf8",
+    "runtime_resolved": false,
+    "strict": {
+      "backend": "hip_gfx1151",
+      "execution_profile": "strict",
+      "graph_policy": "serial_c1",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16",
+      "model": "qwen3_8_27b_gguf_dense_h5120",
+      "quant": "gguf_q4_k_m",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": null,
+          "layer": "linear_pair_silu",
+          "registry_quant": "gguf_q4_k_t16_v1",
+          "scope": "rows1_h5120_ffn17408",
+          "selected_variant": "dense_dual_local32_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_local32_bf16_bf16_out"
+        }
+      ]
+    },
+    "strict_sha256": "83a03d433c1750e55416e9c74108ec957903a163ba0909c2c8d8cf2bcfa61041"
+  }
+}

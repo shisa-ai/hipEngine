@@ -838,19 +838,21 @@ GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
 GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
 # D08-D3 keeps every Qwen3.5-0.8B Q4 gate/up pair in its sole pack8 layout and
 # selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
-# Qwen3.8 P5 independently selects primary+residual Q8_1 dp4a over the sole
-# Q4T16 H5120 gate/up pair. Its exact split-weight sibling assigns independent
-# two-wave gate/up owners, lowering VGPR 224 -> 120 and LDS 1,024 -> 512 bytes
-# without changing any output operation. Native-session B1 retains the prior
-# Q8_1x2 owner; rows>1 native batches and peer geometries retain their owners.
+# The Qwen3.8 serial-c1 route uses exact local32 after the formerly retained
+# residual-Q8_1x2 split-weight owner lost a current counterbalanced rebase.
+# Native-session B1 retains its separately qualified prior Q8_1x2 owner;
+# rows>1 native batches and peer geometries retain their existing owners.
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
-        (1, 5_120, 17_408): (
-            "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
-        ),
+        (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+    },
+}
+GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
     },
 }
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
@@ -2043,6 +2045,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",

@@ -1165,6 +1165,12 @@ def native_batch_decode_session(enabled: bool = True) -> Iterator[None]:
         _native_batch_decode_session_enabled = previous
 
 
+def gguf_native_batch_decode_enabled() -> bool:
+    """Return whether the current execution context owns native batch decode."""
+
+    return _native_batch_decode_session_enabled
+
+
 def _env_gemv_decode_enabled() -> bool:
     raw = os.environ.get(_GEMV_DECODE_ENV, "")
     if not raw:
@@ -5728,6 +5734,7 @@ __all__ = [
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
+    "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
