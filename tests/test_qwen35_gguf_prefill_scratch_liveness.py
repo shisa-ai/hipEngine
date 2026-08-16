@@ -241,6 +241,19 @@ def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
 
 
 def test_dense_down_residual_decode_policy_is_model_backend_shape_scoped() -> None:
+    dense_27b = _fake_dense_qwen36_runner()
+    dense_27b.backend = "hip_gfx1151"
+    assert gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=1, in_features=17_408, out_features=5_120
+    )
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=2, in_features=17_408, out_features=5_120
+    )
+    dense_27b.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=1, in_features=17_408, out_features=5_120
+    )
+
     runner = _fake_dense_qwen35_08b_runner()
     assert gguf_runner._gguf_dense_down_residual_decode_fused(
         runner, rows=1, in_features=3_584, out_features=1_024

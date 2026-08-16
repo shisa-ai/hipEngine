@@ -391,6 +391,103 @@ void q6_k_t16_qmicro_planar_gemv_bf16_kernel(
   }
 }
 
+// Exact serial-c1 down+residual sibling. Keep a separate copy of the direct
+// planar projection so its fallback code generation remains frozen. The store
+// first rounds the dot to BF16, then reproduces the standalone BF16 add and
+// final BF16 rounding.
+__global__ __launch_bounds__(128, 4)
+void q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    const uint16_t* __restrict__ residual,
+    uint16_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_tile = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  float acc[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
+    const int64_t k_base = blk * QK_K;
+    const int8_t* __restrict__ scales =
+        reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+    for (int k_in_block = tid; k_in_block < QK_K;
+         k_in_block += blockDim.x) {
+      const int g16 = k_in_block >> 4;
+      const int subblock = k_in_block >> 5;
+      const int pack = (k_in_block & 31) >> 2;
+      const int k4 = k_in_block & 3;
+      const float xv = bf16_bits_to_float(x[k_base + k_in_block]);
+#pragma unroll
+      for (int col_quartet = 0; col_quartet < T16_COLS / 4;
+           ++col_quartet) {
+        const int record_index =
+            (subblock * (T16_COLS / 4) + col_quartet) * 8 + pack;
+        const uint8_t* __restrict__ record =
+            tile + Q6_T16_QMICRO_OFFSET +
+            record_index * Q6_T16_QMICRO_RECORD_BYTES;
+        const uint16_t low_pair =
+            static_cast<uint16_t>(record[k4]) |
+            (static_cast<uint16_t>(record[4 + k4]) << 8);
+        const uint8_t high_packed = record[8 + k4];
+#pragma unroll
+        for (int col4 = 0; col4 < 4; ++col4) {
+          const int col = col_quartet * 4 + col4;
+          const uint8_t low_byte =
+              static_cast<uint8_t>(low_pair >> (8 * (col4 >> 1)));
+          const uint8_t low =
+              (col4 & 1) ? (low_byte >> 4) : (low_byte & 0x0Fu);
+          const uint8_t high =
+              (high_packed >> (2 * col4)) & 0x03u;
+          const int q_i = static_cast<int>(low | (high << 4)) - 32;
+          const float d =
+              fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+          const int scale_i =
+              static_cast<int>(scales[g16 * T16_COLS + col]);
+          acc[col] +=
+              xv * (d * static_cast<float>(scale_i * q_i));
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc[col]);
+
+  __shared__ float xchg[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg[sub_id * T16_COLS + col] = acc[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    const int64_t out_base = out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total = 0.0f;
+#pragma unroll
+      for (int g = 0; g < 4; ++g) {
+        total += xchg[g * T16_COLS + col];
+      }
+      const int64_t idx = out_base + col;
+      const uint16_t projected = float_to_bf16_bits(total);
+      out[idx] = float_to_bf16_bits(
+          bf16_bits_to_float(residual[idx]) +
+          bf16_bits_to_float(projected));
+    }
+  }
+}
+
 // Dense prefill owner over the same Q6T16 bytes. One wave32 block computes a
 // 16x16 output tile. Its arithmetic is the one-expert specialization of the
 // registered selected-Q6T16 direct WMMA producer; c=1 and small-B retain the
@@ -1144,6 +1241,37 @@ int launch_q6_t16_qmicro_planar_top1_stage1(
       reinterpret_cast<float*>(out),
       reinterpret_cast<float*>(tile_values),
       reinterpret_cast<int32_t*>(tile_indices),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+int launch_q6_t16_qmicro_planar_residual(
+    const void* x,
+    const void* tiles,
+    const void* residual,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !residual || !out || rows != 1 ||
+      in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
+  hipLaunchKernelGGL(
+      q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<const uint16_t*>(residual),
+      reinterpret_cast<uint16_t*>(out),
       in_features,
       out_features);
   return hipGetLastError();
@@ -2239,6 +2367,15 @@ hipengine_gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_q6_t16_qmicro_planar<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_residual_bf16_out(
+    const void* x, const void* tiles, const void* residual, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_residual(
+      x, tiles, residual, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int

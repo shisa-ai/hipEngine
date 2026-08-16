@@ -233,9 +233,10 @@ K=5,120/N=10,240 QKV tensors retain one `gguf_q6_k_t16_v1/tiles` payload each
 because planar c1 loses 8.72% on actual weights; no tensor retains both layouts
 and dense-BF16 Q6 bytes are zero. Exact native c1, rows2-4, WMMA, residual,
 and top-1 leaves remain registered. On gfx1151, rows2 F32 uses a dedicated
-planar col16 owner, while FFN down+residual deliberately uses planar projection
-plus the primitive BF16 add: the exact fused sibling loses 17.35%/11.44%/11.15%
-at rows2/3/4 and remains a peer-backend/diagnostic leaf. Complete actual-weight,
+planar col16 owner, while native rows2-4 FFN down+residual deliberately uses
+planar projection plus the primitive BF16 add: the exact native fused sibling
+loses 17.35%/11.44%/11.15% at rows2/3/4 and remains a
+peer-backend/diagnostic leaf. Complete actual-weight,
 512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
 gates retain the role-qualified route. Evidence:
 [`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
@@ -291,6 +292,20 @@ It adds no layout, persistent bytes, or hot scratch; Q8, rows >1, other models,
 and peer backends retain the primitive projection+add or their prior registered
 small-row composites. Evidence:
 [`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
+
+Dense-H5120 has an independent exact c1 K=17,408/N=5,120 policy for its 32
+Q4T16 and 32 planar-qmicro-Q6 FFN-down owners. Each same-resident
+`linear+residual` sibling freezes the direct projection's K/FMA/reduction tree,
+rounds that projection to BF16, then folds only the BF16 residual read/add/final
+round into the producer store. The mixed prefill/decode selector treats this
+explicit rows1 policy independently of the WMMA-prefill axis, and the T16 ABI
+launches from the existing sole `tiles` allocation. A selected-region graph
+trace removes exactly **64 launches/token (934 -> 870)** and changes profiled
+host decode **82.46295 -> 82.31707 ms/token (-0.177%)** while selected kernel
+wall is flat within **0.005%**. Rows>1, Q8, other shapes/models, and peer
+backends retain the registered primitive chain; no payload, workspace, or
+tracked peak changes. Evidence:
+[`Qwen3.8 c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
 
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:

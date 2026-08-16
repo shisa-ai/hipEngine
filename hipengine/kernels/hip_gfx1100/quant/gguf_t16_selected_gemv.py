@@ -58,6 +58,10 @@ _Q4_DENSE_DUAL_LOCAL32_SILU_BF16 = (
 _Q4_DENSE_SINGLE_LOCAL32_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out"
 )
+_Q4_DENSE_SINGLE_LOCAL32_RESIDUAL_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_single_local32_gemv_"
+    "bf16_residual_bf16_out"
+)
 _Q4_DENSE_DUAL_Q8X2_DP4A_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_gemv_"
     "bf16_bf16_out"
@@ -859,6 +863,58 @@ def gguf_q4_k_t16_dense_single_local32_bf16_bf16_out(
     if status != HIP_SUCCESS:
         raise RuntimeError(
             f"{_Q4_DENSE_SINGLE_LOCAL32_BF16} failed with HIP status "
+            f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q4_k_t16_dense_single_local32_bf16_residual_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact serial-c1 Q4 projection plus rounded residual."""
+
+    if rows != 1:
+        raise ValueError("dense Q4T16 local32 residual decode requires rows == 1")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or build_gguf_t16_selected_gemv()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_DENSE_SINGLE_LOCAL32_RESIDUAL_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q4_DENSE_SINGLE_LOCAL32_RESIDUAL_BF16} failed with HIP status "
             f"{status}: {rt.error_string(status)}"
         )
 
@@ -3435,6 +3491,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+residual",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_residual_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_single_local32_bf16_residual_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_single_col4_bf16_bf16_out",
@@ -3901,6 +3967,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_col4_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_local32_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_single_local32_bf16_residual_bf16_out",
     "gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out",
