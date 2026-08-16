@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "status": "diagnostic_revalidation",
+  "performance_claim": false,
+  "candidate": "existing prompt-agnostic B1-probe adaptive MTP admission/depth route",
+  "decision": "keep_existing_adaptive_structure_no_new_budget_promotion",
+  "decision_reason": "The current adaptive route is exact across the full 10-prompt train/heldout suite and beats both the same-run true AR denominator and matched fixed-depth controls. Adaptive B3 is 1.134x AR, 1.116x the best fixed-depth aggregate, and 1.223x fixed B3. However B3 is only 0.97% faster than adaptive B2 in one run, both raw child artifacts report unrelated dirty documentation/test provenance from a concurrent execution-profile campaign, and the current strict-profile absolute denominator is not comparable to the retained public MTP topline. Keep the already-existing adaptive mechanism, but do not change a production budget or publish a new topline from this packet.",
+  "opportunity": 5,
+  "hardware": {
+    "system": "HP ZBook Ultra G1a / AMD Ryzen AI MAX+ PRO 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF with NextN blocks",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "measurement": {
+    "commit": "8820fb99c5c9db9a703c9d9e8048d86c0adad830",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5",
+    "raw_provenance_dirty": true,
+    "dirty_scope": "Concurrent execution-profile work changed documentation, evaluator tests, and calibration artifacts only; no MTP/GGUF runtime source changed during the candidate/control runs. This still blocks a retained performance claim.",
+    "candidate_raw": "/tmp/hipengine-rocmfpx-transfer-campaign/opp5-adaptive-full3.json",
+    "candidate_category_raw": "/tmp/hipengine-rocmfpx-transfer-campaign/opp5-adaptive-full3-raw/mtp-category.json",
+    "fixed_category_raw": "/tmp/hipengine-rocmfpx-transfer-campaign/opp5-fixed-full.json",
+    "true_ar_raw": "/tmp/hipengine-rocmfpx-transfer-campaign/opp5-adaptive-full3-raw/true-ar-baseline.json"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "decode_tokens_per_prompt": 24,
+    "output_tokens_total_per_policy": 240,
+    "candidate_caps": [1, 2, 3],
+    "fixed_depths": [1, 2, 3],
+    "sampling": "greedy, reasoning off",
+    "kv_dtype": "bf16",
+    "timing": "complete proposal + target verify + accept/commit + correction + scheduler cycle wall",
+    "true_ar": "same-run no-MTP state-bound-graph autoregressive path",
+    "cached_builds_required": true
+  },
+  "candidate_policy": {
+    "prompt_or_token_specific": false,
+    "initial_depth": 1,
+    "admission": "skip low-confidence draft cycles below p_min=0.5",
+    "depth_transition": "promote from the B1 probe only after full acceptance; demote after a partial/zero accept; never exceed the global cap",
+    "draft_vocab_cap": 32768,
+    "target": "strict root/sibling top-1, block verifier min_rows=2, direct state commit",
+    "implementation": "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+    "already_existing": true
+  },
+  "fixed_control": {
+    "policy": "same p_min=0.5, vocab cap, strict top-1, target block verifier, and direct commit, but every admitted cycle drafts the configured fixed B1/B2/B3 depth; no B1 probe depth transition",
+    "prompt_or_token_specific": false
+  },
+  "correctness": {
+    "candidate_exact_ar_rows": 30,
+    "candidate_total_rows": 30,
+    "fixed_exact_ar_rows": 30,
+    "fixed_total_rows": 30,
+    "output_ids_compared_per_policy": 240,
+    "comparison": "For each of 10 prompts and each B1/B2/B3 row, concatenate cycle output_tokens, trim to 24, and compare with the 24 timed true-AR tokens after excluding AR's initial seed and post-window final-logit token.",
+    "strict_top1_policy": true,
+    "all_passed": true
+  },
+  "true_ar": {
+    "decode_tok_s": 23.852099954833548,
+    "decode_ms": 10062.007137923501,
+    "ms_per_output": 41.92502974134792,
+    "train_tok_s": 23.851186334758985,
+    "heldout_tok_s": 23.853470516188803
+  },
+  "adaptive": {
+    "b1": {
+      "decode_tok_s": 26.338662522717097,
+      "vs_true_ar": 1.1042,
+      "cycle_wall_ms_per_output": 38.15352041666666,
+      "accepted_per_output": 0.3625,
+      "draft_acceptance": 0.75,
+      "target_rows_per_output": 1.1333333333333333
+    },
+    "b2": {
+      "decode_tok_s": 26.79528403001072,
+      "vs_true_ar": 1.1234,
+      "cycle_wall_ms_per_output": 37.49625666666666,
+      "accepted_per_output": 0.4375,
+      "draft_acceptance": 0.7291666666666666,
+      "target_rows_per_output": 1.2208333333333334
+    },
+    "b3": {
+      "decode_tok_s": 27.053959121467766,
+      "vs_true_ar": 1.1342,
+      "cycle_wall_ms_per_output": 37.139721666666674,
+      "accepted_per_output": 0.4625,
+      "draft_acceptance": 0.6809815950920245,
+      "target_rows_per_output": 1.2875,
+      "train_tok_s": 27.28073582206898,
+      "heldout_tok_s": 26.72077623854973,
+      "category_tok_s": {
+        "code": 27.349803993071383,
+        "general_en": 23.781330664539556,
+        "general_ja": 23.730891688255188,
+        "mixed_ja_en": 36.36336088362966
+      }
+    }
+  },
+  "fixed": {
+    "b1": {
+      "decode_tok_s": 24.249625646404084,
+      "cycle_wall_ms_per_output": 41.32811791666666,
+      "accepted_per_output": 0.3625,
+      "draft_acceptance": 0.75,
+      "target_rows_per_output": 1.2416666666666667,
+      "train_tok_s": 25.225452481553887,
+      "heldout_tok_s": 22.919680843444254
+    },
+    "b2": {
+      "decode_tok_s": 23.49969156654819,
+      "cycle_wall_ms_per_output": 42.63801625,
+      "accepted_per_output": 0.45,
+      "draft_acceptance": 0.6666666666666666,
+      "target_rows_per_output": 1.4375,
+      "train_tok_s": 23.301800387716067,
+      "heldout_tok_s": 23.80291188955449
+    },
+    "b3": {
+      "decode_tok_s": 22.11543334730906,
+      "cycle_wall_ms_per_output": 45.29679458333333,
+      "accepted_per_output": 0.4791666666666667,
+      "draft_acceptance": 0.6052631578947368,
+      "target_rows_per_output": 1.5958333333333334,
+      "train_tok_s": 22.518331329097595,
+      "heldout_tok_s": 21.537412279914566
+    }
+  },
+  "deltas": {
+    "adaptive_b3_vs_true_ar": {
+      "tok_s_percent": 13.423804078874705,
+      "wall_percent": -11.413964651196927
+    },
+    "adaptive_b3_vs_best_fixed_b1": {
+      "tok_s_percent": 11.56444027613073,
+      "wall_percent": -10.134495498791896
+    },
+    "adaptive_b3_vs_fixed_b3": {
+      "tok_s_percent": 22.330676033348507,
+      "wall_percent": -18.00805772615972,
+      "target_rows_per_output_percent": -19.321148825065272,
+      "accepted_tokens_delta": -4,
+      "draft_tokens_delta": -27
+    },
+    "adaptive_b3_vs_adaptive_b2": {
+      "tok_s_percent": 0.9653754413176951,
+      "wall_percent": -0.9508549164507385
+    },
+    "train_adaptive_b3_vs_best_fixed": {
+      "tok_s_percent": 8.147656982636953
+    },
+    "heldout_adaptive_b3_vs_best_fixed": {
+      "tok_s_percent": 12.258434440853815
+    }
+  },
+  "commands": {
+    "adaptive": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt python3 scripts/gguf_ar_mtp_suite.py --scope full --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-route resident-b1-probe-block-direct-cap32k-minrows2-pmin05 --budgets 1,2,3 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --raw-root /tmp/hipengine-rocmfpx-transfer-campaign/opp5-adaptive-full3-raw --output /tmp/hipengine-rocmfpx-transfer-campaign/opp5-adaptive-full3.json",
+    "fixed": "HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_MTP_BENCH_CACHE_SESSION=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt python3 scripts/gguf_mtp_category_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --cycles 24 --budgets 1,2,3 --max-output-tokens 24 --raw-root /tmp/hipengine-rocmfpx-transfer-campaign/opp5-fixed-full-raw --output /tmp/hipengine-rocmfpx-transfer-campaign/opp5-fixed-full.json --extra-arg=--prompt-reasoning --extra-arg=off --extra-arg=--resident-mtp-draft --extra-arg=--root-topk-accept --extra-arg=1 --extra-arg=--sibling-topk-accept --extra-arg=1 --extra-arg=--target-block-verify --extra-arg=--target-block-direct-state-commit --extra-arg=--target-block-min-rows --extra-arg=2 --extra-arg=--draft-p-min --extra-arg=0.5 --extra-arg=--mtp-draft-vocab-cap --extra-arg=32768 --extra-arg=--record-cycle-stage-timings --extra-arg=--require-cached-build"
+  },
+  "next_action": "Do not add a prompt map or token-specific selector and do not change the global cap from this single dirty-provenance packet. The existing prompt-agnostic B1-probe mechanism is economically sound; a clean repeated B2/B3 bracket under one resolved execution profile is the only follow-up needed for a new production budget/topline claim."
+}
