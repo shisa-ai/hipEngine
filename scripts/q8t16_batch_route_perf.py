@@ -2,8 +2,8 @@
 """Counterbalanced current-route A/B for the gfx1151 Q8T16 batch rowtile.
 
 Both routes share one resident model and the current package. The candidate
-changes only the explicit all-rowtile diagnostic for physical c4/c8 packed graph
-decode; the current exact c8 pair-col8 owner remains active in both routes.
+changes only the explicit all-rowtile diagnostic for physical c2/c4/c8 packed
+graph decode; the current exact c8 pair-col8 owner remains active in both routes.
 """
 
 from __future__ import annotations
@@ -111,8 +111,12 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     configurations = tuple(
         part.strip() for part in str(args.configurations).split(",") if part.strip()
     )
-    if not configurations or any(name not in {"c4", "native_c8"} for name in configurations):
-        raise CalibrationError("configurations must be a non-empty subset of c4,native_c8")
+    if not configurations or any(
+        name not in {"c2", "c4", "native_c8"} for name in configurations
+    ):
+        raise CalibrationError(
+            "configurations must be a non-empty subset of c2,c4,native_c8"
+        )
 
     os.environ["HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"] = "1"
     os.environ["HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE"] = "1"
@@ -254,8 +258,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         profiler={"enabled": False, "kind": None, "command": None},
     )
     complete_protocol = bool(
-        set(configurations) == {"c4", "native_c8"}
-        and int(args.pairs) >= 7
+        int(args.pairs) >= 7
         and int(args.prompt_tokens) == 512
         and int(args.decode_steps) == 128
     )
@@ -309,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--configurations", default="c4,native_c8")
+    parser.add_argument("--configurations", default="c2,c4,native_c8")
     parser.add_argument("--pairs", type=int, default=7)
     parser.add_argument("--prompt-tokens", type=int, default=512)
     parser.add_argument("--decode-steps", type=int, default=128)
