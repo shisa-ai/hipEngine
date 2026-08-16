@@ -1,7 +1,8 @@
 # Qwen3.6-35B-A3B ZBook gfx1151 Campaign
 
-Status: **planned; model admission and quality gates come before performance
-baselines or kernel work.** The campaign is specific to the HP ZBook Ultra G1a
+Status: **active; all four artifacts are admitted and the portable exact-artifact
+quality gate is measured. Canonical ROCmFP4 corpus PPL and hipEngine PARO
+implementation correctness remain open before performance baselines.** The campaign is specific to the HP ZBook Ultra G1a
 at its current 60/60/45 W limits. It must not reuse absolute throughput from
 the higher-power 120/160/140 W Radeon 8060S host.
 
@@ -14,8 +15,8 @@ The objective is to answer three questions with matched local evidence:
 3. If ROCmFP4 is both accurate enough and faster, which measured mechanism is
    worth implementing in hipEngine rather than copying a foreign runtime?
 
-This is a campaign plan, not a performance claim. No new ZBook benchmark has
-been retained yet.
+This remains a campaign plan, not a performance claim. A quantization-quality
+diagnostic is retained; no new ZBook throughput row has been retained yet.
 
 Related authorities:
 
@@ -87,8 +88,8 @@ engine comparisons.
 | --- | --- | --- | --- |
 | BF16 oracle | `Qwen/Qwen3.6-35B-A3B` | HF revision `995ad96eacd98c81ed38be0c5b274b04031597b0`; 26 shards / 71,903,776,776 file bytes / 71,903,645,408 tensor bytes; Apache-2.0 | **Admitted 2026-08-15 UTC:** every shard SHA-256, safetensors index/header map, 1,045 BF16 tensors, CPU Transformers full-logit forward, and greedy smoke passed. hipEngine can ingest its metadata but has no BF16 Qwen generation registration; this remains an external CPU quality oracle. Evidence: [`2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json`](../benchmarks/results/2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json). |
 | GGUF baseline | `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` | `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` revision `5bc3e238d916f48a861bac2f8a1990a0e9b7e98d`; 22,663,387,424 bytes; SHA-256 `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b` | **Admitted 2026-08-15 UTC:** local hash passed; 753-tensor MTP-bearing file; strict AR map, MTP inventory, all-type CPU dequant smoke, ten-prompt tokenizer roundtrip, and a llama.cpp exact-ID spot check passed. Evidence: [`2026-08-15-zbook-qwen36-35b-q4km-admission.json`](../benchmarks/results/2026-08-15-zbook-qwen36-35b-q4km-admission.json). |
-| PARO W4 | `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` | HF revision `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `model.safetensors` 20,474,495,512 bytes, SHA-256 `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`; Apache-2.0 | Queued after the other transfers. This is the canonical hipEngine packed-PARO model. |
-| ROCmFP4 | `gsrunion/Qwen3.6-35B-A3B-ROCmFP4-STRIX_LEAN-GGUF` | HF revision `f3be5a9c166640f973213d9077ec637ef0875da0`; 19,046,930,720-byte GGUF, SHA-256 `703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b`; Apache-2.0 | Queued after the BF16 transfer, with its 192,223,904-byte imatrix. It is the closest public stock-Qwen match to ROCmFPX's documented 19.05-GB STRIX_LEAN row. |
+| PARO W4 | `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` | HF revision `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `model.safetensors` 20,474,495,512 bytes, SHA-256 `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`; Apache-2.0 | **Admitted 2026-08-16 UTC:** transfer/hash passed and the bundled 129,921-token canonical result establishes KL `0.027939` / top-1 `92.856%`. The exact local hipEngine path is implementation-blocked at 0/90 portable BF16 top-1; no performance row is quality-valid until fixed. |
+| ROCmFP4 | `gsrunion/Qwen3.6-35B-A3B-ROCmFP4-STRIX_LEAN-GGUF` | HF revision `f3be5a9c166640f973213d9077ec637ef0875da0`; 19,046,930,720-byte GGUF, SHA-256 `703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b`; Apache-2.0 | **Admitted 2026-08-16 UTC:** transfer/hash and ROCmFPX HIP full-logit capture passed. Portable exact-artifact KL is `0.045984`, top-1 `97.778%`; classified quality-traded pending canonical corpus PPL. |
 
 `plunderstruck/...embF16-headQ6.gguf` and the public ROCmFP4 `FAST` artifact are
 not the campaign's binding ROCmFP4 model: they use different protected tensors
@@ -255,10 +256,11 @@ Candidates consume the BF16 continuation tokens rather than their own sampled
 tokens. This compares distributions at identical contexts and prevents early
 argmax drift from changing the question.
 
-The current repository does not have a four-runtime raw-token/full-logit
-harness. Implement and RED-test that harness before collecting quality data.
-The optional harness may use Torch for the BF16 user-boundary oracle; it must
-not add Torch to any module reached by `hipengine.LLM.generate()`.
+Q0 is implemented under [`benchmarks/quant/`](../benchmarks/quant/) and
+`scripts/quant_quality/`. Its NumPy metric/manifest path was RED-tested; the
+Torch BF16/ParoQuant code remains an optional boundary tool and adds no Torch to
+modules reached by `hipengine.LLM.generate()`. Large logits stay outside Git;
+compact summaries remain under `benchmarks/results/`.
 
 ### Q1 — Full-logit metrics
 
@@ -285,6 +287,30 @@ more than 0.005 above Q4_K_M, and PPL/BF16 is no more than 0.01 above the
 Q4_K_M ratio. Otherwise label it `quality-traded` and still report the measured
 tradeoff. Per-category rows are mandatory and can veto equivalence when one
 category is an obvious outlier.
+
+#### Q1 checkpoint — 2026-08-16
+
+The portable ten-prompt / 90-row exact-artifact gate is retained in
+[`2026-08-16-zbook-qwen36-quant-quality.json`](../benchmarks/results/2026-08-16-zbook-qwen36-quant-quality.json):
+
+- Matched ROCmFPX HIP Q4_K_M is mean/p95/max KL
+  `0.013713/0.067523/0.269131`, top-1 `92.222%`.
+- ROCmFP4 is `0.045984/0.205053/1.272484`, top-1 `97.778%`, and 15.96%
+  smaller. Its paired prompt-block mean-KL delta 95% CI is
+  `[+0.00690,+0.07168]`; Japanese mean KL `0.135091` vetoes equivalence.
+  Verdict: **quality-traded**.
+- hipEngine Q4_K_M is mean KL `0.011807`, top-1 `95.556%`; the same-quant
+  ROCmFPX-HIP-to-hipEngine control is mean/max KL `0.005550/0.136877`, so
+  runtime-shape attribution remains open despite passing top-1.
+- The downloaded PARO quant is independently healthy by its bundled canonical
+  KL `0.027939` / top-1 `92.856%`. hipEngine's exact-checkpoint output is finite
+  and sampler/logit self-consistent but 0/90 versus BF16, an implementation
+  blocker. ParoQuant Transformers loaded the model but its ROCm rotation kernel
+  fails with `invalid device function` on gfx1151, so that local cross-check is
+  also blocked.
+
+This is a portable diagnostic, not Q2 corpus PPL. Q2 remains open for ROCmFP4;
+PARO and the historical Q4 control already have same-protocol canonical rows.
 
 These BF16-relative margins characterize quantization quality. They do not
 replace the project gate for a new implementation: the candidate kernel/runtime

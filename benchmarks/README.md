@@ -85,6 +85,7 @@ generation.
 | Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
 | Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
 | MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
+| Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
 | Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
 | Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
 
@@ -110,6 +111,27 @@ git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md
 A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
+
+## Current Qwen3.6-35B quantization quality
+
+The portable rows score 90 full-vocabulary BF16-teacher positions across all ten
+code/English/Japanese/mixed prompts. They are useful exact-artifact diagnostics,
+not held-out-corpus PPL. The PARO row is the checkpoint's bundled canonical
+129,921-token rolling-corpus result.
+
+| Exact local artifact | Size / BPW | Evidence scope | Mean KL vs BF16 ↓ | Top-1 agreement ↑ | Status |
+| --- | ---: | --- | ---: | ---: | --- |
+| GGUF `UD-Q4_K_M` | 21.107 GiB / 5.180 | portable, ROCmFPX HIP | **0.013713** | 92.222% | Matched-runtime quality baseline |
+| ROCmFP4 STRIX_LEAN | **17.739 GiB / 4.354** | portable, ROCmFPX HIP | 0.045984 | **97.778%** | Quality-traded: KL/category margin fails |
+| PARO full8192 packed | 19.068 GiB / 4.680 | canonical tx4/quality3 | 0.027939 | 92.856% | Quant usable; current hipEngine path blocked at 0/90 portable top-1 |
+
+ROCmFP4 is 15.96% smaller than local Q4_K_M and has stronger portable greedy
+argmax retention, but 3.35x its matched-runtime mean KL and a Japanese KL
+outlier. PARO's quant is independently healthy; the exact downloaded checkpoint
+currently exposes a hipEngine packed-loader/runtime correctness bug, so no PARO
+speed row for that checkpoint is quality-valid yet. See the
+[`artifact`](results/2026-08-16-zbook-qwen36-quant-quality.json) and
+[`protocol`](quant/README.md).
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
