@@ -16,6 +16,7 @@ from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
@@ -4715,6 +4716,101 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
+
+
+def test_gfx1151_qmicro_q8x2_rowbatch_quantizes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The native rows2-4 policy shares weights without changing c1 math."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_QMICRO_T16,
+        quant_key="gguf_q4_k_qmicro_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_QMICRO_T16,
+        quant_key="gguf_q4_k_qmicro_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_qmicro_t16_v1",
+        "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
+    )
+    rowtile_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_qmicro_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, rowtile_key)
+    }
+    quantize_calls: list[tuple[tuple, dict]] = []
+    candidate_calls: list[tuple[tuple, dict]] = []
+    rowtile_calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1x2",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    register(
+        candidate_key,
+        lambda *args, **kwargs: candidate_calls.append((args, kwargs)),
+        replace=True,
+    )
+    register(
+        rowtile_key,
+        lambda *args, **kwargs: rowtile_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with native_batch_decode_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=4,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_gemv_decode=True,
+                registered_decode_variant=candidate_key.variant,
+                q8_1_workspace_ptr=900,
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert quantize_calls == [
+        (
+            (100, 900, 4, 5_120),
+            {
+                "stream": 7,
+                "library": None,
+                "runtime": "runtime-sentinel",
+            },
+        )
+    ]
+    assert candidate_calls == [
+        (
+            (900, 14, 14, 400, 4, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert rowtile_calls == []
 
 
 def test_gfx1151_q4_t16_split_weight_keeps_native_b1_on_control(

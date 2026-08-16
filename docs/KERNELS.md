@@ -201,8 +201,10 @@ the gate/up pool removes 170 MiB.
 
 Rows1 retain the primary-plus-residual Q8_1x2 producer and exact four-wave
 split-weight dp4a+SiLU arithmetic, but the consumer now reads compact qmicro
-metadata directly. Rows2-4 use direct-metadata singleton and dual-rowtile
-owners. Bulk 512/1K uses direct-metadata singleton/dual WMMA; from 4K, one
+metadata directly. Q4_K_M rows2-4 use direct-metadata singleton and
+dual-rowtile owners. Q4_K_S native rows2-4 instead use the exact shared-weight
+Q8_1x2 rowtile8 owner because the direct-BF16 association can change greedy
+trajectories. Bulk 512/1K uses direct-metadata singleton/dual WMMA; from 4K, one
 bounded expansion writes only the compact coefficients into the already-dead
 FFN gate/up scratch plane before the same exact dual WMMA. This adds no
 workspace allocation or persistent bytes. Rows5-4095 and fused-policy misses
@@ -236,19 +238,26 @@ outputs plus eight K17,408/N5,120 FFN-down, three K5,120/N10,240 recurrent-QKV,
 and one K5,120/N1,024 full-attention-V tensor; all own only `tiles`, with no
 dense-BF16 Q5 shadow. The exact 16K/48V/128x128 GDN geometry also selects
 `chain_compact_peer_wave32`. True AR independently transfers three exact
-Q4_K_M policies whose representation and math are unchanged: qmicro Q4
+Q4_K_M-derived policies whose representation and math are unchanged: qmicro Q4
 split-weight gate+up+SiLU, Q4 down+residual (Q5 down remains unfused), and
 quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
 **12.42932 -> 13.06854 tok/s (+5.143%)**. Clean commit `3118943eb` publishes
 **13.03883/12.86679/13.02544 tok/s** at 512/1K/4K, above both frozen clean
 llama backends at every shape. Natural true AR is **13.33276 tok/s**,
 repeat-exact across 30 requests.
-Native Q4_K_S MTP remains fail-closed for publication: B1-B3 diverge from
-scalar AR on both Japanese prompts even though every GPU acceptance decision
-matches its CPU oracle. Evidence:
+Native Q4_K_S MTP uses a separately qualified rows2-4 qmicro Q8_1x2
+rowtile8 owner for H5120/N17408 gate/up+SiLU. It shares each compact-weight
+traversal across rows while preserving c1's dp4a/FMA/reduction and BF16
+association independently per row. Rows2/3/4 are BF16-bit exact to serial c1;
+the complete ten-prompt AR/B1/B2/B3 gate is exact with GPU/CPU acceptance
+agreement, and B3 reaches **24.19347 tok/s / 1.8228x** own AR. Cache-only
+`rocprofv3` records rows3 at local128, 120 VGPR, 512-byte LDS, zero scratch,
+and 0.462-0.465 ms on an actual layer-0 pair. The policy adds no bytes, and the
+direct-BF16 rowtile plus primitive chain remain registered fallbacks. Evidence:
 [`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
-[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json), and
-[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json).
+[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),
+[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json), and
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow

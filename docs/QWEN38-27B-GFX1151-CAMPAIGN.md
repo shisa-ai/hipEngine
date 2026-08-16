@@ -1,11 +1,13 @@
-# Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
+# Qwen3.8-27B GGUF gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership and G2 prefill are complete. Clean P5 at
-`9c649e28d` beats llama.cpp HIP at all three rows and trails Vulkan by
-0.804-3.153%. G5 memory parity remains open, and the K0-K3 native INT8 K/V
-ladder is closed below K4 on model-level correctness.** The working
-performance set is `512/128`, `1024/128`, and `4096/128`. The model is Qwen3.8-27B Q4_K_M on
-Radeon 8060S / `gfx1151`.
+Status: **G1 single-layout ownership, G2 prefill, G3 true AR, and G4 exact MTP
+are complete. Clean P5 Q4_K_S commit `3118943eb` beats llama.cpp HIP and Vulkan
+on every required prefill/AR row; retained P6 reaches exact native B3 at
+24.19347 tok/s, 23.218% above the correctness-valid llama HIP comparator. G5
+memory parity remains open, and the K0-K3 native INT8 K/V ladder is closed
+below K4 on model-level correctness.** The working performance set is
+`512/128`, `1024/128`, and `4096/128`. The current model representation is
+Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -345,13 +347,14 @@ SiLU, Q4 down+residual, and fixed-H5120 norms—move matched 512/128 AR
 llama HIP; prefill also beats both backends at every required shape. Natural
 true AR is **13.33276 tok/s**
 with identical trajectories across all 30 requests and all categories, versus
-same-file Q4_K_S llama HIP/Vulkan at **5.53853/7.51888 tok/s**. Native Q4_K_S
-MTP is a separate task-23 correctness blocker: B1-B3 differ from scalar AR on
-`general_ja_plan` and `general_ja_explain` despite GPU/CPU acceptance agreement,
-so no MTP rate from that run is publishable.
+same-file Q4_K_S llama HIP/Vulkan at **5.53853/7.51888 tok/s**. That
+publication also exposed a native rows2-4 gate/up arithmetic mismatch on
+`general_ja_plan` and `general_ja_explain`; task 23 subsequently repairs it with
+the exact shared-weight Q8_1x2 rowtile documented under P6.
 Evidence:
-[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json) and
-[`Q4_K_S true-AR policy retention`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
+[`Q4_K_S true-AR policy retention`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json), and
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
@@ -1030,6 +1033,33 @@ premise. Evidence:
 
 ### P6 — Exact B3 MTP
 
+P6 is retained complete. A same-snapshot bisect localized the Q4_K_S native
+trajectory difference to dense FFN gate/up+SiLU: rows2-4 used the close but
+non-identical direct-BF16 qmicro rowtile, while scalar AR used the Q8_1x2
+split-weight owner. Serializing that boundary made every one of 64 layer
+outputs, state/KV journals, hidden seeds, and target top-1 bits exact.
+
+The retained `dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out` owner preserves
+the c1 thread ownership, dp4a/FMA order, wave tree, BF16 gate/up round trips,
+and SiLU/store association for each row while sharing each compact weight
+traversal. It is scoped only to Q4_K_S H5120/N17408 native rows2-4 and adds no
+persistent or workspace bytes. Q4_K_M, rows1, rows5+, prefill, peers, and shape
+misses retain their prior owners and primitive fallbacks.
+
+The complete ten-prompt one-run gate measures true AR **13.27259**, B1
+**19.92338**, B2 **23.36432**, and B3 **24.19347 tok/s**. B3 is **1.8228x**
+own AR, **24.30803/24.02365** on train/heldout, and
+**28.78902/20.36499/21.50307/24.04568** across code/general-English/
+general-Japanese/mixed categories. All 40 mode/prompt trajectories match true
+AR exactly and every GPU accept decision matches CPU. B3 exceeds the frozen
+correctness-valid llama HIP row by **23.218%**; the faster Vulkan
+**26.10541-tok/s** row remains correctness-invalid and is only the disclosed
+stretch target. Tracked peak is **16.914 GiB** with zero teardown; task 24 owns
+whole-GTT parity. Focused validation is 7/7 passed, and cache-only
+`rocprofv3` names the expected rows3 kernel at 120 VGPR, 512-byte LDS, zero
+scratch, and 0.462-0.465 ms on an actual layer-0 pair. Evidence:
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
+
 B3 remains the production budget. Serial-exact B4 is a correctness route only:
 on gfx1151 it measured 4.586 tok/s for Qwen3.8, 76.85% below graph-backed B3.
 Do not reopen B4 until a native rows=5 graph/row schedule has a credible
@@ -1224,8 +1254,8 @@ Do not start or repeat these without a new measured complete-owner premise:
 | **G0 Baseline frozen — complete 2026-08-15** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
 | **G1 Single-layout parity — complete 2026-08-15** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
 | **G2 Prefill win — complete 2026-08-16** | Clean `a06589f34` reaches 399.031/391.276/385.330 tok/s and beats both llama backends at all three shapes with retained correctness and zero teardown. |
-| **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
-| **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
+| **G3 AR win — complete 2026-08-16** | Clean Q4_K_S beats both backends at all three shape-AR rows and natural true AR. |
+| **G4 Exact MTP win — complete 2026-08-17** | Exact Q4_K_S full-suite B3 is 24.19347 tok/s / 1.8228x own AR, 23.218% above correctness-valid llama HIP, with all split/category disclosures and GPU/CPU acceptance agreement. |
 | **G5 Memory win** | Matched process GTT delta is <= the lower llama backend at all shapes and selected B3; tracked teardown is zero. |
 | **K-G1 INT8 working-set support — blocked 2026-08-15** | No bounded representation passes the required native 512 -> 1K quality transfer; BF16 remains supported. |
 | **K-G2 INT8 long support** | Independent 32K/128K natural quality and real 256K capacity/runtime gates pass. |

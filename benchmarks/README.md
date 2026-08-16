@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-16**
+Last updated: **2026-08-17**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -61,6 +61,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
+| Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **24.193 tok/s** | **1.8228x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -326,10 +327,34 @@ Clean prefill leads llama HIP by **7.743%/3.534%/0.760%** and Vulkan by
 Vulkan by **2.162%/1.156%/3.637%**. Natural true AR is **13.33276 tok/s** with
 all 30 repeated trajectories exact; same-file Q4_K_S llama HIP/Vulkan are
 **5.53853/7.51888 tok/s**. The 512 tracked peak is **0.858 GiB** below the
-clean Q4_K_M row, but this is not a whole-GTT claim. Native Q4_K_S MTP is
-correctness-blocked on both Japanese prompts and none of its rates are retained.
+clean Q4_K_M row, but this is not a whole-GTT claim. Task 23 subsequently
+repairs the native Q4_K_S verifier trajectory blocker below.
 Evidence: [`clean Q4_K_S publication`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json) and
 [`causal policy retention`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json).
+
+#### Exact P6 closure — Q4_K_S native B3
+
+The rows2-4 verifier now shares each compact Q4 weight traversal while
+preserving the serial-c1 Q8_1x2 arithmetic independently for every row. The
+complete one-run ten-prompt train/heldout/category gate is exact for AR and all
+three MTP budgets; every GPU accept decision matches CPU:
+
+| Mode | Full-suite tok/s | Own-AR ratio | Accepted/proposed | Exact |
+| --- | ---: | ---: | ---: | ---: |
+| True AR | 13.27259 | 1.0000x | — | 10/10 |
+| B1 | 19.92338 | 1.5011x | 114/131 | 10/10 |
+| B2 | 23.36432 | 1.7603x | 144/199 | 10/10 |
+| **B3** | **24.19347** | **1.8228x** | **161/248** | **10/10** |
+
+B3 is **24.30803/24.02365 tok/s** on train/heldout and
+**28.78902/20.36499/21.50307/24.04568** across code/general-English/
+general-Japanese/mixed categories. It beats the frozen correctness-valid llama
+HIP B3 row (**19.63473 tok/s**) by **23.218%** and the opening exact hipEngine
+Q4_K_M B3 by **22.625%**. The faster Vulkan **26.10541** row remains a disclosed
+correctness-invalid stretch diagnostic, not a binding comparator. Tracked peak
+is **16.914 GiB**, no new workspace or persistent bytes are introduced, and
+tracked teardown is zero; whole-process GTT remains task 24. Evidence:
+[`exact Q4_K_S native B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s

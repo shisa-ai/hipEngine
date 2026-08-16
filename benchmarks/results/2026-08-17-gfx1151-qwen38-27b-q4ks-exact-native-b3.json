@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-17",
+  "kind": "qwen38_27b_gfx1151_q4ks_exact_native_b3",
+  "status": "retained_exact",
+  "publishable": true,
+  "baseline_eligible": true,
+  "performance_claim": true,
+  "performance_claim_scope": "AMD Radeon 8060S gfx1151, Qwen3.8-27B Q4_K_S, BF16 KV, complete ten-prompt natural-suite true AR and native B1-B3 wall with reusable target graphs",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "2780b44c2e24b60d012ce2083d156585abb752b9",
+    "candidate_state": "the committed task-23 diff represented by this artifact",
+    "target_backend": "hip_gfx1151",
+    "require_cached_build": true,
+    "external_port": false,
+    "changed_paths": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "hipengine/runtime/gguf_linear.py",
+      "hipengine/runtime/qwen35_gguf_runner.py"
+    ]
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "kv_storage": "BF16"
+  },
+  "problem": {
+    "prior_status": "native B1-B3 differed from scalar AR on general_ja_plan and general_ja_explain despite GPU/CPU acceptance agreement",
+    "first_difference": "layer-0 dense FFN gate/up+SiLU output",
+    "cause": "native rows2-4 used the direct-BF16 qmicro rowtile while true AR used the Q8_1x2 split-weight c1 arithmetic",
+    "not_the_cause": "embedding, attention/GDN state, attention residual, and post-attention norm were bit-exact in the same-state boundary bisect"
+  },
+  "change": {
+    "variant": "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
+    "registry_key": [
+      "hip_gfx1151",
+      "linear_pair_silu",
+      "gguf_q4_k_qmicro_t16_v1",
+      "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
+    ],
+    "scope": "Qwen3.8 H5120/N17408 Q4_K_S native rows 2, 3, and 4 only",
+    "method": "share each qmicro weight traversal across rows while retaining c1's Q8_1x2 planes, thread ownership, dp4a/FMA ordering, wave reduction, BF16 gate/up round trips, and SiLU/store association independently for every row",
+    "persistent_bytes_added": 0,
+    "workspace_bytes_added": 0,
+    "fallbacks": "the registered direct-BF16 rowtile and primitive gate/up plus SiLU chain remain available; Q4_K_M, rows1, rows5+, prefill, peers, and shape misses keep their prior policies"
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompt_count": 6,
+    "heldout_prompt_count": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "visible_outputs_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "candidate_budgets": [1, 2, 3],
+    "target_verify_mode": "native",
+    "target_graph_replay": true,
+    "warmup": true,
+    "runs": 1,
+    "timing_scope": "complete proposal, target verify, accept/commit, correction, and scheduler wall; load/JIT/warmup excluded",
+    "true_ar_same_harness_denominator": true
+  },
+  "results": {
+    "true_ar": {
+      "full_tok_s": 13.272588195176587,
+      "train_tok_s": 13.273823663650157,
+      "heldout_tok_s": 13.270735423625702,
+      "category_tok_s": {
+        "code": 13.27649784818328,
+        "general_en": 13.274519398928545,
+        "general_ja": 13.273051487662178,
+        "mixed_ja_en": 13.262384842576179
+      },
+      "timed_transitions": 240
+    },
+    "b1": {
+      "full_tok_s": 19.923380851893874,
+      "mtp_vs_true_ar": 1.5010923686409756,
+      "train_tok_s": 19.732988663272938,
+      "heldout_tok_s": 20.21595898657518,
+      "category_tok_s": {
+        "code": 20.595026763546148,
+        "general_en": 18.858202939278467,
+        "general_ja": 19.514776339870576,
+        "mixed_ja_en": 20.169400263566022
+      },
+      "accepted_draft_tokens": 114,
+      "proposed_draft_tokens": 131,
+      "draft_acceptance": 0.8702290076335878,
+      "cycles": 131,
+      "target_forward_rows": 262
+    },
+    "b2": {
+      "full_tok_s": 23.364319715257817,
+      "mtp_vs_true_ar": 1.760343903666708,
+      "train_tok_s": 23.272022541446503,
+      "heldout_tok_s": 23.504146385697638,
+      "category_tok_s": {
+        "code": 25.912933142317918,
+        "general_en": 22.931344494731427,
+        "general_ja": 20.175988396326677,
+        "mixed_ja_en": 22.910721761857342
+      },
+      "accepted_draft_tokens": 144,
+      "proposed_draft_tokens": 199,
+      "draft_acceptance": 0.7236180904522613,
+      "cycles": 101,
+      "target_forward_rows": 300
+    },
+    "b3": {
+      "full_tok_s": 24.19347274334533,
+      "mtp_vs_true_ar": 1.822814991889639,
+      "train_tok_s": 24.308030901535794,
+      "heldout_tok_s": 24.023645867931304,
+      "category_tok_s": {
+        "code": 28.789016411511184,
+        "general_en": 20.3649891678237,
+        "general_ja": 21.503071892954324,
+        "mixed_ja_en": 24.045681118994775
+      },
+      "category_mtp_vs_true_ar": {
+        "code": 2.1684194688022034,
+        "general_en": 1.534141354260062,
+        "general_ja": 1.6200548843604106,
+        "mixed_ja_en": 1.8130736971077046
+      },
+      "accepted_draft_tokens": 161,
+      "proposed_draft_tokens": 248,
+      "draft_acceptance": 0.6491935483870968,
+      "accepted_per_transition": 0.6708333333333333,
+      "cycles": 87,
+      "target_forward_rows": 335,
+      "stage_seconds": {
+        "proposal": 0.20602037681965157,
+        "target_verify": 9.66320411299239,
+        "target_commit_finish": 0.01926975214155391,
+        "scheduler_accept_replay_host_residual": 0.03153677409864031
+      }
+    }
+  },
+  "comparisons": {
+    "own_true_ar_tok_s": 13.272588195176587,
+    "own_true_ar_delta_percent": 82.2814991889639,
+    "prior_retained_three_run_true_ar_tok_s": 13.332758980564911,
+    "current_one_run_vs_prior_true_ar_percent": -0.45130033083201626,
+    "true_ar_note": "the candidate changes only native rows2-4; this one-run AR variance is disclosed but not attributed to the MTP-only policy",
+    "opening_hipengine_q4km_exact_b3_tok_s": 19.7296,
+    "opening_hipengine_delta_percent": 22.625257193989377,
+    "llama_hip_correctness_valid_b3_tok_s": 19.63473,
+    "llama_hip_delta_percent": 23.217751114200837,
+    "llama_vulkan_correctness_invalid_stretch_b3_tok_s": 26.10541,
+    "llama_vulkan_stretch_gap_percent": -7.3239120038898875,
+    "binding_result": "passes: exact B3 exceeds own AR and every correctness-valid llama backend; the faster Vulkan row remains a disclosed invalid stretch diagnostic"
+  },
+  "correctness": {
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "measured_mode_prompt_trajectories_exact": "40/40",
+    "formerly_failing_general_ja_prompts_exact_b1_b2_b3": true,
+    "rows2_rows3_rows4_primitive_bf16_identity_to_serial_c1": true,
+    "same_state_all_64_layers_state_kv_and_top1_exact": true,
+    "cpu_reference_chain": "the new owner is BF16-bit identical to the retained qmicro c1 owner, which is BF16-bit identical to the standard-T16 split-weight owner and its existing CPU-reference quality gate",
+    "tracked_teardown_zero": true,
+    "focused_tests": "7 passed",
+    "kernel_trace_expected_symbol_seen": true,
+    "post_suite_cleanup": "the unused slower independent-row prototype was removed after the broad run; the measured rowtile8 body, selected policy, and workspace route were unchanged, then the final 7-node focused gate and cache-only trace passed"
+  },
+  "memory": {
+    "peak_allocated_bytes": 18161269956,
+    "peak_allocated_gib": 16.914000693708658,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0,
+    "whole_process_gtt_claim": false,
+    "note": "Task 24 retains matched process-GTT parity and lifecycle closure."
+  },
+  "profiler": {
+    "kernel": "q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel<unsigned short, 3>",
+    "duration_ns_samples": [464789, 462104],
+    "workgroup_size": 128,
+    "workgroups": 2176,
+    "vgpr_count": 120,
+    "sgpr_count": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "cache_only": true
+  },
+  "commands": {
+    "suite": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build --output /tmp/qwen38-task23-full-shared-rowtile8-graph-r1/result.json",
+    "focused_tests": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 -m pytest -q --tb=short tests/test_gguf_t16_selected_gemv_decode.py::test_qmicro_q4_dense_dual_q8_1x2_split_weight_is_bit_exact tests/test_gguf_t16_selected_gemv_decode.py::test_qmicro_q4_dense_dual_q8_1x2_shared_rowbatch_matches_serial_c1_bits tests/test_gguf_linear_dispatch.py::test_gfx1151_qmicro_q8x2_rowbatch_quantizes_once tests/test_gfx1151_backend.py::test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles tests/test_qwen35_gguf_prefill_scratch_liveness.py::test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped",
+    "profiler": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen38-task23-qmicro-rowtile8-rocprof-final -- /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/qwen38-task23-qmicro-rowtile8-rocprof.py --layers 0 --rows 3 --warmups 0 --samples 1 --burst 1 --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --output /tmp/qwen38-task23-qmicro-rowtile8-rocprof-final/result.json"
+  },
+  "evidence": {
+    "full_suite": {
+      "path": "/tmp/qwen38-task23-full-shared-rowtile8-graph-r1/result.json",
+      "sha256": "49513228a7c2e0c48f0bcf191fc2717a11d00e88fadd6099a55cc0c79597318c"
+    },
+    "two_prompt_eager": {
+      "path": "/tmp/qwen38-task23-ja-shared-rowtile8-eager/result.json",
+      "sha256": "1b4acd905dc849f66333a25c97576df64ef368cdac9566602c335ec52888022f"
+    },
+    "two_prompt_graph": {
+      "path": "/tmp/qwen38-task23-ja-shared-rowtile8-graph/result.json",
+      "sha256": "851b7d210d8df6e2d4abc015913a30bddad0c98164e3291b2708df79104038c5"
+    },
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task23-qmicro-shared-rowtile8-actual-exact/result.json",
+      "sha256": "ea096233cbe695a74dfcdbd30c91dbfd7b06ad2ef31355186c7e08bb3ee3ad06"
+    },
+    "kernel_trace": {
+      "path": "/tmp/qwen38-task23-qmicro-rowtile8-rocprof-final/gfx1151/2363594_kernel_trace.csv",
+      "sha256": "8bf8425e45b9ec45696737f5c14ea55a7901e0940b70b1d6a73ec574846e364e"
+    },
+    "focused_tests": {
+      "path": "/tmp/qwen38-task23-focused-tests-final.log",
+      "sha256": "83a1593c5b5783693fe3006d1f6597bcb4f3a5968f23b59481ee09a0477f910a"
+    }
+  },
+  "raw_harness_note": "The generic dense-suite artifact sets speed_claim_eligible=false for gfx1151 by its cross-platform allowlist. This campaign-scoped wrapper makes the performance claim under the explicit gfx1151 protocol in docs/QWEN38-27B-GFX1151-CAMPAIGN.md, as prior retained gfx1151 artifacts do.",
+  "decision": "Retain and default the exact shared-weight Q8_1x2 rowtile8 owner for Q4_K_S native rows2-4. It repairs the two trajectory failures, passes every full-suite split/category gate, reaches 24.19347 tok/s B3 (1.82281x own AR), and beats the correctness-valid llama HIP B3 row by 23.218% with no new bytes and zero teardown. B4+ remains diagnostic and task 24 owns whole-GTT closure."
+}
