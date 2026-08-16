@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-17
 
+- [retained-development gfx1151 Qwen3.8 G5 memory parity] Qwen3.8-27B / Q4_K_S / BF16 KV / 512/1K/4K + exact B3: private-c1 wide-weight/decode arenas, native initial-only rollback, safe 1K outer chunks, and an anonymous mapped Q4 embedding move process GTT to **15.275/15.710/15.727 GiB** and B3 to **15.899 GiB**, respectively **3.233%/0.670%/1.728%/2.805% below** the lower valid llama rows; sampled shape throughput stays within the 1% guard, adjacent host/device B3 is **-0.027%**, outputs/acceptance are exact, and teardown is zero; `benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json`.
 - [retained gfx1151 Qwen3.8 exact native B3] Qwen3.8-27B / Q4_K_S / BF16 KV / ten-prompt natural suite: a shared-weight rows2-4 Q8_1x2 qmicro owner repairs both Japanese verifier trajectories and moves publishable native B3 from **correctness-blocked -> 24.19347 tok/s (1.8228x own AR)**, **23.218%** above the correctness-valid llama HIP B3 row, with 40/40 AR/B1/B2/B3 prompt trajectories exact, GPU/CPU acceptance agreement, no new bytes, and zero teardown; `benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json`.
 
 ## 2026-08-16

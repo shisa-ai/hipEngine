@@ -1143,7 +1143,13 @@ def _mapped_host_embedding_audit(session: Any) -> dict[str, Any]:
         "nbytes": int(allocation.buffer.nbytes),
         "device_ptr": int(allocation.tensor.ptr),
         "owns_buffer": bool(allocation.owns_buffer),
-        "storage": "hip_registered_gguf_mmap",
+        "storage": str(
+            getattr(
+                runner,
+                "host_token_embedding_mapped_storage",
+                "hip_registered_gguf_mmap",
+            )
+        ),
     }
 
 

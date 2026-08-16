@@ -409,17 +409,21 @@ should be removed or collapsed.
   W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
   true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
   peak delta falls **45.50-47.03%**.
+- Task 24 adds an independent gfx1151 dense-H5120/Q4_K_S 80-MiB policy. With
+  anonymous host embedding it packs 849 logical allocations into one arena,
+  leaves only the 1,042,944,000-byte untied root dedicated, and exposes two
+  physical weight owners. The retained combined 512/1K/4K rows are within the
+  1% wall guard and below the lower llama process-GTT row at every shape.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Its dense-H5120 removal trigger is
-  closed; remove the shared environment seam after the next cumulative gfx1151 GGUF
-  policy refresh confirms retained **3/4 fork-memory parity** and no supported
-  gfx1151 private-c1 consumer requires rollback.
+  disable-only rollback/bisection seam. Remove the shared environment seam
+  after task 26's clean gfx1100/gfx1151 cumulative closure confirms both dense
+  H5120 policies and no supported private-c1 consumer requires rollback.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
-  telemetry while this production owner is active. Do not add the rejected SH15
-  state arena or compact-Q4 stack to this package; 4K still needs a separately
-  admitted structural owner.
+  telemetry while this production owner is active. Do not revive the rejected
+  SH15 whole-session state arena or compact-Q4 stack; task 24's dedicated 1K
+  outer-chunk policy is the separately admitted Q4_K_S 4K owner.
 
-## Dense-H5120 gfx1100 private-c1 decode-scratch arena
+## Dense-H5120 private-c1 decode-scratch arena
 
 - Added 2026-08-14 as an architecture/geometry/quant/backend-policy-scoped
   default plus the disable-only
@@ -438,6 +442,32 @@ should be removed or collapsed.
   stable. If a later binding gate fails, remove the capability, resolver,
   arena path, telemetry, tests, and this open entry together; retain dedicated
   allocation unchanged.
+- Task 24 independently enables the same allocator contract for gfx1151 dense
+  H5120/Q4_K_S. One owner exposes all 188 logical ranges; shared runners,
+  wider batches, Q4_K_M, peer models/backends, and opt-out retain dedicated
+  allocations. The combined policy is exact, stays within the 1% wall guard,
+  and contributes physical-allocation savings without changing requested
+  bytes. Extend the removal trigger through task 26's clean gfx1151 closure.
+
+## gfx1151 Qwen3.8 Q4 host embedding and bounded 4K scratch
+
+- Added 2026-08-17 for private-c1 dense-H5120/Q4_K_S memory parity. Automatic
+  Q4 placement uses a byte-for-byte anonymous copy of the 715,161,600-byte
+  compressed embedding and HIP-registers that copy. Direct registration of the
+  file-backed GGUF mmap changed complete-model trajectories and is forbidden on
+  gfx1151. Q8_0 retains its existing CPU-copy route; shared/wider/device-forced
+  sessions retain device ownership.
+- `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=device` is the temporary common rollback.
+  Adjacent exact natural-suite measurement puts mapped host versus device at
+  **+0.012% true AR / -0.027% B3** while removing exactly 715,161,600 tracked
+  bytes. Remove the rollback only after task 26's clean shape/B3 refresh and one
+  release window; keep explicit device fallback for shared and wider sessions.
+- The Q4_K_S 4K-capacity policy keeps all prefill fields dedicated and caps the
+  already-supported outer chunk at 1,024 rows. Do not replace it with owner-slot,
+  single-arena, priority, hidden-buffer, or short-session aliases: stronger
+  gates found final-logit or trajectory corruption. The row-cap policy may be
+  removed only if a later exact owner is both smaller and non-regressive across
+  512/1K/4K plus full-category B3.
 
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 

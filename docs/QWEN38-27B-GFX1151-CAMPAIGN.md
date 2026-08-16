@@ -1,13 +1,15 @@
 # Qwen3.8-27B GGUF gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership, G2 prefill, G3 true AR, and G4 exact MTP
-are complete. Clean P5 Q4_K_S commit `3118943eb` beats llama.cpp HIP and Vulkan
-on every required prefill/AR row; retained P6 reaches exact native B3 at
-24.19347 tok/s, 23.218% above the correctness-valid llama HIP comparator. G5
-memory parity remains open, and the K0-K3 native INT8 K/V ladder is closed
-below K4 on model-level correctness.** The working performance set is
-`512/128`, `1024/128`, and `4096/128`. The current model representation is
-Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
+are complete. Task 24's retained G5 candidate reaches 15.275/15.710/15.727-GiB
+process GTT at 512/1K/4K and 15.899 GiB for exact native B3, below the lower
+valid llama.cpp row at every scope with exact output and zero teardown. Clean
+P5 Q4_K_S commit `3118943eb` still owns the binding prefill/AR rows, and
+retained P6 reaches exact native B3 at 24.19347 tok/s. G6's clean post-commit
+closure audit remains open; K0-K3 native INT8 K/V is closed below K4 on
+model-level correctness.** The working performance set is `512/128`,
+`1024/128`, and `4096/128`. The current model representation is Qwen3.8-27B
+Q4_K_S on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -1099,6 +1101,35 @@ measure tracked ownership, GTT delta, RSS, system available, transient high
 water, and teardown. Reject a lower-live-memory route that raises peak or
 regresses complete wall beyond the frozen guard.
 
+The retained task-24 candidate closes that ladder without keeping any unsafe
+alias. A Q4_K_S/H5120 private-c1 policy widens the immutable-weight arena to the
+80-MiB inventory crossover (**849 logical allocations, two final physical
+weight owners** after host embedding), enables the existing 188-range decode-
+scratch owner, and maps an anonymous byte-for-byte **715,161,600-byte** Q4
+embedding copy. Native B1-B3 allocates only the initial rollback state because
+committed rows already live in the target session journal; serial-exact and B4
+keep all row copies. At 4K only, every bulk-prefill field remains dedicated but
+exact outer chunks cap scratch at 1,024 rows.
+
+One right-sized process per shape with continuous GTT/RSS/system sampling
+measures **15.275/15.710/15.727 GiB** process-GTT delta at 512/1K/4K versus the
+lower llama HIP **15.785/15.816/16.004 GiB**. Tracked peak falls from the clean
+Q4_K_S **15.729/16.147/18.465** to **15.063/15.481/15.494 GiB**. Sampled
+prefill moves only **-0.338%/-0.306%/-0.248%**, AR moves
+**+0.077%/+0.084%/+0.096%**, every final token remains 9707, and teardown is
+zero. Exact B3 process GTT is **15.899 GiB** versus llama HIP's **16.358 GiB**;
+all ten trajectories and GPU/CPU acceptance decisions remain exact. An adjacent
+unsampled host/device embedding control is **+0.012% AR / -0.027% B3**, inside
+the frozen 1% guard.
+
+Both owner-slot and single-arena bulk aliases are rejected because they changed
+the dedicated oracle logit **25.418247 -> 22-23** despite sometimes preserving
+top-1. Priority recoloring, hidden reuse, direct file-backed mmap registration,
+and short-session liveness are rejected for trajectory corruption. The exact
+producer-folded journal is rejected for about 4% verifier-wall cost. Only the
+safe owners above remain. Evidence:
+[`retained G5 candidate`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json).
+
 ---
 
 ## 7. INT8 K/V lane
@@ -1256,10 +1287,10 @@ Do not start or repeat these without a new measured complete-owner premise:
 | **G2 Prefill win — complete 2026-08-16** | Clean `a06589f34` reaches 399.031/391.276/385.330 tok/s and beats both llama backends at all three shapes with retained correctness and zero teardown. |
 | **G3 AR win — complete 2026-08-16** | Clean Q4_K_S beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win — complete 2026-08-17** | Exact Q4_K_S full-suite B3 is 24.19347 tok/s / 1.8228x own AR, 23.218% above correctness-valid llama HIP, with all split/category disclosures and GPU/CPU acceptance agreement. |
-| **G5 Memory win** | Matched process GTT delta is <= the lower llama backend at all shapes and selected B3; tracked teardown is zero. |
+| **G5 Memory win — retained candidate 2026-08-17** | Task-24 candidate process GTT is **15.275/15.710/15.727 GiB** at 512/1K/4K and **15.899 GiB** at exact B3, below every lower valid llama row with exact outputs and zero teardown; task 26 owns the clean post-commit refresh. |
 | **K-G1 INT8 working-set support — blocked 2026-08-15** | No bounded representation passes the required native 512 -> 1K quality transfer; BF16 remains supported. |
 | **K-G2 INT8 long support** | Independent 32K/128K natural quality and real 256K capacity/runtime gates pass. |
-| **G6 Closure** | G2-G5 pass, applicable INT8 status is accurately published, no unresolved campaign refactor debt, final tests/rollups committed and pushed. |
+| **G6 Closure — open** | G2-G5 pass on one clean retained source, applicable INT8 status is accurately published, no unresolved campaign refactor debt remains, and final tests/rollups are committed and pushed. |
 
 A milestone is blocked, not complete, if one column fails. Wins in prefill, AR,
 MTP, or memory do not hide another failure.

@@ -16,6 +16,7 @@ from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_mtp import _resolve_gguf_verifier_backend
 
 _Q4_K_M = "MOSTLY_Q4_K_M"
+_Q4_K_S = "MOSTLY_Q4_K_S"
 
 
 def _dense_config() -> SimpleNamespace:
@@ -83,6 +84,76 @@ def test_dense_backend_policies_are_geometry_keyed() -> None:
         policies = backend_package_capability("hip_gfx1100", capability, {})
         assert identity in policies
         assert all(not isinstance(key[0], str) for key in policies)
+
+
+def test_gfx1151_qwen38_memory_policies_are_geometry_and_quant_scoped() -> None:
+    runner = _dense_runner(model_name="community/Qwen3.8-27B-finetune")
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = _Q4_K_S
+    identity = (QWEN35_DENSE_H5120_GEOMETRY, _Q4_K_S)
+
+    for capability in (
+        "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+        "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
+        "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
+    ):
+        policies = backend_package_capability("hip_gfx1151", capability, {})
+        assert identity in policies
+        assert all(not isinstance(key[0], str) for key in policies)
+
+    assert gguf_runner._resolve_gguf_private_c1_small_weight_arena(
+        backend=runner.backend,
+        max_batch_size=1,
+        has_shared_runner=False,
+        geometry=runner.weights.geometry,
+        file_type_name=runner.weights.file_type_name,
+    ) == (True, "private_c1_selective")
+    assert gguf_runner._resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+        backend=runner.backend,
+        geometry=runner.weights.geometry,
+        file_type_name=runner.weights.file_type_name,
+    ) == 80 * 1024 * 1024
+    assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
+        backend=runner.backend,
+        max_batch_size=1,
+        has_shared_runner=False,
+        geometry=runner.weights.geometry,
+        file_type_name=runner.weights.file_type_name,
+    ) == (True, "private_c1_geometry_policy")
+    assert gguf_runner._gguf_dense_prefill_scratch_policy(runner) is None
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=4_352,
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=1_280,
+    ) is None
+    assert gguf_runner._resolve_gguf_token_embedding_placement(
+        backend=runner.backend,
+        max_batch_size=1,
+        has_shared_runner=False,
+        token_embedding_type_name="Q4_K",
+    ) == ("host", "mapped_host_private_c1_auto")
+    assert backend_package_capability(
+        runner.backend,
+        "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY",
+        False,
+    ) is True
+
+    runner.weights.file_type_name = _Q4_K_M
+    assert gguf_runner._gguf_dense_prefill_scratch_policy(runner) is None
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=4_352,
+    ) is None
+    assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
+        backend=runner.backend,
+        max_batch_size=1,
+        has_shared_runner=False,
+        geometry=runner.weights.geometry,
+        file_type_name=runner.weights.file_type_name,
+    ) == (False, "backend_capability_fallback")
 
 
 def test_08b_decode_policies_are_geometry_keyed() -> None:

@@ -11,6 +11,18 @@ def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
     assert mtp_module._effective_target_verify_mode("native", rows=5) == "serial_exact"
     assert mtp_module._effective_target_verify_mode("serial_exact", rows=5) == "serial_exact"
+    assert mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=3,
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=4,
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "serial_exact",
+        max_candidate_budget=3,
+    )
 
 
 def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
