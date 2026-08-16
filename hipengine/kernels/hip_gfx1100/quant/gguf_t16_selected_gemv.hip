@@ -5644,7 +5644,7 @@ int launch_q4_dense_rowtile_col4(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles || !out || rows < 2 || rows > 4 ||
+  if (!x || !tiles || !out || rows < 1 || rows > 4 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -5661,6 +5661,7 @@ int launch_q4_dense_rowtile_col4(
         reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
     break
   switch (rows) {
+    Q4_T16_DENSE_ROWTILE_COL4_CASE(1);
     Q4_T16_DENSE_ROWTILE_COL4_CASE(2);
     Q4_T16_DENSE_ROWTILE_COL4_CASE(3);
     Q4_T16_DENSE_ROWTILE_COL4_CASE(4);

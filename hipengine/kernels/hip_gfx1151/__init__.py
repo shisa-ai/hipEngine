@@ -884,11 +884,15 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
-# Qwen3.8-27B P5: split each exact serial-c1 recurrent-output tile across two
-# eight-column workgroups after all five actual-weight layers improved with
-# BF16-bit identity. Native rows/MTP and policy misses retain the ordinary
-# local128 direct owner.
+# Qwen3.8-27B P5 exact serial-c1 output subdivisions. Full-attention K/V
+# K5120/N1024 Q4 projections use four-column ownership after the actual-weight
+# pool improves 1.03169x with 14/15 wins. Recurrent-output Q5 uses two
+# eight-column workgroups after all five actual layers improve. Native rows/MTP
+# and policy misses retain their independently qualified owners.
 GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
+    "gguf_q4_k_t16_v1": {
+        (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
+    },
     "gguf_q5_k_t16_v1": {
         (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
     },

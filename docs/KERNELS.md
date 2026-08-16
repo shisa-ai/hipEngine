@@ -208,6 +208,10 @@ embedding remains raw GGUF, peer geometries retain prior policy, and no
 `KVLiveSpans` ABI changes are involved. Evidence:
 [`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json) and
 [`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+The serial-c1 K=5,120/N=1,024 full-attention K/V subset independently selects
+the exact four-column Q4T16 owner; native sessions, peers, and all shape misses
+retain local32 direct. Evidence:
+[`Qwen3.8 Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
 The same gfx1151 model policy also gives the 48 exact
 K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
 `gguf_q5_k_t16_v1/tiles` payload each. Serial c1 uses the exact eight-column

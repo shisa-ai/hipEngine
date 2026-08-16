@@ -346,6 +346,19 @@ llama.cpp HIP **11.50812 tok/s by 4.792%**, but remains **4.047%** below Vulkan
 is retained development evidence, not a clean publication topline. Evidence:
 [`grouped-GQA split attention`](results/2026-08-16-gfx1151-qwen38-27b-grouped-gqa-split-attention.json).
 
+One exact post-grouped sub-window also remains default despite being below
+request-level timing resolution:
+
+| Retained P5 owner | Actual-weight control | Retained | Speedup / wins | Projected 4K saving |
+| --- | ---: | ---: | ---: | ---: |
+| Q4T16 serial-c1 full-K/V K5120/N1024 col4 | 16.962 us/projection | **16.441 us/projection** | **1.03169x / 14 of 15** | **11.821 us/token / 0.0146% kernel wall** |
+
+The shape-scoped owner is BF16-bit exact across 24 immutable weights, changes no
+resident/workspace bytes, and lowers traced VGPR 96 to 56. Native rows, MTP,
+peer backends, and every other Q4 singleton shape retain their previous owner;
+no topline row is inferred from this verified sub-window. Evidence:
+[`Q4T16 c1 col4 full-K/V`](results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
+
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
 This is the latest clean, exact one-queue production snapshot. The artifact is a

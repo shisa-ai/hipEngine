@@ -1359,6 +1359,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
     ) == {
+        "gguf_q4_k_t16_v1": {
+            (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
+        },
         "gguf_q5_k_t16_v1": {
             (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
         },

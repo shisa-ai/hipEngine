@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_single_col4_c1_decode",
+  "status": "retained_development_micro_window",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "base_commit": "574947fbd7bac9976e91ea9ff1a39db0b5109607",
+    "development_worktree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "geometry": "H5120/FFN17408/64 target blocks plus trailing NextN"
+  },
+  "implementation": {
+    "scope": "gfx1151 serial rows1 Q4T16 K5120/N1024 full-attention K/V projections",
+    "consumer": "existing exact four-column Q4T16 rowtile body instantiated for one row",
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "native_batch_and_mtp_owner": "unchanged local32 direct Q4T16 projection",
+    "fallback": "registered local32 direct Q4T16 projection",
+    "peer_backends_and_shapes_changed": false
+  },
+  "actual_weight_leaf": {
+    "protocol": "15 counterbalanced HIP-event pairs after three warmups; each event cycles 24 immutable full-attention K/V weights totaling 67.5 MiB, above 2x the 32-MiB MALL",
+    "shape": {
+      "in_features": 5120,
+      "out_features": 1024,
+      "rows": 1
+    },
+    "tensor_count": 24,
+    "source_pool_bytes": 70778880,
+    "resident_t16_bytes": 72744960,
+    "control_us_per_projection": 16.961832841237385,
+    "candidate_us_per_projection": 16.44083360830943,
+    "speedup": 1.0316893440649284,
+    "candidate_wins": "14/15",
+    "quality": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "finite": true,
+      "max_abs": 0.0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0
+    },
+    "projection_from_post_grouped_4k_decode16": {
+      "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json",
+      "source_sha256": "019e025bdc438f6a9c7626270e921fb8372ab99507614319bc6106a8bc5746e3",
+      "calls_per_token": 24,
+      "family_ms_over_16_tokens": 6.157622510536636,
+      "saved_ms_over_16_tokens": 0.18913737888336987,
+      "saved_us_per_token": 11.821086180210617,
+      "selected_kernel_wall_percent": 0.014633464754306477,
+      "profiled_host_decode_percent": 0.014036514454023152,
+      "note": "Below full-request measurement resolution and the 1% exploration gate; retained under the exact non-regressive verified-subwindow rule."
+    }
+  },
+  "rejected_broad_policy": {
+    "decision": "Do not route col4 for any other Q4 singleton shape; only K5120/N1024 has both a robust pairwise win and an exact bounded policy.",
+    "roles": [
+      {
+        "role": "ffn_down",
+        "shape_out_in": [5120, 17408],
+        "control_us": 233.91549289226532,
+        "candidate_us": 252.89100408554077,
+        "speedup": 0.9249656536344923,
+        "candidate_wins": "0/15"
+      },
+      {
+        "role": "attn_output",
+        "shape_out_in": [5120, 6144],
+        "control_us": 87.57399767637253,
+        "candidate_us": 90.78025072813034,
+        "speedup": 0.9646811610891014,
+        "candidate_wins": "1/15"
+      },
+      {
+        "role": "linear_gate",
+        "shape_out_in": [6144, 5120],
+        "control_us": 88.57624977827072,
+        "candidate_us": 89.32775259017944,
+        "speedup": 0.991587129530097,
+        "candidate_wins": "3/15"
+      },
+      {
+        "role": "linear_qkv",
+        "shape_out_in": [10240, 5120],
+        "control_us": 144.7516679763794,
+        "candidate_us": 143.85666449864706,
+        "speedup": 1.0062214947138632,
+        "candidate_wins": "10/15"
+      },
+      {
+        "role": "full_q",
+        "shape_out_in": [12288, 5120],
+        "control_us": 173.30500483512878,
+        "candidate_us": 171.90249264240265,
+        "speedup": 1.008158765886215,
+        "candidate_wins": "8/15"
+      }
+    ],
+    "universal_projected_selected_kernel_wall_percent": -0.772076803147656
+  },
+  "memory": {
+    "resident_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "tracked_current_before_bytes": 0,
+    "tracked_current_after_bytes": 0,
+    "teardown_exact": true,
+    "whole_process_gtt": "not resampled because the selected owner changes no allocation or resident payload"
+  },
+  "kernel_trace": {
+    "path": "/tmp/qwen38-task22-q4-single-col4-trace/q4-col4_kernel_trace.csv",
+    "sha256": "85674f7d916afcc3c1f77913fad03fb534fc1353070cbcd68849aa38563db349",
+    "bytes": 36416,
+    "kernel": "q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 1>",
+    "calls": 48,
+    "median_duration_ns": 14868.0,
+    "duration_range_ns": [14587, 15669],
+    "workgroup_x": 32,
+    "grid_size_x_threads": 8192,
+    "vgpr": 56,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "control_vgpr": 96,
+    "duration_note": "The trace is a named-kernel/resource smoke; the 15-pair unprofiled actual-weight leaf is the timing source."
+  },
+  "validation": {
+    "affected_file_tests": "151 passed",
+    "focused_gpu_and_route_tests": "4 passed",
+    "correctness_gate": "synthetic BF16-bit identity plus 24 actual weights with KL 0, 24/24 top-1, finite outputs, and zero mismatches",
+    "dispatch_scope": "serial c1 exact shape selects col4; native-session c1 and every shape miss select local32 direct",
+    "all_nonselected_shapes_unchanged": true,
+    "zero_tracked_bytes_after_close": true,
+    "full_model_timing": "not repeated: projected complete impact is 11.821 us/token, below request-level measurement resolution"
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q4-single-col4-leaf/hipcc-version.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-single-col4-leaf.py --warmups 3 --samples 15 --compiler-version-file /tmp/qwen38-task22-q4-single-col4-leaf/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-single-col4-leaf/leaf.json",
+    "tests": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_single_col4_is_bit_exact tests/test_gguf_t16_selected_gemv_decode.py::test_p9_h3d_registry_keys_resolve",
+    "trace": "rocprofv3 --kernel-trace -f csv -d /tmp/qwen38-task22-q4-single-col4-trace -o q4-col4 -- python3 /tmp/qwen38-task22-q4-single-col4-leaf.py --roles full_kv --warmups 0 --samples 1 --compiler-version-file /tmp/qwen38-task22-q4-single-col4-leaf/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-single-col4-trace/leaf.json"
+  },
+  "evidence": {
+    "leaf_runner": {
+      "path": "/tmp/qwen38-task22-q4-single-col4-leaf.py",
+      "sha256": "0d1cfa87e24c0aecf058540eb2825a79b392c3754e9edc0ca6524f7ad6c06b0d",
+      "bytes": 17419
+    },
+    "actual_weight_leaf": {
+      "path": "/tmp/qwen38-task22-q4-single-col4-leaf/leaf.json",
+      "sha256": "5f296c8a341c952553aea0537c564830719c0da4daca6927698ea6c9e8c2ca55",
+      "bytes": 30781
+    }
+  },
+  "decision": "Retain and default only the gfx1151 serial-c1 Q4T16 K5120/N1024 full-attention K/V col4 owner. It is BF16-bit exact, wins 14/15 cache-cold actual-weight pairs by 1.03169x, lowers VGPR 96 to 56, adds no bytes, and leaves native rows, MTP, peers, and every other Q4 singleton shape on their prior owners. The broad col4 policy is rejected."
+}

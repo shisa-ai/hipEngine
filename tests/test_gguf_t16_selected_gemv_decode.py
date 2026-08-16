@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
+    gguf_q4_k_t16_dense_single_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
@@ -785,6 +786,37 @@ def test_q4_t16_dense_single_matches_pack8_production_bits(
     )
 
 
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_t16_dense_single_col4_is_bit_exact(
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260819)
+    in_features = 1024
+    out_features = 512
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(1, in_features)).astype(np.float32)
+    )
+    control = _run_dense_single(
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dense_single(
+        gguf_q4_k_t16_dense_single_col4_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
+
+
 def _run_pack8_dual_rowtile_silu(
     x_dev,
     packed_a,
@@ -1450,6 +1482,12 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q4_k_t16_v1",
         variant="dense_rowtile_bf16_bf16_out",
     ) is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_single_col4_bf16_bf16_out",
+    ) is gguf_q4_k_t16_dense_single_col4_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear+residual",
