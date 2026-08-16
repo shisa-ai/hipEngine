@@ -96,6 +96,14 @@ family moves **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)** and projects a
 standard-Q4T16 remains production. Evidence:
 [`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
 
+Cross-boundary Q8 production cannot rescue planar-Q6 FFN-down either. With
+activation quantization performed entirely outside timing, the best existing
+dp4a consumer reaches only **1.00300x (24/45 wins)** against the BF16 owner,
+versus **1.08087x** required to save 1% of current 4K kernel wall. This
+zero-cost-producer upper bound projects just **0.0400%**, so no fused
+SiLU-to-Q8 producer is implemented. Evidence:
+[`precomputed-Q8 Q6 bound`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-precomputed-q8-bound-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
@@ -648,6 +656,15 @@ three actual layers regress **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)**,
 projecting **-21.991 ms / -1.7014%** selected 4K kernel wall. The candidate is
 removed before runtime integration. Evidence:
 [`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
+
+A free-producer bound also closes cross-kernel Q6 activation fusion. The
+existing planar-Q6 Q8_1/dp4a consumer is timed with Q8 quantization performed
+once before all warmups and samples; best t256 is **0.993641 -> 0.990665 ms
+(1.00300x, 24/45 wins)** across three actual FFN-down layers. The current family
+needs **1.08087x**, so even this unrealizable upper bound projects only
+**0.517 ms / 0.0400%** selected wall. No fused SiLU-to-Q8 package is warranted.
+Evidence:
+[`precomputed-Q8 Q6 bound`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-precomputed-q8-bound-rejected.json).
 
 ### P6 — Exact B3 MTP
 
