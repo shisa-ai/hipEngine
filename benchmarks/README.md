@@ -47,7 +47,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.031** | **12.063** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **399.836** | **12.210** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -282,26 +282,29 @@ open campaign gaps. Evidence:
 [`G0 baseline`](results/2026-08-15-gfx1151-qwen38-27b-p0-baseline.json) and
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
-#### Retained clean state — G2 complete
+#### Retained clean state — G2 complete, P5 open
 
-Clean detached commit `a06589f34` retains exact rows>=512 four-wave shared-Q6
-owners for both the 32 planar FFN-down and 24 standard recurrent-QKV projections.
-One right-sized process per shape, one warmup and three measured runs produce:
+Clean commit `15a2ca45b` includes the shared-Q6 prefill owners and the retained
+P5 decode package through fixed-H5120 norms. One right-sized process per shape,
+one warmup and three measured runs produce:
 
 | Shape | hipEngine prefill | llama HIP | llama Vulkan | hipEngine AR | llama HIP | llama Vulkan | hipEngine GTT | Lower llama GTT |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **399.031** | 352.426 | 242.956 | **12.0626** | 12.1506 | 12.7629 | **17.322 GiB** | 15.785 GiB |
-| 1K/128 | **391.276** | 364.443 | 247.610 | **11.9019** | 12.0645 | 12.7197 | **17.805 GiB** | 15.816 GiB |
-| 4K/128 | **385.330** | 367.993 | 354.368 | **11.0998** | 11.5081 | 12.5683 | **20.181 GiB** | 16.004 GiB |
+| 512/128 | **399.836** | 352.426 | 242.956 | **12.2099** | 12.1506 | 12.7629 | **17.322 GiB** | 15.785 GiB |
+| 1K/128 | **390.793** | 364.443 | 247.610 | **12.0514** | 12.0645 | 12.7197 | **17.805 GiB** | 15.816 GiB |
+| 4K/128 | **384.712** | 367.993 | 354.368 | **12.2095** | 11.5081 | 12.5683 | **20.181 GiB** | 16.004 GiB |
 
-Prefill beats clean llama.cpp HIP by **13.224%/7.363%/4.711%** and Vulkan by
-**64.240%/58.021%/8.737%** at 512/1K/4K, closing G2. Every prefill CV is below
-0.094%, all nine outputs finish at token 9707, and tracked teardown is zero.
-Relative to the frozen opening snapshot, prefill is
-**367.863%/363.067%/357.612%** faster and process GTT is
-**47.705%/47.030%/44.012%** lower. GTT still exceeds the lower llama row by
-**9.741%/12.575%/26.104%**, and the clean AR diagnostics still trail llama.cpp;
-G3 and G5 therefore remain open.
+Prefill beats clean llama.cpp HIP by **13.452%/7.230%/4.543%** and Vulkan by
+**64.571%/57.826%/8.563%** at 512/1K/4K, preserving G2. Every throughput CV is
+below 0.046%, all nine outputs finish at token 9707, and tracked teardown is
+zero. Relative to the frozen opening snapshot, prefill is
+**368.807%/362.494%/356.881%** faster and AR is
+**73.788%/73.172%/81.841%** faster. Process GTT remains
+**47.705%/47.030%/44.012%** below opening but still
+**9.741%/12.575%/26.104%** above the lower llama row. Clean AR now beats llama
+HIP by **0.488%** at 512 and **6.095%** at 4K, but remains **0.109%** behind at
+1K and **2.854-5.254%** behind Vulkan, so P5 and G5 remain open. Evidence:
+[`post-norm clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
 
 The causal same-source standard-Q6 A/B remains
 **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s
@@ -329,9 +332,11 @@ tok/s (+1.362%)**, with every full/train/heldout/category scope positive and
 all 30 trajectories exact. Native B1 is non-regressive **18.85366 -> 18.86475
 (+0.059%)** with identical trajectories, 339/393 accepted/proposed tokens, and
 786 target rows. Prefill improves 0.031-0.155%; tracked peaks, process GTT,
-graph nodes, and resident bytes are unchanged. Current development rows now
-edge clean llama HIP at all three repeated shapes and lead it on natural AR,
-but remain **2.52-5.15%** below Vulkan, so P5 stays open. Evidence:
+graph nodes, and resident bytes are unchanged. The development A/B edges clean
+llama HIP at all three shapes and leads it on natural AR; the post-commit clean
+publication confirms the 512/4K leads but places 1K **0.109%** behind HIP.
+Vulkan remains **2.52-5.25%** ahead, so P5 stays open. Evidence:
+[`post-norm clean publication`](results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json),
 [`fixed-H5120 norm decode`](results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json),
 [`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),

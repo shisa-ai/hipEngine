@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_post_norm_clean_publication",
+  "status": "clean_publication",
+  "publishable": true,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "commit": "15a2ca45b",
+    "tracked_tree_clean": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "prompt_token": 9707,
+    "shapes": ["512/128", "1024/128", "4096/128"],
+    "process_contract": "one right-sized persistent process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "prefill_mode": "bulk",
+    "decode_mode": "production HIP graph replay",
+    "timing": "load/build and graph capture excluded"
+  },
+  "rows": {
+    "512/128": {
+      "prefill_tok_s": 399.8357090676881,
+      "prefill_cv_percent": 0.03681863010421658,
+      "decode_tok_s": 12.209854774257918,
+      "decode_cv_percent": 0.017617893279854826,
+      "llama_hip_prefill_tok_s": 352.426,
+      "prefill_vs_llama_hip_percent": 13.452386903261427,
+      "llama_vulkan_prefill_tok_s": 242.956,
+      "prefill_vs_llama_vulkan_percent": 64.5712429689689,
+      "llama_hip_decode_tok_s": 12.1506,
+      "decode_vs_llama_hip_percent": 0.487669532845425,
+      "llama_vulkan_decode_tok_s": 12.7629,
+      "decode_vs_llama_vulkan_percent": -4.333225409131791,
+      "tracked_peak_gib": 16.753218058496714,
+      "process_gtt_gib": 17.32250213623047,
+      "tracked_after_close_bytes": 0
+    },
+    "1024/128": {
+      "prefill_tok_s": 390.79339384232566,
+      "prefill_cv_percent": 0.04541835382668307,
+      "decode_tok_s": 12.051405387185538,
+      "decode_cv_percent": 0.0021373669071090414,
+      "llama_hip_prefill_tok_s": 364.443,
+      "prefill_vs_llama_hip_percent": 7.230319650075789,
+      "llama_vulkan_prefill_tok_s": 247.61,
+      "prefill_vs_llama_vulkan_percent": 57.82617577736184,
+      "llama_hip_decode_tok_s": 12.0645,
+      "decode_vs_llama_hip_percent": -0.10853837966317004,
+      "llama_vulkan_decode_tok_s": 12.7197,
+      "decode_vs_llama_vulkan_percent": -5.254012380908845,
+      "tracked_peak_gib": 17.177651416510344,
+      "process_gtt_gib": 17.80492401123047,
+      "tracked_after_close_bytes": 0
+    },
+    "4096/128": {
+      "prefill_tok_s": 384.7118720986375,
+      "prefill_cv_percent": 0.031773578828910486,
+      "decode_tok_s": 12.209539248757341,
+      "decode_cv_percent": 0.03147547600689261,
+      "llama_hip_prefill_tok_s": 367.993,
+      "prefill_vs_llama_hip_percent": 4.543258186606147,
+      "llama_vulkan_prefill_tok_s": 354.368,
+      "prefill_vs_llama_vulkan_percent": 8.562813825920369,
+      "llama_hip_decode_tok_s": 11.5081,
+      "decode_vs_llama_hip_percent": 6.0951786025263965,
+      "llama_vulkan_decode_tok_s": 12.5683,
+      "decode_vs_llama_vulkan_percent": -2.8544890815994206,
+      "tracked_peak_gib": 19.529302295297384,
+      "process_gtt_gib": 20.181175231933594,
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "correctness": {
+    "finite_final_logits_all": true,
+    "final_token_ids": {
+      "512/128": [9707, 9707, 9707],
+      "1024/128": [9707, 9707, 9707],
+      "4096/128": [9707, 9707, 9707]
+    },
+    "tracked_teardown_zero_all": true,
+    "natural_suite_not_repeated": "Equivalent pre-commit source evidence already establishes exact 30/30 AR and 30/30 B1 trajectories; repeating the >5-minute suite would violate the expensive-rerun rule without a new correctness premise.",
+    "natural_evidence": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json"
+  },
+  "opening_delta": {
+    "prefill_percent": {"512/128": 368.8065250301192, "1024/128": 362.49380906106217, "4096/128": 356.8807563757512},
+    "decode_percent": {"512/128": 73.78844491307512, "1024/128": 73.17228111256378, "4096/128": 81.84110640946831}
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {512,1024,4096} --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build",
+  "evidence": {
+    "shape_512": {"path": "/tmp/qwen38-task22-fixed5120-norm/clean-15a2ca45b/p512.json", "sha256": "6f6cb153f5f7b31b1187ad249b786d77b9e301ea72f68d727066b4ba28966af2", "bytes": 454347},
+    "shape_1024": {"path": "/tmp/qwen38-task22-fixed5120-norm/clean-15a2ca45b/p1024.json", "sha256": "1bdf9599e7ecafbbc412775be109a2e384c8077c2710a6c4c308be9fa25061fd", "bytes": 451475},
+    "shape_4096": {"path": "/tmp/qwen38-task22-fixed5120-norm/clean-15a2ca45b/p4096.json", "sha256": "24d3fdb6296a5d770d0b01eebc287e3dd80100b2d2170d89b39c28f819cd2e48", "bytes": 454116}
+  },
+  "decision": "Promote commit 15a2ca45b as the clean current repeated-shape baseline. Prefill still beats both llama backends at all shapes. Decode now beats llama HIP at 512 and 4K but remains 0.109% below HIP at 1K and 2.85-5.25% below Vulkan, so P5 remains open."
+}
