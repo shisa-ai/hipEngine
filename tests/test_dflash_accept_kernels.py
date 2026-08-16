@@ -83,10 +83,16 @@ def test_dflash_accept_and_row_argmax_register_for_gfx1151_aliases() -> None:
         is lm_head_fp16_argmax_bf16_rows_i32
     )
     assert resolve(backend="hip_gfx1151", layer="topk", quant="w4_paro", variant="f32_rows_i32") is topk_f32_rows_i32
-    assert (
-        resolve(backend="hip_gfx1151", layer="dflash_accept_chain", quant="w4_paro", variant="i32")
-        is dflash_accept_chain_i32
-    )
+    for quant in ("w4_paro", "gguf_q4_k_s"):
+        assert (
+            resolve(
+                backend="hip_gfx1151",
+                layer="dflash_accept_chain",
+                quant=quant,
+                variant="i32",
+            )
+            is dflash_accept_chain_i32
+        )
     assert (
         resolve(backend="hip_gfx1151", layer="dflash_commit_chain", quant="w4_paro", variant="i32")
         is dflash_commit_chain_i32
