@@ -50,9 +50,25 @@ def test_gguf_arbitrary_c_lifecycle_summarizes_declared_packed_masks() -> None:
     assert not _all_packed(plan)
 
 
-def test_gguf_arbitrary_c_lifecycle_rejects_non_arbitrary_shape_before_model_io() -> None:
-    args = build_parser().parse_args(["--model", "/missing/model.gguf", "--rows", "8"])
-    with pytest.raises(ValueError, match="greater than 8"):
+def test_gguf_arbitrary_c_lifecycle_accepts_single_physical_group_shape() -> None:
+    args = build_parser().parse_args(
+        [
+            "--model",
+            "/missing/model.gguf",
+            "--rows",
+            "8",
+            "--cancel-slots",
+            "2",
+            "6",
+        ]
+    )
+    with pytest.raises(ValueError, match="model does not exist"):
+        run(args)
+
+
+def test_gguf_arbitrary_c_lifecycle_rejects_too_small_shape_before_model_io() -> None:
+    args = build_parser().parse_args(["--model", "/missing/model.gguf", "--rows", "3"])
+    with pytest.raises(ValueError, match="at least 4"):
         run(args)
 
     args = build_parser().parse_args(
