@@ -13,6 +13,7 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv_bf16_f32w_bf16_out
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv as dense_gemv_module
 from hipengine.kernels.registry import KernelKey, is_registered, register, resolve
@@ -26,6 +27,12 @@ _PAIR_KEY = KernelKey(
     "linear_pair",
     "f32",
     "bf16_hidden_bf16_out",
+)
+_GFX1151_PAIR_KEY = KernelKey(
+    "hip_gfx1151",
+    _PAIR_KEY.layer,
+    _PAIR_KEY.quant,
+    _PAIR_KEY.variant,
 )
 
 
@@ -52,26 +59,29 @@ def _fake_weight(ptr: int, *, backend: str = "hip_gfx1100"):
     )
 
 
-def test_dense_f32_pair_registers_only_on_screened_gfx1100_backend() -> None:
+def test_dense_f32_pair_registers_on_independently_screened_backends() -> None:
     dense_gemv_module.register_dense_gemv_kernels(replace=True)
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
 
-    assert resolve(
-        backend=_PAIR_KEY.backend,
-        layer=_PAIR_KEY.layer,
-        quant=_PAIR_KEY.quant,
-        variant=_PAIR_KEY.variant,
-    ) is _pair_wrapper()
-    assert not is_registered(
-        KernelKey(
-            "hip_gfx1151",
-            _PAIR_KEY.layer,
-            _PAIR_KEY.quant,
-            _PAIR_KEY.variant,
-        )
-    )
+    for key in (_PAIR_KEY, _GFX1151_PAIR_KEY):
+        assert resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        ) is _pair_wrapper()
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
+        (),
+    ) == frozenset({(1, 5_120, 48, 48)})
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
+        (),
+    ) == ()
 
 
 def test_dense_f32_pair_wrapper_selects_flat_rows1_to3_and_tile2_row4(
@@ -146,6 +156,49 @@ def test_dense_f32_pair_stays_primitive_only_after_runtime_wall_rejection() -> N
         register(_PAIR_KEY, original, replace=True)
 
     assert not calls
+
+
+def test_dense_f32_pair_routes_only_qualified_gfx1151_c1_shape() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    original = resolve(
+        backend=_GFX1151_PAIR_KEY.backend,
+        layer=_GFX1151_PAIR_KEY.layer,
+        quant=_GFX1151_PAIR_KEY.quant,
+        variant=_GFX1151_PAIR_KEY.variant,
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(_GFX1151_PAIR_KEY, pair, replace=True)
+    try:
+        common = dict(
+            weight_a=_fake_weight(20, backend="hip_gfx1151"),
+            weight_b=_fake_weight(30, backend="hip_gfx1151"),
+            x_ptr=10,
+            out_a_ptr=40,
+            out_b_ptr=50,
+            in_features=5_120,
+            out_features=48,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        assert launch_gguf_linear_pair(rows=1, **common)
+        assert not launch_gguf_linear_pair(rows=2, **common)
+        assert not launch_gguf_linear_pair(rows=1, out_features_b=47, **common)
+    finally:
+        register(_GFX1151_PAIR_KEY, original, replace=True)
+
+    assert calls == [
+        (
+            (10, 20, 30, 40, 50, 1, 5_120, 48),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
 
 
 def test_dense_f32_pair_wrapper_rejects_unscreened_shapes_before_loading() -> None:

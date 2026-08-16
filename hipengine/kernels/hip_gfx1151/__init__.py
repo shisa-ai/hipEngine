@@ -853,6 +853,12 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         ),
     },
 }
+# Qwen3.8 P5 independently qualifies the exact same-input F32 alpha/beta pair
+# for scalar recurrent layers. Native rows and every other shape retain two
+# singleton dense-F32 projections.
+GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 48, 48)}
+)
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
 # Qwen3.8 P5 independently admits same-resident direct Q4/Q6 c1 siblings at
@@ -1064,13 +1070,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         ),
-        # Dense-H5120 F32 alpha/beta pair is W7900-only pending an
-        # independent gfx1151 occupancy and full-model gate.
-        (
-            "linear_pair",
-            "f32",
-            "bf16_hidden_bf16_out",
-        ),
+        # The exact scalar F32 alpha/beta pair is independently admitted on
+        # gfx1151; wider/native rows retain singleton projections.
         # The cross-family alpha/beta plus snapshot-Conv owner has only been
         # screened on gfx1100; gfx1151 retains three independent leaves.
         (
@@ -2044,6 +2045,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_DENSE_Q4_T16",

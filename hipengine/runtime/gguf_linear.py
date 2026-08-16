@@ -3337,8 +3337,9 @@ def launch_gguf_linear_pair(
     """Launch a supported pair of GGUF projections, returning True when fused.
 
     The pair fast paths cover registered exact raw decode pairs (including
-    unequal-width F32 output), Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
-    and raw-Q4/Q8T16 dual WMMA prefill. Populated resident-pack8 pairs decline
+    unequal-width F32 output), architecture-qualified dense-F32 alpha/beta,
+    Q8_0 dual decode GEMV, Q4_K pack8 dual prefill, and raw-Q4/Q8T16 dual WMMA
+    prefill. Populated resident-pack8 pairs decline
     the legacy dual owner when the exact tile8x8 singleton is registered.
     Q8T16 WMMA pairing is architecture/shape-qualified; every miss falls back
     to two singleton WMMA projections via :func:`launch_gguf_linear`.
@@ -3403,6 +3404,36 @@ def launch_gguf_linear_pair(
             registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    if pair_kind == "dense_f32_alpha_beta":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "f32",
+            "bf16_hidden_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
 
     if pair_kind == "q8_t16_dual_wmma":
         pair_key = KernelKey(
@@ -4306,6 +4337,34 @@ def _resolve_gguf_linear_pair_kind(
             # A mixed candidate/exact pair has no ordinary shared-activation
             # ABI. Decline unless an explicit ordered pair-only policy matched.
             return "none"
+    dense_f32_pair_key = KernelKey(
+        backend,
+        "linear_pair",
+        "f32",
+        "bf16_hidden_bf16_out",
+    )
+    dense_f32_pair_shapes = backend_package_capability(
+        backend,
+        "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
+        (),
+    )
+    dense_f32_single_key = KernelKey(
+        backend,
+        "dense_gemv",
+        "f32",
+        "bf16_hidden_bf16_out",
+    )
+    if (
+        (rows, in_features, out_features, out_features_b)
+        in dense_f32_pair_shapes
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and dispatch_a.abi == dispatch_b.abi == "dense_bf16"
+        and dispatch_a.key == dispatch_b.key == dense_f32_single_key
+        and is_registered(dense_f32_pair_key)
+    ):
+        return "dense_f32_alpha_beta"
+
     if use_wmma and rows > 1:
         q8_t16_dual_wmma = KernelKey(
             backend,

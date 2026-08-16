@@ -316,6 +316,14 @@ quants retain ordinary GDN plus explicit cast; the verifier-chain sibling stays
 excluded pending its independent MTP gate. Evidence:
 [`Qwen3.8 scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
 
+The same gfx1151 scalar graph independently admits the existing exact
+`linear_pair/f32/bf16_hidden_bf16_out` body only at rows1 K5120/N48+N48. One
+local256 grid assigns independent alpha/beta output blocks while preserving each
+singleton K/FMA/reduction tree. Capability or registry misses, gfx1100, and
+rows2-4 retain two singleton dense-F32 projections. No payload or scratch is
+added. Evidence:
+[`Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
 `rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and

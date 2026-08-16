@@ -180,6 +180,16 @@ above both controls, exact IDs/logits, unchanged peaks, and no bytes. The
 verifier-chain alias remains excluded for P6. Evidence:
 [`scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
 
+A second architecture-local contraction promotes the retained exact dense-F32
+alpha/beta pair only for gfx1151 rows1 K5120/N48+N48. The 4K trace removes
+**48 launches/token (822 -> 774)** and improves alpha/beta-to-Conv span
+**0.85573 -> 0.67959 ms/token (-20.583%)**, selected kernel wall **-0.134%**,
+and profiled host decode **-0.242%**. Counterbalanced 512/128 graph AR improves
+**12.25916 -> 12.27588 tok/s (+0.136%)** with both candidates above both
+controls, exact outputs, unchanged peaks, and no bytes. The W7900 rejection and
+rows2-4 native/MTP singleton route remain unchanged. Evidence:
+[`dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
