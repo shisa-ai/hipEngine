@@ -147,6 +147,20 @@ should be removed or collapsed.
   Remove those declarations only when package capability defaults are made
   fail-closed per quant; do not interpret absence as inheriting gfx1100 policy.
 
+## gfx1151 Qwen3.8 residual-Q8_1x2 split-weight diagnostic
+
+- Demoted 2026-08-16 after production-numerics requalification. The changed
+  route passes the 450-row strict-teacher envelope at max KL `0.0008333`,
+  `99.778%` top-1, and exact three-run repeatability, but seven current
+  same-session p512/d128 pairs measure only `0.998071x` the exact local32 owner
+  with one candidate win. The package therefore defaults this serial-c1 shape
+  to exact local32; no rollback flag or duplicate resident payload was added.
+- Removal trigger: after the requalification artifact has served one release
+  window and no other package owns the split-weight variant, remove its
+  comparison-only wrapper/registry key and focused dispatch test. Keep the
+  shared Q8_1x2 producer and prior non-split consumer while native-batch policy
+  still owns them, and keep the exact local32 fused/unfused chain permanently.
+
 ## gfx1151 Qwen3.8 compact-peer GDN rollback seam
 
 - Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route

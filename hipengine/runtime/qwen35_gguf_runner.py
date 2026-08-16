@@ -307,6 +307,7 @@ from hipengine.runtime.gguf_linear import (
     Q6T16F16RocblasPrefillSession,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
+    gguf_native_batch_decode_enabled,
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
     launch_gguf_linear_residual,
@@ -9823,22 +9824,31 @@ def _gguf_dense_pair_silu_decode_variant(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return None
-    try:
-        policies = backend_package_capability(
-            backend, "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES", {}
-        )
-    except (ImportError, ValueError):
-        return None
-    if not isinstance(policies, Mapping):
-        return None
     identity = _gguf_policy_identity(weights)
     if identity is None:
         return None
-    shapes = policies.get(identity, {})
-    if not isinstance(shapes, Mapping):
-        return None
-    variant = shapes.get((int(rows), int(in_features), int(out_features)))
-    return variant if isinstance(variant, str) and variant else None
+    capability_names = (
+        (
+            "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",
+            "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        )
+        if gguf_native_batch_decode_enabled()
+        else ("GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",)
+    )
+    for capability_name in capability_names:
+        try:
+            policies = backend_package_capability(backend, capability_name, {})
+        except (ImportError, ValueError):
+            continue
+        if not isinstance(policies, Mapping):
+            continue
+        shapes = policies.get(identity, {})
+        if not isinstance(shapes, Mapping):
+            continue
+        variant = shapes.get((int(rows), int(in_features), int(out_features)))
+        if isinstance(variant, str) and variant:
+            return variant
+    return None
 
 
 def _gguf_dense_down_residual_decode_fused(

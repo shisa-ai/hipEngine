@@ -673,6 +673,17 @@ keeps the prior Q8_1x2 owner; the final policy changes serial true AR only.
 Evidence:
 [`Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
+The 2026-08-16 production-numerics rebase supersedes that serial-c1 owner
+selection without invalidating the historical measurement. Against the current
+registered exact local32 dual+SiLU owner, the changed route passes a clean
+18-prompt/450-row strict-teacher gate (max KL `0.0008333`, `99.778%` top-1,
+exact three-run repeats) but loses seven same-session p512/d128 pairs at
+`0.998071x` with one win. Exact local32 is therefore restored as the scoped
+serial-c1 package default; native B1 retains its separately qualified non-split
+Q8_1x2 owner, and the split-weight route remains diagnostic only.
+Evidence: [`strict requalification`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json)
+and [`current A/B`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json).
+
 Fresh graph/API census is closed as a P5 route. A compiler-clean selected-region
 trace assigns 96.01% of measured wall to kernels, but widening the existing
 exact device-feedback graph from one step to 2/4/8 steps reduces launches
