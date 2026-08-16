@@ -4117,32 +4117,45 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_bf16_
     int64_t head_dim,
     float scale,
     hipStream_t stream) {
-  if (!valid_paged_attn_shape(chunk_size * num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim) ||
-      chunk_size <= 0 || num_splits <= 0 || block_size != 256 || num_q_heads != 16 || num_kv_heads != 2 || head_dim != 256) {
+  if (!valid_qwen35_gqa_split_shape(
+          chunk_size,
+          num_splits,
+          block_size,
+          block_table_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
-      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * (threads / 64) + q_per_kv * head_dim) * sizeof(float) +
+      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * (threads / 32) + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8, 16, 2>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      chunk_size,
-      num_splits,
-      scale);
+#define HIPENGINE_LAUNCH_GQA_CONTEXT(Q_PER_KV, Q_HEADS, KV_HEADS) \
+  hipLaunchKernelGGL( \
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<Q_PER_KV, Q_HEADS, KV_HEADS>), \
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits)), \
+      dim3(threads), \
+      shared_bytes, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      base_offsets, \
+      live_counts, \
+      partial_out, \
+      partial_m, \
+      partial_l, \
+      chunk_size, \
+      num_splits, \
+      scale)
+  if (num_q_heads == 16) {
+    HIPENGINE_LAUNCH_GQA_CONTEXT(8, 16, 2);
+  } else {
+    HIPENGINE_LAUNCH_GQA_CONTEXT(6, 24, 4);
+  }
+#undef HIPENGINE_LAUNCH_GQA_CONTEXT
   return static_cast<int>(hipGetLastError());
 }
 
@@ -4166,34 +4179,47 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_batch
     float scale,
     hipStream_t stream) {
   if (rows <= 0 ||
-      !valid_paged_attn_shape(chunk_size * num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim) ||
-      chunk_size <= 0 || num_splits <= 0 || block_size != 256 || num_q_heads != 16 || num_kv_heads != 2 || head_dim != 256) {
+      !valid_qwen35_gqa_split_shape(
+          chunk_size,
+          num_splits,
+          block_size,
+          block_table_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int64_t q_per_kv = 8;
+  const int64_t q_per_kv = num_q_heads / num_kv_heads;
   const size_t shared_bytes =
-      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * (threads / 64) + q_per_kv * head_dim) * sizeof(float) +
+      static_cast<size_t>(q_per_kv * chunk_size + q_per_kv * (threads / 32) + q_per_kv * head_dim) * sizeof(float) +
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
-  hipLaunchKernelGGL(
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8, 16, 2>),
-      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits), static_cast<unsigned int>(rows)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      rows,
-      chunk_size,
-      num_splits,
-      block_table_len,
-      scale);
+#define HIPENGINE_LAUNCH_GQA_CONTEXT_BATCH(Q_PER_KV, Q_HEADS, KV_HEADS) \
+  hipLaunchKernelGGL( \
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<Q_PER_KV, Q_HEADS, KV_HEADS>), \
+      dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits), static_cast<unsigned int>(rows)), \
+      dim3(threads), \
+      shared_bytes, \
+      stream, \
+      query, \
+      key_cache, \
+      value_cache, \
+      base_offsets, \
+      live_counts, \
+      partial_out, \
+      partial_m, \
+      partial_l, \
+      rows, \
+      chunk_size, \
+      num_splits, \
+      block_table_len, \
+      scale)
+  if (num_q_heads == 16) {
+    HIPENGINE_LAUNCH_GQA_CONTEXT_BATCH(8, 16, 2);
+  } else {
+    HIPENGINE_LAUNCH_GQA_CONTEXT_BATCH(6, 24, 4);
+  }
+#undef HIPENGINE_LAUNCH_GQA_CONTEXT_BATCH
   return static_cast<int>(hipGetLastError());
 }
 

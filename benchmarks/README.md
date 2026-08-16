@@ -329,11 +329,22 @@ tok/s (+1.102%)**, with every full/train/heldout/category scope at least
 **+1.078%** and all 30 trajectories exact. Native rows and MTP stay on their
 prior exact owners after the pre-scope B1 diagnostic regressed 0.290%,
 preserving the current **18.96475/23.16953/24.24116 tok/s** B1/B2/B3 rows.
-Tracked peaks and resident bytes are unchanged. Clean llama.cpp HIP and Vulkan
-AR remain faster, so P5 and the campaign stay open. Evidence:
+Tracked peaks and resident bytes are unchanged. Both clean llama.cpp backends
+remain faster at 512/1K, so P5 stays open. Evidence:
 [`Q8_1x2 dp4a retain`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json),
 [`Q5T16 serial-c1 tile8`](results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json),
 and [`Q4T16 split-weight decode`](results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+
+At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
+producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
+**0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph
+processes improve same-source AR **11.10932 -> 12.05960 tok/s (+8.554%)** with
+all 12 fixed-token IDs identical, finite logits, byte-identical
+**19.529302-GiB** tracked peaks, and zero teardown. The current row beats clean
+llama.cpp HIP **11.50812 tok/s by 4.792%**, but remains **4.047%** below Vulkan
+**12.56830 tok/s**; 512/1K and natural short-context routes are unchanged. This
+is retained development evidence, not a clean publication topline. Evidence:
+[`grouped-GQA split attention`](results/2026-08-16-gfx1151-qwen38-27b-grouped-gqa-split-attention.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

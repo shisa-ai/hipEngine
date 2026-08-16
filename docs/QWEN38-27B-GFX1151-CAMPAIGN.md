@@ -1,8 +1,9 @@
 # Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
 
 Status: **G1 single-layout ownership completed on 2026-08-15 and the clean G2
-prefill win completed on 2026-08-16; P5 has retained its first exact-trajectory
-decode wins but remains open, G5 memory parity remains open, and the K0-K3
+prefill win completed on 2026-08-16; P5 now beats clean llama.cpp HIP at 4K
+through exact grouped-GQA split attention but remains open on 512/1K, natural
+AR, and the 4K Vulkan target; G5 memory parity remains open, and the K0-K3
 native INT8 K/V ladder is closed below K4 on model-level correctness.** The
 working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
 Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
@@ -36,13 +37,21 @@ remaining primitive add boundary is below the >=1% request gate.
 
 P5 retains primary-plus-residual Q8_1 dp4a for rows1 dense gate/up, an exact
 serial-c1 tile8 owner for the 48 Q5T16 recurrent outputs, and an exact four-wave
-split-weight owner for the dense Q4 gate/up pair. The latest unit lowers that
-family from 224 to 120 VGPR and improves fresh graph AR
+split-weight owner for the dense Q4 gate/up pair. That split-weight unit lowers
+its family from 224 to 120 VGPR and improves fresh graph AR
 1.154%/1.118%/0.964% at 512/1K/4K. Natural AR rises **12.1763 -> 12.3105
-tok/s (+1.102%)**, with every full/train/heldout/category scope positive. All
-tested trajectories remain exact and bytes/peaks are unchanged. Native rows and
-MTP retain their prior owners after the pre-scope B1 diagnostic regressed; clean
-llama.cpp HIP and Vulkan AR remain faster, so P5 stays open.
+tok/s (+1.102%)**, with every full/train/heldout/category scope positive.
+
+The latest P5 unit groups the 24 query heads by four K/V heads only for the
+backend-qualified dense-H5120/L64 geometry from context 4096. Its rotating-K/V
+leaf is BF16-bit exact and improves **0.549226 -> 0.116819 ms (4.7015x,
+15/15)**; counterbalanced complete 4K graph AR improves same-source
+**11.10932 -> 12.05960 tok/s (+8.554%)** with unchanged tracked peak and zero
+teardown. This beats clean llama.cpp HIP by **4.792%** but remains **4.047%**
+below Vulkan. All tested trajectories remain exact and bytes/peaks are
+unchanged. Native rows and MTP retain their prior owners after the pre-scope B1
+diagnostic regressed; 512/1K, natural AR, and Vulkan 4K remain open, so P5
+stays open.
 
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.

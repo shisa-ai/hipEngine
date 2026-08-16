@@ -701,6 +701,192 @@ def test_int8_gqa_splitk_matches_cpu_with_reversed_pages(
     np.testing.assert_allclose(out, expected, rtol=3e-5, atol=3e-6)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_bf16_gqa_splitk_24q4kv_matches_generic_and_cpu_at_4k() -> None:
+    """Gate dense-27B grouped-GQA BF16 split-K at its 4K crossover."""
+
+    runtime = get_hip_runtime()
+    block_size = 256
+    context_len = 4_097
+    chunk_size = block_size
+    num_splits = (context_len + chunk_size - 1) // chunk_size
+    num_q_heads, num_kv_heads, head_dim = 24, 4, 256
+    q_per_kv = num_q_heads // num_kv_heads
+    scale = head_dim**-0.5
+    rng = np.random.default_rng(0x36270404)
+
+    query = rng.normal(0.0, 0.125, size=(num_q_heads, head_dim)).astype(np.float32)
+    logical_key = rng.normal(
+        0.0,
+        0.125,
+        size=(context_len, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    logical_value = rng.normal(
+        0.0,
+        0.125,
+        size=(context_len, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    gate = rng.normal(0.0, 0.125, size=(num_q_heads, head_dim)).astype(np.float32)
+    key_bits = float_array_to_bf16_bits(logical_key)
+    value_bits = float_array_to_bf16_bits(logical_value)
+    gate_bits = float_array_to_bf16_bits(gate)
+    block_table = np.arange(num_splits - 1, -1, -1, dtype=np.int32)
+    cache_shape = (num_splits, block_size, num_kv_heads, head_dim)
+    key_cache = np.zeros(cache_shape, dtype=np.uint16)
+    value_cache = np.zeros_like(key_cache)
+    for logical_block, physical_block in enumerate(block_table):
+        start = logical_block * block_size
+        stop = min(start + block_size, context_len)
+        key_cache[physical_block, : stop - start] = key_bits[start:stop]
+        value_cache[physical_block, : stop - start] = value_bits[start:stop]
+
+    generic = np.zeros((num_q_heads, head_dim), dtype=np.uint16)
+    grouped = np.zeros_like(generic)
+    partial_shape = (num_q_heads, num_splits, head_dim)
+    partial_ml_shape = (num_q_heads, num_splits)
+    live_counts = np.asarray([context_len], dtype=np.int64)
+    device = Device("hip", 0)
+    buffers = []
+
+    def copy_to_device(array: np.ndarray):
+        host = np.ascontiguousarray(array)
+        buffer = malloc(host.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(host),
+            host.nbytes,
+            runtime=runtime,
+        )
+        return buffer
+
+    try:
+        query_b = copy_to_device(query)
+        key_b = copy_to_device(key_cache)
+        value_b = copy_to_device(value_cache)
+        gate_b = copy_to_device(gate_bits)
+        table_b = copy_to_device(block_table)
+        live_b = copy_to_device(live_counts)
+        generic_b = copy_to_device(generic)
+        grouped_b = copy_to_device(grouped)
+        generic_partial_b = copy_to_device(np.zeros(partial_shape, dtype=np.float32))
+        generic_m_b = copy_to_device(np.zeros(partial_ml_shape, dtype=np.float32))
+        generic_l_b = copy_to_device(np.zeros(partial_ml_shape, dtype=np.float32))
+        grouped_partial_b = copy_to_device(np.zeros(partial_shape, dtype=np.float32))
+        grouped_m_b = copy_to_device(np.zeros(partial_ml_shape, dtype=np.float32))
+        grouped_l_b = copy_to_device(np.zeros(partial_ml_shape, dtype=np.float32))
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                table_b.ptr,
+                block_table.shape,
+                DType.INT32,
+                device,
+            ),
+            live_counts=Tensor.from_handle(
+                live_b.ptr,
+                live_counts.shape,
+                DType.INT64,
+                device,
+            ),
+            max_live_count=context_len,
+            storage_dtype=DType.BF16,
+        )
+        qwen35_paged_full_attn_decode_split_k_gate_bf16_spans(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            gate_b.ptr,
+            generic_b.ptr,
+            generic_partial_b.ptr,
+            generic_m_b.ptr,
+            generic_l_b.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            runtime=runtime,
+        )
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            gate_b.ptr,
+            grouped_b.ptr,
+            grouped_partial_b.ptr,
+            grouped_m_b.ptr,
+            grouped_l_b.ptr,
+            spans,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(generic),
+            generic_b,
+            generic.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(grouped),
+            grouped_b,
+            grouped.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(grouped, generic)
+    grouped_f32 = (grouped.astype(np.uint32) << 16).view(np.float32)
+    logical_key_f32 = (key_bits.astype(np.uint32) << 16).view(np.float32)
+    logical_value_f32 = (value_bits.astype(np.uint32) << 16).view(np.float32)
+    gate_f32 = (gate_bits.astype(np.uint32) << 16).view(np.float32)
+    key_heads = np.repeat(logical_key_f32.transpose(1, 0, 2), q_per_kv, axis=0)
+    value_heads = np.repeat(
+        logical_value_f32.transpose(1, 0, 2),
+        q_per_kv,
+        axis=0,
+    )
+    cpu = attention_decode(
+        query[:, None, :],
+        key_heads,
+        value_heads,
+        scale=scale,
+    )[:, 0, :]
+    cpu *= 1.0 / (1.0 + np.exp(-gate_f32))
+    assert np.all(np.isfinite(grouped_f32))
+    np.testing.assert_allclose(grouped_f32, cpu, rtol=2e-2, atol=2e-2)
+
+    def probabilities(values: np.ndarray) -> np.ndarray:
+        shifted = values - np.max(values, axis=1, keepdims=True)
+        exp = np.exp(shifted, dtype=np.float64)
+        return exp / np.sum(exp, axis=1, keepdims=True)
+
+    expected_p = probabilities(cpu)
+    actual_p = probabilities(grouped_f32)
+    kl = np.sum(
+        expected_p * (np.log(expected_p + 1e-12) - np.log(actual_p + 1e-12)),
+        axis=1,
+    )
+    top1 = np.mean(np.argmax(cpu, axis=1) == np.argmax(grouped_f32, axis=1))
+    assert float(np.max(kl)) <= 0.05
+    assert float(top1) >= 0.90
+
+
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:
     artifact = plan_qwen35_paged_attn_decode_build(
         cache_root=tmp_path / "cache",

@@ -175,6 +175,18 @@ should be removed or collapsed.
   rows2-4 shape and remains non-regressive in the full category suite. Keep
   standard T16 and projection+add registered as required numerical fallbacks.
 
+## gfx1151 dense-27B grouped-GQA split-attention rollback seam
+
+- Added 2026-08-16 for dense H5120/L64/24Q/4KV/D256 BF16 decode from context
+  4096. `HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0` restores the generic
+  query-head split producer plus the same gated reducer. The package capability
+  is geometry/context scoped; shorter contexts, peer backends, and policy misses
+  retain the generic producer without extra resident or workspace bytes.
+- Removal trigger: after one release window with exact 4K model, long-context,
+  lifecycle, and peer-backend gates stable, remove the environment rollback for
+  package-qualified grouped producers. Keep the generic producer/reducer chain
+  permanently as the required numerical and unsupported-shape fallback.
+
 ## Dense-H5120 B4 exact eager-MTP seam
 
 - Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step
