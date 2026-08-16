@@ -1479,8 +1479,12 @@ multiple later gates.
    recertified; occupancy one is confirmed as masked physical c8.
 10. **Completed — F2:** retain c1-preserving occupancy-adaptive c1/c2/c4/c8
     execution in one long-lived gfx1151 GGUF owner.
-11. **Completed — F3:** singleton-indexed packed-AR GDN is retained without c1
-    or c>N regression; broader Q8T16 rowtiling was rejected as inexact.
+11. **Completed — F3 plus profile requalification:** singleton-indexed
+    packed-AR GDN remains retained. The former blanket Q8T16 rejection conflated
+    deterministic free-running ID divergence with control correctness: a fresh
+    1,050-row strict-teacher gate is bit-identical, so current A/B evidence now
+    retains all-projection rowtiling only at physical c4/c8; c2 remains direct
+    after a measured `1.795%` regression.
 12. **Completed — F4:** clean real-Uvicorn static/ragged/fixed/Poisson,
     scheduler-owned timeout/disconnect isolation, exact overload, recovery, and
     120-request/60-second soak all pass under scoped package-default `fair:256`.

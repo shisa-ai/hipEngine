@@ -66,6 +66,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q6_LM_HEAD_MAX_CHUNK as GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS as GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_DECODE_ROWTILE_ALL as GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL,
+    GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS as GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
     GGUF_GDN_PREFILL_EXACT_MODE as GFX1100_GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
@@ -94,6 +95,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q6_LM_HEAD_MAX_CHUNK,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_DECODE_ROWTILE_ALL,
+    GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_PREFILL_FOUR_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
@@ -1386,6 +1388,8 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q6_LM_HEAD_MAX_CHUNK == 5
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
+    assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS == 0
+    assert GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS == 4
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_compact_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {}
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
@@ -1664,6 +1668,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
         )
         is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+        )
+        == 0
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+        )
+        == 4
     )
     assert (
         backend_package_capability(

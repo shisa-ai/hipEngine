@@ -148,6 +148,15 @@ Selective unsafe-math was rejected for that same operation: despite 100% top-1,
 mean KL `4.74e-13`, and matching NaN/Inf classes, it regressed the actual leaf
 **20.032 -> 21.569 us (-7.67%)**. No unsafe production route remains. Evidence:
 [`unsafe-math rejection`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp4-unsafe-math-rejected.json).
+The production-numerics c>N recovery also retains gfx1151 GGUF Q8T16
+all-projection rowtiling only at physical c4/c8. A clean 18-prompt static,
+retiring, and sparse packet is bit-identical to strict c1 over **1,050 full-logit
+rows** with exact repeats. Seven current-package p512/d128 pairs improve c4
+**78.624 -> 78.974 tok/s (+0.445%, 7/7)** and c8 **96.482 -> 97.125
+(+0.666%, 6/7)**; c2 regresses **59.412 -> 58.345 (-1.795%, 0/7)** and is
+excluded by a physical-row floor of four. Same-route free-running trajectories
+are deterministic; cross-route IDs differ and remain diagnostic under the
+production profile. Evidence: [`width-scoped Q8T16 rowtile`](results/2026-08-16-gfx1151-q8t16-batch-route-retained.json).
 On the admitted Q4_K_M+NextN artifact, the existing prompt-agnostic B1-probe
 adaptive MTP route is also economically sound: exact adaptive B3 reaches
 **27.054 tok/s / 37.140 ms-output**, or **1.134x** current strict-profile AR and

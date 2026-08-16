@@ -10681,6 +10681,29 @@ def _gguf_t16_selected_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
 
 
+def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool:
+    """Resolve the backend-qualified all-projection rowtile width floor."""
+
+    if rows <= 0:
+        raise ValueError("Q8T16 decode rows must be positive")
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+            False,
+        )
+    ):
+        return True
+    min_rows = int(
+        backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+            0,
+        )
+    )
+    return min_rows > 0 and rows >= min_rows
+
+
 @contextmanager
 def _gguf_t16_selected_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified physical-width floor during packed enqueue."""
@@ -18202,12 +18225,9 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        q8_t16_rowtile_all = bool(
-            backend_package_capability(
-                self.runner.backend,
-                "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
-                False,
-            )
+        q8_t16_rowtile_all = _gguf_q8_t16_decode_rowtile_all_for_rows(
+            self.runner.backend,
+            rows=rows,
         )
         q8_t16_pair_rowtile_min_rows = int(
             backend_package_capability(
