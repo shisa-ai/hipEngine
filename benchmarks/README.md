@@ -158,6 +158,17 @@ excluded by a physical-row floor of four. Same-route free-running trajectories
 are deterministic; cross-route IDs differ and remain diagnostic under the
 production profile. These absolute rates are independent of, and not comparable
 with, the other gfx1151 host. Evidence: [`width-scoped Q8T16 rowtile`](results/2026-08-16-gfx1151-q8t16-batch-route-retained.json).
+The independent ZBook c1 lane also retains the incumbent cooperative/persistent
+F32 router against its separate strict chain. All **450/450** full-logit rows,
+all three repeats, and **18/18** live Conv/GDN/KV fingerprints are byte-exact.
+Across the complete natural pN/d128 suite, aggregate eager decode improves
+**30.438 -> 33.219 tok/s (+9.136%, 18/18 paired wins)** with matching
+free-running IDs; the fixed-token p512/d128 control independently improves
+**30.738 -> 33.427 (+8.748%)**. This retains the package route but is not yet a
+public profile certification: a real immutable Qwen3.6 profile plan, approved
+exact-control records, and the dynamic c>N default-decision packet remain open.
+Evidence: [`c1 retained result`](results/2026-08-16-zbook-qwen36-c1-router-retained.json)
+and [`full quality packet`](results/2026-08-16-zbook-qwen36-c1-router-quality.json).
 On the admitted Q4_K_M+NextN artifact, the existing prompt-agnostic B1-probe
 adaptive MTP route is also economically sound: exact adaptive B3 reaches
 **27.054 tok/s / 37.140 ms-output**, or **1.134x** current strict-profile AR and
