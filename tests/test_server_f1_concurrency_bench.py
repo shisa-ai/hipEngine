@@ -604,17 +604,20 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
     assert args.hipengine_kv_scale_granularity == "per_token_head"
     assert args.batch_window_ms == 5.0
     assert args.hipengine_prefill_chunk_tokens is None
+    assert args.same_server_oracle is False
     assert args.memory_sample_through_shutdown is False
     lifecycle_args = SCRIPT.build_parser().parse_args(
         [
             "--engine",
             "hipengine",
             "--memory-sample-through-shutdown",
+            "--same-server-oracle",
             "--json",
             str(tmp_path / "lifecycle.json"),
         ]
     )
     assert lifecycle_args.memory_sample_through_shutdown is True
+    assert lifecycle_args.same_server_oracle is True
 
 
 def test_hipengine_command_separates_generation_window_from_prefill_chunk(
@@ -743,6 +746,15 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         concurrency=4,
         expectation="serial-c1-per-row",
         serial_values=[True] * 12,
+        native_values=[False] * 12,
+        shape_passed=True,
+        resident_capacity=4.0,
+        execution_paths=["gguf_packed_ar_server_decode"],
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=4,
+        expectation="serial-c1-per-row",
+        serial_values=[False, True, True, True] * 3,
         native_values=[False] * 12,
         shape_passed=True,
         resident_capacity=4.0,

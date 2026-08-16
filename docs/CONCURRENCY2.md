@@ -1151,18 +1151,28 @@ new round planner from silently violating an old model-state lifecycle.
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
 
-Current gate status is **blocked**, so no C2-6 checkbox or default is promoted.
-The generation-checked graph/page/slot host gates, resource-accounted
-4K/16K/32K mixed membership, fixed/ragged/burst/Poisson/overload/disconnect
-loads, and c1-c32 planner/conservation suites pass. On W7900, exact-file
-Qwen3.6-35B-A3B `UD-Q4_K_M` BF16-KV passes independent c1 p128/d8, but logical
-c8 independently submitted children fail correctness: packed native emits the
-invalid-token sentinel `2147483647`; `protect_ttft` reproduces it; and true
-serial-c1 fallback returns only 2/8 trajectories equal to the independent c1
-oracles. c17/c32 are therefore correctly not run. The live GGUF path still uses
-request-private/single-backing `DeviceChunkedKVPool` rather than the C2 global
-page tables. gfx1151, vLLM, and SGLang are unavailable on this host. Evidence:
-[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json).
+Current gate status remains **blocked**, so no C2-6 checkbox or native/default
+promotion is made. The generation-checked graph/page/slot host gates,
+resource-accounted 4K/16K/32K mixed membership,
+fixed/ragged/burst/Poisson/overload/disconnect loads, and c1-c32
+planner/conservation suites pass. The W7900 exact-file Qwen3.6-35B-A3B
+`UD-Q4_K_M` BF16-KV compatibility path now owns one batch-shaped target scratch
+with lightweight slot-local state/KV/cursor views instead of constructing one
+full session per row. Owner-packed prefill plus honest physical-c1 decode is
+same-loaded-server exact at p128/d8 for c1/c2/c4/c8/c17/c32; c17 live refill is
+17/17 exact and admits work before the first request completes. Startup remains
+77.36-78.61 seconds across widths instead of scaling with resident capacity.
+
+That is a retained numerical fallback, not C2 production closure. Shared-slot
+native physical c8 and c4 both emit invalid sentinel `2147483647` at the second
+packed row and therefore fail closed. The live GGUF device path also still uses
+the single-backing `DeviceChunkedKVPool` compatibility adapter rather than
+`GlobalKVPoolSet` arbitrary-page tables. Registered arbitrary-page GGUF kernels,
+native shared-slot state repair, gfx1151 hardware, and matched vLLM/SGLang gates
+remain unavailable. Evidence: the original failure packet
+[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json)
+and accepted fallback packet
+[`2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json).
 
 ### C2-7 — FastDMS topology and codec composition
 
