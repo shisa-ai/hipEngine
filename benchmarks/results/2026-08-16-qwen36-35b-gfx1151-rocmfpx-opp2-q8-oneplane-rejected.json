@@ -1,0 +1,258 @@
+{
+  "date": "2026-08-16",
+  "decision": {
+    "next": "Retain strict BF16/FP16 activations. Revisit only with residual/two-plane Q8_1x2 or a new same-checkpoint operation-complete oracle, never projection-only quality.",
+    "reason": "strong dot speed does not survive the operation-complete quality gate; c4 unique is also below the 5% speed screen",
+    "verdict": "reject_do_not_wire"
+  },
+  "gate": {
+    "required": "operation-complete SiLU output must satisfy KL <= 0.05 and top-1 >= 90%, plus >=5% projection-family speed before full-model qualification",
+    "why_operation_complete": "gate/up projection error is amplified by SiLU(gate)*up; projection-only metrics cannot admit the route"
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "power_profile": "60W GPU / 60W CPU / 45W system"
+  },
+  "opportunity": 2,
+  "performance_claim": false,
+  "results": [
+    {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --x-rows 4 --rows 32 --experts 256 --in-features 2048 --out-features 512 --selection-pattern random --warmup 20 --iters 100 --json /tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c4.json",
+      "concurrency": 4,
+      "correctness_vs_t16_float": {
+        "gate": {
+          "kl_max": 0.00021000451096034998,
+          "kl_mean": 9.244967112237472e-05,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.25780078768730164,
+          "top1": 1.0
+        },
+        "pairreuse_exact": {
+          "gate": true,
+          "up": true
+        },
+        "silu": {
+          "kl_max": 11.690231042607092,
+          "kl_mean": 0.3999171541809412,
+          "max_abs": 384.0,
+          "mean_abs": 5.912736892700195,
+          "top1": 0.9375
+        },
+        "up": {
+          "kl_max": 0.00021000451096035008,
+          "kl_mean": 9.244967112233981e-05,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.25780078768730164,
+          "top1": 1.0
+        }
+      },
+      "selection_pattern": "random",
+      "shape": {
+        "experts": 256,
+        "in_features": 2048,
+        "out_features": 512,
+        "rows": 32,
+        "selection_pattern": "random",
+        "x_rows": 4
+      },
+      "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c4.json",
+      "speedup": {
+        "dual_quantize_plus_dot": 1.7794578185030738,
+        "silu_quantize_plus_dot": 1.3091105746067218
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.0034465600037947297,
+        "t16_dp4a_dot_prequantized": 0.11892433976754546,
+        "t16_dp4a_quantize_plus_dot": 0.1280109805520624,
+        "t16_selected_dual": 0.22779014019761235,
+        "t16_selected_dual_pairreuse": 0.2274348703213036,
+        "t16_selected_dual_silu": 0.22945394972339272,
+        "t16_silu_dp4a_dot_prequantized": 0.12949435971677303,
+        "t16_silu_dp4a_quantize_plus_dot": 0.17527468968182802
+      }
+    },
+    {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --x-rows 8 --rows 64 --experts 256 --in-features 2048 --out-features 512 --selection-pattern random --warmup 20 --iters 100 --json /tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c8.json",
+      "concurrency": 8,
+      "correctness_vs_t16_float": {
+        "gate": {
+          "kl_max": 0.0006531674871583902,
+          "kl_mean": 0.0001278707714559643,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.3083394765853882,
+          "top1": 1.0
+        },
+        "pairreuse_exact": {
+          "gate": true,
+          "up": true
+        },
+        "silu": {
+          "kl_max": 0.6931471805595274,
+          "kl_mean": 0.010830837555973956,
+          "max_abs": 512.0,
+          "mean_abs": 8.940513610839844,
+          "top1": 0.984375
+        },
+        "up": {
+          "kl_max": 0.0006531674871583903,
+          "kl_mean": 0.00012787077145598482,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.3083394765853882,
+          "top1": 1.0
+        }
+      },
+      "selection_pattern": "random",
+      "shape": {
+        "experts": 256,
+        "in_features": 2048,
+        "out_features": 512,
+        "rows": 64,
+        "selection_pattern": "random",
+        "x_rows": 8
+      },
+      "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c8.json",
+      "speedup": {
+        "dual_quantize_plus_dot": 1.3097018349774174,
+        "silu_quantize_plus_dot": 1.8348311195623153
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.006304819835349917,
+        "t16_dp4a_dot_prequantized": 0.3501277801115066,
+        "t16_dp4a_quantize_plus_dot": 0.3546728100627661,
+        "t16_selected_dual": 0.4645156301558018,
+        "t16_selected_dual_pairreuse": 0.41485622990876436,
+        "t16_selected_dual_silu": 0.6558932998450473,
+        "t16_silu_dp4a_dot_prequantized": 0.3553503699367866,
+        "t16_silu_dp4a_quantize_plus_dot": 0.35746793961152434
+      }
+    },
+    {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --x-rows 4 --rows 32 --experts 256 --in-features 2048 --out-features 512 --selection-pattern unique --warmup 20 --iters 100 --json /tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c4-unique.json",
+      "concurrency": 4,
+      "correctness_vs_t16_float": {
+        "gate": {
+          "kl_max": 0.00021000451096035008,
+          "kl_mean": 9.244967112243852e-05,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.25780078768730164,
+          "top1": 1.0
+        },
+        "pairreuse_exact": {
+          "gate": true,
+          "up": true
+        },
+        "silu": {
+          "kl_max": 54.208955552308,
+          "kl_mean": 2.27991202222423,
+          "max_abs": 512.0,
+          "mean_abs": 5.442013740539551,
+          "top1": 0.9375
+        },
+        "up": {
+          "kl_max": 0.00021000451095989832,
+          "kl_mean": 9.24496711223117e-05,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.25780078768730164,
+          "top1": 1.0
+        }
+      },
+      "selection_pattern": "unique",
+      "shape": {
+        "experts": 256,
+        "in_features": 2048,
+        "out_features": 512,
+        "rows": 32,
+        "selection_pattern": "unique",
+        "x_rows": 4
+      },
+      "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c4-unique.json",
+      "speedup": {
+        "dual_quantize_plus_dot": 1.3450670887849396,
+        "silu_quantize_plus_dot": 1.0227517823021313
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.004958889912813902,
+        "t16_dp4a_dot_prequantized": 0.17688489984720945,
+        "t16_dp4a_quantize_plus_dot": 0.18081055022776127,
+        "t16_selected_dual": 0.24320232041645795,
+        "t16_selected_dual_pairreuse": 0.26028043997939676,
+        "t16_selected_dual_silu": 0.2488386898767203,
+        "t16_silu_dp4a_dot_prequantized": 0.20483038970269263,
+        "t16_silu_dp4a_quantize_plus_dot": 0.24330311047378927
+      }
+    },
+    {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt python3 scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --compiler-version-file /tmp/hipengine-qwen36-paro-compiler-version.txt --require-cached-build --x-rows 8 --rows 64 --experts 256 --in-features 2048 --out-features 512 --selection-pattern unique --warmup 20 --iters 100 --json /tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c8-unique.json",
+      "concurrency": 8,
+      "correctness_vs_t16_float": {
+        "gate": {
+          "kl_max": 0.0006531674871586125,
+          "kl_mean": 0.00012787077145602407,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.3083394765853882,
+          "top1": 1.0
+        },
+        "pairreuse_exact": {
+          "gate": true,
+          "up": true
+        },
+        "silu": {
+          "kl_max": 54.208955552308,
+          "kl_mean": 1.14043739949324,
+          "max_abs": 512.0,
+          "mean_abs": 8.415332794189453,
+          "top1": 0.953125
+        },
+        "up": {
+          "kl_max": 0.0006531674871583902,
+          "kl_mean": 0.00012787077145595373,
+          "max_abs": 2.033203125,
+          "mean_abs": 0.3083394765853882,
+          "top1": 1.0
+        }
+      },
+      "selection_pattern": "unique",
+      "shape": {
+        "experts": 256,
+        "in_features": 2048,
+        "out_features": 512,
+        "rows": 64,
+        "selection_pattern": "unique",
+        "x_rows": 8
+      },
+      "source": "/tmp/hipengine-rocmfpx-transfer-campaign/opp2-q8-oneplane-c8-unique.json",
+      "speedup": {
+        "dual_quantize_plus_dot": 1.1890935373300344,
+        "silu_quantize_plus_dot": 1.6562936262108479
+      },
+      "timing_ms": {
+        "q8_1_quantize": 0.014328260440379381,
+        "t16_dp4a_dot_prequantized": 0.38553324004169554,
+        "t16_dp4a_quantize_plus_dot": 0.3992962499614805,
+        "t16_selected_dual": 0.47480059030931443,
+        "t16_selected_dual_pairreuse": 0.47903822967782617,
+        "t16_selected_dual_silu": 0.6678001000545919,
+        "t16_silu_dp4a_dot_prequantized": 0.3991804301040247,
+        "t16_silu_dp4a_quantize_plus_dot": 0.4031894402578473
+      }
+    }
+  ],
+  "schema": 1,
+  "scope": {
+    "kernel_path": "in-tree GGUF Q4_K T16 selected-dual one-plane Q8_1 + sudot4 diagnostic",
+    "limitation": "leaf/operation-complete screening geometry, not a same-checkpoint full-model quality claim",
+    "model_geometry": "Qwen3.6-35B-A3B hidden=2048, expert intermediate=512, experts=256, top_k=8",
+    "weights_inputs": "deterministic synthetic Q4_K weights and BF16 activations at exact production dimensions"
+  },
+  "status": "rejected",
+  "summary": {
+    "operation_complete_silu": "mean KL range 0.0108..2.2799; max KL range 0.6931..54.2090; all cases violate KL<=0.05 maximum and three violate mean",
+    "projection_gate_up": "all four cases top-1=100%; mean KL <= 0.000128",
+    "quantize_plus_dot_speedup_range": [
+      1.0227517823021313,
+      1.8348311195623153
+    ]
+  },
+  "title": "One-plane Q8_1 activation plus sudot4 on Qwen3.6 small-M geometry"
+}
