@@ -1376,32 +1376,33 @@ def test_launch_gguf_linear_residual_routes_registered_c1_pack8_and_dense_abis()
         assert not launch(
             q4, 100, 300, 400, 1, 3_584, 1_024, backend="hip_gfx1151"
         )
-        assert launch(
-            q4,
-            100,
-            300,
-            400,
-            1,
-            3_584,
-            1_024,
-            backend="hip_gfx1151",
-            registered_decode=True,
-            stream=7,
-            runtime="runtime-sentinel",
-        )
-        assert launch(
-            dense,
-            101,
-            301,
-            401,
-            1,
-            3_584,
-            1_024,
-            backend="hip_gfx1151",
-            registered_decode=True,
-            stream=8,
-            runtime="runtime-sentinel",
-        )
+        with wmma_prefill_session(True):
+            assert launch(
+                q4,
+                100,
+                300,
+                400,
+                1,
+                3_584,
+                1_024,
+                backend="hip_gfx1151",
+                registered_decode=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            assert launch(
+                dense,
+                101,
+                301,
+                401,
+                1,
+                3_584,
+                1_024,
+                backend="hip_gfx1151",
+                registered_decode=True,
+                stream=8,
+                runtime="runtime-sentinel",
+            )
     finally:
         for key, fn in originals.items():
             register(key, fn, replace=True)
@@ -1415,6 +1416,85 @@ def test_launch_gguf_linear_residual_routes_registered_c1_pack8_and_dense_abis()
         (
             "dense",
             (101, 10, 301, 401, 1, 3_584, 1_024),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+    ]
+
+
+def test_launch_gguf_linear_residual_routes_registered_c1_t16_abi() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    keys = (
+        KernelKey(
+            "hip_gfx1151",
+            "linear+residual",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_residual_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in keys
+    }
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    for key, label in zip(keys, ("q4", "q6"), strict=True):
+        register(key, capture(label), replace=True)
+    q4 = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    q6 = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    try:
+        with wmma_prefill_session(True):
+            for weight, stream in ((q4, 7), (q6, 8)):
+                assert gguf_linear_module.launch_gguf_linear_residual(
+                    weight,
+                    100,
+                    300,
+                    400,
+                    1,
+                    17_408,
+                    5_120,
+                    backend="hip_gfx1151",
+                    registered_decode=True,
+                    stream=stream,
+                    runtime="runtime-sentinel",
+                )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert calls == [
+        (
+            "q4",
+            (100, 14, 300, 400, 1, 17_408, 5_120),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "q6",
+            (100, 14, 300, 400, 1, 17_408, 5_120),
             {"stream": 8, "runtime": "runtime-sentinel"},
         ),
     ]

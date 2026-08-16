@@ -2956,9 +2956,10 @@ def launch_gguf_linear_residual(
             kwargs,
         )
         return True
-    if _resolve_use_wmma_prefill(None):
-        return False
     if rows == 1:
+        # ``registered_decode`` is an explicit model/backend/shape admission.
+        # A session's independent WMMA-prefill axis must not suppress that
+        # rows-1 GEMV composite in mixed prefill+decode workloads.
         if not registered_decode:
             return False
         dispatch = resolve_gguf_linear_dispatch(
@@ -2997,6 +2998,8 @@ def launch_gguf_linear_residual(
             kwargs,
         )
         return True
+    if _resolve_use_wmma_prefill(None):
+        return False
     if not _native_batch_decode_session_enabled:
         return False
 
@@ -4703,6 +4706,29 @@ def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, k
     )
 
 
+def _launch_t16_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    fn(
+        x_ptr,
+        weight.allocation("tiles").tensor.ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _launch_pack8_residual(
     fn,
     weight,
@@ -5677,6 +5703,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
 _LAUNCH_RESIDUAL_ABI = {
     "dense_bf16": _launch_dense_bf16_residual,
     "pack8": _launch_pack8_residual,
+    "t16": _launch_t16_residual,
 }
 
 

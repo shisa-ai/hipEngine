@@ -157,6 +157,18 @@ launches/token**. Norms are now **0.376%**; Q4 dual/single own
 the post-grouped Amdahl ranking. Evidence:
 [`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
 
+The first exact graph-gap contraction is retained for serial c1 FFN-down. The
+32 Q4T16 and 32 planar-qmicro-Q6 producers fold only the rounded BF16 residual
+into their direct store, adding no payload or scratch. The active 4K trace
+removes exactly **64 launches/token (934 -> 870)** and improves profiled host
+decode **82.46295 -> 82.31707 ms/token (-0.177%)** while kernel wall is flat
+within **0.005%**. A counterbalanced 512/128 request gate improves
+**12.23017 -> 12.25928 tok/s (+0.238%)**, with both candidate processes above
+both controls, exact final IDs/logits, and byte-identical peaks. Rows>1, Q8,
+shape/model/backend misses, and peer backends retain the primitive chain.
+Evidence:
+[`c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

@@ -554,7 +554,7 @@ def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
     ]
 
 
-def test_gfx1151_backend_excludes_losing_dense_down_residual_fusions() -> None:
+def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
     register_gfx1151_kernels()
 
     for quant, variant in (
@@ -568,6 +568,24 @@ def test_gfx1151_backend_excludes_losing_dense_down_residual_fusions() -> None:
         ),
     ):
         assert not is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                "linear+residual",
+                quant,
+                variant,
+            )
+        )
+    for quant, variant in (
+        (
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_residual_bf16_out",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
+    ):
+        assert is_registered(
             KernelKey(
                 "hip_gfx1151",
                 "linear+residual",
@@ -766,7 +784,7 @@ def test_gfx1151_dense_pair_silu_t128_variant_binds_threads(monkeypatch) -> None
     ]
 
 
-def test_gfx1151_08b_dense_down_residual_policies_are_exact() -> None:
+def test_gfx1151_dense_down_residual_policies_are_exact() -> None:
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
         register_dense_gemv_kernels,
     )
@@ -780,7 +798,10 @@ def test_gfx1151_08b_dense_down_residual_policies_are_exact() -> None:
     expected = {
         (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
             (1, 3_584, 1_024): True
-        }
+        },
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            (1, 17_408, 5_120): True
+        },
     }
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}

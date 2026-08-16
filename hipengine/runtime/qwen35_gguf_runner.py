@@ -9850,6 +9850,8 @@ def _gguf_dense_down_residual_decode_fused(
 ) -> bool:
     """Resolve an exact model/backend/shape-qualified c1 down+residual owner."""
 
+    if not _env_flag("HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE", True):
+        return False
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)

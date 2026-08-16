@@ -37,6 +37,19 @@ should be removed or collapsed.
   selector and dead default-off branch. Keep the registered primitive chain as
   the required numerical and peer-backend fallback.
 
+## gfx1151 Qwen3.8 c1 down-residual rollback seam
+
+- Added 2026-08-16 for the exact Q4T16/Q6-qmicro K17,408/N5,120
+  projection-plus-rounded-residual graph contraction. Setting
+  `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE=0` restores the registered direct
+  projections plus standalone BF16 add. Registry, model/file/shape, rows>1,
+  and peer-backend misses also keep that primitive chain; no resident or
+  scratch bytes depend on the composite.
+- Removal trigger: after one release window with 512/1K/4K graph decode,
+  natural AR/B1, and lifecycle gates stable, remove the environment selector
+  and cached negative branch. Keep the primitive projection-plus-add chain as
+  the required numerical and peer-backend fallback.
+
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.

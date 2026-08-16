@@ -350,6 +350,17 @@ single projections own **38.698%/23.975%**, and the profiler-to-host residual
 is **3.42086 ms/token**. This supersedes the prior Amdahl ranking. Evidence:
 [`post-norm decode profile`](results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
 
+The retained exact c1 FFN-down graph contraction folds the rounded BF16
+residual into the same-resident direct Q4T16/Q6-qmicro producer stores. The
+active 4K trace removes **64 launches/token (934 -> 870)** and improves
+profiled host decode **82.46295 -> 82.31707 ms/token (-0.177%)** with selected
+kernel wall flat within 0.005%. A counterbalanced 512/128 gate improves
+**12.23017 -> 12.25928 tok/s (+0.238%)** with both candidate processes above
+both controls, exact IDs/logits, unchanged peaks, and no resident/workspace
+bytes. This is retained development evidence, not a clean topline refresh.
+Evidence:
+[`c1 down-residual graph contraction`](results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

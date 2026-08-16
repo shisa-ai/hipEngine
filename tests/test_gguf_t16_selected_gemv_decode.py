@@ -979,6 +979,44 @@ def test_q4_t16_dense_down_residual_is_bit_exact(
     np.testing.assert_array_equal(candidate, expected)
 
 
+def test_q4_t16_dense_c1_down_residual_is_bit_exact(
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260816)
+    rows = 1
+    in_features = 512
+    out_features = 32
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    residual = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, out_features)).astype(np.float32)
+    )
+    projected = _run_dense_single(
+        gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    expected = _f32_to_bf16_u16(
+        _bf16_u16_to_f32(residual) + _bf16_u16_to_f32(projected)
+    )
+    candidate = _run_dense_residual(
+        selected_t16_mod.gguf_q4_k_t16_dense_single_local32_bf16_residual_bf16_out,
+        x_bf16,
+        tiles,
+        residual,
+        out_features,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, expected)
+
+
 @pytest.mark.parametrize("rows", [1, 2, 3, 4])
 def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
     rows: int,

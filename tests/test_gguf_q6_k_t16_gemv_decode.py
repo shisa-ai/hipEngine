@@ -513,6 +513,47 @@ def test_q6_t16_qmicro_planar_down_residual_is_bit_exact(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_c1_down_residual_is_bit_exact(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 1, 512, 256
+    rng = np.random.default_rng(0x6A19)
+    qweight = make_q6_k_weight(out_features, in_features)
+    tiles = repack_gguf_q6_k_tile16_qmicro_planar(qweight[None, ...]).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    residual = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, out_features)).astype(np.float32)
+    )
+    projected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    expected = _f32_to_bf16_u16(
+        _bf16_u16_to_f32(residual) + _bf16_u16_to_f32(projected)
+    )
+    candidate = _run_residual(
+        t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_residual_bf16_out,
+        x,
+        tiles,
+        residual,
+        rows,
+        in_features,
+        out_features,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(candidate, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_q6_t16_qmicro_planar_c1_f32_is_bit_exact_to_legacy(
     q6_t16_library,
 ) -> None:

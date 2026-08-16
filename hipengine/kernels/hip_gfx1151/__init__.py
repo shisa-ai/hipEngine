@@ -855,10 +855,15 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 }
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
-# Q8, native batches, other models/shapes, and peer backends remain unfused.
+# Qwen3.8 P5 independently admits same-resident direct Q4/Q6 c1 siblings at
+# H5120/FFN17408 after the complete graph-node gate; native rows, Q8, other
+# models/shapes, and peer backends remain unchanged.
 GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 3_584, 1_024): True,
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 17_408, 5_120): True,
     },
 }
 # D08-D5 admits both fixed-hidden wave-reduction leaves as one inseparable C
