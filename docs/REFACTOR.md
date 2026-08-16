@@ -14,6 +14,28 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## gfx1100 GGUF Q4_K_M fair launch-policy default (scoped registry default)
+
+- Added 2026-08-17. The `("hip_gfx1100", "gguf_q4_k_m")` generator factory now
+  declares `engine_loop_config_defaults = fair:256/burst-1` via the
+  `GGUF_Q4_K_M_*` gfx1100 package capabilities, mirroring the F4-retained
+  gfx1151 scoped default. The generic engine-loop default and the
+  `HIPENGINE_PREFILL_DECODE_POLICY` env resolution still default to
+  `protect_decode`; the env remains the explicit pin for configurations that
+  must stay on `protect_decode` (the A4 frozen W7900 UD-Q4_K_M gates — a
+  different quant, unaffected by this default).
+- Measured justification: W7900 Qwen3.8-27B Q4_K_M/BF16-KV 16K server —
+  `protect_decode` produced zero packed decode steps at c4/c8 bursts (requests
+  serialized: one request's decode finished before the next prefill);
+  `fair` produced width-4 packed AR decode (40 packed steps, zero serial
+  fallback, zero fallback steps).
+- Removal trigger: when `fair` is proven as the generic default (A4 rerun under
+  the new default for any affected `gguf_q4_k_m` configuration, plus the other
+  gfx1100 GGUF quants/models pass their load/SLO gates), collapse the scoped
+  factory default into the generic `EngineLoopConfig`/env default and delete
+  the per-package `GGUF_Q4_K_M_PREFILL_DECODE_POLICY` capability. Until then
+  the env pin and the scoped default are the rollback/bisection seam.
+
 ## Qwen3.8 c>1 mirrored-INT8 serving seam
 
 - Added 2026-08-15 after the dedicated-XTX context soak and corrected after the

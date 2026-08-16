@@ -160,6 +160,16 @@ GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 4
 GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH = {
     768: 13,
 }
+# gfx1151 F4 retains the scoped fair:256 default and W7900 Qwen3.8-27B
+# Q4_K_M/BF16-KV at 16K context measured width-4 packed AR decode under fair
+# with the burst-1 window (40 packed width-4 steps, zero serial fallback) while
+# the protect_decode default serialized every request's decode before the next
+# prefill (zero packed steps at c4/c8 bursts). The env override
+# HIPENGINE_PREFILL_DECODE_POLICY remains the explicit pin for configurations
+# that must stay on protect_decode (e.g. the A4 frozen UD-Q4_K_M gates).
+GGUF_Q4_K_M_PREFILL_DECODE_POLICY = "fair"
+GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS = 256
+GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS = 1
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
@@ -800,6 +810,9 @@ __all__ = [
     "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
+    "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
+    "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
+    "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_F32_ORDERED_PREFILL_POLICIES",

@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-08-16.
+Last updated: 2026-08-17.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -558,7 +558,13 @@ Each loop tick performs one work class:
 Default ordering is `RECLAIM → ADMIT → choose(PREFILL_CHUNK, DECODE_STEP)`.
 The generic policy remains `protect_decode`; registry-selected model/backend/
 quant defaults may refine it only after an independent production load gate.
-The gfx1151 Qwen GGUF Q4_K_M F4 packet supplies that evidence for `fair:256`.
+The gfx1151 Qwen GGUF Q4_K_M F4 packet supplies that evidence for `fair:256`,
+and the gfx1100 Q4_K_M path now declares the same scoped default
+(`fair:256/burst-1`) after the W7900 Qwen3.8-27B 16K server measured width-4
+packed AR decode under `fair` while the `protect_decode` default serialized
+every concurrent request's decode before the next prefill (zero packed decode
+steps at c4/c8). The explicit env pin remains the rollback for configurations
+that must stay on `protect_decode` (the A4 frozen UD-Q4_K_M gates).
 
 Cancellation, disconnect, EOS, max-tokens, timeout, and errors all converge on
 `RECLAIM`. Mid-kernel cancellation never mutates canonical state.
@@ -1478,6 +1484,60 @@ closure set prematurely.
 MTP/DFlash throughput must use a true no-MTP AR baseline and the complete
 multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 
+### Future campaigns — route-cap follow-up and true continuous batching
+
+These campaigns follow Phase H. They target the boundary between “c=N as a
+fixed resident shape” and “concurrency as a function of live KV capacity”.
+Until they close, the plain-AR route keeps its registry-owned fixed caps.
+
+**Route-cap follow-up (near-term).** The server's plain-AR concurrency is
+clamped by the `*_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS` package capabilities
+(currently C4 on gfx1100 against the measured 4K/C8 resident-session OOM, C8
+on gfx1151, and 13 logical rows only inside the 768-position envelope), and
+`--max-active-requests` is applied as `min(flag, route cap)`. This clamp is
+why a c8 burst runs as a width-4 resident bucket. The campaign:
+
+- [ ] Re-qualify the gfx1100 C4 cap at 16K/256K contexts under real KV pool
+      pressure (measured page high-water, graph pins, and the OOM boundary at
+      C4/C6/C8); record the context-qualified mapping the same way the
+      768→13 envelope was recorded.
+- [ ] Decide whether `--max-active-requests` should widen the route cap,
+      narrow it only, or be rejected when it exceeds the registry value; keep
+      the registry value authoritative for memory.
+- [ ] Keep the 13/768-position envelope and any new context entry as
+      separate, independently gated capabilities.
+
+**True continuous batching (the destination).** The fixed c=N row caps are a
+memory-safety approximation. The target is admission governed by live
+device-KV pool state — free pages, graph-pinned pages, and the configured
+whole-device reserve — so the engine stops caring about `c=N` limits and
+shares/evicts KV intelligently instead:
+
+- [ ] Admission by KV budget: admit a row when its projected page need
+      (prompt + max_tokens + reserve) fits the live pool, replacing the fixed
+      active-row cap as the primary gate; keep the row cap only as a
+      degenerate backstop for unprojectable requests.
+- [ ] KV sharing: extend refcounted page sharing from the opt-in p256+s1
+      prefix slice to general shared prefixes and system-prompt reuse, with
+      COW/refcount lifecycle and exact survivor-state gates.
+- [ ] KV eviction: add bounded eviction of completed/low-priority resident KV
+      (page-level, never graph-pinned or live prefix-shared pages) so a burst
+      can reclaim capacity from finished neighbors without dropping live
+      rows; eviction must invalidate or rebind affected graph buckets per the
+      KV contract.
+- [ ] Prefill co-admission: let one tick admit several bounded prefill chunks
+      (the scheduler currently emits one row per `next_prefill_work` tick, so
+      `protect_decode` can serialize an entire group); keep `fair`
+      interleaving as the default and re-derive the tick bounds.
+- [ ] Re-certify Gates 1–5 (lifecycle, cancellation, sparse retirement,
+      ownership drain) and the production load/SLO workloads under
+      capacity-adaptive admission before removing any fixed cap.
+
+No item may be claimed as “continuous batching” until a mixed-arrival
+overload trace shows live admission + decode + eviction + reclaim in one
+loop with exact survivor state/KV and bounded memory; the current C4/C8
+caps remain the production boundary until then.
+
 ## Active execution queue
 
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
@@ -1541,6 +1601,11 @@ multiple later gates.
 25. **After IKV — F5/H:** broaden sampled prefix reuse and graph-safe historical
     boundaries, close other long-context/memory pressure, and run matched
     external serving comparisons.
+26. **Future — route cap / true continuous batching:** qualify the
+    context-qualified route-cap mapping under KV-pool pressure and build
+    KV-budget admission plus shared/evictable resident KV so concurrency is
+    governed by live KV capacity instead of fixed c=N row caps. See “Future
+    campaigns — route-cap follow-up and true continuous batching”.
 
 Do not label C>8 grouping, general prefix caching, DMS, speculative
 integration, or external-engine parity from the retained gfx11 GGUF results;

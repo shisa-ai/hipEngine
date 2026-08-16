@@ -8259,6 +8259,66 @@ def make_qwen35_gguf_bringup_generator(
     )
 
 
+def make_qwen35_gguf_q4_k_m_generator_gfx1100(
+    *,
+    model_path: str | Path,
+    weight_index: GGUFModelInfo,
+    model_plugin: Any,
+) -> Qwen35GGUFBringupGenerator:
+    """Create the gfx1100 Q4_K_M generator with the measured fair launch default.
+
+    gfx1151's F4 packet retained the scoped ``fair:256`` default for the same
+    (backend-family, quant) shape, and the W7900 Qwen3.8-27B Q4_K_M/BF16-KV
+    16K server measured width-4 packed AR decode under fair/burst-1 while the
+    protect_decode default serialized concurrent request decodes. The explicit
+    env override remains the pin for configurations that must stay on
+    protect_decode (the A4 frozen UD-Q4_K_M gates).
+    """
+
+    backend = "hip_gfx1100"
+    return Qwen35GGUFBringupGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend=backend,
+        engine_loop_config_defaults={
+            "prefill_decode_policy": backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
+                "fair",
+            ),
+            "max_prefill_chunk_tokens": int(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
+                    256,
+                )
+            ),
+            "fair_prefill_burst_chunks": int(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
+                    1,
+                )
+            ),
+        },
+        server_plain_ar_max_active_requests=int(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+                4,
+            )
+        ),
+        server_plain_ar_max_active_requests_by_max_sequence_length=dict(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
+                {},
+            )
+        ),
+    )
+
+
 def make_qwen35_gguf_ud_q3_k_m_generator(
     *,
     model_path: str | Path,
@@ -8344,6 +8404,7 @@ _GGUF_GENERATOR_FACTORIES_BY_BACKEND = {
 }
 _GGUF_GENERATOR_FACTORY_OVERRIDES = {
     ("hip_gfx1100", "gguf_ud_q3_k_m"): make_qwen35_gguf_ud_q3_k_m_generator,
+    ("hip_gfx1100", "gguf_q4_k_m"): make_qwen35_gguf_q4_k_m_generator_gfx1100,
     ("hip_gfx1151", "gguf_q4_k_m"): make_qwen35_gguf_q4_k_m_generator_gfx1151,
 }
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
