@@ -364,6 +364,14 @@ Evidence:
 [`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json),
 [`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json), and
 [`actual context, W7900 quality, and concurrency frontier`](results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
+
+Runtime admission now binds this explicit route to the artifact's full SHA-256,
+backend/target, weight quant, KV layout, and scale contract. The distinct gfx1151
+file retains its rejected decision, and unknown/mismatched combinations fall
+back to BF16 unless an explicit non-promotable diagnostic override is set. Server
+readiness and capability manifests expose the evidence and effective storage;
+this provenance hardening changes no benchmark metric.
+
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF campaign opening
 
 This is the clean G0 **current snapshot**, not an optimization claim. hipEngine

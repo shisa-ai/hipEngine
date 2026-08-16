@@ -226,7 +226,7 @@ The approved next campaign is
 [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md):
 
 1. `IKV-C0` integrates current origin and adds fail-closed artifact/backend/
-   quant/layout/scale capability identity;
+   target/quant/layout/scale capability identity;
 2. `IKV-C1` proves no-mirror c2/c4 through a declared serial c1-per-row route,
    including shifted block-table-aware prefill;
 3. `IKV-C2` adds the true row-batched INT8 split-K producer/reducer;
@@ -1524,10 +1524,10 @@ multiple later gates.
 18. **Then — A3/A4 rerun:** rerun the frozen W7900 gates and promote only a
     candidate that passes every correctness, ownership, C1/medium-C4, and SLO
     requirement.
-19. **Next campaign — IKV-C0:** integrate the divergent Qwen3.8 branches and
-    lock INT8 admission to immutable artifact/backend/quant/layout/scale
-    evidence before changing high-conflict runtime/kernel files.
-20. **Then — IKV-C1:** qualify compact no-mirror c2/c4 through an honest serial
+19. **Completed — IKV-C0:** integrated the divergent Qwen3.8 branches and
+    locked INT8 admission to full-file artifact/backend/target/quant/layout/scale
+    evidence with BF16 fallback and explicit provenance.
+20. **Next — IKV-C1:** qualify compact no-mirror c2/c4 through an honest serial
     c1-per-row route with shifted block-table-aware prefill; make no throughput
     claim.
 21. **Then — IKV-C2:** add and trace the row-batched 24Q/4KV/D256 INT8 split-K

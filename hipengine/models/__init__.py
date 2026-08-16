@@ -1,6 +1,14 @@
 """Model plugins and registry."""
 
 from hipengine.models.base import ModelPlugin
+from hipengine.models.kv_capabilities import (
+    KVCapabilityEvidence,
+    KVCapabilityKey,
+    KVCapabilityResolution,
+    ModelArtifactIdentity,
+    model_artifact_identity,
+    resolve_kv_capability,
+)
 from hipengine.models.laguna import LAGUNA_GGUF, LagunaGGUFModel
 from hipengine.models.maple import (
     MAPLE,
@@ -41,10 +49,14 @@ __all__ = [
     "QWEN35_PARO_MOE",
     "TOY_ONE_LAYER",
     "DuplicateModelError",
+    "KVCapabilityEvidence",
+    "KVCapabilityKey",
+    "KVCapabilityResolution",
     "LagunaGGUFModel",
     "MapleModel",
     "MapleModelSpec",
     "MissingModelError",
+    "ModelArtifactIdentity",
     "ModelPlugin",
     "MoonshineForConditionalGenerationModel",
     "MoonshineModelSpec",
@@ -52,8 +64,10 @@ __all__ = [
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
     "ToyOneLayerModel",
+    "model_artifact_identity",
     "parse_maple_model_spec",
     "register_model",
     "registered_models",
+    "resolve_kv_capability",
     "resolve_model",
 ]

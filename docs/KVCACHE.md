@@ -968,10 +968,12 @@ The approved next campaign is
 redo the scheduler: gfx1100 short mirrored c1->c4 SSE already passes live
 admission/reclaim. It closes the remaining compact path in this order:
 
-1. `IKV-C0`: integrate current origin and bind support to artifact/backend/
-   quant/layout/scale evidence;
-2. `IKV-C1`: permit compact c>N through an honest serial c1-per-row fallback,
-   including shifted block-table-aware no-mirror prefill;
+1. `IKV-C0` (**completed**): current origin is integrated; demand-driven
+   full-file SHA-256 binds support to artifact/backend/target/quant/layout/scale
+   evidence, unknown/rejected contracts fall back to BF16, and server
+   capability surfaces expose the decision;
+2. `IKV-C1` (**next**): permit compact c>N through an honest serial c1-per-row
+   fallback, including shifted block-table-aware no-mirror prefill;
 3. `IKV-C2`: add the true row-batched INT8 split-K producer/reducer;
 4. `IKV-C3/C4`: share/model prefill workspace and admit the complete memory
    budget before allocation;
@@ -1320,8 +1322,8 @@ These are deliberately after dense INT8 and DMS:
     prompts before implementing another native storage contract.
 14. [ ] Stream/remove the transient BF16 INT8-prefill oracle only as additional
     capacity work; do not confuse this with a fidelity fix.
-15. [ ] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
-    fail-closed artifact/backend/quant/layout/scale capability identity.
+15. [x] Complete `IKV-C0`: integrate the divergent Qwen3.8 branches and add
+    fail-closed artifact/backend/target/quant/layout/scale capability identity.
 16. [ ] Complete `IKV-C1`: no-mirror c2/c4 through a declared serial c1-per-row
     fallback with shifted block-table prefill and zero BF16 shadow.
 17. [ ] Complete `IKV-C2`: register and trace row-batched 24Q/4KV/D256 INT8

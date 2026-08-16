@@ -384,6 +384,40 @@ def _server_model_identity(config: ServerConfig, engine: Any | None = None) -> d
     return {"id": config.model_id, "backend": backend, "quant": quant}
 
 
+def _kv_capability_provenance(engine: Any | None) -> dict[str, Any]:
+    """Return loaded-engine approximate-KV capability provenance."""
+
+    pending = [engine]
+    seen: set[int] = set()
+    while pending:
+        target = pending.pop(0)
+        if target is None or id(target) in seen:
+            continue
+        seen.add(id(target))
+        raw = getattr(target, "kv_capability_provenance", None)
+        payload = raw() if callable(raw) else raw
+        if isinstance(payload, Mapping):
+            return dict(payload)
+        pending.extend(
+            (
+                getattr(target, "_text_generator", None),
+                getattr(target, "inner", None),
+            )
+        )
+    return {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": False,
+        "diagnostic_override": False,
+        "requested": None,
+        "effective_kv_storage": None,
+        "artifact": None,
+        "evidence": None,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance",
+    }
+
+
 def _server_model_uses_gguf(config: ServerConfig, engine: Any | None = None) -> bool:
     """Return whether server grouping must use the retained GGUF width caps."""
 
@@ -4840,6 +4874,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 **model_identity,
                 "loaded": bool(readiness.model_loaded),
                 "loaded_model_count": 0 if engine is None else 1,
+                "kv_capability": _kv_capability_provenance(engine),
             },
             "startup": {
                 "eager_load": bool(readiness.eager_load),
@@ -5163,6 +5198,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "scale_dtype": config.kv_scale_dtype,
                             "scale_granularity": config.kv_scale_granularity,
                             "estimate": _kv_capacity_estimate_payload(engine),
+                            "capability": _kv_capability_provenance(engine),
                         },
                         "capabilities": _model_capability_summary(config, engine=engine),
                         "capabilities_url": "/v1/hipengine/capabilities",
@@ -5251,6 +5287,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "path": config.model,
                 "backend": model_identity["backend"],
                 "quant": model_identity["quant"],
+                "kv_capability": _kv_capability_provenance(engine),
             },
             "context": {
                 "configured_max_context_tokens": configured_context,

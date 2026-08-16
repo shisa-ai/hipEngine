@@ -1,9 +1,10 @@
 # Qwen3.8 INT8 KV Continuous-Batching Campaign
 
-Status: **approved as the next INT8 KV campaign on 2026-08-16.** Planning
-baseline is local commit `c791ca3c9`. Implementation starts with `IKV-C0`
-integration and capability identity; do not begin kernel work while the local
-branch remains behind the `origin/main` Qwen3.8 quality campaign.
+Status: **active; `IKV-C0` completed on 2026-08-16 and `IKV-C1` is next.**
+Planning baseline was local commit `c791ca3c9`; merge commit `6cff90213`
+integrated the 94 tracked `origin/main` commits before runtime implementation.
+Artifact/backend/target capability identity now fails closed before compact
+c>N work.
 
 This campaign turns the retained Qwen3.8 c1 capacity result into an honest,
 compact, no-BF16-mirror c>N serving route. It does **not** rebuild the resident
@@ -184,13 +185,31 @@ pointer-table/chunk-aware attention ABI as a separate architecture campaign.
 
 ### IKV-C0 — integrate source and lock capability identity
 
+**Status: completed 2026-08-16.**
+
 **Purpose:** prevent incompatible Qwen3.8 artifacts/backends from inheriting
 one another's quality decision.
 
-Work:
+Retained implementation:
 
-1. Integrate the local 18 commits with the 94 tracked `origin/main` commits
-   before editing high-conflict runtime/kernel files.
+- Merge commit `6cff90213` preserves both campaign histories and all focused
+  mapping/MTP/server/geometry/attention tests.
+- `hipengine.models.kv_capabilities` computes a demand-driven full-file SHA-256
+  and resolves a complete immutable key through `Qwen35GGUFModel` evidence.
+- The exact `7b2aec...` gfx1100 FP32-scale contract is qualified; the distinct
+  `7e78da...` gfx1151 contract remains rejected; unknown artifacts or contract
+  mismatches fall back to BF16.
+- `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED=1` and the historical
+  `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` permit explicitly labeled,
+  non-promotable diagnostics without changing the evidence decision.
+- `/ready`, `/v1/models`, and `/v1/hipengine/capabilities` expose capability ID,
+  full artifact identity, requested/effective storage, evidence artifact,
+  runtime action, diagnostic override, and promotion eligibility.
+
+Original work contract:
+
+1. Integrate the local campaign commits with the 94 tracked `origin/main`
+   commits before editing high-conflict runtime/kernel files.
 2. Preserve both Qwen3.8 quality artifacts and their exact model identities.
 3. Define a model-plugin capability record keyed by immutable content
    fingerprint, backend/target, weight quant, KV layout, scale dtype/granularity,
@@ -423,8 +442,8 @@ failure in a completed broad run, follow the focused-repair rule in
 
 | Milestone | State | Dependency | Exit |
 | --- | --- | --- | --- |
-| IKV-C0 integration + capability identity | `ready` | approved campaign | passing/rejected/unknown identities resolve correctly |
-| IKV-C1 compact serial c>N | `blocked` | C0 | no-mirror c2/c4 lifecycle exact |
+| IKV-C0 integration + capability identity | `completed` | approved campaign | passing/rejected/unknown identities resolve correctly |
+| IKV-C1 compact serial c>N | `ready` | C0 | no-mirror c2/c4 lifecycle exact |
 | IKV-C2 row-batched INT8 attention | `blocked` | C0, C1 oracle | CPU/model/trace gates pass |
 | IKV-C3 shared prefill ownership | `blocked` | C1/C2 measured ownership | c2/c4 remains memory-positive |
 | IKV-C4 complete admission | `blocked` | C3 byte plan | pressure rejects before OOM and recovers |
@@ -432,5 +451,6 @@ failure in a completed broad run, follow the focused-repair rule in
 | IKV-C6 quality/capacity | `blocked` | C2-C5 | artifact-scoped complete gates pass |
 | IKV-C7 economics/promotion | `blocked` | C6 | retained decision and cleanup published |
 
-The next executable unit is **IKV-C0**. No kernel implementation should be
-started from this planning commit.
+The next executable unit is **IKV-C1**: compact no-mirror c2/c4 through the
+declared serial c1-per-row correctness route, including shifted block-table-aware
+prefill. It makes no native-c>N throughput claim.

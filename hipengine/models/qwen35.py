@@ -4,7 +4,66 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from hipengine.models.kv_capabilities import (
+    KVCapabilityEvidence,
+    KVCapabilityKey,
+    KVCapabilityResolution,
+    ModelArtifactIdentity,
+    resolve_kv_capability,
+)
 from hipengine.models.registry import register_model
+
+
+_QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
+    KVCapabilityEvidence(
+        key=KVCapabilityKey(
+            artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            artifact_size_bytes=17_106_773_984,
+            backend="hip_gfx1100",
+            target_arch="gfx1100",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="int8_per_token_head",
+            storage_layout="uniform",
+            scale_dtype="fp32",
+            scale_granularity="per_token_head",
+        ),
+        decision="qualified",
+        scope="explicit_no_mirror_c1_capacity",
+        quality_artifact=(
+            "benchmarks/results/"
+            "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
+        ),
+        reason=(
+            "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on "
+            "gfx1100; direct compact execution remains c1 until IKV-C1/C2"
+        ),
+        max_direct_rows=1,
+    ),
+    KVCapabilityEvidence(
+        key=KVCapabilityKey(
+            artifact_sha256="7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+            artifact_size_bytes=17_106_775_008,
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="int8_per_token_head",
+            storage_layout="uniform",
+            scale_dtype="fp32",
+            scale_granularity="per_token_head",
+        ),
+        decision="rejected",
+        scope="native_no_mirror_quality",
+        quality_artifact=(
+            "benchmarks/results/"
+            "2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json"
+        ),
+        reason=(
+            "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement "
+            "0.7778 is below the 0.90 gate"
+        ),
+        max_direct_rows=0,
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -112,6 +171,21 @@ class Qwen35GGUFModel:
         "blk.{layer}.ffn_up.weight",
         "blk.{layer}.ffn_down.weight",
     )
+    kv_capability_evidence: tuple[KVCapabilityEvidence, ...] = _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
+
+    def resolve_kv_capability(
+        self,
+        *,
+        key: KVCapabilityKey,
+        artifact: ModelArtifactIdentity,
+    ) -> KVCapabilityResolution:
+        """Resolve artifact/backend-specific KV evidence for this plugin."""
+
+        return resolve_kv_capability(
+            self.kv_capability_evidence,
+            key=key,
+            artifact=artifact,
+        )
 
 
 @dataclass(frozen=True)
