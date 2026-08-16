@@ -66,6 +66,16 @@ def validate_quality_artifact(
         raise PerformanceGateError("quality artifact model differs from timing model")
 
 
+def repetition_manifest(*, natural_suite: bool, repetitions: int) -> dict[str, int]:
+    if repetitions <= 0:
+        raise ValueError("repetitions must be positive")
+    return (
+        {"repetitions_per_prompt": 1}
+        if natural_suite
+        else {"repetitions": int(repetitions)}
+    )
+
+
 def summarize_samples(
     samples: Mapping[str, Sequence[float]],
     token_ids: Mapping[str, Sequence[Sequence[int]]],
@@ -192,8 +202,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         raise PerformanceGateError(f"quality artifact does not exist: {args.quality_artifact}")
     if int(args.prompt_length) <= 0 or int(args.decode_steps) <= 0:
         raise PerformanceGateError("prompt length and decode steps must be positive")
-    if int(args.repetitions) < 3 or int(args.warmup_decode_steps) < 0:
-        raise PerformanceGateError("repetitions must be at least three and warmup steps non-negative")
+    if (not args.natural_suite and int(args.repetitions) < 3) or int(args.warmup_decode_steps) < 0:
+        raise PerformanceGateError(
+            "fixed-token repetitions must be at least three and warmup steps non-negative"
+        )
     quality = json.loads(args.quality_artifact.read_text(encoding="utf-8"))
     if not isinstance(quality, Mapping):
         raise PerformanceGateError("quality artifact root must be an object")
@@ -378,7 +390,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ),
             "decode_steps": int(args.decode_steps),
             "warmup_decode_steps": int(args.warmup_decode_steps),
-            "repetitions": int(args.repetitions),
+            **repetition_manifest(
+                natural_suite=bool(natural_rows),
+                repetitions=int(args.repetitions),
+            ),
             "graph_replay": False,
         },
         "measurements": measurements,
