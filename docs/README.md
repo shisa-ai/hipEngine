@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -28,6 +28,7 @@ working on.
 | --- | --- |
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
+| [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md) | Optional methodology for broader optimization searches, hypothesis beams, structural maturation, evaluation firewalls, and anti-overfitting gates. |
 | [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
 | [`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md) | Open gfx1151 128K prefill no-progress signature, eliminated hypotheses, KFD/MES debug plan, and upstream-report checklist. |
 | [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
@@ -79,6 +80,9 @@ working on.
   update [`../benchmarks/README.md`](../benchmarks/README.md) and
   [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write a compact
   artifact under [`../benchmarks/results/`](../benchmarks/results/).
+- **Before opening a less-bounded optimization search:** read
+  [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md), freeze the evaluator and
+  generalization envelope, then seed genuinely distinct hypothesis families.
 - **Before changing math or correctness-sensitive code:** read
   [`TESTING.md`](TESTING.md) and add or update a CPU-reference / fixture gate
   before relying on benchmark output.
