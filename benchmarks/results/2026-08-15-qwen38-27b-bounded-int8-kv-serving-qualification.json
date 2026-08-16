@@ -233,10 +233,12 @@
         "pool_pages": 480,
         "passed": false,
         "http_status": null,
+        "execution_classification": "not_executed_policy_guard",
+        "actual_runtime_failure": false,
         "peak_whole_device_vram_gib": 23.637592315673828,
         "sampled_headroom_gib": 0.3467826843261719,
         "startup_guard_free_gib": 0.86,
-        "error": "startup free-memory guard failed: free=0.86 GiB below required=1.00 GiB"
+        "error": "startup free-memory guard failed: free=0.86 GiB below required=1.00 GiB; no request executed, so this is not an observed runtime failure"
       },
       {
         "context_tokens": 131072,
@@ -244,25 +246,28 @@
         "pool_pages": 512,
         "passed": false,
         "http_status": null,
+        "execution_classification": "actual_startup_failure_hip_oom",
+        "actual_runtime_failure": true,
         "peak_whole_device_vram_gib": 23.81664276123047,
         "sampled_headroom_gib": 0.16773223876953125,
         "error": "HIP out of memory while allocating the shared BF16 prefill oracle during eager warmup; server remained not-ready"
       }
     ],
     "highest_observed_pass_tokens": 114688,
-    "first_upper_failure_tokens": 122880,
-    "capacity_bracket_tokens": [114688, 122880],
-    "recommended_explicit_capacity_tokens": 98304,
+    "first_actual_runtime_failure_tokens": 131072,
+    "observed_pass_to_actual_failure_bracket_tokens": [114688, 131072],
+    "policy_blocked_not_executed_tokens": [122880],
+    "recommended_explicit_capacity_tokens": 114688,
     "highest_long_context_quality_checked_tokens": 65536,
     "comparison_to_bf16": {
       "bf16_observed_physical_pass_tokens": 53248,
       "highest_int8_observed_pass_change_percent": 115.38461538461537,
       "bf16_operational_tokens": 32768,
-      "recommended_int8_capacity_multiple_vs_bf16_operational": 3.0,
+      "recommended_int8_capacity_multiple_vs_bf16_operational": 3.5,
       "int8_64k_peak_minus_bf16_32k_peak_gib": -1.3050079345703125,
       "int8_64k_peak_change_vs_bf16_32k_percent": -5.967267765834716
     },
-    "interpretation": "112 Ki is the highest completed one-token server request, not a reliability recommendation. 96 Ki retains 1.57 GiB sampled request-high-water headroom. Only 64 Ki has a non-repeated-token long-context quality row, and all long pure-INT8 rows still require the explicit unverified-long gate."
+    "interpretation": "112 Ki is the highest completed row and the later natural-request soak promotes it for the explicit dedicated-c1 contract. The 120-Ki row was not executed because a configured startup guard blocked it; the first actual runtime failure is the 128-Ki eager-warmup HIP OOM. 96 Ki remains an optional extra-headroom point. Only 64 Ki has a representative long-context quality row, and all long pure-INT8 rows still require the explicit unverified-long gate."
   },
   "graph_safety": {
     "pure_int8_decode_graph_admitted": false,

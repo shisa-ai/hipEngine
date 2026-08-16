@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find safe Qwen3.8-27B INT8-KV server context at c=1/2/4/8.
+"""Find observed Qwen3.8-27B INT8-KV server limits at c=1/2/4/8.
 
 The harness starts a real OpenAI-compatible hipEngine server on an otherwise
 idle RX 7900 XTX, requests enough dynamic KV for the offered client width, and
@@ -46,7 +46,7 @@ MIB = 1 << 20
 
 
 class SoakError(RuntimeError):
-    """Raised when the safety protocol cannot be completed."""
+    """Raised when the execution protocol cannot be completed."""
 
 
 @dataclass(frozen=True)
@@ -247,14 +247,13 @@ def summarize_generation_shapes(requests: Sequence[Mapping[str, Any]]) -> dict[s
     }
 
 
-def evaluate_safety_gate(
+def evaluate_execution_gate(
     *,
     requests: Sequence[Mapping[str, Any]],
     ready_after: Mapping[str, Any],
     ownership: Mapping[str, Any],
     total_vram_bytes: int,
     peak_vram_bytes: int,
-    minimum_headroom_mib: int,
 ) -> dict[str, Any]:
     zero_fields = (
         "pending_requests",
@@ -275,14 +274,12 @@ def evaluate_safety_gate(
         "all_requests": bool(requests) and all(row.get("passed") is True for row in requests),
         "ready_after": ready_after.get("ready") is True,
         "idle_ownership": all(int(ownership.get(field, -1)) == 0 for field in zero_fields),
-        "minimum_headroom": headroom >= int(minimum_headroom_mib) * MIB,
     }
     return {
         "passed": all(checks.values()),
         "checks": checks,
         "headroom_bytes": headroom,
         "headroom_gib": headroom / GIB,
-        "minimum_headroom_mib": int(minimum_headroom_mib),
     }
 
 
@@ -679,7 +676,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "requested_pool_initial_low_high_pages": pages,
             "pool_chunk_pages": per_request_pages,
             "whole_card_poll_ms": float(args.memory_poll_ms),
-            "minimum_headroom_mib": int(args.minimum_headroom_mib),
+            "headroom_affects_pass_fail": False,
             "maximum_idle_baseline_mib": int(args.maximum_baseline_mib),
         },
         "prompt_fixture": asdict(fixture),
@@ -846,13 +843,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         sampler.stop()
 
     memory = sampler.result().to_dict()
-    gate = evaluate_safety_gate(
+    gate = evaluate_execution_gate(
         requests=requests,
         ready_after=ready_after,
         ownership=ownership,
         total_vram_bytes=int(memory["memory_total_bytes"]),
         peak_vram_bytes=int(memory["peak_bytes"]),
-        minimum_headroom_mib=int(args.minimum_headroom_mib),
     )
     if error is not None:
         gate["passed"] = False
@@ -861,7 +857,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         gate["checks"]["run_completed"] = True
     artifact.update(
         {
-            "status": "passed_safe_context_soak" if gate["passed"] else "failed_context_soak",
+            "status": "passed_context_soak" if gate["passed"] else "failed_context_soak",
             "passed": bool(gate["passed"]),
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "error": error,
@@ -925,8 +921,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8038)
     parser.add_argument("--batch-window-ms", type=float, default=5.0)
-    parser.add_argument("--startup-min-free-mib", type=int, default=1024)
-    parser.add_argument("--minimum-headroom-mib", type=int, default=512)
+    parser.add_argument(
+        "--startup-min-free-mib",
+        type=int,
+        default=0,
+        help="server startup guard; default 0 disables policy blocking for limit discovery",
+    )
     parser.add_argument("--maximum-baseline-mib", type=int, default=128)
     parser.add_argument("--memory-poll-ms", type=float, default=20.0)
     parser.add_argument("--startup-timeout-s", type=float, default=600.0)

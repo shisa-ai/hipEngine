@@ -16,14 +16,17 @@ should be removed or collapsed.
 
 ## Qwen3.8 c>1 mirrored-INT8 serving seam
 
-- Added 2026-08-15 after the dedicated-XTX context soak. Long c1 uses genuine
-  no-mirror FP32-scale INT8 at `8,519,680` bytes/page and reaches 112K. Current
-  c>1 packed AR admits per-token/head INT8 only at short contexts where it also
-  retains BF16 K/V, raising each page to `25,296,896` bytes; above 8K it fails
-  closed because direct packed INT8 attention is not admitted. The measured
-  512-MiB-reserve settings collapse to 4K/request at c2 and 1,280/request at c4;
-  offered c8 is two c4 waves. Do not advertise these mirrored rows as INT8
-  memory savings.
+- Added 2026-08-15 after the dedicated-XTX context soak and classification
+  corrected after review. Long c1 uses genuine no-mirror FP32-scale INT8 at
+  `8,519,680` bytes/page and reaches 112K. Current c>1 packed AR admits
+  per-token/head INT8 only at short contexts where it also retains BF16 K/V,
+  raising each page to `25,296,896` bytes; above 8K it fails closed because
+  direct packed INT8 attention is not admitted. Actual execution passes reach
+  6K/request at c2 (8K is 0/2 HIP OOM), 1.5K at physical c4 (no failure tested),
+  and 2K at offered c8 (no failure tested; shape-aware rows queue as two c4
+  waves). The former 4K/1,280 rows came from an arbitrary 512-MiB diagnostic,
+  not execution failures. Do not advertise any mirrored row as an INT8 memory
+  saving.
 - Removal trigger: implement and quality-gate either direct no-mirror packed
   INT8 attention or an explicit serial c>1 no-mirror fallback, then rerun the
   pinned ShareGPT c1/c2/c4/c8 context matrix. Remove the mirrored short route if

@@ -9,14 +9,18 @@ oracle pair, passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16,
 and lowers the matched 32K-capacity tracked peak `17.920 -> 17.330 GiB` while
 running eager AR decode `6.50%` above BF16 graph. On a dedicated idle 24-GiB
 XTX, four different natural 112K c1 requests pass at `23.322876 GiB` peak with
-`0.661499 GiB` headroom and zero leaked ownership; 120K still fails the 1-GiB
-startup guard. **112K is therefore the recommended explicit maximum for the
-exact dedicated-c1 AR contract; 96K is an optional extra-margin setting.** Do
-not transfer that number to c>1: current packed short-context INT8 adds a BF16
-mirror and is not a compact-INT8 capacity route. Long pure INT8 still needs the
-unverified-long gate, graph capture rejects it, and exact natural B3 MTP is only
+`0.661499 GiB` headroom and zero leaked ownership. The 120K row was not executed
+because the configured 1-GiB startup guard blocked it; 128K is the first actual
+c1 failure and OOMs during eager warmup. **112K is therefore the recommended
+explicit maximum for the exact dedicated-c1 AR contract; 96K is an optional
+extra-margin setting.** Do not transfer that number to c>1: current packed
+short-context INT8 adds a BF16 mirror and is not a compact-INT8 capacity route.
+Observed c>1 execution passes reach 6K/request at c2, 1.5K at physical c4, and
+2K at offered c8; only c2 has a measured request failure, at 8K. Long pure INT8
+still needs the unverified-long gate, graph capture rejects it, and exact
+natural B3 MTP is only
 `0.6423x` true AR. BF16 remains supported/default. K2 compact DMS remains
-planned. Last updated: 2026-08-15._
+planned. Last updated: 2026-08-16._
 
 This document is the source of truth for hipEngine K/V-cache architecture,
 capacity, and fidelity. It supersedes the June 24 interpretation that the old
@@ -40,8 +44,8 @@ long-context evidence controls the support decision.
 | What is the Qwen3.8 BF16 server roof on 24 GiB? | **52K observed, 32K operational.** With a pre-sized 208-page pool, 53,246 prompt IDs + one output + one reserved slot return HTTP 200 at 53,248 total tokens, but leave only `0.025 GiB`; the next 1K boundary fails. The default 32K row leaves `2.115 GiB` and remains the reliable BF16 setting. |
 | Does pure Qwen3.8-27B INT8 pass quality? | **Yes, on the measured frontier.** Pure FP32-scale INT8 passes complete 512/8 and 4K/16 suites plus bounded `mixed_v1` 64K/16 with no BF16 mirror. Tail-four Hadamard passed the earlier 512/4K/32K gates but was not rerun in this qualification. |
 | Does bounded Qwen3.8 INT8 save memory? | **Yes.** Layer-outer exact prefill reuses one oracle pair instead of 16, lowering the 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16. A real 64K server request peaks at `20.564 GiB`, `1.305 GiB` below the BF16 32K request. |
-| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K recommended for a dedicated idle c1 server; 96K is optional extra margin.** Four pinned ShareGPT-derived 112K requests pass consecutively at `23.322876 GiB` peak with `0.661499 GiB` headroom, exact generated-ID accounting, and zero leaked ownership. 120K fails the configured 1-GiB startup guard and 128K OOMs. Only 64K has a representative non-repeated-token long-context quality row. |
-| Does that 112K recommendation apply at c2/c4/c8? | **No.** With a 512-MiB high-water reserve, measured current-server settings are 4K/request at physical c2 and 1,280/request at physical c4. Offered c8 runs as two c4 queue waves and also uses 1,280/request. These short packed routes retain a BF16 mirror (`25,296,896` bytes/page versus `8,519,680` for no-mirror long c1), so they validate concurrency/lifecycle but are not efficient INT8 capacity paths. |
+| What is the explicit Qwen3.8 INT8 server roof on 24 GiB? | **112K recommended for a dedicated idle c1 server; 96K is optional extra margin.** Four pinned ShareGPT-derived 112K requests pass consecutively at `23.322876 GiB` peak with `0.661499 GiB` headroom, exact generated-ID accounting, and zero leaked ownership. 120K was policy-blocked before execution; 128K is the first actual c1 failure and OOMs. Only 64K has a representative non-repeated-token long-context quality row. |
+| What actually worked and failed at c2/c4/c8? | **c2 works through 6K/request; 8K actually fails 0/2 with HTTP-500 HIP OOM. Physical c4 works through 1.5K/request with 16/16 multi-turn requests; no c4 failure was tested. Offered c8 works through 2K/request; no c8 failure was tested, and shape-aware rows show it queues as two physical c4 waves.** The earlier 512-MiB threshold was an arbitrary diagnostic and no longer reclassifies successful requests. These short packed routes retain a BF16 mirror (`25,296,896` bytes/page versus `8,519,680` for no-mirror long c1), so they are not efficient INT8 capacity paths. |
 | Did a recent-token BF16 tail solve 27B? | **No.** The earlier host screen favored pure INT8 over recent 4K/8K BF16 tails, and the native result identifies non-monotonic layer interactions instead. Do not add two-arena temporal storage. |
 | Product status | BF16 remains supported/default. Qwen3.6 pure INT8 is quality-rejected. Qwen3.8 pure FP32-scale INT8 is qualified only as an explicit single-request AR capacity route behind the unverified-long gate; pure-INT8 graph capture is fail-closed and exact natural B3 MTP is slower than AR. |
 
@@ -108,16 +112,22 @@ materially differently despite sharing the same geometry:
    to `0.060410 GiB`. Since recommendations assume an otherwise idle dedicated
    GPU, **112K is the explicit c1 maximum**; 96K remains available when an
    operator voluntarily wants `1.570 GiB` rather than `0.661 GiB` margin. The
-   120K row fails the default 1-GiB startup guard and 128K OOMs.
-7. **Current c>1 INT8 is mirrored and memory-negative.** At contexts through
-   8K, packed AR retains BF16 K/V beside INT8 to preserve its exact fallback.
-   The measured page grows `8,519,680 -> 25,296,896` bytes. Two repeated cold
-   c2 runs select 4K/request at `23.452324 GiB` peak and `0.532051 GiB`
-   headroom; 4,352 leaves only `0.014400 GiB`. Physical c4 selects
-   1,280/request at `23.430866/0.553509 GiB`; 1,536 multi-turn leaves only
-   `0.162945 GiB`. Offered c8 is two c4 queue waves, not resident c8, and passes
-   32 exact four-turn requests at the same 1,280 setting. This is server safety
-   evidence, not an INT8 memory-saving recommendation.
+   120K row was not executed because the default 1-GiB startup guard blocked it;
+   128K is the first actual failure and OOMs during eager warmup.
+7. **Current c>1 INT8 is mirrored and memory-negative, but successful rows stay
+   classified as passes.** At contexts through 8K, packed AR retains BF16 K/V
+   beside INT8 to preserve its exact fallback. The measured page grows
+   `8,519,680 -> 25,296,896` bytes. The earlier 512-MiB threshold was a chosen
+   diagnostic, not a failure boundary. Actual c2 execution passes every tested
+   row through 6,144/request (2/2 at the top; 5,632 passes 8/8 multi-turn), then
+   8,192 fails both requests with HTTP-500 HIP OOM; 8,448 separately fails
+   startup on the unsupported direct no-mirror route. Physical c4 passes
+   1,536/request for 16/16 multi-turn requests with `0.162945 GiB` headroom and
+   has no tested failure. Offered c8 passes 2,048/request for 8/8 requests with
+   `0.010555 GiB` headroom and has no tested failure; shape-aware 1,536 rows show
+   two c4 queue waves, while the 2,048 raw row predates shape capture. Headroom
+   is reported as risk data and does not overwrite the observed execution
+   result. None of these mirrored c>1 rows is an INT8 memory-saving claim.
 8. **The remaining blockers are c>1 direct INT8, transport, and MTP.** Packed
    AR fails closed above the mirror boundary because direct no-mirror INT8 is
    not admitted. Pure-INT8 graph capture likewise rejects all but BF16 and
