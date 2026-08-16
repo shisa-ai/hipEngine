@@ -20,10 +20,15 @@ are shown.
 Authoritative evidence:
 [`2026-08-16-zbook-qwen36-quant-quality.json`](../results/2026-08-16-zbook-qwen36-quant-quality.json).
 
+The separate [ROCmFPX transferable-mechanism report](ROCMFPX-TRANSFER.md)
+consolidates the five implementation opportunities tested on the admitted
+35B-A3B paths. Its speed/policy decisions do not alter the quality labels in
+this file.
+
 ## Repository layout
 
-- `benchmarks/quant/` — current protocols, provenance, and compact comparison
-  tables.
+- `benchmarks/quant/` — current protocols, provenance, compact quality tables,
+  and transferable-mechanism comparison indices.
 - `scripts/quant_quality/` — reusable fixture, capture, comparison, and paired
   bootstrap tooling.
 - `benchmarks/results/` — compact committed JSON summaries from completed runs.

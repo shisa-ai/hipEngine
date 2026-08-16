@@ -534,6 +534,26 @@ Run true AR and B1-B5 over the complete suite for hipEngine GGUF/PARO and
 ROCmFPX HIP/Vulkan as supported. Optimize only after proposal, target, commit,
 and scheduler ownership reconcile.
 
+#### Z4/Z5 transferable-mechanism checkpoint — 2026-08-16
+
+The five ROCmFPX-inspired mechanisms have completed their hipEngine screens;
+the aggregate index is
+[`2026-08-16-qwen36-35b-gfx1151-rocmfpx-transfer-campaign.json`](../benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-transfer-campaign.json)
+and the human comparison is
+[`benchmarks/quant/ROCMFPX-TRANSFER.md`](../benchmarks/quant/ROCMFPX-TRANSFER.md).
+
+| Opportunity | Campaign decision |
+| --- | --- |
+| Small-M weight reuse | Existing exact pack8 output-tiled route revalidated at **+3.41% c4 / +4.00% c8** aggregate throughput; keep default, no duplicate kernel. |
+| One-plane Q8_1 | Reject: projection speed does not survive operation-complete SiLU KL. |
+| SiLU + down-rotation | Retain exact pair-rotate default; actual leaf **1.371x**, c8/L4 trace **-69 launches**, bracketed aggregate neutral. |
+| Selective unsafe math | Reject and remove: numeric gate passes but actual leaf is **7.67% slower**. |
+| Adaptive MTP | Existing prompt-agnostic B1-probe structure revalidated exact 30/30 at **1.134x** current true AR and **1.116x** best fixed depth; no new cap/topline promotion. |
+
+No ROCmFPX runtime/format code was imported and no architecture changed. PARO
+remains `quality-traded`; the MTP row uses the admitted Q4_K_M+NextN artifact
+because the repaired packed-PARO snapshot has no NextN sidecar.
+
 ### Z6 — Closure
 
 Promote only exact or explicitly quality-qualified non-regressive wins. Update

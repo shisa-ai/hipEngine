@@ -155,6 +155,9 @@ adaptive MTP route is also economically sound: exact adaptive B3 reaches
 This is diagnostic revalidation only: dirty unrelated docs/tests and a changed
 execution-profile denominator block a new budget/topline claim. Evidence:
 [`adaptive MTP`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp5-adaptive-mtp-diagnostic.json).
+The complete five-opportunity matrix, including the revalidated small-M default
+and rejected one-plane Q8_1 path, is in the
+[`ROCmFPX transfer report`](quant/ROCMFPX-TRANSFER.md).
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
