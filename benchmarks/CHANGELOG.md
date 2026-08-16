@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-16
+
+- [retained gfx1151 Qwen3.8 G2 clean prefill publication] Qwen3.8-27B / Q4_K_M / repeated-token 512/1K/4K: clean detached `a06589f34` moves the frozen opening prefill **85.288/84.497/84.204 -> 399.031/391.276/385.330 tok/s (+367.863%/+363.067%/+357.612%)**, beating clean llama HIP **13.224%/7.363%/4.711%** and Vulkan **64.240%/58.021%/8.737%** with CV <=0.094%, stable IDs, and zero teardown; process GTT falls **47.705%/47.030%/44.012%** to **17.322/17.805/20.181 GiB** but remains above llama, closing G2 while leaving G5 open; `benchmarks/results/2026-08-16-gfx1151-qwen38-27b-prefill-publication.json`.
+
 ## 2026-08-15
 
 - [retained development gfx1151 Qwen3.8 P4 shared standard-Q6 prefill] Qwen3.8-27B / Q4_K_M / repeated-token 512/1K/4K prefill: four waves share each decoded 48x256 standard-Q6 slab across the 24 rows>=512 K5120/N10240 recurrent-QKV calls, improving both BF16-bit-exact actual weights **2.961-3.548x (90/90 wins)** and complete same-source prefill **362.752/354.270/349.130 -> 398.792/391.861/384.628 tok/s (+9.935%/+10.611%/+10.168%)** with identical IDs/peaks/teardown; the development path now beats clean llama HIP **13.16%/7.52%/4.52%** and Vulkan **64.14%/58.26%/8.54%**, while short rows, misses, and peers retain 16x16; `benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q6-standard-shared4-prefill.json`.
