@@ -53,6 +53,15 @@ unchanged. Native rows and MTP retain their prior owners after the pre-scope B1
 diagnostic regressed; 512/1K, natural AR, and Vulkan 4K remain open, so P5
 stays open.
 
+The compiler-clean post-grouped 4K rerank reconciles **80.781185 ms/token** of
+kernel work (**95.921%** of profiled host decode) across exactly **934
+launches/token**. Q4 split gate/up+SiLU now owns **38.168%**, Q4 singletons
+**23.659%**, planar-Q6 BF16 **13.366%**, Q5 recurrent output **6.315%**,
+standard-Q6 QKV **5.925%**, and Q6 root **5.703%**. Grouped attention plus
+reduction has fallen to **2.097%**, so neither another generic attention variant
+nor graph-width work is admissible without a new premise. Evidence:
+[`post-grouped decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
