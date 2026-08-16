@@ -21,7 +21,11 @@ from typing import Any, Callable, Iterable, Protocol, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
-from hipengine.kvcache import PREFIX_CACHE_CHOICES, resolve_prefix_cache_mode
+from hipengine.kvcache import (
+    PREFIX_CACHE_CHOICES,
+    ResourceUnavailable,
+    resolve_prefix_cache_mode,
+)
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -1424,6 +1428,9 @@ class ResidentEngineLoop:
         """Return scheduler ownership, work, policy, and latency evidence."""
 
         snapshot = self.scheduler.observability_snapshot()
+        resource_snapshot = getattr(self.runner, "resource_observability_snapshot", None)
+        if callable(resource_snapshot):
+            snapshot["resources"] = resource_snapshot()
         snapshot["scheduler_policy"] = {
             "prefill_decode_policy": self.prefill_decode_policy,
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
@@ -1515,7 +1522,28 @@ class ResidentEngineLoop:
         events: list[EngineLoopEvent] = []
         reserve_admission = getattr(self.runner, "reserve_admission", None)
         rollback_admission = getattr(self.runner, "rollback_admission", None)
+        plan_admission = getattr(self.runner, "plan_admission", None)
+        selected_request_ids: Sequence[int] | None = None
+        free_slots = self.scheduler.capacity - self.scheduler.active_count
+        if callable(plan_admission) and free_slots > 0 and self.scheduler.pending_count:
+            try:
+                selected_request_ids = tuple(
+                    int(request_id)
+                    for request_id in plan_admission(
+                        self.scheduler.pending_requests,
+                        max_items=free_slots,
+                    )
+                )
+            except ResourceUnavailable as exc:
+                raise GenerationAdmissionRejected(
+                    str(exc),
+                    resource=exc.resource,
+                    requested_units=exc.requested_units,
+                    current_units=exc.current_units,
+                    capacity_units=exc.capacity_units,
+                ) from exc
         admitted = self.scheduler.admit_pending(
+            request_ids=selected_request_ids,
             reserve_callback=(reserve_admission if callable(reserve_admission) else None),
             rollback_callback=(rollback_admission if callable(rollback_admission) else None),
         )

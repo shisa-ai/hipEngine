@@ -4,9 +4,11 @@ import asyncio
 import threading
 import time
 from dataclasses import dataclass, replace
+from types import SimpleNamespace
 
 import pytest
 
+from hipengine import LLM
 from hipengine.generation import (
     EngineLoopEvent,
     EngineService,
@@ -18,6 +20,7 @@ from hipengine.generation import (
     GenerationStreamChunk,
     GenerationSubmission,
     SubmitPollTextGenerator,
+    register_text_generator,
 )
 from hipengine.server.api import SamplingParams, _GenerationBatcher
 
@@ -400,6 +403,67 @@ def test_engine_service_shutdown_reclaims_active_children_and_rejects_new_work()
         service.submit_child(_request("late:1"))
     assert driver.closed is True
     assert active.backend_request_id in driver.release_order
+
+
+def test_llm_keeps_native_resident_capacity_separate_from_physical_route_cap(
+    monkeypatch,
+) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    observed: dict[str, int | None] = {}
+
+    class NativeGenerator:
+        server_plain_ar_max_active_requests = 4
+
+        def create_resident_model_runner(self, *, capacity):
+            observed["capacity"] = capacity
+            return SimpleNamespace(capacity=int(capacity))
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeNativeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_native_service")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_native_service",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: NativeGenerator(),
+        replace=True,
+    )
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=13,
+    )
+    try:
+        generator = llm._get_text_generator()
+        assert isinstance(generator, EngineService)
+        assert observed["capacity"] == 13
+        assert generator.inner._runner.capacity == 13
+    finally:
+        llm.close()
+
+
+def test_independent_service_residency_is_not_clamped_by_physical_route_width() -> None:
+    fake = SimpleNamespace(
+        supports_independent_generation=True,
+        server_plain_ar_max_active_requests=4,
+    )
+    batcher = _GenerationBatcher(
+        engine_factory=lambda: fake,
+        batch_window_seconds=0.0,
+        max_active_requests=13,
+        route_max_active_requests={"default": 4},
+    )
+
+    assert batcher._route_request_cap("default") == 13
 
 
 def test_generation_batcher_publishes_fast_independent_result_before_slow_neighbor() -> None:

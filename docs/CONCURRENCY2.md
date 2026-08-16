@@ -1038,21 +1038,23 @@ retain the explicit serial compatibility adapter.
 
 ### C2-2 — generic resource ledger and concurrency separation
 
-- [ ] Implement atomic named-resource claim sets, per-pool capacities/lifetimes,
+- [x] Implement atomic named-resource claim sets, per-pool capacities/lifetimes,
       provisional reserve, commit/release deltas, rollback, and conservation
       checks; the ledger contains no BF16/INT8/DMS formulas.
-- [ ] Add registered backend estimators for model state, all persistent codec
+- [x] Add registered backend estimators for model state, all persistent codec
       planes, mirrors/protected regions, prefill/maintenance scratch, attention
       workspace, graphs, cold transfers, and reserve.
-- [ ] Split resident metadata capacity from supported physical widths.
-- [ ] Replace route-cap clamping with fit-aware admission plus an optional clear
+- [x] Split resident metadata capacity from supported physical widths.
+- [x] Replace route-cap clamping with fit-aware admission plus an optional clear
       operator resident cap.
-- [ ] Add bounded lookahead/starvation control and impossible-request rejection.
-- [ ] Expose effective limits, per-plane estimates, and blocking resources.
+- [x] Add bounded lookahead/starvation control and impossible-request rejection.
+- [x] Expose effective limits, per-plane estimates, and blocking resources.
 
 Exit: overload is atomic/retryable and never first appears as HIP OOM for any
 conforming backend; c9-c32 can remain resident while using certified <=c8
-physical groups.
+physical groups. `hipengine/kvcache/ledger.py` consumes only backend-produced
+claim vectors, and its admission coordinator passes stable request IDs—not
+format metadata—into the resident scheduler.
 
 ### C2-3 — production global pool substrate and first dense backends
 
