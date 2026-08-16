@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from scripts.quant_quality.qwen36_teacher import (
     PROTOCOL_ID,
@@ -55,6 +56,30 @@ def _register(
     )
     assert register_raw(args) == 0
     return output.with_suffix(".manifest.json")
+
+
+def test_paro_transformers_depthwise_fallback_matches_conv1d() -> None:
+    torch = pytest.importorskip("torch")
+    import torch.nn.functional as F
+
+    from scripts.quant_quality.qwen36_teacher import _torch_depthwise_causal_conv1d
+
+    torch.manual_seed(1234)
+    hidden_states = torch.randn(2, 6, 11, dtype=torch.float32)
+    weight = torch.randn(6, 4, dtype=torch.float32)
+    bias = torch.randn(6, dtype=torch.float32)
+    expected = F.conv1d(
+        hidden_states,
+        weight.unsqueeze(1),
+        bias,
+        padding=weight.shape[-1] - 1,
+        groups=hidden_states.shape[1],
+    )[:, :, : hidden_states.shape[-1]]
+
+    actual = _torch_depthwise_causal_conv1d(hidden_states, weight, bias)
+
+    assert actual.shape == hidden_states.shape
+    assert torch.allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_register_raw_and_compare_round_trip(tmp_path: Path) -> None:
