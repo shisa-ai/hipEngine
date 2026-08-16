@@ -866,6 +866,14 @@ GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
 GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES = frozenset(
     {(1, 5_120, 10_240, 6_144)}
 )
+# The 16 full-attention K/V pairs share one BF16 norm row. K is compact Q4T16
+# and V is either Q4T16 or byte-neutral planar-Q6; one local128 block-parallel
+# grid preserves each qualified singleton arithmetic tree while removing the
+# serial launch boundary. Native rows, other shapes, and peers retain the two
+# primitive projections.
+GGUF_NARROW_KV_PAIR_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 1_024, 1_024)}
+)
 # The graph-safe serial composite joins those independent projections with the
 # current in-place Conv channel blocks. Wider/native rows and peer backends keep
 # the separately registered pair plus Conv fallback.
@@ -2084,6 +2092,7 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
+    "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",

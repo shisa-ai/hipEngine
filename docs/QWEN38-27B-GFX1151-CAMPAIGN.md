@@ -263,6 +263,19 @@ is flat; one-run aggregate profiler variance is therefore not a retainable win,
 and no request gate is run. Evidence:
 [`4K parallel-reducer rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-4k-parallel-attention-reducer-rejected.json).
 
+The narrow full-attention K/V boundary is retained as two exact block-parallel
+grids. Across all 16 target layers (eight Q4/Q4 and eight Q4/planar-Q6), a
+102.19-MiB resident actual-weight pool improves **0.64858 -> 0.57993 ms/token
+(1.11838x, 15/15)** with every BF16 output bit exact. The 4K trace removes
+**16 launches/token (670 -> 654)** and improves the complete K/V span
+**0.64748 -> 0.56195 ms/token (-13.209%)**. One-run aggregate profiler wall
+moves **+0.059% kernel / +0.043% host** within noise, but the unprofiled
+counterbalanced 512/128 authority improves **12.34127 -> 12.34844 tok/s
+(+0.058%)**, with both candidates above both controls, exact IDs/logits,
+unchanged peaks, and no bytes. Native rows/MTP, prefill, NextN, misses, and
+peer backends retain the two qualified singleton projections. Evidence:
+[`narrow K/V pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 

@@ -29,6 +29,8 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
 )
 from hipengine.kernels.hip_gfx1100.fused.gguf_q6_q4_pair import (
     build_gguf_q6_q4_pair,
+    gguf_q4_q4_t16_narrow_col4_pair_bf16_bf16_out,
+    gguf_q4_q6_t16_narrow_col4_planar_pair_bf16_bf16_out,
     gguf_q6_q4_t16_mixed_grid_pair_bf16_bf16_out,
     plan_gguf_q6_q4_pair_build,
     register_gguf_q6_q4_pair_kernels,
@@ -137,6 +139,8 @@ __all__ = [
     "gguf_rmsnorm_bf16_f32_weight_out_f32",
     "gguf_rmsnorm_f32_f32_weight",
     "gguf_rmsnorm_f32_f32_weight_out_f32",
+    "gguf_q4_q4_t16_narrow_col4_pair_bf16_bf16_out",
+    "gguf_q4_q6_t16_narrow_col4_planar_pair_bf16_bf16_out",
     "gguf_q6_q4_t16_mixed_grid_pair_bf16_bf16_out",
     "laguna_aggregate_moe_tail_next_rmsnorm_gguf_bf16_out",
     "laguna_aggregate_moe_tail_next_rmsnorm_wave0_tree_gguf_bf16_out",

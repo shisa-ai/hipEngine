@@ -419,6 +419,20 @@ prefill, shape/registry misses, and peers retain the primitive projections.
 This is retained development evidence, not a clean topline refresh. Evidence:
 [`Q6/Q4 mixed grid`](results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
 
+The exact narrow full-attention K/V route then contracts 16 serial projection
+pairs per token into architecture/shape-qualified block-parallel grids. All 16
+target actual-weight pairs improve **0.64858 -> 0.57993 ms/token (1.11838x,
+15/15)** with BF16-bit-exact K/V. The 4K trace removes **16 launches/token
+(670 -> 654)** and improves the complete K/V span **0.64748 -> 0.56195
+ms/token (-13.209%)**; its one-run aggregate profiler variance is slightly
+negative, so the counterbalanced unprofiled request gate is authoritative.
+That gate improves 512/128 AR **12.34127 -> 12.34844 tok/s (+0.058%)**, with
+both candidates above both controls, exact IDs/logits, unchanged
+**16.753218-GiB** peaks, and no bytes. Native rows/MTP, prefill, NextN, misses,
+and peers retain the two singleton projections. This is retained development
+evidence, not a clean topline refresh. Evidence:
+[`narrow K/V pair`](results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph
