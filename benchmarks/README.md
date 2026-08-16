@@ -113,19 +113,19 @@ diagnostic never replaces a retained row.
 
 ## Current Qwen3.6-35B quantization quality
 
-The portable rows score 90 full-vocabulary BF16-teacher positions across all ten
-code/English/Japanese/mixed prompts. They are useful exact-artifact diagnostics,
-not held-out-corpus PPL. PARO's bundled 129,921-token rolling-corpus result is
-reported separately in the linked quantization report and corroborates its
-portable row.
+The current gate scores 90 full-vocabulary BF16-teacher positions across all ten
+code/English/Japanese/mixed prompts. Every row uses the exact local artifacts
+and identical teacher contexts; no historical or unmatched-artifact rows are
+mixed into this table. This is a cross-runtime distribution gate, not
+held-out-corpus PPL.
 
 | Exact local artifact | Size / BPW | Evidence scope | Mean KL vs BF16 ↓ | Top-1 agreement ↑ | Status |
 | --- | ---: | --- | ---: | ---: | --- |
-| GGUF `UD-Q4_K_M` | 21.107 GiB / 5.180 | portable, ROCmFPX HIP | **0.013713** | 92.222% | Matched-runtime quality baseline |
-| ROCmFP4 STRIX_LEAN | **17.739 GiB / 4.354** | portable, ROCmFPX HIP | 0.045984 | **97.778%** | Quality-traded: KL/category margin fails |
-| PARO full8192 packed | 19.068 GiB / 4.680 | portable, hipEngine HIP | 0.027038 | 92.222% | Quality-traded; runtime-correct and deterministic |
+| GGUF `UD-Q4_K_M` | 21.107 GiB / 5.180 | exact-artifact, ROCmFPX HIP | **0.013713** | 92.222% | Matched-runtime quality baseline |
+| ROCmFP4 STRIX_LEAN | **17.739 GiB / 4.354** | exact-artifact, ROCmFPX HIP | 0.045984 | **97.778%** | Quality-traded: KL/category margin fails |
+| PARO full8192 packed | 19.068 GiB / 4.680 | exact-artifact, hipEngine HIP | 0.027038 | 92.222% | Quality-traded; runtime-correct and deterministic |
 
-ROCmFP4 is 15.96% smaller than local Q4_K_M and has stronger portable greedy
+ROCmFP4 is 15.96% smaller than local Q4_K_M and has stronger BF16 greedy
 argmax retention, but 3.35x its matched-runtime mean KL and a Japanese KL
 outlier. PARO's packed-runtime bug is fixed: hipEngine now matches the same
 checkpoint in ParoQuant/Transformers at mean/max KL `0.001151/0.023016` and

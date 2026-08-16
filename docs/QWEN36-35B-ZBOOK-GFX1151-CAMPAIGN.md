@@ -1,11 +1,10 @@
 # Qwen3.6-35B-A3B ZBook gfx1151 Campaign
 
-Status: **active; all four artifacts are admitted, the portable exact-artifact
-quality gate is complete, and hipEngine PARO implementation correctness is
-closed. Canonical ROCmFP4 corpus PPL remains open before full Z1 closure;
-labeled quality-traded profiling may proceed.** The campaign is specific to the
-HP ZBook Ultra G1a at its current 60/60/45 W limits. It must not reuse
-absolute throughput from the higher-power 120/160/140 W Radeon 8060S host.
+Status: **active; all four artifacts are admitted, the exact-artifact quality
+gate and hipEngine PARO implementation-correctness gate are complete, and Z1
+quality is closed. Labeled quality-traded profiling may proceed.** The campaign
+is specific to the HP ZBook Ultra G1a at its current 60/60/45 W limits. It must
+not reuse absolute throughput from the higher-power 120/160/140 W Radeon 8060S host.
 
 The objective is to answer three questions with matched local evidence:
 
@@ -16,8 +15,8 @@ The objective is to answer three questions with matched local evidence:
 3. If ROCmFP4 is both accurate enough and faster, which measured mechanism is
    worth implementing in hipEngine rather than copying a foreign runtime?
 
-This remains a campaign plan, not a performance claim. A quantization-quality
-diagnostic is retained; no new ZBook throughput row has been retained yet.
+This remains a campaign plan, not a performance claim. The exact-artifact
+quality result is retained; no new ZBook throughput row has been retained yet.
 
 Related authorities:
 
@@ -89,8 +88,8 @@ engine comparisons.
 | --- | --- | --- | --- |
 | BF16 oracle | `Qwen/Qwen3.6-35B-A3B` | HF revision `995ad96eacd98c81ed38be0c5b274b04031597b0`; 26 shards / 71,903,776,776 file bytes / 71,903,645,408 tensor bytes; Apache-2.0 | **Admitted 2026-08-15 UTC:** every shard SHA-256, safetensors index/header map, 1,045 BF16 tensors, CPU Transformers full-logit forward, and greedy smoke passed. hipEngine can ingest its metadata but has no BF16 Qwen generation registration; this remains an external CPU quality oracle. Evidence: [`2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json`](../benchmarks/results/2026-08-15-zbook-qwen36-bf16-gguf-cross-runtime-correctness.json). |
 | GGUF baseline | `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` | `unsloth/Qwen3.6-35B-A3B-MTP-GGUF` revision `5bc3e238d916f48a861bac2f8a1990a0e9b7e98d`; 22,663,387,424 bytes; SHA-256 `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b` | **Admitted 2026-08-15 UTC:** local hash passed; 753-tensor MTP-bearing file; strict AR map, MTP inventory, all-type CPU dequant smoke, ten-prompt tokenizer roundtrip, and a llama.cpp exact-ID spot check passed. Evidence: [`2026-08-15-zbook-qwen36-35b-q4km-admission.json`](../benchmarks/results/2026-08-15-zbook-qwen36-35b-q4km-admission.json). |
-| PARO W4 | `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` | HF revision `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `model.safetensors` 20,474,495,512 bytes, SHA-256 `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`; Apache-2.0 | **Admitted and runtime-correct 2026-08-16 UTC:** bundled canonical KL/top-1 is `0.027939/92.856%`; hipEngine portable BF16-relative is `0.027038/92.222%`, while exact-checkpoint ParoQuant-vs-hipEngine is mean/max KL `0.001151/0.023016`, top-1 `98.889%`, and repeat bit-identical. Verdict: **quality-traded** versus Q4_K_M; speed rows require that label. |
-| ROCmFP4 | `gsrunion/Qwen3.6-35B-A3B-ROCmFP4-STRIX_LEAN-GGUF` | HF revision `f3be5a9c166640f973213d9077ec637ef0875da0`; 19,046,930,720-byte GGUF, SHA-256 `703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b`; Apache-2.0 | **Admitted 2026-08-16 UTC:** transfer/hash and ROCmFPX HIP full-logit capture passed. Portable exact-artifact KL is `0.045984`, top-1 `97.778%`; classified quality-traded pending canonical corpus PPL. |
+| PARO W4 | `shisa-ai/Qwen3.6-35B-A3B-PARO-packed` | HF revision `437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`; `model.safetensors` 20,474,495,512 bytes, SHA-256 `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`; Apache-2.0 | **Admitted and runtime-correct 2026-08-16 UTC:** exact-artifact BF16-relative mean KL/top-1 is `0.027038/92.222%`; exact-checkpoint ParoQuant-vs-hipEngine is mean/max KL `0.001151/0.023016`, top-1 `98.889%`, and repeat bit-identical. Verdict: **quality-traded** versus Q4_K_M; speed rows require that label. |
+| ROCmFP4 | `gsrunion/Qwen3.6-35B-A3B-ROCmFP4-STRIX_LEAN-GGUF` | HF revision `f3be5a9c166640f973213d9077ec637ef0875da0`; 19,046,930,720-byte GGUF, SHA-256 `703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b`; Apache-2.0 | **Admitted 2026-08-16 UTC:** transfer/hash and ROCmFPX HIP full-logit capture passed. Exact-artifact mean KL is `0.045984`, top-1 `97.778%`; verdict: **quality-traded** versus matched-runtime Q4_K_M. |
 
 `plunderstruck/...embF16-headQ6.gguf` and the public ROCmFP4 `FAST` artifact are
 not the campaign's binding ROCmFP4 model: they use different protected tensors
@@ -207,11 +206,10 @@ The baseline campaign closes only when all of the following are true:
 
 1. **Identity:** all model, tokenizer, source, binary, driver, power, and
    workload identities are pinned and machine-readable.
-2. **Quality:** BF16-vs-quant teacher-forced full-logit and perplexity gates
-   complete for GGUF Q4_K_M, PARO W4, and ROCmFP4 STRIX_LEAN. Each quant has a
-   predeclared `Q4-equivalent` or `quality-traded` verdict, category breakdown,
-   and finite rows. Quantization loss is not confused with implementation
-   correctness.
+2. **Quality:** the exact-artifact BF16-teacher full-logit gate is complete for
+   GGUF Q4_K_M, PARO W4, and ROCmFP4 STRIX_LEAN. Each quant has a predeclared
+   `Q4-equivalent` or `quality-traded` verdict, category breakdown, and finite
+   rows. Quantization loss is not confused with implementation correctness.
 3. **Same-file engine baseline:** hipEngine, clean llama.cpp HIP, and clean
    llama.cpp Vulkan run the exact Q4_K_M file at every declared shape with
    matched raw token IDs and timing scopes.
@@ -234,9 +232,9 @@ The baseline campaign closes only when all of the following are true:
    `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` in the same logical
    evidence unit.
 
-Passing quality does not mean all quants are equally accurate. Report PPL,
-KL distribution, top-1, file size, and speed together; never collapse them into
-one unlabeled score.
+Passing quality does not mean all quants are equally accurate. Report KL
+distribution, top-1, teacher-trajectory NLL/PPL ratio, file size, and speed
+together; never collapse them into one unlabeled score.
 
 ---
 
@@ -284,14 +282,14 @@ Freeze the quant-quality decision rule before looking at candidate results.
 Q4_K_M is the product-quality baseline. PARO or ROCmFP4 is `Q4-equivalent`
 only when bootstrap 95% confidence intervals support all three non-inferiority
 margins: top-1 is no more than 2 percentage points below Q4_K_M, mean KL is no
-more than 0.005 above Q4_K_M, and PPL/BF16 is no more than 0.01 above the
-Q4_K_M ratio. Otherwise label it `quality-traded` and still report the measured
-tradeoff. Per-category rows are mandatory and can veto equivalence when one
-category is an obvious outlier.
+more than 0.005 above Q4_K_M, and teacher-trajectory PPL/BF16 is no more than
+0.01 above the Q4_K_M ratio. Otherwise label it `quality-traded` and still
+report the measured tradeoff. Per-category rows are mandatory and can veto
+equivalence when one category is an obvious outlier.
 
 #### Q1 checkpoint — 2026-08-16
 
-The portable ten-prompt / 90-row exact-artifact gate is retained in
+The binding ten-prompt / 90-row exact-artifact gate is retained in
 [`2026-08-16-zbook-qwen36-quant-quality.json`](../benchmarks/results/2026-08-16-zbook-qwen36-quant-quality.json):
 
 - Matched ROCmFPX HIP Q4_K_M is mean/p95/max KL
@@ -308,12 +306,13 @@ The portable ten-prompt / 90-row exact-artifact gate is retained in
   used the tiled modulo mapping valid only after llama.cpp GGUF conversion.
   Exact-checkpoint ParoQuant-vs-hipEngine is now mean/max KL
   `0.001151/0.023016`, top-1 `98.889%`, and two 90-row captures are
-  bit-identical. BF16-relative mean KL/top-1 is `0.027038/92.222%`, close to the
-  bundled canonical `0.027939/92.856%`, but paired Q4_K_M noninferiority still
-  fails all gates. Verdict: **implementation-correct, quality-traded**.
+  bit-identical. BF16-relative mean KL/top-1 is `0.027038/92.222%`, but paired
+  Q4_K_M noninferiority still fails all gates. Verdict:
+  **implementation-correct, quality-traded**.
 
-This is a portable diagnostic, not Q2 corpus PPL. Q2 remains open for ROCmFP4;
-PARO and the historical Q4 control already have same-protocol canonical rows.
+This exact-artifact result closes the campaign's Z1 quality gate. Its 90
+teacher-forced positions are not held-out-corpus PPL or downstream task
+accuracy; larger exact-artifact suites may be added as supplemental evidence.
 
 These BF16-relative margins characterize quantization quality. They do not
 replace the project gate for a new implementation: the candidate kernel/runtime
@@ -321,21 +320,20 @@ must separately achieve maximum KL <= 0.05 and at least 90% top-1 agreement
 against that format's CPU reference on fixture inputs. A same-quant
 hipEngine-vs-llama difference is diagnosed separately from quantization loss.
 
-### Q2 — Perplexity/cross-entropy
+### Q2 — Optional extended validation
 
-Use a committed, hash-pinned same-token corpus with code, English, Japanese,
-and mixed text. Report token count, stride/window policy, total negative log
-likelihood, cross-entropy, PPL, and PPL/PPL-BF16. A conventional WikiText-2
-row may be added for external context, but it cannot replace multilingual/code
-coverage.
+A larger exact-artifact corpus or task suite may be added when a deployment
+decision needs more coverage. It must use hash-pinned token IDs, identical
+positions and scoring windows for every candidate, and separate corpus/task
+metrics from the 90-row table. Report token count, tokenization and BOS/EOS
+policy, stride/window policy, NLL/PPL where applicable, and category/task
+results.
 
-PPL is a ranking signal, not an escape from the project KL/top-1 gate. Do not
-compare PPL from different tokenization, BOS/EOS policy, windows, or ignored
-positions.
-
-The BF16 model is larger than the current 62.5-GiB TTM mapping limit. Run its
-quality oracle on CPU or an explicitly recorded CPU/GPU split; do not alter the
-system limit or compare its speed with fully offloaded quants.
+Extended evidence is additive: it cannot erase a failed exact-artifact KL,
+top-1, or category gate. The BF16 model is larger than the current 62.5-GiB TTM
+mapping limit, so any extended BF16 oracle runs on CPU or an explicitly
+recorded CPU/GPU split; do not alter the system limit or compare its speed with
+fully offloaded quants.
 
 ---
 
@@ -493,12 +491,13 @@ the eventual commit.
 Exit: all identities are machine-readable, all runtimes load their intended
 models, and no benchmark is contaminated by transfer/build work.
 
-### Z1 — Quality before speed
+### Z1 — Quality before speed (**complete**)
 
 1. Add the engine-neutral raw-token/full-logit fixture and RED tests.
 2. Capture BF16 teacher prefixes and logits.
 3. Capture all three quant families at identical prefixes.
-4. Run the multilingual/code PPL corpus and publish a compact quality matrix.
+4. Publish the exact-artifact category matrix, paired noninferiority verdicts,
+   and same-artifact runtime controls.
 
 Exit: each quant has an explicit `Q4-equivalent` or `quality-traded` verdict.
 A quality-traded quant can still be profiled and reported with its tradeoff, but

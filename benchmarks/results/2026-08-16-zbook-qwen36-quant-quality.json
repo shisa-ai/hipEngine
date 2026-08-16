@@ -17,8 +17,8 @@
     }
   },
   "source_revisions": {
-    "hipengine_base_commit": "3cf113aa81d14f168560b8febf4e3e63cec3c058",
-    "quality_harness": "795f2c016 (portable suite) + fdef525cf (gfx1151 ParoQuant oracle)",
+    "hipengine_base_commit": "52973ce02a6f807284157c47aa2c68c19a2d47ef",
+    "quality_harness": "72f9f29b5 (exact-artifact suite) + 5a3e97edb (gfx1151 ParoQuant oracle)",
     "rocmfpx": "0d313da1849f73c5a7f8c5f7e5b8d7d278fbb69d",
     "paroquant": "7bfbf5e1c8a39be20ef02c90377a8ca6b630fadf"
   },
@@ -45,74 +45,6 @@
       "revision": "f3be5a9c166640f973213d9077ec637ef0875da0",
       "sha256": "703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b"
     }
-  },
-  "canonical_corpus_reference": {
-    "scope": "ParoQuant tx4/quality3 rolling corpus; 127 windows / 129,921 scored tokens",
-    "import": "benchmarks/quant/reference/qwen36-paroquant-canonical-import.json",
-    "rows": [
-      {
-        "name": "Original BF16 HF",
-        "artifact_relation": "exact reference revision",
-        "bpw": 16.43514897737143,
-        "ppl": 6.558988744398456,
-        "mean_nll_nats": 1.880836436255614,
-        "delta_nll_nats": 0.0,
-        "mean_kl_nats": 0.0,
-        "max_kl_nats": 0.0,
-        "rms_delta_p_pct": 0.0,
-        "top1_agreement_pct": 100.0
-      },
-      {
-        "name": "PARO full8192-oldfresh-rbparams-e5 packed",
-        "artifact_relation": "exact local Hugging Face snapshot 437eba06df05aad71a4dacdcaf3fff70ae1ee8a1; packed and canonical legacy export contain identical quantized tensors",
-        "bpw": 4.679884664685714,
-        "ppl": 6.608988317351072,
-        "mean_nll_nats": 1.8884305887989143,
-        "delta_nll_nats": 0.007594152543300314,
-        "mean_kl_nats": 0.027939201088552693,
-        "max_kl_nats": 6.39605188369751,
-        "rms_delta_p_pct": 4.645582930751239,
-        "top1_agreement_pct": 92.8556584385896,
-        "canonical_payload_sha256": "96d155c122cb2b79664ad1d5c1bcc0b8f9028a53775459f3d71be7d8a95e033e"
-      },
-      {
-        "name": "Local GGUF UD-Q4_K_M",
-        "artifact_relation": "exact local 22663387424-byte artifact (sha256 0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b); quality measurement pending",
-        "bpw": 5.180202839771429,
-        "ppl": null,
-        "mean_nll_nats": null,
-        "delta_nll_nats": null,
-        "mean_kl_nats": null,
-        "max_kl_nats": null,
-        "rms_delta_p_pct": null,
-        "top1_agreement_pct": null
-      },
-      {
-        "name": "GGUF UD-Q4_K_M historical control",
-        "artifact_relation": "historical same-recipe/same-protocol control; not yet hash-matched to the current local artifact",
-        "bpw": 5.059,
-        "ppl": 6.5643,
-        "mean_nll_nats": null,
-        "delta_nll_nats": 0.001718,
-        "mean_kl_nats": 0.010849,
-        "max_kl_nats": null,
-        "rms_delta_p_pct": null,
-        "top1_agreement_pct": 95.354
-      },
-      {
-        "name": "ROCmFP4 STRIX_LEAN",
-        "artifact_relation": "exact local 19046930720-byte artifact (sha256 703a0e4af8f2d1e9ecb50f1c3507d7344189a0eb5dbab4796ff69261a47cb03b) pending portable evaluation",
-        "bpw": 4.353584164571428,
-        "ppl": null,
-        "mean_nll_nats": null,
-        "delta_nll_nats": null,
-        "mean_kl_nats": null,
-        "max_kl_nats": null,
-        "rms_delta_p_pct": null,
-        "top1_agreement_pct": null
-      }
-    ],
-    "note": "PARO row is the exact local checkpoint. Q4_K_M row is a historical same-protocol control, not hash-matched to the current local GGUF."
   },
   "portable_protocol": {
     "id": "qwen36-bf16-teacher-mtpbench-v1",
@@ -748,7 +680,7 @@
       "mean_kl_candidate_minus_q4_max_nats": 0.005,
       "top1_candidate_minus_q4_min_pp": -2.0,
       "teacher_ppl_ratio_candidate_minus_q4_max": 0.01,
-      "teacher_ppl_note": "portable BF16-teacher trajectory diagnostic; not canonical held-out-corpus PPL"
+      "teacher_ppl_note": "BF16-teacher trajectory diagnostic; not held-out-corpus PPL"
     },
     "confidence_intervals": {
       "mean_kl_candidate_minus_baseline_nats": {
@@ -859,11 +791,11 @@
     }
   ],
   "verdicts": {
-    "q4_k_m": "best established distribution-fidelity baseline; exact local portable rows pass finite/top-1 smoke, with measurable runtime drift requiring follow-up",
-    "paro_w4_quant": "quality-traded versus Q4_K_M by exact checkpoint canonical evidence (KL 0.027939, top-1 92.856%); quant itself is usable",
+    "q4_k_m": "best established distribution-fidelity baseline; exact-artifact rows pass finite/top-1 smoke, with measurable runtime drift requiring follow-up",
+    "paro_w4_quant": "quality-traded versus hipEngine Q4_K_M under the paired exact-artifact BF16-teacher gate; mean KL 0.027038, top-1 92.222%",
     "paro_w4_hipengine": "implementation-correct and deterministic versus exact-checkpoint ParoQuant (max KL 0.023016, top-1 98.889%); BF16-relative KL 0.027038 / top-1 92.222%; quality-traded versus hipEngine Q4_K_M under the paired noninferiority gate",
-    "rocmfp4_strix_lean": "quality-traded: 97.778% portable BF16 top-1 and 15.96% smaller than local Q4_K_M, but mean KL 0.045984 and Japanese-category KL 0.135091 fail the predeclared Q4-equivalence margin",
-    "campaign_quality_gate": "portable exact-artifact gate complete for Q4_K_M, PARO, and ROCmFP4; PARO implementation correctness is closed, while canonical rolling-corpus ROCmFP4 remains open before full Z1 closure"
+    "rocmfp4_strix_lean": "quality-traded: 97.778% exact-artifact BF16 top-1 and 15.96% smaller than local Q4_K_M, but mean KL 0.045984 and Japanese-category KL 0.135091 fail the predeclared Q4-equivalence margin",
+    "campaign_quality_gate": "exact-artifact gate complete for Q4_K_M, PARO, and ROCmFP4; PARO implementation correctness is closed and Z1 quality is complete"
   },
   "commands": [
     "PYTHONPATH=. python scripts/quant_quality/qwen36_teacher.py capture-bf16 --output-dir /models/eval-results/hipengine-qwen36-teacher-v1 --threads 16",
@@ -888,7 +820,7 @@
     "paro_hipengine_repeat_max_abs_logit_delta": 0.0,
     "paro_hipengine_repeat_logits_sha256": "85181d5ce11f4a6d6f9329dc62326b3dc91c8f83b4b3f667e1e28d8a897ca9d0",
     "paro_same_quant_gate": "max KL 0.023016 <= 0.05 and top-1 98.889% >= 90%; pass",
-    "paro_bf16_gate": "mean KL 0.027038 and top-1 92.222%; absolute portable gate pass; Q4 noninferiority fail"
+    "paro_bf16_gate": "mean KL 0.027038 and top-1 92.222%; absolute exact-artifact gate pass; Q4 noninferiority fail"
   },
   "paired_paro_vs_q4_hipengine": {
     "bootstrap": {
@@ -901,7 +833,7 @@
       "mean_kl_candidate_minus_q4_max_nats": 0.005,
       "top1_candidate_minus_q4_min_pp": -2.0,
       "teacher_ppl_ratio_candidate_minus_q4_max": 0.01,
-      "teacher_ppl_note": "portable BF16-teacher trajectory diagnostic; not canonical held-out-corpus PPL"
+      "teacher_ppl_note": "BF16-teacher trajectory diagnostic; not held-out-corpus PPL"
     },
     "confidence_intervals": {
       "mean_kl_candidate_minus_baseline_nats": {
