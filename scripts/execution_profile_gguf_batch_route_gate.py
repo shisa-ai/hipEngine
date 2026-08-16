@@ -57,6 +57,7 @@ DEFAULT_HISTORICAL_SOURCE = Path(
     "benchmarks/results/2026-07-19-gfx1151-gguf-f3-q8t16-rowtile-rejected.json"
 )
 POLICY_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_ALL"
+POLICY_MIN_ROWS_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS"
 POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
 ROUTER_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
 ROUTER_PERSISTENT_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
@@ -232,7 +233,12 @@ def _router_candidate_policy(candidate: bool, *, enabled: bool) -> Iterator[None
 @contextlib.contextmanager
 def _rowtile_policy(enabled: bool) -> Iterator[None]:
     previous = os.environ.get(POLICY_ENV)
-    os.environ[POLICY_ENV] = "1" if enabled else "0"
+    if enabled and _router_candidate_enabled:
+        # The production bundle uses the backend's physical-width floor.  Do
+        # not force the rejected c2 all-rowtile diagnostic.
+        os.environ.pop(POLICY_ENV, None)
+    else:
+        os.environ[POLICY_ENV] = "1" if enabled else "0"
     try:
         with _router_candidate_policy(
             enabled,
@@ -244,6 +250,45 @@ def _rowtile_policy(enabled: bool) -> Iterator[None]:
             os.environ.pop(POLICY_ENV, None)
         else:
             os.environ[POLICY_ENV] = previous
+
+
+@contextlib.contextmanager
+def _candidate_bundle_policy(
+    candidate: bool,
+    *,
+    include_router_candidate: bool,
+) -> Iterator[None]:
+    global _router_candidate_enabled
+    previous = _router_candidate_enabled
+    _router_candidate_enabled = bool(include_router_candidate)
+    try:
+        with _rowtile_policy(candidate):
+            yield
+    finally:
+        _router_candidate_enabled = previous
+
+
+def candidate_variant_manifest(
+    *,
+    include_router_candidate: bool,
+) -> dict[str, dict[str, str]]:
+    direct = {
+        "single": "t16_gemv_decode_bf16_bf16_out",
+        "pair": "t16_dual_gemv_decode_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_bf16_bf16_out",
+    }
+    rowtile = {
+        "single": "t16_gemv_decode_rowtile4_bf16_bf16_out",
+        "pair": "t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
+    }
+    c8 = {
+        **rowtile,
+        "pair": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
+    }
+    if include_router_candidate:
+        return {"c1": direct, "c2": direct, "c4": rowtile, "c8": c8}
+    return {"c1": direct, "c2_c4": rowtile, "c8": c8}
 
 
 def _prefill_group(
@@ -468,11 +513,19 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         for row in prompt_rows
     }
     max_sequence_length = max(len(value) for value in prompt_tokens.values()) + int(args.decode_steps) + 2
-    package = __import__(f"hipengine.kernels.{args.backend}", fromlist=[POLICY_CAPABILITY])
+    package = __import__(
+        f"hipengine.kernels.{args.backend}",
+        fromlist=[POLICY_CAPABILITY, POLICY_MIN_ROWS_CAPABILITY],
+    )
     package_value = getattr(package, POLICY_CAPABILITY)
+    package_min_rows = int(getattr(package, POLICY_MIN_ROWS_CAPABILITY, 0))
     if package_value is not False:
         raise CalibrationError(
             f"current package {POLICY_CAPABILITY} must be False, got {package_value!r}"
+        )
+    if args.include_router_candidate and package_min_rows != 4:
+        raise CalibrationError(
+            f"bundled candidate requires package rowtile min rows 4, got {package_min_rows}"
         )
 
     global _router_candidate_enabled
@@ -680,8 +733,14 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "route": {
             "policy_capability": POLICY_CAPABILITY,
             "package_value_verified": False,
+            "package_min_rows_capability": POLICY_MIN_ROWS_CAPABILITY,
+            "package_min_rows_verified": package_min_rows,
             "candidate_environment": {
-                POLICY_ENV: "1",
+                POLICY_ENV: (
+                    "unset: package physical-width floor"
+                    if args.include_router_candidate
+                    else "1"
+                ),
                 **(
                     {
                         ROUTER_COOP_ENV: "1",
@@ -725,23 +784,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     "triple": "t16_triple_gemv_decode_bf16_bf16_out",
                 },
             },
-            "candidate_variants": {
-                "c1": {
-                    "single": "t16_gemv_decode_bf16_bf16_out",
-                    "pair": "t16_dual_gemv_decode_bf16_bf16_out",
-                    "triple": "t16_triple_gemv_decode_bf16_bf16_out",
-                },
-                "c2_c4": {
-                    "single": "t16_gemv_decode_rowtile4_bf16_bf16_out",
-                    "pair": "t16_dual_gemv_decode_rowtile4_bf16_bf16_out",
-                    "triple": "t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
-                },
-                "c8": {
-                    "single": "t16_gemv_decode_rowtile4_bf16_bf16_out",
-                    "pair": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
-                    "triple": "t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
-                },
-            },
+            "candidate_variants": candidate_variant_manifest(
+                include_router_candidate=bool(args.include_router_candidate)
+            ),
         },
         "protocol": {
             "prompt_suites": [str(path.resolve()) for path in args.prompts],
