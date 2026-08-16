@@ -361,6 +361,17 @@ bytes. This is retained development evidence, not a clean topline refresh.
 Evidence:
 [`c1 down-residual graph contraction`](results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
 
+The independently promoted scalar Q5T16 GDN dual-output handoff removes the
+standalone FP32-to-BF16 cast after all 48 recurrent layers. The post-contraction
+trace removes another **48 launches/token (870 -> 822)** and reduces the
+GDN-start to Q5-start operation span **1.36385 -> 1.20856 ms/token (-11.386%)**.
+Counterbalanced 512/128 graph AR improves **12.26142 -> 12.28212 tok/s
+(+0.169%)**, with both candidate processes above both controls, exact
+IDs/logits, unchanged **16.753218-GiB** tracked peaks, and no new bytes. The
+verifier-chain key remains excluded for the separate MTP gate. This is retained
+development evidence, not a clean topline refresh. Evidence:
+[`scalar GDN BF16 handoff`](results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
+
 At 4K, the gfx1151 package now selects a 24Q/4KV grouped-GQA BF16 split
 producer. A 15-pair rotating-K/V leaf is BF16-bit exact and improves
 **0.549226 -> 0.116819 ms (4.7015x, 15/15)**. Counterbalanced complete graph

@@ -307,6 +307,15 @@ backends retain the registered primitive chain; no payload, workspace, or
 tracked peak changes. Evidence:
 [`Qwen3.8 c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
 
+For scalar gfx1151 Q5T16 recurrent-output ownership, the registered
+`gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_lowp_f32_bf16_out`
+producer writes both the unchanged FP32 recurrent output/state and the exact RNE
+BF16 handoff consumed by `ssm_out`. It removes one standalone cast per recurrent
+layer without changing payload, scratch, or math. Registry misses and other
+quants retain ordinary GDN plus explicit cast; the verifier-chain sibling stays
+excluded pending its independent MTP gate. Evidence:
+[`Qwen3.8 scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
+
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
 `rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and

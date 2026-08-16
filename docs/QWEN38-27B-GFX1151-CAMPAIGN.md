@@ -169,6 +169,17 @@ shape/model/backend misses, and peer backends retain the primitive chain.
 Evidence:
 [`c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
 
+The next exact graph-gap contraction promotes the existing scalar Q5T16 GDN
+dual-output producer on gfx1151. It preserves every FP32 recurrent output/state
+bit while writing the exact RNE BF16 handoff consumed by `ssm_out`, eliminating
+the standalone cast after 48 recurrent layers. The 4K trace removes another
+**48 launches/token (870 -> 822)** and reduces GDN-start to Q5-start span
+**1.36385 -> 1.20856 ms/token (-11.386%)**. Counterbalanced 512/128 graph AR
+improves **12.26142 -> 12.28212 tok/s (+0.169%)**, with both candidate processes
+above both controls, exact IDs/logits, unchanged peaks, and no bytes. The
+verifier-chain alias remains excluded for P6. Evidence:
+[`scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
