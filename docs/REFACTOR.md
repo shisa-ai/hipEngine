@@ -155,14 +155,19 @@ should be removed or collapsed.
   1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
   fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
   production fallback chain.
-- P4's shared-weight prefill owner is limited to rows>=512 K17408/N5120. The
-  exact 24-KiB-LDS four-wave body improves the actual FFN-down leaf
-  1.421-1.502x and complete prefill 4.325-5.403%; the universal route is
-  rejected because narrow V misses its 1K leaf gate. There is no environment
-  selector, sidecar, or workspace. Keep one-wave prefill registered for short
-  rows, narrow V, root, peer backends, and all policy misses. If another shape
-  is admitted, replace the singleton backend shape set with a generic
-  quant/shape/min-row policy instead of adding another branch.
+- P4's exact 24-KiB-LDS/248-VGPR four-wave shared-weight prefill owners are
+  limited to rows>=512 standard K5120/N10240 QKV and planar K17408/N5120
+  FFN-down. The actual leaves improve 2.961-3.548x and 1.421-1.502x; complete
+  incremental prefill improves 9.935-10.611% and 4.325-5.403%, respectively.
+  The universal planar route remains rejected because narrow V misses its 1K
+  leaf gate. There is no environment selector, sidecar, or workspace. Keep the
+  16x16 standard and one-wave planar primitives registered for short rows,
+  narrow V, root, peer backends, and all policy misses.
+- Refactor trigger: after one release window, consolidate the two parallel
+  `GGUF_Q6_*_PREFILL_SHARED4_{MIN_ROWS,SHAPES}` selectors/wrappers into one
+  generic quant/shape/min-row policy if another Q6 shape or backend is admitted.
+  Do not move the shape branch into engine/model dispatch; keep both exact
+  primitive fallbacks permanently.
 - Removal trigger: delete the QKV slot exclusion only after a byte-neutral
   planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
   512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused

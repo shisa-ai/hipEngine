@@ -71,6 +71,9 @@ _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4_BF16_BF16 = (
 _Q6_T16_WMMA_PREFILL_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_wmma_prefill_bf16_bf16_out"
 )
+_Q6_T16_WMMA_PREFILL_SHARED4_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out"
+)
 _QK_K = 256
 _T16_COLS = 16
 
@@ -243,6 +246,34 @@ def gguf_q6_k_t16_wmma_prefill_bf16_bf16_out(
 
     _launch(
         _Q6_T16_WMMA_PREFILL_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch four-wave shared-weight standard Q6 WMMA prefill."""
+
+    _launch(
+        _Q6_T16_WMMA_PREFILL_SHARED4_BF16_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1254,6 +1285,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
     "gguf_q6_k_t16_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
+    "gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out",
     "plan_gguf_q6_k_t16_gemv_build",
     "register_gguf_q6_k_t16_gemv_kernels",
 ]

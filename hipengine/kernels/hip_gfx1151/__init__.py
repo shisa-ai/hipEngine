@@ -44,6 +44,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
@@ -66,6 +68,35 @@ def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
 
     kwargs["threads"] = 128
     return gguf_q4_k_pack8_dual_silu_bf16_bf16_out(*args, **kwargs)
+
+
+def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """Select shared-weight WMMA only for the admitted standard-Q6 QKV."""
+
+    fn = (
+        gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
+        if int(rows) >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
+        and (int(in_features), int(out_features))
+        in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_bf16_bf16_out
+    )
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
 
 
 def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
@@ -870,10 +901,14 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # gfx1151 (0/11 paired wins). Keep exactly one standard-T16 resident for those
 # 24 tensors while planar remains the sole owner for down, narrow V, and root.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
-# Qwen3.8-27B P4: four waves preserve the retained 48x64 planar-Q6 WMMA
-# sequence for independent row ranges while sharing one decoded 48x256 weight
-# slab. All 32 K17408/N5120 FFN-down owners improve 1.42-1.50x at 512/1K/4K;
-# rows below 512, narrow V, and the root retain the one-wave fallback.
+# Qwen3.8-27B P4: four waves preserve the exact standard-Q6 48x64 sequence
+# while sharing one decoded 48x256 slab. Both actual K5120/N10240 QKV weights
+# improve 2.96-3.55x at 512/1K/4K; short rows and shape misses retain 16x16.
+GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS = 512
+GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES = frozenset({(5_120, 10_240)})
+# The planar sibling uses the same shared schedule. All 32 K17408/N5120
+# FFN-down owners improve 1.42-1.50x; rows below 512, narrow V, and root retain
+# the one-wave fallback.
 GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 512
 GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = frozenset({(17_408, 5_120)})
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
@@ -1838,6 +1873,11 @@ _GFX1151_OVERRIDES = {
     ): gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
     (
         "linear",
+        "gguf_q6_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ): gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
+    (
+        "linear",
         "gguf_q6_k_t16_qmicro_planar_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -2001,6 +2041,8 @@ __all__ = [
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
