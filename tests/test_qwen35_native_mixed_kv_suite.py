@@ -13,6 +13,7 @@ from scripts.qwen35_native_mixed_kv_suite import (
     _engine_summary,
     _gguf_layout_audit,
     _parse_layer_indices,
+    _select_prompt_cases,
     _teacher_inputs,
 )
 
@@ -51,12 +52,15 @@ def test_parser_accepts_gfx1151_uniform_int8_candidate() -> None:
             "int8_per_token_head",
             "--kv-scale-dtype",
             "fp32",
+            "--prompt-id",
+            "mixed_v1",
         ]
     )
 
     assert args.backend == "hip_gfx1151"
     assert args.candidate_kv_storage == "int8_per_token_head"
     assert args.kv_scale_dtype == "fp32"
+    assert args.prompt_id == ["mixed_v1"]
 
 
 def test_parser_accepts_forced_long_uniform_int8_layout_audit() -> None:
@@ -82,6 +86,22 @@ def test_parser_accepts_forced_long_uniform_int8_layout_audit() -> None:
     assert args.require_no_bf16_mirror is True
     assert _parse_layer_indices(args.expected_bf16_full_layers) == [0, 1, 2, 3, 4, 5, 6, 7]
     assert _parse_layer_indices(args.expected_int8_full_layers) == [8, 9]
+
+
+def test_select_prompt_cases_requires_known_unique_ids() -> None:
+    cases = [_case("p0"), _case("mixed_v1")]
+
+    assert [case.prompt_id for case in _select_prompt_cases(cases, [])] == ["p0", "mixed_v1"]
+    assert [case.prompt_id for case in _select_prompt_cases(cases, ["mixed_v1"])] == [
+        "mixed_v1"
+    ]
+    for prompt_ids in (["missing"], ["p0", "p0"]):
+        try:
+            _select_prompt_cases(cases, prompt_ids)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"expected invalid prompt selection: {prompt_ids!r}")
 
 
 def test_parse_layer_indices_rejects_duplicates_and_descending_ranges() -> None:

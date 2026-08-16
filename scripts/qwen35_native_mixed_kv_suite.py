@@ -3,8 +3,9 @@
 """Native BF16-vs-compressed KV fidelity suite for GGUF and PARO.
 
 The harness runs the committed ten-prompt mtpbench category corpus plus the
-``mixed_v1`` control at one exact prompt/decode shape. Reference tokens are
-teacher-forced into the candidate so every compared logit row has an identical
+``mixed_v1`` control at one exact prompt/decode shape, or an explicitly named
+subset for a bounded long-context gate. Reference tokens are teacher-forced
+into the candidate so every compared logit row has an identical
 token history. Timings are diagnostic only; performance claims use the
 dedicated matched benchmark harnesses.
 """
@@ -513,6 +514,22 @@ def _engine_summary(
     }
 
 
+def _select_prompt_cases(
+    cases: Sequence[PromptCase],
+    prompt_ids: Sequence[str],
+) -> list[PromptCase]:
+    requested = [str(prompt_id) for prompt_id in prompt_ids]
+    if not requested:
+        return list(cases)
+    if len(requested) != len(set(requested)):
+        raise ValueError("--prompt-id values must be unique")
+    by_id = {case.prompt_id: case for case in cases}
+    unknown = [prompt_id for prompt_id in requested if prompt_id not in by_id]
+    if unknown:
+        raise ValueError(f"unknown --prompt-id values: {unknown!r}")
+    return [by_id[prompt_id] for prompt_id in requested]
+
+
 def _command(args: argparse.Namespace) -> str:
     command = (
         "python3 scripts/qwen35_native_mixed_kv_suite.py"
@@ -528,6 +545,8 @@ def _command(args: argparse.Namespace) -> str:
         f" --kl-threshold {args.kl_threshold}"
         f" --top1-threshold {args.top1_threshold}"
     )
+    for prompt_id in args.prompt_id:
+        command += f" --prompt-id {prompt_id}"
     if args.max_sequence_length:
         command += f" --max-sequence-length {args.max_sequence_length}"
     if args.require_no_bf16_mirror:
@@ -565,12 +584,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     compiler_version = _read_compiler_version(args.compiler_version_file)
     prompt_rows = load_prompt_rows(args.prompts)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(args.gguf_model))
-    cases = _build_prompt_cases(
-        tokenizer,
-        prompt_rows,
-        prompt_length=int(args.prompt_length),
-        include_mixed_v1=True,
-        heldout_ids=DEFAULT_HELDOUT_PROMPT_IDS,
+    cases = _select_prompt_cases(
+        _build_prompt_cases(
+            tokenizer,
+            prompt_rows,
+            prompt_length=int(args.prompt_length),
+            include_mixed_v1=True,
+            heldout_ids=DEFAULT_HELDOUT_PROMPT_IDS,
+        ),
+        args.prompt_id,
     )
     max_sequence_length = int(args.max_sequence_length or minimum_sequence_length)
     reference_policy = resolve_kv_policy("bf16")
@@ -686,6 +708,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "paro_model": str(args.paro_model),
         "prompts": str(args.prompts),
         "prompt_ids": [case.prompt_id for case in cases],
+        "prompt_selection": "explicit" if args.prompt_id else "complete_suite",
         "prompt_length": int(args.prompt_length),
         "decode_steps": int(args.decode_steps),
         "max_sequence_length": max_sequence_length,
@@ -698,7 +721,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "elapsed_seconds": time.perf_counter() - started,
         "notes": [
             "Candidate decode consumes BF16 reference tokens; every logit comparison has matched token history.",
-            "All ten committed natural prompts plus mixed_v1 must pass independently.",
+            (
+                "Every explicitly selected prompt must pass independently; this is a bounded subset gate."
+                if args.prompt_id
+                else "All ten committed natural prompts plus mixed_v1 must pass independently."
+            ),
             "Timings are diagnostic only and are not retained performance evidence.",
         ],
     }
@@ -716,6 +743,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--paro-model", type=Path, default=DEFAULT_PARO_MODEL)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--prompt-length", type=int, default=512)
+    parser.add_argument(
+        "--prompt-id",
+        action="append",
+        default=[],
+        help="Run only this exact prompt ID; repeat for a bounded subset.",
+    )
     parser.add_argument("--decode-steps", type=int, default=8)
     parser.add_argument(
         "--max-sequence-length",
