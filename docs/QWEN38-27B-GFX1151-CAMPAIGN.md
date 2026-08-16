@@ -285,6 +285,18 @@ complete gate. Transient code is removed and direct per-column loads remain.
 Evidence:
 [`Q4 pair-coefficient rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-paircoeff-rejected.json).
 
+Extending sole qmicro-Q4 ownership from dense gate/up to the 32 Q4 FFN-down
+weights is rejected despite saving another **44,564,480 bytes (42.5 MiB)**.
+Actual-weight c1 and rows2-4 residual leaves are BF16-bit exact and improve
+**1.0047-1.0124x**, and bounded shared-B/expanded-metadata WMMA makes the owner
+operation-complete. The matched 512/128 A/B/A request gate nevertheless places
+both candidate decode medians below the clean control: candidate mean
+**12.44219** versus **12.45720 tok/s (-0.1205%)**; prefill similarly changes
+**399.8383 -> 399.4079 tok/s (-0.1076%)**. Exact trajectories and lower bytes
+do not authorize a throughput regression, so the transient owner is removed.
+Evidence:
+[`qmicro Q4 FFN-down rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-down-rejected.json).
+
 This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
 used as the optimization denominator; it is not itself an optimization claim.
 
