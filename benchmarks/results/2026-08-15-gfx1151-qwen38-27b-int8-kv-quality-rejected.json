@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_int8_kv_quality_frontier",
+  "status": "correctness_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_gib": 96,
+    "rocm": "TheRock 0.1.0-dev build 10438",
+    "compiler": "AMD clang 23.0.0git",
+    "compiler_version_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987"
+  },
+  "software": {
+    "base_commit": "d4ddcecb1310dd3983b91d1f006082c580f221e4",
+    "backend": "hip_gfx1151",
+    "runtime_change_retained": false,
+    "rejected_runtime_patch_sha256": "20f22e88ef5523d14f41bdce32c1e5be0f03b3292318b815390a250c27e1f2e1"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "gguf_q4_k_m",
+    "attention_shape": {
+      "query_heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256,
+      "full_attention_layers": 16
+    }
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 11,
+    "positions_per_prompt": 9,
+    "teacher_forcing": "candidate receives BF16-reference token IDs and full logits are compared",
+    "quality_gate": {
+      "all_prompts_must_pass": true,
+      "mean_kl_max_per_prompt": 0.05,
+      "top1_agreement_min_per_prompt": 0.9,
+      "finite_logits_required": true
+    },
+    "shape_order": [
+      "512/8",
+      "1024/8",
+      "4096/16"
+    ],
+    "stop_rule": "Stop a representation after the first failed shape; do not run a later shape or reselect a frozen map from heldout/control results.",
+    "session_capacity_tokens": 32786,
+    "native_command_template": "python3 scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1151 --gguf-model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length {prompt_length} --decode-steps {decode_steps} --candidate-kv-storage {storage} --kv-scale-dtype {scale_dtype} --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 32786 --require-no-bf16-mirror --expected-bf16-full-layers {bf16_layers} --expected-int8-full-layers {int8_layers} --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt {cache_guard} --json {json_path}",
+    "native_invocations": [
+      {"prompt_length": 512, "decode_steps": 8, "storage": "int8_per_token_head", "scale_dtype": "fp32", "bf16_layers": "none", "int8_layers": "0-15", "cache_guard": "", "json_path": "/tmp/qwen38-task25-int8-kv/pure-512x8.json"},
+      {"prompt_length": 1024, "decode_steps": 8, "storage": "int8_per_token_head", "scale_dtype": "fp32", "bf16_layers": "none", "int8_layers": "0-15", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/pure-1024x8.json"},
+      {"prompt_length": 512, "decode_steps": 8, "storage": "tail4_hadamard_group32", "scale_dtype": "fp16", "bf16_layers": "0-11", "int8_layers": "12-15", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/tail4-512x8.json"},
+      {"prompt_length": 512, "decode_steps": 8, "storage": "all_hadamard_group32", "scale_dtype": "fp16", "bf16_layers": "none", "int8_layers": "0-15", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/all-hadamard-native-512x8.json"},
+      {"prompt_length": 1024, "decode_steps": 8, "storage": "all_hadamard_group32", "scale_dtype": "fp16", "bf16_layers": "none", "int8_layers": "0-15", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/all-hadamard-native-1024x8.json"},
+      {"prompt_length": 512, "decode_steps": 8, "storage": "qwen38_frozen_hadamard_group32", "scale_dtype": "fp16", "bf16_layers": "3,6,8,9,10,12,13,14,15", "int8_layers": "0,1,2,4,5,7,11", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/frozen-map-native-512x8.json"},
+      {"prompt_length": 1024, "decode_steps": 8, "storage": "qwen38_frozen_hadamard_group32", "scale_dtype": "fp16", "bf16_layers": "3,6,8,9,10,12,13,14,15", "int8_layers": "0,1,2,4,5,7,11", "cache_guard": "--require-cached-build", "json_path": "/tmp/qwen38-task25-int8-kv/frozen-map-native-1024x8.json"}
+    ],
+    "layout_guards": [
+      "exact BF16/INT8 full-attention partition",
+      "zero persistent BF16 mirror bytes",
+      "zero retained INT8 prefill-oracle buffers",
+      "cached native build after the first run"
+    ]
+  },
+  "bf16_reference_retained_kv_bytes": 2164260864,
+  "candidates": [
+    {
+      "name": "pure_per_token_head_int8_fp32_scale",
+      "fixed_layer_policy": {
+        "bf16_full_attention_ordinals": [],
+        "int8_full_attention_ordinals": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+      },
+      "retained_layout": {
+        "payload_bytes": 1082130432,
+        "scale_bytes": 16908288,
+        "total_bytes": 1099038720,
+        "reduction_vs_bf16_percent": 49.21875,
+        "bf16_mirror_bytes": 0,
+        "retained_prefill_oracle_buffers": 0
+      },
+      "native_results": [
+        {
+          "shape": "512/8",
+          "status": "passed",
+          "prompt_pass_count": 11,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.00011838830360015686,
+          "max_kl": 0.004924906619382897,
+          "minimum_prompt_top1_agreement": 1.0,
+          "reference_elapsed_seconds": 102.0128591679968,
+          "candidate_elapsed_seconds": 102.20150603700313
+        },
+        {
+          "shape": "1024/8",
+          "status": "rejected_correctness",
+          "prompt_pass_count": 9,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.041977959056962555,
+          "max_kl": 3.446476164561575,
+          "minimum_prompt_top1_agreement": 0.7777777777777778,
+          "failed_prompts": [
+            {
+              "id": "mixed_ja_en_review",
+              "mean_kl": 0.0001641635385819389,
+              "max_kl": 0.0009365624988192844,
+              "top1_agreement": 0.8888888888888888
+            },
+            {
+              "id": "mixed_v1",
+              "mean_kl": 0.46086208956368346,
+              "max_kl": 3.446476164561575,
+              "top1_agreement": 0.7777777777777778
+            }
+          ]
+        }
+      ],
+      "decision": "Reject after 1024/8; 4096/16 was not run."
+    },
+    {
+      "name": "fixed_tail_four_hadamard_group32_fp16_scale",
+      "fixed_layer_policy": {
+        "bf16_full_attention_ordinals": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "int8_full_attention_ordinals": [12, 13, 14, 15]
+      },
+      "retained_layout": {
+        "payload_bytes": 1893728256,
+        "scale_bytes": 16908288,
+        "total_bytes": 1910636544,
+        "reduction_vs_bf16_percent": 11.71875,
+        "bf16_mirror_bytes": 0,
+        "retained_prefill_oracle_buffers": 0
+      },
+      "native_results": [
+        {
+          "shape": "512/8",
+          "status": "rejected_correctness",
+          "prompt_pass_count": 10,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.000016942743225694118,
+          "max_kl": 0.00016343258461104773,
+          "minimum_prompt_top1_agreement": 0.8888888888888888,
+          "failed_prompts": [
+            {
+              "id": "general_en_explain",
+              "mean_kl": 0.00002138859827598882,
+              "max_kl": 0.00010785531659611443,
+              "top1_agreement": 0.8888888888888888
+            }
+          ]
+        }
+      ],
+      "decision": "Reject after 512/8; later shapes were not run."
+    },
+    {
+      "name": "all_layer_hadamard_group32_fp16_scale",
+      "fixed_layer_policy": {
+        "bf16_full_attention_ordinals": [],
+        "int8_full_attention_ordinals": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+      },
+      "retained_layout": {
+        "payload_bytes": 1082130432,
+        "scale_bytes": 67633152,
+        "total_bytes": 1149763584,
+        "reduction_vs_bf16_percent": 46.875,
+        "bf16_mirror_bytes": 0,
+        "retained_prefill_oracle_buffers": 0
+      },
+      "host_screen_512_8": {
+        "status": "passed",
+        "prompt_pass_count": 11,
+        "prompt_count": 11,
+        "positions": 99,
+        "mean_kl": 0.000055190844201666084,
+        "max_kl": 0.0009971605971422918,
+        "minimum_prompt_top1_agreement": 1.0
+      },
+      "native_results": [
+        {
+          "shape": "512/8",
+          "status": "passed",
+          "prompt_pass_count": 11,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.000078966995411143,
+          "max_kl": 0.0013306959879248528,
+          "minimum_prompt_top1_agreement": 1.0
+        },
+        {
+          "shape": "1024/8",
+          "status": "rejected_correctness",
+          "prompt_pass_count": 9,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.03287039576092344,
+          "max_kl": 2.6673346311778556,
+          "minimum_prompt_top1_agreement": 0.8888888888888888,
+          "failed_prompt_ids": [
+            "mixed_ja_en_review",
+            "mixed_v1"
+          ]
+        }
+      ],
+      "decision": "Reject after native 1024/8; 4096/16 was not run and the temporary runtime surface was removed."
+    },
+    {
+      "name": "train_frozen_mixed_hadamard_group32_fp16_scale",
+      "selection": {
+        "scope": "six declared train prompts only",
+        "heldout_or_control_prompts_used": [],
+        "bf16_full_attention_ordinals": [3, 6, 8, 9, 10, 12, 13, 14, 15],
+        "int8_full_attention_ordinals": [0, 1, 2, 4, 5, 7, 11],
+        "projected_retained_reduction_vs_bf16_percent": 20.5078125,
+        "selection_json_sha256": "616df51f00c13dba3f74277fefe60c19fbc67d255fbd6f5531bfa5481674f80e",
+        "selector_script_sha256": "d7a23345b82a2a9767298d4d853224c4e6806f553ccb4396728394289fde2ead"
+      },
+      "retained_layout": {
+        "payload_bytes": 1690828800,
+        "scale_bytes": 29589504,
+        "total_bytes": 1720418304,
+        "reduction_vs_bf16_percent": 20.5078125,
+        "bf16_mirror_bytes": 0,
+        "retained_prefill_oracle_buffers": 0
+      },
+      "one_allowed_host_transfer_1024_8": {
+        "status": "passed",
+        "prompt_pass_count": 11,
+        "prompt_count": 11,
+        "positions": 99,
+        "mean_kl": 0.00009304855091422346,
+        "max_kl": 0.002002495580408522,
+        "minimum_prompt_top1_agreement": 1.0,
+        "heldout_mean_kl": 0.00002908766436959393,
+        "heldout_max_kl": 0.00028937842334981166,
+        "mixed_v1_mean_kl": 0.0005741979666470858,
+        "evaluation_script_sha256": "e409d6db8599746f7c164e30c2fcb9bd65055267abd4ffdbb6847ef3641a8758"
+      },
+      "native_results": [
+        {
+          "shape": "512/8",
+          "status": "passed",
+          "prompt_pass_count": 11,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.00011317840241092134,
+          "max_kl": 0.004659172892615119,
+          "minimum_prompt_top1_agreement": 1.0,
+          "reference_elapsed_seconds": 102.59287949599093,
+          "candidate_elapsed_seconds": 102.54046045198629
+        },
+        {
+          "shape": "1024/8",
+          "status": "rejected_correctness",
+          "prompt_pass_count": 10,
+          "prompt_count": 11,
+          "positions": 99,
+          "mean_kl": 0.05338406816268778,
+          "max_kl": 5.173311948856668,
+          "minimum_prompt_top1_agreement": 1.0,
+          "reference_elapsed_seconds": 196.95188293300453,
+          "candidate_elapsed_seconds": 196.91508955400786,
+          "failed_prompts": [
+            {
+              "id": "mixed_v1",
+              "mean_kl": 0.5868602507760203,
+              "max_kl": 5.173311948856668,
+              "top1_agreement": 1.0
+            }
+          ]
+        }
+      ],
+      "decision": "Reject the immutable map after native 1024/8. Do not reselect from mixed_v1, do not run 4096/16, and remove the model-specific runtime policy."
+    }
+  ],
+  "evidence": {
+    "raw_results": [
+      {"path": "/tmp/qwen38-task25-int8-kv/pure-512x8.json", "sha256": "5b60af5f850e690e42100797c3b5125d682b5c0d877ca7a71380a66d13e57866", "bytes": 26402},
+      {"path": "/tmp/qwen38-task25-int8-kv/pure-1024x8.json", "sha256": "4754b135afc68e1e1907a807c67aa4904a437e03a55a30202ff84ca6a30bb961", "bytes": 26618},
+      {"path": "/tmp/qwen38-task25-int8-kv/tail4-512x8.json", "sha256": "f59ce227505fd13c44333b8f76056dedd9260c46b4e0e959f9a6431fc327dc79", "bytes": 26602},
+      {"path": "/tmp/qwen38-task25-int8-kv/all-hadamard-host-512x8.json", "sha256": "946fda4b1d7d353e6ee57c557a815dabf71471ff851798184879652cccc012c0", "bytes": 90732},
+      {"path": "/tmp/qwen38-task25-int8-kv/all-hadamard-native-512x8.json", "sha256": "a9fa258b1840fb6631a5668fbff80440c573d1caf25f369b4b173f2c88664161", "bytes": 26506},
+      {"path": "/tmp/qwen38-task25-int8-kv/all-hadamard-native-1024x8.json", "sha256": "b34f64694f645d42205011f144b8ef5207bc7b90458c101b1203f3564ed5a527", "bytes": 26683},
+      {"path": "/tmp/qwen38-task25-int8-kv/train-layer-map-1024x8.json", "sha256": "616df51f00c13dba3f74277fefe60c19fbc67d255fbd6f5531bfa5481674f80e", "bytes": 86995},
+      {"path": "/tmp/qwen38-task25-int8-kv/frozen-map-host-1024x8.json", "sha256": "319e9f34f83030416b79f0a531c58d444ee0acb9d883085bc97d173196e15436", "bytes": 12520},
+      {"path": "/tmp/qwen38-task25-int8-kv/frozen-map-native-512x8.json", "sha256": "5a75e8c0a9117a1a789a4963e39104c3842cdbb5a7e0f16850d94c97ae8bf432", "bytes": 26805},
+      {"path": "/tmp/qwen38-task25-int8-kv/frozen-map-native-1024x8.json", "sha256": "8413e69e3818037dd26bdbcfd4f163ef52e6178780a58337307b887c856d58ef", "bytes": 26895}
+    ],
+    "gfx1151_cached_kernel_trace": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt rocprofv3 --kernel-trace --output-directory /tmp/qwen38-task25-int8-kv/gfx1151-int8-splitk-trace --output-file qwen38-int8-splitk --output-format csv -- python3 -m pytest -q 'tests/test_qwen35_paged_attn_decode_plan.py::test_int8_gqa_splitk_matches_cpu_with_reversed_pages[qwen36-dense-27b-24q-4kv]'",
+      "test_passed": true,
+      "agent": {
+        "name": "gfx1151",
+        "product": "AMD Radeon 8060S Graphics",
+        "cu_count": 40,
+        "wavefront_size": 32
+      },
+      "producer_symbol": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<_Float16, 6l, 24l, 4l>",
+      "producer_duration_ns": 227783,
+      "producer_workgroup": [256, 1, 1],
+      "producer_grid": [1024, 3, 1],
+      "producer_lds_bytes": 0,
+      "producer_scratch_bytes": 0,
+      "producer_vgpr_count": 64,
+      "producer_sgpr_count": 128,
+      "reducer_symbol": "qwen35_paged_full_attn_decode_split_k_reduce_kernel",
+      "reducer_duration_ns": 9337,
+      "kernel_trace_path": "/tmp/qwen38-task25-int8-kv/gfx1151-int8-splitk-trace/qwen38-int8-splitk_kernel_trace.csv",
+      "kernel_trace_sha256": "41fc80bde871a18af004ccb133671ab39c22173a48d72558f2185d55dbff8e3a",
+      "agent_info_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    }
+  },
+  "validation": {
+    "native_runs_used_expected_layout": true,
+    "all_native_runs_had_zero_bf16_mirror_bytes": true,
+    "all_native_runs_had_zero_retained_prefill_oracle_buffers": true,
+    "gfx1151_native_int8_splitk_trace_passed": true,
+    "all_4k_quality_runs_skipped_by_stop_rule": true,
+    "graph_mtp_capacity_and_long_context_gates_run": false,
+    "reason_later_gates_not_run": "No representation passed the required 512 -> 1024 quality transfer.",
+    "candidate_runtime_surface_removed": true
+  },
+  "decision": "Close Qwen3.8-27B gfx1151 native INT8 K/V below K4. Pure per-head INT8, fixed tail-four Hadamard, all-layer Hadamard, and the one immutable train-selected mixed map each fail a required native quality shape. BF16 K/V remains the only supported campaign route; revisit only with a materially new input-independent representation signal."
+}

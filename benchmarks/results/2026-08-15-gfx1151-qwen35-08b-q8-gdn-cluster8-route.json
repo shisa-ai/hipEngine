@@ -7,22 +7,22 @@
     "gpu": "AMD Radeon 8060S Graphics",
     "arch": "gfx1151"
   },
-  "source_commit": "f3d08448b",
+  "source_commit": "1dd951ab3",
   "mechanism": "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE gains (\"MOSTLY_Q8_0\",16,16,128,128) -> chain_peer_cluster8; rollback HIPENGINE_GGUF_GDN_PREFILL_MODE=chain_lds32_direct_nonvolatile",
   "kernel_screen": {
     "recurrent_per_layer_ms_512tok": {
-      "wave32_xor": 0.000953638579968607,
-      "cluster8": 0.0005106235180175666
+      "wave32_xor": 0.953638579968607,
+      "cluster8": 0.5106235180175666
     },
     "stage_composition_per_call_ms": {
-      "prepare_256": 5.4e-05,
-      "recurrent_seg_256": 0.000193,
-      "gate_256": 3.1e-05,
-      "recurrent_512": 0.000736,
-      "stage_chunked_2x256": 0.000836,
-      "stage_single_512": 0.001145
+      "prepare_256": 0.054,
+      "recurrent_seg_256": 0.193,
+      "gate_256": 0.031,
+      "recurrent_512": 0.736,
+      "stage_chunked_2x256": 0.836,
+      "stage_single_512": 1.145
     },
-    "note": "isolated production composition (prepare+segments-recurrent+gate, 2x256 chunks) is 0.836 ms/layer; the exact lds32 route launches 64 one-wave blocks, cluster8 512 waves, wave32_xor 2048 waves"
+    "note": "isolated production composition (prepare+segments-recurrent+gate, 2x256 chunks) is 0.836 ms/layer; the exact lds32 route launches 64 one-wave blocks, cluster8 512 waves, wave32_xor 2048 waves. The original artifact accidentally stored seconds under *_ms labels; values here are corrected to milliseconds."
   },
   "binding_ab": {
     "protocol": "5 counter-rotated env-pair exact-core blocks Q8_0",

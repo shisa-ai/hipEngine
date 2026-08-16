@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_q8x2_interleaved",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "software": {
+    "base_commit": "e5a7d77e57d7c0e6ed4cedd46fee1f322272692f",
+    "development_tree_dirty": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "candidate": {
+    "scope": "rows1 H5120/N17408 dense gate/up+SiLU",
+    "control": "retained plane-major primary+residual Q8_1x2 producer and exact split-weight dp4a consumer",
+    "dataflow": "byte-neutral per-K32 block with four primary plus four residual activation bytes in one aligned 64-bit record",
+    "resident_layout": "gguf_q4_k_t16_v1",
+    "workspace_bytes_per_k32_control": 72,
+    "workspace_bytes_per_k32_candidate": 72,
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "burst": 4,
+    "cache_contract": "each actual gate/up source pair exceeds 64 MiB and 2x 32-MiB MALL",
+    "candidate": "byte-neutral K4-interleaved Q8_1x2 producer/consumer",
+    "candidate_threads": 128,
+    "control": "retained split-weight Q8_1x2 plane-major producer/consumer",
+    "control_threads": 128,
+    "layers": [
+      0,
+      8,
+      63
+    ],
+    "samples": 15,
+    "timing": "counterbalanced HIP-event elapsed time",
+    "warmups": 4
+  },
+  "results": [
+    {
+      "bf16_max_ulp": 0,
+      "bf16_mismatches": 0,
+      "candidate_delta_percent": -0.036271512569274744,
+      "candidate_over_control": 0.9996372848743073,
+      "candidate_sha256": "e2aeb62c85e08e53580b30678e3415dbc06f1ebfbbffa4e62bf785ceeb873273",
+      "candidate_speedup": 1.0003628467356922,
+      "candidate_wins": 8,
+      "control_sha256": "e2aeb62c85e08e53580b30678e3415dbc06f1ebfbbffa4e62bf785ceeb873273",
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "layer": 0,
+      "max_abs_vs_control": 0.0,
+      "median_ms": {
+        "candidate_interleaved": 0.47334250807762146,
+        "control_retained": 0.47351425886154175
+      },
+      "pair_count": 15,
+      "resident_t16_bytes": 103055360,
+      "samples_ms": {
+        "candidate_interleaved": [
+          0.4803765118122101,
+          0.4731430113315582,
+          0.47334250807762146,
+          0.4729920029640198,
+          0.48509448766708374,
+          0.4860070049762726,
+          0.47654950618743896,
+          0.4883815050125122,
+          0.4782627522945404,
+          0.483722984790802,
+          0.47151026129722595,
+          0.4708789885044098,
+          0.47115975618362427,
+          0.46833449602127075,
+          0.46798500418663025
+        ],
+        "control_retained": [
+          0.4717000126838684,
+          0.47307300567626953,
+          0.4735429883003235,
+          0.478412002325058,
+          0.4823395013809204,
+          0.48798075318336487,
+          0.481759250164032,
+          0.4753672480583191,
+          0.47845301032066345,
+          0.4686650037765503,
+          0.47050848603248596,
+          0.46981725096702576,
+          0.47292301058769226,
+          0.47351425886154175,
+          0.47092023491859436
+        ]
+      },
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "top1_matches_control": true
+    },
+    {
+      "bf16_max_ulp": 0,
+      "bf16_mismatches": 0,
+      "candidate_delta_percent": -0.20916391303541504,
+      "candidate_over_control": 0.9979083608696458,
+      "candidate_sha256": "5fe0c86fe2e370aec729c5e98a770e2cfa0940071f7fd99ba6b65d30e2bd38b2",
+      "candidate_speedup": 1.0020960232546117,
+      "candidate_wins": 9,
+      "control_sha256": "5fe0c86fe2e370aec729c5e98a770e2cfa0940071f7fd99ba6b65d30e2bd38b2",
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "layer": 8,
+      "max_abs_vs_control": 0.0,
+      "median_ms": {
+        "candidate_interleaved": 0.4732772409915924,
+        "control_retained": 0.47426924109458923
+      },
+      "pair_count": 15,
+      "resident_t16_bytes": 103055360,
+      "samples_ms": {
+        "candidate_interleaved": [
+          0.4738987386226654,
+          0.4732772409915924,
+          0.47336751222610474,
+          0.4730469882488251,
+          0.4728964865207672,
+          0.47506076097488403,
+          0.46918976306915283,
+          0.47181475162506104,
+          0.4724057614803314,
+          0.4753212630748749,
+          0.4741792380809784,
+          0.4752109944820404,
+          0.4729065001010895,
+          0.47074276208877563,
+          0.4802607595920563
+        ],
+        "control_retained": [
+          0.4771747589111328,
+          0.4717544913291931,
+          0.47195500135421753,
+          0.47301700711250305,
+          0.474590003490448,
+          0.47426924109458923,
+          0.47339776158332825,
+          0.47464001178741455,
+          0.47411900758743286,
+          0.47605249285697937,
+          0.4753212630748749,
+          0.4744897484779358,
+          0.4734475016593933,
+          0.4746902585029602,
+          0.4718347489833832
+        ]
+      },
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "top1_matches_control": true
+    },
+    {
+      "bf16_max_ulp": 0,
+      "bf16_mismatches": 0,
+      "candidate_delta_percent": -0.28447835909427566,
+      "candidate_over_control": 0.9971552164090572,
+      "candidate_sha256": "d876e61f3300586e680ea4a9c2d99b5cd69502901c5ae652564fd2a77d8f964a",
+      "candidate_speedup": 1.002852899472549,
+      "candidate_wins": 7,
+      "control_sha256": "d876e61f3300586e680ea4a9c2d99b5cd69502901c5ae652564fd2a77d8f964a",
+      "finite": true,
+      "kl_vs_control": 0.0,
+      "layer": 63,
+      "max_abs_vs_control": 0.0,
+      "median_ms": {
+        "candidate_interleaved": 0.4741692543029785,
+        "control_retained": 0.4755220115184784
+      },
+      "pair_count": 15,
+      "resident_t16_bytes": 103055360,
+      "samples_ms": {
+        "candidate_interleaved": [
+          0.4872240126132965,
+          0.4833165109157562,
+          0.47692474722862244,
+          0.4725262522697449,
+          0.47578251361846924,
+          0.47326773405075073,
+          0.4698914885520935,
+          0.4704422354698181,
+          0.4741694927215576,
+          0.47218576073646545,
+          0.4741692543029785,
+          0.4780467450618744,
+          0.47575223445892334,
+          0.4739390015602112,
+          0.4702320098876953
+        ],
+        "control_retained": [
+          0.47777625918388367,
+          0.48058149218559265,
+          0.47630348801612854,
+          0.4756322503089905,
+          0.47156450152397156,
+          0.4699614942073822,
+          0.4752815067768097,
+          0.47544175386428833,
+          0.47664400935173035,
+          0.4755220115184784,
+          0.4732477366924286,
+          0.4757322371006012,
+          0.47540175914764404,
+          0.4741795063018799,
+          0.4805715084075928
+        ]
+      },
+      "shape": [
+        17408,
+        5120
+      ],
+      "source_pool_bytes": 100270080,
+      "source_pool_mib": 95.625,
+      "top1_matches_control": true
+    }
+  ],
+  "family": {
+    "all_layers_positive": true,
+    "candidate_delta_percent": -0.17680730399264322,
+    "candidate_ms": 1.4207890033721924,
+    "candidate_over_control": 0.9982319269600736,
+    "candidate_speedup": 1.0017712046591325,
+    "control_ms": 1.4233055114746094
+  },
+  "projection": {
+    "advance_threshold_percent": 1.0,
+    "projected_request_saving": 0.0006853340771550781,
+    "projected_request_saving_percent": 0.06853340771550781,
+    "projected_saved_ms": 7.122132370628215,
+    "selected_gate_up_plus_silu_ms": 4028.189,
+    "selected_graph_wall_ms": 10392.205215,
+    "source": "recovered post-Q5 production graph trace 1238459"
+  },
+  "correctness": {
+    "all_bf16_exact": true,
+    "all_finite": true,
+    "all_kl_le_0_05": true,
+    "top1_agreement": 1.0
+  },
+  "memory": {
+    "teardown_exact": true,
+    "tracked_current_after_bytes": 0,
+    "tracked_current_before_bytes": 0
+  },
+  "validation": {
+    "red": "focused test collection failed because the interleaved producer wrapper did not exist",
+    "green": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_t16_q4_dense_dual_q8_1x2_interleaved_is_bit_exact => 1 passed",
+    "all_actual_layers_positive": true,
+    "candidate_wins": "24/45",
+    "bf16_bit_exact": true,
+    "source_restored_after_rejection": true,
+    "full_model_gate_run": false
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-q8x2-interleaved-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task21-prefill-publication-a06589f34/hipcc-version-gfx1151.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-q8x2-interleaved-leaf/leaf.json",
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q4-q8x2-interleaved-leaf/leaf.json",
+      "bytes": 8278,
+      "sha256": "033ad411d192b1fef7eda98292ff45e1f4a421fb319ac34954d4ca5eb3069a9e"
+    }
+  },
+  "decision": "Reject and remove the byte-neutral interleaved Q8_1x2 dataflow. It is BF16-bit exact and all three layer medians are positive, but the 1.00177x family speedup wins only 24/45 pairs and projects just 7.122 ms / 0.0685% selected graph wall, 14.6x below the 1% advancement gate."
+}

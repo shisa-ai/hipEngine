@@ -41,6 +41,28 @@ should be removed or collapsed.
   memory-positive, non-regressive, and no supported caller needs it. Remove or
   demote the serial path after the native batch route passes; retain a separately
   registered numerical fallback as required by `AGENTS.md`.
+## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
+
+- Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta
+  promotion. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores the two
+  singleton registered Q8T16 WMMA projections. Shape/backend/registry misses
+  also fail closed to those primitives; no resident or scratch allocation
+  depends on the pair owner.
+- Removal trigger: after one release window with Q4/Q8 p512, decode, cumulative
+  semantic, and lifecycle gates stable, remove the selector/cache dimension.
+  Keep the singleton kernels as required numerical and peer-backend fallbacks.
+
+## gfx1151 dense-BF16 WMMA residual rollback seam
+
+- Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.
+  `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` preserves the already-retained WMMA
+  projection plus standalone `gguf_bf16_add` chain for paired bisection. Registry
+  and shape misses also fail closed to that primitive chain; no resident or
+  scratch bytes depend on the fused owner.
+- Removal trigger: after one release window with Q4/Q8 p512, eager/graph decode,
+  cumulative semantic, and lifecycle gates stable, remove the environment
+  selector and dead default-off branch. Keep the registered primitive chain as
+  the required numerical and peer-backend fallback.
 
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
@@ -114,6 +136,100 @@ should be removed or collapsed.
   to quant-neutral T16-F16 terminology and remove the Q6-named compatibility
   aliases if no external caller depends on them. Keep registry-key misses and
   exact T16 kernels as required numerical/peer-backend fallbacks.
+
+## gfx1151 Qwen3.8 Q5 source-F16 rollback and workspace seam
+
+- Added 2026-08-15 for the 48 sole-Q5T16 K6,144/N5,120 recurrent outputs.
+  Keep exact Q5T16 WMMA registered and selectable through one release window;
+  source-F16 changes arithmetic even though the octet producer is byte-exact,
+  the CPU quality gate passes, and every retained natural token/acceptance
+  trajectory is identical.
+- The source-F16 context adds bounded activation/tile/output scratch, raising
+  tracked peak 24.375 MiB at 512 and 65 MiB at 1K/4K. P8 must re-run owner-slot
+  liveness and attempt safe dead-input/in-place or arena reuse. Remove any
+  redundant standalone field after a proven alias, but do not trade the sole
+  Q5T16 payload for persistent F16 weights.
+- Q4/Q6 source-F16 maps are explicit empty denials after complete pp512 losses.
+  Remove those declarations only when package capability defaults are made
+  fail-closed per quant; do not interpret absence as inheriting gfx1100 policy.
+
+## gfx1151 Qwen3.8 compact-peer GDN rollback seam
+
+- Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route
+  right-sizes normalized Q/K to K-head cardinality and is bit-identical to the
+  peer-wave oracle, but differs slightly from scalar-exact direct LDS32
+  (maximum BF16 output 0.001953125, FP32 state 2.24e-8). Keep
+  `chain_lds32_direct_nonvolatile` as the explicit exact selector through one
+  release window and retain both primitive chains permanently as numerical
+  fallbacks.
+- The gfx1151 1,024-row recurrence cap is evidence, not a universal tuning
+  constant: unchunked compact wins at 512/1K but loses 8.26% at 4K; state-carry
+  chunking restores a 1.422x complete-chain win. Revisit 1K only during P4's
+  full 128/256/512/1K chunk sweep, with peer-bit/state exactness, scalar-oracle
+  bounds, 512/1K/4K full-engine gates, and the natural category suite. Do not
+  remove or widen the cap from a single-prompt timing.
+
+## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
+
+- Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by
+  22.11-23.65% and removed 49,479,680 bytes, but regressed complete AR by
+  0.14-0.19%. Actual-weight counterbalancing localized K=5,120/N=10,240 QKV c1
+  at +8.72% wall with 0/11 planar wins. The backend capability therefore keeps
+  one standard-T16 owner for those 24 tensors while down, narrow V, and root
+  remain sole planar. There is no duplicate payload or environment selector.
+- The exact planar down+residual alias is separately excluded on gfx1151. Its
+  same-planar projection plus primitive BF16 add fallback is 1.1735x/1.1144x/
+  1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
+  fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
+  production fallback chain.
+- P4's exact 24-KiB-LDS/248-VGPR four-wave shared-weight prefill owners are
+  limited to rows>=512 standard K5120/N10240 QKV and planar K17408/N5120
+  FFN-down. The actual leaves improve 2.961-3.548x and 1.421-1.502x; complete
+  incremental prefill improves 9.935-10.611% and 4.325-5.403%, respectively.
+  The universal planar route remains rejected because narrow V misses its 1K
+  leaf gate. There is no environment selector, sidecar, or workspace. Keep the
+  16x16 standard and one-wave planar primitives registered for short rows,
+  narrow V, root, peer backends, and all policy misses.
+- Refactor trigger: after one release window, consolidate the two parallel
+  `GGUF_Q6_*_PREFILL_SHARED4_{MIN_ROWS,SHAPES}` selectors/wrappers into one
+  generic quant/shape/min-row policy if another Q6 shape or backend is admitted.
+  Do not move the shape branch into engine/model dispatch; keep both exact
+  primitive fallbacks permanently.
+- Removal trigger: delete the QKV slot exclusion only after a byte-neutral
+  planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
+  512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused
+  residual alias only after it beats the unfused same-planar chain at every
+  rows2-4 shape and remains non-regressive in the full category suite. Keep
+  standard T16 and projection+add registered as required numerical fallbacks.
+
+## gfx1151 dense-27B grouped-GQA split-attention rollback seam
+
+- Added 2026-08-16 for dense H5120/L64/24Q/4KV/D256 BF16 decode from context
+  4096. `HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0` restores the generic
+  query-head split producer plus the same gated reducer. The package capability
+  is geometry/context scoped; shorter contexts, peer backends, and policy misses
+  retain the generic producer without extra resident or workspace bytes.
+- Removal trigger: after one release window with exact 4K model, long-context,
+  lifecycle, and peer-backend gates stable, remove the environment rollback for
+  package-qualified grouped producers. Keep the generic producer/reducer chain
+  permanently as the required numerical and unsupported-shape fallback.
+
+## Dense-H5120 B4 exact eager-MTP seam
+
+- Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step
+  NextN chain without claiming unproven graph ownership. The first root+four
+  native-row fallback failed scalar-AR exactness on two Japanese prompts and is
+  superseded. B4 is opt-in and now uses eager proposal plus serial-exact target
+  rows; only tail cycles whose effective budget falls to B1-B3 use native
+  graphs. The retained device graph ladder remains B1-B3 / rows 2-4. The clean
+  full suite is exact but rejects B4 for performance: Qwen3.6 B3/B4 is
+  **22.207/5.095 tok/s**, and Qwen3.8 is **19.808/4.586 tok/s**. B3 remains
+  default; exact B4 is diagnostic-only.
+- Removal trigger: admit B4 to both proposal and target device graphs only after
+  rows=5 target state/KV/hidden commits pass reject/partial/full, category,
+  heldout, long-context, GPU/CPU acceptance, and teardown gates. Promote B4 by
+  model policy only if that same suite is non-regressive versus B3; otherwise
+  retain exact eager B4 as an explicit diagnostic and do not widen the default.
 
 ## Dense Qwen3.6 bulk-prefill MTP native-verifier gap
 
@@ -3570,8 +3686,21 @@ should be boring.
   bulk-prefill pack8 route back to the exact tile8x8 leaf without touching
   Laguna's `wmma_pack8` mode. Added with the D08-X parity campaign route
   (2026-08-15): pack8 WMMA measures 1.97x/2.33x tile8x8 on the Qwen3.5-0.8B
-  dense-FFN pp512 shapes. Remove the env branch once the parity campaign closes
-  and no A/B bisection still needs the tile8x8 control.
+  dense-FFN pp512 shapes. The backend default now fails closed outside the five
+  p512 pack8 shapes exercised by the complete-model campaign A/B. Remove the
+  env branch once the parity campaign closes and no A/B bisection still needs
+  the tile8x8 control; expand the shape policy only with matched evidence.
+
+## gfx1151 Q4 operation-complete pack8 prefill rollback env
+
+- `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0` (default `1`) rolls the
+  exact Qwen3.5-0.8B Q4_K_M p512 dense gate/up owner back to two registered
+  singleton pack8 WMMAs plus standalone BF16 SiLU. Added with D08-X3
+  (2026-08-15): the fused leaf is byte-exact and 2.089x faster; five paired
+  complete-model blocks improve core/public prefill 13.81%/13.85% with neutral
+  decode and Q8 guards. Remove the env branch after one non-regressive release
+  window when no A/B bisection needs it. Do not broaden the model/quant/rows/
+  K/N policy without separate complete-model evidence.
 
 ## gfx1151 pack8 wmma64 diagnostic kernel
 
@@ -3596,5 +3725,7 @@ should be boring.
 
 - `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16
   bulk prefill back to the naive 32x8 scalar tile (D08-X2-K5, 2026-08-15).
-  Remove the env branch when the parity campaign closes and no A/B still
-  needs the naive control.
+  The backend default is limited to the two Qwen3.5-0.8B p512 shapes exercised
+  by the complete-model campaign A/B; other shapes fail closed. Remove the env
+  branch when the parity campaign closes and no A/B still needs the naive
+  control; expand the shape policy only with matched evidence.

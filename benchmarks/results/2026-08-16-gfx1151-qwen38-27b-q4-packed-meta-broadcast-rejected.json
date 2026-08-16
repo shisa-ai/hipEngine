@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_packed_meta_broadcast",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "base_commit": "7e0625ddc5b12d781867a4be0759867ff5386cb6",
+    "development_worktree_dirty": true,
+    "require_cached_build": true,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "candidate": {
+    "control": "retained 128-thread standard-Q4T16 residual-Q8_1x2 split-weight dp4a+SiLU",
+    "path": "same-payload packed scale/min quartet publication within each eight-lane K32 group",
+    "hypothesis": "replace 32 per-lane scale/min byte loads per K256 tile with eight uint32 loads and eight wave32 broadcasts",
+    "preserved_boundary": "same resident bytes, d/dmin loads, quant values, activation reads, per-thread dot/FMA order, two-wave reduction per weight, BF16 round trip, and SiLU store",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "layers": [0, 8, 63],
+    "shape_out_in": [17408, 5120],
+    "source_bytes_per_gate_up_pair": 100270080,
+    "resident_bytes_per_gate_up_pair": 103055360,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP-event pairs including the common Q8_1x2 producer",
+    "cache_contract": "each 95.625-MiB actual gate/up source pair exceeds 64 MiB and 2x the 32-MiB MALL"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "control_ms": 0.4799639880657196,
+      "candidate_ms": 0.4794062376022339,
+      "candidate_speedup": 1.0011634192877326,
+      "candidate_delta_percent": -0.11620673162031636,
+      "candidate_wins": "6/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 8,
+      "control_ms": 0.4775157570838928,
+      "candidate_ms": 0.48048150539398193,
+      "candidate_speedup": 0.9938275494960888,
+      "candidate_delta_percent": 0.6210786274782665,
+      "candidate_wins": "2/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 63,
+      "control_ms": 0.477145254611969,
+      "candidate_ms": 0.47584250569343567,
+      "candidate_speedup": 1.0027377733240432,
+      "candidate_delta_percent": -0.27302983859553986,
+      "candidate_wins": "11/15",
+      "bf16_mismatches": 0
+    }
+  ],
+  "family": {
+    "control_ms": 1.4346249997615814,
+    "candidate_ms": 1.4357302486896515,
+    "candidate_speedup": 0.999230183435169,
+    "candidate_delta_percent": 0.0770409638932712,
+    "candidate_wins": "19/45",
+    "all_layers_positive": false,
+    "projected_saved_ms_over_decode16": -0.3800620893658053,
+    "projected_selected_kernel_wall_percent": -0.029405214463779392,
+    "projection_source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-grouped-decode-profile.json"
+  },
+  "correctness": {
+    "red_collection_failed_before_wrapper_existed": true,
+    "green_synthetic_bit_exact": true,
+    "all_actual_bf16_exact": true,
+    "all_finite": true,
+    "max_abs": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "commands": {
+    "red_green": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 -m pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_t16_q4_dense_dual_q8_1x2_split_weight_meta4_is_bit_exact",
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q4-packed-meta-broadcast/hipcc-version.txt PYTHONPATH=. python3 /tmp/qwen38-task22-q4-packed-meta-broadcast.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-q4-packed-meta-broadcast/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-packed-meta-broadcast/leaf.json"
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q4-packed-meta-broadcast/leaf.json",
+      "sha256": "750d56b82c485482ddb254f593c5e3224caf4de8da426fa0a4b31cbedc754f2e",
+      "bytes": 8189
+    },
+    "leaf_runner": {
+      "path": "/tmp/qwen38-task22-q4-packed-meta-broadcast.py",
+      "sha256": "3be4d491d12541905f6b39e8e4f7d6bc08002bc6d898fcf7f080a9640aa5fee8",
+      "bytes": 16074
+    },
+    "transient_patch": {
+      "path": "/tmp/qwen38-q4-packed-meta-broadcast-transient.patch",
+      "sha256": "862f73a0feabc1f7c2cdb322e3a1af1215bc3ca63c04e8441ca399dd57bd6e5b",
+      "bytes": 12747
+    }
+  },
+  "validation": {
+    "diagnostic_source_wrapper_and_test_removed": true,
+    "production_paths_match_base": true,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject and restore the packed-metadata broadcast specialization. The exact candidate is effectively tied overall, loses layer 8 by 0.621%, wins only 19/45 pairs, and projects a 0.0294% selected-kernel-wall regression. Retain the direct standard-T16 metadata loads."
+}

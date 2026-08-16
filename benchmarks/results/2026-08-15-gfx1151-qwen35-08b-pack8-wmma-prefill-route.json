@@ -8,7 +8,8 @@
     "gpu": "AMD Radeon 8060S Graphics",
     "arch": "gfx1151"
   },
-  "source_commit": "7d4177b4e",
+  "source_commit": "47c2af156",
+  "current_scope_commit": "033f0ee3c",
   "rollback_env": "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0 (docs/REFACTOR.md entry added)",
   "mechanism": {
     "before": "_pack8_exact_prefill_dispatch selected pack8_exact_prefill_tile8x8 at rows>=512 because use_q4_pack8_wmma defaulted False for the Qwen3.5 runner",
@@ -26,15 +27,15 @@
         ],
         "rows": 512,
         "median_ms": {
-          "control_tile8x8": 0.0010534766055505461,
-          "base_pack8_prefill": 0.0033947600440837594,
-          "pack8_wmma_64x16": 0.0006427462178138463,
-          "pack8_wmma_64x32": 0.0007117823865344154,
-          "pack8_wmma_32x32": 0.0008863866346057509,
-          "pack8_wmma_32x16": 0.000585246969241559,
-          "pack8_wmma_16x32": 0.0006472723174030658,
-          "pack8_wmma_16x16": 0.0006287220719366797,
-          "t16_wmma_prefill": 0.0005125037571385633
+          "control_tile8x8": 1.053476605550546,
+          "base_pack8_prefill": 3.3947600440837594,
+          "pack8_wmma_64x16": 0.6427462178138463,
+          "pack8_wmma_64x32": 0.7117823865344154,
+          "pack8_wmma_32x32": 0.8863866346057509,
+          "pack8_wmma_32x16": 0.585246969241559,
+          "pack8_wmma_16x32": 0.6472723174030658,
+          "pack8_wmma_16x16": 0.6287220719366797,
+          "t16_wmma_prefill": 0.5125037571385633
         },
         "max_abs_diff_vs_control": {
           "control_tile8x8": 0.0,
@@ -67,15 +68,15 @@
         ],
         "rows": 512,
         "median_ms": {
-          "control_tile8x8": 0.0011188758641418695,
-          "base_pack8_prefill": 0.002437300871656147,
-          "pack8_wmma_64x16": 0.0004796989279631299,
-          "pack8_wmma_64x32": 0.000661875062618976,
-          "pack8_wmma_32x32": 0.000548624887285843,
-          "pack8_wmma_32x16": 0.0005605074641819457,
-          "pack8_wmma_16x32": 0.0009706843001703236,
-          "pack8_wmma_16x16": 0.0007940787496242862,
-          "t16_wmma_prefill": 0.0006882977657549343
+          "control_tile8x8": 1.1188758641418695,
+          "base_pack8_prefill": 2.437300871656147,
+          "pack8_wmma_64x16": 0.4796989279631299,
+          "pack8_wmma_64x32": 0.661875062618976,
+          "pack8_wmma_32x32": 0.548624887285843,
+          "pack8_wmma_32x16": 0.5605074641819457,
+          "pack8_wmma_16x32": 0.9706843001703236,
+          "pack8_wmma_16x16": 0.7940787496242862,
+          "t16_wmma_prefill": 0.6882977657549343
         },
         "max_abs_diff_vs_control": {
           "control_tile8x8": 0.0,
@@ -101,7 +102,7 @@
         }
       }
     ],
-    "note": "max abs diff vs control 0.00390625 (one BF16 ULP) for every WMMA route"
+    "note": "max abs diff vs control 0.00390625 (one BF16 ULP) for every WMMA route. The original artifact accidentally stored seconds under median_ms; values here are corrected to milliseconds."
   },
   "binding_ab": {
     "protocol": "5 counter-rotated serial env-pair blocks per quant, exact-core pp512/tg128, one warmup+one measure per child",

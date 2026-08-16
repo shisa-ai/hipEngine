@@ -8,6 +8,7 @@ import pytest
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.policy import (
     GGUFModelGeometry,
+    QWEN35_DENSE_H1024_GEOMETRY,
     QWEN35_DENSE_H5120_GEOMETRY,
     QWEN35_MOE_H2048_E256_GEOMETRY,
 )
@@ -81,6 +82,18 @@ def test_dense_backend_policies_are_geometry_keyed() -> None:
         "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
     ):
         policies = backend_package_capability("hip_gfx1100", capability, {})
+        assert identity in policies
+        assert all(not isinstance(key[0], str) for key in policies)
+
+
+def test_08b_decode_policies_are_geometry_keyed() -> None:
+    identity = (QWEN35_DENSE_H1024_GEOMETRY, _Q4_K_M)
+    for capability in (
+        "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
+        "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+    ):
+        policies = backend_package_capability("hip_gfx1151", capability, {})
         assert identity in policies
         assert all(not isinstance(key[0], str) for key in policies)
 

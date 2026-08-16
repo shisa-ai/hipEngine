@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_q4_unequal_prefill_pair",
+  "status": "leaf_rejected_below_request_gate",
+  "performance_claim": false,
+  "baseline_eligible": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_device": 0
+  },
+  "software": {
+    "repo_revision": "f4d04e3452084b8f5cba6cd171cfabf4d6c8d1e8",
+    "tracked_worktree_clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "candidate": {
+    "scope": "24 linear-attention Q4/Q4 K5120/N10240 QKV plus K5120/N6144 gate pairs",
+    "mechanism": "Reuse every BF16 K16 activation fragment across the common 6144 output columns, then compute the QKV-only 4096-column tail with the retained singleton geometry.",
+    "control": "two retained shared-B Q4T16 singleton projections",
+    "candidate": "existing exact dense unequal dual Q4T16 WMMA pair",
+    "persistent_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "production_policy_changed": false
+  },
+  "actual_weight_leaf": {
+    "weights": [
+      "blk.8.attn_qkv.weight",
+      "blk.8.attn_gate.weight"
+    ],
+    "source_pool_exceeds_2x_mall": true,
+    "protocol": {
+      "warmups": 3,
+      "counterbalanced_pairs_per_shape": 15,
+      "burst": 1,
+      "timing": "HIP events",
+      "rows": [512, 1024, 4096]
+    },
+    "results": {
+      "512": {
+        "control_ms": 3.8776280879974365,
+        "candidate_ms": 3.5840370655059814,
+        "speedup": 1.0819162907987412,
+        "candidate_wins": "15/15",
+        "bf16_mismatches": [0, 0]
+      },
+      "1024": {
+        "control_ms": 7.120410919189453,
+        "candidate_ms": 6.857875823974609,
+        "speedup": 1.0382822760215402,
+        "candidate_wins": "15/15",
+        "bf16_mismatches": [0, 0]
+      },
+      "4096": {
+        "control_ms": 29.031335830688477,
+        "candidate_ms": 26.75670623779297,
+        "speedup": 1.0850115695362634,
+        "candidate_wins": "15/15",
+        "bf16_mismatches": [0, 0]
+      }
+    },
+    "all_outputs_bf16_bit_exact": true,
+    "all_pairs_positive": true
+  },
+  "request_projection": {
+    "retained_prefill_tok_s": {
+      "512": 343.3199678289345,
+      "1024": 338.03766341589244,
+      "4096": 332.67561820438954
+    },
+    "affected_pairs_per_complete_prefill": 24,
+    "projected_saving_ms": {
+      "512": 7.046184539794922,
+      "1024": 6.30084228515625,
+      "4096": 54.59111022949219
+    },
+    "projected_request_saving_percent": {
+      "512": 0.4724796581092048,
+      "1024": 0.20800019566662803,
+      "4096": 0.44338699570459683
+    },
+    "continuation_gate_percent": 1.0,
+    "all_shapes_below_gate": true
+  },
+  "validation": {
+    "correctness": "BF16 bit identity for both outputs at every row",
+    "candidate_wins": "45/45",
+    "tracked_teardown": "all leaf allocations freed",
+    "source_change": "none; screened an already registered diagnostic",
+    "full_model_gate_run": false
+  },
+  "raw_artifact": {
+    "path": "/tmp/qwen38-task21-q4-unequal-leaf/leaf.json",
+    "sha256": "6f7527590b9487b60b978ce224b3e861b55440e164666609c149f2a6b8228f03",
+    "bytes": 5919
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 scripts/qwen36_q4_unequal_dual_prefill_leaf.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --rows 512,1024,4096 --layer 8 --warmups 3 --samples 15 --output /tmp/qwen38-task21-q4-unequal-leaf/leaf.json",
+  "decision": "Reject before integration. The existing unequal-output pair is BF16-bit exact and wins all 45 actual-weight pairs, but projects only 0.208-0.472% complete-prefill saving, below the campaign's measured >=1% request gate. Keep the two registered singleton owners and do not change runtime policy."
+}

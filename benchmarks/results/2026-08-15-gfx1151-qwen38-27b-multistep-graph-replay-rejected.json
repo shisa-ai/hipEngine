@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_p5_multistep_graph_replay",
+  "status": "rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "commit": "6aeec5a7361b3c98109ee6b9967828f095ff045a",
+    "require_cached_build": true,
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "premise": {
+    "accepted_profile_kernel_seconds": 10.294537732,
+    "accepted_profile_decode_seconds": 10.722353300006944,
+    "kernel_reconciliation": 0.9601005902308156,
+    "apparent_non_kernel_ceiling_percent": 3.989940976918444,
+    "candidate": "existing device-feedback decode graph with 2, 4, or 8 generated-token steps per launch/synchronize"
+  },
+  "protocol": {
+    "workload": "token 9707 repeated to p512, 128 generated tokens",
+    "kv": "BF16",
+    "widths": [1, 2, 4, 8],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "graph": true,
+    "persistent_session": true,
+    "order": [1, 2, 4, 8]
+  },
+  "results": {
+    "1": {
+      "decode_tok_s": 12.03612465281919,
+      "launches": 128,
+      "ratio_vs_1": 1.0
+    },
+    "2": {
+      "decode_tok_s": 12.033898900522335,
+      "launches": 64,
+      "ratio_vs_1": 0.9998150773308638,
+      "delta_percent_vs_1": -0.018492266913616717
+    },
+    "4": {
+      "decode_tok_s": 12.040008663597805,
+      "launches": 32,
+      "ratio_vs_1": 1.0003226961244294,
+      "delta_percent_vs_1": 0.03226961244293669
+    },
+    "8": {
+      "decode_tok_s": 12.035492649391692,
+      "launches": 16,
+      "ratio_vs_1": 0.9999474911197974,
+      "delta_percent_vs_1": -0.005250888020258415
+    }
+  },
+  "correctness": {
+    "all_final_ids": [9707, 9707, 9707],
+    "all_widths_finite": true,
+    "all_widths_graph_effective": true,
+    "all_widths_native_fallbacks": 0,
+    "tracked_peak_gib": 16.753218058496714,
+    "all_widths_teardown_bytes": 0
+  },
+  "profile": {
+    "accepted_trace": "/tmp/qwen38-task22-post-split-weight-rerank-verified/rocprof/gfx1151/1334689_kernel_trace.csv",
+    "trace_sha256": "671f557d7be8df8c45e26ae6bf571b3c17a514540156d598a1051f1a3d396c93",
+    "trace_bytes": 32295863,
+    "dispatches": 119552,
+    "all_dispatch_durations_positive": true,
+    "split_weight_ms": 3931.695,
+    "split_weight_calls": 8192,
+    "split_weight_vgpr": 120,
+    "split_weight_lds_bytes": 512,
+    "split_weight_scratch_bytes": 0,
+    "compiler_contamination": false,
+    "invalid_predecessors": "Two earlier traces are excluded because profiler-injected compiler-version probing generated fresh JIT identities. The accepted trace follows an outside-profiler fixed-version prebuild; its nine-line stderr has no compiler/linker invocation."
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt PYTHONPATH=. python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay WIDTH --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+  "evidence": {
+    "width_1": {"path": "/tmp/qwen38-task22-multistep-graph-p512/w1.json", "sha256": "a1c4a79bf403281d0d4befa8209c7141914afd2fae7dd6b9a6606ba582cdd9ff", "bytes": 454629},
+    "width_2": {"path": "/tmp/qwen38-task22-multistep-graph-p512/w2.json", "sha256": "426e827ae11c64bb4e77aed8fc6eb1536cdf5e5beef50e582824efe2660884e7", "bytes": 454670},
+    "width_4": {"path": "/tmp/qwen38-task22-multistep-graph-p512/w4.json", "sha256": "0f03b50b36bfb1049c32982c3fc109cf0c26ed83c9faab14e7d107af72a28f2f", "bytes": 454637},
+    "width_8": {"path": "/tmp/qwen38-task22-multistep-graph-p512/w8.json", "sha256": "8e360cc303e975afe34e00b11ba5bd68de76bc399315e1d8e33832e4f721f6ca", "bytes": 454628},
+    "summary": {"path": "/tmp/qwen38-task22-multistep-graph-p512/summary.json", "sha256": "8a8e66d93d69daa4ff9a422fc4052f5fc574cfa439dcae1e7423bfa4dc60dc1f", "bytes": 3820},
+    "profile_json": {"path": "/tmp/qwen38-task22-post-split-weight-rerank-verified/p512-ar128.json", "sha256": "3281639989b7ef9912ae270364bbb9bd14df3cead3aac8ea2ae72bb79b5ef7b1", "bytes": 152777},
+    "profile_stderr": {"path": "/tmp/qwen38-task22-post-split-weight-rerank-verified/p512-ar128.stderr", "sha256": "45b0c43521f8c3f50dab41102ec4a94f0f4e0cfd123aa76bed7c0769913b2774", "bytes": 1696}
+  },
+  "decision": "Reject multistep graph replay as a performance route. Reducing launches/synchronizations 128 -> 64/32/16 changes complete p512 AR by -0.018%/+0.032%/-0.005%, far below the 1% continuation gate. Retain one-step replay and do not spend 1K/4K or natural-suite runs."
+}

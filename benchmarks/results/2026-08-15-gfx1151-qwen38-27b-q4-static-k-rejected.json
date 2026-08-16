@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_q4_t16_static_k_rejected",
+  "status": "rejected_performance",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "baseline": {
+    "commit": "65a707b68477a5a5839ee8b430ca3fb4248466a3",
+    "route": "dynamic-K sole-Q4T16 local32 c1",
+    "complete_512_128_eager_wall_ms": 11087.43057900574,
+    "profile_calls": 36864
+  },
+  "candidate": {
+    "route": "same local32 lane/FMA/reduction/BF16 body with compile-time K block count and tile stride",
+    "static_k": [
+      5120,
+      6144,
+      17408
+    ],
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "protocol": {
+    "actual_roles": 7,
+    "source_pool_bytes": 203489280,
+    "source_pool_mib": 194.0625,
+    "warmups": 5,
+    "samples_per_role": 21,
+    "launches_per_sample": 20,
+    "order": "counterbalanced HIP-event timing",
+    "require_cached_build": true
+  },
+  "results": [
+    {
+      "role": "ffn_gate_up",
+      "shape": [17408, 5120],
+      "request_calls": 16384,
+      "control_ms": 0.23495090007781982,
+      "candidate_ms": 0.23539249897003173,
+      "speedup": 0.9981239891069421,
+      "candidate_wins": 7,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "linear_attn_gate",
+      "shape": [6144, 5120],
+      "request_calls": 6144,
+      "control_ms": 0.02728714942932129,
+      "candidate_ms": 0.027257099747657776,
+      "speedup": 1.001102453376981,
+      "candidate_wins": 9,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "ffn_down",
+      "shape": [5120, 17408],
+      "request_calls": 4096,
+      "control_ms": 0.2312998056411743,
+      "candidate_ms": 0.231239652633667,
+      "speedup": 1.000260132753281,
+      "candidate_wins": 11,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "linear_attn_qkv",
+      "shape": [10240, 5120],
+      "request_calls": 3072,
+      "control_ms": 0.04949685037136078,
+      "candidate_ms": 0.04892779886722565,
+      "speedup": 1.0116304333591493,
+      "candidate_wins": 17,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_q",
+      "shape": [12288, 5120],
+      "request_calls": 2048,
+      "control_ms": 0.08719559907913207,
+      "candidate_ms": 0.08720759749412536,
+      "speedup": 0.9998624154851405,
+      "candidate_wins": 12,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_kv",
+      "shape": [1024, 5120],
+      "request_calls": 3072,
+      "control_ms": 0.009930600225925446,
+      "candidate_ms": 0.009854499995708466,
+      "speedup": 1.007722383707963,
+      "candidate_wins": 21,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_output",
+      "shape": [5120, 6144],
+      "request_calls": 2048,
+      "control_ms": 0.026016798615455628,
+      "candidate_ms": 0.025950700044631958,
+      "speedup": 1.0025470823796656,
+      "candidate_wins": 15,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    }
+  ],
+  "projection": {
+    "control_kernel_ms": 5378.911915588379,
+    "candidate_kernel_ms": 5383.623356628418,
+    "saved_ms": -4.7114410400390625,
+    "complete_wall_delta_percent": -0.04249353361418348,
+    "all_roles_non_regressive": false,
+    "advance_threshold_percent": 1.0,
+    "advance": false
+  },
+  "correctness": {
+    "red": "missing static-K wrapper import",
+    "green": "1 passed on gfx1151",
+    "all_bf16_exact": true,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "path": "/tmp/qwen38-task22-q4-static-k-leaf/leaf.json",
+    "sha256": "231b564d02664150dd5bb56739571c90224c5f02bad6da1b4f319e6420dc2ae9",
+    "bytes": 15947
+  },
+  "decision": "Reject and restore dynamic-K local32. Compile-time K helps narrow QKV/KV roles but regresses the dominant gate/up role and adds 4.711 ms to the call-weighted request projection."
+}

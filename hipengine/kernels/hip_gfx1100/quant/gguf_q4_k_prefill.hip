@@ -506,6 +506,171 @@ __global__ void gguf_q4_k_pack8_prefill_wmma_kernel(
   }
 }
 
+// Operation-complete resident-pack8 dense gate/up prefill. This is the
+// pack8-layout sibling of the retained Q4T16 dual-WMMA+SiLU owner: four waves
+// own one 32-column x 256-row tile, decode both weight matrices into one 32-KiB
+// LDS union, reuse every activation K16 fragment for gate and up, round both
+// projection boundaries to BF16 in LDS, then evaluate the existing BF16 SiLU
+// contract without global gate/up intermediates.
+__launch_bounds__(128, 1)
+__global__ void gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const int32_t* __restrict__ qweight_a,
+    const float* __restrict__ scales_a,
+    const float* __restrict__ mins_a,
+    const int32_t* __restrict__ qweight_b,
+    const float* __restrict__ scales_b,
+    const float* __restrict__ mins_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int MATRICES = 2;
+  constexpr int OUT_COLS_PER_BLOCK = 32;
+  constexpr int OUT_TILES_PER_BLOCK = OUT_COLS_PER_BLOCK / 16;
+  constexpr int ROW_TILES_PER_WAVE = 4;
+  constexpr int WAVES_PER_BLOCK = 4;
+  constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
+  constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  union SharedStorage {
+    half_t weights[MATRICES][OUT_COLS_PER_BLOCK * QK_K];
+    uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
+  };
+  __shared__ SharedStorage shared;
+
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane16 = tid & 15;
+  const int half_id = (tid & 31) >> 4;
+  const int64_t col_base =
+      static_cast<int64_t>(blockIdx.x) * OUT_COLS_PER_BLOCK;
+  const int64_t block_row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int64_t row_base = block_row_base + wave * ROWS_PER_WAVE;
+  const int64_t blocks_per_row = in_features / QK_K;
+
+  float8_t acc_a[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+  float8_t acc_b[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+      acc_a[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+      acc_b[tm][tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+    }
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int decode_pair = tid >> 2;
+    const int matrix = decode_pair / (OUT_COLS_PER_BLOCK / 2);
+    const int local_pair = decode_pair % (OUT_COLS_PER_BLOCK / 2);
+    const int local_col0 = local_pair * 2;
+    const int64_t out_col0 = col_base + local_col0;
+    const int out_pack = static_cast<int>(out_col0 >> 3);
+    const int shift0 = pack8_shift_for_lane(static_cast<int>(out_col0 & 7));
+    const int shift1 = pack8_shift_for_lane(static_cast<int>((out_col0 + 1) & 7));
+    const int k_segment = (tid & 3) * 8;
+    const int32_t* __restrict__ qweight = matrix == 0 ? qweight_a : qweight_b;
+    const float* __restrict__ scales = matrix == 0 ? scales_a : scales_b;
+    const float* __restrict__ mins = matrix == 0 ? mins_a : mins_b;
+    const int64_t block_k_base = blk * QK_K;
+
+#pragma unroll
+    for (int sb = 0; sb < Q4_K_SUBBLOCKS; ++sb) {
+      const int64_t group32 = blk * Q4_K_SUBBLOCKS + sb;
+      const float scale0 = scales[group32 * out_features + out_col0];
+      const float scale1 = scales[group32 * out_features + out_col0 + 1];
+      const float min0 = mins[group32 * out_features + out_col0];
+      const float min1 = mins[group32 * out_features + out_col0 + 1];
+      const int64_t qbase =
+          static_cast<int64_t>(out_pack) * in_features + block_k_base +
+          sb * Q4_K_SUBBLOCK + k_segment;
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        const uint32_t packed = static_cast<uint32_t>(qweight[qbase + kk]);
+        const float q0 = static_cast<float>((packed >> shift0) & 0x0Fu);
+        const float q1 = static_cast<float>((packed >> shift1) & 0x0Fu);
+        const int k = sb * Q4_K_SUBBLOCK + k_segment + kk;
+        shared.weights[matrix][local_col0 * QK_K + k] =
+            static_cast<half_t>(scale0 * q0 - min0);
+        shared.weights[matrix][(local_col0 + 1) * QK_K + k] =
+            static_cast<half_t>(scale1 * q1 - min1);
+      }
+    }
+    __syncthreads();
+
+#pragma unroll 1
+    for (int sb = 0; sb < Q4_K_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_K_SUBBLOCK + kt * K_TILE;
+        half16_t activation[ROW_TILES_PER_WAVE];
+#pragma unroll
+        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+          const int64_t input_row = row_base + tn * 16 + lane16;
+          const int64_t safe_row = input_row < rows ? input_row : 0;
+          activation[tn] = load_act_half16<uint16_t>(
+              x + safe_row * in_features + block_k_base + k_off);
+        }
+#pragma unroll
+        for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+          half16_t weight_a;
+          half16_t weight_b;
+#pragma unroll
+          for (int kk = 0; kk < K_TILE; ++kk) {
+            const int index =
+                (tm * 16 + lane16) * QK_K + k_off + kk;
+            weight_a[kk] = shared.weights[0][index];
+            weight_b[kk] = shared.weights[1][index];
+          }
+#pragma unroll
+          for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+            acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                activation[tn], weight_a, acc_a[tm][tn]);
+            acc_b[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                activation[tn], weight_b, acc_b[tm][tn]);
+          }
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+    const int local_col = tm * 16 + lane16;
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int local_row =
+            wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
+        const int64_t out_row = block_row_base + local_row;
+        if (out_row < rows) {
+          const int index = local_row * OUT_COLS_PER_BLOCK + local_col;
+          shared.rounded[0][index] = float_to_bf16_bits(acc_a[tm][tn][j]);
+          shared.rounded[1][index] = float_to_bf16_bits(acc_b[tm][tn][j]);
+        }
+      }
+    }
+  }
+  __syncthreads();
+
+  constexpr int RESULT_COUNT = ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK;
+  for (int index = tid; index < RESULT_COUNT; index += blockDim.x) {
+    const int local_row = index / OUT_COLS_PER_BLOCK;
+    const int local_col = index - local_row * OUT_COLS_PER_BLOCK;
+    const int64_t out_row = block_row_base + local_row;
+    if (out_row < rows) {
+      const float gate = bf16_bits_to_float(shared.rounded[0][index]);
+      const float up = bf16_bits_to_float(shared.rounded[1][index]);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out[out_row * out_features + col_base + local_col] =
+          float_to_bf16_bits(gate * sig * up);
+    }
+  }
+}
+
 // -------------------------------------------------------------------------
 // gguf_q4_k_pack8_prefill_wmma64_kernel (D08-X2-K1)
 //
@@ -888,6 +1053,52 @@ int launch_gguf_q4_k_pack8_prefill_wmma(
 #undef HIPENGINE_LAUNCH_Q4_K_PACK8_WMMA
 }
 
+int launch_gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16(
+    const uint16_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int OUT_COLS_PER_BLOCK = 32;
+  constexpr int ROWS_PER_BLOCK = 256;
+  if (x == nullptr || qweight_a == nullptr || scales_a == nullptr ||
+      mins_a == nullptr || qweight_b == nullptr || scales_b == nullptr ||
+      mins_b == nullptr || out == nullptr || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % OUT_COLS_PER_BLOCK) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / OUT_COLS_PER_BLOCK),
+      static_cast<unsigned int>((rows + ROWS_PER_BLOCK - 1) / ROWS_PER_BLOCK));
+  hipLaunchKernelGGL(
+      gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      qweight_a,
+      scales_a,
+      mins_a,
+      qweight_b,
+      scales_b,
+      mins_b,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t>
 int launch_gguf_q6_k_prefill_wmma(
     const scalar_t* x,
@@ -1075,6 +1286,34 @@ extern "C" int hipengine_gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out(
       out_features,
       tile_m,
       tile_n,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16(
+      x,
+      qweight_a,
+      scales_a,
+      mins_a,
+      qweight_b,
+      scales_b,
+      mins_b,
+      out,
+      rows,
+      in_features,
+      out_features,
       stream);
 }
 

@@ -1,0 +1,505 @@
+{
+  "schema": 1,
+  "date": "2026-08-15",
+  "status": "retained",
+  "task": "D08-X3 exact Q4 pack8 dual-WMMA plus BF16 SiLU prefill",
+  "decision": "Retain by default for exact Qwen3.5-0.8B Q4_K_M rows512/K1024/N3584 dense gate/up owners. All predeclared gates pass.",
+  "source": {
+    "measurement_head": "535efbc8e50ad082ffbbd9e720008ad63e55202d",
+    "measurement_head_subject": "bench: publish synchronized 0.8B comparison",
+    "production_diff_sha256": "65fe39f4c2a83080927f5f2979dd408548f6868666597ef3654fae53076aabe5",
+    "production_diff_paths": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "hipengine/runtime/gguf_linear.py",
+      "hipengine/runtime/qwen35_gguf_runner.py"
+    ],
+    "working_tree_clean_during_measurement": false,
+    "compiler_version_file": "/tmp/d08-c0/hipcc-version.txt",
+    "compiler_version_file_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214"
+  },
+  "hardware": {
+    "host": "framework-desktop",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "6.17.9-76061709-generic",
+    "rocm": "7.2.0"
+  },
+  "models": {
+    "q4": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf",
+      "sha256": "bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"
+    },
+    "q8": {
+      "path": "/models/gguf/Qwen3.5-0.8B-Q8_0.gguf",
+      "sha256": "0ad885ffd4bb022fc4f0d33a3308fa108ef8613159d3b3a67e23abca056b7a6c"
+    }
+  },
+  "mechanism": {
+    "semantic_owner": "24 dense gate+up+BF16-SiLU groups in Qwen3.5-0.8B Q4_K_M p512 bulk prefill",
+    "kernel": "gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel",
+    "schedule": "128 threads; grid (ceil(N/32), ceil(rows/256)); four wave32 rows each own 64 output rows; 32-KiB union LDS",
+    "dataflow": "Decode one gate and one up pack8 panel into disjoint LDS halves, reuse each A WMMA fragment for both projections, round both accumulators through BF16 LDS, then emit BF16 SiLU(gate)*up.",
+    "residency": "No new persistent or sidecar weights; both existing sole pack8 residents remain unchanged.",
+    "fallback": "Two registered singleton pack8 WMMA projections plus standalone BF16 SiLU.",
+    "qualification": "gfx1151 Qwen3.5-0.8B MOSTLY_Q4_K_M, non-MoE, prompt rows exactly 512, K1024, N3584.",
+    "rollback_env": "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0"
+  },
+  "protocol": {
+    "leaf_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt uv run python /tmp/q4_pack8_dual_wmma_screen.py",
+    "leaf_script_sha256": "37886b90b87417c0622d4147b501e4154d23fb54516f69a233ba407996d2bc74",
+    "paired_command": "uv run python -u /tmp/run_q4_pack8_dual_ab.py",
+    "paired_driver_sha256": "7e4d4eccda4145d645a30b6c0fb9cc2c11d01604e17ac36ac2ee8299ad1c77dd",
+    "paired_child_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=<0|1> uv run python /tmp/d08-review/run_current_head_exact_ab.py --quant <q4|q8> --output <path>",
+    "paired_blocks": "Five Q4 cyclic fresh-process blocks and three Q8 cyclic no-route guard blocks; every child performs one warmup then one exact core/public p512/tg128 measurement.",
+    "raw_paired_aggregate_path": "/tmp/d08-x3-pack8-dual/full-ab/aggregate.json",
+    "raw_paired_aggregate_sha256": "19c61b5f8ecad1bc097deee432d20bd25d734af2cc3a2550fbd807dad7bb15a8",
+    "cumulative_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen35_08b_cumulative_semantic.py",
+    "cumulative_script_sha256": "4626aa148995f7db79299d12492f5b418f84e2e8fbf9376daf888e2fa4dc4bea",
+    "raw_cumulative_path": "/tmp/d08-review/cumulative-semantic.json",
+    "raw_cumulative_sha256": "3cc33e360cb526cc8ea813d11054224a6450b51b1154078e50873abe7e04ea56",
+    "trace_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/d08-c0/hipcc-version.txt rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/d08-x3-pack8-dual/rocprof --output-file pack8-dual -- uv run python /tmp/q4_pack8_dual_trace_smoke.py",
+    "trace_smoke_sha256": "817d249d1abbebf51a2fc0c495c1c239ed3f70aaa7e0839f9bb0a2ffda78c44d",
+    "raw_trace_sha256": "3f2fddbc11b006836e607c0e1854246926949fab7381dee2f2ce814c90f58cfc"
+  },
+  "leaf_screen": {
+    "shape": {
+      "rows": 512,
+      "in_features": 1024,
+      "out_features": 3584
+    },
+    "weight_pairs": 1,
+    "calls_per_sample": 20,
+    "warmup_calls": 5,
+    "control_ms_samples": [
+      0.991858,
+      0.991008,
+      0.99043,
+      0.989953,
+      0.987797
+    ],
+    "candidate_ms_samples": [
+      0.475303,
+      0.477023,
+      0.474091,
+      0.473929,
+      0.471563
+    ],
+    "control_median_ms": 0.99043,
+    "candidate_median_ms": 0.474091,
+    "speedup": 2.089114,
+    "byte_exact": true,
+    "max_abs": 0.0,
+    "accept_threshold_speedup": 1.15
+  },
+  "paired_complete_model": {
+    "q4": {
+      "candidate": {
+        "prefill_tok_s": {
+          "samples": [
+            4973.9763403683455,
+            4895.771463858138,
+            5154.671973186685,
+            4943.761573966229,
+            4882.634903244772
+          ],
+          "median": 4943.761573966229
+        },
+        "decode_tok_s": {
+          "samples": [
+            143.7684147823897,
+            142.5689032223506,
+            144.31920821936316,
+            143.52224802054565,
+            143.06922605917518
+          ],
+          "median": 143.52224802054565
+        },
+        "public_prefill_tok_s": {
+          "samples": [
+            4947.469039593928,
+            4923.72349318987,
+            5112.997545341753,
+            4885.5051337498635,
+            4894.630507163163
+          ],
+          "median": 4923.72349318987
+        },
+        "public_decode_tok_s": {
+          "samples": [
+            122.65018240549502,
+            124.3629286728577,
+            121.54429151704758,
+            121.30938629689514,
+            121.7614853968221
+          ],
+          "median": 121.7614853968221
+        }
+      },
+      "control": {
+        "prefill_tok_s": {
+          "samples": [
+            4343.988098219234,
+            4240.102389860007,
+            4325.508066827545,
+            4348.167116775565,
+            4370.642764736811
+          ],
+          "median": 4343.988098219234
+        },
+        "decode_tok_s": {
+          "samples": [
+            145.56566697640463,
+            143.9825219796547,
+            143.9092215773354,
+            143.82413334192486,
+            143.12132309580545
+          ],
+          "median": 143.9092215773354
+        },
+        "public_prefill_tok_s": {
+          "samples": [
+            4376.8316655838,
+            4324.9249555831475,
+            4266.586668166638,
+            4311.219019575915,
+            4338.707432619365
+          ],
+          "median": 4324.9249555831475
+        },
+        "public_decode_tok_s": {
+          "samples": [
+            122.7305502039043,
+            121.80931919877914,
+            121.85863922220723,
+            123.5208104305365,
+            122.37219665756561
+          ],
+          "median": 122.37219665756561
+        }
+      },
+      "comparison": {
+        "prefill_tok_s": {
+          "candidate_over_control": 1.1380697787806704,
+          "candidate_paired_wins": 5,
+          "blocks": 5
+        },
+        "decode_tok_s": {
+          "candidate_over_control": 0.9973109884651709,
+          "candidate_paired_wins": 1,
+          "blocks": 5
+        },
+        "public_prefill_tok_s": {
+          "candidate_over_control": 1.138452931266176,
+          "candidate_paired_wins": 5,
+          "blocks": 5
+        },
+        "public_decode_tok_s": {
+          "candidate_over_control": 0.9950093952921965,
+          "candidate_paired_wins": 1,
+          "blocks": 5
+        }
+      },
+      "correctness": {
+        "all_finite": true,
+        "all_deterministic": true,
+        "core_exact": true,
+        "public_exact": true
+      }
+    },
+    "q8_no_route_guard": {
+      "candidate": {
+        "prefill_tok_s": {
+          "samples": [
+            4996.404735483112,
+            4994.33045947333,
+            5191.030531897726
+          ],
+          "median": 4996.404735483112
+        },
+        "decode_tok_s": {
+          "samples": [
+            140.33972357034668,
+            140.55810098406647,
+            141.5765894004282
+          ],
+          "median": 140.55810098406647
+        },
+        "public_prefill_tok_s": {
+          "samples": [
+            4957.15195664258,
+            4969.364257583579,
+            5079.617548451565
+          ],
+          "median": 4969.364257583579
+        },
+        "public_decode_tok_s": {
+          "samples": [
+            117.47934895459602,
+            119.2083266621296,
+            117.27422852944522
+          ],
+          "median": 117.47934895459602
+        }
+      },
+      "control": {
+        "prefill_tok_s": {
+          "samples": [
+            4984.94080538573,
+            5047.158748806586,
+            5102.167109605192
+          ],
+          "median": 5047.158748806586
+        },
+        "decode_tok_s": {
+          "samples": [
+            139.93434038050725,
+            143.14564651726775,
+            141.0066083253734
+          ],
+          "median": 141.0066083253734
+        },
+        "public_prefill_tok_s": {
+          "samples": [
+            4939.975153082787,
+            4883.800879845345,
+            5113.232125958081
+          ],
+          "median": 4939.975153082787
+        },
+        "public_decode_tok_s": {
+          "samples": [
+            116.89486379694488,
+            117.25694539728435,
+            121.07231696691719
+          ],
+          "median": 117.25694539728435
+        }
+      },
+      "comparison": {
+        "prefill_tok_s": {
+          "candidate_over_control": 0.9899440426090272,
+          "candidate_paired_wins": 2,
+          "blocks": 3
+        },
+        "decode_tok_s": {
+          "candidate_over_control": 0.9968192459443319,
+          "candidate_paired_wins": 2,
+          "blocks": 3
+        },
+        "public_prefill_tok_s": {
+          "candidate_over_control": 1.0059492413605464,
+          "candidate_paired_wins": 2,
+          "blocks": 3
+        },
+        "public_decode_tok_s": {
+          "candidate_over_control": 1.001896719691598,
+          "candidate_paired_wins": 2,
+          "blocks": 3
+        }
+      },
+      "correctness": {
+        "all_finite": true,
+        "all_deterministic": true,
+        "core_exact": true,
+        "public_exact": true
+      }
+    },
+    "q4_owned_session_bytes_candidate": 1067067204,
+    "q4_owned_session_bytes_control": 1067067204,
+    "gates": {
+      "q4_core_prefill_min_ratio": 1.03,
+      "q4_public_prefill_min_ratio": 1.03,
+      "all_decode_and_q8_min_ratio": 0.98,
+      "q4_prefill_all_paired_wins_required": true,
+      "all_finite_deterministic_exact_ids_required": true,
+      "passed": true
+    }
+  },
+  "cumulative_semantic": {
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "prompts_per_profile": 18,
+    "profiles": [
+      "natural",
+      "category_p512"
+    ],
+    "decode_steps": 24,
+    "gate_passed": true,
+    "q4_current": {
+      "natural": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 449,
+        "top1_agreement": 0.9977777777777778,
+        "kl_max": 0.004529431839500105,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 17,
+        "graph_prompts": 0,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.0,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": []
+      },
+      "category_p512": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 449,
+        "top1_agreement": 0.9977777777777778,
+        "kl_max": 0.005930369204291595,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 17,
+        "graph_prompts": 18,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.00019207557399396571,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": [
+          287
+        ]
+      }
+    },
+    "q4_rollback": {
+      "natural": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 449,
+        "top1_agreement": 0.9977777777777778,
+        "kl_max": 0.004529431839500105,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 0,
+        "graph_prompts": 0,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.0,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": []
+      },
+      "category_p512": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 449,
+        "top1_agreement": 0.9977777777777778,
+        "kl_max": 0.005930369204291595,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 0,
+        "graph_prompts": 0,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.0,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": []
+      }
+    },
+    "q8_current": {
+      "natural": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 448,
+        "top1_agreement": 0.9955555555555555,
+        "kl_max": 0.003259258404580838,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 16,
+        "graph_prompts": 0,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.0,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": []
+      },
+      "category_p512": {
+        "prompts": 18,
+        "transitions": 450,
+        "top1_matches": 448,
+        "top1_agreement": 0.9955555555555555,
+        "kl_max": 0.002204539610863523,
+        "passed": true,
+        "teacher_forced_deterministic": true,
+        "state_deterministic": true,
+        "state_finite": true,
+        "state_exact_vs_strict_prompts": 0,
+        "free_running_exact_vs_strict_prompts": 16,
+        "graph_prompts": 18,
+        "graph_trajectory_exact": true,
+        "graph_kl_max": 0.00028038519627179154,
+        "graph_top1_min": 1.0,
+        "graph_node_sets": [
+          289
+        ]
+      }
+    },
+    "q4_candidate_vs_rollback": {
+      "prompt_profiles": 36,
+      "teacher_forced_trajectory_digest_exact": 36,
+      "persistent_state_digest_exact": 36,
+      "strict_comparison_exact": 36
+    },
+    "combined_current_top1_matches": 1794,
+    "combined_current_transitions": 1800,
+    "current_max_kl": 0.005930369204291595,
+    "all_repeats_and_states_deterministic_finite": true,
+    "all_current_category_p512_graph_trajectories_exact_vs_eager": true
+  },
+  "rocprof_trace": {
+    "dispatches": 1,
+    "kernel_name": "(anonymous namespace)::gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel(unsigned short const*, int const*, float const*, float const*, int const*, float const*, float const*, unsigned short*, long, long, long)",
+    "workgroup": [
+      128,
+      1,
+      1
+    ],
+    "grid_workitems": [
+      14336,
+      2,
+      1
+    ],
+    "logical_blocks": [
+      112,
+      2,
+      1
+    ],
+    "vgpr_count": 248,
+    "sgpr_count": 128,
+    "lds_bytes": 32768,
+    "scratch_bytes": 0,
+    "duration_available": false,
+    "duration_note": "rocprofv3 recorded equal start/end timestamps under the known gfx1151 profiler blocker; the independent HIP-event leaf screen supplies timing."
+  },
+  "external_context": {
+    "artifact": "benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json",
+    "classification": "Diagnostic projection only: denominator reuse from the same-day synchronized six-block packet, not a new interleaved external comparison.",
+    "q4_core_prefill_candidate_tok_s": 4943.761573966229,
+    "q4_core_prefill_over_llama_hip": 1.0138666213611236,
+    "q4_core_prefill_over_llama_vulkan": 0.9282215945105526,
+    "candidate_core_wall_ms": 103.564865,
+    "llama_hip_core_wall_ms": 105.00095976927088,
+    "llama_vulkan_core_wall_ms": 96.13114412557012,
+    "remaining_core_gap_to_vulkan_ms": 7.433720874429881
+  },
+  "validation": {
+    "red": "Focused test collection failed because the operation-complete wrapper did not exist.",
+    "green": "uv run pytest -q tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gfx1151_backend.py tests/test_qwen35_08b_cumulative_semantic.py",
+    "green_tests": 232,
+    "lineage": "Pre-implementation global kernel-lineage check reported the GGUF Q4 parent OK and unrelated GDN drift only.",
+    "final_lineage_rerun": "Blocked after validation because external read-only /home/lhl/amd-gpu-tuning/reference/atlas disappeared; a narrow in-tree path filter selected no manifest source."
+  }
+}

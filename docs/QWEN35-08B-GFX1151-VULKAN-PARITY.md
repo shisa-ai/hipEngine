@@ -1,6 +1,6 @@
 # Qwen3.5 0.8B gfx1151 Vulkan-Parity Campaign
 
-Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and the broad D08-T1 campaign remain blocked. A human-approved narrow 27B transfer audit retained only the existing Q4T16 c1 dual+SiLU owner on 2026-08-15.
+Status: D08-C0-C2, D08-M1-M12, accepted D08-P1/P2/P4/P6/D3/D4/D3B/D5, and D08-scoped G1 completed 2026-08-14; fresh G2 parity failed, so G3 and D08-T1 remain blocked. The human-approved D08-X extension then retained X2a pack8 WMMA, X2-K2 Q8 cluster8 GDN, X2-K5 dense-BF16 WMMA, and X3 operation-complete Q4 pack8 gate+up+SiLU on 2026-08-15; X2-K1/K3/K4 closed without production routing. Threshold and cumulative semantic gates pass. A fresh post-X3 synchronized packet confirms Q4 core pp512 at **1.010x same-source llama HIP / 0.889x Vulkan** and cuts the Vulkan wall gap **21.458 -> 11.657 ms**; Q8 core pp/tg is **0.876x/0.888x Vulkan**. The post-X3 owner rerank selected one Q5T16-QKV + pack8-Q4-gate heterogeneous prefill screen; it was byte-exact but only 1.0059x and was removed. The subsequent GDN cluster8 wave-broadcast screen was exact but 0.6483x and was also removed. D08-X6 then retained exact dense-BF16 WMMA down+residual fusion: the 12-owner leaf saves 0.155 ms and five paired Q4 blocks improve core/public pp512 3.09%/1.68%. D08-X7 tested the same rounded boundary in the remaining 12 pack8-Q4 down owners, but two paired blocks lost 4.22%/4.80% core/public pp512; all candidate code was removed. D08-X8 then retained a byte-exact two-wave Q8T16 alpha/beta owner: its 18-pair leaf is 5.010x and paired Q4/Q8 core pp512 improves 3.64%/2.45%. A separate human-approved narrow gfx1100 27B transfer audit retained only the existing Q4T16 c1 dual+SiLU owner. Core Vulkan parity and G3 remain open.
 
 Scope: Qwen3.5-0.8B dense GGUF on Radeon 8060S / `gfx1151`, batch 1,
 512-token prompt processing (`pp512`) and 128-step autoregressive decode
@@ -83,7 +83,7 @@ not a synthetic leaf projection.
 | 2 | **D08-P1 route/default correction** | **accepted; +33.68% pp / +42.19% eager tg** | The existing Q5T16 family replaces 18 expanded BF16 QKV residents for the exact 0.8B role/shape. | Promoted by default after one route repair; no kernel variants were tested. |
 | 3 | **Mandatory post-P1 re-profile** | **completed** | P1 invalidated every prior Q4 Amdahl percentage. | M6 reconciles 99.60% of post-P1 prefill wall and supersedes the old ranking. |
 | 4 | **D08-P3 dense FFN projections** | **closed/rejected** | All three sole-resident layouts won at pp512, but raw Q4 regressed c1-c8, Q4T16 regressed c8, and Q6T16 regressed c1. | Preserve the evidence; do not duplicate resident weights or trade decode for prefill. |
-| 5 | **D08-P2 GDN recurrence** | **accepted: +4.33% paired Q4 pp512** | The Q4/16K/16V shape-scoped cluster8 route cuts marker GDN **67.60 -> 42.83 ms (-36.64%)** and passes the complete semantic/graph-decode gate. | Promoted for Q4 only; Q8 remains exact after its strict graph-decode guard missed by 0.0108%. |
+| 5 | **D08-P2 GDN recurrence** | **accepted: +4.33% paired Q4 pp512** | The Q4/16K/16V shape-scoped cluster8 route cuts marker GDN **67.60 -> 42.83 ms (-36.64%)** and passes the complete semantic/graph-decode gate. | P2 promoted Q4 only after Q8's strict guard missed by 0.0108%; D08-X2-K2 later superseded that Q8 disposition with a fresh retained cluster8 gate. |
 | 6 | **Mandatory post-P2 re-profile** | **completed** | The structural GDN route invalidates the P2-era ranking. | Reconciles 99.61% of wall; dense FFN is exhausted, so remaining linear projections are the largest non-exhausted owner. |
 | 7 | **D08-P6 remaining linear-attention projections** | **accepted: +14.18% graph-scope Q4 pp512 / +0.69% graph tg128; -46.69 MiB** | The audit selected 35.93-ms Q5 SSM-out; sole Q5T16 direct/rowtile/WMMA wins the complete production route and correctness gate. | Closed after exactly three shipped leaves and one full-model A/B; Q8 and 27B remain unchanged. |
 | 8 | **Mandatory post-P6 re-profile** | **completed** | P6 removes 48.96 MB of weights and changes 18 bulk projection owners, invalidating the post-P2 ranking. | M7 reconciles 99.58% of wall, confirms SSM-out at 9.68 ms, and corrects one 1.20-ms Vulkan Q4 role assignment without changing backend totals. |
@@ -101,6 +101,25 @@ not a synthetic leaf projection.
 | 20 | **Mandatory post-D5 graph rerank / M12** | **completed: current graph 119.88/117.18 tok/s Q4/Q8; 286/288 nodes** | Exact trajectories/zero KL, complete assignment, and 97.23%/97.31% coverage reconcile Q4 norm owners 0.67405 -> 0.56181 ms (-0.11224 ms); Q8 norm movement is +0.00394 ms noise. | All bounded packages are accepted/exhausted or rejected; run G1-G2. Current decode is only 0.596x/0.709x frozen Vulkan, so G2 cannot close without fresh parity. |
 | 21 | **Medium/low prefill tail** | **parked: P5 current bound 0.82%** | Every named >=1% prefill package is exhausted under its frozen budget. | Reopen only after a fresh profile raises a complete package above 1% or an exact measured small win is already ready to retain. |
 | 22 | **D08-G1-G3 closure** | **blocked: G2 exact Q4 is 0.424x/0.734x core and 0.463x/0.942x public pp/tg** | C1/C2 pass; exact cross-engine top-1 is 645/645 per quant, and Q8 public tg is 1.028x, but Q4 loses every required scope and all 5 blocks. The milestone suite also has unrelated open failures. | Do not close G3 or open D08-T1. Any architectural extension beyond the exhausted bounded packages requires human approval and a new complete-package contract. |
+| 23 | **D08-X1 cross-engine rerank** | **completed** | A fresh HIP-stage/Vulkan-op join found per-kernel structure rather than launch count as the gap and opened one bounded extension. | Reconciled X2 ladder: pack8 bulk, GDN, decode GEMV, full-attention c1, and dense-BF16 owners. |
+| 24 | **D08-X2a pack8 WMMA bulk route** | **accepted: +35.31% Q4 exact-core pp512** | Existing registered small-tile WMMA replaced tile8x8 for the five qualified p512 pack8 shapes; 447/450 top-1 and max KL 0.003848. | Retained/default on the measured gfx1151 row/shape matrix; sole residency and decode owners unchanged. |
+| 25 | **D08-X2-K1 large-tile pack8 WMMA** | **closed; diagnostic not routed** | LDS-staged large tiles are bit-exact but do not beat the qualified small-tile owner on gfx1151 wave32. | Keep the registered 128x64 diagnostic; durable artifact replaces the former `/tmp`-only reference. |
+| 26 | **D08-X2-K2 Q8 GDN cluster8** | **accepted: +16.70% Q8 exact-core pp512** | Fresh five-block and 18-prompt gates supersede P2's 0.0108%-miss rejection: 448/450 top-1, max KL 0.003260. | Q4 and Q8 now both use the quant/geometry-qualified cluster8 route. |
+| 27 | **D08-X2-K3/K4 decode screens** | **closed; no production change** | K3 found a distributed 1.2-1.4x GEMV grind; K4 corrected marker-inflated attention from 153 to 57 us/layer and only ~0.2 ms/token ROI. | Post-review replay profiling closes the apparent ~2.3-ms gap as isolated-microbench undercount: API/Python residual is only 0.114/0.127 ms Q4/Q8. |
+| 28 | **D08-X2-K5 dense-BF16 WMMA bulk** | **accepted: +26.86% Q4 exact-core pp512** | LDS-staged dense WMMA passes 446/450 top-1/max KL 0.004215 and all complete-model guards. | Retained/default for the two measured p512 dense-BF16 shapes; scalar fallback remains for every miss. |
+| 29 | **Post-review current-HEAD baseline** | **completed: 4314/4976 tok/s Q4/Q8 exact-core pp512** | Six counter-rotated clean-tree blocks are finite and deterministic with one shared top-1 trajectory across current and X2 controls. | Current Q4 is 1.754x its pre-X2 control and Q8 is 1.175x strict pre-X2; core decode is bimodal, so no fresh decode-speed claim is made. |
+| 30 | **Post-review semantic/graph rerank** | **completed: 99.1%/99.0% prefill coverage; 286/288 graph nodes assigned** | Q4 dense FFN is the raw p512 leader; Q8 linear projections lead narrowly over GDN. Production public graph wall is 8.365/8.742 ms Q4/Q8. | No material graph API residual and no K4 reopen. Run threshold and cumulative semantic gates before selecting a new prefill mechanism. |
+| 31 | **Post-review p16-p4096 threshold sweep** | **completed: 187/187 fresh processes finite/exact-ID** | Q4 current/pre-X2 is 1.764x only at p512 and 0.997x-1.032x elsewhere; automatic GDN beats strict at every measured Q4/Q8 length. | Keep exact p512 WMMA scope and current GDN policies; no expansion. |
+| 32 | **Final cumulative semantic packet** | **completed: 1794/1800 current top-1; max KL 0.005930** | Natural and category-derived p512 profiles pass for Q4/Q8; all repeats and states are deterministic/finite, and 72/72 recording-graph trajectories match eager. | Post-review validation complete; Vulkan G2/G3 parity remains blocked. |
+| 33 | **Synchronized exact HIP/Vulkan three-way** | **completed: Q4/Q8 core pp 0.818x/0.880x Vulkan; public tg 0.976x/1.047x** | Six serial blocks use one llama.cpp source revision and explicit backend synchronization; all 36 child rows are finite/deterministic with exact cross-engine core/public top-1 trajectories. | Keep G3 blocked on core scopes. Prioritize Q4 prefill; hipEngine already beats llama HIP decode and Vulkan Q8 public decode. |
+| 34 | **D08-X3 operation-complete Q4 pack8 prefill** | **accepted: +13.81% core / +13.85% public pp512** | One 128-thread block owns same-resident gate+up+SiLU, reuses each A fragment, and preserves both BF16 projection boundaries; the leaf is byte-exact and 2.089x. | Five fresh-process Q4 blocks win 5/5; decode and Q8 guards stay within 1.1%. Retain for exact 0.8B/Q4/rows512/K1024/N3584 only. |
+| 35 | **Post-X3 synchronized exact three-way** | **completed: Q4 core pp 1.010x HIP / 0.889x Vulkan** | Six clean-HEAD serial blocks confirm the retained route with unchanged same-source llama helpers; all 36 Q4/Q8 children and cross-engine trajectories pass. | The hipEngine-specific core-prefill gap to llama HIP is closed at current variance, but Vulkan retains 11.657 ms. Re-profile Q4 semantic owners before another package. |
+| 36 | **D08-X4 post-X3 Q4 owner rerank** | **completed: 100.08% marker-wall coverage** | Dense FFN falls to 34.007 ms; normalized historical gaps now rank linear-attention projections 13.460 ms, GDN 10.641 ms, and dense FFN 8.948 ms. | Admit exactly one heterogeneous Q5T16-QKV + pack8-Q4-gate operation-complete p512 screen; its current explicit fallback stage owns 17.628 ms. |
+| 37 | **D08-X4 heterogeneous QKV/gate screen** | **rejected: 1.0059x leaf; no production change** | One 128-thread schedule is byte-exact on actual resident weights but saves only 0.114 ms across all 18 pairs, projecting 0.11% of exact wall. | Stop before profile/full-model gates and remove all transient code. Reopen only for a materially different >=1.10x mechanism; GDN remains next. |
+| 38 | **D08-X5 GDN cluster8 wave broadcast** | **rejected: 0.6483x leaf; no production change** | Wave-sharing Q/K/value/beta/decay preserves every output/state bit but regresses the exact rows512 recurrence 0.77453 -> 1.19467 ms. | Stop before profile/full-model gates and remove all transient code. Do not revisit this load-sharing mechanism; dense FFN is next. |
+| 39 | **D08-X6 dense-BF16 WMMA down+residual** | **accepted: 1.0158x 12-owner leaf; +3.09%/+1.68% core/public Q4 pp512** | Exact intermediate/output BF16 boundaries remove 12 standalone residual-add launches and save 0.155 ms in the causal leaf. | Retain for gfx1151 rows512/K3584/N1024 dense-BF16 only; primitive chain and temporary env rollback remain. Q8/decode/memory guards pass. |
+| 40 | **D08-X7 pack8-Q4 WMMA down+residual** | **rejected: 0.9578x/0.9520x core/public Q4 pp512** | The exact rounded-residual store removes 12 add launches but lengthens the pack8 WMMA critical output path; both paired blocks lose in both prefill windows. | Remove the kernel/registry/capability/selector candidate. Keep pack8 WMMA projection + `gguf_bf16_add`; do not retry without a materially different producer schedule. |
+| 41 | **D08-X8 Q8T16 alpha/beta dual WMMA** | **accepted: 5.010x 18-pair leaf; +3.64%/+2.45% Q4/Q8 core pp512** | Two waves share one exact BF16-to-F16 activation tile while independently preserving each N16 Q8T16 projection's WMMA order and BF16 store. | Retain for gfx1151 rows512/K1024/N16+N16 only; singleton WMMAs and temporary env rollback remain. Public pp512 improves 5.05%/2.13%. |
 
 ### 1.2 Bounded task contract
 
@@ -1019,9 +1038,10 @@ Artifact:
 ### 2.30 D08-D3B retained full-model gate (2026-08-14)
 
 Production RED/GREEN binds combined C through
-`GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES` only for gfx1151,
-`Qwen3.5-0.8B`, `MOSTLY_Q4_K_M`, and c1 `[K3584,N1024]`. The Q4 pack8 normal
-owner derives the `pack8_bf16_residual_bf16_out` sibling through its pack8 ABI;
+`GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES` only for gfx1151, the immutable
+24-layer/H1024 Qwen3.5 geometry, `MOSTLY_Q4_K_M`, and c1 `[K3584,N1024]`.
+The Q4 pack8 normal owner derives the `pack8_bf16_residual_bf16_out` sibling
+through its pack8 ABI;
 the dense-BF16 normal owner derives `out_bf16_residual_bf16_out` through the
 dense ABI. Policy resolution is hoisted to resident-runner initialization so
 Q8 and other unsupported owners pay no repeated per-layer package lookup.
@@ -1181,9 +1201,10 @@ Artifact:
 ### 2.34 D08-D5 retained norm/residual route (2026-08-14)
 
 Production RED binds the candidate through the four-axis registry, not a backend
-branch. `GGUF_NORM_RESIDUAL_DECODE_POLICIES` admits only gfx1151,
-`Qwen3.5-0.8B`, `MOSTLY_Q4_K_M`, rows1, and hidden1,024. Both the actual
-attention-norm helper and post-attention add+norm site resolve their layer key.
+branch. `GGUF_NORM_RESIDUAL_DECODE_POLICIES` admits only gfx1151, the immutable
+24-layer/H1024 Qwen3.5 geometry, `MOSTLY_Q4_K_M`, rows1, and hidden1,024. Both
+the actual attention-norm helper and post-attention add+norm site resolve their
+layer key.
 Q8, rows>1, other hidden/model/file/backend, output norm, verifier-F32 paths,
 and generic t256 primitives remain explicit fallbacks. Public wrappers and HIP
 entry points preserve pre-load validation. The resident capability caches a
@@ -1338,8 +1359,9 @@ re-reads activations from global once per 16-column band: for `[3584,1024]`
 at rows=512 that is 224 band reads x 1.05 MB = **235 MB activation traffic per
 mat** versus llama's 28 tiles x 1.05 MB = **29 MB**. The registered-but-disabled
 pack8 WMMA leaf already measures 1.97x/2.33x the shipped tile8x8 leaf on the
-0.8B dense shapes (within one BF16 ULP); X2a routes it. The remaining 1.5-1.7x
-to Vulkan requires the LDS/large-tile structure (X2-K1).
+0.8B dense shapes (within one BF16 ULP); X2a routes it. That remaining
+1.5-1.7x estimate motivated X2-K1, whose actual-weight screen later found the
+LDS/large-tile structure no faster than the qualified small-tile owner.
 
 **Decode GEMV.** `mul_mat_vec_q4_k.comp` assigns a 16-thread team per Q4_K
 superblock: packed 32-bit loads, unpack8 bit-trick scale decode, fully unrolled
@@ -1360,17 +1382,18 @@ state finalize; its exact route exposes only 64 one-wave blocks. X2-K2 ports
 the column-parallel register-state structure as an additional prefill schedule
 for both quants.
 
-**Full-attention decode core.** Vulkan `FLASH_ATTN_EXT` at c1 8Q/2KV/D256 and
-live context 512-641 costs ~26 us/layer; hipEngine's retained split-K3
-producer plus fused reducer costs ~153 us/layer (5.9x). X2-K4 targets a
-single-kernel c1 scan without the second launch.
+**Full-attention decode core.** The opening marker attribution estimated the
+retained split-K3 producer plus fused reducer at ~153 us/layer versus Vulkan's
+~26 us/layer. X2-K4 later measured the exact production pair standalone at
+56.5-57.1 us/layer, reducing the rewrite ROI to ~0.15-0.2 ms/token; no
+single-kernel rewrite was started.
 
-**Bounded fix ladder (human-approved):** X2a (done below) routes the measured
-pack8 WMMA bulk leaf; X2-K1 writes the LDS-staged large-tile pack8 WMMA GEMM
-(acceptance >= 2x X2a at pp512, no c1-c8 change); X2-K2 adds the GDN register
-scan; X2-K3 raises decode GEMV bandwidth; X2-K4 replaces the split-K pair.
-Each keeps its unfused/legacy fallback registered and passes the standard
-correctness/full-model gates.
+**Bounded extension outcomes (human-approved):** X2a retained the measured
+pack8 WMMA bulk leaf; X2-K1's LDS-staged large-tile pack8 screen was bit-exact
+but not faster; X2-K2 retained Q8 cluster8 GDN; X2-K3 found only a distributed
+GEMV grind and landed no kernel; X2-K4 corrected the attention ROI and stopped;
+X2-K5 retained dense-BF16 WMMA. Every retained route keeps its legacy fallback
+and passed its named correctness/full-model gates.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-parity-gap-map.json).
@@ -1402,8 +1425,8 @@ A cached-build rocprofv3 kernel trace confirms
 (264) with the tile8x8 kernel absent; the stack's zero-duration blocker still
 applies, so names and geometry are the smoke evidence.
 
-Retained as the gfx1151 default. The remaining ~1.5-1.7x per-mat gap to
-Vulkan is the X2-K1 LDS/large-tile structure described in 2.37.
+Retained as the gfx1151 default. X2-K1 subsequently screened the proposed
+LDS/large-tile structure and closed it unrouted on gfx1151 wave32.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma-prefill-route.json).
@@ -1433,8 +1456,7 @@ lever is a wave64 WMMA variant (llama runs subgroup 64); X2 priority moves to
 GDN (X2-K2), the largest remaining matched gap.
 
 Artifact:
-[`/tmp/d08-x/pack8-v2-screen.json` retained via the X2 worklog entry; in-tree
-evidence is the test file plus this section].
+[`2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json).
 
 ### 2.40 D08-X2-K2 retained Q8_0 GDN cluster8 route (2026-08-15)
 
@@ -1474,14 +1496,15 @@ The twelve expanded-dense-BF16 Q6_K down owners (`[1024,3584]`) ran the naive
 `dense_prefill_wmma_out_kernel` applies the same LDS-staged wave32 structure
 proven in X2-K1 - 128x64 block tile, 256 threads, BK=32 shared f16 tiles,
 F32-accumulating 16x16x16 WMMA - without dequant. On actual-weight-class data
-it measures **0.0006 ms vs 0.0031 ms (5.2x)** per `[1024,3584] x 512` mat with
+it measures **0.6 ms vs 3.1 ms (5.2x)** per `[1024,3584] x 512` mat with
 100% top-1 versus the naive reference.
 
 Registered as `dense_gemv/prefill_wmma_out` behind the gfx1151 capability
 `GGUF_DENSE_BF16_WMMA_BULK_PREFILL` and the
-`HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback; rows 1-15, unaligned
-`out_features`, and peer backends keep the exact fallback. Fixtures live in
-`tests/test_dense_prefill_wmma.py`.
+`HIPENGINE_GGUF_DENSE_WMMA_BULK=0` rollback. The backend default is limited
+to the two complete-model-gated p512 dense-BF16 shapes; K not divisible by 32,
+every row/shape policy miss, and peer backends keep the exact fallback. Fixtures
+live in `tests/test_dense_prefill_wmma.py`.
 
 Binding gates: five counter-rotated env-pair exact-core blocks on Q4_K_M give
 prefill **3377.5 -> 4313.2 tok/s (+26.86%, 5/5)** and public **+24.63%
@@ -1496,7 +1519,7 @@ at campaign open).
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-prefill-route.json).
 
-### 2.42 Human-approved narrow Qwen3.8-27B transfer audit (2026-08-15)
+### 2.42A Human-approved narrow Qwen3.8-27B transfer audit (2026-08-15)
 
 The audit compared every retained 0.8B package with Qwen3.8's actual
 H5120/64-layer sole-T16 path on gfx1100. It did not copy 0.8B speed ratios or
@@ -1519,6 +1542,475 @@ greedy outputs, GPU/CPU acceptance agreement, and zero teardown ownership.
 
 Artifact:
 [`2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json`](../benchmarks/results/2026-08-15-qwen38-27b-dense-c1-fused-silu-retained.json).
+
+### 2.42 Post-review current-HEAD baseline (2026-08-15)
+
+After merging the correctness hardening and concurrent verifier-scratch work,
+six clean-tree, cyclically counter-rotated shared-token blocks establish the new
+current baseline. Exact-core pp512 is **4314.0/4975.9 tok/s Q4/Q8**; public
+prefill is **4342.4/4959.5 tok/s**. Against X2-disabled controls, current Q4 is
+**1.754x** the pre-X2 route and Q8 is **1.175x** its exact pre-X2 route, winning
+all six prefill blocks. Every child is finite and deterministic, and current,
+pre-X2, strict-X2, Q4, and Q8 all emit the same repeated-fixture top-1 trajectory.
+
+The current Q4/Q8 core decode medians are **140.97/137.74 tok/s**, but the Q4
+samples are visibly bimodal (roughly 140-141 and 147-148 tok/s), so this row
+makes no new decode-speed claim. Public decode is **121.97/114.79 tok/s**. The
+historical same-day Vulkan pp512 comparator remains **6015.0/6035.8 tok/s**;
+those rows are not same-session denominators.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-exact-baseline.json).
+
+### 2.43 Post-review semantic and graph rerank (2026-08-15)
+
+Three measured p512 device-marker runs assign **99.12%/99.05%** of Q4/Q8
+instrumented prefill wall. Q4's current raw leader is dense FFN at **44.54 ms**
+with a **20.05-ms** historical Vulkan-matched gap, followed by GDN at **29.27
+ms / 16.68-ms gap** and linear-attention projections at **33.88 ms / 16.05-ms
+gap**. Q8 is tighter: linear projections lead at **28.18 ms / 8.35-ms gap**,
+GDN follows at **24.92 ms / 8.17-ms gap**, and dense FFN is **34.30 ms /
+6.50-ms gap**. The Vulkan rows are the same-day logger diagnostic, not a
+same-session denominator. Marker wall is 1.079x/1.053x exact-core wall, so these
+shares rank roles but do not project topline gains directly.
+
+The public production graph is **286/288 nodes** and **8.365/8.742 ms/token**
+Q4/Q8. Eager, recording, production, and instrumented logits have zero KL and
+100% top-1 agreement; the recorded trajectory is exact. The 240-marker graph
+assigns every non-marker production node and measures **9.846/10.134 ms** of
+device stages inside **9.959/10.261 ms** host wall: only **0.114/0.127 ms**
+remains for API/Python, while asynchronous `graph_launch` itself is
+**0.012/0.014 ms**. Therefore X2-K4's prior ~2.3-ms wall-minus-isolated estimate
+is not graph API overhead; repeated isolated microbenches undercounted the
+production chain. `rocprofv3` dispatch durations remain zero on this stack, and
+the marker graph is itself 1.59/1.52 ms slower, so marker-normalized attention
+must not reopen K4 over its exact standalone ~0.15-0.2-ms/token ROI.
+
+The measured next-owner labels are Q4 dense FFN and Q8 linear-attention
+projections, with shared GDN and linear-projection aggregate gaps effectively
+tied. Q4 dense's known large-tile route is already exhausted; no candidate opens
+until the prompt-length and cumulative semantic gates complete.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-review-semantic-rerank.json).
+
+### 2.44 Post-review prompt-length threshold sweep (2026-08-15)
+
+The approved p16/32/64/128/256/511/512/513/768/1024/4096 packet ran three
+cyclic Q4 blocks and four counter-rotated Q8 blocks, one fresh resident process
+per length and role. All **187** children used clean commit `6eb41219c`, cached
+builds, device token embedding, production AOTriton at p512+, WMMA prefill, and
+GEMV decode. Every result is finite, every final ID is 9707, and every scratch
+capacity matches its prompt/decode geometry.
+
+| Length | Q4 current / pre-X2 | Q4 current / strict-X2 | Q8 current / strict-X2 |
+| ---: | ---: | ---: | ---: |
+| 16 | 1.002x | 1.056x | 1.045x |
+| 32 | 0.999x | 1.059x | 1.079x |
+| 64 | 1.032x | 1.125x | 1.100x |
+| 128 | 1.004x | 1.019x | 1.188x |
+| 256 | 1.012x | 1.039x | 1.196x |
+| 511 | 1.015x | 1.048x | 1.124x |
+| 512 | **1.764x** | **1.820x** | **1.156x** |
+| 513 | 1.011x | 1.046x | 1.140x |
+| 768 | 0.997x | 1.031x | 1.131x |
+| 1024 | 1.012x | 1.066x | 1.178x |
+| 4096 | 1.007x | 1.087x | 1.138x |
+
+This confirms that the pack8+dense WMMA package is isolated to exact p512:
+Q4 current and pre-X2 are within 3.3% at every other measured length. Automatic
+GDN is non-regressive versus strict X2 throughout the matrix, so its current
+quant/geometry policies remain unchanged. Do not broaden WMMA beyond p512.
+
+The original mixed-shape resident protocol exposed an intermittent AOTriton v3
+C++ exception. Five coredumps assign that separate lifecycle defect to
+`flash::attn_fwd`; the fresh-process protocol preserves all production routes
+rather than hiding it with an attention fallback. The exception-boundary repair
+is tracked separately and the final 18-prompt cumulative semantic packet remains
+required.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-prompt-threshold-sweep.json).
+
+### 2.45 Final cumulative semantic packet (2026-08-15)
+
+The versioned clean-tree harness runs all **18 category+heldout prompts** in two
+profiles per quant: unmodified natural chat-token sequences and category-derived
+sequences repeated and truncated to exactly p512. Each candidate consumes the
+strict-X2 free-running token prefix for **24 teacher-forced transitions** after
+prefill, preventing greedy divergence from changing the comparison context.
+
+| Quant / role | Natural top-1 / max KL | Category p512 top-1 / max KL |
+| --- | ---: | ---: |
+| Q4 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q4 pre-X2 | 449/450 / 0.004529 | 449/450 / 0.004846 |
+| Q4 current | 449/450 / 0.004529 | 449/450 / **0.005930** |
+| Q8 strict-X2 | 450/450 / 0 | 450/450 / 0 |
+| Q8 current | 448/450 / **0.003259** | 448/450 / 0.002205 |
+
+Current defaults total **1794/1800 top-1 (99.667%)** with maximum KL
+**0.005930**, comfortably inside the 90%/0.05 gate. Every strict/pre/current
+repeat is trajectory+logit deterministic. All Conv/GDN and live full-attention
+KV fingerprints are repeat-deterministic and finite. Candidate bytes differ
+from strict on the accepted reassociated math routes (0 exact candidate profile
+states), which is diagnostic; repeat determinism, finiteness, KL, and top-1 are
+the binding state/math checks.
+
+All **72** category-p512 strict/current recorded-graph prompt-role trajectories
+exactly match same-role eager. Final graph top-1 is 100%, maximum graph KL is
+**0.000475**, and the recording graphs contain **287 Q4 / 289 Q8 nodes**.
+Current free-running trajectories match strict on **66/72** prompt profiles;
+the six expected greedy divergences remain outside the same-context correctness
+criterion.
+
+This closes the post-review baseline/profile/threshold/semantic sequence and
+retains every current route unchanged. It does not claim Vulkan parity: D08-G2
+still fails the published same-session cross-engine target, so G3/T1 remain
+blocked absent a separately approved architectural extension.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json).
+
+### 2.46 Synchronized exact hipEngine / llama HIP / Vulkan comparison (2026-08-15)
+
+The final comparison uses six serial cyclic blocks per quant. Every engine
+occupies every order position twice, every child performs one warmup plus one
+measured core/public pair, and both llama backends are clean builds from
+`1d2869c6e`. The committed p512/tg128 fixture supplies identical prompt and
+forced-continuation IDs. Explicit `llama_synchronize()` now closes each core
+timing boundary; the first incomplete llama HIP pilot exposed and discarded
+impossible 70-71K pp512 rows before this packet began.
+
+| Engine | Q4 core pp / tg | Q4 public pp / tg | Q8 core pp / tg | Q8 public pp / tg |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | **4354.16 / 144.18** | **4376.18 / 123.30** | **5002.83 / 140.59** | **5038.64 / 117.04** |
+| llama.cpp HIP | 4876.15 / 119.47 | 5016.51 / 89.22 | 4667.43 / 109.48 | 5073.18 / 83.96 |
+| llama.cpp Vulkan | 5326.06 / 193.88 | 5595.94 / 126.31 | 5684.88 / 159.54 | 5790.96 / 111.81 |
+
+All values are tok/s medians over six fresh processes. Standard production
+cache defaults remain explicit: hipEngine stores BF16 KV, while these pinned
+llama builds store F16 KV; both are 16-bit, and RADV reports no native BF16
+capability. The exact comparison is therefore engine-default parity, not a
+single-kernel same-storage microbenchmark.
+
+| Quant/scope | hipEngine / llama HIP pp / tg | hipEngine / Vulkan pp / tg | Paired result |
+| --- | ---: | ---: | --- |
+| Q4 core | **0.893x / 1.207x** | **0.818x / 0.744x** | hipEngine loses both pp peers 0/6, beats HIP tg 6/6, loses Vulkan tg 0/6 |
+| Q4 public | **0.872x / 1.382x** | **0.782x / 0.976x** | hipEngine beats HIP tg 6/6; Vulkan narrowly wins tg 6/6 |
+| Q8 core | **1.072x / 1.284x** | **0.880x / 0.881x** | hipEngine beats HIP pp/tg 6/6, loses Vulkan pp/tg 0/6 |
+| Q8 public | **0.993x / 1.394x** | **0.870x / 1.047x** | HIP pp is effectively parity; hipEngine beats both decode peers 6/6 |
+
+The synchronized wall decomposition separates the residual to llama HIP from
+the same-source HIP-to-Vulkan delta. Q4 core prefill is **117.589 / 105.001 /
+96.131 ms** for hipEngine/HIP/Vulkan: the 21.458-ms total gap consists of
+**12.588 ms hipEngine-to-HIP plus 8.870 ms HIP-to-Vulkan**. Q8 core prefill is
+**102.342 / 109.696 / 90.063 ms**: hipEngine recovers 7.354 ms over llama HIP,
+but Vulkan's 19.633-ms backend advantage leaves a 12.279-ms gap. Q4/Q8 core
+decode similarly recover **1.435/2.021 ms/token** over llama HIP while remaining
+**1.778/0.845 ms/token** behind Vulkan. On the public path, Q4 is only **0.193
+ms/token** behind Vulkan and Q8 is **0.399 ms/token ahead**.
+
+The Q4 llama HIP rocprof census records **712,685 dispatches / 44 names**, but
+all 712,685 start/end timestamps are equal under the known gfx1151 profiler
+blocker. Names and resources still expose the structure: **166,920 separate
+Q8_1 activation quantizers pair one-for-one with 166,920 wave32 GEMVs** (46.84%
+of all dispatches), Q4 prefill MMQ bodies use local256 with VGPR240-248, and
+flash-attention uses a VGPR240/LDS19,456-B tile plus a separate reducer. No
+per-op llama HIP duration is claimed.
+
+Current hipEngine marker attribution therefore remains the operation-ranking
+authority: Q4 prefill is led by dense FFN, GDN, and linear projections; Q8 by
+linear projections, GDN, and dense FFN. Those historical Vulkan-joined gaps are
+attribution-only and not additive. API/Python residual remains only
+0.114/0.127 ms/token, so the next architecture campaign should prioritize a new
+Q4 prefill dataflow rather than graph submission or the exhausted small
+full-attention rewrite. Q8 prefill and core decode are now predominantly a
+HIP-versus-Vulkan backend/codegen gap, while hipEngine's graph and device sampler
+already outperform llama HIP decode and close public Vulkan decode.
+
+All 36 children are finite and deterministic. Core and public 129-row top-1
+trajectories are exact across all three engines and both quants. Variance is
+below 5% for every metric. hipEngine owned memory remains **1017.63/981.78 MiB
+Q4/Q8** versus llama-declared device buffers near **1015/1281 MiB**, preserving
+Q8's ~23% memory advantage.
+
+This result supersedes the old shape-only three-way diagnostic and the old G2
+**core-prefill gap magnitude**, whose llama helper lacked an explicit asynchronous
+backend drain. It does not change the historical G2/G3 disposition: current Q4
+still loses every required core scope, so Vulkan parity remains open.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-current-exact-three-way.json).
+
+### 2.47 D08-X3 operation-complete Q4 pack8 prefill (2026-08-15)
+
+The bounded continuation changes one exact dense-FFN owner rather than adding a
+new resident format. One 128-thread block computes 32 output columns x 256
+rows for both existing pack8 gate/up matrices, stages one gate and one up panel
+in a 32-KiB LDS union, reuses each activation WMMA fragment, rounds both
+projection boundaries through BF16 LDS, and emits BF16 SiLU(gate)*up directly.
+Two registered singleton pack8 WMMAs plus standalone BF16 SiLU remain the exact
+fallback. Model/quant/request and backend-shape policy fail closed outside
+Qwen3.5-0.8B `MOSTLY_Q4_K_M`, rows512/K1024/N3584.
+
+The actual-shape five-block leaf is byte-exact and measures **0.99043 ->
+0.47409 ms (2.089x)**. Five cyclic fresh-process complete-model blocks then
+measure:
+
+| Scope | Rollback | Candidate | Ratio / paired wins |
+| --- | ---: | ---: | ---: |
+| Q4 exact-core pp512 | 4343.99 tok/s | **4943.76 tok/s** | **1.1381x / 5 of 5** |
+| Q4 public pp512 | 4324.92 tok/s | **4923.72 tok/s** | **1.1385x / 5 of 5** |
+| Q4 exact-core tg128 | 143.91 tok/s | 143.52 tok/s | 0.9973x |
+| Q4 public tg128 | 122.37 tok/s | 121.76 tok/s | 0.9950x |
+
+The candidate and rollback own identical **1,067,067,204-B** sessions. Three
+Q8 no-route blocks stay inside the 2% guard: core pp/tg **0.9899x/0.9968x**
+and public pp/tg **1.0059x/1.0019x**. All A/B trajectories are finite,
+deterministic, and exact.
+
+The full 18-prompt natural + 18-prompt category-derived-p512 packet passes for
+both quants. Q4 candidate and rollback have identical teacher-forced logits and
+persistent-state digests on **36/36** prompt profiles. Current Q4/Q8 remain
+**1794/1800** top-1 versus strict, max KL **0.005930**; every repeat/state is
+deterministic/finite and every current category-p512 recording trajectory
+matches eager. A cached rocprof trace records the expected candidate at
+local128, grid112x2, VGPR248, LDS32,768 B, and scratch0; gfx1151 timestamps are
+again unavailable, so the independent HIP-event leaf supplies duration.
+
+Reusing the synchronized same-day llama denominators only as a diagnostic puts
+candidate Q4 core prefill at **1.014x llama HIP and 0.928x Vulkan**, or
+**103.565 / 105.001 / 96.131 ms**. This is not a new interleaved external
+packet, but it shows that the retained 14.299-ms hipEngine saving removes the
+entire prior 12.588-ms hipEngine-to-HIP component and leaves about **7.434 ms**
+to the Vulkan result. The next useful evidence is therefore a fresh clean-tree
+three-way or a current marker rerank, not another variant in this closed
+package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
+
+### 2.48 Post-X3 synchronized exact three-way (2026-08-15)
+
+The clean committed X3 default reruns the same six-block cyclic protocol with
+unchanged same-source llama.cpp `1d2869c6e` helpers. Every engine occupies every
+order position twice; each fresh child performs one warmup and one shared-token
+exact-core/public p512/tg128 measurement.
+
+| Engine | Q4 core pp / tg | Q4 public pp / tg | Q8 core pp / tg | Q8 public pp / tg |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine `5c33d9fdf` | **4896.02 / 145.80** | **4948.99 / 121.18** | **4997.25 / 141.19** | **4955.87 / 116.90** |
+| llama.cpp HIP | 4848.25 / 122.58 | 5037.20 / 88.96 | 4640.50 / 110.18 | 5059.94 / 84.16 |
+| llama.cpp Vulkan | 5510.21 / 194.15 | 5708.03 / 126.41 | 5703.85 / 159.05 | 5794.81 / 111.70 |
+
+All values are tok/s medians over six fresh processes. Q4 exact-core prefill is
+now **1.0099x llama HIP with 5/6 paired wins**, closing the measured
+hipEngine-specific HIP component. Vulkan remains **1.1255x** faster; core wall
+is **104.575 / 105.605 / 92.918 ms** for hipEngine/HIP/Vulkan, leaving **11.657
+ms** to Vulkan. Across the independent pre/post snapshots, hipEngine Q4 rises
+**4354.16 -> 4896.02 tok/s (+12.44%)** and the Vulkan wall gap falls **21.458 ->
+11.657 ms (-45.68%)**. The separately paired X3 artifact remains the
+optimization-delta authority.
+
+Q4 public prefill is **0.9825x HIP / 0.8670x Vulkan**. X3 does not route decode:
+hipEngine remains **1.189x/1.362x** llama HIP on core/public Q4 decode and
+**0.751x/0.959x** Vulkan. Q8 remains the no-route guard, at **1.077x HIP /
+0.876x Vulkan** core prefill and **1.047x Vulkan** public decode.
+
+All 36 children are finite and deterministic. Core and public top-1 digests are
+exact across engines and quants. Every metric CV is below 5%; the maximum is
+4.764% for Q8 hipEngine public prefill. The old marker owner ranking is now
+invalid because X3 materially moved dense FFN work; one current Q4 marker
+rerank is required before selecting any next architecture package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json).
+
+### 2.49 D08-X4 post-X3 Q4 prefill rerank (2026-08-15)
+
+One clean current marker packet uses three persistent-session p512 runs after
+one warmup. Marker throughput is **4663.61 / 4818.79 / 4814.85 tok/s** and wall
+is **109.786 / 106.251 / 106.338 ms**. The median is only 1.017x the fresh
+104.575-ms exact-core wall; semantic role medians sum to 106.426 ms for 100.08%
+coverage.
+
+| Role | Current marker | Exact-wall normalized | Historical Vulkan attribution | Normalized gap |
+| --- | ---: | ---: | ---: | ---: |
+| Dense FFN projections | **34.007 ms** | 33.443 | 24.495 | 8.948 |
+| Linear-attention projections | **31.815 ms** | 31.288 | 17.828 | **13.460** |
+| GDN recurrence | **23.617 ms** | 23.226 | 12.585 | **10.641** |
+| Full-attention projections/RoPE | 7.809 ms | 7.679 | 4.385 | 3.294 |
+
+X3 moves dense projections plus activation **45.981 -> 34.129 ms (-11.852
+ms)** in the independent marker packets. The paired X3 A/B remains the
+14.299-ms optimization authority because GDN and other unchanged stages also
+moved with system variance. Historical Vulkan role rows remain attribution-only
+and are not additive to the fresh 11.657-ms synchronized total gap.
+
+Linear-attention projections are the new gap leader. Their current subowners are
+Q5 QKV + Q4 gate explicit fallback **17.628 ms**, retained Q5 SSM-out **8.060
+ms**, alpha/beta fallback **4.665 ms**, and BF16-to-F32 conversion **1.555 ms**.
+SSM-out is already accepted/exhausted; the heterogeneous QKV/gate pair is the
+largest unworked route.
+
+Admit exactly one schedule: a 128-thread, 32-column x 256-row kernel over the
+resident Q5T16 QKV and pack8-Q4 gate weights. It stages decoded K256 panels,
+reuses activation fragments for both projections in the overlapping 2,048
+columns, handles the remaining QKV columns under the same owner, preserves
+separate BF16 boundaries and registered singleton fallbacks, and adds no
+resident bytes. Continue only for byte-exact, no-scratch output and >=1.10x
+combined-leaf speed; retain only for >=1% paired core/public pp512 with decode
+and Q8 >=0.98x. No tile ladder is admitted.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-post-x3-prefill-rerank.json).
+
+### 2.50 D08-X4 heterogeneous QKV/gate screen (2026-08-15)
+
+The one admitted implementation used a 128-thread, 32-column x 256-row K256
+schedule over resident Q5T16 QKV and pack8-Q4 gate weights. It reused activation
+fragments in the overlapping 2,048 columns, retained QKV-only handling through
+N6144, preserved separate BF16 outputs and singleton fallbacks, and added no
+resident bytes.
+
+The actual-resident screen cycles all 18 linear-attention pairs ten times per
+sample. Five rotated blocks measure:
+
+| Block | Singleton control | Heterogeneous candidate |
+| ---: | ---: | ---: |
+| 0 | 21.61973 ms | 20.00583 ms |
+| 1 | 19.57751 | 19.72724 |
+| 2 | 19.48013 | 19.19493 |
+| 3 | 19.84262 | 19.06383 |
+| 4 | 19.59634 | 19.48194 |
+| **Median** | **19.59634** | **19.48194** |
+
+Layer-0 QKV and gate outputs are both byte-exact, but the candidate is only
+**1.00587x / 0.11440 ms** faster. That misses the predeclared 1.10x leaf gate
+and projects just **0.109%** of the fresh 104.575-ms exact wall. Per protocol,
+no scratch profile, complete-model A/B, or cumulative gate was consumed. The
+entire transient 699-line kernel/wrapper/route/test diff was removed; no default
+or registered diagnostic remains.
+
+This mechanism is closed. Revisit only for a materially different schedule with
+>=1.10x combined-leaf evidence, not another tile ladder. The rerank is otherwise
+unchanged and GDN recurrence becomes the next material package.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q5t16-q4pack8-qkv-gate-rejected.json).
+
+### 2.51 D08-X5 GDN cluster8 wave-broadcast screen (2026-08-15)
+
+The next package preserved the retained 256-thread/eight-lane cluster8 geometry
+and recurrent arithmetic. Its sole candidate replaced redundant global loads
+with wave shuffles: Q/K shared across four columns, beta/decay across each wave,
+and value across each eight-lane column. It added no resident or scratch bytes
+and kept the original cluster8 owner as fallback.
+
+Focused single-sequence and segmented tests are bit-exact for both recurrent
+output and final FP32 state. The exact rows512/16V/128x128 screen nevertheless
+measures retained/candidate medians of **0.77453/1.19467 ms** over five rotated
+20-call blocks: a **0.64832x** result, or 54.24% candidate regression. The
+predeclared 1.15x continuation gate therefore stops the package before rocprof,
+complete-model A/B, or cumulative semantics. All 356 transient kernel, wrapper,
+registration, and test lines were removed.
+
+Do not revisit wave-shuffle load sharing in this cluster8 schedule. A future GDN
+attempt requires a different algorithm or operation boundary. The unchanged
+owner ranking now advances to dense FFN.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-gdn-cluster8-broadcast-rejected.json).
+
+### 2.52 D08-X6 dense-BF16 WMMA down+residual (2026-08-15)
+
+Twelve Q4_K_M FFN-down tensors are resident as dense BF16 at
+rows512/K3584/N1024; the other twelve remain pack8-Q4. The retained WMMA owner
+previously rounded each projection to BF16, wrote a temporary, then launched
+`gguf_bf16_add`. X6 adds one registered sibling that performs the same first
+round, adds the BF16 residual, and rounds again in the WMMA store. It adds no
+resident/scratch bytes and keeps the two primitives as fallback.
+
+Five rotated all-resident leaf blocks measure **9.95928 -> 9.80398 ms
+(-1.56%, 1.01584x)** with byte-exact outputs, four wins, and a causal 0.15530-ms
+saving. Cached tracing names the `<128,64,32,true>` body at WG256, 15,360-byte
+LDS, 96 VGPR, SGPR128, and scratch0.
+
+Five paired fresh-process Q4 blocks then measure exact-core pp512
+**4938.948 -> 5091.718 tok/s (+3.09%, 5/5 wins)** and public pp512
+**5020.345 -> 5104.790 (+1.68%, 3/5)**. Decode medians are positive but retain
+the known core bimodality. The five-block Q8 control guard is
+**0.9815x/0.9879x** core/public prefill and **0.9925x/1.0080x** decode; Q8 has
+no dense-BF16 owner, and final non-dense misses return before registry work.
+All children are finite/deterministic with exact core/public trajectories and
+identical owned-session bytes. The full natural/category-p512 cumulative gate
+also passes: current remains 1794/1800 top-1 with max KL 0.005930, all 72
+recorded-graph prompt/role pairs are exact, and X6 candidate/rollback teacher
+and state digests match on all 36 Q4 prompt/profile pairs.
+
+Promotion is capability-scoped to gfx1151 and the already-qualified exact
+shape. `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` temporarily restores WMMA plus
+standalone add for bisection; registry/shape misses use the same fallback. The
+causal performance claim is the exact 0.155-ms subwindow; the larger observed
+full-wall ratio is retained as non-regression evidence rather than wholly
+assigned to the removed add.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-dense-bf16-wmma-residual-prefill.json).
+
+### 2.53 D08-X7 pack8-Q4 WMMA down+residual rejection (2026-08-15)
+
+The other twelve FFN-down owners use the qualified small-tile resident-pack8
+Q4 WMMA projection. X7 tested an architecture/shape-scoped sibling that kept
+the projection's BF16 store boundary, loaded the BF16 residual, added in FP32,
+and rounded the sum to BF16. A focused GPU oracle was byte-exact to the
+ordinary WMMA projection plus explicit add, with no resident or scratch bytes.
+
+The extra output-store work is not free for this producer. Two alternating
+fresh-process Q4 pairs both lose in both prefill windows: exact-core pp512
+**5124.452 -> 4908.151 tok/s (-4.22%, 0/2)** and public pp512
+**5124.881 -> 4878.998 (-4.80%, 0/2)**. All completed children remain finite,
+deterministic, top-1 exact, and byte-neutral. The screen stopped before Q8,
+cumulative-semantic, and trace gates because the target performance failure is
+material and repeated.
+
+The kernel, wrapper, registry/capability route, focused tests, cumulative role,
+and temporary selector were removed. Keep resident-pack8 WMMA plus
+`gguf_bf16_add`; unlike the dense-BF16 X6 owner, this WMMA producer cannot
+absorb the rounded residual cheaply. Reopen only for a materially different
+producer schedule that first beats the complete-model control.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q4-pack8-wmma-residual-rejected.json).
+
+### 2.54 D08-X8 Q8T16 alpha/beta dual WMMA (2026-08-15)
+
+All eighteen linear-attention blocks project one shared BF16 normalized input
+through same-shape resident Q8T16 alpha and beta weights at
+rows512/K1024/N16. The prior path launches two 16x32 singleton WMMAs. The
+retained 64-thread owner assigns one matrix to each wave and stages each exact
+BF16-to-F16 activation K16 tile once in 1 KiB LDS. Weight decode, WMMA K-order,
+FP32 accumulation, and BF16 output stores are unchanged per matrix.
+
+Five alternating all-actual-weight blocks are byte-exact and measure the 18
+pairs **2.11263 -> 0.42168 ms (5.010x)**, saving 1.69095 ms with no resident or
+hot-scratch bytes. Five fresh-process Q4 pairs improve exact-core/public pp512
+**4912.861 -> 5091.743 (+3.64%, 5/5)** / **4899.499 -> 5147.088 (+5.05%,
+5/5)**. Three Q8 pairs improve **5010.260 -> 5132.988 (+2.45%, 3/3)** /
+**4955.990 -> 5061.490 (+2.13%, 3/3)**. Q8 decode medians are positive; Q4
+public decode is 0.994x and the inactive core window retains its known
+bimodality, so no decode-speed claim is made. Every completed child is finite,
+deterministic, cross-role top-1 exact, and byte-neutral.
+
+Production is scoped by the gfx1151 capability to exactly
+rows512/K1024/N16+N16. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores
+two registered singleton WMMAs for one release window; every shape/backend/key
+miss uses the same fallback. The full natural/category-p512 cumulative gate
+passes, with all 72 current/rollback teacher-forced and state digests exact and
+all recorded graph trajectories exact.
+
+Artifact:
+[`2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json).
 
 ## 3. Comparison contracts
 
@@ -1723,7 +2215,7 @@ if it passes the same correctness and benchmark gates; it is not “kernel work.
 | --- | --- | --- | --- | --- | --- |
 | **D08-P1** | Fast-route/default/path selection: bulk rows, WMMA/MMQ projection coverage, correct AOTriton/native full-attention route. | **realized: +33.68% Q4 pp512 / +42.19% eager tg128** | Existing Q5T16 direct/rowtile/WMMA leaves beat dense BF16 on the actual QKV shape and pass full-model correctness. | **Closed:** one exact-role materialization/dispatch repair, no kernel variants, and M6 re-profile complete. | accepted |
 | **D08-P3** | Dense Q4/Q5/Q6/Q8 gate/up/down projection kernels: tile, layout, activation reuse, and fusion. | **29.60% merged Q4 bound; unrealized** | All three frozen sole-resident candidates won pp512 but failed a required c1 or c8 operational guard. | **Closed:** no duplicate layouts, no full-model A/B, and no production change. Reopen only for a new sole-resident family that is non-regressive at every width. | rejected |
-| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed:** Q4-only quant/shape plugin policy; Q8 exact fallback retained; no new arithmetic variants. | accepted |
+| **D08-P2** | GDN recurrence and convolution. Reuse retained GPF/LCP schedules before inventing a new one. | **realized: +4.33% paired / +5.83% independent Q4 pp512** | The 16K/16V shape exposes too few exact-LDS32 blocks; cluster8 wins the bounded screen and complete gate. | **Closed at P2:** Q4-only policy; D08-X2-K2 later retained Q8 cluster8 under a fresh gate without adding arithmetic variants. | accepted; Q8 disposition superseded by X2-K2 |
 | **D08-P6** | Remaining linear-attention projections after accepted Q5 QKV routing: residual QKV/gate, alpha/beta, and SSM-out. | **realized: +14.18% graph-scope pp512 / +0.69% graph tg128; -46.69 MiB weights** | The split selected 35.93-ms Q5 SSM-out; exact-role sole Q5T16 passes 449/450 top-1, max KL 0.003273, and all graph pairs. | **Closed:** exactly three existing leaves and one combined full-model A/B; M7 confirms SSM-out at 9.68 ms. | accepted |
 | **D08-P7** | Residual linear-attention QKV/gate, alpha/beta, and conversion after accepted Q5T16 SSM-out. | **3.58% selected gate bound; unrealized** | Q4T16 pp512/split-c8 win but c1 is 0.883x; raw Q4 regresses all operational widths. | **Closed:** preserve sole pack8, skip conditional source-F16 after exact-T16 c1 failure, and run no full-model A/B. | rejected |
 | **D08-P4** | Full attention and RoPE/KV boundaries. | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Exact-role sole Q4T16 passes every operational leaf, 447/450 top-1, max KL 0.003574, and exact trajectories. | **Closed:** gfx1151 0.8B Q-only plugin policy; M8 confirms Q at 2.71 ms and all other scope remains unchanged. | accepted/exhausted |
@@ -1800,7 +2292,7 @@ potential band, then measured upper bound.
 | Micro-tune the opening fallback kernels | parked | critical only if fallback is production | Opening rows disabled all named fast paths; tuning them first could optimize a route we should not ship. | C0 proves the fallback remains the intended route for a material semantic owner. |
 | P1 Q5T16 QKV route | **accepted** | **realized: +33.68% pp / +42.19% eager tg; -11.59% tracked peak** | One exact-role sole-resident policy reused the shipped direct/rowtile/WMMA family; no arithmetic variants or duplicate weights. | Closed; reopen only if a future correctness regression identifies this exact role. |
 | Dense FFN projection package / P3 | **rejected** | **29.60% merged Q4 bound; unrealized** | Raw Q4 regresses every operational width, Q4T16 regresses c8, and Q6T16 regresses c1; duplicate residents are disallowed. | A new sole-resident family passes pp512 plus c1/c2/c4/c8 without sacrificing memory or either topline scope. |
-| Q4/16K/16V cluster8 GDN / P2 | **accepted** | **realized: +4.33% paired / +5.83% independent pp512; GDN -36.64%** | Complete Q4 semantic and production-graph decode gates pass; Q8 remains exact because its strict decode guard missed. | Closed; reopen only for a regression in this exact quant/shape key. |
+| Q4/Q8 16K/16V cluster8 GDN / P2 + X2-K2 | **accepted; X5 follow-up rejected** | **Q4 +4.33% paired / +5.83% independent; Q8 +16.70% exact-core pp512** | Complete Q4 gates pass; X2-K2's fresh Q8 gate supersedes P2's strict-guard miss. X5 wave-broadcast sharing is exact but only 0.6483x. | Keep cluster8; reopen only for a different algorithm/operation boundary or a regression in either exact quant/shape key. |
 | Q5T16 SSM-out / P6 | **accepted** | **realized: +14.18% graph pp / +0.69% graph tg; -46.69 MiB** | Exact-role sole Q5T16 replaces 18 dense-BF16 expansions; correctness and all production-graph pairs pass. | Closed; M7 confirms the route at 9.68 ms and selects the residual group instead. |
 | Residual linear-attention projections / P7 | **rejected** | **3.58% selected gate bound; unrealized** | Native Q4T16 c1 regresses 11.73%; raw Q4 regresses every c1-c8 width; source-F16 cannot repair c1. | A new sole-resident family passes pp512 and every operational width, or an operation-complete fusion removes the c1 regression without sidecars. |
 | Full-attention Q projection / P4 | **accepted/exhausted** | **realized: +4.79% graph pp / +1.41% graph tg; -4.13 MiB** | Six exact-role sole-Q4T16 residents pass 447/450 top-1 and every graph/eager trajectory; M8 confirms 2.71-ms Q and T16 WMMA bulk ownership. | Closed; reopen only for a regression in this exact role/shape key. |

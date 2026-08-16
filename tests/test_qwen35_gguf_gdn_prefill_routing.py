@@ -268,12 +268,41 @@ def test_resolve_gguf_gdn_prefill_plan_uses_gfx1151_package_default() -> None:
     assert plan.auto_mode == "chain_lds32_direct_nonvolatile"
     assert plan.auto_modes_by_quant_shape == {
         ("mostly_q4_k_m", 16, 16, 128, 128): "chain_peer_cluster8",
+        ("mostly_q4_k_m", 16, 48, 128, 128): "chain_compact_peer_wave32",
         # D08-X2-K2: fresh five-block gate admitted Q8_0 on this geometry.
         ("mostly_q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
     }
+    assert plan.compact_peer_chunk_rows == 1024
     assert plan.has_exact_chain_lds32
     assert plan.has_exact_chain_lds32_direct
     assert plan.has_exact_chain_lds32_direct_nonvolatile
+
+
+def test_gfx1151_qwen38_auto_uses_compact_qk_capacity_and_peer_liveness() -> None:
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1151"
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(
+            ssm_group_count=16,
+            ssm_time_step_rank=48,
+            ssm_state_size=128,
+            ssm_inner_size=6144,
+            is_moe=False,
+        ),
+        file_type_name="MOSTLY_Q4_K_M",
+        model_id="Qwen3.8-27B",
+        quant="gguf_q4_k_m",
+    )
+
+    assert (
+        qgr._gguf_gdn_prefill_session_mode(
+            runner.backend,
+            weights=runner.weights,
+            cfg=runner.weights.config,
+        )
+        == "chain_compact_peer_wave32"
+    )
+    assert qgr._gguf_prefill_normalized_qk_heads(runner) == 16
 
 
 def test_run_gdn_prefill_auto_uses_quant_shape_scoped_cluster8_override() -> None:
@@ -757,6 +786,72 @@ def test_run_gdn_prefill_explicit_compact_peer_route_uses_compact_abi(
     recurrent_args = calls[1][1]
     assert prepare_args[5:10] == (0xD0, 0xD1, 0xD2, 0xD3, 0xD4)
     assert recurrent_args[7:12] == (64, 4, 32, 128, 128)
+
+
+def test_run_gdn_prefill_chunks_compact_peer_recurrence_with_state_carry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_compact_peer_wave32"
+    )
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_compact_peer_normalized=_recorder(calls, "compact_peer_prepare"),
+        recurrent_compact_peer_wave32=_recorder(calls, "compact_peer_wave32"),
+        compact_peer_chunk_rows=1024,
+    )
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=_make_scratch(),
+        cfg=_make_cfg(),
+        rows=4096,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "compact_peer_prepare",
+        "compact_peer_wave32",
+        "compact_peer_wave32",
+        "compact_peer_wave32",
+        "compact_peer_wave32",
+        "rmsnorm_gate",
+    ]
+    recurrent = [args for name, args in calls if name == "compact_peer_wave32"]
+    assert all(args[5] == 0xDEAD0001 for args in recurrent)
+    assert [args[7] for args in recurrent] == [1024] * 4
+    assert [args[0] for args in recurrent] == [
+        0xD0,
+        0xD0 + 0x200000,
+        0xD0 + 0x400000,
+        0xD0 + 0x600000,
+    ]
+    assert [args[2] for args in recurrent] == [
+        0xD2,
+        0xD2 + 0x1000000,
+        0xD2 + 0x2000000,
+        0xD2 + 0x3000000,
+    ]
+    assert [args[3] for args in recurrent] == [
+        0xD3,
+        0xD3 + 0x20000,
+        0xD3 + 0x40000,
+        0xD3 + 0x60000,
+    ]
+    assert [args[6] for args in recurrent] == [
+        0xE0,
+        0xE0 + 0x1000000,
+        0xE0 + 0x2000000,
+        0xE0 + 0x3000000,
+    ]
 
 
 def test_run_gdn_prefill_rejects_peer_route_after_compact_qk_allocation(

@@ -316,9 +316,11 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
+    q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
@@ -2631,22 +2633,36 @@ class Qwen35GGUFFullStackRunner:
         """
 
         plan = self._gdn_prefill_plan()
-        requested_mode = _gguf_gdn_prefill_mode()
-        if requested_mode == "auto":
-            quant_shape = (
-                str(getattr(self.weights, "file_type_name", "")).strip().lower(),
-                int(cfg.ssm_group_count),
-                int(cfg.ssm_time_step_rank),
-                int(cfg.ssm_state_size),
-                int(self.ssm_value_dim),
-            )
-            mode = (plan.auto_modes_by_quant_shape or {}).get(
-                quant_shape, plan.auto_mode
-            )
-        elif requested_mode == "exact":
-            mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
+        frozen_mode = getattr(scratch, "gdn_effective_mode", None)
+        scratch_diagnostic = bool(
+            getattr(scratch, "gdn_mode_diagnostic", False)
+        )
+        if frozen_mode is not None and not scratch_diagnostic:
+            # Session-frozen route (design review 2026-08-15): the scratch was
+            # sized and liveness-planned for exactly this mode at allocation;
+            # later environment mutations cannot redirect a production
+            # session. Verify-gate superset scratch keeps the alternation
+            # path below. ``requested_mode`` is synthetic so no env-derived
+            # explicit-unavailable error path fires for a frozen session.
+            requested_mode = "frozen"
+            mode = frozen_mode
         else:
-            mode = requested_mode
+            requested_mode = _gguf_gdn_prefill_mode()
+            if requested_mode == "auto":
+                quant_shape = (
+                    str(getattr(self.weights, "file_type_name", "")).strip().lower(),
+                    int(cfg.ssm_group_count),
+                    int(cfg.ssm_time_step_rank),
+                    int(cfg.ssm_state_size),
+                    int(self.ssm_value_dim),
+                )
+                mode = (plan.auto_modes_by_quant_shape or {}).get(
+                    quant_shape, plan.auto_mode
+                )
+            elif requested_mode == "exact":
+                mode = _gguf_gdn_prefill_backend_exact_mode(self.backend)
+            else:
+                mode = requested_mode
         if requested_mode == "auto" and not _gguf_gdn_prefill_plan_has_mode(
             plan, mode
         ):
@@ -3080,21 +3096,45 @@ class Qwen35GGUFFullStackRunner:
                     if mode == "chain_compact_peer_wave32"
                     else (cfg.ssm_time_step_rank,)
                 )
-                normalized_recurrent(
-                    scratch.prefill_query.ptr,
-                    scratch.prefill_key.ptr,
-                    scratch.prefill_value.ptr,
-                    scratch.prefill_beta.ptr,
-                    scratch.prefill_decay.ptr,
-                    recurrent_state.ptr,
-                    scratch.recurrent_out.ptr,
-                    rows,
-                    *recurrent_shape,
-                    cfg.ssm_state_size,
-                    self.ssm_value_dim,
-                    stream=stream,
-                    runtime=runtime,
+                compact_chunk_rows = (
+                    int(plan.compact_peer_chunk_rows)
+                    if mode == "chain_compact_peer_wave32"
+                    else 0
                 )
+                compact_chunk_rows = compact_chunk_rows or rows
+                qk_row_bytes = (
+                    int(cfg.ssm_group_count)
+                    * int(cfg.ssm_state_size)
+                    * DType.FP32.itemsize
+                )
+                value_row_bytes = (
+                    int(cfg.ssm_time_step_rank)
+                    * int(self.ssm_value_dim)
+                    * DType.FP32.itemsize
+                )
+                scalar_row_bytes = (
+                    int(cfg.ssm_time_step_rank) * DType.FP32.itemsize
+                )
+                for start in range(0, rows, compact_chunk_rows):
+                    chunk = min(compact_chunk_rows, rows - start)
+                    qk_offset = start * qk_row_bytes
+                    value_offset = start * value_row_bytes
+                    scalar_offset = start * scalar_row_bytes
+                    normalized_recurrent(
+                        scratch.prefill_query.ptr + qk_offset,
+                        scratch.prefill_key.ptr + qk_offset,
+                        scratch.prefill_value.ptr + value_offset,
+                        scratch.prefill_beta.ptr + scalar_offset,
+                        scratch.prefill_decay.ptr + scalar_offset,
+                        recurrent_state.ptr,
+                        scratch.recurrent_out.ptr + value_offset,
+                        chunk,
+                        *recurrent_shape,
+                        cfg.ssm_state_size,
+                        self.ssm_value_dim,
+                        stream=stream,
+                        runtime=runtime,
+                    )
             plan.rmsnorm_gate(
                 scratch.recurrent_out.ptr,
                 scratch.linear_z.ptr,
@@ -7925,6 +7965,19 @@ class Qwen35GGUFFullStackRunner:
             in_features=self.hidden_size,
             out_features=self.ffn_size,
         )
+        dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+            scratch,
+            rows,
+            self.hidden_size,
+            enabled=(
+                dense_decode_variant
+                in {
+                    "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+                    "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+                }
+            ),
+            planes=2,
+        )
         dense_silu_fused = (
             rows > 1 or dense_decode_variant is not None
         ) and launch_gguf_linear_pair_silu(
@@ -7939,6 +7992,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
             use_gemv_decode=(True if dense_decode_variant is not None else None),
             registered_decode_variant=dense_decode_variant,
+            q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
@@ -9862,6 +9916,59 @@ def _gguf_q8_t16_two_wave_prefill_applies(backend: str, prompt_tokens: int) -> b
     return max_tokens > 0 and 0 < int(prompt_tokens) <= max_tokens
 
 
+def _gguf_q8_t16_dual_wmma_prefill_applies(
+    runner: object,
+    prompt_tokens: int,
+) -> bool:
+    """Return whether this exact model/quant/request owns the narrow Q8 pair."""
+
+    weights = getattr(runner, "weights", None)
+    backend = getattr(runner, "backend", None)
+    if not isinstance(backend, str):
+        return False
+    policies = backend_package_capability(
+        backend,
+        "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = _gguf_policy_identity(weights)
+    admitted_rows = None if identity is None else policies.get(identity)
+    return isinstance(admitted_rows, (set, frozenset, tuple)) and int(
+        prompt_tokens
+    ) in admitted_rows
+
+
+def _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+    runner: object,
+    prompt_tokens: int,
+) -> bool:
+    """Return whether this exact model/quant/request owns the pack8 composite."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or not isinstance(backend, str)
+        or bool(getattr(cfg, "is_moe", False))
+    ):
+        return False
+    policies = backend_package_capability(
+        backend,
+        "GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return False
+    identity = _gguf_policy_identity(weights)
+    admitted_rows = None if identity is None else policies.get(identity)
+    return isinstance(admitted_rows, (set, frozenset, tuple)) and int(
+        prompt_tokens
+    ) in admitted_rows
+
+
 def _gguf_q4_t16_unequal_pair_prefill_applies(runner: object) -> bool:
     """Return whether this request owner has the qualified dense geometry."""
 
@@ -9910,17 +10017,9 @@ def _gguf_dense_pair_silu_decode_variant(
     if not isinstance(policies, Mapping):
         return None
     identity = _gguf_policy_identity(weights)
-    shapes = policies.get(identity, {}) if identity is not None else {}
-    if not isinstance(shapes, Mapping):
-        shapes = {}
-    if not shapes:
-        # Legacy narrow-model policies remain provenance-name keyed until those
-        # model families acquire immutable geometry identities.
-        legacy_identity = (
-            getattr(weights, "model_name", None),
-            getattr(weights, "file_type_name", None),
-        )
-        shapes = policies.get(legacy_identity, {})
+    if identity is None:
+        return None
+    shapes = policies.get(identity, {})
     if not isinstance(shapes, Mapping):
         return None
     variant = shapes.get((int(rows), int(in_features), int(out_features)))
@@ -9945,10 +10044,9 @@ def _gguf_dense_down_residual_decode_fused(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return False
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return False
     shape = (int(rows), int(in_features), int(out_features))
     cache_key = (backend, identity, shape)
     cached = getattr(runner, "_dense_down_residual_decode_policy_cache", None)
@@ -9997,10 +10095,9 @@ def _gguf_norm_residual_decode_kernel(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return fallback
-    identity = (
-        getattr(weights, "model_name", None),
-        getattr(weights, "file_type_name", None),
-    )
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return fallback
     shape = (int(rows), int(hidden_size))
     policy_key = (backend, identity, shape)
     cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
@@ -11261,7 +11358,14 @@ def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     return rows * (in_features // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES
 
 
-def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enabled: bool | None = None) -> int | None:
+def _optional_q8_1_workspace_ptr(
+    scratch,
+    rows: int,
+    in_features: int,
+    *,
+    enabled: bool | None = None,
+    planes: int = 1,
+) -> int | None:
     if enabled is None:
         enabled = (
             _gguf_q4k_selected_dual_dp4a_enabled()
@@ -11270,10 +11374,12 @@ def _optional_q8_1_workspace_ptr(scratch, rows: int, in_features: int, *, enable
         )
     if not enabled:
         return None
+    if int(planes) <= 0:
+        raise ValueError("q8_1 workspace planes must be positive")
     workspace = getattr(scratch, "moe_q8_1", None)
     if workspace is None:
         return None
-    required = _q8_1_workspace_bytes(rows, in_features)
+    required = int(planes) * _q8_1_workspace_bytes(rows, in_features)
     if int(getattr(workspace, "nbytes", required)) < required:
         raise ValueError(
             f"GGUF q8_1 workspace is too small: need {required} bytes, "
@@ -14869,6 +14975,18 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q8_t16_dual_wmma_prefill_session(
+                    _gguf_q8_t16_dual_wmma_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
+                q4_pack8_dual_wmma_silu_prefill_session(
+                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_t16_unequal_pair_prefill_session(
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
@@ -14961,6 +15079,18 @@ class Qwen35GGUFResidentSession:
                 ),
                 wmma_prefill_session(self.use_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
+                q8_t16_dual_wmma_prefill_session(
+                    _gguf_q8_t16_dual_wmma_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
+                q4_pack8_dual_wmma_silu_prefill_session(
+                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
+                        self.runner,
+                        len(token_ids),
+                    )
+                ),
                 q4_t16_unequal_pair_prefill_session(
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
@@ -16045,7 +16175,16 @@ class Qwen35GGUFResidentSession:
             else int(_pre_staged_token_ids_ptr)
         )
         add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
-        scratch_row_start = 0 if _prebuilt_bulk_scratch is not None else start
+        hidden_capacity_rows = min(
+            int(self._prefill_hidden_a.nbytes),
+            int(self._prefill_hidden_b.nbytes),
+        ) // row_nbytes
+        scratch_row_start = _gguf_verify_hidden_scratch_row_start(
+            start=start,
+            rows=rows,
+            hidden_capacity_rows=hidden_capacity_rows,
+            prebuilt=_prebuilt_bulk_scratch is not None,
+        )
         try:
             t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
@@ -22482,9 +22621,26 @@ def _allocate_prefill_scratch_liveness_arenas(
     )
 
 
-def _gguf_gdn_prefill_effective_mode(backend: str, *, weights=None, cfg=None) -> str:
+def _gguf_gdn_prefill_session_mode(
+    backend: str,
+    *,
+    weights=None,
+    cfg=None,
+    plan=None,
+) -> str:
+    """Resolve the final effective GDN prefill mode for one session.
+
+    Single source of truth for Q/K sizing, scratch liveness, conv_out
+    lifetime planning, and dispatch: environment selection (``auto`` /
+    ``exact`` / explicit), the architecture's quant-shape plugin keys, and
+    kernel-availability fallback all resolve here. Session-scratch allocation
+    calls this once and freezes the result; dispatch consumes the frozen
+    value unless the diagnostic superset-scratch flag is set.
+    """
+
     requested_mode = _gguf_gdn_prefill_mode()
     if requested_mode == "auto":
+        mode = _gguf_gdn_prefill_backend_auto_mode(backend)
         if weights is not None and cfg is not None:
             quant_shape_modes = _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
                 backend
@@ -22496,13 +22652,46 @@ def _gguf_gdn_prefill_effective_mode(backend: str, *, weights=None, cfg=None) ->
                 int(cfg.ssm_state_size),
                 int(cfg.ssm_inner_size) // int(cfg.ssm_time_step_rank),
             )
-            return quant_shape_modes.get(
-                quant_shape, _gguf_gdn_prefill_backend_auto_mode(backend)
-            )
-        return _gguf_gdn_prefill_backend_auto_mode(backend)
+            mode = quant_shape_modes.get(quant_shape, mode)
+    elif requested_mode == "exact":
+        mode = _gguf_gdn_prefill_backend_exact_mode(backend)
+    else:
+        mode = requested_mode
+
+    try:
+        if plan is None:
+            plan = _resolve_gguf_gdn_prefill_plan(backend)
+    except ValueError:
+        # Unvalidated/exotic backends keep the pre-fallback selection;
+        # availability checks require a registered kernel plan.
+        return mode
+    if _gguf_gdn_prefill_plan_has_mode(plan, mode):
+        return mode
+    if requested_mode == "auto":
+        if plan.has_fused:
+            return "fused"
+        if plan.has_chain:
+            return "chain"
+        return "auto"
     if requested_mode == "exact":
-        return _gguf_gdn_prefill_backend_exact_mode(backend)
-    return requested_mode
+        raise RuntimeError(
+            "backend GGUF GDN prefill exact mode is unavailable; "
+            f"required route {mode!r} is not fully registered for {backend!r}"
+        )
+    raise RuntimeError(
+        f"explicit GGUF GDN prefill mode {mode!r} is unavailable; "
+        f"the complete route is not registered for {backend!r}"
+    )
+
+
+def _gguf_gdn_prefill_scratch_diagnostic() -> bool:
+    """True when verify-gate superset scratch permits in-session mode flips."""
+
+    return any(
+        _env_flag(name, False)
+        for name in os.environ
+        if name.startswith("HIPENGINE_GGUF_VERIFY_")
+    )
 
 
 def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
@@ -22517,7 +22706,7 @@ def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
     if not isinstance(backend, str):
         return value_heads
     try:
-        mode = _gguf_gdn_prefill_effective_mode(backend, weights=weights, cfg=cfg)
+        mode = _gguf_gdn_prefill_session_mode(backend, weights=weights, cfg=cfg)
     except ValueError:
         return value_heads
     if mode == "chain_compact_peer_wave32":
@@ -22577,7 +22766,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
             return None
     if int(rows) < max(1, min_rows):
         return None
-    effective_mode = _gguf_gdn_prefill_effective_mode(
+    effective_mode = _gguf_gdn_prefill_session_mode(
         backend, weights=weights, cfg=cfg
     )
     if effective_mode in {
@@ -22676,6 +22865,32 @@ def _allocate_prefill_hidden_buffers(
     if _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
         return hidden_a, hidden_a
     return hidden_a, malloc(int(nbytes), runtime=runtime)
+
+
+def _gguf_verify_hidden_scratch_row_start(
+    *,
+    start: int,
+    rows: int,
+    hidden_capacity_rows: int,
+    prebuilt: bool,
+) -> int:
+    """Select a bounded hidden-scratch offset for one target verifier block."""
+
+    start = int(start)
+    rows = int(rows)
+    hidden_capacity_rows = int(hidden_capacity_rows)
+    if start < 0:
+        raise ValueError("target verifier start must be non-negative")
+    if rows <= 0:
+        raise ValueError("target verifier rows must be positive")
+    if hidden_capacity_rows <= 0 or rows > hidden_capacity_rows:
+        raise ValueError(
+            f"target verifier rows {rows} exceed hidden scratch capacity "
+            f"{hidden_capacity_rows}"
+        )
+    if bool(prebuilt) or start + rows > hidden_capacity_rows:
+        return 0
+    return start
 
 
 @dataclass(frozen=True)
@@ -22784,7 +22999,12 @@ class _GGUFFullAttentionPrefillScratch:
     moe_selected_rows_capacity: int
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
-    runtime_state_library: object | None = None
+    runtime_state_library: object
+    # Session-frozen GDN prefill route (design review 2026-08-15): the final
+    # effective mode resolved once at scratch allocation; dispatch consumes it
+    # unless gdn_mode_diagnostic admits verify-gate alternation.
+    gdn_effective_mode: str = "auto"
+    gdn_mode_diagnostic: bool = False
     metadata_prepare_path: str = "host_upload"
     allocation_mode: str = "dedicated"
     allocation_offsets: Mapping[str, tuple[int, int]] = field(
@@ -23049,7 +23269,7 @@ class _GGUFFullAttentionPrefillScratch:
         )
         if liveness_disabled_fields is not None:
             if (
-                _gguf_gdn_prefill_effective_mode(
+                _gguf_gdn_prefill_session_mode(
                     runner.backend,
                     weights=getattr(runner, "weights", None),
                     cfg=getattr(getattr(runner, "weights", None), "config", None),
@@ -23229,10 +23449,22 @@ class _GGUFFullAttentionPrefillScratch:
             row_positions=positions_tensor,
             span_role="prefill",
         )
+        weights = getattr(runner, "weights", None)
+        cfg = getattr(weights, "config", None)
+        try:
+            gdn_mode = _gguf_gdn_prefill_session_mode(
+                runner.backend, weights=weights, cfg=cfg
+            )
+        except ValueError:
+            # Unvalidated/exotic backends have no capability policy; keep the
+            # neutral frozen marker so dispatch still resolves env-side.
+            gdn_mode = "auto"
         return cls(
             **fields,
             rows=rows,
             backend=runner.backend,
+            gdn_effective_mode=gdn_mode,
+            gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
             block_table_tensor=block_table_tensor,
             positions_tensor=positions_tensor,
             context_counts_tensor=context_tensor,
@@ -24897,6 +25129,7 @@ class _GGUFGDNPrefillPlan:
     auto_modes_by_quant_shape: Mapping[
         tuple[str, int, int, int, int], str
     ] | None = None
+    compact_peer_chunk_rows: int = 0
 
     @property
     def has_chain(self) -> bool:
@@ -25095,6 +25328,27 @@ def _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(
             )
         normalized[(quant, *shape)] = mode
     return MappingProxyType(normalized)
+
+
+def _gguf_gdn_prefill_backend_compact_peer_chunk_rows(backend: str) -> int:
+    """Resolve the architecture-scoped compact-peer recurrence chunk."""
+
+    raw = backend_package_capability(
+        backend,
+        "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
+        0,
+    )
+    try:
+        rows = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            "backend GGUF GDN compact-peer chunk rows must be an integer"
+        ) from exc
+    if rows < 0:
+        raise RuntimeError(
+            "backend GGUF GDN compact-peer chunk rows must be non-negative"
+        )
+    return rows
 
 
 def _gguf_gdn_prefill_backend_exact_mode(backend: str) -> str:
@@ -25296,6 +25550,35 @@ def _gguf_qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
     )
 
 
+def _gguf_grouped_gqa_decode_shape(
+    config,
+    *,
+    backend: str,
+    block_size: int,
+    active_context: int,
+) -> bool:
+    """Select exact grouped-GQA shapes qualified by each backend package."""
+
+    if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
+        return True
+    policies = backend_package_capability(
+        backend,
+        "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
+        {},
+    )
+    shape = (
+        int(config.hidden_size),
+        int(config.block_count),
+        int(config.head_count),
+        int(config.head_count_kv),
+        int(config.key_length),
+        int(config.value_length),
+        int(block_size),
+    )
+    min_context = policies.get(shape)
+    return min_context is not None and int(active_context) >= int(min_context)
+
+
 def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bool:
     if not _gguf_paged_attn_gqa_grouped_enabled():
         return False
@@ -25312,12 +25595,20 @@ def _gguf_full_attention_split_gate_bf16_fn(
     num_splits: int,
     active_context: int,
 ):
-    if _gguf_qwen35_gqa_decode_shape(config, block_size=block_size):
+    if _gguf_grouped_gqa_decode_shape(
+        config,
+        backend=backend,
+        block_size=block_size,
+        active_context=active_context,
+    ):
         if _use_gguf_paged_attn_gqa_grouped(active_context, num_splits):
             if _gguf_paged_attn_parallel_reduce_enabled(backend, active_context):
                 return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
             return qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans
-        if _gguf_paged_attn_warp_split_enabled():
+        if (
+            _gguf_qwen35_gqa_decode_shape(config, block_size=block_size)
+            and _gguf_paged_attn_warp_split_enabled()
+        ):
             return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
     return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
 
@@ -25456,6 +25747,9 @@ def _resolve_gguf_gdn_prefill_plan(
         auto_mode=_gguf_gdn_prefill_backend_auto_mode(backend),
         auto_modes_by_quant_shape=(
             _gguf_gdn_prefill_backend_auto_modes_by_quant_shape(backend)
+        ),
+        compact_peer_chunk_rows=(
+            _gguf_gdn_prefill_backend_compact_peer_chunk_rows(backend)
         ),
     )
 

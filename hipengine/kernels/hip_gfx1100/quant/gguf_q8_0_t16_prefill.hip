@@ -368,6 +368,114 @@ __global__ void gguf_q8_0_t16_prefill_wmma_nwave_kernel(
   }
 }
 
+// Operation-complete alpha/beta pair for narrow Q8T16 projections. One
+// wave owns each 16-column matrix while both reuse the exact converted
+// activation tile through 1 KiB LDS. Accumulation and BF16 stores match the
+// singleton 16x32 WMMA owner bit for bit.
+template <int AWQ_TILE_N>
+__launch_bounds__(64, 4)
+__global__ void gguf_q8_0_t16_dual_prefill_wmma_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int rows,
+    int in_features) {
+  constexpr int TN = AWQ_TILE_N / 16;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int wave_lane = tid & 31;
+  const int lane16 = wave_lane & 15;
+  const int row_start = blockIdx.x * AWQ_TILE_N;
+  if (row_start >= rows) return;
+
+  const uint8_t* tiles = wave == 0 ? tiles_a : tiles_b;
+  uint16_t* out = wave == 0 ? out_a : out_b;
+  const int blocks_per_row = in_features / Q8_0_QK;
+  float8_t acc[TN];
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    acc[tn] = float8_t{0, 0, 0, 0, 0, 0, 0, 0};
+  }
+
+  __shared__ half16_t activation_tile[AWQ_TILE_N];
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* tile_ptr =
+        q8_t16_tile_ptr(tiles, 0, blk, blocks_per_row);
+    const half_t d_h = static_cast<half_t>(fp16_bytes_to_float(
+        tile_ptr + Q8_0_T16_D_OFFSET + lane16 * 2));
+    const uint8_t* qs_base = tile_ptr + Q8_0_T16_Q_OFFSET;
+    const int g_k_base = blk * Q8_0_QK;
+#pragma unroll
+    for (int kt = 0; kt < K_TILES_PER_BLOCK; ++kt) {
+      const int k_off = kt * K_TILE;
+      if (wave == 0 && wave_lane < AWQ_TILE_N) {
+        const int token = row_start + wave_lane;
+        const int safe = token < rows ? token : rows - 1;
+        activation_tile[wave_lane] = load_act_half16<uint16_t>(
+            x + static_cast<int64_t>(safe) * in_features + g_k_base + k_off);
+      }
+      __syncthreads();
+      half16_t b_reg[TN];
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        b_reg[tn] = activation_tile[tn * 16 + lane16];
+      }
+      __syncthreads();
+
+      half16_t a_reg;
+#pragma unroll
+      for (int kk = 0; kk < 16; ++kk) {
+        const int8_t q = static_cast<int8_t>(
+            qs_base[(k_off + kk) * T16_COLS + lane16]);
+        a_reg[kk] = d_h * static_cast<half_t>(static_cast<float>(q));
+      }
+#pragma unroll
+      for (int tn = 0; tn < TN; ++tn) {
+        acc[tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+            a_reg, b_reg[tn], acc[tn]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int tn = 0; tn < TN; ++tn) {
+    const int out_row = row_start + tn * 16 + lane16;
+    if (out_row >= rows) continue;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int col = 2 * j + (wave_lane >> 4);
+      const int64_t idx = static_cast<int64_t>(out_row) * T16_COLS + col;
+      store_output<uint16_t>(out, idx, static_cast<float>(acc[tn][j]));
+    }
+  }
+}
+
+int launch_gguf_q8_0_t16_dual_prefill_wmma(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || rows <= 0 || in_features <= 0 ||
+      (in_features % Q8_0_QK) != 0 || out_features != T16_COLS) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64);
+  const dim3 grid(static_cast<unsigned int>((rows + 31) / 32));
+  hipLaunchKernelGGL(
+      (gguf_q8_0_t16_dual_prefill_wmma_kernel<32>),
+      grid, block, 0, stream, x, tiles_a, tiles_b, out_a, out_b,
+      static_cast<int>(rows), static_cast<int>(in_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 int launch_gguf_q8_0_t16_prefill_wmma_2wave(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -491,6 +599,21 @@ int launch_gguf_q8_0_t16_prefill_wmma(
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_t16_dual_prefill_wmma(
+      x, tiles_a, tiles_b, out_a, out_b, rows, in_features, out_features,
+      stream);
+}
 
 #define HIPENGINE_GGUF_Q8_T16_WMMA_EXPORT(IN_SCALAR_C, IN_SCALAR, OUT_SCALAR_C, OUT_SCALAR) \
 extern "C" int hipengine_gguf_q8_0_t16_wmma_prefill_##IN_SCALAR_C##_##OUT_SCALAR_C##_out( \

@@ -341,6 +341,67 @@ def _launch_pack8(
         runtime.check(int(err))
 
 
+def gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    scales_a_ptr: int,
+    mins_a_ptr: int,
+    qweight_b_ptr: int,
+    scales_b_ptr: int,
+    mins_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch operation-complete resident-pack8 gate/up WMMA prefill + SiLU."""
+
+    _validate_shape(rows, in_features, out_features)
+    if out_features % 32:
+        raise ValueError("pack8 dual WMMA+SiLU out_features must be divisible by 32")
+    library = library or build_gguf_q4_k_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        _symbol("pack8_dual_wmma_prefill_silu_bf16_bf16_out"),
+    )
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(mins_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(mins_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_pack8_wmma64(
     symbol: str,
     x_ptr: int,
@@ -624,6 +685,16 @@ def register_gguf_q4_k_prefill_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_wmma_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q6_k",
             "wmma_prefill_bf16_bf16_out",
@@ -653,6 +724,7 @@ __all__ = [
     "gguf_q4_k_wmma_prefill_f32_bf16_out",
     "gguf_q4_k_wmma_prefill_f32_fp16_out",
     "gguf_q4_k_wmma_prefill_f32_f32_out",
+    "gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out",
     "gguf_q4_k_pack8_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out",
     "gguf_q4_k_wmma_prefill_dual_bf16_bf16_out",

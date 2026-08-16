@@ -56,6 +56,11 @@ def _sha256(array: np.ndarray) -> str:
     return hashlib.sha256(np.ascontiguousarray(array).tobytes()).hexdigest()
 
 
+def _bf16_u16_to_f32(array: np.ndarray) -> np.ndarray:
+    bits = np.asarray(array, dtype=np.uint16).astype(np.uint32) << 16
+    return bits.view(np.float32)
+
+
 def _event_ms(runtime, launch: Callable[[], None]) -> float:
     start = runtime.event_create()
     stop = runtime.event_create()
@@ -106,21 +111,31 @@ def _time_counterbalanced(
     }
 
 
-def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict[str, object]:
+def _screen_row(
+    runtime,
+    library,
+    rows: int,
+    warmups: int,
+    samples: int,
+    *,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    candidate_chunk_rows: int,
+) -> dict[str, object]:
     from hipengine.core.memory import free
     from hipengine.core.runtime import MemcpyKind
     from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
+        qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32,
         qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32,
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16,
+        qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
         qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
     )
 
-    num_k_heads = 4
-    num_v_heads = 32
-    head_k_dim = 128
-    head_v_dim = 128
     key_dim = num_k_heads * head_k_dim
     value_dim = num_v_heads * head_v_dim
     conv_width = 2 * key_dim + value_dim
@@ -148,6 +163,13 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
         initial_state_dev = _upload(runtime, initial_state, buffers)
         control_state = _allocate(runtime, initial_state.nbytes, buffers)
         candidate_state = _allocate(runtime, initial_state.nbytes, buffers)
+        production_state = _allocate(runtime, initial_state.nbytes, buffers)
+        cu_seqlens = _upload(
+            runtime, np.asarray([0, rows], dtype=np.int32), buffers
+        )
+        state_indices = _upload(
+            runtime, np.asarray([0], dtype=np.int64), buffers
+        )
 
         f32 = np.dtype(np.float32).itemsize
         control_q = _allocate(runtime, rows * num_v_heads * head_k_dim * f32, buffers)
@@ -161,12 +183,18 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
         control_decay = _allocate(runtime, scalar_bytes, buffers)
         candidate_beta = _allocate(runtime, scalar_bytes, buffers)
         candidate_decay = _allocate(runtime, scalar_bytes, buffers)
+        production_beta = _allocate(runtime, scalar_bytes, buffers)
+        production_decay = _allocate(runtime, scalar_bytes, buffers)
+        production_query_scale = _allocate(runtime, scalar_bytes, buffers)
+        production_key_scale = _allocate(runtime, scalar_bytes, buffers)
         recurrent_bytes = rows * value_dim * f32
         control_recurrent = _allocate(runtime, recurrent_bytes, buffers)
         candidate_recurrent = _allocate(runtime, recurrent_bytes, buffers)
+        production_recurrent = _allocate(runtime, recurrent_bytes, buffers)
         out_bytes = rows * value_dim * np.dtype(np.uint16).itemsize
         control_out = _allocate(runtime, out_bytes, buffers)
         candidate_out = _allocate(runtime, out_bytes, buffers)
+        production_out = _allocate(runtime, out_bytes, buffers)
 
         def reset_state(destination) -> None:
             runtime.memcpy(
@@ -197,6 +225,29 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
                 library=library, runtime=runtime,
             )
 
+        def production() -> None:
+            reset_state(production_state)
+            qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16(
+                conv_dev.ptr, alpha_dev.ptr, beta_lowp_dev.ptr,
+                dt_bias_dev.ptr, a_log_dev.ptr, production_beta.ptr,
+                production_decay.ptr, production_query_scale.ptr,
+                production_key_scale.ptr, rows, num_k_heads, num_v_heads,
+                head_k_dim, head_v_dim, library=library, runtime=runtime,
+            )
+            qwen35_gdn_prefill_recurrent_decode_order_exact_segments_lds32_direct_nonvolatile_f32(
+                conv_dev.ptr, production_beta.ptr, production_decay.ptr,
+                production_query_scale.ptr, production_key_scale.ptr,
+                production_state.ptr, production_recurrent.ptr,
+                cu_seqlens.ptr, state_indices.ptr, rows, 1, num_k_heads,
+                num_v_heads, head_k_dim, head_v_dim,
+                library=library, runtime=runtime,
+            )
+            qwen35_gdn_prefill_rmsnorm_gate_bf16(
+                production_recurrent.ptr, gate_dev.ptr, norm_dev.ptr,
+                production_out.ptr, 1.0e-6, rows, num_v_heads, head_v_dim,
+                library=library, runtime=runtime,
+            )
+
         def candidate() -> None:
             reset_state(candidate_state)
             qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16(
@@ -206,12 +257,28 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
                 num_k_heads, num_v_heads, head_k_dim, head_v_dim,
                 library=library, runtime=runtime,
             )
-            qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
-                candidate_q.ptr, candidate_k.ptr, candidate_v.ptr,
-                candidate_beta.ptr, candidate_decay.ptr, candidate_state.ptr,
-                candidate_recurrent.ptr, rows, num_k_heads, num_v_heads,
-                head_k_dim, head_v_dim, library=library, runtime=runtime,
-            )
+            chunk_rows = candidate_chunk_rows or rows
+            for start in range(0, rows, chunk_rows):
+                chunk = min(chunk_rows, rows - start)
+                qk_offset = start * num_k_heads * head_k_dim * f32
+                value_offset = start * num_v_heads * head_v_dim * f32
+                scalar_offset = start * num_v_heads * f32
+                qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
+                    candidate_q.ptr + qk_offset,
+                    candidate_k.ptr + qk_offset,
+                    candidate_v.ptr + value_offset,
+                    candidate_beta.ptr + scalar_offset,
+                    candidate_decay.ptr + scalar_offset,
+                    candidate_state.ptr,
+                    candidate_recurrent.ptr + value_offset,
+                    chunk,
+                    num_k_heads,
+                    num_v_heads,
+                    head_k_dim,
+                    head_v_dim,
+                    library=library,
+                    runtime=runtime,
+                )
             qwen35_gdn_prefill_rmsnorm_gate_bf16(
                 candidate_recurrent.ptr, gate_dev.ptr, norm_dev.ptr,
                 candidate_out.ptr, 1.0e-6, rows, num_v_heads, head_v_dim,
@@ -219,6 +286,7 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
             )
 
         control()
+        production()
         candidate()
         runtime.device_synchronize()
         out_shape = (rows, num_v_heads, head_v_dim)
@@ -227,12 +295,35 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
         candidate_out_host = _download(runtime, candidate_out, out_shape, np.uint16)
         control_state_host = _download(runtime, control_state, state_shape, np.float32)
         candidate_state_host = _download(runtime, candidate_state, state_shape, np.float32)
+        production_out_host = _download(runtime, production_out, out_shape, np.uint16)
+        production_state_host = _download(
+            runtime, production_state, state_shape, np.float32
+        )
         output_exact = bool(np.array_equal(control_out_host, candidate_out_host))
         state_exact = bool(
             np.array_equal(control_state_host.view(np.uint32), candidate_state_host.view(np.uint32))
         )
+        production_output_exact = bool(
+            np.array_equal(production_out_host, candidate_out_host)
+        )
+        production_state_exact = bool(
+            np.array_equal(
+                production_state_host.view(np.uint32),
+                candidate_state_host.view(np.uint32),
+            )
+        )
+        production_output_abs = np.abs(
+            _bf16_u16_to_f32(production_out_host)
+            - _bf16_u16_to_f32(candidate_out_host)
+        )
+        production_state_abs = np.abs(
+            production_state_host - candidate_state_host
+        )
         timing = _time_counterbalanced(
             runtime, control, candidate, warmups=warmups, samples=samples
+        )
+        production_timing = _time_counterbalanced(
+            runtime, production, candidate, warmups=warmups, samples=samples
         )
         timing.update(
             {
@@ -245,12 +336,32 @@ def _screen_row(runtime, library, rows: int, warmups: int, samples: int) -> dict
                         != candidate_state_host.view(np.uint32)
                     )
                 ),
+                "production_output_bf16_exact": production_output_exact,
+                "production_state_f32_bits_exact": production_state_exact,
+                "production_output_mismatches": int(
+                    np.count_nonzero(production_out_host != candidate_out_host)
+                ),
+                "production_state_mismatches": int(
+                    np.count_nonzero(
+                        production_state_host.view(np.uint32)
+                        != candidate_state_host.view(np.uint32)
+                    )
+                ),
+                "production_output_max_abs": float(
+                    production_output_abs.max(initial=0.0)
+                ),
+                "production_state_max_abs": float(
+                    production_state_abs.max(initial=0.0)
+                ),
+                "vs_production": production_timing,
                 "output_sha256": {
                     "control": _sha256(control_out_host),
+                    "production": _sha256(production_out_host),
                     "candidate": _sha256(candidate_out_host),
                 },
                 "state_sha256": {
                     "control": _sha256(control_state_host),
+                    "production": _sha256(production_state_host),
                     "candidate": _sha256(candidate_state_host),
                 },
                 "workspace_bytes": {
@@ -272,12 +383,28 @@ def main() -> None:
     parser.add_argument("--rows", type=int, nargs="+", default=[512, 1024])
     parser.add_argument("--warmups", type=int, default=5)
     parser.add_argument("--samples", type=int, default=15)
+    parser.add_argument("--num-k-heads", type=int, default=4)
+    parser.add_argument("--num-v-heads", type=int, default=32)
+    parser.add_argument("--head-k-dim", type=int, default=128)
+    parser.add_argument("--head-v-dim", type=int, default=128)
+    parser.add_argument("--candidate-chunk-rows", type=int, default=0)
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
     if any(row <= 0 for row in args.rows):
         parser.error("rows must be positive")
     if args.warmups < 0 or args.samples <= 0:
         parser.error("warmups must be non-negative and samples positive")
+    if args.candidate_chunk_rows < 0:
+        parser.error("candidate-chunk-rows must be non-negative")
+    if min(
+        args.num_k_heads,
+        args.num_v_heads,
+        args.head_k_dim,
+        args.head_v_dim,
+    ) <= 0:
+        parser.error("GDN head counts and dimensions must be positive")
+    if args.num_v_heads % args.num_k_heads:
+        parser.error("num-v-heads must be divisible by num-k-heads")
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.gdn import build_qwen35_linear_attn_gdn
@@ -289,15 +416,31 @@ def main() -> None:
         in {"1", "true", "yes", "on"},
     )
     results = {
-        str(rows): _screen_row(runtime, library, rows, args.warmups, args.samples)
+        str(rows): _screen_row(
+            runtime,
+            library,
+            rows,
+            args.warmups,
+            args.samples,
+            num_k_heads=args.num_k_heads,
+            num_v_heads=args.num_v_heads,
+            head_k_dim=args.head_k_dim,
+            head_v_dim=args.head_v_dim,
+            candidate_chunk_rows=args.candidate_chunk_rows,
+        )
         for rows in args.rows
     }
     quality_pass = all(
-        result["output_bf16_exact"] and result["state_f32_bits_exact"]
+        result["output_bf16_exact"]
+        and result["state_f32_bits_exact"]
+        and result["production_output_max_abs"] <= 0.015625
+        and result["production_state_max_abs"] <= 5.0e-5
         for result in results.values()
     )
     performance_pass = all(
-        result["candidate_wins"] >= 13 and result["speedup"] > 1.0
+        result["vs_production"]["candidate_wins"]
+        >= max(1, args.samples - 2)
+        and result["vs_production"]["speedup"] > 1.0
         for result in results.values()
     )
     artifact = {
@@ -309,18 +452,24 @@ def main() -> None:
             "arch": os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100"),
         },
         "shape": {
-            "num_k_heads": 4,
-            "num_v_heads": 32,
-            "head_k_dim": 128,
-            "head_v_dim": 128,
+            "num_k_heads": args.num_k_heads,
+            "num_v_heads": args.num_v_heads,
+            "head_k_dim": args.head_k_dim,
+            "head_v_dim": args.head_v_dim,
         },
         "protocol": {
             "timing": "counterbalanced HIP events",
             "warmups": args.warmups,
+            "candidate_chunk_rows": args.candidate_chunk_rows,
             "samples": args.samples,
             "control": "peer-normalized per-V-head Q/K prepare + admitted wave32/XOR recurrence + RMSNorm/gate",
+            "production": "compact-scales prepare + exact LDS32 direct nonvolatile recurrence + RMSNorm/gate",
             "candidate": "compact per-K-head Q/K prepare + stride-adjusted bit-equivalent wave32/XOR recurrence + RMSNorm/gate",
-            "gate": "output/state bit exact; candidate wins >=13/15 at each row",
+            "gate": (
+                "peer output/state bit exact; scalar-exact production oracle "
+                "max output abs <=0.015625 and state abs <=5e-5; candidate "
+                "wins at least samples-2 production pairs at each row"
+            ),
         },
         "results": results,
         "quality_pass": quality_pass,

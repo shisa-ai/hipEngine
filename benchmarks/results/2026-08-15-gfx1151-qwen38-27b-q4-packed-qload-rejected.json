@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-15",
+  "kind": "qwen38_27b_gfx1151_q4_t16_packed_qload_rejected",
+  "status": "rejected_performance",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock build 10438"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "baseline": {
+    "commit": "ccac1c10d11239ee24bd3d19756090a2a7b9f1e7",
+    "route": "sole-Q4T16 local32 c1 with scalar byte quant loads",
+    "complete_512_128_eager_wall_ms": 11087.43057900574,
+    "profile_calls": 36864
+  },
+  "candidate": {
+    "route": "same local32 lane/K/FMA/reduction/BF16 body with one aligned dword quant load per eight-output row",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "protocol": {
+    "actual_roles": 7,
+    "source_pool_bytes": 203489280,
+    "source_pool_mib": 194.0625,
+    "warmups": 5,
+    "samples_per_role": 21,
+    "launches_per_sample": 20,
+    "order": "counterbalanced HIP-event timing",
+    "require_cached_build": true
+  },
+  "results": [
+    {
+      "role": "ffn_gate_up",
+      "shape": [
+        17408,
+        5120
+      ],
+      "request_calls": 16384,
+      "control_ms": 0.23527309894561768,
+      "candidate_ms": 0.23536100387573242,
+      "speedup": 0.999626510217635,
+      "candidate_wins": 10,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "linear_attn_gate",
+      "shape": [
+        6144,
+        5120
+      ],
+      "request_calls": 6144,
+      "control_ms": 0.028469398617744446,
+      "candidate_ms": 0.028545549511909483,
+      "speedup": 0.9973323023915421,
+      "candidate_wins": 11,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "ffn_down",
+      "shape": [
+        5120,
+        17408
+      ],
+      "request_calls": 4096,
+      "control_ms": 0.2317126512527466,
+      "candidate_ms": 0.23199915885925293,
+      "speedup": 0.9987650489427845,
+      "candidate_wins": 9,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "linear_attn_qkv",
+      "shape": [
+        10240,
+        5120
+      ],
+      "request_calls": 3072,
+      "control_ms": 0.04700619876384735,
+      "candidate_ms": 0.046831899881362916,
+      "speedup": 1.0037217982385078,
+      "candidate_wins": 11,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_q",
+      "shape": [
+        12288,
+        5120
+      ],
+      "request_calls": 2048,
+      "control_ms": 0.08924545049667358,
+      "candidate_ms": 0.08880864977836608,
+      "speedup": 1.0049184479146749,
+      "candidate_wins": 12,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_kv",
+      "shape": [
+        1024,
+        5120
+      ],
+      "request_calls": 3072,
+      "control_ms": 0.009906599670648575,
+      "candidate_ms": 0.00990860015153885,
+      "speedup": 0.9997981066084332,
+      "candidate_wins": 13,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    },
+    {
+      "role": "full_attn_output",
+      "shape": [
+        5120,
+        6144
+      ],
+      "request_calls": 2048,
+      "control_ms": 0.028277099132537842,
+      "candidate_ms": 0.028112751245498658,
+      "speedup": 1.0058460264384652,
+      "candidate_wins": 12,
+      "pairs": 21,
+      "bf16_mismatches": 0
+    }
+  ],
+  "projection": {
+    "control_kernel_ms": 5394.247756195068,
+    "candidate_kernel_ms": 5395.568943786621,
+    "saved_ms": -1.3211875915530982,
+    "complete_wall_delta_percent": -0.011916084453820995,
+    "all_roles_non_regressive": false,
+    "advance_threshold_percent": 1.0,
+    "advance": false
+  },
+  "correctness": {
+    "red": "missing packed-qload wrapper import",
+    "green": "1 passed on gfx1151",
+    "all_bf16_exact": true,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "evidence": {
+    "path": "/tmp/qwen38-task22-q4-packed-qload-leaf/leaf.json",
+    "sha256": "431992b8f8e0ad1c715ddf120c7ab66ef70151fb8aedf88939db81bd2b94d2d2",
+    "bytes": 15969
+  },
+  "decision": "Reject and restore scalar-byte local32. The compiler-visible dword quant load is neutral-to-negative on dominant roles, fails all-role non-regression, and adds 1.321 ms to the call-weighted request projection."
+}
