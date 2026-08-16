@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "kind": "zbook_qwen36_production_profile_cn_bundle_decision",
+  "created_at": "2026-08-16T18:36:03.324752+00:00",
+  "status": "blocked_public_default_retained_package_routes",
+  "measurement_valid": true,
+  "performance_claim": true,
+  "profile_qualification_claim": false,
+  "scope": {
+    "host": "zbook",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint_sha256_sampled": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "profile_route": "current omitted-profile package behavior",
+    "arithmetic_class": "T2 association/layout drift for width-scoped rowtiling; the c1 router is exact on its retained gate"
+  },
+  "decision": {
+    "package_routes": "retain current defaults: cooperative/persistent c1 router; direct Q8T16 c2; rowtile4 c4/c8",
+    "public_profile_default": "do_not_change",
+    "reason": "the complete production packet failed soak completion with 33/120 overload rejections, and the retained cN gains are below the 3% public-default materiality target",
+    "strict_fallback": "the separate router chain and registered strict Q8T16 variants remain available; the pre-existing exact c8 pair col8 route is shared",
+    "remaining_profile_blockers": [
+      "the candidate manifest is evidentiary, not a runtime-resolved immutable Qwen3.6 profile plan",
+      "the evaluator adapter does not emit the complete standardized exact-control record schema",
+      "fresh BF16-relative and task-execution non-inferiority verdicts are absent",
+      "the canonical production SLO packet failed soak completion"
+    ]
+  },
+  "quality": {
+    "source_commit": "e58df0bc67ff8598f540af4603f80e8fd0dde738",
+    "clean": true,
+    "rows": 1050,
+    "matrix": "18 prompts; static c4/c8; retirement 8->4->2->1; sparse physical-c8; three candidate repeats",
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "max_abs_logit_delta": 0.0,
+    "repeat_deterministic": true,
+    "strict_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "0",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "0",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "0"
+    },
+    "candidate_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "unset: package physical-width floor",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "1",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "1"
+    },
+    "candidate_width_policy": {
+      "c1": "direct Q8T16 plus cooperative/persistent router",
+      "c2": "direct Q8T16",
+      "c4": "rowtile4 Q8T16",
+      "c8": "rowtile4 single/triple plus rowtile4-col8 pair"
+    },
+    "package_rowtile_min_rows": 4
+  },
+  "performance": {
+    "source_commit": "e58df0bc67ff8598f540af4603f80e8fd0dde738",
+    "clean": true,
+    "protocol": "seven counterbalanced persistent-session packed graph wall pairs, p512/d128, one warmup per route/configuration",
+    "c2": {
+      "strict_median_tok_s": 58.27018291420571,
+      "candidate_median_tok_s": 58.23490223366598,
+      "median_ratio": 0.999394532867836,
+      "paired_median_ratio": 1.000515926203211,
+      "candidate_wins": 4,
+      "pairs": 7,
+      "all_trajectories_exact": true
+    },
+    "c4": {
+      "strict_median_tok_s": 77.37966360323159,
+      "candidate_median_tok_s": 77.74756087254927,
+      "median_ratio": 1.00475444389632,
+      "paired_median_ratio": 1.00475444389632,
+      "candidate_wins": 6,
+      "pairs": 7,
+      "all_trajectories_exact": true
+    },
+    "c8": {
+      "strict_median_tok_s": 94.56980177859919,
+      "candidate_median_tok_s": 96.53446823859797,
+      "median_ratio": 1.0207747761235488,
+      "paired_median_ratio": 1.0100553695464782,
+      "candidate_wins": 6,
+      "pairs": 7,
+      "all_trajectories_exact": true,
+      "note": "late thermal drift affects both arms; the paired median is the binding ratio"
+    }
+  },
+  "exact_controls": {
+    "source_commit": "48cb00b316fc5979bb1db1b7265132495289c261",
+    "clean": true,
+    "passed": true,
+    "original_tokens_exact": true,
+    "newcomer_tokens_exact": true,
+    "declared_widths_only": true,
+    "no_serial_fallback": true,
+    "cancelled_sessions_reused_by_newcomers": true,
+    "compaction_state_kv_preserved": true,
+    "compaction_resource_identity_mismatches": 0,
+    "compaction_graphs_closed": true,
+    "active_masks": [
+      "11111111",
+      "11111100",
+      "11111111"
+    ],
+    "final_active_request_ids": [],
+    "final_available_sessions": 8,
+    "state_kv_c1_bit_exact_diagnostic": false,
+    "state_kv_policy": "c1-vs-cN BF16 value drift remains fully reported and is bound to the passed 1,050-row distributional gate; same-run ownership and compaction preservation remain exact"
+  },
+  "production_load": {
+    "source_commit": "22b8585f9f384b9275c752b2e6f0eeb64f9dfcdc",
+    "clean": true,
+    "complete_packet": true,
+    "passed": false,
+    "gdn_mode": "chain_lds32_direct_nonvolatile",
+    "selected_policy": "fair:128",
+    "selected_policy_goodput_tok_s": 27.879982420211743,
+    "workloads": {
+      "static_c1": {"passed": true, "outcomes": {"completed": 1}, "goodput_tok_s": 18.57032624700494},
+      "static_c8": {"passed": true, "outcomes": {"completed": 8}, "goodput_tok_s": 29.967210383001408},
+      "ragged_burst": {"passed": true, "outcomes": {"completed": 8}, "goodput_tok_s": 27.95563257026956},
+      "continuous_fixed": {"passed": true, "outcomes": {"completed": 12}, "goodput_tok_s": 27.263176827004674},
+      "continuous_poisson": {"passed": true, "outcomes": {"completed": 12}, "goodput_tok_s": 25.294428811360024},
+      "cancellation_disconnect": {"passed": true, "outcomes": {"completed": 6, "disconnected": 1, "timeout": 1}, "goodput_tok_s": 23.089391834894567},
+      "overload": {"passed": true, "outcomes": {"completed": 16, "rejected": 16}, "goodput_tok_s": 21.696838954867392},
+      "idle_recovery": {"passed": true, "outcomes": {"completed": 1}, "goodput_tok_s": 17.377903490699033},
+      "soak": {"passed": false, "outcomes": {"completed": 87, "rejected": 33}, "goodput_tok_s": 24.58952722461223, "queue_p99_s": 0.028063079982530326, "ttft_p95_s": 2.7785709570162, "itl_p99_s": 0.4244604879640974, "end_to_end_p95_s": 23.019520103000104}
+    },
+    "completed_requests_exact": true,
+    "native_routes_and_active_masks_passed": true,
+    "final_ownership_passed": true,
+    "final_tracked_bytes": 0,
+    "final_active_allocations": 0,
+    "failure": "soak accepted 87 and rejected 33 of 120 requests; completed requests remained exact and within latency SLOs"
+  },
+  "raw_sources": {
+    "quality": {
+      "path": "/tmp/zbook-cn-package-bundle-full.json",
+      "sha256": "a62eedffe1d1a886dc38624d3546ce9a4c1bfdb7e8de5263bbb4515257ab3a45",
+      "command": "scripts/execution_profile_gguf_batch_route_gate.py --include-router-candidate --widths 4,8 --decode-steps 24 --repeat-runs 3 --dynamic --sparse --require-cached-build"
+    },
+    "performance": {
+      "path": "/tmp/zbook-cn-package-bundle-perf.json",
+      "sha256": "619e501af713dd3840d5b635334ad738404a781ec0797c6fcceb4613fd7612b6",
+      "command": "scripts/q8t16_batch_route_perf.py --include-router-candidate --configurations c2,c4,native_c8 --pairs 7 --prompt-tokens 512 --decode-steps 128 --require-cached-build"
+    },
+    "lifecycle": {
+      "path": "/tmp/zbook-cn-package-lifecycle-final.json",
+      "sha256": "e6528eafe40e9a5dd57f2514500a427a97611a8851ae80864aa60386db028c32",
+      "command": "scripts/gguf_arbitrary_c_lifecycle.py --rows 8 --cancel-slots 2 6 --compact-after-middle-hole --allow-c1-arithmetic-drift --quality-artifact /tmp/zbook-cn-package-bundle-full.json --require-cached-build"
+    },
+    "production_load": {
+      "path": "/tmp/zbook-cn-production-load-full.json",
+      "sha256": "a91e017be802c6ff7d2da2bcdb812bb72ce7b8c0370dbe7a60d2942b7be93be8",
+      "command": "scripts/gguf_production_load_gate.py --gdn-mode chain_lds32_direct_nonvolatile --require-cached-build"
+    }
+  },
+  "limitations": [
+    "absolute rates are ZBook-local and not comparable with the other gfx1151 host",
+    "raw model-scale artifacts remain outside Git; SHA-256 hashes bind this compact decision",
+    "the server packet uses localhost Uvicorn and a 60-second soak, not multi-day reliability"
+  ]
+}

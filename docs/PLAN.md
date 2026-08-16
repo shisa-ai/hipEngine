@@ -399,7 +399,12 @@ migration/default rules are normative in
 and performance sequence is
 [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md). Current
 non-exact defaults are not grandfathered, and public behavior does not change
-until the evaluator, manifests, and serving gates are retained.
+until the evaluator, manifests, and serving gates are retained. The first
+ZBook Qwen3.6 c1/cN package decision retains small implementation-route wins
+but does not switch the public default: its canonical server packet fails soak
+completion (87 completed, 33 overloaded of 120), and named-profile manifest,
+task, and BF16-relative evidence remains open. See the
+[`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
 ## Architecture
 
