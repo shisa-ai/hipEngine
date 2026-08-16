@@ -132,15 +132,22 @@ def build_packed_decode_execution_manifest(
         gdn_path = "not_applicable"
 
     full_attention_path = str(full_attention_decode_path)
-    supported_full_attention_paths = {"kv_live_spans_batch", "not_applicable"}
+    supported_full_attention_paths = {
+        "kv_live_spans_batch",
+        "kv_live_spans_int8_batch",
+        "not_applicable",
+    }
     if full_attention_path not in supported_full_attention_paths:
         raise ValueError(
             "unsupported full_attention_decode_path "
             f"{full_attention_path!r}; expected one of {sorted(supported_full_attention_paths)!r}"
         )
-    if full_layers and full_attention_path != "kv_live_spans_batch":
+    if full_layers and full_attention_path not in {
+        "kv_live_spans_batch",
+        "kv_live_spans_int8_batch",
+    }:
         raise ValueError(
-            "full_attention_decode_path must be kv_live_spans_batch when full-attention layers are present"
+            "full_attention_decode_path must name a KVLiveSpans batch route when full-attention layers are present"
         )
     if not full_layers and full_attention_path != "not_applicable":
         raise ValueError(
