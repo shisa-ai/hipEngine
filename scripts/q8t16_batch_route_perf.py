@@ -32,8 +32,12 @@ from scripts.execution_profile_gguf_batch_route_gate import (
     DEFAULT_GDN_MODE,
     DEFAULT_HISTORICAL_SOURCE,
     DEFAULT_MODEL,
+    KIND as QUALITY_KIND,
     POLICY_CAPABILITY,
     POLICY_ENV,
+    ROUTER_COOP_ENV,
+    ROUTER_PERSISTENT_ENV,
+    _router_candidate_policy,
     _rowtile_policy,
 )
 from scripts.gguf_packed_ar_bench import (
@@ -46,6 +50,39 @@ KIND = "qwen36_gfx1151_q8t16_batch_route_counterbalanced_perf"
 DEFAULT_QUALITY_ARTIFACT = Path(
     "benchmarks/results/2026-08-16-gfx1151-q8t16-batch-route-requalification.json"
 )
+
+
+class PerformanceQualityError(ValueError):
+    """Raised when timing is not bound to the matching complete quality packet."""
+
+
+def validate_quality_artifact(
+    artifact: Mapping[str, Any],
+    *,
+    include_router_candidate: bool,
+) -> None:
+    if (
+        artifact.get("kind") != QUALITY_KIND
+        or artifact.get("status") != "complete"
+        or artifact.get("measurement_valid") is not True
+    ):
+        raise PerformanceQualityError("quality artifact is not a complete valid batch gate")
+    protocol = artifact.get("protocol")
+    quality = artifact.get("quality")
+    repeats = artifact.get("repeat_determinism")
+    route = artifact.get("route")
+    if (
+        not isinstance(protocol, Mapping)
+        or protocol.get("complete_prompt_and_heldout_suite") is not True
+        or not isinstance(quality, Mapping)
+        or quality.get("hard_gates_passed") is not True
+        or not isinstance(repeats, Mapping)
+        or repeats.get("passed") is not True
+        or not isinstance(route, Mapping)
+    ):
+        raise PerformanceQualityError("quality artifact gates are incomplete")
+    if include_router_candidate and route.get("router_candidate_included") is not True:
+        raise PerformanceQualityError("quality artifact does not include the router candidate")
 
 
 def summarize_by_configuration(
@@ -183,6 +220,15 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         raise CalibrationError("performance capture requires --require-cached-build")
     if int(args.pairs) < 1 or int(args.decode_steps) <= 0:
         raise CalibrationError("pairs and decode steps must be positive")
+    if not args.quality_artifact.is_file():
+        raise CalibrationError(f"quality artifact does not exist: {args.quality_artifact}")
+    quality_artifact = json.loads(args.quality_artifact.read_text(encoding="utf-8"))
+    if not isinstance(quality_artifact, Mapping):
+        raise CalibrationError("quality artifact root must be an object")
+    validate_quality_artifact(
+        quality_artifact,
+        include_router_candidate=bool(args.include_router_candidate),
+    )
     configurations = tuple(
         part.strip() for part in str(args.configurations).split(",") if part.strip()
     )
@@ -262,7 +308,10 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             measured: bool,
         ) -> dict[str, Any]:
             config = CONFIGURATIONS[configuration]
-            with _rowtile_policy(label == "candidate"):
+            with _rowtile_policy(label == "candidate"), _router_candidate_policy(
+                label == "candidate",
+                enabled=bool(args.include_router_candidate),
+            ):
                 sample = _run_sample(
                     config=config,
                     sessions=sessions,
@@ -326,6 +375,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 "HIPENGINE_GGUF_GDN_PREFILL_MODE"
             ),
             POLICY_ENV: os.environ.get(POLICY_ENV),
+            ROUTER_COOP_ENV: os.environ.get(ROUTER_COOP_ENV),
+            ROUTER_PERSISTENT_ENV: os.environ.get(ROUTER_PERSISTENT_ENV),
         },
         build_profile="q8t16_batch_route_counterbalanced_perf",
         timing_protocol="persistent_counterbalanced_packed_graph_wall_v1",
@@ -355,7 +406,23 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "route": {
             "policy_capability": POLICY_CAPABILITY,
             "package_value_verified": False,
-            "candidate_environment": {POLICY_ENV: "1"},
+            "strict_environment": {
+                POLICY_ENV: "0",
+                **(
+                    {ROUTER_COOP_ENV: "0", ROUTER_PERSISTENT_ENV: "0"}
+                    if args.include_router_candidate
+                    else {}
+                ),
+            },
+            "candidate_environment": {
+                POLICY_ENV: "1",
+                **(
+                    {ROUTER_COOP_ENV: "1", ROUTER_PERSISTENT_ENV: "1"}
+                    if args.include_router_candidate
+                    else {}
+                ),
+            },
+            "router_candidate_included": bool(args.include_router_candidate),
             "current_c8_pair_col8_preserved_in_both_routes": True,
         },
         "generated_id_equality": {
@@ -403,6 +470,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-steps", type=int, default=128)
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--gdn-mode", default=DEFAULT_GDN_MODE)
+    parser.add_argument(
+        "--include-router-candidate",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--historical-source", type=Path, default=DEFAULT_HISTORICAL_SOURCE)
     parser.add_argument("--quality-artifact", type=Path, default=DEFAULT_QUALITY_ARTIFACT)
     parser.add_argument("--compiler-version-file", type=Path)
