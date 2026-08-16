@@ -467,7 +467,7 @@ acceptance loops.
 
 A benchmark artifact must answer six questions without rereading raw logs:
 
-1. **What ran?** Exact command, model, quant, workload shape, hardware/software context, commit/dirty state.
+1. **What ran?** Exact command, model, quant, workload shape, physical host identity, hardware/software context, commit/dirty state. Backend or GPU-architecture equality does not make two hosts comparable: cross-host rows are independent evidence unless one declared same-host protocol measured both sides.
 2. **Which numerical contract ran?** Execution profile/schema, selected and strict-fallback variant manifests, teacher source, and whether generated-ID equality is binding or diagnostic.
 3. **Did correctness pass?** Exact control/ownership, fixture set, oracle, mean/tail/max KL and top-1 or strict layer tolerance, determinism/isolation, task verdict, exact correctness command(s), and pass/fail status.
 4. **How stable is the number?** Warmup count, measured repetitions, per-phase samples, median/p95/min/max/stdev where applicable.

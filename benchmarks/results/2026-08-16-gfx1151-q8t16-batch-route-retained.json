@@ -1,4 +1,11 @@
 {
+  "measurement_host": {
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "scope": "all fresh captures in this artifact",
+    "cross_host_comparison": "prohibited; only same-process ZBook A/B ratios are binding"
+  },
   "created_at": "2026-08-16T15:30:05.568530+00:00",
   "decision": {
     "action": "retain_width_scoped",
@@ -28,18 +35,19 @@
     "arch": "gfx1151",
     "device": "AMD Radeon 8060S Graphics"
   },
-  "historical_comparison": {
-    "fresh_current_candidate_over_strict": {
+  "independent_historical_context": {
+    "comparability": "not comparable with ZBook absolute rates; no old-to-new delta is valid",
+    "zbook_same_host_candidate_over_strict": {
       "c2": 0.9820511084616564,
       "c4": 1.0044533822007327,
       "c8": 1.0066639282152725
     },
-    "historical_candidate_over_strict": {
+    "other_host_historical_ratio_context_only": {
       "c4": 1.0105,
       "c8": 1.0261
     },
-    "note": "historical labels are context only; the fresh current-package protocol controls the decision",
-    "source": "benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json"
+    "note": "only the fresh same-process ZBook A/B controls the decision",
+    "source": "docs/PRODUCTION-NUMERICS-CAMPAIGN.md historical queue; no comparable raw artifact is asserted"
   },
   "kind": "gfx1151_qwen36_q8t16_width_scoped_rowtile_retained",
   "kv_dtype": "bf16",
@@ -578,7 +586,7 @@
     "scope_failures": [],
     "source_artifact": "benchmarks/results/2026-08-16-gfx1151-q8t16-batch-route-requalification.json",
     "source_commit": "303a222bebdceefd9697960bc4b2f8a4961e73cb",
-    "source_sha256": "fadf768d586ae50f943e35ea903d599a6a7d557f977b4c0a1dc7ac1c9748d03d",
+    "source_sha256": "b0745f55ef484849505f4431608b6214ce166ac135391749b8abb5b8f84a6517",
     "strict_logits_sha256": "6dab0504679f35a6c9d52f21f1350408a67e49e81606a9e5db79025ab28077cd",
     "strict_teacher_contexts_bit_identical": true,
     "summary": {

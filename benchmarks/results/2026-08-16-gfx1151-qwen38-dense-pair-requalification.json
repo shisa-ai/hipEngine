@@ -1,4 +1,11 @@
 {
+  "measurement_host": {
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "scope": "all fresh captures in this artifact",
+    "cross_host_comparison": "prohibited; absolute values are independent of other gfx1151 hosts"
+  },
   "candidate_logits_sha256": "bd3bdc5746354511f7fe734f1ba2339d4dd95a5559a730a8eeba12883c988808",
   "created_at": "2026-08-16T14:01:35.100066+00:00",
   "historical_source": {

@@ -803,7 +803,8 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
 # The unrestricted historical policy remains false because current
-# counterbalanced p512/d128 evidence rejects c2. Production free-running IDs are
+# ZBook-local counterbalanced p512/d128 evidence rejects c2; its absolute rates
+# are independent of the other gfx1151 host. Production free-running IDs are
 # diagnostic, not binding; the complete strict-teacher gate admits exact c4/c8
 # logits, and width-scoped timing wins both shapes. Keep c2 on the direct owner.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
@@ -841,7 +842,8 @@ GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
 # D08-D3 keeps every Qwen3.5-0.8B Q4 gate/up pair in its sole pack8 layout and
 # selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
 # The Qwen3.8 serial-c1 route uses exact local32 after the formerly retained
-# residual-Q8_1x2 split-weight owner lost a current counterbalanced rebase.
+# residual-Q8_1x2 split-weight owner lost a ZBook-local counterbalanced rebase;
+# those absolute rates are independent of the other gfx1151 host.
 # Native-session B1 retains its separately qualified prior Q8_1x2 owner;
 # rows>1 native batches and peer geometries retain their existing owners.
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
