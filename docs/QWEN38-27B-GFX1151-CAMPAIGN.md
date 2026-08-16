@@ -87,14 +87,20 @@ although max KL is only **2.57e-11** and top-1 remains 3/3. No prefill/verifier
 package or payload migration is warranted. Evidence:
 [`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
 
-The only smaller existing Q4 payload also fails against the current owner.
-Qmicro reduces each actual gate/up resident pair **103,055,360 -> 100,270,080
-bytes (-2.70%)** and a split-weight consumer preserves BF16 bits exactly, but
-per-K256 compressed-metadata expansion regresses every pair: the three-layer
-family moves **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)** and projects a
-**1.7014% selected 4K kernel-wall regression**. The transient route is removed;
-standard-Q4T16 remains production. Evidence:
-[`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
+The only smaller existing Q4 payload still fails as an operation-complete
+package. Its first cooperative metadata-expansion consumer regressed rows1
+**1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)**. A materially different
+wave-shuffle consumer then realizes the compressed-byte ceiling at rows1:
+**1.423808 -> 1.381499 ms (1.03063x, 45/45 wins)**, BF16-bit exact, with each
+actual resident pair **103,055,360 -> 100,270,080 bytes (-2.70%)** and a
+**1.1518%** selected-4K projection. It cannot be retained under sole ownership,
+however. Exact native rows2/3/4 regress aggregate actual-layer wall
+**27.78%/28.75%/32.03% (0/135 wins)**, and exact 512/1K/4K WMMA consumers
+regress **0.643%/0.312%/0.034%**. Keeping only c1 would require a forbidden
+standard-T16 sidecar, so all transient code is removed and standard-Q4T16
+remains production. Evidence:
+[`first qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json) and
+[`wave-shuffled qmicro operation rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-wave-meta-rejected.json).
 
 Cross-boundary Q8 production cannot rescue planar-Q6 FFN-down either. With
 activation quantization performed entirely outside timing, the best existing
@@ -648,14 +654,25 @@ current Q8_1x2 route at 1,476 positions, so operation-complete integration stops
 Evidence:
 [`dual-interleaved Q4 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-dual-interleaved-rejected.json).
 
-Qmicro closes the remaining existing Q4 resident-byte route. Its K256/N16 tile
-is **2,304 instead of 2,368 bytes (-2.70%)**, and a transient consumer preserves
-the retained split-weight thread/FMA/reduction order plus exact BF16 output.
-However, cooperative metadata expansion costs more than the removed traffic:
-three actual layers regress **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)**,
-projecting **-21.991 ms / -1.7014%** selected 4K kernel wall. The candidate is
-removed before runtime integration. Evidence:
-[`qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json).
+Qmicro closes the remaining existing Q4 resident-byte route only after two
+bounded dataflows. Its K256/N16 tile is **2,304 instead of 2,368 bytes
+(-2.70%)**. Cooperative per-block metadata expansion first regresses three
+actual rows1 layers **1.423347 -> 1.486795 ms (0.95733x, 0/45 wins)**. Replacing
+LDS expansion and barriers with eight-lane K32 metadata loads plus wave
+exchanges reverses that result: the BF16-bit-exact rows1 family reaches
+**1.423808 -> 1.381499 ms (1.03063x, 45/45 wins)** and projects **1.1518%**
+selected 4K kernel-wall saving.
+
+The admitted rows1 leaf nevertheless fails sole-payload operation completeness.
+Exact qmicro row-reuse consumers move rows2/3/4 aggregate actual-layer wall
+**1.430859 -> 1.828357 ms (0.78259x)**, **1.422347 -> 1.831333 ms
+(0.77667x)**, and **1.425364 -> 1.881931 ms (0.75739x)** with **0/135** wins.
+Exact rows512/1K/4K dual-WMMA consumers also regress the aggregate boundary
+**0.643%/0.312%/0.034%**. The candidate is removed before materializer/runtime
+integration because retaining the rows1 win would require a standard-T16
+sidecar. Evidence:
+[`first qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json) and
+[`wave-shuffled qmicro operation rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-wave-meta-rejected.json).
 
 A free-producer bound also closes cross-kernel Q6 activation fusion. The
 existing planar-Q6 Q8_1/dp4a consumer is timed with Q8 quantization performed
