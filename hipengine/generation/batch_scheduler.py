@@ -1214,11 +1214,16 @@ class ResidentBatchScheduler:
             (request.request_id,),
             self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)),
         )
+        slot_id = self.active_batch.slot_for(request.request_id)
         return WorkItem(
             kind=WorkKind.PREFILL,
             request_ids=(request.request_id,),
             row_to_request=(request.request_id,),
             token_rows=(chunk,),
+            slot_ids=(slot_id,),
+            active_mask=tuple(
+                slot == slot_id for slot in range(self.capacity)
+            ),
         )
 
     def bucketize_by_block_count(

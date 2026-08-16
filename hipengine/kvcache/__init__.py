@@ -37,6 +37,11 @@ from hipengine.kvcache.global_pool import (
     KVPageRecord,
     KVPageState,
 )
+from hipengine.kvcache.graph_binding import (
+    GraphReplayBinding,
+    GraphReplayBindingRegistry,
+    GraphStorageSignature,
+)
 from hipengine.kvcache.ledger import (
     AdmissionGrant,
     FitAwareAdmissionController,
@@ -100,6 +105,9 @@ __all__ = [
     "DenseKVResidentRunnerAdapter",
     "GlobalKVPoolSet",
     "GlobalPageLease",
+    "GraphReplayBinding",
+    "GraphReplayBindingRegistry",
+    "GraphStorageSignature",
     "DeviceChunkedKVPool",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",

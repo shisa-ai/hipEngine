@@ -72,6 +72,12 @@ from hipengine.dispatch.execution_planner import (
     TokenBudgetSLO,
     plan_execution_groups,
 )
+from hipengine.generation.load_harness import (
+    LoadArrival,
+    LoadScenarioResult,
+    poisson_arrivals,
+    run_load_scenario,
+)
 from hipengine.generation.registry import (
     DecodePhase,
     DecodeState,
@@ -175,6 +181,8 @@ __all__ = [
     "GenerationRequest",
     "GenerationStreamChunk",
     "JsonObjectConstraintState",
+    "LoadArrival",
+    "LoadScenarioResult",
     "MissingGeneratorError",
     "NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES",
     "OutputCollector",
@@ -223,6 +231,7 @@ __all__ = [
     "normalize_logit_bias_pairs",
     "plan_execution_groups",
     "plan_sampler",
+    "poisson_arrivals",
     "register_builtin_generators",
     "register_text_generator",
     "registered_text_generators",
@@ -230,6 +239,7 @@ __all__ = [
     "raise_if_generation_cancelled",
     "raise_if_generation_deadline_expired",
     "row_seed_for_index",
+    "run_load_scenario",
     "sampler_fast_path_blockers",
     "select_token",
     "speculative_mtp_sampling_blockers",

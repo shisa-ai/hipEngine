@@ -24,6 +24,13 @@ should be removed or collapsed.
   explicit compatibility path for current gfx1100/gfx1151 kernels; they are not
   the Generation-2 allocator contract and must not leak same-chunk constraints
   into the new scheduler or backend ledger.
+- C2-6 makes the blocker concrete: W7900 independent c1 p128/d8 is exact, but
+  independently submitted logical c8 children fail native packed decode with
+  sentinel `2147483647`; disabling the real packed selector yields honest
+  serial-c1 execution but only 2/8 rows match their independent c1 oracles.
+  Eager load-time preparation and legacy work-barrier gates fix timeout/hang
+  failure modes but do not repair row/KV isolation. Do not use this fallback as
+  evidence that the Generation-2 pool is production-wired.
 - Removal trigger: after the BF16 and artifact-qualified no-mirror INT8 global
   pool adapters execute the C2-6 correctness, graph-pointer, lifecycle,
   cancellation, pressure, and production-load gates on both gfx1100 and

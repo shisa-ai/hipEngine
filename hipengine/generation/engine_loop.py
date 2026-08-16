@@ -313,6 +313,13 @@ class SubmitPollTextGenerator:
         configure_engine_loop = getattr(self._runner, "configure_engine_loop", None)
         if callable(configure_engine_loop):
             configure_engine_loop(self._loop.config)
+        if has_resident_runner:
+            # Global pools/session slabs are a model-load responsibility. Doing
+            # this before EngineService starts keeps submit commands O(1) and
+            # avoids applying the short command timeout to first-use allocation.
+            prepare_runner = getattr(self._runner, "prepare", None)
+            if callable(prepare_runner):
+                prepare_runner()
         # The lock protects one mutable scheduler tick, never an entire request.
         # Native runners therefore release it after each model transition so a
         # later D2 admission worker can enqueue between decode steps.
@@ -1642,6 +1649,10 @@ class ResidentEngineLoop:
 
         events: list[EngineLoopEvent] = []
         prefill_budget = self.round_prefill_token_budget
+        prefill_ran = False
+        multiple_prefills = bool(
+            getattr(self.runner, "supports_multiple_prefill_quanta_per_round", False)
+        )
         while prefill_budget > 0 and self.scheduler.has_prefill_work():
             work = self.scheduler.next_round_robin_prefill_work(
                 chunk_size=min(self.prefill_chunk_size, prefill_budget)
@@ -1652,10 +1663,20 @@ class ResidentEngineLoop:
             if tokens <= 0 or tokens > prefill_budget:
                 raise AssertionError("token-budget prefill planner exceeded its budget")
             events.extend(self._run_prefill(work))
+            prefill_ran = True
             prefill_budget -= tokens
             self._round_prefill_tokens += tokens
+            if not multiple_prefills:
+                break
 
-        decode = self.scheduler.next_decode_work()
+        same_round_decode = bool(
+            getattr(self.runner, "supports_prefill_decode_same_round", False)
+        )
+        decode = (
+            None
+            if prefill_ran and not same_round_decode
+            else self.scheduler.next_decode_work()
+        )
         if decode is not None:
             if len(decode.request_ids) > self.round_decode_row_budget:
                 raise AssertionError("due decode rows exceed the configured round budget")

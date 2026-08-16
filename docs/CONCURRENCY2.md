@@ -1131,6 +1131,10 @@ bounds prompt tokens, and then advances every due decode row exactly once.
 context bucket, workspace, and physical widths. Lowering reports
 `registered_masked_or_exact`, `registered_dense_compaction`, or
 `serial_c1_fallback`; it never labels fallback work as a native batch.
+Generation-2 dense adapters explicitly qualify multi-prefill and same-round
+prefill/decode transitions. Legacy runners without those capabilities execute
+one prefill transition per maintenance barrier and defer decode, preventing a
+new round planner from silently violating an old model-state lifecycle.
 
 ### C2-6 — graphs, long context, and production load
 
@@ -1146,6 +1150,19 @@ context bucket, workspace, and physical widths. Lowering reports
 
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
+
+Current gate status is **blocked**, so no C2-6 checkbox or default is promoted.
+The generation-checked graph/page/slot host gates, resource-accounted
+4K/16K/32K mixed membership, fixed/ragged/burst/Poisson/overload/disconnect
+loads, and c1-c32 planner/conservation suites pass. On W7900, exact-file
+Qwen3.6-35B-A3B `UD-Q4_K_M` BF16-KV passes independent c1 p128/d8, but logical
+c8 independently submitted children fail correctness: packed native emits the
+invalid-token sentinel `2147483647`; `protect_ttft` reproduces it; and true
+serial-c1 fallback returns only 2/8 trajectories equal to the independent c1
+oracles. c17/c32 are therefore correctly not run. The live GGUF path still uses
+request-private/single-backing `DeviceChunkedKVPool` rather than the C2 global
+page tables. gfx1151, vLLM, and SGLang are unavailable on this host. Evidence:
+[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json).
 
 ### C2-7 — FastDMS topology and codec composition
 
