@@ -621,6 +621,23 @@ class EngineService:
 
     def _route_events(self, events: Sequence[EngineLoopEvent]) -> None:
         for event in events:
+            if event.kind == "rejected" and event.request_id is not None:
+                state = self._states_by_backend_id.get(int(event.request_id))
+                if state is not None and not state.terminal:
+                    error = event.error
+                    if error is None:
+                        error = GenerationAdmissionRejected(
+                            "resident admission was rejected",
+                            resource="resident_admission",
+                            request_id=int(event.request_id),
+                        )
+                    self._publish_terminal(
+                        state,
+                        generation_output=None,
+                        finish_details=FinishDetails(reason="error"),
+                        error=error,
+                    )
+                continue
             if (
                 not self._canonical_token_events
                 or event.kind != "token"

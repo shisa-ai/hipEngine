@@ -14,6 +14,7 @@ from hipengine.generation import (
     EngineService,
     FinishDetails,
     GeneratedToken,
+    GenerationAdmissionRejected,
     GenerationCancelled,
     GenerationOutput,
     GenerationRequest,
@@ -169,6 +170,46 @@ def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> No
         service.close()
 
     assert driver.reconfigurations == [(service.driver_thread_id, config)]
+
+
+def test_engine_service_rejects_one_pending_child_without_closing() -> None:
+    class RejectingDriver(_FakeSoleDriver):
+        def poll(self, *, max_ticks: int = 1):
+            for request_id, state in tuple(self._active.items()):
+                if state.prompt.startswith("reject:"):
+                    self._active.pop(request_id)
+                    return (
+                        EngineLoopEvent(
+                            kind="rejected",
+                            request_id=request_id,
+                            request_ids=(request_id,),
+                            error=GenerationAdmissionRejected(
+                                "global page pressure",
+                                resource="device_kv_pool",
+                                request_id=request_id,
+                                requested_units=4,
+                                current_units=8,
+                                capacity_units=8,
+                            ),
+                        ),
+                    )
+            return super().poll(max_ticks=max_ticks)
+
+    driver = RejectingDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    try:
+        rejected = service.submit_child(_request("reject:1"))
+        with pytest.raises(GenerationAdmissionRejected) as error:
+            rejected.result(timeout=2.0)
+        assert error.value.resource == "device_kv_pool"
+        assert error.value.request_id == rejected.backend_request_id
+        assert service.closed is False
+
+        survivor = service.submit_child(_request("survivor:2"))
+        assert len(survivor.result(timeout=2.0).generated_token_ids or ()) == 2
+        assert service.closed is False
+    finally:
+        service.close()
 
 
 def test_engine_service_is_sole_driver_and_refills_before_long_neighbor_finishes() -> None:

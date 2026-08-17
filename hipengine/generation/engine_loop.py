@@ -103,6 +103,7 @@ class GenerationAdmissionRejected(MemoryError):
         message: str,
         *,
         resource: str,
+        request_id: int | None = None,
         requested_units: int | None = None,
         current_units: int | None = None,
         capacity_units: int | None = None,
@@ -119,6 +120,9 @@ class GenerationAdmissionRejected(MemoryError):
             if value is not None and int(value) < 0:
                 raise ValueError(f"{label} must be non-negative when set")
         self.resource = str(resource)
+        self.request_id = None if request_id is None else int(request_id)
+        if self.request_id is not None and self.request_id < 0:
+            raise ValueError("request_id must be non-negative when set")
         self.requested_units = None if requested_units is None else int(requested_units)
         self.current_units = None if current_units is None else int(current_units)
         self.capacity_units = None if capacity_units is None else int(capacity_units)
@@ -204,6 +208,7 @@ class EngineLoopEvent:
     token_id: int | None = None
     stream_chunk: GenerationStreamChunk | None = None
     completed: CompletedRequest | None = None
+    error: BaseException | None = None
 
 
 class EngineLoopRunner(Protocol):
@@ -493,7 +498,29 @@ class SubmitPollTextGenerator:
         self._submission_priority.wait_for_submissions()
         with self._loop_lock:
             self._drain_cancel_commands_locked()
-            events = self._loop.poll(max_ticks=max_ticks)
+            try:
+                events = self._loop.poll(max_ticks=max_ticks)
+            except GenerationAdmissionRejected as exc:
+                request_id = exc.request_id
+                if request_id is None:
+                    pending = tuple(self._loop.scheduler.pending_requests)
+                    request_id = None if not pending else int(pending[0].request_id)
+                submission = (
+                    None
+                    if request_id is None
+                    else self._submissions_by_request.get(int(request_id))
+                )
+                if request_id is None or submission is None:
+                    raise
+                self._abort_submission_locked(submission, reason="cancel")
+                events = (
+                    EngineLoopEvent(
+                        kind="rejected",
+                        request_id=int(request_id),
+                        request_ids=(int(request_id),),
+                        error=exc,
+                    ),
+                )
             self._route_stream_events_locked(events)
             return events
 
