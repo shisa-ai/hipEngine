@@ -1,10 +1,10 @@
 # Qwen3.6-35B-A3B ZBook gfx1151 Campaign
 
-Status: **active; all four artifacts are admitted, the exact-artifact quality
-gate and hipEngine PARO implementation-correctness gate are complete, and Z1
-quality is closed. Labeled quality-traded profiling may proceed.** The campaign
-is specific to the HP ZBook Ultra G1a at its current 60/60/45 W limits. It must
-not reuse absolute throughput from the higher-power 120/160/140 W Radeon 8060S host.
+Status: **baseline/quality and the five-opportunity ROCmFPX transfer are
+complete; new same-quant hipEngine tuning is owned by the dedicated
+production-numerics PLAN/PUNCHLIST.** The campaign is specific to the HP ZBook
+Ultra G1a at its current 60/60/45 W limits. It must not reuse absolute
+throughput from the higher-power 120/160/140 W Radeon 8060S host.
 
 The objective is to answer three questions with matched local evidence:
 
@@ -15,10 +15,16 @@ The objective is to answer three questions with matched local evidence:
 3. If ROCmFP4 is both accurate enough and faster, which measured mechanism is
    worth implementing in hipEngine rather than copying a foreign runtime?
 
-This remains a campaign plan, not a performance claim. The exact-artifact
-quality result is retained; no new ZBook throughput row has been retained yet.
+This broad campaign remains the model/quant/cross-runtime authority. Retained
+ZBook throughput and production-profile disposition now exist; the active next
+cycle is fully specified in
+[`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md).
 
 Related authorities:
+
+- [`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md)
+  — active same-quant hipEngine tuning plan, exact commands, phase gates, and
+  punchlist.
 
 - [`BENCHMARK.md`](BENCHMARK.md) and [`TESTING.md`](TESTING.md) — evidence,
   anti-gaming, and correctness contracts.

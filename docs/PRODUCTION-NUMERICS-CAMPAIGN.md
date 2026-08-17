@@ -1,6 +1,6 @@
 # Production Numerics Performance Campaign
 
-Status: **approved; P0-P4 infrastructure complete; ZBook package-level c1/cN recovery complete with public-default decision blocked on soak; W7900/specialized recovery and named-profile model plans/certification remain open**
+Status: **approved; P0-P4 infrastructure complete; first ZBook c1/cN package decision complete with public default blocked on soak; the next ZBook tuning cycle has a frozen PLAN/PUNCHLIST; W7900/specialized recovery and named-profile certification remain open**
 Approved: 2026-08-16
 Primary lane: AMD Radeon Pro W7900 / `gfx1100`, Qwen3.6-35B-A3B PARO,
 same-model GGUF heldout/control
@@ -8,6 +8,12 @@ Current auxiliary lane: physical host `zbook`, Radeon 8060S / `gfx1151`.
 ZBook rates are independent of the other gfx1151 machine and may not be used as
 an old→new denominator for that host; only same-host A/B ratios are binding.
 Normative contract: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)
+
+Active ZBook execution plan:
+[`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md).
+It freezes the host/model/prompt identities, named-profile/control prerequisite,
+commands, candidate sequence, quality/SLO gates, and per-candidate punchlist for
+new gfx1151 work.
 
 ## 1. Objective
 
