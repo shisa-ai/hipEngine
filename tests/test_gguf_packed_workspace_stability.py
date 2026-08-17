@@ -150,8 +150,8 @@ def test_packed_workspace_growth_keeps_union_geometry(monkeypatch) -> None:
     assert reused_scratch is grown_scratch
 
 
-def test_packed_workspace_resize_fails_closed_with_live_graph(monkeypatch) -> None:
-    """No workspace buffer may be freed while a decode graph still binds it."""
+def test_packed_workspace_growth_invalidates_live_graph_first(monkeypatch) -> None:
+    """Growth closes binding graphs before freeing; a close-less graph fails closed."""
 
     recorder = _AllocRecorder(monkeypatch)
     recorder.install()
@@ -162,28 +162,29 @@ def test_packed_workspace_resize_fails_closed_with_live_graph(monkeypatch) -> No
         slot_count=1, rows=4, max_sequence_length=1024, runtime=runtime
     )
     graph = SimpleNamespace(closed=False)
+    graph.close = lambda: setattr(graph, "closed", True)
     owner._decode_graphs.append(graph)
 
-    # Growth beyond the default union capacity while a graph is live.
-    with pytest.raises(RuntimeError, match="graph"):
-        owner._ensure_packed_verify_workspace(
-            slot_count=16, rows=128, max_sequence_length=1024, runtime=runtime
-        )
-    assert not graph.closed
-    assert recorder.freed == [], (
-        "state buffers were freed while a live graph still binds them"
-    )
-
-    # After the graph closes, the same growth succeeds and stays monotonic.
-    graph.closed = True
-    state, scratch = owner._ensure_packed_verify_workspace(
+    # Growth beyond the default union capacity closes the binding graph and
+    # proceeds (the scheduler re-captures); it never frees while it is open.
+    state, _ = owner._ensure_packed_verify_workspace(
         slot_count=16, rows=128, max_sequence_length=1024, runtime=runtime
     )
+    assert graph.closed is True
     assert int(state.slot_count) >= 16
     reused_state, _ = owner._ensure_packed_verify_workspace(
         slot_count=1, rows=4, max_sequence_length=1024, runtime=runtime
     )
     assert reused_state is state
+
+    # A graph that cannot be closed still fails the resize closed.
+    uncloseable = SimpleNamespace(closed=False)
+    owner._decode_graphs.append(uncloseable)
+    with pytest.raises(RuntimeError, match="close"):
+        owner._ensure_packed_verify_workspace(
+            slot_count=64, rows=128, max_sequence_length=1024, runtime=runtime
+        )
+    assert uncloseable.closed is False
 
 
 def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> None:

@@ -21086,7 +21086,7 @@ class Qwen35GGUFResidentSession:
             or int(workspace.num_splits) < required_splits
         ):
             if workspace is not None:
-                self._assert_no_live_packed_decode_graphs()
+                self._invalidate_live_packed_decode_graphs()
                 synchronize = getattr(runtime, "device_synchronize", None)
                 if callable(synchronize):
                     synchronize()
@@ -21101,21 +21101,33 @@ class Qwen35GGUFResidentSession:
             self._packed_ar_attention_workspace = workspace
         return workspace
 
-    def _assert_no_live_packed_decode_graphs(self) -> None:
-        """Fail closed before freeing memory a replay graph still binds."""
+    def _invalidate_live_packed_decode_graphs(self) -> int:
+        """Close every graph that still binds the packed workspace buffers.
+
+        Growth must never free memory a replay graph still references, but
+        failing the request closed wedges serving (the graph is re-captured
+        on the next eligible round), so growth invalidates first, mirroring
+        ``invalidate_device_kv_graphs`` for pool rebinding.
+        """
 
         sessions = [self]
         views = self.__dict__.get("_resident_slot_views")
         if views:
             sessions.extend(views)
+        closed = 0
         for session in sessions:
             for graph in tuple(getattr(session, "_decode_graphs", ())):
-                if not bool(getattr(graph, "closed", False)):
+                if bool(getattr(graph, "closed", False)):
+                    continue
+                close = getattr(graph, "close", None)
+                if not callable(close):
                     raise RuntimeError(
-                        "cannot resize the packed verify workspace while a live"
-                        " packed decode graph still binds its buffers; close or"
-                        " invalidate the graph first"
+                        "cannot resize the packed verify workspace: a live"
+                        " packed decode graph exposes no close()"
                     )
+                close()
+                closed += 1
+        return closed
 
     def _packed_verify_union_geometry(
         self,
@@ -21134,13 +21146,18 @@ class Qwen35GGUFResidentSession:
 
         state = self._packed_verify_state
         scratch = self._packed_verify_scratch
-        state_slots = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        capacity = getattr(self, "max_batch_size", None)
+        try:
+            capacity = max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, int(capacity))
+        except (TypeError, ValueError):
+            capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        state_slots = capacity
         state_max_seq = _PACKED_VERIFY_MIN_MAX_SEQUENCE
         if state is not None:
             state_slots = max(state_slots, int(state.slot_count))
             state_max_seq = max(state_max_seq, int(state.max_sequence_length))
         scratch_rows = self._packed_verify_prefill_row_cap()
-        scratch_segments = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        scratch_segments = capacity
         if scratch is not None:
             scratch_rows = max(scratch_rows, int(scratch.rows))
             scratch_segments = max(
@@ -21209,7 +21226,7 @@ class Qwen35GGUFResidentSession:
             # Genuine growth (never shrink): graphs must not bind the buffers
             # we are about to free, and deferred decode state must be
             # scattered back to the slot sessions first.
-            self._assert_no_live_packed_decode_graphs()
+            self._invalidate_live_packed_decode_graphs()
             if getattr(self, "_packed_decode_state_dirty", False):
                 if not self.flush_packed_decode_state(stream=stream):
                     raise RuntimeError(
