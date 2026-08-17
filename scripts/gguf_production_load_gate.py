@@ -1853,6 +1853,38 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 key: tuple(int(token) for token in run.generated_tokens)
                 for key, run in reference_runs.items()
             }
+
+            # Reference sessions share weights/runtime only within an oracle
+            # generation. Fully close that owner before measured serving so
+            # repeated diagnostic scratch/library lifetimes cannot contaminate
+            # production graph and workspace pointers.
+            llm.close()
+            llm = LLM(
+                model,
+                backend=str(args.backend),
+                max_active_requests=int(args.max_active_requests),
+            )
+            adapter = llm._get_text_generator()
+            llm.prepare(
+                max_sequence_length=max_sequence_length,
+                sampling_params=SamplingParams(max_tokens=max_output),
+            )
+            runner = adapter._runner
+            measured_prompt_rows = _prompt_manifest(
+                runner.generator.tokenizer,
+                all_specs,
+            )
+            if {
+                key: row["token_ids_sha256"]
+                for key, row in measured_prompt_rows.items()
+            } != {
+                key: row["token_ids_sha256"]
+                for key, row in prompt_rows.items()
+            }:
+                raise RuntimeError(
+                    "measured owner tokenizer differs from the oracle owner"
+                )
+            prompt_rows = measured_prompt_rows
             reclaimed: dict[int, _ReclaimedRow] = {}
             reclaimed_lock = threading.Lock()
             original_reclaim = runner.reclaim
