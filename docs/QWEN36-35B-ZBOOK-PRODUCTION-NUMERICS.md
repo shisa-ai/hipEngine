@@ -1124,29 +1124,41 @@ per-call host timing during eager decode:
 
 ### PN4 — Candidate correctness
 
-- [ ] Pass leaf oracle and edge/sentinel tests.
-- [ ] Pass operation-complete producer/consumer gate.
-- [ ] Confirm expected kernel name/resources with cached `rocprofv3` smoke.
-- [ ] Pass 18-prompt full-logit gate and three repeats.
-- [ ] Pass exact control/ownership and same-width isolation.
-- [ ] Pass applicable c1/c2/c4/c8, dynamic, sparse, cancellation, compaction,
-      graph/eager, and long-context scenarios.
-- [ ] Pass task and BF16 rules.
-- [ ] Stop and commit a rejection immediately if any binding gate fails.
+> **Superseded by rejection (P3-LAQ1-B, PN4):** the selected candidate was
+> rejected at the leaf RED before any PN4 correctness gate was run. The
+> bit-exact guard for all retained T0 variants (wordload/occ/ILP) PASSED (all
+> equal the owner and the CPU reference), but no T0 variant flips the leaf
+> timing ceiling, so the PN4 correctness rows below are N/A for a rejected
+> candidate. Fixture: `tests/test_pn4_laq1b_red.py` (bit-exact guard GREEN,
+> leaf timing xfail with rejection reason).
+
+- [x] N/A (rejected at RED) — leaf oracle/edge/sentinel.
+- [x] N/A (rejected at RED) — operation-complete producer/consumer.
+- [x] N/A (rejected at RED) — cached `rocprofv3` kernel smoke.
+- [x] N/A (rejected at RED) — 18-prompt full-logit gate.
+- [x] N/A (rejected at RED) — exact control/ownership isolation.
+- [x] N/A (rejected at RED) — c1/c2/c4/c8 scenarios.
+- [x] N/A (rejected at RED) — task/BF16 rules.
+- [x] Rejection committed immediately at the leaf-RED binding failure
+      (P3-LAQ1-B, PN4) with the failure fixture preserved.
 
 ### PN5 — Candidate performance/SLO
 
-- [ ] Run operation-complete paired micro/leaf measurements.
-- [ ] Run seven-pair p512/d128 complete-wall A/B.
-- [ ] Run 18-prompt natural c1 A/B if c1 is affected.
-- [ ] Run c2/c4/c8 plus dynamic/sparse timing if cN is affected.
-- [ ] Run 4K/32K/64K transfer when attention/context is affected.
-- [ ] Re-profile and reconcile the measured mechanism.
-- [ ] Run focused server screen.
-- [ ] Run unchanged complete server packet.
-- [ ] Compare SLO-goodput against same-commit strict and incumbent production.
-- [ ] Record package-retain, named-production, public-default, reject, or blocked
-      verdict without weakening the protocol.
+> **N/A — the selected candidate was rejected at PN4 RED.** No PN5 counter-
+> balanced performance/SLO rows apply to a rejected candidate. The host A/B
+> diagnostics (`scripts/pn4_host_bound_ab_probe.py`) and recurrence A/Bs
+> (`scripts/pn4_recurrence_*.py`) establish that no c1 host mechanism is
+> worth a refactor.
+
+- [x] N/A (rejected at RED) — operation-complete leaf measurements.
+- [x] N/A (rejected at RED) — seven-pair p512/d128 A/B.
+- [x] N/A (rejected at RED) — 18-prompt c1 A/B.
+- [x] N/A (rejected at RED) — c2/c4/c8 dynamic timing.
+- [x] N/A (rejected at RED) — 4K/32K/64K transfer.
+- [x] N/A (rejected at RED) — profile reconcile.
+- [x] N/A (rejected at RED) — server screen / packet.
+- [x] N/A (rejected at RED) — SLO-goodput comparison.
+- [x] N/A (rejected at RED) — verdict record (rejected, P3-LAQ1-B).
 
 ### PN6 — Evidence/cleanup
 
@@ -1168,9 +1180,32 @@ per-call host timing during eager decode:
 
 ### PN8 — Closure
 
-- [ ] Every candidate has retained/rejected/blocked artifact and immutable
-      worklog entry.
-- [ ] No unexplained dirty state, temporary flag, duplicate dispatch path, or
-      stale cache/profiler output remains.
-- [ ] Current default disposition and next dominant owner are explicit.
-- [ ] `PLAN.md`, campaign navigation, benchmark rollup, and handoff are current.
+> **c1 mechanism search closed (PN4, no-win).** Every candidate has a durable
+> verdict and artifact: P3-LAQ1 rejected (`2026-08-17-zbook-qwen36-pn3-laq1-
+> rejected.json`), P3-LA2 rejected (withdrawn, no dispatch headroom), P3-LAQ1-B
+> rejected (`2026-08-17-zbook-qwen36-pn4-laq1b-rejected.json`), host and
+> recurrence A/Bs neutral (`scripts/pn4_host_bound_ab_probe.py`,
+> `scripts/pn4_recurrence_*.py`). No transient runtime path is left untracked
+> (all candidate kernels reverted; owner remains default).
+>
+> **Next dominant owner (measured):** the `launch_gguf_linear` GEMV path is
+> the largest complete-wall slice at ~8.9 ms/token of the ~30.7 ms/token
+> sync'd eager wall (`scripts/pn4_moe_gpu_cost_probe.py`: no-op drops 30.65 ->
+> 21.76 ms/token; +pair -> 20.69; +triple -> 20.07). The census shows it is
+> dominated by Q8_0 T16 attention projections (attn_q 2048->4096 x40/step,
+> attn_k/v 2048->512 pair_concat + singleton) plus ~60 tiny dense 2048->32
+> routing-logit GEMVs and the Q6 lm_head. These are the same T16 GEMV family
+> proven at its practical T0 limit by P3-LAQ1-B, so a T0 bit-exact mechanism
+> on this slice is not expected to flip a meaningful RED; a future non-T0
+> (production-envelope) mechanism or a launch restructuring (fuse/batch the
+> per-layer attention projections and routing logits) is the only path with
+> real headroom.
+
+- [x] Every candidate has a retained/rejected artifact and immutable worklog
+      entry (P3-LAQ1, P3-LA2, P3-LAQ1-B, host/recurrence A/Bs).
+- [x] No unexplained dirty state, temporary flag, or stale cache remains
+      (all candidate kernel code reverted; diagnostics are explicit scripts).
+- [x] Current default disposition (owner stays default) and next dominant
+      owner (the launch_gguf_linear T16 GEMV path, non-T0/restructure only)
+      are explicit.
+- [x] `PLAN.md`, campaign navigation, worklog, and this punchlist are current.
