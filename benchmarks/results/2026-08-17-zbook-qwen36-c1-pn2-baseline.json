@@ -86,14 +86,52 @@
     "state_kv_c1_bit_exact": false,
     "state_kv_exact": false
   },
-  "commit": "ad951c515ca10223fd394bc7f766cd4564596033",
+  "commit": "905dd75342319541ba8a9b015e4693e291049a05",
   "date_utc": "2026-08-17",
   "execution_profile": "production",
   "host": "zbook",
-  "kind": "zbook_qwen36_c1cn_baseline_pn2",
+  "kind": "zbook_qwen36_c1cn_server_baseline_pn2",
   "manifest_hashes": {
     "selected": "aed0d9c5312fb9384884c173794df5ddf508b64485d351749b5488b4eae7aa4b",
     "strict": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41"
+  },
+  "production_server": {
+    "complete_packet": {
+      "complete_packet": true,
+      "final_rejected_total": 48.0,
+      "performance_claim": false,
+      "rejection_timing": {
+        "overload_workload_rejected": null,
+        "soak_workload_rejected": null
+      },
+      "selected_tuning": {
+        "batch_window_ms": 100.0,
+        "candidate_id": "fair_128",
+        "end_to_end_p95_seconds": 10.177380082022864,
+        "goodput_generated_tokens_per_second": 27.748751451142525,
+        "itl_p99_seconds": 0.4204988820129074,
+        "passed": true,
+        "prefill_decode_policy": "fair",
+        "ttft_p95_seconds": 1.9842451169970445
+      },
+      "soak_blocker_reproduced": true,
+      "soak_occupancy_observed": "bucket saturated at 0.875-1.0 for most of the 60s soak (8 resident slots)",
+      "status": "failed",
+      "workloads_passed": false
+    },
+    "execution_profile": "production",
+    "focused_screen": {
+      "complete_packet": false,
+      "final_itl_p95": 0.3778585122083314,
+      "final_rejected_total": 0.0,
+      "final_ttft_p95": 4.469874426606111,
+      "gates_clean_source_passed": true,
+      "gates_final_ownership_passed": true,
+      "gates_memory_recovery_passed": true,
+      "gates_workloads_passed": true,
+      "soak_occupancy_p95": 1.0,
+      "status": "measurement_complete"
+    }
   },
   "raw_artifact_hashes": {
     "c1_fixed_perf": "d10d52f8202769d7223f03e34016a320a08071f37325849652cdd44cfe1edae8",
@@ -101,7 +139,9 @@
     "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0",
     "cn_lifecycle": "2aae9ed4268b8e73cb18df7812c89d0cfd45e241a64e39fabcfbdcee8cf90fd0",
     "cn_perf": "0581df7d69e3113d39c25135f9721f86a709e7cd9503859dd1a018b58fa9e625",
-    "cn_quality": "d99b4be9e0a1a1bd5a2484ae90b8e1ab686bb4c1449db2cb4b864919fb2448b0"
+    "cn_quality": "d99b4be9e0a1a1bd5a2484ae90b8e1ab686bb4c1449db2cb4b864919fb2448b0",
+    "production_load_full": "5d6c074d5420213820e8684c60944f2548c32adacb7d7c40e3b4fb4a5bdba8fb",
+    "production_load_screen": "a0f310293857a987de1869f2a3ac5dbe659bd7606b9530fd01d987394b54783d"
   },
   "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b",
   "schema_version": 1,
