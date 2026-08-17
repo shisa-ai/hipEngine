@@ -4905,6 +4905,14 @@ class Qwen35GGUFResidentModelRunner:
     in telemetry without being mislabeled as a serial model-step fallback.
     """
 
+    # The Generation-2 batch owner serializes its shared temporary workspaces
+    # and keeps prefill/decode canonical state in independent target slots, so
+    # one scheduler round may safely execute a prefill quantum followed by each
+    # due decode row. Multiple prefill quanta stay disabled until independently
+    # qualified; this capability alone prevents long-prefill ITL starvation.
+    supports_prefill_decode_same_round = True
+    supports_multiple_prefill_quanta_per_round = False
+
     def __init__(
         self,
         generator: Qwen35GGUFBringupGenerator,
