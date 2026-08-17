@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "kind": "zbook_qwen36_pn3_laq1_declaration_and_red",
+  "date_utc": "2026-08-17",
+  "host": "zbook",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "backend": "hip_gfx1151",
+  "execution_profile": "production",
+  "candidate": {
+    "id": "P3-LAQ1",
+    "operation_family": "c1 linear-attention QKV/gate projection (gdn_input_projections / decode_linear_attn_qkv_gate)",
+    "arithmetic_class": "T0",
+    "leaf": "gguf_q4_k_t16_dense_single_local32_bf16_bf16_out",
+    "mechanism": "software-pipelined super-block loads / improved memory-level parallelism, bit-exact FMA order",
+    "shapes": {"attn_qkv": [2048, 8192], "attn_gate": [2048, 4096]},
+    "layers": 30
+  },
+  "fresh_stage_ranking_source": {
+    "script": "scripts/pn3_stage_ranking_from_trace.py",
+    "trace": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b/c1-profile-raw/trace",
+    "decode_tokens": 24,
+    "method": "nested-exclusive GPU-visible wall from ROCTX range markers"
+  },
+  "fresh_gpu_exclusive_ms_per_token": {
+    "moe_router_combine": 10.657,
+    "gdn_attention_core": 5.19,
+    "gdn_decay_projections": 3.847,
+    "shared_expert_gate_up": 3.054,
+    "shared_expert_down": 2.936,
+    "selected_expert_down": 2.895,
+    "selected_expert_gate_up": 2.678,
+    "full_attention_core": 2.386,
+    "gdn_input_projections_laq": 2.294,
+    "gdn_output_projection": 2.14,
+    "full_attention_qkv": 0.937,
+    "selected_expert_other": 0.796,
+    "full_attention_output": 0.738,
+    "lm_head": 0.121
+  },
+  "pn2_host_wall_over_attribution": {
+    "decode_linear_attn_qkv_gate_host_wall_ms_per_token": 7.74,
+    "gpu_exclusive_ms_per_token": 2.294,
+    "note": "host-wall stage windows include pipeline bubbles / loose enclosing scopes; GPU-timestamped nested-exclusive walls are the fresh ranking authority"
+  },
+  "leaf_measurements": {
+    "script": "scripts/pn3_q4_t16_laq_gemv_leaf.py",
+    "method": "wall-clock burst with device sync (HIP event elapsed reports 0 on this gfx1151/ROCm combo)",
+    "burst_50_median_ms": {"attn_qkv": 0.0328, "attn_gate": 0.018, "pair_per_layer": 0.0508},
+    "effective_gbps": {"attn_qkv": 295.8, "attn_gate": 269.4},
+    "projected_ms_per_token_30_layers": {"pair": 1.524},
+    "gdn_core_leaf_script": "scripts/pn3_gdn_core_leaf.py",
+    "gdn_core_burst50_pair_ms_per_layer": 0.0222,
+    "gdn_core_burst1_pair_ms_per_layer": 0.040,
+    "gdn_core_observation": "leaf far below the 5.19 ms/token gdn_attention_core marker wall -> much of the profile is host-dispatch idle, not kernel execution"
+  },
+  "red_state": {
+    "test": "tests/test_pn3_laq_gemv_red.py",
+    "bit_exact_guard": "PASS (local32 T16 == pack8 control)",
+    "red_failing": [
+      {"test": "test_laq_attn_qkv_leaf_red", "current_ms": 0.047, "ceiling_ms": 0.026},
+      {"test": "test_laq_gate_leaf_red", "current_ms": 0.019, "ceiling_ms": 0.0145},
+      {"test": "test_laq_pair_leaf_red", "current_ms": 0.0472, "ceiling_ms": 0.042}
+    ],
+    "note": "perf ceilings RED by design before P3-LAQ1 implementation (PN4)"
+  },
+  "commit_note": "PN3 exit: one candidate declaration committed with a RED fixture observed failing; implementation is PN4."
+}
