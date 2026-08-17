@@ -965,6 +965,74 @@ and verdict.
 - **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
   vs same-commit strict and incumbent production.
 
+#### P3-LAQ1 REJECTED (PN4 binding failure)
+
+The GEMV-leaf mechanism is **rejected** after a clean PN4 RED attempt. Two
+bit-exact T0 variants of the local32 owner were implemented on gfx1151 and
+neither flips any of the three leaf ceilings:
+
+- `vecq` (word-load / uint32 qword reads): bit-exact vs local32 and pack8 but
+  **~10% slower** on both shapes -> kernel is not load-instruction-bound.
+- `tile16` (one block computes all 16 columns of a tile, killing the 2x read
+  amplification): bit-exact per column but only **+5% on attn_qkv and -7% on
+  attn_gate** (256 blocks under-utilize the 80-SIMD machine) -> not
+  memory-BW-bound either.
+
+The leaf sits at ~0.029 ms / ~350 GB/s effective (attn_qkv, burst) and is at
+its practical limit for the byte-scattered Q4_T16 layout. Leaf pair 0.046 ms
+vs the 0.042 ms RED target; even the best variant leaves the pair ceiling RED.
+
+Deeper evidence on why the leaf cannot win the complete wall: the 2.29 ms/token
+`gdn_input_projections` stage is **dispatch-bound, not kernel-bound**. Single
+back-to-back launches (burst=1, realistic per-launch host+sync cost) measure
+attn_qkv 0.062 ms + attn_gate 0.044 ms = 0.106 ms/layer (~3.2 ms/token) vs
+0.045 ms/layer pipelined (burst=50, 1.34 ms/token); the model's 72 us/layer
+stage wall sits between the two and is dominated by per-launch dispatch (~30 us
+per kernel) rather than the GEMV bodies. ~780 launches/token at ~30 us each is
+~23 ms/token of dispatch exposure. So the sound next mechanism is launch-count
+reduction of the c1 linear-attention block, not further GEMV leaf tuning.
+
+**Rejection disposition (plan 4.4):** candidate implementation removed (the
+`vecq`/`tile16` kernels, launchers, exports, wrappers, and registrations were
+reverted to the committed PN3 state). Failure fixture preserved:
+`tests/test_pn3_laq_gemv_red.py` keeps the bit-exact guard live and xfails the
+three leaf ceilings with the rejection reason. Evidence artifact:
+`benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-rejected.json`. Worklog:
+`worklog/entries/<unique>`. The P3-LA2 launch-fusion candidate (below) is the
+next declared mechanism.
+
+#### P3-LA2 candidate declaration (next mechanism)
+
+- **Candidate ID / arithmetic class:** P3-LA2, T0 (bit-exact per primitive;
+  each fused kernel runs the exact same per-primitive arithmetic as the
+  unfused chain; no reordered/narrowed math).
+- **Scope / shape / stateful surfaces:** c1 linear-attention block: fuse the
+  per-layer launch chain `attn_norm -> attn_qkv -> attn_gate` into one launch
+  (and, as a second sub-step if retained, the alpha/beta + conv + SSM
+  recurrence + ssm_out tail). The recurrence is stateful and must stay serial;
+  the projection/norm triple is stateless and is the first fuse target.
+- **Source / lineage / why it helps gfx1151:** the stage wall (72 us/layer) is
+  ~27 us/layer above the 45 us/layer pipelined GEMV pair; the delta is norm
+  + per-launch dispatch (~30 us/kernel measured at burst=1). Fusing the three
+  projections into one kernel removes two dispatches/layer = ~60 dispatches/
+  token -> potential ~0.6-1.2 ms/token (~1.3-2.6% complete-request) with the
+  same arithmetic.
+- **Operation-complete boundary / expected launch change / measured complete-
+  wall ceiling:** producer->consumer is norm->qkv->gate (alpha/beta, conv,
+  recurrence depend on qkv/gate outputs and remain separate). Expected launch
+  change: -2/layer (-60/token). Complete-wall ceiling ~0.6-1.2 ms/token on the
+  natural c1 path, above the 1% in-tree exact threshold.
+- **Strict fallback / rollback-removal trigger:** unfused chain stays
+  registered; fused kernel is a separately registered T0 variant. Any bit
+  mismatch vs the unfused chain, any same-suite complete-wall regression, or
+  any KL/top-1 binding failure removes the fuse.
+- **Downstream expert/top-1 change:** none (T0 per-primitive bit-exact).
+- **Binding rows:** leaf bit-exact (fused vs unfused per output); c1 450-row
+  KL=0/top-1=1.0; 18-prompt greedy-output equality; c1/c2/c4/c8, dynamic/
+  sparse, graph/eager, and long-context rows; task/BF16 rules in 4.3.
+- **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
+  vs same-commit strict and incumbent production.
+
 ### PN4 — Candidate correctness
 
 - [ ] Pass leaf oracle and edge/sentinel tests.

@@ -1,0 +1,66 @@
+{
+  "id": "zbook-qwen36-pn3-laq1-rejected",
+  "date": "2026-08-17",
+  "hardware": "AMD Radeon 8060S (ZBook Ultra G1a, gfx1151, 40 CU / 80 SIMD)",
+  "status": "rejected",
+  "mechanism": "P3-LAQ1 GEMV-leaf software pipelining / improved Q4_T16 dense GEMV",
+  "family": "c1 linear-attention QKV/gate projection (gdn_input_projections / decode_linear_attn_qkv_gate)",
+  "source_plan": "docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md (PN3 / P3-LAQ1 declaration, PN4 binding failure)",
+  "variants_tested": [
+    {
+      "id": "local32_owner",
+      "kernel": "q4_k_t16_dense_single_local32_gemv_kernel",
+      "description": "committed exact Q4_K T16 c1 dense GEMV owner (pack8 bit-exact sibling)",
+      "bit_exact_vs_pack8": true
+    },
+    {
+      "id": "vecq",
+      "kernel": "q4_k_t16_dense_single_local32_vecq_gemv_kernel",
+      "description": "word-load (uint32 qword reads) T0 variant",
+      "bit_exact_vs_local32": true,
+      "bit_exact_vs_pack8": true,
+      "result": "~10% slower on both attn_qkv and attn_gate -> not load-instruction-bound"
+    },
+    {
+      "id": "tile16",
+      "kernel": "q4_k_t16_dense_single_local32_tile16_gemv_kernel",
+      "description": "one block computes all 16 columns of a Q4_T16 tile (no 2x read amplification)",
+      "bit_exact_vs_local32": true,
+      "bit_exact_vs_pack8": true,
+      "result": "+5% on attn_qkv (8192), -7% on attn_gate (4096, 256 blocks under-utilize 80 SIMDs) -> not memory-BW-bound"
+    }
+  ],
+  "leaf_measurements_ms_burst50": {
+    "attn_qkv": {"local32": 0.0288, "vecq": 0.0312, "tile16": 0.0289, "red_target": 0.026},
+    "attn_gate": {"local32": 0.0160, "vecq": 0.0170, "tile16": 0.0179, "red_target": 0.0145},
+    "pair": {"local32": 0.0448, "tile16": 0.0468, "red_target": 0.042}
+  },
+  "leaf_measurements_ms_burst1": {
+    "note": "burst=1 = single launch + host dispatch + device sync (realistic eager per-launch cost)",
+    "attn_qkv": 0.0617,
+    "attn_gate": 0.0438,
+    "pair": 0.1055,
+    "pair_30_layer_projection_ms_per_token": 3.166
+  },
+  "stage_wall": {
+    "stage": "gdn_input_projections (linear-attn QKV/gate)",
+    "gpu_exclusive_ms_per_token": 2.294,
+    "us_per_layer": 72,
+    "leaf_pipelined_pair_ms_per_token": 1.34,
+    "leaf_pipelined_us_per_layer": 45
+  },
+  "dispatch_analysis": {
+    "finding": "stage is dispatch-bound, not kernel-bound",
+    "evidence": "burst=1 (0.106 ms/layer) vs burst=50 (0.045 ms/layer) -> ~30 us/kernel per-launch dispatch overhead",
+    "launches_per_token": 780,
+    "dispatch_exposure_ms_per_token": 23,
+    "conclusion": "no GEMV-leaf T0 variant can reach the RED; next mechanism is launch-count reduction (P3-LA2)"
+  },
+  "red_state": {
+    "test": "tests/test_pn3_laq_gemv_red.py",
+    "bit_exact_guard": "PASS (local32 T16 == pack8 control)",
+    "perf_ceilings": "3 xfail (attn_qkv > 0.026, attn_gate > 0.0145, pair > 0.042) with rejection reason",
+    "values_at_rejection": {"attn_qkv": "~0.029", "attn_gate": 0.0174, "pair": 0.046}
+  },
+  "disposition": "candidate kernels/launchers/exports/wrappers/registrations reverted to committed PN3 state; failure fixture preserved (xfail); next mechanism P3-LA2 (launch fusion of the c1 linear-attention block)"
+}
