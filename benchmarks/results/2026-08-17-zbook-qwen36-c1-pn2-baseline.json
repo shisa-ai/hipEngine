@@ -1,0 +1,52 @@
+{
+  "c1_fixed_perf": {
+    "candidate_median_tok_s": 32.66589744714692,
+    "candidate_repeatable": true,
+    "candidate_vs_strict_pct": 8.016273195395884,
+    "generated_ids_equal": true,
+    "strict_median_tok_s": 30.241644597435783
+  },
+  "c1_natural_perf": {
+    "candidate_median_tok_s": 32.90183999385372,
+    "candidate_vs_strict_pct": 8.274550104628698,
+    "generated_ids_equal_prompts": 18,
+    "paired_wins": 18,
+    "strict_median_tok_s": 30.43131429497044
+  },
+  "c1_quality": {
+    "gate_status": "passed",
+    "hard_gates_passed": true,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "measurement_valid": true,
+    "provenance_dirty": false,
+    "repeat_determinism_passed": true,
+    "rows": 450,
+    "teacher_nll_delta": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": 450,
+    "topk_overlap_mean": 1.0
+  },
+  "commit": "53be617b835b579ea61b70565c34f7085ec627bf",
+  "date_utc": "2026-08-17",
+  "execution_profile": "production",
+  "host": "zbook",
+  "kind": "zbook_qwen36_c1_baseline_pn2",
+  "manifest_hashes": {
+    "selected": "aed0d9c5312fb9384884c173794df5ddf508b64485d351749b5488b4eae7aa4b",
+    "strict": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41"
+  },
+  "raw_artifact_hashes": {
+    "c1_fixed_perf": "d10d52f8202769d7223f03e34016a320a08071f37325849652cdd44cfe1edae8",
+    "c1_natural_perf": "8ca6a21d66f9270802aaaae1f6fb64deb4306af464ef5950b1a98eacda777836",
+    "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0"
+  },
+  "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b",
+  "schema_version": 1,
+  "vs_retained_2026_08_16": {
+    "fixed_candidate_delta_pct": -2.278128109969302,
+    "fixed_strict_delta_pct": -1.616274688033359,
+    "natural_candidate_delta_pct": -0.9245697000575759,
+    "natural_strict_delta_pct": 0.16780791157187114
+  }
+}
