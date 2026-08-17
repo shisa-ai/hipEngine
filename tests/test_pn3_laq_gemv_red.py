@@ -206,7 +206,21 @@ def test_laq_local32_bit_exact_vs_pack8(laq_harness, hip_test_target_arch):
 
 
 def test_laq_attn_qkv_leaf_red(laq_harness, hip_test_target_arch):
-    """RED: attn_qkv local32 leaf must complete in <= 0.026 ms (currently ~0.033)."""
+    """RED: attn_qkv local32 leaf must complete in <= 0.026 ms (currently ~0.033).
+
+    xfail after the P3-LAQ1 GEMV-leaf mechanism was REJECTED: two bit-exact T0
+    variants (word-load ``vecq``, 16-column ``tile16``) were implemented in
+    PN4 and neither flips this ceiling (vecq ~10% slower; tile16 +5% on the
+    larger qkv but -7% on the gate). The leaf runs ~0.029 ms (~350 GB/s
+    effective) and is at its practical limit for the Q4_T16 byte-scattered
+    layout; the 2.29 ms/token stage is dispatch-bound, not kernel-bound. See
+    benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-rejected.json and the
+    plan's PN3/P3-LAQ1 section.
+    """
+    pytest.xfail(
+        "P3-LAQ1 GEMV-leaf mechanism rejected: leaf at practical limit, "
+        "no bit-exact T0 variant flips the attn_qkv ceiling"
+    )
     runtime = get_hip_runtime()
     local32, control, _ = laq_harness["qkv"]
     _warmup(local32, control, runtime=runtime)
@@ -221,7 +235,15 @@ def test_laq_attn_qkv_leaf_red(laq_harness, hip_test_target_arch):
 
 
 def test_laq_gate_leaf_red(laq_harness, hip_test_target_arch):
-    """RED: attn_gate local32 leaf must complete in <= 0.0145 ms (currently ~0.018)."""
+    """RED: attn_gate local32 leaf must complete in <= 0.0145 ms (currently ~0.018).
+
+    xfail after the P3-LAQ1 GEMV-leaf mechanism was REJECTED (see
+    ``test_laq_attn_qkv_leaf_red`` docstring).
+    """
+    pytest.xfail(
+        "P3-LAQ1 GEMV-leaf mechanism rejected: leaf at practical limit, "
+        "no bit-exact T0 variant flips the attn_gate ceiling"
+    )
     runtime = get_hip_runtime()
     local32, control, _ = laq_harness["gate"]
     _warmup(local32, control, runtime=runtime)
@@ -236,7 +258,15 @@ def test_laq_gate_leaf_red(laq_harness, hip_test_target_arch):
 
 
 def test_laq_pair_leaf_red(laq_harness, hip_test_target_arch):
-    """RED: pair (attn_qkv + attn_gate) local32 leaf must be <= 0.042 ms/layer."""
+    """RED: pair (attn_qkv + attn_gate) local32 leaf must be <= 0.042 ms/layer.
+
+    xfail after the P3-LAQ1 GEMV-leaf mechanism was REJECTED (see
+    ``test_laq_attn_qkv_leaf_red`` docstring).
+    """
+    pytest.xfail(
+        "P3-LAQ1 GEMV-leaf mechanism rejected: leaf at practical limit, "
+        "no bit-exact T0 variant flips the pair ceiling"
+    )
     runtime = get_hip_runtime()
     local32_q, _, _ = laq_harness["qkv"]
     local32_g, _, _ = laq_harness["gate"]
