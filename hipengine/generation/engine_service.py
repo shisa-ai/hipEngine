@@ -534,6 +534,10 @@ class EngineService:
                 if not events and self._states_by_service_id and self._idle_wait_seconds:
                     time.sleep(self._idle_wait_seconds)
         except BaseException as exc:
+            import os, sys, traceback
+            if os.environ.get("HIPENGINE_ENGINE_SERVICE_TRACEBACK"):
+                print("=== engine service driver exception ===", file=sys.stderr, flush=True)
+                traceback.print_exc()
             self._fail_all(exc)
             if shutdown_response is not None:
                 shutdown_response.finish(error=exc)
