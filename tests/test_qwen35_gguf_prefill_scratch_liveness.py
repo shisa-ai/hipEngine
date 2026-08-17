@@ -667,9 +667,7 @@ def test_gfx1100_dense_qwen36_recoloring_is_long_row_only() -> None:
     ) == 5
 
 
-def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
-    monkeypatch,
-) -> None:
+def test_gfx1100_dense_qwen36_split_gdn_keeps_conv_output_disjoint(monkeypatch) -> None:
     _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)
 
@@ -689,15 +687,22 @@ def test_gfx1100_dense_qwen36_split_gdn_reuses_dead_conv_output_scratch(
     value_bytes = 4_096 * 48 * 128 * 4
     assert scratch.prefill_value.nbytes == value_bytes
     assert scratch.recurrent_out.nbytes == value_bytes
-    assert scratch.allocation_lifetimes["conv_out"] == (("linear", 2, 4),)
+    # 59fd48631 briefly let conv_out share arena pages with recurrent_out
+    # (stage 2-4) on a false consume-before-recurrence claim; the exact
+    # recurrence reads the full conv sequence while writing recurrent_out, so
+    # the aliasing corrupted state (packed c2/c8 vs independent c1 diverged).
+    # conv_out must keep its full (2, 5) lifetime and stay page-disjoint.
+    assert scratch.allocation_lifetimes["conv_out"] == (("linear", 2, 5),)
     conv_offset, conv_bytes = scratch.allocation_offsets["conv_out"]
     recurrent_offset, recurrent_bytes = scratch.allocation_offsets["recurrent_out"]
-    assert max(conv_offset, recurrent_offset) < min(
+    assert max(conv_offset, recurrent_offset) >= min(
         conv_offset + conv_bytes,
         recurrent_offset + recurrent_bytes,
     )
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 380 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) == 372 * _MIB + 384 * 1_024
+    # The disjoint conv_out plane restores the pre-59fd48631 arena footprint
+    # (~66.5 MiB larger than the invalid page-sharing variant).
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 475 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 467 * _MIB + 576 * 1_024
     assert scratch.allocation_offsets["attn_out"] == (
         48 * _MIB + 64 * 1_024,
         40 * _MIB,
