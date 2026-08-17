@@ -1,7 +1,6 @@
 # Qwen3.6-35B ZBook Production-Numerics Tuning
 
-Status: **ready to execute PN0; candidate arithmetic/kernel changes are blocked
-until PN1 named-profile/control capture and PN2 clean baselines pass**
+Status: **ready to execute PN1 control-capture; strict/production registration landed**
 
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
@@ -11,6 +10,14 @@ inference
 This is the active **PLAN and PUNCHLIST** for the next ZBook tuning cycle. It is
 not a benchmark result and it does not authorize a public profile/default
 change by itself.
+
+PN1 registration status: strict/production `RuntimeProfilePlan`s are registered
+for `(qwen3_5_moe_gguf, hip_gfx1151, gguf_q4_k_m)` with resolution, strict
+fallback, duplicate/missing, batch-invariant fail-closed, and cold-path policy
+binder tests green; batch_invariant remains unregistered (fail-closed to
+strict) until the composition-metamorphic gate lands. The standardized
+actual-control capture, expected-control fixtures, control RED fixtures, and
+the no-change GPU smoke remain open.
 
 Normative authorities, in precedence order:
 
@@ -763,10 +770,14 @@ and verdict.
 
 ### PN1 — Named profile/control foundation
 
-- [ ] Register strict Qwen3.6 GGUF gfx1151 plan.
-- [ ] Register incumbent production plan with strict fallbacks.
-- [ ] Pass composition metamorphics before registering a strict-backed
-      batch-invariant plan; otherwise verify explicit fail-closed behavior.
+- [x] Register strict Qwen3.6 GGUF gfx1151 plan (`hipengine/generation/\
+      qwen36_gguf_profiles.py`).
+- [x] Register incumbent production plan with strict fallbacks.
+- [x] batch_invariant left unregistered; resolution fails closed to strict with
+      `fell_back_to_strict` and strict selections.
+- [x] Cold-path policy binder applies cooperative router + rowtile-floor env at
+      generator construction (production) and disables both (strict).
+- [x] Resolution/fallback/duplicate/missing/binder RED tests green.
 - [ ] Emit selected and strict manifest hashes from direct and server paths.
 - [ ] Implement standardized actual-control capture.
 - [ ] Commit independent strict/production expected-control fixtures.
@@ -776,7 +787,7 @@ and verdict.
       18/18 strict/candidate greedy output equality.
 - [ ] Attach aligned BF16 evidence or explicit zero implementation delta.
 - [ ] Pass no-change strict/production/batch-invariant GPU smoke.
-- [ ] Commit PN1 as one validated logical unit.
+- [ ] Commit the control-capture remainder of PN1 as one validated logical unit.
 
 ### PN2 — Baseline refresh
 
