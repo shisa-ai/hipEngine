@@ -29,6 +29,7 @@ from scripts.gguf_production_load_gate import (
     _reconfigure_loaded_loop,
     _rotated_tuning_plan,
     _run_isolated_reference_worker,
+    _run_same_owner_references,
     _select_tuning_candidate,
     _wait_for_idle,
 )
@@ -58,6 +59,50 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["p99"] == pytest.approx(99.0)
     assert summary["min"] == pytest.approx(1.0)
     assert summary["max"] == pytest.approx(100.0)
+
+
+def test_same_owner_oracles_are_serial_exact_and_drained() -> None:
+    calls: list[tuple[str, int]] = []
+
+    class FakeLLM:
+        def generate_detailed(self, prompts, params):
+            calls.append((str(prompts[0]), int(params.max_tokens)))
+            return [
+                SimpleNamespace(
+                    generated_token_ids=tuple([len(calls)] * int(params.max_tokens))
+                )
+            ]
+
+        @staticmethod
+        def live_loop_snapshot():
+            return {
+                "loop": {"requests": {"active": 0, "pending": 0}},
+                "runner": {"model_runner": {"active_requests": 0}},
+            }
+
+    rows = {
+        "token=7:prompt=2": {"text": "first"},
+        "token=8:prompt=2": {"text": "second"},
+    }
+    specs = (
+        WorkloadRequest("first", 7, 2, 3),
+        WorkloadRequest("second", 8, 2, 2),
+    )
+
+    tokens, metadata = _run_same_owner_references(FakeLLM(), rows, specs)
+
+    assert calls == [("first", 3), ("second", 2)]
+    assert tokens == {
+        "token=7:prompt=2": (1, 1, 1),
+        "token=8:prompt=2": (2, 2),
+    }
+    assert metadata == {
+        "mode": "same_owner_serial_c1",
+        "process_isolated": False,
+        "oracle_rows": 2,
+        "final_active_requests": 0,
+        "final_pending_requests": 0,
+    }
 
 
 def test_isolated_oracle_worker_roundtrips_prompt_and_tokens(monkeypatch) -> None:
@@ -260,6 +305,7 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
 
     defaults = parser.parse_args([])
     assert defaults.prefix_cache == "off"
+    assert defaults.oracle_mode == "same_owner"
     assert defaults.initial_policy == "token_budget"
     assert defaults.tuning_candidates.startswith("token_budget:128,token_budget:256")
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
