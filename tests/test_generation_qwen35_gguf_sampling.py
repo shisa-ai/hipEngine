@@ -3159,6 +3159,41 @@ def test_gguf_c1_graph_seeds_survivor_token_after_packed_width_transition() -> N
     assert slot.c1_decode_graph is not None
 
 
+def test_gguf_c1_edge_disables_graph_while_peer_requests_are_resident() -> None:
+    events: list[object] = []
+
+    class FakeGraph:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            events.append("graph_close")
+
+    class FakeSession:
+        def step(self, token_id: int, *, return_logits: bool):
+            events.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(token_id=17)
+
+    graph = FakeGraph()
+    slot = SimpleNamespace(
+        session=FakeSession(),
+        c1_decode_graph=graph,
+        prev_token=16,
+    )
+    row = SimpleNamespace(slot=slot, lease=None)
+    peer = SimpleNamespace(slot=SimpleNamespace())
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._rows = {1: row, 2: peer}
+
+    result = runner._step_native_c1_graph(row)
+
+    assert result.token_id == 17
+    assert events == ["graph_close", ("step", 16, False)]
+    assert slot.c1_decode_graph is None
+
+
 def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch) -> None:
     calls: list[tuple] = []
     runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
