@@ -23,6 +23,7 @@ from scripts.gguf_production_load_gate import (
     _poisson_arrival_offsets,
     _rotated_tuning_plan,
     _select_tuning_candidate,
+    _wait_for_idle,
 )
 
 
@@ -50,6 +51,38 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["p99"] == pytest.approx(99.0)
     assert summary["min"] == pytest.approx(1.0)
     assert summary["max"] == pytest.approx(100.0)
+
+
+def test_wait_for_idle_tolerates_long_transition_control_timeout() -> None:
+    class FakeLLM:
+        calls = 0
+
+        def live_loop_snapshot(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("control timeout")
+            return {
+                "loop": {"requests": {"active": 0, "pending": 0}},
+                "runner": {"model_runner": {"active_requests": 0}},
+            }
+
+    class FakeBatcher:
+        @staticmethod
+        def queue_depth() -> int:
+            return 0
+
+        @staticmethod
+        def active_requests() -> int:
+            return 0
+
+        @staticmethod
+        def active() -> bool:
+            return False
+
+    observed = _wait_for_idle(FakeLLM(), FakeBatcher(), timeout_seconds=1.0)
+
+    assert observed["control_timeouts"] == 1
+    assert observed["generation_queue_depth"] == 0
 
 
 def test_occupancy_route_uses_live_snapshot_plan_when_hook_timeline_is_empty() -> None:
