@@ -164,17 +164,26 @@ def test_packed_workspace_resize_fails_closed_with_live_graph(monkeypatch) -> No
     graph = SimpleNamespace(closed=False)
     owner._decode_graphs.append(graph)
 
+    # Growth beyond the default union capacity while a graph is live.
     with pytest.raises(RuntimeError, match="graph"):
         owner._ensure_packed_verify_workspace(
-            slot_count=8, rows=128, max_sequence_length=1024, runtime=runtime
+            slot_count=16, rows=128, max_sequence_length=1024, runtime=runtime
         )
-    assert not graph.closed or recorder.freed == [], (
-        "either the graph is invalidated first or nothing is freed"
+    assert not graph.closed
+    assert recorder.freed == [], (
+        "state buffers were freed while a live graph still binds them"
     )
-    if not graph.closed:
-        assert recorder.freed == [], (
-            "state buffers were freed while a live graph still binds them"
-        )
+
+    # After the graph closes, the same growth succeeds and stays monotonic.
+    graph.closed = True
+    state, scratch = owner._ensure_packed_verify_workspace(
+        slot_count=16, rows=128, max_sequence_length=1024, runtime=runtime
+    )
+    assert int(state.slot_count) >= 16
+    reused_state, _ = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    assert reused_state is state
 
 
 def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> None:
@@ -186,9 +195,12 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
     runtime = SimpleNamespace()
     delegated: list[tuple[int, int, int]] = []
 
+    original_ensure = gguf_runner.Qwen35GGUFResidentSession._ensure_packed_verify_workspace
+
     def owner_ensure(self, *, slot_count, rows, max_sequence_length, runtime, stream=0):
         delegated.append((int(slot_count), int(rows), int(max_sequence_length)))
-        return self._ensure_packed_verify_workspace(
+        return original_ensure(
+            self,
             slot_count=slot_count,
             rows=rows,
             max_sequence_length=max_sequence_length,
@@ -234,12 +246,12 @@ def test_prefill_scratch_allocate_is_atomic_on_failure(monkeypatch) -> None:
         nonlocal next_ptr
         from hipengine.core.memory import DeviceBuffer
 
+        if len(live) == 4:
+            raise MemoryError("injected allocation failure")
         ptr = next_ptr
         next_ptr += max(8, int(nbytes) + 8)
         buffer = DeviceBuffer(ptr=ptr, nbytes=int(nbytes))
         live[ptr] = int(nbytes)
-        if len(live) == 5:
-            raise MemoryError("injected allocation failure")
         return buffer
 
     freed: list[int] = []
