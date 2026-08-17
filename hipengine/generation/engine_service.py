@@ -382,6 +382,11 @@ class EngineService:
     def prepare_request_scratch(self, **kwargs: Any) -> Any:
         return self._control("prepare_request_scratch", **kwargs)
 
+    def reconfigure_engine_loop(self, config: Any) -> None:
+        """Serialize an idle pool/policy generation on the sole driver."""
+
+        self._control("reconfigure_engine_loop", config)
+
     def count_tokens(self, text: str) -> int:
         return int(self._control("count_tokens", str(text)))
 
