@@ -152,6 +152,15 @@ The executable Generation-2 audit currently reports **28 passed / 6 blocked /
 1 unavailable** requirements with no missing evidence; full product completion
 is not claimed. [`Audit artifact`](results/2026-08-17-concurrency2-completion-audit.json).
 
+Old-design apples-to-apples diagnostic (not a retained topline): the current
+engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch
+window, 256 prefill chunk, 1 warmup + 3 measured, W7900 device 0) measures
+**c1 76.371 vs old 72.169 tok/s (1.058x)** and **c8 47.239 vs old 158.542
+tok/s (0.298x)**; all burst rows exact (c1 3/3, c8 24/24). The c8 gap is entirely
+the physical-c2 shared-slot cap and is the target of the c4/c8 qualification.
+A separate c8 live-admission server-side cancellation (HTTP 499) is tracked as
+an open issue. [`Apples-to-apples diagnostic`](results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json).
+
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
 Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4
