@@ -50,14 +50,14 @@ c4/c8 buckets (plus a c1 edge):
 
 | Logical c | 1 | 2 | 4 | 8 | 17 | 32 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Aggregate HTTP wall tok/s (c4/c8) | 28.126 | 33.523 | 42.676 | 46.030 | 45.518 | 45.165 |
+| Aggregate HTTP wall tok/s (c4/c8) | 27.443 | 34.394 | 43.337 | 46.158 | 45.797 | 44.320 |
 | Aggregate HTTP wall tok/s (prior c2 cap) | 28.355 | 37.466 | 36.594 | 35.892 | 35.102 | 35.119 |
 | Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
 
 The c4/c8 promotion recovers the c2-cap cost: c4/c8/c17/c32 are **+16.6 / +28.2 /
 +29.7 / +28.6%** over the prior c2-only rows, all byte-exact. The binding
-same-protocol c8 comparison (one warmup, three measurements) is now **44.223
-tok/s native physical-c8 versus 27.595 tok/s exact serial-c1 (+60.25%)**; it was
+same-protocol c8 comparison (one warmup, three measurements) is now **44.031
+tok/s native physical-c8 versus 27.634 tok/s exact serial-c1 (+59.27%)**; it was
 35.773 versus 27.586 (+29.68%) at the c2 cap. Live refill is 17/17 exact at
 c17. This is the valid retained performance claim for Generation 2.
 Evidence: [`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
