@@ -2,11 +2,12 @@
 
 Last updated: 2026-08-17.
 
-_Status: approved redesign and implementation roadmap. This document is the
-source of truth for the next-generation server scheduler, request lifecycle,
-and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md) remains the
-historical record for the retained c=N kernel and resident-runner campaigns;
-new architecture work belongs here._
+_Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
+short/long serving is retained, while complete product closure remains blocked.
+The executable audit reports 28 passed, 6 blocked, and 1 unavailable rows. This
+document remains the source of truth for the server scheduler, request
+lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
+remains the historical c=N kernel/resident-runner record._
 
 Related source-of-truth documents:
 
@@ -20,6 +21,68 @@ Related source-of-truth documents:
   scheduler and must not create a second concurrency implementation.
 - [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — speculative transaction and
   verification work classes.
+
+## Current implementation and product status
+
+| Phase | Implemented / retained | Product status / remaining gate |
+| --- | --- | --- |
+| C2-0 contracts/simulator | Complete; current affected bundle 68/68 plus fixture/smoke checks. | Closed. |
+| C2-1 sole engine service | Independent blocking/SSE/library children, terminal reclaim, per-child rejection/cancellation. | Closed. |
+| C2-2 resource admission | Format-neutral atomic ledger, fit-aware bounded lookahead, named pressure telemetry. | Closed. |
+| C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
+| C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
+| C2-5 token budget/c1-c32 | Logical c1-c32, exact physical-c2 decomposition, same-round prefill/decode fairness. | Closed for retained gfx1100 short route. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, and changed-page graphs. | Canonical tuning/ragged/fixed/Poisson/cancel/disconnect/40-request-overload/soak packet faults before tuning across seven attempts; full default stays open. |
+| C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
+| C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
+
+Executable source-to-evidence audit:
+[`2026-08-17-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).
+
+## Performance snapshot and old-design comparison
+
+### Retained Generation-2 short-request packet
+
+W7900, exact-file Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8,
+token-budget scheduling, zero generation batch window, same-loaded-server c1
+oracles, one measured production sweep:
+
+| Logical c | 1 | 2 | 4 | 8 | 17 | 32 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Aggregate HTTP wall tok/s | 28.355 | 37.466 | 36.594 | 35.892 | 35.102 | 35.119 |
+| Scale vs c1 | 1.000x | 1.321x | 1.291x | 1.266x | 1.238x | 1.239x |
+| Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
+
+The binding same-protocol c8 comparison (one warmup, three measurements) is
+**35.773 tok/s native physical-c2 decomposition versus 27.586 tok/s exact
+serial-c1 (+29.68%)**; live refill is **34.072 versus 27.458 tok/s (+24.08%)**.
+This is the valid retained performance claim for Generation 2.
+
+### Retained old implementation (not an apples-to-apples A/B)
+
+The August 8 Generation-1 server packet used p512/d128, one warmup/three
+measurements, SSE, 20 ms generation batching, a different source commit/ROCm
+generation, and physical c8 kernels:
+
+| Route | c1 | c8 | c9 | c13 |
+| --- | ---: | ---: | ---: | ---: |
+| Aggregate server tok/s | 72.169 | 158.542 | 137.001 | 129.507 |
+| Scale vs old c1 | 1.000x | 2.197x | 1.898x | 1.794x |
+
+These absolute rows **must not be divided against the p128/d8 Generation-2
+numbers**: prompt/decode lengths, HTTP protocol, batching window, source/model
+fingerprint, and runtime differ. Directionally, the old physical-c8 route had
+stronger c8 scaling, while the current architecture supplies exact independent
+children, fungible global KV, refill, pressure, and smooth residency through
+c32 but currently composes only physical c2. The remaining performance work is
+therefore explicit: qualify shared-slot physical c4/c8 (or a faster equivalent)
+and run current code under the exact old p512/d128 SSE/20-ms protocol before
+claiming old-to-new parity or regression.
+
+Evidence:
+[`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
+and
+[`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json).
 
 ## Executive decision
 
