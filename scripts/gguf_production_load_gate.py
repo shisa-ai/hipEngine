@@ -1634,34 +1634,37 @@ def _run_same_owner_references(
     """Generate serial c1 oracle trajectories on the measured model owner."""
 
     reference_tokens: dict[str, tuple[int, ...]] = {}
-    for key, row in sorted(prompt_rows.items()):
-        max_tokens = max(
-            spec.max_tokens for spec in specs if spec.oracle_key == key
-        )
-        outputs = llm.generate_detailed(
-            (str(row["text"]),),
-            SamplingParams(
-                max_tokens=int(max_tokens),
-                temperature=0.0,
-                top_p=1.0,
-                top_k=1,
-                ignore_eos=True,
-            ),
-        )
-        if len(outputs) != 1 or outputs[0].generated_token_ids is None:
-            raise RuntimeError(f"same-owner oracle {key} returned no token IDs")
-        generated = tuple(int(token) for token in outputs[0].generated_token_ids)
-        if len(generated) != int(max_tokens):
-            raise RuntimeError(
-                f"same-owner oracle {key} returned {len(generated)} token(s); "
-                f"expected {max_tokens}"
+    # Oracle arithmetic does not require graph replay. Avoid accumulating
+    # diagnostic graph capture/invalidation state before measured serving.
+    with _temporary_environment({"HIPENGINE_GGUF_DECODE_GRAPH": "0"}):
+        for key, row in sorted(prompt_rows.items()):
+            max_tokens = max(
+                spec.max_tokens for spec in specs if spec.oracle_key == key
             )
-        reference_tokens[key] = generated
-        print(
-            f"reference {len(reference_tokens)}/{len(prompt_rows)}: {key}",
-            file=sys.stderr,
-            flush=True,
-        )
+            outputs = llm.generate_detailed(
+                (str(row["text"]),),
+                SamplingParams(
+                    max_tokens=int(max_tokens),
+                    temperature=0.0,
+                    top_p=1.0,
+                    top_k=1,
+                    ignore_eos=True,
+                ),
+            )
+            if len(outputs) != 1 or outputs[0].generated_token_ids is None:
+                raise RuntimeError(f"same-owner oracle {key} returned no token IDs")
+            generated = tuple(int(token) for token in outputs[0].generated_token_ids)
+            if len(generated) != int(max_tokens):
+                raise RuntimeError(
+                    f"same-owner oracle {key} returned {len(generated)} token(s); "
+                    f"expected {max_tokens}"
+                )
+            reference_tokens[key] = generated
+            print(
+                f"reference {len(reference_tokens)}/{len(prompt_rows)}: {key}",
+                file=sys.stderr,
+                flush=True,
+            )
     snapshot = llm.live_loop_snapshot() or {}
     requests = snapshot.get("loop", {}).get("requests", {})
     runner = snapshot.get("runner", {}).get("model_runner", {})
@@ -1675,6 +1678,7 @@ def _run_same_owner_references(
         "mode": "same_owner_serial_c1",
         "process_isolated": False,
         "oracle_rows": len(reference_tokens),
+        "decode_graph": "disabled_during_oracle_only",
         "final_active_requests": int(requests.get("active", 0)),
         "final_pending_requests": int(requests.get("pending", 0)),
     }

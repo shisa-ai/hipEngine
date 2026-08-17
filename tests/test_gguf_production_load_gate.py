@@ -100,6 +100,7 @@ def test_same_owner_oracles_are_serial_exact_and_drained() -> None:
         "mode": "same_owner_serial_c1",
         "process_isolated": False,
         "oracle_rows": 2,
+        "decode_graph": "disabled_during_oracle_only",
         "final_active_requests": 0,
         "final_pending_requests": 0,
     }
