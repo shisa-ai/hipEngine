@@ -4,6 +4,10 @@ Importing this package self-registers the first NumPy reference kernels. Tests t
 kernel registry can call ``register_cpu_reference_kernels()`` to restore them.
 """
 
+from hipengine.kernels.cpu_reference.dms import (
+    dms_streaming_pack_reference,
+    register_dms_cpu_reference_kernels,
+)
 from hipengine.kernels.cpu_reference.fixtures import (
     LayerCheckResult,
     LayerFixture,
@@ -132,6 +136,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     _register_base_cpu_reference_kernels(replace=replace)
     register_laguna_cpu_reference_kernels(replace=replace)
     register_moonshine_cpu_reference_kernels(replace=replace)
+    register_dms_cpu_reference_kernels(replace=replace)
 
 
 register_cpu_reference_kernels()
@@ -163,6 +168,7 @@ __all__ = [
     "dequantize_kv_int8_hadamard_group32",
     "dequantize_kv_int8_key_bf16_value",
     "dequantize_kv_int8_per_token_head",
+    "dms_streaming_pack_reference",
     "embed",
     "full_attn_prefill",
     "full_attn_prefill_varlen",
@@ -241,6 +247,7 @@ __all__ = [
     "qwen35_gguf_mtp_nextn_layer_logits",
     "qwen35_gguf_mtp_shared_head_logits",
     "register_cpu_reference_kernels",
+    "register_dms_cpu_reference_kernels",
     "register_laguna_cpu_reference_kernels",
     "register_moonshine_cpu_reference_kernels",
     "rmsnorm",
