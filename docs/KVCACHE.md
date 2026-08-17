@@ -62,7 +62,7 @@ W7900 exact-file Qwen3.6-35B-A3B BF16-KV global-pool route is exact at p128/d8
 for logical c1/c2/c4/c8/c17/c32 and exact under c17 live refill. Registered
 shared-slot physical c2 improves matched exact c8 aggregate HTTP wall by 29.68%
 over serial c1, while final active/refcounted/pinned ownership is zero. Actual
-c2 1K/4K/32K/64K, mixed 1K/4K/32K, isolated pressure, and changed-page graph
+c2 1K/4K/16K/32K/64K, mixed 1K/4K/32K, isolated pressure, and changed-page graph
 replay also pass; the fixed pool drains exactly. C2-6 product closure remains
 blocked because the canonical tuning/load/40-request-overload/soak campaign
 repeatedly triggers a ROCm page fault during high-count oracle ownership before

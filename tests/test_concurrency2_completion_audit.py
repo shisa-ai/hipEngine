@@ -16,8 +16,8 @@ def test_completion_audit_has_evidence_for_every_requirement() -> None:
     assert payload["missing_evidence"] == []
     assert payload["false_passes"] == []
     assert payload["status_counts"] == {
-        "passed": 27,
-        "blocked": 7,
+        "passed": 28,
+        "blocked": 6,
         "unavailable": 1,
     }
     rows = payload["requirements"]
@@ -33,7 +33,6 @@ def test_completion_audit_names_only_real_product_blockers() -> None:
     }
 
     assert blockers == {
-        "C2-6.long": "blocked",
         "C2-6.load": "blocked",
         "C2-6.external": "unavailable",
         "C2-6.default": "blocked",
@@ -47,7 +46,7 @@ def test_completion_audit_names_only_real_product_blockers() -> None:
 def test_completion_document_keeps_blocked_product_boxes_open() -> None:
     document = (REPO_ROOT / "docs/CONCURRENCY2.md").read_text(encoding="utf-8")
 
-    assert "- [ ] Qualify 4K/16K/32K" in document
+    assert "- [x] Qualify 4K/16K/32K" in document
     assert "- [ ] Run fixed, ragged, burst, Poisson" in document
     assert "- [ ] Compare matched same-model/quant/hardware" in document
     assert "- [ ] Port streaming no-shadow prefill pack" in document

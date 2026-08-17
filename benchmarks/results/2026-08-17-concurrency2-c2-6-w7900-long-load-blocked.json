@@ -29,6 +29,18 @@
       "results": {
         "context_1k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 36.986477},
         "context_4k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 14.831881},
+        "context_16k_c2": {
+          "source_commit": "c7ae95c391fdc4e9b7f4f4a9bce452f39b537aeb",
+          "artifact": "/tmp/hipengine-c2-6-global-16k-focused.json",
+          "exact": "2/2",
+          "passed": true,
+          "all_slos_passed": true,
+          "exact_generated_tokens_per_second": 3.6072735246003944,
+          "final_pool_pages": 195,
+          "final_free_pages": 195,
+          "final_refcounted_pages": 0,
+          "final_pinned_pages": 0
+        },
         "context_32k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 1.437059},
         "context_64k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 0.504083},
         "graph_seed_32k_c1": {"exact": "1/1", "passed": true, "exact_generated_tokens_per_second": 1.397374}
