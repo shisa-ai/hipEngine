@@ -1052,6 +1052,36 @@ replaces the withdrawn P3-LA2 launch-fusion candidate.
 - **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
   vs same-commit strict and incumbent production.
 
+### PN4 checkpoint — host-side dispatch analysis (decides P3-LAQ1-B or a host mechanism)
+
+Measured on the live ZBook session (Qwen3.6-35B UD-Q4_K_M, gfx1151) with
+per-call host timing during eager decode:
+
+- Host dispatch per call (median): `launch_gguf_linear` 48.1 us,
+  `launch_gguf_linear_pair` 55.4 us, `launch_gguf_linear_triple` 70.5 us,
+  `qwen35_gdn_recurrent_rmsnorm_gate_lowp` 38.7 us, conv 34.6 us,
+  attn_norm 20.7 us. Pure HIP enqueue (pre-resolved, pre-bound) is ~6 us, so
+  ~40-45 us/call is Python dispatch machinery (cache-key construction,
+  `_LAUNCH_ABI` resolution, allocation lookups).
+- The `_DISPATCH_RESOLVE_CACHE` actually hits 97% (9 misses / 282 gets per
+  step); earlier "80% miss" readings conflated `resolve_gguf_linear_dispatch`
+  calls made by the pair resolver. So re-resolution is NOT the cost.
+- Linear-attention block host time ~288 us/layer (~207 us of instrumented
+  launches + ~81 us of surrounding runner logic); host step ~31 ms/token
+  (device sync after enqueue ~0.04 ms). Production p512/d128 wall is
+  ~46 ms/token (21.79 tok/s).
+- rocm-smi reports 0% GPU use on this APU (metric unavailable), and stage
+  markers are host-side timestamps whose GPU-exclusive walls overlap in GPU
+  time (the "150 us/layer gdn_attention_core idle" is not necessarily GPU
+  idle -- other stages' kernels can execute inside that window).
+- **Verdict: host-vs-GPU bound is UNRESOLVED.** The qkv_gate stage itself is
+  kernel-bound (Q8 dual 67.7 us vs 72 us wall). The decisive experiment is a
+  complete-wall A/B with a host-speedup (launch-plan memoization) or a
+  GPU-reduction: if the wall drops, the model is host-bound and the memoization
+  is the biggest win; if flat, it is GPU-bound and P3-LAQ1-B (the Q8 dual
+  kernel) is the target. Do NOT invest in a large gguf_linear.py refactor
+  before this A/B.
+
 ### PN4 — Candidate correctness
 
 - [ ] Pass leaf oracle and edge/sentinel tests.
