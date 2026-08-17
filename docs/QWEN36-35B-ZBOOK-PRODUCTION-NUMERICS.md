@@ -831,9 +831,25 @@ and verdict.
       natural 18-prompt d128: candidate 32.90 vs strict 30.43 tok/s, +8.27%,
       18/18 paired wins, IDs equal; non-regressive vs retained 2026-08-16
       within ZBook thermal variance).
-- [ ] Reproduce c1/cN 1,050-row static/dynamic/sparse gate.
-- [ ] Reproduce c8 lifecycle/compaction gate.
-- [ ] Reproduce seven-pair c2/c4/c8 graph wall.
+- [x] Reproduce c1/cN 1,050-row static/dynamic/sparse gate
+      (`execution_profile_gguf_batch_route_gate.py --include-router-candidate
+      --widths 4,8 --decode-steps 24 --repeat-runs 3 --dynamic --sparse`):
+      `status=complete`, `measurement_valid=True`, 1,050 rows bit-exact
+      (`kl_max=0`, `top1_agreement=1.0`, `max_abs_logit_delta=0`),
+      repeat-deterministic, router candidate env set.
+- [x] Reproduce c8 lifecycle/compaction gate
+      (`gguf_arbitrary_c_lifecycle.py --rows 8 --cancel-slots 2 6
+      --compact-after-middle-hole --allow-c1-arithmetic-drift
+      --quality-artifact cn-quality.json`): `status=passed`, compaction
+      passed with 6 real moves, ownership/same-run state preserved,
+      c1-vs-cN arithmetic bytes accepted as diagnostic (bit-exact quality
+      binding via the cn-quality gate); width-8 decode 4/5 packed steps.
+- [x] Reproduce seven-pair c2/c4/c8 graph wall
+      (`q8t16_batch_route_perf.py --include-router-candidate
+      --configurations c2,c4,native_c8 --pairs 7 --prompt-tokens 512
+      --decode-steps 128`): `status=complete`, all trajectories exact,
+      candidate wins 3/7 (c2 direct, neutral), 7/7 (c4, paired median 1.0063),
+      6/7 (native_c8, 1.0083); memory teardown exact.
 - [ ] Run focused production-load screen.
 - [ ] Run strict and incumbent complete server packets.
 - [ ] Reconcile >=90% of complete wall or record measured residual.

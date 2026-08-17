@@ -27,11 +27,70 @@
     "top1_matches": 450,
     "topk_overlap_mean": 1.0
   },
-  "commit": "53be617b835b579ea61b70565c34f7085ec627bf",
+  "c1cn_quality": {
+    "gate_status": "complete",
+    "kl_max": 0.0,
+    "max_abs_logit_delta": 0.0,
+    "measurement_valid": true,
+    "provenance_dirty": false,
+    "repeat_deterministic": true,
+    "router_candidate_env": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "unset: package physical-width floor",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "1",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "1"
+    },
+    "rows": 1050,
+    "teacher_nll_delta": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": 1050
+  },
+  "c2c4c8_graph_wall": {
+    "configs": {
+      "c2": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 3,
+        "paired_median": 0.9999773393578508
+      },
+      "c4": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 7,
+        "paired_median": 1.0062972432884254
+      },
+      "native_c8": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 6,
+        "paired_median": 1.0082999110689588
+      }
+    },
+    "generated_id_equality_all_exact": true,
+    "measurement_valid": true,
+    "memory_teardown_exact": true,
+    "provenance_dirty": false,
+    "status": "complete"
+  },
+  "c8_lifecycle": {
+    "allow_c1_arithmetic_drift": true,
+    "compaction_enabled": true,
+    "compaction_moves": 6,
+    "compaction_passed": true,
+    "elapsed_seconds": 59.10211391496705,
+    "gate_status": "passed",
+    "passed": true,
+    "physical_width_decode_steps": {
+      "1": 0,
+      "2": 1,
+      "4": 0,
+      "8": 4
+    },
+    "state_kv_accepted": true,
+    "state_kv_c1_bit_exact": false,
+    "state_kv_exact": false
+  },
+  "commit": "ad951c515ca10223fd394bc7f766cd4564596033",
   "date_utc": "2026-08-17",
   "execution_profile": "production",
   "host": "zbook",
-  "kind": "zbook_qwen36_c1_baseline_pn2",
+  "kind": "zbook_qwen36_c1cn_baseline_pn2",
   "manifest_hashes": {
     "selected": "aed0d9c5312fb9384884c173794df5ddf508b64485d351749b5488b4eae7aa4b",
     "strict": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41"
@@ -39,7 +98,10 @@
   "raw_artifact_hashes": {
     "c1_fixed_perf": "d10d52f8202769d7223f03e34016a320a08071f37325849652cdd44cfe1edae8",
     "c1_natural_perf": "8ca6a21d66f9270802aaaae1f6fb64deb4306af464ef5950b1a98eacda777836",
-    "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0"
+    "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0",
+    "cn_lifecycle": "2aae9ed4268b8e73cb18df7812c89d0cfd45e241a64e39fabcfbdcee8cf90fd0",
+    "cn_perf": "0581df7d69e3113d39c25135f9721f86a709e7cd9503859dd1a018b58fa9e625",
+    "cn_quality": "d99b4be9e0a1a1bd5a2484ae90b8e1ab686bb4c1449db2cb4b864919fb2448b0"
   },
   "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b",
   "schema_version": 1,
