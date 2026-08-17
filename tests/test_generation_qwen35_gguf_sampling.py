@@ -7046,3 +7046,112 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
     assert serial_calls == [(4,)]
     assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2]
     assert runner._last_physical_group_plan["group_count"] == 3
+
+
+def test_gfx1100_registers_shared_slot_ar_physical_widths_through_c8() -> None:
+    """Host gate for the c4/c8 shared-slot promotion.
+
+    RED until the packed lm-head/state paths at physical c4/c8 pass the
+    byte-exact C2-6 hardware gate on the current source; GREEN once the
+    kernel package registers ``(1, 2, 4, 8)``.
+    """
+    from hipengine.kernels.backends import backend_package_capability
+
+    registered = backend_package_capability(
+        "hip_gfx1100", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+    )
+    assert tuple(int(width) for width in registered) == (1, 2, 4, 8)
+
+
+def test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mechanism coverage for the promoted ``(1, 2, 4, 8)`` lowering.
+
+    Six active rows must lower to one width-8 group with two masked lanes,
+    nine to one width-8 group plus a width-1 edge, and three to width 4.
+    """
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    packed_calls: list[tuple[tuple[int, ...], int, tuple[int, ...]]] = []
+    serial_calls: list[tuple[int, ...]] = []
+    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices, allow_graph: (
+        packed_calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        or True
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: serial_calls.append(
+        tuple(int(row.request_id) for row in rows)
+    )
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "backend_package_capability",
+        lambda backend, key, default=None: (
+            (1, 2, 4, 8) if key == "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS" else default
+        ),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    def _rows(count: int) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                request_id=request_id,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for request_id in range(count)
+        ]
+
+    runner._step_native_rows(
+        _rows(6),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(6)),
+            row_to_request=tuple(range(6)),
+            slot_ids=tuple(range(6)),
+            active_mask=(True,) * 6,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2, 3, 4, 5), 8, (0, 1, 2, 3, 4, 5))]
+
+    packed_calls.clear()
+    serial_calls.clear()
+    runner._step_native_rows(
+        _rows(9),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(9)),
+            row_to_request=tuple(range(9)),
+            slot_ids=tuple(range(9)),
+            active_mask=(True,) * 9,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2, 3, 4, 5, 6, 7), 8, (0, 1, 2, 3, 4, 5, 6, 7))]
+    assert serial_calls == [(8,)]
+
+    packed_calls.clear()
+    serial_calls.clear()
+    runner._step_native_rows(
+        _rows(3),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(3)),
+            row_to_request=tuple(range(3)),
+            slot_ids=tuple(range(3)),
+            active_mask=(True,) * 3,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2), 4, (0, 1, 2))]
+    assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2, 4, 8]
