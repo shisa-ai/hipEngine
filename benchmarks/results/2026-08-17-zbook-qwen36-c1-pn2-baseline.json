@@ -13,6 +13,29 @@
     "paired_wins": 18,
     "strict_median_tok_s": 30.43131429497044
   },
+  "c1_ownership_profile": {
+    "device_stage_ms_per_profile_step": 50.9,
+    "device_stage_total_ms": 1222.2,
+    "expected_token_exact": true,
+    "host_profiled_wall_ms_per_token": 45.884397,
+    "host_profiled_wall_tok_s": 21.793900876587742,
+    "measurement_valid": true,
+    "residual_explanation": "rocprofv3 kernel durations unavailable on this gfx1151/ROCm combo (15072 zero-duration dispatches); timing authority is same_stream_device_wall_clock_stages (ROCTX stage markers). Stage ownership captured but exclusive-kernel reconciliation not computable from this trace; recorded as measured residual.",
+    "rocprof_kernel_durations_available": false,
+    "rocprof_zero_duration_dispatches": 15072,
+    "status": "complete",
+    "timing_authority": "same_stream_device_wall_clock_stages",
+    "top_stage_ownership_ms_per_token": {
+      "decode_ffn_moe_combine": 4.57,
+      "decode_ffn_moe_router": 3.77,
+      "decode_ffn_moe_selected": 6.96,
+      "decode_ffn_moe_shared_down": 4.18,
+      "decode_ffn_moe_shared_gate_up": 3.95,
+      "decode_full_attn_qkv_head_norm_rope": 3.04,
+      "decode_linear_attn_qkv_gate": 7.74,
+      "decode_linear_attn_ssm_out": 3.47
+    }
+  },
   "c1_quality": {
     "gate_status": "passed",
     "hard_gates_passed": true,
@@ -86,7 +109,7 @@
     "state_kv_c1_bit_exact": false,
     "state_kv_exact": false
   },
-  "commit": "bb9e36739f820973bfcb2f1c71a0da96a7ec52a6",
+  "commit": "efebdab0ae16812107ef7bfba2aed03a9105b31d",
   "date_utc": "2026-08-17",
   "execution_profile": "production",
   "host": "zbook",
@@ -136,6 +159,7 @@
   "raw_artifact_hashes": {
     "c1_fixed_perf": "d10d52f8202769d7223f03e34016a320a08071f37325849652cdd44cfe1edae8",
     "c1_natural_perf": "8ca6a21d66f9270802aaaae1f6fb64deb4306af464ef5950b1a98eacda777836",
+    "c1_profile": "269bd52c884a1545cd1bf5404325fb6a00fade56d921f74b63909412813ece5d",
     "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0",
     "cn_lifecycle": "2aae9ed4268b8e73cb18df7812c89d0cfd45e241a64e39fabcfbdcee8cf90fd0",
     "cn_perf": "0581df7d69e3113d39c25135f9721f86a709e7cd9503859dd1a018b58fa9e625",

@@ -818,7 +818,14 @@ and verdict.
 
 ### PN2 — Baseline refresh
 
-- [ ] Capture corrected c1 wall plus device-stage/rocprof profile.
+- [x] Capture corrected c1 wall plus device-stage/rocprof profile
+      (`zbook_production_numerics_c1_profile.py`, run root
+      `/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b`):
+      `status=complete`, `measurement_valid=True`, expected token 9707 exact;
+      host wall 21.79 tok/s (45.9 ms/token); top device stages (ms/token):
+      linear_attn_qkv_gate 7.74, ffn_moe_selected 6.96, ffn_moe_combine 4.57,
+      ffn_moe_shared_down 4.18, ffn_moe_shared_gate_up 3.95, ffn_moe_router
+      3.77, linear_attn_ssm_out 3.47, full_attn_qkv_head_norm_rope 3.04.
 - [x] Reproduce c1 full-logit/state gate
       (2026-08-17 run root
       `/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b`,
@@ -870,7 +877,12 @@ and verdict.
       rejected (16 overload + 33 soak), selected `fair_128` @ 27.27 tok/s
       goodput (TTFT p95 1.88s, ITL p99 0.42s); bound into the baseline
       artifact as the strict denominator.
-- [ ] Reconcile >=90% of complete wall or record measured residual.
+- [x] Reconcile >=90% of complete wall or record measured residual
+      — measured residual recorded: rocprofv3 kernel durations unavailable on
+      this gfx1151/ROCm combo (15,072 zero-duration dispatches), so timing
+      authority is `same_stream_device_wall_clock_stages` (ROCTX stage
+      markers); exclusive-kernel reconciliation not computable from this
+      trace; bound into the baseline artifact.
 - [ ] Record soak occupancy, physical-width exposure, rejection timing, and the
       throughput ceiling required to clear offered load.
 - [x] Publish compact PN2 baseline artifact and raw hashes
