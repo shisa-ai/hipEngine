@@ -31,6 +31,7 @@ import statistics
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -56,7 +57,6 @@ from scripts.gguf_live_server_bench import (
     _artifact_backend_scope,
     _memory_snapshot,
     _read_compiler_version,
-    _run_reference,
     _temporary_environment,
 )
 
@@ -1626,6 +1626,89 @@ def _parse_workload_names(
     return names
 
 
+def _run_isolated_reference_worker(
+    *,
+    model: Path,
+    backend: str,
+    max_active_requests: int,
+    max_sequence_length: int,
+    max_output_tokens: int,
+    specs: Sequence[WorkloadRequest],
+    compiler_version_file: Path | None,
+    require_cached_build: bool,
+) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[int, ...]], dict[str, Any]]:
+    with tempfile.TemporaryDirectory(prefix="hipengine-reference-") as directory:
+        root = Path(directory)
+        specs_path = root / "specs.json"
+        output_path = root / "oracle.json"
+        specs_path.write_text(
+            json.dumps([asdict(spec) for spec in specs], allow_nan=False),
+            encoding="utf-8",
+        )
+        command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts/gguf_reference_oracle_worker.py"),
+            "--model",
+            str(model),
+            "--backend",
+            str(backend),
+            "--max-active-requests",
+            str(int(max_active_requests)),
+            "--max-sequence-length",
+            str(int(max_sequence_length)),
+            "--max-output-tokens",
+            str(int(max_output_tokens)),
+            "--specs-json",
+            str(specs_path),
+            "--output-json",
+            str(output_path),
+        ]
+        if compiler_version_file is not None:
+            command.extend(
+                ["--compiler-version-file", str(compiler_version_file)]
+            )
+        if require_cached_build:
+            command.append("--require-cached-build")
+        child_env = dict(os.environ)
+        child_env["PYTHONPATH"] = str(REPO_ROOT)
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=child_env,
+            text=True,
+            capture_output=True,
+            timeout=1200.0,
+            check=False,
+        )
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr, end="", flush=True)
+        if completed.returncode != 0 or not output_path.is_file():
+            raise RuntimeError(
+                "isolated reference worker failed: "
+                f"returncode={completed.returncode} stdout={completed.stdout[-2000:]!r} "
+                f"stderr={completed.stderr[-2000:]!r}"
+            )
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+    prompt_rows = {
+        str(key): {
+            **row,
+            "token_ids": tuple(int(token) for token in row["token_ids"]),
+        }
+        for key, row in payload["prompt_rows"].items()
+    }
+    reference_tokens = {
+        str(key): tuple(int(token) for token in tokens)
+        for key, tokens in payload["reference_tokens"].items()
+    }
+    metadata = {
+        "command": command,
+        "returncode": int(completed.returncode),
+        "process_isolated": True,
+        "oracle_rows": len(reference_tokens),
+    }
+    return prompt_rows, reference_tokens, metadata
+
+
 def _reconfigure_loaded_loop(
     llm: LLM,
     adapter: Any,
@@ -1804,66 +1887,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     workload_results: dict[str, dict[str, Any]] = {}
     selection_error: str | None = None
     with _temporary_environment(env):
+        prompt_rows, reference_tokens, oracle_worker = (
+            _run_isolated_reference_worker(
+                model=model,
+                backend=str(args.backend),
+                max_active_requests=int(args.max_active_requests),
+                max_sequence_length=max_sequence_length,
+                max_output_tokens=max_output,
+                specs=all_specs,
+                compiler_version_file=args.compiler_version_file,
+                require_cached_build=bool(args.require_cached_build),
+            )
+        )
         llm = LLM(
             model,
             backend=str(args.backend),
             max_active_requests=int(args.max_active_requests),
         )
         try:
-            adapter = llm._get_text_generator()
-            llm.prepare(
-                max_sequence_length=max_sequence_length,
-                sampling_params=SamplingParams(max_tokens=max_output),
-            )
-            runner = adapter._runner
-            prompt_rows = _prompt_manifest(runner.generator.tokenizer, all_specs)
-            from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-
-            reference_runs: dict[str, Any] = {}
-            for key, row in sorted(prompt_rows.items()):
-                reference_session = Qwen35GGUFResidentSession(
-                    model,
-                    backend=str(args.backend),
-                    runtime=runner._shared_runner.runtime,
-                    shared_runner=runner._shared_runner,
-                    max_sequence_length=max_sequence_length,
-                    use_wmma_prefill=True,
-                    use_gemv_decode=True,
-                    compiler_version=compiler_version,
-                    require_cached_build=bool(args.require_cached_build),
-                )
-                try:
-                    reference_runs[key] = _run_reference(
-                        reference_session,
-                        row["token_ids"],
-                        max(
-                            spec.max_tokens
-                            for spec in all_specs
-                            if spec.oracle_key == key
-                        ),
-                    )
-                finally:
-                    reference_session.close()
-                print(
-                    f"reference {len(reference_runs)}/{len(prompt_rows)}: {key}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-            reference_tokens = {
-                key: tuple(int(token) for token in run.generated_tokens)
-                for key, run in reference_runs.items()
-            }
-
-            # Reference sessions share weights/runtime only within an oracle
-            # generation. Fully close that owner before measured serving so
-            # repeated diagnostic scratch/library lifetimes cannot contaminate
-            # production graph and workspace pointers.
-            llm.close()
-            llm = LLM(
-                model,
-                backend=str(args.backend),
-                max_active_requests=int(args.max_active_requests),
-            )
             adapter = llm._get_text_generator()
             llm.prepare(
                 max_sequence_length=max_sequence_length,
@@ -1882,7 +1923,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for key, row in prompt_rows.items()
             }:
                 raise RuntimeError(
-                    "measured owner tokenizer differs from the oracle owner"
+                    "measured owner tokenizer differs from isolated oracle owner"
                 )
             prompt_rows = measured_prompt_rows
             reclaimed: dict[int, _ReclaimedRow] = {}
@@ -2266,6 +2307,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "selected": None if selected is None else asdict(selected),
             "selection_error": selection_error,
         },
+        "oracle_worker": oracle_worker,
         "prompt_manifest": [
             {key: value for key, value in row.items() if key not in {"text", "token_ids"}}
             for _oracle_key, row in sorted(prompt_rows.items())

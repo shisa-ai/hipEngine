@@ -11,6 +11,7 @@ from scripts.gguf_production_load_gate import (
     RequestResult,
     SLOThresholds,
     TuningCandidate,
+    WorkloadRequest,
     _PROVENANCE_ENV_KEYS,
     _aggregate_tuning_runs,
     _build_workload_specs,
@@ -27,6 +28,7 @@ from scripts.gguf_production_load_gate import (
     _poisson_arrival_offsets,
     _reconfigure_loaded_loop,
     _rotated_tuning_plan,
+    _run_isolated_reference_worker,
     _select_tuning_candidate,
     _wait_for_idle,
 )
@@ -56,6 +58,40 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["p99"] == pytest.approx(99.0)
     assert summary["min"] == pytest.approx(1.0)
     assert summary["max"] == pytest.approx(100.0)
+
+
+def test_isolated_oracle_worker_roundtrips_prompt_and_tokens(monkeypatch) -> None:
+    def fake_run(command, **kwargs):
+        del kwargs
+        output_path = command[command.index("--output-json") + 1]
+        from pathlib import Path
+
+        Path(output_path).write_text(
+            '{"prompt_rows":{"token=7:prompt=2":{"token_ids":[7,7],"token_ids_sha256":"abc"}},'
+            '"reference_tokens":{"token=7:prompt=2":[8,9]}}',
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="reference 1/1")
+
+    monkeypatch.setattr(
+        "scripts.gguf_production_load_gate.subprocess.run",
+        fake_run,
+    )
+    prompts, references, metadata = _run_isolated_reference_worker(
+        model=SimpleNamespace(__str__=lambda self: "/models/fake"),
+        backend="hip_gfx1100",
+        max_active_requests=2,
+        max_sequence_length=16,
+        max_output_tokens=2,
+        specs=(WorkloadRequest("row", 7, 2, 2),),
+        compiler_version_file=None,
+        require_cached_build=False,
+    )
+
+    assert prompts["token=7:prompt=2"]["token_ids"] == (7, 7)
+    assert references == {"token=7:prompt=2": (8, 9)}
+    assert metadata["process_isolated"] is True
+    assert metadata["oracle_rows"] == 1
 
 
 def test_tuning_reconfiguration_uses_loaded_driver_control() -> None:
