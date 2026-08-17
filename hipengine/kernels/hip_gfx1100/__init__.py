@@ -365,10 +365,11 @@ GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
     (4_096, 6_144, 512): -1_140_855_996,
 }
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
-# Concurrency2 C2-6 W7900 same-loaded-server p128/d8 qualification. The
-# batch-shaped scratch owner is exact through physical c2; c4/c8 remain absent
-# until their packed lm-head/state paths pass the same gate.
-GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2)
+# Concurrency2 C2-6 W7900 qualification. Shared-slot packed AR decode is
+# byte-exact through physical c8: steady, masked-lane shrink-sparse, fixed-width
+# graph, and p128/p512 state-oracle gates all exact on tokens, Conv/GDN state,
+# live KV, and every layer hidden versus independent c1 (2026-08-17).
+GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 4, 8)
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
