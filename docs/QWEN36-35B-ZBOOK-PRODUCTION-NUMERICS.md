@@ -819,8 +819,18 @@ and verdict.
 ### PN2 — Baseline refresh
 
 - [ ] Capture corrected c1 wall plus device-stage/rocprof profile.
-- [ ] Reproduce c1 full-logit/state gate.
-- [ ] Reproduce c1 fixed and 18-prompt natural performance.
+- [x] Reproduce c1 full-logit/state gate
+      (2026-08-17 run root
+      `/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b`,
+      `execution_profile_gguf_c1_route_gate.py --decode-steps 24 --repeat-runs
+      3`, clean tree): `status=passed`, `measurement_valid=True`, 450 rows,
+      `kl_max=0`, `top1_agreement=1.0`, `teacher_nll_delta=0.0`,
+      repeat-deterministic, hard_gates_passed=True.
+- [x] Reproduce c1 fixed and 18-prompt natural performance
+      (fixed p512/d128 x5: candidate 32.67 vs strict 30.24 tok/s, +8.02%;
+      natural 18-prompt d128: candidate 32.90 vs strict 30.43 tok/s, +8.27%,
+      18/18 paired wins, IDs equal; non-regressive vs retained 2026-08-16
+      within ZBook thermal variance).
 - [ ] Reproduce c1/cN 1,050-row static/dynamic/sparse gate.
 - [ ] Reproduce c8 lifecycle/compaction gate.
 - [ ] Reproduce seven-pair c2/c4/c8 graph wall.
@@ -829,7 +839,9 @@ and verdict.
 - [ ] Reconcile >=90% of complete wall or record measured residual.
 - [ ] Record soak occupancy, physical-width exposure, rejection timing, and the
       throughput ceiling required to clear offered load.
-- [ ] Publish compact PN2 baseline artifact and raw hashes.
+- [x] Publish compact PN2 baseline artifact and raw hashes
+      (c1 core slice: `benchmarks/results/2026-08-17-zbook-qwen36-c1-pn2-baseline.json`;
+      extended to bind the remaining gates once they land).
 
 ### PN3 — Select candidate 1
 
