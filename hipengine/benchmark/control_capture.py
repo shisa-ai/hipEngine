@@ -207,6 +207,64 @@ def derive_control_records(
     return tuple(derive_control_record(item) for item in primitives)
 
 
+def schedule_c1_control_records(
+    *,
+    scenario_id: str,
+    request_id: str,
+    prompt_ids: Sequence[int],
+    teacher_token_ids: Sequence[int],
+    route_top_k: int,
+    graph_bucket: str,
+    rng_seed: int = 0,
+    kv_base_offset: int = 0,
+) -> tuple[ControlRecord, ...]:
+    """Independently derive the expected c1 control records from a schedule spec.
+
+    This is the frozen golden-fixture path. Row 0 is the prefill-last row
+    (position ``prompt_len - 1``); decode row ``k >= 1`` consumes
+    ``teacher_token_ids[k - 1]`` at position ``prompt_len - 1 + k``. The live
+    producer reads the same primitives from the resident session; the two paths
+    are separate so ownership drift in a candidate diverges here.
+    """
+
+    prompt_len = len(tuple(prompt_ids))
+    teacher = tuple(teacher_token_ids)
+    if prompt_len <= 0:
+        raise ValueError("schedule prompt_ids must be non-empty")
+    if not teacher:
+        raise ValueError("schedule teacher_token_ids must be non-empty")
+    primitives: list[RowControlPrimitives] = [
+        RowControlPrimitives(
+            scenario_id=scenario_id,
+            scenario_step=0,
+            request_id=request_id,
+            input_token_id=int(prompt_ids[-1]),
+            position=prompt_len - 1,
+            context_length=prompt_len,
+            route_top_k=route_top_k,
+            graph_bucket=graph_bucket,
+            rng_seed=rng_seed,
+            kv_base_offset=kv_base_offset,
+        )
+    ]
+    for step, input_token_id in enumerate(teacher, start=1):
+        primitives.append(
+            RowControlPrimitives(
+                scenario_id=scenario_id,
+                scenario_step=step,
+                request_id=request_id,
+                input_token_id=int(input_token_id),
+                position=prompt_len - 1 + step,
+                context_length=prompt_len + step,
+                route_top_k=route_top_k,
+                graph_bucket=graph_bucket,
+                rng_seed=rng_seed,
+                kv_base_offset=kv_base_offset,
+            )
+        )
+    return derive_control_records(primitives)
+
+
 def build_control_capture(
     *,
     scenario_id: str,
@@ -255,5 +313,6 @@ __all__ = [
     "mask_manifest_hash",
     "route_decision_hash",
     "route_scatter_owner_hash",
+    "schedule_c1_control_records",
     "transaction_id",
 ]
