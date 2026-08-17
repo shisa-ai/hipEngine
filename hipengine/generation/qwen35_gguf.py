@@ -5422,6 +5422,7 @@ class Qwen35GGUFResidentModelRunner:
             raise GenerationAdmissionRejected(
                 str(exc),
                 resource="device_kv_pool",
+                request_id=int(row.request_id),
                 requested_units=pages,
                 current_units=int(stats.current_pages),
                 capacity_units=(
