@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-17
+
+- [blocked Concurrency2 C2-6 canonical load closure; no full-load claim] Qwen3.6-35B-A3B / UD-Q4_K_M / W7900: actual c2 1K/4K/32K/64K, mixed 1K/4K/32K, exact 32K-survivor/4K-reject pressure, changed-page graph **4/100/4 capture/replay/invalidation**, and static c1/c8 pass, but the canonical tuning/ragged/fixed/Poisson/cancel/disconnect/40-request-overload/soak packet repeatedly page-faults during high-count oracle ownership before tuning; short global/native remains promoted, complete production load does not; `benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json`.
+
 ## 2026-08-16
 
 - [retained Concurrency2 global/native c8 promotion] Qwen3.6-35B-A3B / UD-Q4_K_M / W7900 p128/d8: replace the single-backing allocator with stable global page tables, scope shared-slot physical execution to exact c2 groups, and flush state between groups; matched aggregate HTTP wall improves exact serial-c1 **27.586 -> 35.773 tok/s (+29.68%)**, live refill improves **27.458 -> 34.072 (+24.08%)**, full c1/c2/c4/c8/c17/c32 is exact, and final active/refcounted/pinned ownership is zero; `benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`.
