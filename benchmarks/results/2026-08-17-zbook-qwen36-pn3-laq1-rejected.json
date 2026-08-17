@@ -6,6 +6,13 @@
   "mechanism": "P3-LAQ1 GEMV-leaf software pipelining / improved Q4_T16 dense GEMV",
   "family": "c1 linear-attention QKV/gate projection (gdn_input_projections / decode_linear_attn_qkv_gate)",
   "source_plan": "docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md (PN3 / P3-LAQ1 declaration, PN4 binding failure)",
+  "material_correction": {
+    "finding": "the Qwen3.6-35B UD-Q4_K_M c1 linear-attention attn_qkv (2048->8192) and attn_gate (2048->4096) weights are GGUF_Q8_0_T16, NOT Q4_K T16; Q4_K T16 is used only by the MoE expert tensors (ffn_gate_exps/ffn_down_exps). Verified from materialized weight specs (layout=gguf_q8_0_t16_v1) and the pair-dispatch resolution cache (q8_t16_dual_split, 210 fused / 0 unfused calls during a 6-step decode).",
+    "consequence": "the P3-LAQ1 GEMV-leaf analysis measured the WRONG quant (Q4_K local32 leaf 0.045 ms/layer pair, projected 1.52 ms/token) that is not in the qkv_gate path. The rejection outcome is still correct (the Q4 leaf could never help the qkv_gate stage), but for the wrong reason: the stage is dominated by the Q8_0 t16 dual GEMV, not a Q4 leaf.",
+    "actual_leaf": "Q8_0 t16 dual GEMV (already fused via q8_t16_dual_split): burst50 0.0677 ms/layer = 2.03 ms/token (30 layers); stage wall 2.294 ms/token incl norm(6.5 us) => the gdn_input_projections stage is ~90% KERNEL-BOUND on the Q8 dual GEMV, NOT dispatch-bound.",
+    "p3_la2_status": "the P3-LA2 launch-fusion candidate (fuse norm+qkv+gate) was implemented and then REVERTED: the qkv+gate pair is already fused into one launch (q8_t16_dual_split), the norm is a separate 6.5 us launch, and the stage wall (72 us/layer) is at/below the kernel sum (6.5+67.7 us) -> no dispatch headroom remains. The P3-LA2 Q4 local32 pair kernel targeted the wrong quant and was not routed; removed.",
+    "corrected_target": "optimize the Q8_0 t16 dual GEMV kernel (the real kernel-bound family): a 20-30% leaf reduction is worth ~0.4-0.6 ms/token (~0.9-1.3% complete-request), above the 1% in-tree exact threshold. See the plan's corrected P3-LAQ1-B declaration."
+  },
   "variants_tested": [
     {
       "id": "local32_owner",

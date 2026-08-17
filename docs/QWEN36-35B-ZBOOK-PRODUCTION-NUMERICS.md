@@ -914,6 +914,18 @@ and verdict.
       below its 5.19 ms marker wall, i.e. much of the profile is host-dispatch
       idle, so a T0 leaf mechanism on a kernel-bound family is the soundest
       first increment.
+
+> **QUANT CORRECTION (PN4, supersedes the leaf attribution above):** the c1
+> linear-attention `attn_qkv`/`attn_gate` weights in Qwen3.6-35B UD-Q4_K_M are
+> **GGUF_Q8_0_T16, not Q4_K T16** (verified from materialized weight specs and
+> the pair-dispatch cache: `q8_t16_dual_split`, 210 fused / 0 unfused during a
+> 6-step decode; Q4_K T16 is only the MoE experts). The Q4_K local32 leaf above
+> (1.52 ms/token) is therefore **not in the qkv_gate path**. The actual leaf is
+> the **Q8_0 t16 dual GEMV, already fused** at burst50 0.0677 ms/layer = 2.03
+> ms/token (30 layers) vs the 2.29 ms/token stage wall (incl. 6.5 us/layer
+> norm) => the stage is ~90% **kernel-bound** on the Q8 dual GEMV, not
+> dispatch-bound. The corrected candidate (P3-LAQ1-B below) targets that
+> kernel.
 - [x] Check `REFACTOR.md` and lineage to avoid rejected/superseded paths. The
       selected leaf (`dense_single_local32_bf16_bf16_out`, the exact Q4_K T16
       c1 dense GEMV) is the retained local32 owner; no REFACTOR entry or
@@ -965,71 +977,78 @@ and verdict.
 - **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
   vs same-commit strict and incumbent production.
 
-#### P3-LAQ1 REJECTED (PN4 binding failure)
+#### P3-LAQ1 REJECTED (PN4 binding failure, with quant correction)
 
-The GEMV-leaf mechanism is **rejected** after a clean PN4 RED attempt. Two
-bit-exact T0 variants of the local32 owner were implemented on gfx1151 and
-neither flips any of the three leaf ceilings:
+**Material correction:** the Qwen3.6-35B UD-Q4_K_M c1 linear-attention
+`attn_qkv` (2048->8192) and `attn_gate` (2048->4096) are **Q8_0 T16, not
+Q4_K T16** (verified from materialized weight specs and the pair-dispatch
+resolution cache: `q8_t16_dual_split`, 210 fused / 0 unfused calls during a
+6-step decode). Q4_K T16 is used only by the MoE expert tensors. The P3-LAQ1
+RED test measured a **Q4_K local32 leaf that is not in the qkv_gate path**;
+the rejection outcome is still correct (the Q4 leaf could never help the
+stage), but for the wrong reason. The actual stage is dominated by the
+**Q8_0 t16 dual GEMV (already fused) at 0.0677 ms/layer burst50 = 2.03
+ms/token** vs the 2.29 ms/token stage wall (incl. 6.5 us/layer norm) => the
+stage is ~90% **kernel-bound**, not dispatch-bound.
 
-- `vecq` (word-load / uint32 qword reads): bit-exact vs local32 and pack8 but
-  **~10% slower** on both shapes -> kernel is not load-instruction-bound.
-- `tile16` (one block computes all 16 columns of a tile, killing the 2x read
-  amplification): bit-exact per column but only **+5% on attn_qkv and -7% on
-  attn_gate** (256 blocks under-utilize the 80-SIMD machine) -> not
-  memory-BW-bound either.
+For completeness, the Q4 leaf mechanism itself was also measured and found
+without headroom: two bit-exact T0 variants of the local32 owner
+- `vecq` (word-load / uint32 qword reads): ~10% slower on both shapes.
+- `tile16` (one block computes all 16 columns of a tile): +5% on attn_qkv,
+  -7% on attn_gate.
 
-The leaf sits at ~0.029 ms / ~350 GB/s effective (attn_qkv, burst) and is at
-its practical limit for the byte-scattered Q4_T16 layout. Leaf pair 0.046 ms
-vs the 0.042 ms RED target; even the best variant leaves the pair ceiling RED.
+Neither flips the Q4 leaf ceilings; the leaf is at ~350 GB/s effective for the
+byte-scattered Q4_T16 layout. The Q4 LAQ1 RED test stays as an xfailed
+failure fixture (`tests/test_pn3_laq_gemv_red.py`: bit-exact guard live, three
+leaf ceilings xfail with the rejection reason).
 
-Deeper evidence on why the leaf cannot win the complete wall: the 2.29 ms/token
-`gdn_input_projections` stage is **dispatch-bound, not kernel-bound**. Single
-back-to-back launches (burst=1, realistic per-launch host+sync cost) measure
-attn_qkv 0.062 ms + attn_gate 0.044 ms = 0.106 ms/layer (~3.2 ms/token) vs
-0.045 ms/layer pipelined (burst=50, 1.34 ms/token); the model's 72 us/layer
-stage wall sits between the two and is dominated by per-launch dispatch (~30 us
-per kernel) rather than the GEMV bodies. ~780 launches/token at ~30 us each is
-~23 ms/token of dispatch exposure. So the sound next mechanism is launch-count
-reduction of the c1 linear-attention block, not further GEMV leaf tuning.
+**Rejection disposition (plan 4.4):** candidate implementation removed
+(`vecq`/`tile16` kernels, launchers, exports, wrappers, and registrations
+reverted to the committed PN3 state). Evidence artifact:
+`benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-rejected.json` (contains
+the material correction). Worklog:
+`worklog/entries/20260817T060720.847694Z-lhl-pn3-laq1-rejected-fe2eae.md` and
+the PN4 quant-correction entry. The corrected mechanism (P3-LAQ1-B below)
+replaces the withdrawn P3-LA2 launch-fusion candidate.
 
-**Rejection disposition (plan 4.4):** candidate implementation removed (the
-`vecq`/`tile16` kernels, launchers, exports, wrappers, and registrations were
-reverted to the committed PN3 state). Failure fixture preserved:
-`tests/test_pn3_laq_gemv_red.py` keeps the bit-exact guard live and xfails the
-three leaf ceilings with the rejection reason. Evidence artifact:
-`benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-rejected.json`. Worklog:
-`worklog/entries/<unique>`. The P3-LA2 launch-fusion candidate (below) is the
-next declared mechanism.
+#### P3-LAQ1-B candidate declaration (corrected mechanism; supersedes P3-LA2)
 
-#### P3-LA2 candidate declaration (next mechanism)
+> P3-LA2 (launch-count reduction of the c1 linear-attention block) is
+> **withdrawn**: the qkv+gate pair is already fused into one launch via
+> `q8_t16_dual_split`, the norm is a separate 6.5 us/layer launch, and the
+> stage wall (72 us/layer) is at/below the kernel sum (6.5 + 67.7 us) -> no
+> dispatch headroom remains. A Q4 local32 pair kernel was prototyped and
+> reverted (wrong quant, not routed).
 
-- **Candidate ID / arithmetic class:** P3-LA2, T0 (bit-exact per primitive;
-  each fused kernel runs the exact same per-primitive arithmetic as the
-  unfused chain; no reordered/narrowed math).
-- **Scope / shape / stateful surfaces:** c1 linear-attention block: fuse the
-  per-layer launch chain `attn_norm -> attn_qkv -> attn_gate` into one launch
-  (and, as a second sub-step if retained, the alpha/beta + conv + SSM
-  recurrence + ssm_out tail). The recurrence is stateful and must stay serial;
-  the projection/norm triple is stateless and is the first fuse target.
-- **Source / lineage / why it helps gfx1151:** the stage wall (72 us/layer) is
-  ~27 us/layer above the 45 us/layer pipelined GEMV pair; the delta is norm
-  + per-launch dispatch (~30 us/kernel measured at burst=1). Fusing the three
-  projections into one kernel removes two dispatches/layer = ~60 dispatches/
-  token -> potential ~0.6-1.2 ms/token (~1.3-2.6% complete-request) with the
-  same arithmetic.
-- **Operation-complete boundary / expected launch change / measured complete-
-  wall ceiling:** producer->consumer is norm->qkv->gate (alpha/beta, conv,
-  recurrence depend on qkv/gate outputs and remain separate). Expected launch
-  change: -2/layer (-60/token). Complete-wall ceiling ~0.6-1.2 ms/token on the
-  natural c1 path, above the 1% in-tree exact threshold.
-- **Strict fallback / rollback-removal trigger:** unfused chain stays
-  registered; fused kernel is a separately registered T0 variant. Any bit
-  mismatch vs the unfused chain, any same-suite complete-wall regression, or
-  any KL/top-1 binding failure removes the fuse.
-- **Downstream expert/top-1 change:** none (T0 per-primitive bit-exact).
-- **Binding rows:** leaf bit-exact (fused vs unfused per output); c1 450-row
-  KL=0/top-1=1.0; 18-prompt greedy-output equality; c1/c2/c4/c8, dynamic/
-  sparse, graph/eager, and long-context rows; task/BF16 rules in 4.3.
+- **Candidate ID / arithmetic class:** P3-LAQ1-B, T0 (bit-exact; per-lane
+  K ownership, FMA order, wave tree, and BF16 rounding unchanged from the
+  Q8_0 t16 dual GEMV owner `q8_0_t16_dual_split_gemv_kernel`).
+- **Scope / shape / stateful surfaces:** c1 (rows=1) linear-attention
+  `attn_qkv` (2048->8192) + `attn_gate` (2048->4096), both Q8_0 T16, all 30
+  layers, leaf `hipengine_gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out`
+  (already fused). Stateless projections: only the input hidden row and the
+  two output scratch buffers.
+- **Source / lineage / why it helps gfx1151:** the exact Q8_0 t16 dual_split
+  GEMV owner (`gguf_q8_0_t16_gemv.hip`). 128-thread/4-wave blocks each handle
+  one 16-col tile with a strided 2048-wide K loop and byte-scattered int8 q
+  loads -> the leaf runs at ~372 GB/s effective (25.2 MiB tiles in 67.7 us)
+  on gfx1151's 40 CU / 80 SIMD machine, i.e. below achievable L2 bandwidth;
+  load scheduling / word-loads / tile geometry are the T0 knobs.
+- **Operation-complete boundary / expected kernel or launch change / measured
+  complete-wall ceiling:** producer->consumer unchanged (norm->qkv_gate); the
+  variant keeps the same kernel ABI/launch shape and only reschedules the
+  inner loop. Measured ceiling: leaf 2.03 ms/token of the 2.29 ms/token
+  stage; a 20-30% leaf reduction is worth ~0.4-0.6 ms/token (~0.9-1.3%
+  complete-request), above the 1% in-tree exact threshold.
+- **Strict fallback / rollback-removal trigger:** the unmodified Q8 dual
+  owner stays registered and default; the variant is a separately registered
+  T0 variant. Any bit mismatch vs the Q8 dual owner, any same-suite
+  complete-wall regression, or any KL/top-1 binding failure removes it.
+- **Downstream expert/top-1 change:** none (T0 bit-exact).
+- **Binding rows:** leaf bit-exact (variant vs dual owner); c1 450-row
+  KL=0/top-1=1.0; 18-prompt greedy-output equality; c1/c2/c4/c8,
+  dynamic/sparse, graph/eager, and long-context rows that touch linear
+  attention; task/BF16 rules in 4.3.
 - **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
   vs same-commit strict and incumbent production.
 
