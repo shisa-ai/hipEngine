@@ -229,6 +229,13 @@ def test_production_binder_applies_cooperative_policy() -> None:
     assert ROWTILE_ALL_ENV not in os.environ
     assert generator.execution_profile == "production"
     assert generator.execution_profile_manifest_sha256 == resolved.manifest_sha256
+    assert generator.execution_profile_strict_manifest_sha256 == (
+        resolved.strict_manifest_sha256
+    )
+    assert generator.execution_profile_strict_manifest_sha256 != resolved.manifest_sha256
+    # The strict manifest hash is the hash of the independently resolved strict plan.
+    strict_resolved = _resolution(ExecutionProfile.STRICT)
+    assert resolved.strict_manifest_sha256 == strict_resolved.manifest_sha256
 
 
 def test_strict_binder_applies_exact_policy() -> None:
@@ -243,6 +250,10 @@ def test_strict_binder_applies_exact_policy() -> None:
     assert os.environ.get(ROUTER_COOP_ENV) == "0"
     assert os.environ.get(ROUTER_PERSISTENT_ENV) == "0"
     assert os.environ.get(ROWTILE_ALL_ENV) == "0"
+    assert generator.execution_profile == "strict"
+    assert generator.execution_profile_strict_manifest_sha256 == (
+        generator.execution_profile_manifest_sha256
+    )
     assert generator.execution_profile == "strict"
 
 

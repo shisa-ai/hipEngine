@@ -834,6 +834,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "requested": None,
             "resolved": None,
             "manifest_sha256": None,
+            "strict_manifest_sha256": None,
             "fell_back_to_strict": None,
             "migration_default_preserved": True,
         },
@@ -896,6 +897,7 @@ def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
     fake._resolved_quant = "gguf_q4_k_m"
     fake.resolved_execution_profile = "production"
     fake.execution_profile_manifest_sha256 = "a" * 64
+    fake.execution_profile_strict_manifest_sha256 = "b" * 64
     fake.execution_profile_fell_back_to_strict = False
     app = create_app(
         ServerConfig(
@@ -916,6 +918,7 @@ def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
         "requested": "production",
         "resolved": "production",
         "manifest_sha256": "a" * 64,
+        "strict_manifest_sha256": "b" * 64,
         "fell_back_to_strict": False,
         "migration_default_preserved": False,
     }
@@ -967,6 +970,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "requested": None,
             "resolved": None,
             "manifest_sha256": None,
+            "strict_manifest_sha256": None,
             "fell_back_to_strict": None,
             "migration_default_preserved": True,
         },

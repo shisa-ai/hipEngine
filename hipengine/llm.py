@@ -868,6 +868,18 @@ class LLM:
         return None if resolution is None else resolution.manifest_sha256
 
     @property
+    def execution_profile_strict_manifest_sha256(self) -> str | None:
+        """Return the strict manifest hash for the resolved profile.
+
+        Direct and server paths report both the selected and the strict
+        immutable manifest hashes so provenance can distinguish a candidate
+        route from its strict fallback baseline even after resolution.
+        """
+
+        resolution = self._resolve_execution_profile()
+        return None if resolution is None else resolution.strict_manifest_sha256
+
+    @property
     def execution_profile_fell_back_to_strict(self) -> bool | None:
         """Report whether any selected scope came from the strict plan."""
 

@@ -260,6 +260,7 @@ class SubmitPollTextGenerator:
             "execution_profile",
             "execution_profile_manifest",
             "execution_profile_manifest_sha256",
+            "execution_profile_strict_manifest_sha256",
             "execution_profile_fell_back_to_strict",
         ):
             if hasattr(inner, name):

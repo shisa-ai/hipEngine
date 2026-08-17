@@ -778,7 +778,10 @@ and verdict.
 - [x] Cold-path policy binder applies cooperative router + rowtile-floor env at
       generator construction (production) and disables both (strict).
 - [x] Resolution/fallback/duplicate/missing/binder RED tests green.
-- [ ] Emit selected and strict manifest hashes from direct and server paths.
+- [x] Emit selected and strict manifest hashes from direct and server paths:
+      `ResolvedRuntimeProfile.strict_manifest_sha256`, forwarded to the
+      generator (`execution_profile_strict_manifest_sha256`) and engine loop,
+      LLM property, and the server `/v1/models` execution_profile block.
 - [x] Deterministic control-capture model + serializers + independent fixture
       builder (`hipengine/benchmark/control_capture.py`) with RED tests.
 - [x] Live-producer harness (`scripts/execution_profile_gguf_control_smoke.py`)
