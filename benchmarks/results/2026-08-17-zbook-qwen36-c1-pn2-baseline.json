@@ -109,7 +109,7 @@
     "state_kv_c1_bit_exact": false,
     "state_kv_exact": false
   },
-  "commit": "efebdab0ae16812107ef7bfba2aed03a9105b31d",
+  "commit": "e80e16b128f977aa12c1a4e288594f323e0d7a89",
   "date_utc": "2026-08-17",
   "execution_profile": "production",
   "host": "zbook",
@@ -189,6 +189,29 @@
     },
     "status": "failed",
     "workloads_passed": false
+  },
+  "throughput_ceiling_analysis": {
+    "interpretation": "The soak blocker is server-generation-capacity: at full 8-slot occupancy the ~27.7 tok/s decode ceiling cannot clear the ~2 req/s offered load, the queue fills, and requests are rejected engine_busy. A candidate that raises decode throughput directly reduces queue pressure; this is the PN3/PN4 target.",
+    "measured_goodput_ceiling_tok_s": 27.748751451142525,
+    "measured_rejections": {
+      "production": 48,
+      "strict": 49
+    },
+    "offered_load_inference": "canonical mixed workload at ~2 req/s with max_tokens 24-48 per request => ~48-96 generated tok/s offered during continuous/soak phases",
+    "physical_width_exposure": "occupancy-adaptive packing grows physical extent 1->2->4->8 across the load; width-8 decode dominates at full occupancy",
+    "rejection_timing": {
+      "production": {
+        "overload": 16,
+        "soak": 32
+      },
+      "strict": {
+        "overload": 16,
+        "soak": 33
+      }
+    },
+    "required_throughput_increase_to_clear_load_pct": "~1.7-3.5x the ~27.7 tok/s ceiling (needs ~48-96 tok/s to clear the offered continuous+soak load without engine-busy rejections)",
+    "soak_occupancy_observed": "0.875-1.0 (bucket saturated most of the 60s soak)",
+    "strict_goodput_ceiling_tok_s": 27.267388665099826
   },
   "vs_retained_2026_08_16": {
     "fixed_candidate_delta_pct": -2.278128109969302,

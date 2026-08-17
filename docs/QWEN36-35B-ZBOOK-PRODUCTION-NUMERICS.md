@@ -883,8 +883,14 @@ and verdict.
       authority is `same_stream_device_wall_clock_stages` (ROCTX stage
       markers); exclusive-kernel reconciliation not computable from this
       trace; bound into the baseline artifact.
-- [ ] Record soak occupancy, physical-width exposure, rejection timing, and the
-      throughput ceiling required to clear offered load.
+- [x] Record soak occupancy, physical-width exposure, rejection timing, and the
+      throughput ceiling required to clear offered load
+      — soak occupancy 0.875-1.0 (bucket saturated); physical width exposure
+      1->2->4->8 occupancy-adaptive packing; rejection timing production
+      16 overload + 32 soak = 48, strict 16 + 33 = 49; measured goodput
+      ceiling ~27.7 tok/s (strict ~27.3) vs ~48-96 tok/s offered
+      (2 req/s x max_tokens 24-48) => ~1.7-3.5x throughput increase needed to
+      clear the load; bound into the baseline artifact.
 - [x] Publish compact PN2 baseline artifact and raw hashes
       (c1 core slice: `benchmarks/results/2026-08-17-zbook-qwen36-c1-pn2-baseline.json`;
       extended to bind the remaining gates once they land).
