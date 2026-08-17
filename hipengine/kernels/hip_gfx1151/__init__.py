@@ -814,12 +814,21 @@ GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768
 GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
 # Dense Qwen3.8 Q4_K_S keeps every bulk-prefill field dedicated: both owner-slot
 # and single-arena liveness aliases changed logits despite preserving repeated-
-# token top-1. At 4K capacity, bound the already-supported exact outer chunk to
-# 1K rows instead; shorter shapes keep their established full-row allocation.
+# token top-1. Bulk-prefill scratch rows are capacity-conditional: 4K-class
+# requests grow to the natural full-attention 4K query-chunk plateau (which
+# admits the Q5 source-F16 route, +2.97% measured at 4K), while 8K and larger
+# keep 1,024-row chunks because 4,096-row chunks measured -2.3% slower at 8K
+# regardless of source-F16. Memory therefore stays flat as context grows past
+# 8K; on 24GB-class cards the autotuner drops the full-attn query chunk to
+# 1024/768 at 52K+/128K+ anyway, and gfx1100 has no K_S source-F16 admission,
+# so this policy is gfx1151-only.
 GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
         "min_capacity": 4_096,
-        "max_rows": 1_024,
+        "max_rows_by_capacity": {
+            4_096: 4_096,
+            8_192: 1_024,
+        },
     },
 }
 # Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
@@ -1030,11 +1039,16 @@ GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 512
 GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = frozenset({(17_408, 5_120)})
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
 }
 # P4 retains changed-arithmetic source-F16 only for the sole-Q5T16 recurrent
 # output. Q6 and Q4 complete pp512 screens lose wall and/or memory, so their
 # exact T16/WMMA owners remain production. The Q5 octet producer consumes one
 # bounded dead-input cast and temporary tile; sole T16 residency is unchanged.
+# Q4_K_S shares the same 48 byte-identical Q5T16 K6144/N5120 recurrent outputs
+# and therefore admits the same source-F16 route (MOSTLY_Q4_K_S added 2026-08-17);
+# the K_S qualification had not extended this K_M-derived prefill policy, leaving
+# all 60 Q5 prefill tensors on the single-wave exact WMMA owner.
 GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {

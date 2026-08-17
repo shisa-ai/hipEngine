@@ -289,6 +289,14 @@ adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
 teardown. All natural tokens/acceptance are identical; every full/train/
 heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
 [`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
+On 2026-08-17 the same admission was extended to the byte-identical Q4_K_S
+model (MOSTLY_Q4_K_S added to the dense H5120 F16 policy; its 48 recurrent
+outputs are byte-identical to K_M), and the Q4_K_S bulk-prefill scratch row cap
+became capacity-conditional: 4K-class requests grow to the natural 4,096-row
+full-attention plateau so the source-F16 route stays active there (+2.95%),
+while 8K and larger keep 1,024-row chunks (4,096-row chunks measured -2.3%
+slower at 8K regardless of source-F16), keeping memory flat past 8K. Evidence:
+[`Q4_K_S Q5 source-F16 retention`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json).
 
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at

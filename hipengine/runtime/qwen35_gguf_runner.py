@@ -15285,7 +15285,10 @@ class Qwen35GGUFResidentSession:
 
         try:
             if chunk_outer:
-                chunk_size = self._prefill_scratch_rows(rows)
+                chunk_size = min(
+                    self._prefill_scratch_rows(rows),
+                    int(self._bulk_prefill_scratch.rows),
+                )
                 ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
                 last_src_ptr = 0
                 last_bulk_scratch = None
@@ -22920,6 +22923,26 @@ def _gguf_dense_prefill_scratch_row_cap(
         return None
     try:
         min_capacity = int(policy.get("min_capacity", 1))
+    except (TypeError, ValueError):
+        min_capacity = 1
+    by_capacity = policy.get("max_rows_by_capacity")
+    if isinstance(by_capacity, Mapping):
+        # Capacity-conditional ceiling: pick the largest threshold that the
+        # request capacity reaches (e.g. 4K-class grows to the natural 4096-row
+        # plateau to enable source-F16 while 8K and larger keep 1024-row chunks
+        # that measured faster than 4096-row chunks). None = no cap for that
+        # capacity.
+        if int(capacity) < max(1, min_capacity):
+            return None
+        for threshold, mr in sorted(
+            by_capacity.items(),
+            key=lambda item: int(item[0]),
+            reverse=True,
+        ):
+            if int(capacity) >= int(threshold) and int(mr) > 0:
+                return int(mr)
+        return None
+    try:
         max_rows = int(policy["max_rows"])
     except (KeyError, TypeError, ValueError):
         return None

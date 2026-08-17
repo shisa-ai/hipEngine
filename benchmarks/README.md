@@ -46,7 +46,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **379.398** | **13.101** |
+| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **396.091** | **13.069** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -239,15 +239,20 @@ The superseded dual-layout publication remains in the
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
 
 Qwen3.8 uses `Q4_K_S` with BF16 K/V. The campaign is closed at merged commit
-`20e5106da`: prefill and true AR beat both clean llama backends at every
-working shape, exact native B3 beats the correctness-valid llama HIP row, and
-process GTT stays below the lower valid llama row at every scope.
+`20e5106da`; the Q5 source-F16 prefill retention (2026-08-17) raises 512/1K/4K
+prefill on gfx1151 via the byte-identical K_M-derived Q5T16 recurrent-output
+route (counterbalanced +4.51%/+3.02% at 512/1K, +2.95% at 4K with a
+capacity-conditional scratch cap that keeps 8K+ memory flat). Prefill and true
+AR beat both clean llama backends at every working shape, exact native B3 beats
+the correctness-valid llama HIP row, and process GTT stays below the lower
+valid llama row at 512/1K/8K+ (4K peak grows a fixed +2.30 GiB to enable the
+4K source-F16 win).
 
 | Shape | Clean prefill | Clean AR | Retained process GTT | Lower valid llama GTT |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **379.398** | **13.1014** | **15.275 GiB** | 15.785 GiB |
-| 1K/128 | **376.554** | **12.9231** | **15.710 GiB** | 15.816 GiB |
-| 4K/128 | **369.755** | **13.0953** | **15.727 GiB** | 16.004 GiB |
+| 512/128 | **396.091** | **13.069** | **15.275 GiB** | 15.785 GiB |
+| 1K/128 | **387.648** | **12.894** | **15.710 GiB** | 15.816 GiB |
+| 4K/128 | **380.305** | **13.038** | **17.863 GiB** | 16.004 GiB |
 
 Exact native B3 is **23.85263 tok/s / 1.7845x AR** with all ten prompt
 trajectories and GPU/CPU acceptance decisions exact; retained process GTT is

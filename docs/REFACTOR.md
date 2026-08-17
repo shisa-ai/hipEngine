@@ -503,12 +503,14 @@ should be removed or collapsed.
   **+0.012% true AR / -0.027% B3** while removing exactly 715,161,600 tracked
   bytes. Remove the rollback only after task 26's clean shape/B3 refresh and one
   release window; keep explicit device fallback for shared and wider sessions.
-- The Q4_K_S 4K-capacity policy keeps all prefill fields dedicated and caps the
-  already-supported outer chunk at 1,024 rows. Do not replace it with owner-slot,
-  single-arena, priority, hidden-buffer, or short-session aliases: stronger
-  gates found final-logit or trajectory corruption. The row-cap policy may be
-  removed only if a later exact owner is both smaller and non-regressive across
-  512/1K/4K plus full-category B3.
+- The Q4_K_S prefill policy keeps all bulk-prefill fields dedicated and is
+  capacity-conditional (4K-class grows to the natural 4,096-row full-attention
+  plateau to admit the Q5 source-F16 route, +2.95%; 8K and larger keep
+  1,024-row chunks because 4,096-row chunks measured -2.3% slower at 8K). Do
+  not replace the dedicated fields with owner-slot, single-arena, priority,
+  hidden-buffer, or short-session aliases: stronger gates found final-logit or
+  trajectory corruption. Revisit the 4,096-row plateau only if a later exact
+  owner is non-regressive at 8K+ and keeps memory flat.
 
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
