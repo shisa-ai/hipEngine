@@ -1,0 +1,222 @@
+{
+  "c1_fixed_perf": {
+    "candidate_median_tok_s": 32.66589744714692,
+    "candidate_repeatable": true,
+    "candidate_vs_strict_pct": 8.016273195395884,
+    "generated_ids_equal": true,
+    "strict_median_tok_s": 30.241644597435783
+  },
+  "c1_natural_perf": {
+    "candidate_median_tok_s": 32.90183999385372,
+    "candidate_vs_strict_pct": 8.274550104628698,
+    "generated_ids_equal_prompts": 18,
+    "paired_wins": 18,
+    "strict_median_tok_s": 30.43131429497044
+  },
+  "c1_ownership_profile": {
+    "device_stage_ms_per_profile_step": 50.9,
+    "device_stage_total_ms": 1222.2,
+    "expected_token_exact": true,
+    "host_profiled_wall_ms_per_token": 45.884397,
+    "host_profiled_wall_tok_s": 21.793900876587742,
+    "measurement_valid": true,
+    "residual_explanation": "rocprofv3 kernel durations unavailable on this gfx1151/ROCm combo (15072 zero-duration dispatches); timing authority is same_stream_device_wall_clock_stages (ROCTX stage markers). Stage ownership captured but exclusive-kernel reconciliation not computable from this trace; recorded as measured residual.",
+    "rocprof_kernel_durations_available": false,
+    "rocprof_zero_duration_dispatches": 15072,
+    "status": "complete",
+    "timing_authority": "same_stream_device_wall_clock_stages",
+    "top_stage_ownership_ms_per_token": {
+      "decode_ffn_moe_combine": 4.57,
+      "decode_ffn_moe_router": 3.77,
+      "decode_ffn_moe_selected": 6.96,
+      "decode_ffn_moe_shared_down": 4.18,
+      "decode_ffn_moe_shared_gate_up": 3.95,
+      "decode_full_attn_qkv_head_norm_rope": 3.04,
+      "decode_linear_attn_qkv_gate": 7.74,
+      "decode_linear_attn_ssm_out": 3.47
+    }
+  },
+  "c1_quality": {
+    "gate_status": "passed",
+    "hard_gates_passed": true,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "measurement_valid": true,
+    "provenance_dirty": false,
+    "repeat_determinism_passed": true,
+    "rows": 450,
+    "teacher_nll_delta": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": 450,
+    "topk_overlap_mean": 1.0
+  },
+  "c1cn_quality": {
+    "gate_status": "complete",
+    "kl_max": 0.0,
+    "max_abs_logit_delta": 0.0,
+    "measurement_valid": true,
+    "provenance_dirty": false,
+    "repeat_deterministic": true,
+    "router_candidate_env": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "unset: package physical-width floor",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "1",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "1"
+    },
+    "rows": 1050,
+    "teacher_nll_delta": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": 1050
+  },
+  "c2c4c8_graph_wall": {
+    "configs": {
+      "c2": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 3,
+        "paired_median": 0.9999773393578508
+      },
+      "c4": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 7,
+        "paired_median": 1.0062972432884254
+      },
+      "native_c8": {
+        "all_trajectories_exact": true,
+        "candidate_wins": 6,
+        "paired_median": 1.0082999110689588
+      }
+    },
+    "generated_id_equality_all_exact": true,
+    "measurement_valid": true,
+    "memory_teardown_exact": true,
+    "provenance_dirty": false,
+    "status": "complete"
+  },
+  "c8_lifecycle": {
+    "allow_c1_arithmetic_drift": true,
+    "compaction_enabled": true,
+    "compaction_moves": 6,
+    "compaction_passed": true,
+    "elapsed_seconds": 59.10211391496705,
+    "gate_status": "passed",
+    "passed": true,
+    "physical_width_decode_steps": {
+      "1": 0,
+      "2": 1,
+      "4": 0,
+      "8": 4
+    },
+    "state_kv_accepted": true,
+    "state_kv_c1_bit_exact": false,
+    "state_kv_exact": false
+  },
+  "commit": "e80e16b128f977aa12c1a4e288594f323e0d7a89",
+  "date_utc": "2026-08-17",
+  "execution_profile": "production",
+  "host": "zbook",
+  "kind": "zbook_qwen36_c1cn_server_baseline_pn2",
+  "manifest_hashes": {
+    "selected": "aed0d9c5312fb9384884c173794df5ddf508b64485d351749b5488b4eae7aa4b",
+    "strict": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41"
+  },
+  "production_server": {
+    "complete_packet": {
+      "complete_packet": true,
+      "final_rejected_total": 48.0,
+      "performance_claim": false,
+      "rejection_timing": {
+        "overload_workload_rejected": null,
+        "soak_workload_rejected": null
+      },
+      "selected_tuning": {
+        "batch_window_ms": 100.0,
+        "candidate_id": "fair_128",
+        "end_to_end_p95_seconds": 10.177380082022864,
+        "goodput_generated_tokens_per_second": 27.748751451142525,
+        "itl_p99_seconds": 0.4204988820129074,
+        "passed": true,
+        "prefill_decode_policy": "fair",
+        "ttft_p95_seconds": 1.9842451169970445
+      },
+      "soak_blocker_reproduced": true,
+      "soak_occupancy_observed": "bucket saturated at 0.875-1.0 for most of the 60s soak (8 resident slots)",
+      "status": "failed",
+      "workloads_passed": false
+    },
+    "execution_profile": "production",
+    "focused_screen": {
+      "complete_packet": false,
+      "final_itl_p95": 0.3778585122083314,
+      "final_rejected_total": 0.0,
+      "final_ttft_p95": 4.469874426606111,
+      "gates_clean_source_passed": true,
+      "gates_final_ownership_passed": true,
+      "gates_memory_recovery_passed": true,
+      "gates_workloads_passed": true,
+      "soak_occupancy_p95": 1.0,
+      "status": "measurement_complete"
+    }
+  },
+  "raw_artifact_hashes": {
+    "c1_fixed_perf": "d10d52f8202769d7223f03e34016a320a08071f37325849652cdd44cfe1edae8",
+    "c1_natural_perf": "8ca6a21d66f9270802aaaae1f6fb64deb4306af464ef5950b1a98eacda777836",
+    "c1_profile": "269bd52c884a1545cd1bf5404325fb6a00fade56d921f74b63909412813ece5d",
+    "c1_quality": "c8eedf6d6aac4afbefd1e2eb66251ca7d89e412b4fb43cfdab473ef7869739d0",
+    "cn_lifecycle": "2aae9ed4268b8e73cb18df7812c89d0cfd45e241a64e39fabcfbdcee8cf90fd0",
+    "cn_perf": "0581df7d69e3113d39c25135f9721f86a709e7cd9503859dd1a018b58fa9e625",
+    "cn_quality": "d99b4be9e0a1a1bd5a2484ae90b8e1ab686bb4c1449db2cb4b864919fb2448b0",
+    "production_load_full": "5d6c074d5420213820e8684c60944f2548c32adacb7d7c40e3b4fb4a5bdba8fb",
+    "production_load_screen": "a0f310293857a987de1869f2a3ac5dbe659bd7606b9530fd01d987394b54783d",
+    "strict_load_full": "e65b360d7787cbe59bb77f5dbf60bd28304b9de6516155ac901e7936eceb581f"
+  },
+  "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b",
+  "schema_version": 1,
+  "strict_server": {
+    "complete_packet": true,
+    "denominator": "strict SLO-goodput/default denominator for PN3+ candidate comparison",
+    "execution_profile": "strict",
+    "final_rejected_total": 49.0,
+    "rejection_timing": {
+      "overload_workload_rejected": 16,
+      "soak_workload_rejected": 33
+    },
+    "selected_tuning": {
+      "candidate_id": "fair_128",
+      "end_to_end_p95_seconds": 10.331436664040666,
+      "goodput_generated_tokens_per_second": 27.267388665099826,
+      "itl_p99_seconds": 0.42458660202100873,
+      "passed": true,
+      "ttft_p95_seconds": 1.8787254759809002
+    },
+    "status": "failed",
+    "workloads_passed": false
+  },
+  "throughput_ceiling_analysis": {
+    "interpretation": "The soak blocker is server-generation-capacity: at full 8-slot occupancy the ~27.7 tok/s decode ceiling cannot clear the ~2 req/s offered load, the queue fills, and requests are rejected engine_busy. A candidate that raises decode throughput directly reduces queue pressure; this is the PN3/PN4 target.",
+    "measured_goodput_ceiling_tok_s": 27.748751451142525,
+    "measured_rejections": {
+      "production": 48,
+      "strict": 49
+    },
+    "offered_load_inference": "canonical mixed workload at ~2 req/s with max_tokens 24-48 per request => ~48-96 generated tok/s offered during continuous/soak phases",
+    "physical_width_exposure": "occupancy-adaptive packing grows physical extent 1->2->4->8 across the load; width-8 decode dominates at full occupancy",
+    "rejection_timing": {
+      "production": {
+        "overload": 16,
+        "soak": 32
+      },
+      "strict": {
+        "overload": 16,
+        "soak": 33
+      }
+    },
+    "required_throughput_increase_to_clear_load_pct": "~1.7-3.5x the ~27.7 tok/s ceiling (needs ~48-96 tok/s to clear the offered continuous+soak load without engine-busy rejections)",
+    "soak_occupancy_observed": "0.875-1.0 (bucket saturated most of the 60s soak)",
+    "strict_goodput_ceiling_tok_s": 27.267388665099826
+  },
+  "vs_retained_2026_08_16": {
+    "fixed_candidate_delta_pct": -2.278128109969302,
+    "fixed_strict_delta_pct": -1.616274688033359,
+    "natural_candidate_delta_pct": -0.9245697000575759,
+    "natural_strict_delta_pct": 0.16780791157187114
+  }
+}

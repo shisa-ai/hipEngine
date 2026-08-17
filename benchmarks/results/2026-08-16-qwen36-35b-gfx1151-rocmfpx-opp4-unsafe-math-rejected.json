@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "status": "rejected",
+  "performance_claim": false,
+  "candidate": "selective unsafe-math PARO SiLU/rotate code object",
+  "decision": "do_not_retain",
+  "decision_reason": "The separately hashed candidate preserved the finite correctness gate and NaN/Inf classifications but regressed the actual shared-prefill leaf from 20.032 to 21.569 microseconds (0.929x, 7.67% slower). The transient build option and sentinel branch were removed; the strict registered object remains the only production path.",
+  "model": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+  "hardware": {
+    "device": "AMD Ryzen AI MAX+ PRO 395 w/ Radeon 8060S",
+    "backend": "hip_gfx1100",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified"
+  },
+  "compiler": {
+    "hip": "7.15.0-0000000",
+    "clang": "AMD clang 23.0.0git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5",
+    "strict_flags": [
+      "-O3",
+      "-mllvm",
+      "-amdgpu-unroll-threshold-local=600",
+      "-mcumode",
+      "--offload-arch=gfx1151"
+    ],
+    "candidate_extra_flags": [
+      "-funsafe-math-optimizations",
+      "-DHIPENGINE_PARO_SILU_UNSAFE_MATH=1"
+    ],
+    "explicitly_excluded_flags": [
+      "-ffast-math",
+      "-ffinite-math-only"
+    ],
+    "strict_cache_key": "501fb301ac64efe98393343d7d9087caf3541f2c39c4fb1a19538a7730d43ad3",
+    "candidate_cache_key": "0ffd0dfb04620c73ef2475e9f44e523b352c931786261667f45c08d3f0c532c5"
+  },
+  "workload": {
+    "operation": "silu_mul_pair_rotate_out_fp16",
+    "rows": 512,
+    "features": 512,
+    "group_size": 128,
+    "krot": 8,
+    "warmup_launches_per_object": 50,
+    "timed_launches_per_block": 500,
+    "alternating_blocks": 7,
+    "seed": 20260816,
+    "timing": "host perf_counter around launch block followed by hipDeviceSynchronize; median block duration per launch"
+  },
+  "candidate_safety": {
+    "policy": "Explicit isnan/isinf handling precedes only the finite SiLU arithmetic path in the separately compiled code object.",
+    "nan_classification_matches_strict": true,
+    "inf_classification_matches_strict": true,
+    "sentinel_gate": ["nan", "+inf", "-inf", "0", "1", "-1", "20", "-20"],
+    "sentinel_up": ["1", "1", "1", "+inf", "+inf", "-inf", "0", "+inf"],
+    "strict_classes": ["nan", "+inf", "nan", "nan", "+inf", "+inf", "+0", "-inf"],
+    "candidate_classes": ["nan", "+inf", "nan", "nan", "+inf", "+inf", "+0", "-inf"]
+  },
+  "correctness": {
+    "finite_output_bit_exact": false,
+    "finite_mismatch_count": 25,
+    "finite_elements": 262144,
+    "finite_max_abs": 0.0009765625,
+    "finite_mean_abs": 2.7474015951156616e-08,
+    "mean_kl": 4.743131213190859e-13,
+    "max_kl": 8.296779453907384e-11,
+    "top1_agreement": 1.0,
+    "gate": "pass: mean KL <= 0.05 and top-1 >= 90%; NaN/Inf classifications match strict"
+  },
+  "timing_ms": {
+    "strict_blocks": [0.02003232599236071, 0.020397571963258088, 0.02228165592532605, 0.021139447926543653, 0.019519943976774812, 0.0172800300642848, 0.017086647916585207],
+    "candidate_blocks": [0.02156865398865193, 0.02139639004599303, 0.02184785797726363, 0.022641691961325705, 0.017411898006685078, 0.017576327896676958, 0.023299488006159663],
+    "strict_median": 0.02003232599236071,
+    "candidate_median": 0.02156865398865193,
+    "strict_over_candidate": 0.9287703350844453,
+    "candidate_regression_percent": 7.66836381409514
+  },
+  "commands": {
+    "build": "HSA_OVERRIDE_GFX_VERSION=11.5.1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt python3 -c 'from hipengine.kernels.hip_gfx1100.fused.paro_silu import build_paro_silu; build_paro_silu(load=False); build_paro_silu(unsafe_math=True, load=False)'",
+    "microbenchmark": "HSA_OVERRIDE_GFX_VERSION=11.5.1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-paro-compiler-version.txt GPU_MAX_HW_QUEUES=2 PYTHONPATH=. python3 /tmp/hipengine-rocmfpx-transfer-campaign/opp4_unsafe.py"
+  },
+  "raw_artifact": "/tmp/hipengine-rocmfpx-transfer-campaign/opp4-unsafe-silu.json",
+  "next_action": "Do not add selective unsafe-math to this PARO family. Keep strict compiler semantics and do not run a full-model campaign for an operation-level loser."
+}

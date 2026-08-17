@@ -2,7 +2,7 @@
 
 Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to the "Evidence Policy" rule in `AGENTS.md` and `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
 
-See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it.
+See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it. Execution-profile correctness and determinism contracts are normative in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 
 Human-readable rollup: `benchmarks/README.md` is the compact platform-indexed
 topline scoreboard. It records current protocol summaries, evidence status,
@@ -22,12 +22,20 @@ Every retained performance number must carry:
 - **Model** (exact path / HF snapshot SHA)
 - **Quant** (fp16, w8a16, w8a8-dyn, w4-paro, …)
 - **Workload shape** (prompt length, generation length, concurrency, KV policy, warmup)
+- **Execution profile** (`strict|production|batch_invariant`), profile-schema
+  version, selected/fallback variant-manifest hashes, and whether generated-ID
+  equality is binding or diagnostic
 - **Hardware** (W7900, ROCm version, `hipcc --version`, driver from `rocminfo`)
 - **Exact command** (full shell invocation, reproducible from a clean shell)
 - **Result** (prefill tok/s, decode tok/s, VRAM used, peak reserved)
-- **Correctness gate** (KL ≤ 0.05 AND top-1 ≥ 90% vs `kernels/cpu_reference/` on the fixture set)
+- **Correctness gate** (exact control/ownership in every profile; strict
+  exact/parent parity, production calibrated strict-teacher mean/tail/max KL +
+  top-1/determinism/isolation/BF16-relative/task gates, or batch-invariant
+  metamorphic equality; KL ≤ 0.05 and top-1 ≥ 90% vs `cpu_reference` remains
+  the outer kernel floor)
 
-Claims without a correctness gate are disallowed. A perf win that regresses correctness is reverted. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
+Claims without the declared profile gate are disallowed. A perf win that fails
+any binding control, numerical, determinism, category, or task gate is rejected. Raw terminal output is not evidence — retain a compact JSON artifact per the schema at the bottom of this doc.
 
 ### GGUF GDN prefill default-selection gate
 
@@ -93,8 +101,10 @@ Hard rules:
 - **Exact server prompt identity.** Direct and HTTP parity rows use raw token-ID
   prompts, never detokenized text. Retain the committed fixture fingerprint and
   `hipengine.prompt_token_accounting` row hashes/counts. The server hash echo,
-  exact usage, and every generated-ID row must match the direct oracle before a
-  server row can be compared with a direct row.
+  exact usage, and response-owned generated-ID rows are always retained. IDs
+  match the direct oracle for strict/batch-invariant and same-manifest/shape
+  production parity; production rows with a different physical shape require
+  the declared strict-teacher/task gate instead of silent semantic-text parity.
 - **Owned server timing.** Retain `timing_scope`, `group_rows`, `timing_owner`,
   and `batch_id` for batch-scoped payloads. Sum choice timing only for an
   explicitly named per-choice-work metric. Deduplicate batch timing by
@@ -109,8 +119,8 @@ Hard rules:
   client workload capped into two c4 groups is not a width-8 backend/verifier
   result.
 - **No input-conditioned shortcuts.** Do not add code that detects the prompt,
-  token sequence, candidate-id pattern, logits shape, or any fixture-specific
-  signal and changes the output to make a metric look better. Examples that are
+  token sequence, candidate-id pattern, logits shape, profile-quality fixture,
+  or any fixture-specific signal and changes the output to make a metric look better. Examples that are
   banned: hardcoding token IDs or candidate-pool-prefix reranks to force draft
   "acceptance", special-casing a known fixture's expected tokens, or branching on
   the prompt text. Optimize the drafter/kernel/sampler so it is genuinely better
@@ -455,13 +465,14 @@ acceptance loops.
 
 ## Benchmark Output Contract
 
-A benchmark artifact must answer five questions without rereading raw logs:
+A benchmark artifact must answer six questions without rereading raw logs:
 
-1. **What ran?** Exact command, model, quant, workload shape, hardware/software context, commit/dirty state.
-2. **Did correctness pass?** Fixture set, oracle, KL/top-1 or layer tolerance metrics, exact correctness command(s), pass/fail status.
-3. **How stable is the number?** Warmup count, measured repetitions, per-phase samples, median/p95/min/max/stdev where applicable.
-4. **What did the GPU actually execute?** Profiler trace status, expected kernel names, time-share summary, and any profiler blocker. Raw traces stay outside git; compact summaries go in JSON.
-5. **Should we keep this number?** Baseline reference, delta, acceptance decision, and rejection/blocker reason if not retained.
+1. **What ran?** Exact command, model, quant, workload shape, physical host identity, hardware/software context, commit/dirty state. Backend or GPU-architecture equality does not make two hosts comparable: cross-host rows are independent evidence unless one declared same-host protocol measured both sides.
+2. **Which numerical contract ran?** Execution profile/schema, selected and strict-fallback variant manifests, teacher source, and whether generated-ID equality is binding or diagnostic.
+3. **Did correctness pass?** Exact control/ownership, fixture set, oracle, mean/tail/max KL and top-1 or strict layer tolerance, determinism/isolation, task verdict, exact correctness command(s), and pass/fail status.
+4. **How stable is the number?** Warmup count, measured repetitions, per-phase samples, median/p95/min/max/stdev where applicable.
+5. **What did the GPU actually execute?** Profiler trace status, expected kernel names, time-share summary, and any profiler blocker. Raw traces stay outside git; compact summaries go in JSON.
+6. **Should we keep this number?** Baseline reference, delta, acceptance decision, and rejection/blocker reason if not retained.
 
 For non-streaming server rows, the compact artifact also retains the harness's
 validated `generation_shape` rollup: queue-group count and request/prompt rows,
@@ -494,7 +505,14 @@ The `hipengine_exact_token_oracle` v1 contract is formalized in
 The parity artifact is a correctness/identity gate with
 `performance_claim=false`; throughput promotion still requires the normal
 warmup, repetition, timing-ownership, shape, profiler, and clean-provenance
-gates.
+gates. Exact direct/HTTP generated-ID equality is binding for `strict` and
+`batch_invariant`, and for `production` only when both surfaces resolve the same
+variant manifest and physical execution shape. A production direct/server shape
+change uses exact prompt/control/accounting plus the strict-teacher profile gate;
+it must not be rejected solely because a near-tie free-running ID differs.
+The current `exact_token_generation.py` implementation still enforces equality;
+until its profile-aware adapter lands in P2, use it only for strict/same-manifest
+parity and keep shape-different production direct/server rows diagnostic.
 
 ### Unified direct/server PARO/GGUF matrix
 
@@ -503,8 +521,9 @@ exact-token rows after the direct and HTTP artifacts exist. A manifest gives
 each row a stable case, engine (`paro|gguf`), surface (`direct|server`), and
 path variant, plus optional memory and profiler artifact pointers. The report:
 
-- validates every exact prompt/generated hash and requires direct/server output
-  equality within a case;
+- validates every exact prompt hash and response-owned generated hash; requires
+  direct/server output equality for strict/batch-invariant and same-manifest/
+  shape production cases, otherwise attaches the production profile gate;
 - derives total tokens, tok/s, and ms/token from the raw generated-ID rows and
   measured wall instead of accepting a supplied denominator;
 - deduplicates batch-scoped timing by `batch_id`, requires exactly one owner and
@@ -516,6 +535,10 @@ path variant, plus optional memory and profiler artifact pointers. The report:
 - refuses a direct/server rate ratio when timing scopes differ. PARO/GGUF rows
   are side-by-side by default; a cross-engine ratio needs a separately proven
   identical model, quant, math, and timing protocol.
+
+The current matrix validator still enforces output equality within a case. P2
+must add profile/manifest and production-gate attachments before shape-different
+production rows can become eligible; until then those rows remain diagnostic.
 
 ```bash
 uv run python scripts/benchmark_matrix.py build \
@@ -557,6 +580,10 @@ contract is
 [`benchmarks/schemas/artifact-provenance.schema.json`](../benchmarks/schemas/artifact-provenance.schema.json):
 
 - `kind="hipengine_artifact_provenance"` and `schema_version=1`;
+- for profile-sensitive runs, top-level `execution_profile`,
+  `execution_profile_schema`, `variant_manifest_sha256`, and
+  `strict_manifest_sha256` fields (the provenance collector will absorb these
+  when profile runtime plumbing lands; until then the harness writes them);
 - repository root, commit, branch, and separate `staged_dirty`,
   `unstaged_dirty`, `untracked_dirty`, and `untracked_count` fields;
 - configured and concrete resolved backend, target architecture, and selected
@@ -869,25 +896,39 @@ For KV-policy and long-context work.
 
 Correctness comes before throughput. A c=N benchmark row is not eligible for `accepted` status until all of the following are true:
 
-- `scripts/qwen35_batch_correctness.py --rows N` passes with `append_key_mismatch=0`, `append_value_mismatch=0`, and `attn_batch_vs_c1_max_abs <= 1e-6` for the kernel families used by the runner.
-- The resident batch runner emits generated-token ids equal to N independent c=1 resident runs for the same fixed prompts (`temperature=0`, SpecDec disabled).
-- The artifact records scheduler occupancy, active mask shape, graph bucket key, KV policy, and whether compaction occurred.
-- For continuous batching, include admission/completion timestamps and per-request p50/p95 latency in addition to aggregate tok/s.
+- `scripts/qwen35_batch_correctness.py --rows N` or the model-level equivalent
+  passes exact request/slot/token/position/mask/`KVLiveSpans`/transaction
+  ownership and the declared primitive profile tolerances.
+- `strict` rows emit generated IDs and declared numerical boundaries equal to N
+  independent strict c1 runs. `batch_invariant` rows additionally pass slot,
+  neighbor, width, admission, cancellation, and compaction metamorphic equality.
+  `production` rows instead compare full logits at identical strict-teacher
+  contexts and pass calibrated mean/p95/p99/max KL, top-1 by category/shape/
+  transition, same-schedule determinism, same-width neighbor isolation,
+  BF16-relative checks where available, and task non-inferiority. Cross-width
+  free-running generated-ID equality is recorded as diagnostic.
+- The artifact records execution profile/manifests, scheduler occupancy, active
+  mask shape, graph bucket key, KV policy, width transitions, fallbacks, and
+  whether compaction occurred.
+- For continuous batching, include admission/completion timestamps, SLO
+  goodput, and per-request p50/p95/p99 latency in addition to aggregate tok/s.
 
 Initial protocol shapes:
 
 | Shape | Purpose | Required correctness command |
 | --- | --- | --- |
-| `c=2`, prompt 512 / decode 128 | bring-up parity and debugging | `python3 scripts/qwen35_batch_correctness.py --rows 2` plus generated-token equality vs two c=1 sessions |
-| `c=4`, prompt 512 / decode 128 | first scheduler/graph bucket row | `python3 scripts/qwen35_batch_correctness.py --rows 4` plus generated-token equality vs four c=1 sessions |
-| `c=8`, prompt 512 / decode 128 | primary early concurrent target | `python3 scripts/qwen35_batch_correctness.py --rows 8` plus generated-token equality vs eight c=1 sessions |
+| `c=2`, prompt 512 / decode 128 | bring-up parity and debugging | primitive/control gate plus the declared strict-ID, production strict-teacher, or batch-invariant metamorphic gate |
+| `c=4`, prompt 512 / decode 128 | first scheduler/graph bucket row | same profile-aware gate at rows 4 plus transition coverage |
+| `c=8`, prompt 512 / decode 128 | primary early concurrent target | same profile-aware gate at rows 8 plus ragged/isolation/retirement coverage |
 
 GGUF native rows use the model-level equivalent gate rather than the PARO
-primitive-only script: `tests/test_qwen35_gguf_target_rows.py` must prove full
-FP32 logits against independent c=1 at C=2/4/8, including variable prompt
-lengths and reclaim/compact/readmit, while
-`scripts/qwen35_batch_gguf_diagnostic.py` must preserve all generated IDs over
-the measured 512/128 and 4K/128 workloads. The artifact must additionally carry
+primitive-only script. Under strict, `tests/test_qwen35_gguf_target_rows.py`
+proves full FP32 logits against independent strict c1 at C=2/4/8, including
+variable prompt lengths and reclaim/compact/readmit, while
+`scripts/qwen35_batch_gguf_diagnostic.py` preserves all generated IDs over the
+measured 512/128 and 4K/128 workloads. Under production, those same scenarios
+hold strict teacher tokens fixed and emit the profile distribution/isolation
+verdict; IDs remain diagnostic. The artifact must additionally carry
 native indexed-state, `KVLiveSpans` attention, selected-row MoE, row lm-head,
 and row-sampler profiler symbols.
 
@@ -904,18 +945,21 @@ queue overload with both exact accepts and `429 engine_busy` rejects, idle
 recovery, and a duration/rate-qualified soak.
 
 The command declares queue-p99, TTFT-p95, ITL-p99, and end-to-end-p95 SLOs.
-Generated-token goodput counts only resident-reclaim IDs from exact completed
-requests whose own queue, TTFT, every ITL, and end-to-end latency meet all four
-thresholds. Decoded text and `usage.completion_tokens` are not denominators.
-Each workload reports p50/p95/p99, outcome/finish-reason counts, occupancy and
-physical-group transitions, bounded stream-queue depth, KV/tracked/HIP memory,
-server-counter deltas, final ownership, and exact IDs against independent c1
-sessions.
+Generated-token goodput counts only response-owned IDs from profile-qualified
+completed requests whose own queue, TTFT, every ITL, and end-to-end latency meet
+all four thresholds. “Profile-qualified” means exact independent-c1 results for
+strict/batch-invariant, or exact control/ownership plus the binding production
+strict-teacher/task packet; it never means decoded-text similarity. Decoded
+text and `usage.completion_tokens` are not denominators. Each workload reports
+p50/p95/p99, outcome/finish-reason counts, occupancy and physical-group
+transitions, bounded stream-queue depth, KV/tracked/HIP memory, server-counter
+deltas, final ownership, and the declared binding or diagnostic comparison
+against independent strict c1 sessions.
 
 Before the retained workload, sweep the declared prefill/decode policy and
 prefill-chunk candidates on one frozen mixed-arrival shape. Select the highest
-exact SLO-goodput candidate among rows that pass every gate; use TTFT p95, ITL
-p99, then smaller chunks only as tie-breaks. Record every candidate, including
+profile-qualified SLO-goodput candidate among rows that pass every binding gate;
+use TTFT p95, ITL p99, then smaller chunks only as tie-breaks. Record every candidate, including
 failed/neutral rows. A passing workload with dirty source remains diagnostic.
 
 ### Coding-agent multi-turn server rows
@@ -1061,7 +1105,11 @@ and aggregate speculative decode is >1.10× that same-protocol AR. The checked-i
 `benchmarks/results/2026-05-18-hipengine-dflash-benchmark-contract-diagnostic.json`
 is a synthetic schema fixture, not a performance claim.
 
-### PARO c1-c8 exact concurrency matrix
+### PARO c1-c8 strict concurrency matrix
+
+This remains the strict/batch-invariant catalog protocol. Production-profile
+c>N uses the strict-teacher gate in the general c=N section above and records
+cross-width IDs diagnostically.
 
 Use one raw-token fixture for c1 and c>N; repeated token IDs or detokenized text
 are different protocols. The short matrix is prompt 512, 8 warmup decode steps,
@@ -1146,7 +1194,9 @@ Variance guard: if stdev is >5% of median for E2E or >10% for a microbenchmark, 
 
 ## Correctness Gate
 
-Two gates at two granularities. Both are required for any new/ported kernel before a perf claim is accepted.
+Declare the execution profile first. Two granularities are required for every
+new/ported kernel; production routes add the profile-wide dynamic and task gate
+before a perf claim is accepted.
 
 ### Layer-level (`kernels/cpu_reference/` oracle)
 
@@ -1154,10 +1204,16 @@ Two gates at two granularities. Both are required for any new/ported kernel befo
 uv run pytest tests/test_<family>_correctness.py -q
 ```
 
-For each registered `(backend, layer, quant, variant)` tuple, run the same fixture input through the HIP kernel and the CPU-reference implementation. Assert:
+For each registered `(backend, layer, quant, variant)` tuple, run the same fixture input through the HIP kernel and the CPU-reference implementation. Assert the outer floor:
 
 - Mean KL divergence ≤ 0.05 over the fixture set
 - Top-1 logit agreement ≥ 90%
+
+Strict variants additionally meet their declared exact/parent-parity boundary.
+Production T1/T2 variants retain a registered strict fallback and pass the
+calibrated strict-teacher mean/p95/p99/max KL, top-1, determinism/isolation,
+BF16-relative, and task gates in `EXECUTION-PROFILES.md`. The outer floor alone
+cannot promote a production default.
 
 ### End-to-end (fixed-prompt smoke)
 
@@ -1166,7 +1222,11 @@ uv run python scripts/smoke.py --model Qwen3-0.6B --prompt fixtures/smoke_prompt
   --reference outputs/cpu_reference/Qwen3-0.6B.logits.npy
 ```
 
-Runs the full `LLM.generate()` path on a fixed prompt set, saves logits, diffs against the archived CPU-reference logits. Same KL ≤ 0.05 / top-1 ≥ 90% gate.
+Runs the full `LLM.generate()` path on a fixed prompt set, saves logits, and
+diffs against the archived CPU-reference logits. This supplies the same outer
+KL ≤ 0.05 / top-1 ≥ 90% gate. Strict uses its exact fixture contract;
+production additionally runs the complete multi-category strict-teacher,
+dynamic ownership/isolation, deterministic-repeat, and task-quality packet.
 
 ### P9 qwen35moe GGUF WMMA+GEMV decode gate
 
@@ -1192,7 +1252,10 @@ After every E2E benchmark attempt, extract and record these fields before presen
 1. **Correctness / sanity**
    - `finite_prefill_logits` must be `true` when the benchmark emits it. `false` or `null` means the run is NaN-corrupted or incomplete; mark it `rejected_correctness` or `blocked`.
    - Graph replay validation, when active, must pass (`decode_step_graph_validation=true` or equivalent).
-   - For same-prompt A/B comparisons, `generated_sample` token sequences must match unless the run is explicitly a stochastic-quality comparison with a documented seed/protocol.
+   - For same-prompt A/B comparisons, `generated_sample` equality is binding for
+     strict/batch-invariant and diagnostic for production. Production arithmetic
+     changes require matched strict-teacher logit and task-quality evidence;
+     neither stochastic labeling nor semantic text similarity can replace it.
 2. **Performance**
    - Report `prefill_tok_s`, `decode_tok_s`, and total `wall_seconds` with units.
    - If a run is warm-started, say so; do not compare warm-start to cold-start without labeling it.
@@ -1270,7 +1333,10 @@ Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipli
 
 Every benchmark attempt writes one JSON file under `benchmarks/results/<date>-<tag>.json`. The JSON is committed when it is small and useful. Raw `rocprofv3` CSVs, terminal logs, large logits, and model outputs are not committed.
 
-Schema `2` is the benchmark-output contract:
+Schema `2` is the benchmark-output contract. The profile fields below are the
+P2 schema-extension target; until the evaluator/schema validators implement
+them, a new profile-sensitive run remains diagnostic rather than silently
+claiming legacy-schema acceptance.
 
 ```json
 {
@@ -1279,6 +1345,12 @@ Schema `2` is the benchmark-output contract:
   "timestamp": "2026-05-12T18:30:00+09:00",
   "run_tag": "qwen06-c1-short-baseline",
   "summary": "Qwen3-0.6B fp16 c1-short baseline",
+  "execution_profile": "strict",
+  "execution_profile_schema": 1,
+  "variant_manifest_sha256": "<sha256>",
+  "strict_manifest_sha256": "<sha256>",
+  "arithmetic_class": "T0",
+  "generated_id_equality": {"binding": true, "diagnostic": {}},
   "provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 1,
@@ -1357,9 +1429,16 @@ Schema `2` is the benchmark-output contract:
     "passed": true,
     "oracle": "cpu_reference",
     "fixtures": "tests/fixtures/qwen3-0.6b-smoke/",
-    "kl_mean": 0.018,
-    "kl_max": 0.049,
-    "top1_agreement": 0.942,
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "category_top1_min": 1.0,
+    "control_semantics_passed": true,
+    "same_schedule_deterministic": true,
+    "isolation_passed": true,
+    "task_quality_passed": true,
     "layer_fixture_max_abs": 0.0003,
     "command_exit_code": 0
   },
@@ -1433,13 +1512,18 @@ eligibility uses the canonical provenance block and all three dirty axes.
 
 Minimum sequence for a retained number:
 
-1. **Environment snapshot.** Capture `rocminfo`, `rocm-smi`, `hipcc --version` output into the JSON artifact.
-2. **Context clear.** `rocm-smi` shows VRAM near idle; no other jobs on the GPU.
-3. **Warmup run.** One full workload-shape pass, discarded.
-4. **Measurement.** Run the workload; `torch.cuda.synchronize()` around prefill and decode phases when torch is in play; `hipStreamSynchronize` on the default stream otherwise.
-5. **Correctness.** Run the layer-level and smoke gates (above). A failing gate kills the number — do not publish.
-6. **Artifact + rollup.** Emit the JSON under `benchmarks/results/`, update `benchmarks/README.md`, and add a short entry to `benchmarks/CHANGELOG.md`.
-7. **Log.** Create a unique immutable worklog entry with `python3 scripts/worklog.py new`, then summarize the number, delta vs prior baseline, and anomalies (high VGPR, scratch, unexpected kernel in trace). Validate it with `python3 scripts/worklog.py check` and commit the entry/artifact/rollup/changelog with the code change, or as its own `perf:` unit otherwise.
+1. **Contract snapshot.** Declare execution profile/schema, arithmetic class,
+   selected/strict-fallback manifests, teacher source, and whether ID equality
+   is binding or diagnostic.
+2. **Environment snapshot.** Capture `rocminfo`, `rocm-smi`, `hipcc --version` output into the JSON artifact.
+3. **Context clear.** `rocm-smi` shows VRAM near idle; no other jobs on the GPU.
+4. **Warmup run.** One full workload-shape pass, discarded.
+5. **Measurement.** Run the workload; `torch.cuda.synchronize()` around prefill and decode phases when torch is in play; `hipStreamSynchronize` on the default stream otherwise.
+6. **Correctness.** Run the layer-level outer gate plus the declared strict,
+   production, or batch-invariant whole-path gate. A failing binding gate kills
+   the number — do not publish.
+7. **Artifact + rollup.** Emit the JSON under `benchmarks/results/`, update `benchmarks/README.md`, and add a short entry to `benchmarks/CHANGELOG.md`.
+8. **Log.** Create a unique immutable worklog entry with `python3 scripts/worklog.py new`, then summarize the number, delta vs prior baseline, and anomalies (high VGPR, scratch, unexpected kernel in trace). Validate it with `python3 scripts/worklog.py check` and commit the entry/artifact/rollup/changelog with the code change, or as its own `perf:` unit otherwise.
 
 If the number contradicts the roofline prediction by > 2×, stop and re-audit before publishing. Overperformance usually means a measurement bug; underperformance usually means a pathology worth naming.
 

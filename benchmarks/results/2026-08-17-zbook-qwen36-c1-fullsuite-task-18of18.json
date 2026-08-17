@@ -1,0 +1,178 @@
+{
+  "backend": "hip_gfx1151",
+  "bf16_note": "strict and candidate full logits are byte-identical on the no-change smoke (KL=0.0, top-1=1.0) and the retained 450/450 exact-row evidence; implementation drift consumes zero additional BF16-relative budget (Section 4.3 zero-delta rule).",
+  "commit": "c26f05bba5e5c73b2de0846c6136c71deaa9ca0c",
+  "date_utc": "2026-08-17",
+  "decode_steps": 128,
+  "execution_profile": "production",
+  "expected_control_fixture_hashes": {
+    "isolation": "6e78ae04a8b7b2a3fbaf28ee17e841d1bdd583eec2415c365b124f1f05af2995",
+    "production": "315f2d7240ea0e0c14830c2a8eaced4e826dd13ac919db6d4ebad8c2abf4c34b",
+    "strict": "315f2d7240ea0e0c14830c2a8eaced4e826dd13ac919db6d4ebad8c2abf4c34b"
+  },
+  "greedy_outputs_equal_all": true,
+  "greedy_outputs_equal_all_ratio": 1.0,
+  "greedy_outputs_equal_total": 18,
+  "host": "zbook",
+  "kind": "zbook_qwen36_c1_fullsuite_task_artifact",
+  "prompts": [
+    {
+      "candidate_output_sha256": "3bd0d03a64f9df8bff16ab12a4f9e37221557a4ee5bcaadf730f7a0b6ed027ab",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "code_merge_intervals",
+      "output_steps": 129,
+      "strict_output_sha256": "3bd0d03a64f9df8bff16ab12a4f9e37221557a4ee5bcaadf730f7a0b6ed027ab"
+    },
+    {
+      "candidate_output_sha256": "1e7609ccd1e507679ebc4785f2e1a7f285b459d16e157460d84b01f25b0c8e50",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "code_topological_sort",
+      "output_steps": 129,
+      "strict_output_sha256": "1e7609ccd1e507679ebc4785f2e1a7f285b459d16e157460d84b01f25b0c8e50"
+    },
+    {
+      "candidate_output_sha256": "f735d86fe118bf0cf2dd2ba1906cabe540d1364e03947d751e30fedfd531d657",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "code_lru_cache",
+      "output_steps": 129,
+      "strict_output_sha256": "f735d86fe118bf0cf2dd2ba1906cabe540d1364e03947d751e30fedfd531d657"
+    },
+    {
+      "candidate_output_sha256": "36c2ace343c9bf2af46fec901c8a1825920153c0cfc055432b1300734eab592b",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "code_markdown_table",
+      "output_steps": 129,
+      "strict_output_sha256": "36c2ace343c9bf2af46fec901c8a1825920153c0cfc055432b1300734eab592b"
+    },
+    {
+      "candidate_output_sha256": "0ab431bb478e6df48e5b51bae927017270d068712845662b6a43ffbd80fe1bd4",
+      "category": "general_en",
+      "greedy_outputs_equal": true,
+      "id": "general_en_plan",
+      "output_steps": 129,
+      "strict_output_sha256": "0ab431bb478e6df48e5b51bae927017270d068712845662b6a43ffbd80fe1bd4"
+    },
+    {
+      "candidate_output_sha256": "9fa8df0b78ab60753f50dca08c3dda6b889f7248fa4cebca0da4b13b929079a5",
+      "category": "general_en",
+      "greedy_outputs_equal": true,
+      "id": "general_en_explain",
+      "output_steps": 129,
+      "strict_output_sha256": "9fa8df0b78ab60753f50dca08c3dda6b889f7248fa4cebca0da4b13b929079a5"
+    },
+    {
+      "candidate_output_sha256": "d5cdbeadde5b6cb74ea9a29c2b223ab767558b22a8091500d2abd9b8479714f5",
+      "category": "general_ja",
+      "greedy_outputs_equal": true,
+      "id": "general_ja_plan",
+      "output_steps": 129,
+      "strict_output_sha256": "d5cdbeadde5b6cb74ea9a29c2b223ab767558b22a8091500d2abd9b8479714f5"
+    },
+    {
+      "candidate_output_sha256": "0fdb8fda66c90d234f14db1a7b6e6147ecbf6197f313f9af039604dcfc1a576c",
+      "category": "general_ja",
+      "greedy_outputs_equal": true,
+      "id": "general_ja_explain",
+      "output_steps": 129,
+      "strict_output_sha256": "0fdb8fda66c90d234f14db1a7b6e6147ecbf6197f313f9af039604dcfc1a576c"
+    },
+    {
+      "candidate_output_sha256": "0c950bafbe14dd418d32dff50dfb7d03b1a68aaf7e4901d27cd296a431518a7a",
+      "category": "mixed_ja_en",
+      "greedy_outputs_equal": true,
+      "id": "mixed_ja_en_translate",
+      "output_steps": 129,
+      "strict_output_sha256": "0c950bafbe14dd418d32dff50dfb7d03b1a68aaf7e4901d27cd296a431518a7a"
+    },
+    {
+      "candidate_output_sha256": "d58465413c05722d3f7de31e4fb32407dc6e7b59771a2b4d9fd84252b0e2b723",
+      "category": "mixed_ja_en",
+      "greedy_outputs_equal": true,
+      "id": "mixed_ja_en_review",
+      "output_steps": 129,
+      "strict_output_sha256": "d58465413c05722d3f7de31e4fb32407dc6e7b59771a2b4d9fd84252b0e2b723"
+    },
+    {
+      "candidate_output_sha256": "d0efb2a0df3363d3e73554920b8e39af5f87851e55e53ec2555faed93b84e538",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "heldout_code_rate_limiter",
+      "output_steps": 129,
+      "strict_output_sha256": "d0efb2a0df3363d3e73554920b8e39af5f87851e55e53ec2555faed93b84e538"
+    },
+    {
+      "candidate_output_sha256": "75fe3a7864e8a482dd062433b08bdc5b8a037abe7a7fa233725b5dadb5f36d49",
+      "category": "code",
+      "greedy_outputs_equal": true,
+      "id": "heldout_code_interval_schedule",
+      "output_steps": 129,
+      "strict_output_sha256": "75fe3a7864e8a482dd062433b08bdc5b8a037abe7a7fa233725b5dadb5f36d49"
+    },
+    {
+      "candidate_output_sha256": "74006f2013fde1309a19c0e8f57757b83a53ccc528db0ebd51cfd8cfb3899d4d",
+      "category": "general_en",
+      "greedy_outputs_equal": true,
+      "id": "heldout_general_en_incident",
+      "output_steps": 129,
+      "strict_output_sha256": "74006f2013fde1309a19c0e8f57757b83a53ccc528db0ebd51cfd8cfb3899d4d"
+    },
+    {
+      "candidate_output_sha256": "2b3a6a67e903456a44789981584353d154f95cc48aff819941bfd97246f14310",
+      "category": "general_en",
+      "greedy_outputs_equal": true,
+      "id": "heldout_general_en_quant",
+      "output_steps": 129,
+      "strict_output_sha256": "2b3a6a67e903456a44789981584353d154f95cc48aff819941bfd97246f14310"
+    },
+    {
+      "candidate_output_sha256": "c161bed3b6d92f1c92a29f421b492565c5103388f3e7f11e5d72a15e6fadb113",
+      "category": "general_ja",
+      "greedy_outputs_equal": true,
+      "id": "heldout_general_ja_migration",
+      "output_steps": 129,
+      "strict_output_sha256": "c161bed3b6d92f1c92a29f421b492565c5103388f3e7f11e5d72a15e6fadb113"
+    },
+    {
+      "candidate_output_sha256": "643ca5a4e8402c8028b236b8dd2c93ce07cb160fe8a602dcad1ca456e9768183",
+      "category": "general_ja",
+      "greedy_outputs_equal": true,
+      "id": "heldout_general_ja_speculative",
+      "output_steps": 129,
+      "strict_output_sha256": "643ca5a4e8402c8028b236b8dd2c93ce07cb160fe8a602dcad1ca456e9768183"
+    },
+    {
+      "candidate_output_sha256": "071c134e90e0e3d24d934f4c09eab669ad32f4a5e67bb101d872b1dc558c0c7c",
+      "category": "mixed_ja_en",
+      "greedy_outputs_equal": true,
+      "id": "heldout_mixed_summary",
+      "output_steps": 129,
+      "strict_output_sha256": "071c134e90e0e3d24d934f4c09eab669ad32f4a5e67bb101d872b1dc558c0c7c"
+    },
+    {
+      "candidate_output_sha256": "c94b7f0c58b55dfa129c1778b7ba6ed796b149638a705e336bb5b3391da8e4a4",
+      "category": "mixed_ja_en",
+      "greedy_outputs_equal": true,
+      "id": "heldout_mixed_review",
+      "output_steps": 129,
+      "strict_output_sha256": "c94b7f0c58b55dfa129c1778b7ba6ed796b149638a705e336bb5b3391da8e4a4"
+    }
+  ],
+  "prompts_total": 18,
+  "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T035551Z-c26f05bba5e5",
+  "scenario_id": "qwen36_zbook_c1_fullsuite",
+  "schema_version": 1,
+  "selected_manifest_sha256": "aed0d9c5312fb9384884c173794df5ddf508b64485d351749b5488b4eae7aa4b",
+  "strict_manifest_sha256": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41",
+  "target_arch": "gfx1151",
+  "task_results": {
+    "greedy_ids_strict_aligned": true
+  },
+  "variant_manifest_hashes": {
+    "production": "856aeaa7c5e5292aa9c12830848807c3c4f80c1e622b51b0bd455cee5f29b47e",
+    "strict": "0b2fd0ca6fb6c0e97b56998eaff93350350fc39b94c4ff88faddb8cb37442f18"
+  }
+}

@@ -67,7 +67,14 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
     parser = build_parser()
 
     assert parser.parse_args([]).prefix_cache == "off"
+    assert parser.parse_args([]).gdn_mode == "exact"
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
+    assert (
+        parser.parse_args(
+            ["--gdn-mode", "chain_lds32_direct_nonvolatile"]
+        ).gdn_mode
+        == "chain_lds32_direct_nonvolatile"
+    )
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
 
 

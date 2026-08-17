@@ -256,6 +256,15 @@ class SubmitPollTextGenerator:
         ):
             raise ValueError("capacity conflicts with config.max_active_requests")
         self._inner = inner
+        for name in (
+            "execution_profile",
+            "execution_profile_manifest",
+            "execution_profile_manifest_sha256",
+            "execution_profile_strict_manifest_sha256",
+            "execution_profile_fell_back_to_strict",
+        ):
+            if hasattr(inner, name):
+                setattr(self, name, getattr(inner, name))
         self._context_bucket_size = int(context_bucket_size)
         configured_capacity = (
             capacity

@@ -58,6 +58,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
     silu_mul_dual_out_fp16,
     silu_mul_dual_rotate_out_bf16,
     silu_mul_dual_rotate_out_fp16,
+    silu_mul_pair_rotate_out_fp16,
     silu_mul_separate_out_fp16,
 )
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
@@ -8964,9 +8965,9 @@ class Qwen35ParoDecodeState:
         (gate_proj, up_proj, down_proj) with their own rotation params; for
         tokens=1/small batches we use a fused gate/up rotate2, the dual GEMV
         with separate inputs + packed gate||up output, then fused SiLU +
-        down-rotation. For larger batches we use the fused W4 prefill kernel
-        which writes gate/up to separate buffers and pair them via
-        silu_mul_separate_out.
+        down-rotation. For larger batches the W4 prefill kernels write gate/up
+        to separate buffers and the exact pair-rotate primitive fuses SiLU with
+        the down rotation; the original two-launch chain remains the fallback.
         """
         prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         cfg = self.config
@@ -8992,6 +8993,9 @@ class Qwen35ParoDecodeState:
             tokens == 1
             or force_small_batch
             or (layer_type == "full_attention" and tokens <= _small_batch_decode_threshold())
+        )
+        fuse_prefill_silu_rotate = (
+            not small_batch and _shared_prefill_silu_rotate_fused_enabled()
         )
         # M13.B.2: in the small-batch path, replace `paro_rotate2 +
         # gemv_awq_dual_pack8_transposed` with the HBM-staged fused kernel
@@ -9154,16 +9158,17 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
-            silu_mul_separate_out_fp16(
-                scratch.shared_gate_out.ptr,
-                scratch.shared_up_out.ptr,
-                scratch.shared_intermediate.ptr,
-                tokens,
-                cfg.shared_expert_intermediate_size,
-                stream=stream,
-                library=_library_for(library, "silu"),
-                runtime=self.runtime,
-            )
+            if not fuse_prefill_silu_rotate:
+                silu_mul_separate_out_fp16(
+                    scratch.shared_gate_out.ptr,
+                    scratch.shared_up_out.ptr,
+                    scratch.shared_intermediate.ptr,
+                    tokens,
+                    cfg.shared_expert_intermediate_size,
+                    stream=stream,
+                    library=_library_for(library, "silu"),
+                    runtime=self.runtime,
+                )
         elif _w4_multi_row_dual_site_eligible("shared_gate_up", tokens, cfg.hidden_size, group_size):
             # M12.6: shared-expert gate/up multi-row dual W4 GEMV.
             gemv_awq_dual_pack8_multi_row_split_transposed_fp16(
@@ -9186,16 +9191,17 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
-            silu_mul_separate_out_fp16(
-                scratch.shared_gate_out.ptr,
-                scratch.shared_up_out.ptr,
-                scratch.shared_intermediate.ptr,
-                tokens,
-                cfg.shared_expert_intermediate_size,
-                stream=stream,
-                library=_library_for(library, "silu"),
-                runtime=self.runtime,
-            )
+            if not fuse_prefill_silu_rotate:
+                silu_mul_separate_out_fp16(
+                    scratch.shared_gate_out.ptr,
+                    scratch.shared_up_out.ptr,
+                    scratch.shared_intermediate.ptr,
+                    tokens,
+                    cfg.shared_expert_intermediate_size,
+                    stream=stream,
+                    library=_library_for(library, "silu"),
+                    runtime=self.runtime,
+                )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.shared_gate_input.ptr,
@@ -9217,32 +9223,50 @@ class Qwen35ParoDecodeState:
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,
             )
-            silu_mul_separate_out_fp16(
-                scratch.shared_gate_out.ptr,
-                scratch.shared_up_out.ptr,
-                scratch.shared_intermediate.ptr,
-                tokens,
-                cfg.shared_expert_intermediate_size,
-                stream=stream,
-                library=_library_for(library, "silu"),
-                runtime=self.runtime,
-            )
+            if not fuse_prefill_silu_rotate:
+                silu_mul_separate_out_fp16(
+                    scratch.shared_gate_out.ptr,
+                    scratch.shared_up_out.ptr,
+                    scratch.shared_intermediate.ptr,
+                    tokens,
+                    cfg.shared_expert_intermediate_size,
+                    stream=stream,
+                    library=_library_for(library, "silu"),
+                    runtime=self.runtime,
+                )
 
         if not small_batch:
-            paro_rotate1_fp16(
-                scratch.shared_intermediate.ptr,
-                scratch.shared_down_input.ptr,
-                down_pairs.ptr,
-                self.tensor(f"{down_base}.theta").ptr,
-                self.tensor(f"{down_base}.channel_scales").ptr,
-                tokens,
-                cfg.shared_expert_intermediate_size,
-                group_size,
-                _rotation_krot(down_pairs),
-                stream=stream,
-                library=_library_for(library, "rotate"),
-                runtime=self.runtime,
-            )
+            if fuse_prefill_silu_rotate:
+                silu_mul_pair_rotate_out_fp16(
+                    scratch.shared_gate_out.ptr,
+                    scratch.shared_up_out.ptr,
+                    down_pairs.ptr,
+                    self.tensor(f"{down_base}.theta").ptr,
+                    self.tensor(f"{down_base}.channel_scales").ptr,
+                    scratch.shared_down_input.ptr,
+                    tokens,
+                    cfg.shared_expert_intermediate_size,
+                    group_size,
+                    _rotation_krot(down_pairs),
+                    stream=stream,
+                    library=_library_for(library, "silu"),
+                    runtime=self.runtime,
+                )
+            else:
+                paro_rotate1_fp16(
+                    scratch.shared_intermediate.ptr,
+                    scratch.shared_down_input.ptr,
+                    down_pairs.ptr,
+                    self.tensor(f"{down_base}.theta").ptr,
+                    self.tensor(f"{down_base}.channel_scales").ptr,
+                    tokens,
+                    cfg.shared_expert_intermediate_size,
+                    group_size,
+                    _rotation_krot(down_pairs),
+                    stream=stream,
+                    library=_library_for(library, "rotate"),
+                    runtime=self.runtime,
+                )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
         down_site = _w4_multi_row_single_site(down_base)
         down_mode = _w4_down_proj_small_batch_mode(down_site)
@@ -11338,6 +11362,19 @@ def _shared_expert_fused_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", default=False)
+
+
+def _shared_prefill_silu_rotate_fused_enabled() -> bool:
+    """Fuse shared-expert prefill SiLU with the down-projection rotation.
+
+    This exact registered pair-rotate primitive preserves the FP16 activation
+    rounding point while replacing ``silu_mul_separate + paro_rotate1`` with one
+    launch. Default-on after the 2026-08-16 gfx1151 Qwen3.6-35B-A3B gate proved
+    byte equality, a 1.371x actual-shape leaf, and non-regressive bracketed c4/c8
+    complete runs. Opt out with ``HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0``.
+    """
+
+    return _env_enabled("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", default=True)
 
 
 def _w4_output_tiled_prefill_enabled() -> bool:

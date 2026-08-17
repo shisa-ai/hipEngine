@@ -33,6 +33,7 @@ from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
+    _gguf_mapped_host_token_embedding_storage,
     _q8_0_embedding_rows_to_bf16,
     _resolve_gguf_private_c1_small_weight_arena,
     _resolve_gguf_private_c1_weight_arena_max_allocation_bytes,
@@ -208,7 +209,7 @@ def _resident_with_token(weight: Qwen35GGUFDeviceWeight) -> Qwen35GGUFResidentWe
     )
 
 
-def test_host_embedding_policy_auto_admits_only_private_c1(
+def test_host_embedding_policy_auto_routes_mapped_and_cpu_types_only_for_private_c1(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
@@ -222,6 +223,10 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
             return True
         if name == "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
             return ("Q8_0",)
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1":
+            return True
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
+            return ("Q4_K",)
         return default
 
     monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
@@ -237,6 +242,12 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
         max_batch_size=1,
         has_shared_runner=False,
         token_embedding_type_name="Q4_K",
+    ) == ("host", "mapped_host_private_c1_auto")
+    assert _resolve_gguf_token_embedding_placement(
+        backend="hip_gfx1151",
+        max_batch_size=1,
+        has_shared_runner=False,
+        token_embedding_type_name="Q6_K",
     ) == ("device", "host_type_device_fallback")
     assert _resolve_gguf_token_embedding_placement(
         backend="hip_gfx1151",
@@ -253,6 +264,36 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
         max_batch_size=1,
         has_shared_runner=False,
     ) == ("device", "backend_device_fallback")
+
+
+def test_mapped_host_embedding_storage_copies_backend_qualified_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+
+    raw = np.arange(64, dtype=np.uint8).reshape(4, 16)
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: (
+            True
+            if backend == "hip_gfx1151"
+            and name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY"
+            else default
+        ),
+    )
+
+    storage, kind = _gguf_mapped_host_token_embedding_storage(
+        backend="hip_gfx1151",
+        raw=raw,
+    )
+
+    assert kind == "hip_registered_host_copy"
+    assert storage.flags.c_contiguous
+    assert not np.shares_memory(storage, raw)
+    np.testing.assert_array_equal(storage, raw)
+    raw[0, 0] ^= np.uint8(0xFF)
+    assert storage[0, 0] != raw[0, 0]
 
 
 def test_mapped_host_embedding_policy_admits_private_gfx1100_c1(
@@ -612,11 +653,19 @@ def test_full_stack_maps_q4_host_embedding_and_unregisters_on_close(
         "materialize_qwen35_gguf_weights",
         lambda path, **kwargs: resident,
     )
+
+    def mapped_capability(backend, name, default=None):
+        del backend
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1":
+            return True
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
+            return ("Q4_K",)
+        return default
+
     monkeypatch.setattr(
         gguf_runner,
         "backend_package_capability",
-        lambda backend, name, default=None: name
-        == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+        mapped_capability,
     )
 
     runner = Qwen35GGUFFullStackRunner(

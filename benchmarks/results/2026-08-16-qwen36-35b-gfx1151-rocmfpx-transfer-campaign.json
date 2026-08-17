@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "status": "complete",
+  "performance_claim": false,
+  "title": "ROCmFPX transferable-mechanism campaign on Qwen3.6-35B-A3B gfx1151",
+  "scope": "Aggregate decision index. Numeric claims retain the status and qualifications of their linked per-opportunity artifacts; this aggregate does not create a new model topline.",
+  "hardware": {
+    "system": "HP ZBook Ultra G1a / AMD Ryzen AI MAX+ PRO 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151"
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-transfer-baseline.json",
+    "commit": "a74c28a44",
+    "paro_model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "paro_quality": "implementation-correct, quality-traded versus Q4_K_M",
+    "mtp_model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "mtp_reason": "The packed-PARO snapshot used for arithmetic opportunities contains no NextN sidecar; adaptive MTP used the admitted MTP-bearing Q4_K_M artifact."
+  },
+  "summary": {
+    "opportunities_tested": 5,
+    "new_default_on_changes": 1,
+    "existing_defaults_revalidated": 1,
+    "candidates_rejected_and_removed": 2,
+    "existing_policy_revalidated_without_new_promotion": 1,
+    "architecture_changes": 0,
+    "external_runtime_or_format_code_adopted": false
+  },
+  "opportunities": [
+    {
+      "id": 1,
+      "name": "true small-M weight reuse",
+      "path": "packed PARO c4/c8 output-column-tiled pack8",
+      "decision": "keep_existing_default",
+      "status": "diagnostic_revalidation",
+      "result": "c4 +3.41% aggregate tok/s and -2.50% median step; c8 +4.00% and -3.96%; all generated IDs exact versus independent c1",
+      "production_change": false,
+      "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp1-small-m-revalidated.json",
+      "commit": "aa4e7fbc0"
+    },
+    {
+      "id": 2,
+      "name": "one-plane Q8_1 production arithmetic",
+      "path": "Q8_1 quantize + sudot4 at exact 35B MoE geometry",
+      "decision": "reject_do_not_wire",
+      "status": "rejected",
+      "result": "projection speed screens reach 1.02x..1.83x, but operation-complete SiLU max KL reaches 0.693..54.209 and violates the KL<=0.05 gate",
+      "production_change": false,
+      "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp2-q8-oneplane-rejected.json",
+      "commit": "eefe310ac"
+    },
+    {
+      "id": 3,
+      "name": "compound arithmetic boundary fusion",
+      "path": "packed PARO shared-prefill FP16 SiLU + down-rotation",
+      "decision": "retain_default_on",
+      "status": "retained_subwindow",
+      "result": "actual 512x512/group128/krot8 leaf 29.643 -> 21.617 us (1.371x); c8/L4 trace 4644 -> 4575 dispatches (-69); primitive output and c4/c8 generated IDs exact; bracketed complete wall neutral",
+      "production_change": true,
+      "strict_fallback": "registered separate SiLU then rotation primitives; HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0 rollback",
+      "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-silu-rotate-retained.json",
+      "commits": ["e4efac639", "e78e9f4f4"]
+    },
+    {
+      "id": 4,
+      "name": "selective unsafe-math compilation",
+      "path": "separate hashed PARO SiLU/rotate code object",
+      "decision": "reject_and_remove",
+      "status": "rejected",
+      "result": "finite top-1 100%, mean KL 4.74e-13, and NaN/Inf classes match, but actual leaf regresses 20.032 -> 21.569 us (-7.67%)",
+      "production_change": false,
+      "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp4-unsafe-math-rejected.json",
+      "commit": "b9775d557"
+    },
+    {
+      "id": 5,
+      "name": "adaptive MTP admission/depth",
+      "path": "Q4_K_M+NextN prompt-agnostic p_min=0.5 B1 probe with full-accept promotion",
+      "decision": "keep_existing_adaptive_structure_no_new_budget_promotion",
+      "status": "diagnostic_revalidation",
+      "result": "adaptive B3 27.054 tok/s / 37.140 ms-output, 1.134x same-run strict-profile AR, 1.116x best fixed depth, and 1.223x fixed B3; adaptive and fixed controls each exact 30/30",
+      "production_change": false,
+      "qualification": "No new cap/topline: B3 is only +0.97% over adaptive B2 in one dirty-provenance packet under a changed execution-profile denominator.",
+      "artifact": "benchmarks/results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp5-adaptive-mtp-diagnostic.json",
+      "commit": "28b5f330d"
+    }
+  ],
+  "retained_state": {
+    "small_m": "Existing exact output-column-tiled pack8 route remains default.",
+    "q8_oneplane": "No production route retained; strict BF16/FP16 activations remain.",
+    "silu_rotate": "Exact pair-rotate fusion is default-on with strict registered fallback and temporary rollback env.",
+    "unsafe_math": "No unsafe code object or build/runtime flag remains.",
+    "adaptive_mtp": "Existing prompt-agnostic adaptive structure remains; no prompt map and no new cap promotion."
+  },
+  "quality_and_anti_gaming": {
+    "paro_label_preserved": "quality-traded",
+    "mtp_full_suite": "all code/general_en/general_ja/mixed_ja_en train+heldout prompts",
+    "prompt_specific_policy": false,
+    "token_specific_policy": false,
+    "single_prompt_claims": false,
+    "true_ar_denominator_for_mtp": true
+  },
+  "comparison_index": "benchmarks/quant/ROCMFPX-TRANSFER.md",
+  "sampler_and_quality_protocol": "benchmarks/quant/README.md and scripts/quant_quality/qwen36_teacher.py",
+  "next_actions": [
+    "Keep exact small-M weight reuse and exact SiLU/rotate fusion.",
+    "Revisit activation quantization only with residual/two-plane Q8_1x2 and an operation-complete oracle.",
+    "Do not revisit unsafe math for this family without a different operation-level hypothesis.",
+    "Require a clean repeated adaptive B2/B3 bracket under one resolved execution profile before any MTP cap/topline change."
+  ]
+}

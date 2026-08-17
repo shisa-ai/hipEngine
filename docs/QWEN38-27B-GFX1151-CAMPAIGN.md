@@ -1,12 +1,21 @@
-# Qwen3.8-27B Q4_K_M gfx1151 Optimization Campaign
+# Qwen3.8-27B GGUF gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership completed on 2026-08-15 and the clean G2
-prefill win completed on 2026-08-16; P5 now beats clean llama.cpp HIP at 4K
-through exact grouped-GQA split attention but remains open on 512/1K, natural
-AR, and the 4K Vulkan target; G5 memory parity remains open, and the K0-K3
-native INT8 K/V ladder is closed below K4 on model-level correctness.** The
-working performance set is `512/128`, `1024/128`, and `4096/128`. The model is
-Qwen3.8-27B Q4_K_M on Radeon 8060S / `gfx1151`.
+Status: **Campaign closed 2026-08-17 at merged commit `20e5106da`. G1
+single-layout ownership, G2 prefill, G3 true AR, G4 exact MTP, and G5 memory
+all pass on the one clean retained source. Clean closure rows are
+379.398/376.554/369.755 prefill and 13.1014/12.9231/13.0953 AR tok/s at
+512/1K/4K (above both frozen llama backends at every shape), exact native B3
+at 23.85263 tok/s (1.7845x own AR, 21.48% above correctness-valid llama HIP
+B3), and process GTT 15.275/15.710/15.727 GiB at the shapes and 15.899 GiB at
+B3 (below every lower valid llama row). K0-K3 native INT8 K/V is closed below
+K4 on model-level correctness; BF16 remains the supported route.** Post-closure
+(2026-08-17) retention extends the byte-identical K_M-derived Q5 source-F16
+prefill route to Q4_K_S: counterbalanced 512/1K prefill improves to
+**396.091/387.648 tok/s** (+4.51%/+3.02%) and 4K to **380.305 tok/s** (+2.95%)
+via a capacity-conditional scratch cap (4K grows to the 4,096-row plateau;
+8K+ keeps 1,024-row chunks with memory flat). The working
+performance set is `512/128`, `1024/128`, and `4096/128`. The current model
+representation is Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -50,8 +59,9 @@ leaf is BF16-bit exact and improves **0.549226 -> 0.116819 ms (4.7015x,
 teardown. This beats clean llama.cpp HIP by **4.792%** but remains **4.047%**
 below Vulkan. All tested trajectories remain exact and bytes/peaks are
 unchanged. Native rows and MTP retain their prior owners after the pre-scope B1
-diagnostic regressed; 512/1K, natural AR, and Vulkan 4K remain open, so P5
-stays open.
+diagnostic regressed. At this grouped-GQA checkpoint, 512/1K, natural AR, and
+Vulkan 4K remained open; the later fixed-H5120 norm row supersedes those
+short-context development rates.
 
 The compiler-clean post-grouped 4K rerank reconciles **80.781185 ms/token** of
 kernel work (**95.921%** of profiled host decode) across exactly **934
@@ -127,8 +137,251 @@ BF16-bit exact but change three actual layers **1.434625 -> 1.435730 ms
 loads remain production. Evidence:
 [`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
 
-This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
-used as the optimization denominator; it is not itself an optimization claim.
+Producer-owned planar-Q6 root tile maxima are closed for serial AR. The
+existing exact top-1 path preserves every FP32 logit and winner bit on the
+994.629-MiB actual head, but changes **4.591176 -> 4.603906 ms (0.99723x,
+4/15 wins)** and projects a **0.0158%** selected-wall regression. The direct
+full-logit producer plus generic argmax remains production. Evidence:
+[`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
+
+Fixed-H5120 norm dataflow is retained. Caching 20 values/thread while preserving
+the generic local256 FP32 tree improves all 128 actual norm leaves **1.23268 ->
+0.35870 ms/token (3.4365x, 15/15)**. Complete 512/1K/4K graph AR improves
+**1.458%/1.368%/1.380%** to **12.23245/12.06500/12.21721 tok/s**, and natural
+AR improves **12.28760 -> 12.45494 (+1.362%)**. Every output/trajectory and
+byte remains exact; rows>1, Q8, output norm, and peers stay generic. Evidence:
+[`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
+
+The clean post-commit publication is **399.836/390.793/384.712 prefill tok/s**
+and **12.2099/12.0514/12.2095 AR tok/s** at 512/1K/4K. It confirms HIP AR
+leads of **0.488%/6.095%** at 512/4K but places 1K **0.109%** behind; Vulkan
+remains **2.854-5.254%** ahead. All CVs are below 0.046%, IDs/bytes remain
+exact, and teardown is zero. Evidence:
+[`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
+
+The clean post-norm profile reconciles **79.30459 ms/token** selected kernel
+wall against **82.72545 ms/token** profiled host decode at unchanged **934
+launches/token**. Norms are now **0.376%**; Q4 dual/single own
+**38.698%/23.975%**, and the residual is **3.42086 ms/token**. This supersedes
+the post-grouped Amdahl ranking. Evidence:
+[`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
+
+The first exact graph-gap contraction is retained for serial c1 FFN-down. The
+32 Q4T16 and 32 planar-qmicro-Q6 producers fold only the rounded BF16 residual
+into their direct store, adding no payload or scratch. The active 4K trace
+removes exactly **64 launches/token (934 -> 870)** and improves profiled host
+decode **82.46295 -> 82.31707 ms/token (-0.177%)** while kernel wall is flat
+within **0.005%**. A counterbalanced 512/128 request gate improves
+**12.23017 -> 12.25928 tok/s (+0.238%)**, with both candidate processes above
+both controls, exact final IDs/logits, and byte-identical peaks. Rows>1, Q8,
+shape/model/backend misses, and peer backends retain the primitive chain.
+Evidence:
+[`c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
+
+The next exact graph-gap contraction promotes the existing scalar Q5T16 GDN
+dual-output producer on gfx1151. It preserves every FP32 recurrent output/state
+bit while writing the exact RNE BF16 handoff consumed by `ssm_out`, eliminating
+the standalone cast after 48 recurrent layers. The 4K trace removes another
+**48 launches/token (870 -> 822)** and reduces GDN-start to Q5-start span
+**1.36385 -> 1.20856 ms/token (-11.386%)**. Counterbalanced 512/128 graph AR
+improves **12.26142 -> 12.28212 tok/s (+0.169%)**, with both candidate processes
+above both controls, exact IDs/logits, unchanged peaks, and no bytes. The
+verifier-chain alias remains excluded for P6. Evidence:
+[`scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
+
+A second architecture-local contraction promotes the retained exact dense-F32
+alpha/beta pair only for gfx1151 rows1 K5120/N48+N48. The 4K trace removes
+**48 launches/token (822 -> 774)** and improves alpha/beta-to-Conv span
+**0.85573 -> 0.67959 ms/token (-20.583%)**, selected kernel wall **-0.134%**,
+and profiled host decode **-0.242%**. Counterbalanced 512/128 graph AR improves
+**12.25916 -> 12.27588 tok/s (+0.136%)** with both candidates above both
+controls, exact outputs, unchanged peaks, and no bytes. The W7900 rejection and
+rows2-4 native/MTP singleton route remain unchanged. Evidence:
+[`dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+
+The next serial contraction joins that pair with independent in-place Conv
+channel blocks. A >64-MiB rotating proxy wins 15/15 before routing; the active
+4K trace removes **48 launches/token (774 -> 726)** and improves complete
+alpha/beta+Conv span **0.85271 -> 0.65549 ms/token (-23.128%)**, selected kernel
+wall **-0.096%**, and profiled host decode **-0.173%**. Counterbalanced 512/128
+graph AR improves **12.28434 -> 12.30966 tok/s (+0.206%)** with both candidates
+above both controls, exact projection/Conv-state/final-logit results, unchanged
+peaks, and no bytes. Verifier/native rows and peer backends keep the registered
+pair plus Conv fallback. Evidence:
+[`serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
+
+Producer-owned add-RMSNorm -> Q8_1x2 publication is not admitted. The active
+trace has 64 boundaries/token, but each Q8_1x2 pack exposes 160 independent
+local32 workgroups while fixed-H5120 norm exposes one local256 block/eight
+waves; fusion would serialize publication into 20 wave rounds. The directly
+applicable exact gfx1151 screen already regressed **0.007578 -> 0.009251 ms
+(+22.085%)** with only 96 packs/twelve rounds. No Qwen3.8 code or benchmark is
+added; preserve the standalone pack's block parallelism and require a materially
+different synchronization mechanism before reopening. Evidence:
+[`prior exact rejection`](../benchmarks/results/2026-07-31-gfx1151-laguna-d9-q8-pack-fusion-rejected.json).
+
+Concatenating serial full-attention Q and K projection blocks is rejected too.
+The transient Q4T16 kernel preserved Q's eight-column and K's four-column
+wave32 arithmetic exactly, but all 16 actual layer pairs over a 630.5-MB
+rotating pool changed **0.189805 -> 0.191481 ms/layer (+0.883%, 1/15 wins)**.
+That operation-complete timing already includes the removed sequential launch
+boundary and projects a **0.026811-ms/token regression**, so all transient code
+is removed and no graph gate is run. Evidence:
+[`Q/K launch contraction rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qk-launch-contraction-rejected.json).
+
+The serial full-attention Q/K postprocess contraction is retained. One
+local256 composite consumes packed BF16 Q/gate and BF16 K directly while
+preserving the existing FP32 head RMSNorm/RoPE trees and gate bits. The 4K
+trace removes **32 launches/token (726 -> 694)** and improves the complete
+postprocess span **0.214228 -> 0.106899 ms/token (-50.100%)**, selected kernel
+wall **-0.0027%**, and profiled host decode **-0.100%**. Counterbalanced
+512/128 AR improves **12.29442 -> 12.30314 tok/s (+0.071%)**, with both
+candidates above both controls, exact outputs/logits, unchanged peaks, and no
+bytes. Shape/registry misses, native rows, prefill, and peer backends retain the
+primitive chain. Evidence:
+[`Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
+The recurrent standard-Q6 QKV plus Q4 gate boundary is also retained as a
+block-parallel mixed grid, not a serialized fusion. Four actual-weight layer
+pairs independently beyond MALL improve **1.16623 -> 1.14551 ms (1.01809x,
+14/15)** with both outputs BF16-bit exact. The 4K trace removes **24
+launches/token (694 -> 670)**, improves complete pair span **6.91087 -> 6.74110
+ms/token (-2.457%)**, selected kernel wall **-0.052%**, and profiled host decode
+**-0.253%**. Counterbalanced 512/128 AR improves **12.31947 -> 12.33892 tok/s
+(+0.158%)**, with both candidates above both controls, exact outputs/logits,
+unchanged peaks, and no bytes. Native rows, prefill, misses, and peer backends
+retain the two primitive projections. Evidence:
+[`Q6/Q4 mixed grid`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
+
+The homogeneous-Q4 recurrent analogue is rejected. Concatenating the unchanged
+QKV and gate local32 block ranges preserves all BF16 bits but changes four
+actual pairs **0.93259 -> 0.93888 ms (+0.675%, 2/15 wins)** over independent
+115.625/69.375-MiB resident pools. Transient code is removed before any graph
+or request gate. The adjacent Q5 `ssm_out` -> add-RMSNorm store seam is not a
+conventional exact rounded-residual fusion either: normalization consumes the
+unrounded FP32 sum while residual publication rounds separately to BF16. It
+requires a materially different persistent/global-synchronization premise, not
+the existing producer-store composite. Evidence:
+[`Q4/Q4 recurrent-grid rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-q4-unequal-grid-rejected.json).
+
+The existing split-parallel attention reducer also stays at its retained 32K
+threshold. Forcing it at 4K adds **16 launches/token**, changes the complete
+reducer **0.084902 -> 0.089330 ms/token (+5.216%)**, and changes the fixed-token
+final logit **26.059303 -> 26.155388**. The unchanged grouped-GQA context kernel
+is flat; one-run aggregate profiler variance is therefore not a retainable win,
+and no request gate is run. Evidence:
+[`4K parallel-reducer rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-4k-parallel-attention-reducer-rejected.json).
+
+The narrow full-attention K/V boundary is retained as two exact block-parallel
+grids. Across all 16 target layers (eight Q4/Q4 and eight Q4/planar-Q6), a
+102.19-MiB resident actual-weight pool improves **0.64858 -> 0.57993 ms/token
+(1.11838x, 15/15)** with every BF16 output bit exact. The 4K trace removes
+**16 launches/token (670 -> 654)** and improves the complete K/V span
+**0.64748 -> 0.56195 ms/token (-13.209%)**. One-run aggregate profiler wall
+moves **+0.059% kernel / +0.043% host** within noise, but the unprofiled
+counterbalanced 512/128 authority improves **12.34127 -> 12.34844 tok/s
+(+0.058%)**, with both candidates above both controls, exact IDs/logits,
+unchanged peaks, and no bytes. Native rows/MTP, prefill, NextN, misses, and
+peer backends retain the two qualified singleton projections. Evidence:
+[`narrow K/V pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
+
+Laguna's exact adjacent-Q/paired-coefficient transport does not materially
+transfer to the dominant Qwen3.8 split-weight gate/up owner. Reusing each
+packed-Q byte plus aligned d/dmin and scale/min pairs is BF16-bit exact and
+positive on all three 95.625-MiB actual layer pairs, but changes the family only
+**1.431580 -> 1.425980 ms (1.00393x, 38/45 wins)**. The projected selected-4K
+saving is **0.1200 ms/token / 0.1524%**, below the predeclared 1% operation-
+complete gate. Transient code is removed and direct per-column loads remain.
+Evidence:
+[`Q4 pair-coefficient rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-paircoeff-rejected.json).
+
+Extending sole qmicro-Q4 ownership from dense gate/up to the 32 Q4 FFN-down
+weights is rejected despite saving another **44,564,480 bytes (42.5 MiB)**.
+Actual-weight c1 and rows2-4 residual leaves are BF16-bit exact and improve
+**1.0047-1.0124x**, and bounded shared-B/expanded-metadata WMMA makes the owner
+operation-complete. The matched 512/128 A/B/A request gate nevertheless places
+both candidate decode medians below the clean control: candidate mean
+**12.44219** versus **12.45720 tok/s (-0.1205%)**; prefill similarly changes
+**399.8383 -> 399.4079 tok/s (-0.1076%)**. Exact trajectories and lower bytes
+do not authorize a throughput regression, so the transient owner is removed.
+Evidence:
+[`qmicro Q4 FFN-down rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-down-rejected.json).
+
+The corrected clean post-qmicro production profile explicitly enables the
+persistent session, bulk attention, WMMA prefill, GEMV decode, and graph replay.
+It reconciles **78.52745 ms/token (96.601%)** of an **81.29028-ms** profiled host
+decode at exactly **654 launches/token**, superseding the discarded 719-launch
+non-GEMV trace. Qmicro Q4 gate/up leads at **30.06950 ms / 38.292%**, followed
+by planar-Q6 down **13.477%**, standard-Q4 singleton **11.985%**, standard-Q4
+down **9.375%**, mixed Q6/Q4 **8.658%**, Q5 output **6.518%**, and Q6 root
+**5.895%**. Graph width and generic attention remain closed; exact streaming
+weight bytes and coalescing are the authority.
+Evidence:
+[`post-qmicro production decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-decode-profile.json).
+
+The profile's first new qmicro gate/up coalescing premise is rejected. Loading
+one packed-Q byte once and explicitly publishing both adjacent output-nibble
+dp4a packs preserves every BF16 bit, but three 95.625-MiB actual pairs regress
+**1.385357 -> 1.454068 ms (+4.960%, 0/45 wins)**. Compiler/cache reuse in the
+retained direct qloads is superior; the sibling is removed before graph or
+request measurement.
+Evidence:
+[`qmicro paired-qload rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qmicro-paired-qload-rejected.json).
+
+A matched clean process-level scheduling check also keeps the gfx1151
+`GPU_MAX_HW_QUEUES=2` default. One queue changes 512/128 graph AR **12.40721 ->
+12.40308 tok/s (-0.0333%)** and prefill **400.5497 -> 400.2541 (-0.0738%)**
+with exact IDs, bytes, and teardown. Queue count is not a material remaining
+serial-AR gap.
+Evidence:
+[`hardware-queue count rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-hardware-queue-count-rejected.json).
+
+The prior gfx1100 wide-weight-arena premise does not improve Qwen3.8 decode on
+gfx1151. Raising the selective cutoff from 16 to 80 MiB collapses physical
+weight owners **371 -> 3** with exact trajectories and tracked bytes, but matched
+512/128 AR changes **12.41488 -> 12.39701 tok/s (-0.1439%)** and prefill
+**402.319 -> 400.743 (-0.3918%)**. Task 22 keeps the 16-MiB arena; task 24 may
+reopen only with matched whole-GTT evidence.
+Evidence:
+[`wide weight arena rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-wide-weight-arena-rejected.json).
+
+P5 closes through the fully qualified Q4_K_S model representation, not a
+prompt-conditioned route. The 0.835-GiB smaller planned weight payload plus
+three exact representation-independent policy transfers—qmicro Q4 gate/up+
+SiLU, Q4 down+residual, and fixed-H5120 norms—move matched 512/128 AR
+**12.42932 -> 13.06854 tok/s (+5.143%)**. Clean commit `3118943eb` publishes
+512/1K/4K at **13.03883/12.86679/13.02544 tok/s**, respectively
+**2.162%/1.156%/3.637%** above frozen clean llama Vulkan and further above
+llama HIP; prefill also beats both backends at every required shape. Natural
+true AR is **13.33276 tok/s**
+with identical trajectories across all 30 requests and all categories, versus
+same-file Q4_K_S llama HIP/Vulkan at **5.53853/7.51888 tok/s**. That
+publication also exposed a native rows2-4 gate/up arithmetic mismatch on
+`general_ja_plan` and `general_ja_explain`; task 23 subsequently repairs it with
+the exact shared-weight Q8_1x2 rowtile documented under P6.
+Evidence:
+[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
+[`Q4_K_S true-AR policy retention`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json), and
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
+
+The campaign closes on 2026-08-17 at merged commit `20e5106da`. One clean
+refresh per scope confirms every milestone on the final source: 512/1K/4K
+prefill **379.398/376.554/369.755 tok/s** and AR **13.1014/12.9231/13.0953
+tok/s** beat both frozen llama backends at every shape (+0.479-7.653% prefill,
++1.599-4.190% AR over the faster comparator); natural true AR is
+**13.36641 tok/s**; exact native B3 is **23.85263 tok/s / 1.7845x own AR**
+(train 1.8113x, heldout 1.7458x; every category above 1.52x), **21.48%** above
+the correctness-valid llama HIP B3 row. The retained task-24 memory package
+costs **-1.41%** B3 versus the pre-merge 24.19347 row while lifting AR and
+keeping process GTT at **15.275/15.710/15.727 GiB** (shapes) and **15.899
+GiB** (B3), below every lower valid llama row. All trajectories, acceptance
+decisions, and teardowns are exact, and the milestone pytest tier passes with
+only host-inapplicable gfx1100-only skips. Evidence:
+[`G6 closure`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json).
+
+This document is the closed campaign record. Section 2 freezes the clean G0
+snapshot used as the optimization denominator; it is not itself an optimization
+claim.
 
 Related authorities:
 
@@ -643,6 +896,18 @@ keeps the prior Q8_1x2 owner; the final policy changes serial true AR only.
 Evidence:
 [`Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
 
+The 2026-08-16 production-numerics rebase supersedes that Q4_K_M serial-c1
+owner selection without invalidating the historical measurement. Against the
+current registered exact local32 dual+SiLU owner, the changed route passes a
+clean 18-prompt/450-row strict-teacher gate (max KL `0.0008333`, `99.778%`
+top-1, exact three-run repeats) but loses seven same-session p512/d128 pairs at
+`0.998071x` with one win. Exact local32 is therefore restored as the Q4_K_M
+serial-c1 package default; its native B1 retains the separately qualified
+non-split Q8_1x2 owner. The selected Q4_K_S representation independently keeps
+split-weight serial c1 and row-independent native rows2-4 under its exact gates.
+Evidence: [`strict requalification`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json)
+and [`current A/B`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json).
+
 Fresh graph/API census is closed as a P5 route. A compiler-clean selected-region
 trace assigns 96.01% of measured wall to kernels, but widening the existing
 exact device-feedback graph from one step to 2/4/8 steps reduces launches
@@ -691,6 +956,32 @@ sidecar. Evidence:
 [`first qmicro Q4 split-weight rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json) and
 [`wave-shuffled qmicro operation rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-wave-meta-rejected.json).
 
+A later materially different sole-payload dataflow resolves that rejection.
+Direct compact-metadata consumers change actual c1 **1.423808 -> 1.381499 ms
+(1.03063x, 45/45)** and rows2-4 aggregate **4.279782 -> 4.152054 ms
+(1.03076x, 135/135)**, all BF16-bit exact. Direct dual WMMA wins at 512/1K;
+at 4K, expanding only the compact coefficients once into the already-dead FFN
+scratch plane changes three actual pairs **161.01965 -> 160.17212 ms (1.00529x,
+32/45)**. The 128 gate/up weights therefore replace standard T16 with sole
+qmicro, removing **178,257,920 bytes / 170 MiB** without a sidecar or new
+workspace.
+
+The complete-model gate is positive at every shape: AR changes
+**12.36119/12.18945/12.34224 -> 12.48862/12.30596/12.46215 tok/s
+(+1.031%/+0.956%/+0.972%)** and prefill changes
+**400.234/391.159/385.116 -> 401.870/392.140/385.329 tok/s
+(+0.409%/+0.251%/+0.055%)** at 512/1K/4K. Natural AR improves
+**12.58125 -> 12.71731 (+1.082%)** with every full/train/heldout/category scope
+positive. Native B1 improves **18.83154 -> 19.00472 (+0.920%)** with exact
+30/30 AR and B1 trajectories, 339/393 accepted/proposed tokens, 786 target
+rows, exact GPU/CPU decisions, and zero teardown. Clean commit `9c649e28d`
+publishes **402.062/391.452/385.780 prefill tok/s**,
+**12.4966/12.3186/12.4673 AR tok/s**, and **17.073/17.555/19.931-GiB** process
+GTT at 512/1K/4K. AR beats clean llama HIP by **2.847%/2.106%/8.334%** and
+remains **0.804-3.153%** behind Vulkan, so P5 remains open. Evidence:
+[`sole qmicro gate/up retain`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json)
+and [`clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-qmicro-clean-publication.json).
+
 A free-producer bound also closes cross-kernel Q6 activation fusion. The
 existing planar-Q6 Q8_1/dp4a consumer is timed with Q8 quantization performed
 once before all warmups and samples; best t256 is **0.993641 -> 0.990665 ms
@@ -722,7 +1013,88 @@ Transient code is removed and the retained split-weight kernel keeps direct
 standard-T16 metadata loads. Evidence:
 [`packed Q4 metadata rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-packed-meta-broadcast-rejected.json).
 
+The existing exact planar-Q6 producer-owned top-1 route also loses on the
+Qwen3.8 root. Its one value/index pair per 16-logit tile removes the separate
+full-logit argmax scan but adds one comparison and tile publication to every
+root workgroup. On the actual 994.629-MiB K5,120/N248,320 head, the complete
+boundary changes **4.591176 -> 4.603906 ms (0.99723x, 4/15 wins)** while all
+FP32 logits, winner IDs, and winner-value bits remain identical. That projects
+a **0.0158%** selected-wall regression, so serial AR retains the full-logit
+producer plus generic argmax. Evidence:
+[`Q6 root top-1 rejection`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-root-top1-rejected.json).
+
+The next distinct boundary transfers the retained fixed-hidden wave norm
+premise from H1024 to H5120 without transferring its reduction association.
+Each local256 thread caches 20 values, but the first three reduction levels are
+reconstructed from immutable shared partials so the complete generic FP32 tree
+remains exact; only the final five levels use wave32 exchanges. Across all 64
+attention and 64 post-attention actual weights, standalone/add norm improve
+**0.60341 -> 0.17357** and **0.63016 -> 0.18538 ms/token**; combined improves
+**1.23268 -> 0.35870 ms/token (3.4365x, 15/15)** with zero BF16 mismatches.
+
+The exact gfx1151 dense-H5120/Q4/rows1 policy improves complete graph AR
+**12.05663 -> 12.23245 (+1.458%)** at 512, **11.90223 -> 12.06500 (+1.368%)**
+at 1K, and **12.05091 -> 12.21721 (+1.380%)** at 4K. Natural AR improves
+**12.28760 -> 12.45494 (+1.362%)** with every train/heldout/category scope
+positive; native B1 is non-regressive with identical acceptance and target-row
+counts. Prefill is positive at all shapes, tracked/process peaks are identical,
+and no workspace or graph node is added. Generic rows>1, Q8, output-norm,
+other-model, and peer-backend fallbacks remain registered. Development rows now
+meet clean llama HIP across the repeated set and natural AR but remain
+**2.52-5.15%** below Vulkan, so P5 remains open. Evidence:
+[`fixed-H5120 norm decode`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
+
+The tracked-clean `15a2ca45b` repeat publishes
+**399.836/390.793/384.712 prefill tok/s** and
+**12.2099/12.0514/12.2095 AR tok/s** at 512/1K/4K. All CVs are below 0.046%,
+all IDs and peaks are stable, and teardown is zero. Clean AR beats HIP by
+**0.488%** at 512 and **6.095%** at 4K, but the noise-level development edge at
+1K does not reproduce: clean 1K remains **0.109%** behind HIP. Vulkan remains
+**4.333%/5.254%/2.854%** ahead, so P5 stays open. Evidence:
+[`post-norm clean publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-publication.json).
+
+A clean selected-region rerank confirms the retained mechanism end to end:
+selected kernel wall falls **80.78118 -> 79.30459 ms/token (-1.828%)** and
+profiled host decode falls **84.21668 -> 82.72545 ms/token (-1.771%)**, with
+exactly **934 launches/token** before and after. Fixed plus output norm now
+costs only **0.29792 ms/token / 0.376%**. Q4 dual/single projections own
+**62.673%** combined, while the kernel-to-host residual is **3.42086 ms/token**.
+Q4 geometry, Q8 activation, and same-payload metadata publication are closed;
+the rerank's requirement for a materially new sole-payload native/prefill
+dataflow is satisfied by the later retained qmicro route above. Wider graph
+replay is also closed. Refresh the selected-region profile after the qmicro
+commit before choosing another residual-wall device-scheduling or fusion
+premise. Evidence:
+[`post-norm decode profile`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-post-norm-decode-profile.json).
+
 ### P6 — Exact B3 MTP
+
+P6 is retained complete. A same-snapshot bisect localized the Q4_K_S native
+trajectory difference to dense FFN gate/up+SiLU: rows2-4 used the close but
+non-identical direct-BF16 qmicro rowtile, while scalar AR used the Q8_1x2
+split-weight owner. Serializing that boundary made every one of 64 layer
+outputs, state/KV journals, hidden seeds, and target top-1 bits exact.
+
+The retained `dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out` owner preserves
+the c1 thread ownership, dp4a/FMA order, wave tree, BF16 gate/up round trips,
+and SiLU/store association for each row while sharing each compact weight
+traversal. It is scoped only to Q4_K_S H5120/N17408 native rows2-4 and adds no
+persistent or workspace bytes. Q4_K_M, rows1, rows5+, prefill, peers, and shape
+misses retain their prior owners and primitive fallbacks.
+
+The complete ten-prompt one-run gate measures true AR **13.27259**, B1
+**19.92338**, B2 **23.36432**, and B3 **24.19347 tok/s**. B3 is **1.8228x**
+own AR, **24.30803/24.02365** on train/heldout, and
+**28.78902/20.36499/21.50307/24.04568** across code/general-English/
+general-Japanese/mixed categories. All 40 mode/prompt trajectories match true
+AR exactly and every GPU accept decision matches CPU. B3 exceeds the frozen
+correctness-valid llama HIP row by **23.218%**; the faster Vulkan
+**26.10541-tok/s** row remains correctness-invalid and is only the disclosed
+stretch target. Tracked peak is **16.914 GiB** with zero teardown; task 24 owns
+whole-GTT parity. Focused validation is 7/7 passed, and cache-only
+`rocprofv3` names the expected rows3 kernel at 120 VGPR, 512-byte LDS, zero
+scratch, and 0.462-0.465 ms on an actual layer-0 pair. Evidence:
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
 B3 remains the production budget. Serial-exact B4 is a correctness route only:
 on gfx1151 it measured 4.586 tok/s for Qwen3.8, 76.85% below graph-backed B3.
@@ -762,6 +1134,35 @@ The gfx1100 arena thresholds are references, not copied values. On an APU,
 measure tracked ownership, GTT delta, RSS, system available, transient high
 water, and teardown. Reject a lower-live-memory route that raises peak or
 regresses complete wall beyond the frozen guard.
+
+The retained task-24 candidate closes that ladder without keeping any unsafe
+alias. A Q4_K_S/H5120 private-c1 policy widens the immutable-weight arena to the
+80-MiB inventory crossover (**849 logical allocations, two final physical
+weight owners** after host embedding), enables the existing 188-range decode-
+scratch owner, and maps an anonymous byte-for-byte **715,161,600-byte** Q4
+embedding copy. Native B1-B3 allocates only the initial rollback state because
+committed rows already live in the target session journal; serial-exact and B4
+keep all row copies. At 4K only, every bulk-prefill field remains dedicated but
+exact outer chunks cap scratch at 1,024 rows.
+
+One right-sized process per shape with continuous GTT/RSS/system sampling
+measures **15.275/15.710/15.727 GiB** process-GTT delta at 512/1K/4K versus the
+lower llama HIP **15.785/15.816/16.004 GiB**. Tracked peak falls from the clean
+Q4_K_S **15.729/16.147/18.465** to **15.063/15.481/15.494 GiB**. Sampled
+prefill moves only **-0.338%/-0.306%/-0.248%**, AR moves
+**+0.077%/+0.084%/+0.096%**, every final token remains 9707, and teardown is
+zero. Exact B3 process GTT is **15.899 GiB** versus llama HIP's **16.358 GiB**;
+all ten trajectories and GPU/CPU acceptance decisions remain exact. An adjacent
+unsampled host/device embedding control is **+0.012% AR / -0.027% B3**, inside
+the frozen 1% guard.
+
+Both owner-slot and single-arena bulk aliases are rejected because they changed
+the dedicated oracle logit **25.418247 -> 22-23** despite sometimes preserving
+top-1. Priority recoloring, hidden reuse, direct file-backed mmap registration,
+and short-session liveness are rejected for trajectory corruption. The exact
+producer-folded journal is rejected for about 4% verifier-wall cost. Only the
+safe owners above remain. Evidence:
+[`retained G5 candidate`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json).
 
 ---
 
@@ -918,12 +1319,12 @@ Do not start or repeat these without a new measured complete-owner premise:
 | **G0 Baseline frozen — complete 2026-08-15** | Clean three-engine 512/1K/4K + natural AR/B3 + matched memory, route census, and semantic ledgers. |
 | **G1 Single-layout parity — complete 2026-08-15** | Q4/Q6/Q5 compressed ownership is independently gated; alternate/duplicate bytes are zero; complete shapes and B3 are correct. |
 | **G2 Prefill win — complete 2026-08-16** | Clean `a06589f34` reaches 399.031/391.276/385.330 tok/s and beats both llama backends at all three shapes with retained correctness and zero teardown. |
-| **G3 AR win** | hipEngine beats both backends at all three shape-AR rows and natural true AR. |
-| **G4 Exact MTP win** | Exact full-suite B3 beats every correctness-valid llama backend and own AR, with all split/category disclosures. |
-| **G5 Memory win** | Matched process GTT delta is <= the lower llama backend at all shapes and selected B3; tracked teardown is zero. |
+| **G3 AR win — complete 2026-08-16** | Clean Q4_K_S beats both backends at all three shape-AR rows and natural true AR. |
+| **G4 Exact MTP win — complete 2026-08-17** | Exact Q4_K_S full-suite B3 is 24.19347 tok/s / 1.8228x own AR, 23.218% above correctness-valid llama HIP, with all split/category disclosures and GPU/CPU acceptance agreement. |
+| **G5 Memory win — complete 2026-08-17** | Clean post-commit refresh at `20e5106da` confirms process GTT **15.275/15.710/15.727 GiB** at 512/1K/4K and **15.899 GiB** at exact B3, below every lower valid llama row with exact outputs and zero teardown. |
 | **K-G1 INT8 working-set support — blocked 2026-08-15** | No bounded representation passes the required native 512 -> 1K quality transfer; BF16 remains supported. |
 | **K-G2 INT8 long support** | Independent 32K/128K natural quality and real 256K capacity/runtime gates pass. |
-| **G6 Closure** | G2-G5 pass, applicable INT8 status is accurately published, no unresolved campaign refactor debt, final tests/rollups committed and pushed. |
+| **G6 Closure — complete 2026-08-17** | G2-G5 pass on the one clean retained source `20e5106da` with exact outputs, acceptance, and zero teardown; the full pytest tier passes with only host-inapplicable gfx1100-only skips; INT8 status is published accurately; campaign refactor debt is explicit seams with triggers (the shared 80-MiB arena env seam still awaits the pending gfx1100 cumulative confirmation); rollups are committed and pushed. Evidence: [`G6 closure`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json). |
 
 A milestone is blocked, not complete, if one column fails. Wins in prefill, AR,
 MTP, or memory do not hide another failure.

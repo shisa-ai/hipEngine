@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import hipengine.benchmark.provenance as provenance_module
 from hipengine.benchmark.provenance import (
     _detect_rocm_version,
     collect_artifact_provenance,
@@ -92,8 +93,12 @@ def test_rocm_version_prefers_active_hipcc_over_host_opt_rocm(
     ) == "HIP version: 7.15.0-0000000"
 
 
-def test_artifact_provenance_resolves_auto_backend_and_validates_schema(tmp_path: Path) -> None:
+def test_artifact_provenance_resolves_auto_backend_and_validates_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     repo = _repo(tmp_path)
+    monkeypatch.setattr(provenance_module.socket, "gethostname", lambda: "zbook-test")
     model = repo / "model.gguf"
     model.write_bytes(b"tiny-model")
 
@@ -117,7 +122,8 @@ def test_artifact_provenance_resolves_auto_backend_and_validates_schema(tmp_path
 
     assert validate_artifact_provenance(provenance, require_model=True) == provenance
     assert provenance["kind"] == "hipengine_artifact_provenance"
-    assert provenance["schema_version"] == 1
+    assert provenance["schema_version"] == 2
+    assert provenance["host_name"] == "zbook-test"
     assert provenance["configured_backend"] == "auto"
     assert provenance["resolved_backend"] == "hip_gfx1151"
     assert provenance["target_arch"] == "gfx1151"
@@ -198,6 +204,13 @@ def test_json_schema_tracks_the_canonical_provenance_contract() -> None:
     )
 
     assert schema["properties"]["kind"] == {"const": "hipengine_artifact_provenance"}
-    assert schema["properties"]["schema_version"] == {"const": 1}
-    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["properties"]["schema_version"] == {"enum": [1, 2]}
+    assert "host_name" in schema["properties"]
+    assert "host_name" not in schema["required"]
+    assert schema["allOf"] == [
+        {
+            "if": {"properties": {"schema_version": {"const": 2}}},
+            "then": {"required": ["host_name"]},
+        }
+    ]
     assert schema["additionalProperties"] is False

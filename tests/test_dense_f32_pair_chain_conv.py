@@ -13,15 +13,19 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv as dense_gemv_module
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_gemv_bf16_f32w_bf16_out,
+    dense_pair_gemv_bf16_f32w_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn import conv as conv_module
-from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.kernels.registry import KernelKey, is_registered, register, resolve
 from hipengine.loading.materialize import float_array_to_bf16_bits
+from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_F32
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime import gguf_linear as gguf_linear_module
+from hipengine.runtime import qwen35_gguf_runner as qgr
 
 _COMPOSITE_LAYER = "linear_attn_alpha_beta+chain_conv+snapshot"
 _COMPOSITE_VARIANT = "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop"
@@ -30,6 +34,15 @@ _COMPOSITE_KEY = KernelKey(
     _COMPOSITE_LAYER,
     "f32",
     _COMPOSITE_VARIANT,
+)
+_SERIAL_LAYER = "linear_attn_alpha_beta+conv_decode"
+_SERIAL_VARIANT = "bf16_k5120_n48_c10240_k4_c1"
+_SERIAL_KEY = KernelKey("hip_gfx1100", _SERIAL_LAYER, "f32", _SERIAL_VARIANT)
+_GFX1151_SERIAL_KEY = KernelKey(
+    "hip_gfx1151",
+    _SERIAL_KEY.layer,
+    _SERIAL_KEY.quant,
+    _SERIAL_KEY.variant,
 )
 
 
@@ -59,7 +72,26 @@ def _composite_wrapper():
     return wrapper
 
 
-def test_composite_registers_only_on_screened_gfx1100_backend() -> None:
+def _serial_wrapper():
+    wrapper = getattr(
+        conv_module,
+        "qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w",
+        None,
+    )
+    assert callable(wrapper), "serial alpha/beta plus Conv wrapper is not implemented"
+    return wrapper
+
+
+def _fake_weight(ptr: int, *, backend: str = "hip_gfx1151", quant_key: str = "f32"):
+    allocation = SimpleNamespace(tensor=SimpleNamespace(ptr=int(ptr)))
+    return SimpleNamespace(
+        backend=backend,
+        spec=SimpleNamespace(layout=LAYOUT_DENSE_F32, quant_key=quant_key),
+        allocation=lambda _name="raw": allocation,
+    )
+
+
+def test_composite_and_serial_registration_are_independently_screened() -> None:
     conv_module.register_qwen35_linear_attn_conv_kernels(replace=True)
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -79,6 +111,23 @@ def test_composite_registers_only_on_screened_gfx1100_backend() -> None:
             _COMPOSITE_KEY.variant,
         )
     )
+    for key in (_SERIAL_KEY, _GFX1151_SERIAL_KEY):
+        assert resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        ) is _serial_wrapper()
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+        (),
+    ) == frozenset({(1, 5_120, 48, 10_240, 4)})
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+        (),
+    ) == ()
 
 
 def test_composite_wrapper_uses_one_symbol_and_validates_screened_shape(
@@ -137,6 +186,108 @@ def test_composite_stays_primitive_only_after_runtime_wall_rejection() -> None:
         gguf_linear_module,
         "launch_gguf_linear_pair_chain_conv_snapshot",
     )
+
+
+def test_serial_wrapper_uses_one_symbol_and_validates_exact_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def signed(_library, symbol, _argtypes, _restype):
+        def launch(*args):
+            calls.append((symbol, args))
+            return 0
+
+        return launch
+
+    monkeypatch.setattr(conv_module, "signed_kernel_fn", signed)
+    wrapper = _serial_wrapper()
+    runtime = SimpleNamespace(check=lambda err: pytest.fail(f"unexpected HIP error {err}"))
+    wrapper(
+        *range(10, 19),
+        5_120,
+        48,
+        10_240,
+        4,
+        stream=17,
+        library=object(),
+        runtime=runtime,
+    )
+
+    assert [symbol for symbol, _args in calls] == [
+        "hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w"
+    ]
+    assert tuple(int(value) for value in calls[0][1][9:13]) == (5_120, 48, 10_240, 4)
+    assert int(calls[0][1][13]) == 17
+
+    invalid = (
+        ((4_096, 48, 10_240, 4), "in_features must equal 5120"),
+        ((5_120, 32, 10_240, 4), "out_features must equal 48"),
+        ((5_120, 48, 8_192, 4), "channels must equal 10240"),
+        ((5_120, 48, 10_240, 3), "kernel_size must equal 4"),
+    )
+    for dimensions, message in invalid:
+        with pytest.raises(ValueError, match=message):
+            wrapper(*range(10, 19), *dimensions)
+    with pytest.raises(ValueError, match="threads must equal 256"):
+        wrapper(*range(10, 19), 5_120, 48, 10_240, 4, threads=128)
+
+
+def test_serial_route_is_capability_shape_and_registry_qualified() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    original = resolve(
+        backend=_GFX1151_SERIAL_KEY.backend,
+        layer=_GFX1151_SERIAL_KEY.layer,
+        quant=_GFX1151_SERIAL_KEY.quant,
+        variant=_GFX1151_SERIAL_KEY.variant,
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def serial(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    route = getattr(qgr, "_try_launch_dense_f32_alpha_beta_conv_decode", None)
+    assert callable(route), "serial alpha/beta plus Conv runtime route is not implemented"
+    register(_GFX1151_SERIAL_KEY, serial, replace=True)
+    try:
+        common = dict(
+            weight_a=_fake_weight(20),
+            weight_b=_fake_weight(30),
+            norm_ptr=10,
+            out_a_ptr=40,
+            out_b_ptr=50,
+            hidden_states_ptr=60,
+            conv_state_ptr=70,
+            conv_weight_ptr=80,
+            conv_out_ptr=90,
+            in_features=5_120,
+            out_features=48,
+            channels=10_240,
+            kernel_size=4,
+            backend="hip_gfx1151",
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        assert route(rows=1, **common)
+        assert not route(rows=2, **common)
+        mismatched = {**common, "out_features": 47}
+        assert not route(rows=1, **mismatched)
+        assert not route(
+            rows=1,
+            weight_a=_fake_weight(20, quant_key="gguf_q4_k"),
+            **{key: value for key, value in common.items() if key != "weight_a"},
+        )
+    finally:
+        register(_GFX1151_SERIAL_KEY, original, replace=True)
+
+    assert calls == [
+        (
+            (10, 20, 30, 40, 50, 60, 70, 80, 90, 5_120, 48, 10_240, 4),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
 
 
 def _softmax_kl_top1(expected: np.ndarray, actual: np.ndarray) -> tuple[float, float]:
@@ -335,5 +486,159 @@ def test_composite_is_three_primitive_bit_exact_and_passes_cpu_gate(rows: int) -
     np.testing.assert_array_equal(candidate_snapshot.view(np.uint32), base_state.view(np.uint32))
     np.testing.assert_allclose(candidate_conv, expected_conv, rtol=2.0e-6, atol=2.0e-7)
     conv_kl, conv_top1 = _softmax_kl_top1(expected_conv, candidate_conv)
+    assert conv_kl <= 0.05
+    assert conv_top1 >= 0.90
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_serial_composite_is_pair_plus_inplace_conv_bit_exact_and_passes_cpu_gate() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    dense_library = dense_gemv_module.build_dense_gemv(load=True)
+    conv_library = conv_module.build_qwen35_linear_attn_conv(load=True)
+    serial = _serial_wrapper()
+    in_features = 5_120
+    out_features = 48
+    channels = 10_240
+    kernel_size = 4
+    rng = np.random.default_rng(0xC138)
+    norm_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.25, size=(1, in_features)).astype(np.float32)
+    )
+    weight_a = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float32)
+    weight_b = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float32)
+    hidden_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.08, size=(1, channels)).astype(np.float32)
+    )
+    base_state = rng.normal(0.0, 0.04, size=(channels, kernel_size)).astype(np.float32)
+    conv_weight = rng.normal(0.0, 0.06, size=(channels, kernel_size)).astype(np.float32)
+
+    arrays = {
+        "control_a": np.empty((1, out_features), dtype=np.uint16),
+        "control_b": np.empty((1, out_features), dtype=np.uint16),
+        "candidate_a": np.empty((1, out_features), dtype=np.uint16),
+        "candidate_b": np.empty((1, out_features), dtype=np.uint16),
+        "control_state": np.array(base_state, copy=True),
+        "candidate_state": np.array(base_state, copy=True),
+        "control_conv": np.empty((1, channels), dtype=np.float32),
+        "candidate_conv": np.empty((1, channels), dtype=np.float32),
+    }
+    buffers = []
+
+    def device(array: np.ndarray):
+        allocation = malloc(array.nbytes, runtime=runtime)
+        buffers.append(allocation)
+        copy_host_to_device(
+            allocation,
+            host_array_ptr(np.ascontiguousarray(array)),
+            runtime=runtime,
+        )
+        return allocation
+
+    def empty(array: np.ndarray):
+        allocation = malloc(array.nbytes, runtime=runtime)
+        buffers.append(allocation)
+        return allocation
+
+    try:
+        dnorm = device(norm_bits)
+        dwa = device(weight_a)
+        dwb = device(weight_b)
+        dhidden = device(hidden_bits)
+        dconv_weight = device(conv_weight)
+        dcontrol_state = device(arrays["control_state"])
+        dcandidate_state = device(arrays["candidate_state"])
+        dcontrol_a = empty(arrays["control_a"])
+        dcontrol_b = empty(arrays["control_b"])
+        dcandidate_a = empty(arrays["candidate_a"])
+        dcandidate_b = empty(arrays["candidate_b"])
+        dcontrol_conv = empty(arrays["control_conv"])
+        dcandidate_conv = empty(arrays["candidate_conv"])
+
+        dense_pair_gemv_bf16_f32w_bf16_out(
+            dnorm.ptr,
+            dwa.ptr,
+            dwb.ptr,
+            dcontrol_a.ptr,
+            dcontrol_b.ptr,
+            1,
+            in_features,
+            out_features,
+            library=dense_library,
+            runtime=runtime,
+        )
+        conv_module.qwen35_linear_attn_conv_decode_bf16(
+            dhidden.ptr,
+            dcontrol_state.ptr,
+            dconv_weight.ptr,
+            dcontrol_conv.ptr,
+            channels,
+            kernel_size,
+            library=conv_library,
+            runtime=runtime,
+        )
+        serial(
+            dnorm.ptr,
+            dwa.ptr,
+            dwb.ptr,
+            dcandidate_a.ptr,
+            dcandidate_b.ptr,
+            dhidden.ptr,
+            dcandidate_state.ptr,
+            dconv_weight.ptr,
+            dcandidate_conv.ptr,
+            in_features,
+            out_features,
+            channels,
+            kernel_size,
+            library=conv_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        for name, allocation in (
+            ("control_a", dcontrol_a),
+            ("control_b", dcontrol_b),
+            ("candidate_a", dcandidate_a),
+            ("candidate_b", dcandidate_b),
+            ("control_state", dcontrol_state),
+            ("candidate_state", dcandidate_state),
+            ("control_conv", dcontrol_conv),
+            ("candidate_conv", dcandidate_conv),
+        ):
+            copy_device_to_host(host_array_ptr(arrays[name]), allocation, runtime=runtime)
+    finally:
+        for allocation in reversed(buffers):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(arrays["candidate_a"], arrays["control_a"])
+    np.testing.assert_array_equal(arrays["candidate_b"], arrays["control_b"])
+    np.testing.assert_array_equal(
+        arrays["candidate_state"].view(np.uint32),
+        arrays["control_state"].view(np.uint32),
+    )
+    np.testing.assert_array_equal(
+        arrays["candidate_conv"].view(np.uint32),
+        arrays["control_conv"].view(np.uint32),
+    )
+
+    norm = bf16_to_float32(norm_bits)
+    expected_pair = np.concatenate((norm @ weight_a.T, norm @ weight_b.T), axis=-1)
+    actual_pair = np.concatenate(
+        (bf16_to_float32(arrays["candidate_a"]), bf16_to_float32(arrays["candidate_b"])),
+        axis=-1,
+    )
+    pair_kl, pair_top1 = _softmax_kl_top1(expected_pair, actual_pair)
+    assert pair_kl <= 0.05
+    assert pair_top1 >= 0.90
+
+    expected_state, expected_conv = _cpu_chain_conv(hidden_bits, base_state, conv_weight)
+    np.testing.assert_array_equal(
+        arrays["candidate_state"].view(np.uint32),
+        expected_state[-1].view(np.uint32),
+    )
+    np.testing.assert_allclose(arrays["candidate_conv"], expected_conv, rtol=2.0e-6, atol=2.0e-7)
+    conv_kl, conv_top1 = _softmax_kl_top1(expected_conv, arrays["candidate_conv"])
     assert conv_kl <= 0.05
     assert conv_top1 >= 0.90

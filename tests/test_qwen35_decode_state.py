@@ -3102,6 +3102,7 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> Non
 
 
 def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_large_prefill_uses_fused_w4(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", "0")
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=16, activation_dtype="fp16")
@@ -3146,6 +3147,46 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_large_prefill_uses_
         scratch.shared_intermediate.ptr,
         16,
         768,
+    )
+
+
+def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", raising=False)
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=16, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (16, 4096), "fp16")
+    calls = []
+
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("unexpected_rotate1"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", record("rotate2"))
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", record("fusedw4_dual"))
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", record("fusedw4_single"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("unexpected_silu_separate"))
+    monkeypatch.setattr(qwen_runtime, "silu_mul_pair_rotate_out_fp16", record("silu_pair_rotate"), raising=False)
+
+    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=16)
+
+    assert out is scratch.shared_out
+    assert [label for label, _args, _kwargs in calls] == [
+        "rotate2",
+        "fusedw4_dual",
+        "silu_pair_rotate",
+        "fusedw4_single",
+    ]
+    fused_args = calls[2][1]
+    assert fused_args[:6] == (
+        scratch.shared_gate_out.ptr,
+        scratch.shared_up_out.ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.pairs").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.theta").ptr,
+        state.tensor("layers.0.mlp.shared_expert.down_proj.channel_scales").ptr,
+        scratch.shared_down_input.ptr,
     )
 
 

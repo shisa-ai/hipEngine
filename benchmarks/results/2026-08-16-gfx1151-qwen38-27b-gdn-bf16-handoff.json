@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_scalar_gdn_bf16_handoff",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "2458d45b393add65af53a73c955848d25072c06d",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "layers": 64,
+      "linear_attention_layers": 48,
+      "gdn_k_heads": 16,
+      "gdn_v_heads": 48,
+      "head_k_dim": 128,
+      "head_v_dim": 128
+    }
+  },
+  "change": {
+    "scope": "gfx1151 scalar rows1 recurrent GDN when the resident ssm_out weight is gguf_q5_k_t16_v1",
+    "control": "ordinary FP32-output GDN, standalone exact FP32-to-BF16 cast, then Q5T16 ssm_out",
+    "candidate": "the existing exact dual-output GDN writes both FP32 recurrent output and the RNE BF16 Q5T16 handoff",
+    "registry_key": "gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_lowp_f32_bf16_out",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "Missing registry keys, other quants/backends, and verifier-chain rows retain ordinary GDN plus standalone cast. The gfx1151 chain GDN+cast key remains deliberately excluded for the separate MTP gate."
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 870.0,
+      "kernel_ms_per_token": 78.958812625,
+      "host_ms_per_token": 82.18852431309642,
+      "gdn_dispatches": 768,
+      "gdn_total_ms": 18.061687,
+      "standalone_cast_dispatches": 768,
+      "standalone_cast_total_ms": 0.739389,
+      "gdn_to_q5_span_ms_per_token": 1.3638465000000002
+    },
+    "candidate": {
+      "dispatches_per_token": 822.0,
+      "kernel_ms_per_token": 79.0602865625,
+      "host_ms_per_token": 82.2360468118859,
+      "dual_output_gdn_dispatches": 768,
+      "dual_output_gdn_total_ms": 17.801495,
+      "standalone_cast_dispatches": 0,
+      "gdn_to_q5_span_ms_per_token": 1.208564375
+    },
+    "delta": {
+      "dispatches_per_token": -48.0,
+      "gdn_to_q5_span_ms_per_token": -0.15528212500000027,
+      "gdn_to_q5_span_percent": -11.385601312171145,
+      "gdn_to_q5_span_speedup": 1.1284847776519975,
+      "kernel_percent_single_order": 0.12851502463941955,
+      "host_percent_single_order": 0.05782133112457455
+    },
+    "interpretation": "The exact operation boundary and launch count improve. Aggregate single-order profiled kernel/host wall is noise-regressive and is not used as the retention claim; the counterbalanced unprofiled request gate decides complete-wall non-regression."
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "warmup_decode_tokens": 1,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.260793044824068, 12.262037989561795],
+      "median_tok_s": 12.261415517192932,
+      "decode_cv_percent": [0.007702760201376031, 0.00645118512393832]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.282389261904786, 12.281848975706234],
+      "median_tok_s": 12.282119118805511,
+      "decode_cv_percent": [0.03349534925350274, 0.027263142076910107]
+    },
+    "speedup": 1.0016885164346276,
+    "delta_percent": 0.16885164346276405,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714
+  },
+  "correctness": {
+    "production_shape_scalar_fp32_output_exact": true,
+    "production_shape_scalar_state_exact": true,
+    "production_shape_bf16_handoff_exact": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "natural_suite_not_repeated": "The promoted leaf is byte-identical to the retained GDN-plus-cast boundary and introduces no prompt-sensitive or changed-arithmetic policy; this artifact makes no natural-throughput claim."
+  },
+  "validation": {
+    "red": "The gfx1151 package test failed because the scalar GDN+cast registry key was deliberately excluded.",
+    "focused_cpu": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gfx1151_backend.py::test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles tests/test_qwen35_gguf_gdn_prefill_routing.py::test_gdn_output_boundary_is_selected_by_ssm_out_weight_plugin",
+    "focused_cpu_result": "2 passed",
+    "affected_cpu_bundle": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_qwen35_gguf_gdn_prefill_routing.py",
+    "affected_cpu_bundle_result": "95 passed",
+    "gpu_exact": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt python3 -m pytest -q tests/test_qwen35_linear_attn_chain_journal.py::test_chain_journal_production_shape_is_byte_exact_to_scalar_decode",
+    "gpu_exact_result": "2 passed",
+    "kernel_trace_gate": "The gfx1151 trace executes the expected dual-output GDN 768 times over 16 tokens with positive plausible durations and contains zero standalone FP32-to-BF16 casts."
+  },
+  "commands": {
+    "profile": "bash /tmp/qwen38-task22-gdn-cast-profile.sh",
+    "request_gate": "bash /tmp/qwen38-task22-gdn-cast-request.sh"
+  },
+  "evidence": {
+    "profile_summary": {"path": "/tmp/qwen38-task22-gdn-cast/profile-ab/summary.json", "sha256": "25a0ad1a054c435ad3b498ce46f80502e8f8f3bd1315af7bbca5eceddb4c7986", "bytes": 1855},
+    "operation_span": {"path": "/tmp/qwen38-task22-gdn-cast/profile-ab/operation-span.json", "sha256": "47f568afa1f673790e94752bfba4651a6a60c5af254121f1041b4330e67977dd", "bytes": 383},
+    "request_summary": {"path": "/tmp/qwen38-task22-gdn-cast/p512-ab/summary.json", "sha256": "4577f1ad27d7d3628e6949d01583fc81e9c89ae9e9dd07bef58ced6832b4f96d", "bytes": 2993},
+    "control_wrapper": {"path": "/tmp/qwen38-gdn-cast-control.py", "sha256": "22cd0f10717fcaa9d467c0290e587a5a2584d73bf937a290adc34307cd591f37", "bytes": 322}
+  },
+  "decision": "Retain the existing exact scalar GDN dual-output handoff on gfx1151. It removes 48 launches/token, reduces the measured GDN-to-Q5 operation span by 11.386%, and improves counterbalanced 512/128 AR by 0.169% with both candidate processes above both controls, exact outputs, identical peaks, and no new bytes. Keep verifier-chain ownership excluded until the separate MTP gate."
+}
