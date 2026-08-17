@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_fixed5120_norm_decode",
+  "status": "retained_default",
+  "publishable": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "base_commit": "b85ca3fd0fb432c3492f2e6e24594e3da8d8d831",
+    "tracked_tree_clean": false,
+    "require_cached_build": true,
+    "runtime_change_retained": true,
+    "lineage": "new in-tree fixed-H5120 sibling of the retained fixed-H1024 gfx1151 dataflow; no external kernel was ported",
+    "lineage_check": "blocked by the pre-existing missing /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "hidden_size": 5120,
+    "base_layers": 64
+  },
+  "candidate": {
+    "control": "generic local256 standalone RMSNorm and unrounded add+RMSNorm, with 256 shared partials and nine block barriers",
+    "path": "fixed c1/H5120 local256 kernels cache 20 FP32 values per thread, reconstruct the first three immutable generic tree levels from shared partials, and finish the remaining five levels with wave32 shuffles",
+    "preserved_boundary": "same per-thread accumulation, exact generic local256 FP32 addition tree, rsqrt, F32 norm weight, BF16 norm output, unrounded add normalization, and rounded BF16 residual output",
+    "scope": "gfx1151 dense-H5120 MOSTLY_Q4_K_M rows1 attention and post-attention norms only",
+    "fallbacks": "generic registered kernels for rows>1, Q8, output norm, other model geometries, and peer backends",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "graph_nodes_delta": 0
+  },
+  "leaf": {
+    "protocol": "64 actual attn_norm plus 64 actual post_attention_norm F32 weights, five warmups, 15 counterbalanced HIP-event samples, burst four",
+    "actual_weight_bytes": 2621440,
+    "actual_weight_sha256": "2b3e5ffbfe84cea0f75da13afdcb90f104c7d1b74f9884f9ddc8ab9b33d416fb",
+    "standalone_rms": {
+      "control_median_ms": 0.6034097671508789,
+      "candidate_median_ms": 0.17357449233531952,
+      "speedup": 3.4763735099117157,
+      "delta_ms": 0.4298352748155594,
+      "wins": "15/15"
+    },
+    "add_rmsnorm": {
+      "control_median_ms": 0.6301605105400085,
+      "candidate_median_ms": 0.18537700176239014,
+      "speedup": 3.3993456823070565,
+      "delta_ms": 0.4447835087776184,
+      "wins": "15/15"
+    },
+    "combined": {
+      "control_median_ms": 1.2326780557632446,
+      "candidate_median_ms": 0.35870125889778137,
+      "speedup": 3.436503288421743,
+      "delta_ms": 0.8739767968654633,
+      "wins": "15/15",
+      "projected_selected_4k_kernel_wall_delta_percent": 1.0819063881306177
+    }
+  },
+  "complete_shapes": {
+    "protocol": "token 9707 repeated, one same-shape warmup, three measured runs, persistent graph session, right-sized BF16 KV capacity, cached builds",
+    "rows": {
+      "512/128": {
+        "control_decode_tok_s": 12.05663134284792,
+        "candidate_decode_tok_s": 12.232449645415217,
+        "delta_percent": 1.4582705365010051,
+        "control_prefill_tok_s": 399.280845289916,
+        "candidate_prefill_tok_s": 399.8990098786547,
+        "prefill_delta_percent": 0.15481949510747217,
+        "llama_hip_decode_tok_s": 12.1506,
+        "candidate_vs_llama_hip_percent": 0.6736263675474197,
+        "llama_vulkan_decode_tok_s": 12.7629,
+        "candidate_vs_llama_vulkan_percent": -4.1561898517169515,
+        "tracked_peak_gib": 16.753218058496714,
+        "process_gtt_gib": 17.32250213623047
+      },
+      "1024/128": {
+        "control_decode_tok_s": 11.902227491904181,
+        "candidate_decode_tok_s": 12.065004679407142,
+        "delta_percent": 1.367619528476327,
+        "control_prefill_tok_s": 390.58089158512354,
+        "candidate_prefill_tok_s": 390.7020662748443,
+        "prefill_delta_percent": 0.031024223747611046,
+        "llama_hip_decode_tok_s": 12.0645,
+        "candidate_vs_llama_hip_percent": 0.004183177149008621,
+        "llama_vulkan_decode_tok_s": 12.7197,
+        "candidate_vs_llama_vulkan_percent": -5.147097184625871,
+        "tracked_peak_gib": 17.177651416510344,
+        "process_gtt_gib": 17.80492401123047
+      },
+      "4096/128": {
+        "control_decode_tok_s": 12.05091091961268,
+        "candidate_decode_tok_s": 12.217209963777597,
+        "delta_percent": 1.3799707364384295,
+        "control_prefill_tok_s": 384.7252059311471,
+        "candidate_prefill_tok_s": 385.0018104074558,
+        "prefill_delta_percent": 0.07189663480438035,
+        "llama_hip_decode_tok_s": 11.5081,
+        "candidate_vs_llama_hip_percent": 6.161833524018712,
+        "llama_vulkan_decode_tok_s": 12.5683,
+        "candidate_vs_llama_vulkan_percent": -2.793456841596742,
+        "tracked_peak_gib": 19.529302295297384,
+        "process_gtt_gib": 20.181175231933594
+      }
+    },
+    "correctness": "all 18 measured final IDs equal token 9707; finite logits; tracked peaks and process GTT are identical control versus candidate"
+  },
+  "natural_suite": {
+    "protocol": "all ten mtp-bench prompts, four categories, six train/four heldout, 25 visible outputs, three runs, exact native B1 guard",
+    "true_ar": {
+      "control_tok_s": 12.28760332769808,
+      "candidate_tok_s": 12.454942688398535,
+      "delta_percent": 1.3618551660375289,
+      "train_delta_percent": 1.3625301658896305,
+      "heldout_delta_percent": 1.3608429157153878,
+      "minimum_category_delta_percent": 1.2963721448608,
+      "candidate_vs_llama_hip_percent": 3.2372352717255914,
+      "candidate_vs_llama_vulkan_percent": -2.524721594308954
+    },
+    "native_b1_guard": {
+      "control_tok_s": 18.853663342679326,
+      "candidate_tok_s": 18.86474600445667,
+      "delta_percent": 0.058782537780111,
+      "accepted_draft_tokens_control": 339,
+      "accepted_draft_tokens_candidate": 339,
+      "proposed_draft_tokens_control": 393,
+      "proposed_draft_tokens_candidate": 393,
+      "target_forward_rows_control": 786,
+      "target_forward_rows_candidate": 786
+    },
+    "correctness": "30/30 true-AR and 30/30 B1 token trajectories, acceptance counts, cycle counts, and target-row counts match; all GPU acceptance decisions match CPU",
+    "tracked_peak_bytes": 18634821232,
+    "tracked_after_close_bytes": 0
+  },
+  "correctness": {
+    "actual_rms_bf16_mismatches": 0,
+    "actual_add_norm_bf16_mismatches": 0,
+    "actual_add_residual_bf16_mismatches": 0,
+    "actual_values_compared_per_output": 327680,
+    "synthetic_gpu_gate": "generic-kernel BF16 identity on random and BF16 edge inputs plus CPU-reference KL <= 0.05 and top-1 >= 90%",
+    "all_shape_ids_exact": true,
+    "all_natural_trajectories_exact": true
+  },
+  "rocprof": {
+    "trace": "/tmp/qwen38-task22-fixed5120-norm/rocprof/fixed5120_kernel_trace.csv",
+    "standalone": {
+      "kernel": "gguf_norm_fixed5120_wave256_kernel<false>",
+      "dispatches": 256,
+      "median_duration_us": 1.483,
+      "workgroup_x": 256,
+      "grid_x_threads": 256,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    },
+    "add_rmsnorm": {
+      "kernel": "gguf_norm_fixed5120_wave256_kernel<true>",
+      "dispatches": 256,
+      "median_duration_us": 1.643,
+      "workgroup_x": 256,
+      "grid_x_threads": 256,
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 1536,
+      "scratch_bytes": 0
+    }
+  },
+  "validation": {
+    "red": "new fixed5120 registry/preload test failed because both wrappers were absent; policy tests failed because dense-H5120 had no route",
+    "green": "81/81 affected fixed1024/fixed5120, gguf-ops, gfx1151 backend, and runtime-policy tests passed",
+    "correctness_gate_passed": true,
+    "rocprof_kernel_gate_passed": true,
+    "all_complete_shapes_positive": true,
+    "all_prefill_shapes_non_regressive": true,
+    "all_natural_ar_scopes_positive": true,
+    "native_rows_guard_non_regressive": true,
+    "zero_new_bytes": true
+  },
+  "commands": {
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt PYTHONPATH=. python3.12 -u /tmp/qwen38-task22-fixed5120-norm-leaf.py --warmups 5 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-fixed5120-norm/leaf.json",
+    "shape": "python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {512,1024,4096} --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build",
+    "natural": "python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build --output <path>",
+    "tests": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. python3 -m pytest -q tests/test_gguf_norm_residual_fixed5120.py tests/test_gguf_norm_residual_fixed1024.py tests/test_gguf_ops.py tests/test_gfx1151_backend.py tests/test_qwen35_gguf_prefill_scratch_liveness.py"
+  },
+  "evidence": {
+    "raw_leaf": {"path": "/tmp/qwen38-task22-fixed5120-norm/leaf.json", "sha256": "e3f0a09eb379b8c06edb715162ffcf11e3af77d631c75b06130662f3220ab6ae", "bytes": 4735},
+    "leaf_runner": {"path": "/tmp/qwen38-task22-fixed5120-norm-leaf.py", "sha256": "ebbc661b3278fed6be8aea0a9a791d5a07307c6232046650dcd0b9d09c954952", "bytes": 7151},
+    "rocprof_trace": {"path": "/tmp/qwen38-task22-fixed5120-norm/rocprof/fixed5120_kernel_trace.csv", "sha256": "180180d4e8b3bd000b52ae4eb16a8cd1ba73468c93f3895d061fdf9cd0add5d4", "bytes": 257946},
+    "shape_512_control": {"sha256": "7c4f2c88fb6c072cf58704ba16db02d69e60a67365fb741f781fba1b04fe6fea", "bytes": 454397},
+    "shape_512_candidate": {"sha256": "674564b26db761c23b3d7f2511b6651fca1adc6673448303fc6ef7d42e00fa64", "bytes": 454337},
+    "shape_1024_control": {"sha256": "9d286b60af2bf517ab556b218de1b2d45b44424eb0bd771a27e03bbc33951e7a", "bytes": 451541},
+    "shape_1024_candidate": {"sha256": "11e29bae9f6ee44f30e69316fed50a04ae6c27e7de728a4e16dd803150b544f7", "bytes": 451469},
+    "shape_4096_control": {"sha256": "9502bdb604cc4269a808ae9d74dc66ad255a5217906c02468d8afccec41c15c1", "bytes": 454196},
+    "shape_4096_candidate": {"sha256": "33338d8f987f65c3c62f27475800d9bf76ee6e70ea216f72cab74dd6b7ee556f", "bytes": 454121},
+    "natural_control": {"sha256": "d3a3b8350399665cf13a46b48ad0e616b582cd1d09ae74176978ad47a9a1e484", "bytes": 840618},
+    "natural_candidate": {"sha256": "05ecc0d2256c9e76b37cde160af44d92f658cebc5b39082d3c4ef6e00776472b", "bytes": 840723}
+  },
+  "decision": "Retain and default both fixed-H5120 rows1 norm leaves on the gfx1151 dense-H5120 Q4_K_M policy. The exact package wins every actual-weight leaf pair, improves all repeated and natural AR scopes, is non-regressive for prefill and native B1, adds no bytes or graph nodes, and preserves generic registered fallbacks. This is retained development evidence; a clean post-commit publication remains separate."
+}

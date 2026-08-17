@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_p5_q4_dense_paircoeff",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "base_commit": "4b3ecb4945e43d6f33b20273e4540f2a3cff28b8",
+    "development_worktree_dirty": true,
+    "require_cached_build": false,
+    "runtime_change_retained": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m"
+  },
+  "source_premise": {
+    "artifact": "benchmarks/results/2026-07-30-gfx1151-laguna-q4-t16-paircoeff-retained.json",
+    "laguna_adjacent_q_reuse_percent": 1.945,
+    "laguna_paircoeff_leaf_percent": 11.350804889717603,
+    "transfer_boundary": "same-layout adjacent packed-Q and aligned d/dmin/scale/min pair reuse"
+  },
+  "candidate": {
+    "control": "retained 128-thread standard-Q4T16 residual-Q8_1x2 split-weight dp4a+SiLU",
+    "path": "load each adjacent-column packed-Q byte, aligned d/dmin half pair, and scale/min byte pair once while preserving independent per-column arithmetic",
+    "preserved_boundary": "same resident payload, K ownership, Q8_1x2 producer, dp4a/FMA order, two-wave merge per weight, BF16 gate/up boundaries, and SiLU publication",
+    "new_resident_bytes": 0,
+    "new_workspace_bytes": 0,
+    "production_policy_added": false
+  },
+  "protocol": {
+    "layers": [0, 8, 63],
+    "shape_out_in": [17408, 5120],
+    "source_bytes_per_gate_up_pair": 100270080,
+    "resident_bytes_per_gate_up_pair": 103055360,
+    "warmups": 4,
+    "samples_per_layer": 15,
+    "burst": 4,
+    "timing": "counterbalanced HIP-event pairs including the common Q8_1x2 producer",
+    "cache_contract": "each 95.625-MiB actual gate/up source pair exceeds 64 MiB and 2x the 32-MiB MALL"
+  },
+  "results": [
+    {
+      "layer": 0,
+      "control_ms": 0.47791150212287903,
+      "candidate_ms": 0.4758477509021759,
+      "candidate_speedup": 1.0043369990018665,
+      "candidate_delta_percent": -0.4318270666296864,
+      "candidate_wins": "13/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 8,
+      "control_ms": 0.47778573632240295,
+      "candidate_ms": 0.4760127365589142,
+      "candidate_speedup": 1.0037246897557948,
+      "candidate_delta_percent": -0.3710867924052841,
+      "candidate_wins": "13/15",
+      "bf16_mismatches": 0
+    },
+    {
+      "layer": 63,
+      "control_ms": 0.47588273882865906,
+      "candidate_ms": 0.47411948442459106,
+      "candidate_speedup": 1.0037190085242076,
+      "candidate_delta_percent": -0.37052287469137024,
+      "candidate_wins": "12/15",
+      "bf16_mismatches": 0
+    }
+  ],
+  "family": {
+    "control_ms": 1.431579977273941,
+    "candidate_ms": 1.4259799718856812,
+    "candidate_speedup": 1.0039271276586406,
+    "candidate_delta_percent": -0.3911765655540633,
+    "candidate_wins": "38/45",
+    "all_layers_positive": true,
+    "projected_saved_ms_per_token": 0.12002161849239497,
+    "projected_selected_kernel_wall_percent": 0.1523595131134709,
+    "advance_threshold_percent": 1.0,
+    "projection_source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json"
+  },
+  "correctness": {
+    "red_collection_failed_before_wrapper_existed": true,
+    "green_synthetic_bit_exact": true,
+    "all_actual_bf16_exact": true,
+    "all_finite": true,
+    "max_abs": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "tracked_before_bytes": 0,
+    "tracked_after_bytes": 0
+  },
+  "commands": {
+    "red_green": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_t16_q4_dense_dual_q8_1x2_split_weight_paircoeff_is_bit_exact",
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt PYTHONPATH=. uv run python /tmp/qwen38-task22-q4-paircoeff-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --allow-dirty --output /tmp/qwen38-task22-q4-paircoeff/leaf.json"
+  },
+  "evidence": {
+    "raw_leaf": {
+      "path": "/tmp/qwen38-task22-q4-paircoeff/leaf.json",
+      "sha256": "63a5a4a8e6151d1d7c46c1c56e18b5b27b4750bc1b46a9936b1d6ed5dde7b369",
+      "bytes": 8142
+    },
+    "leaf_runner": {
+      "path": "/tmp/qwen38-task22-q4-paircoeff-leaf.py",
+      "sha256": "a640a99b1d56d389f87dd00b9e0348e71d2ff7a97f2421af0cb0a9db3b2d5caf",
+      "bytes": 15990
+    },
+    "transient_patch": {
+      "path": "/tmp/qwen38-task22-q4-paircoeff/transient.patch",
+      "sha256": "98d8283562c125719ae6dde78cc1bf32e81afcc8b0398396af9a32888be65c3d",
+      "bytes": 15821
+    }
+  },
+  "validation": {
+    "diagnostic_source_wrapper_and_test_removed": true,
+    "production_paths_match_base": true,
+    "full_model_gate_run": false
+  },
+  "decision": "Reject and restore the adjacent-pair payload-reuse specialization. It is exact and positive on all three actual layers, but the 0.393% leaf gain projects only 0.152% of selected 4K kernel wall, below the predeclared 1% operation-complete admission threshold. The Laguna 11.35% pair-coefficient win does not transfer materially to the dominant Qwen3.8 split-weight owner; retain the direct per-column standard-T16 loads."
+}

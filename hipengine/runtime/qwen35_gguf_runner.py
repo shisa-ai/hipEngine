@@ -309,6 +309,7 @@ from hipengine.runtime.gguf_linear import (
     Q6T16F16RocblasPrefillSession,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
+    gguf_native_batch_decode_enabled,
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
     launch_gguf_linear_residual,
@@ -2046,6 +2047,9 @@ class Qwen35GGUFFullStackRunner:
     host_token_embedding_mapped_weight: Qwen35GGUFDeviceWeight | None = field(
         default=None, init=False, repr=False
     )
+    host_token_embedding_mapped_storage: str | None = field(
+        default=None, init=False, repr=False
+    )
     host_token_embedding_registered_ptr: int = field(default=0, init=False, repr=False)
     _token_embedding_lock: object = field(default_factory=threading.Lock, init=False, repr=False)
     _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
@@ -2117,12 +2121,9 @@ class Qwen35GGUFFullStackRunner:
                         self.token_embedding_placement = "device"
                         return
                     raise ValueError("host token embedding was materialized on device")
-                mapped_host = bool(
-                    backend_package_capability(
-                        self.backend,
-                        "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
-                        False,
-                    )
+                mapped_host = _gguf_mapped_host_token_embedding_enabled(
+                    backend=self.backend,
+                    quant_key=token_weight.spec.quant_key,
                 )
                 supported_quants = {"gguf_q8_0"}
                 if mapped_host:
@@ -2161,7 +2162,12 @@ class Qwen35GGUFFullStackRunner:
 
         if self.runtime is None:
             raise RuntimeError("GGUF mapped host embedding requires a HIP runtime")
-        raw = np.asarray(raw)
+        raw, storage = _gguf_mapped_host_token_embedding_storage(
+            backend=self.backend,
+            raw=raw,
+        )
+        self.host_token_embedding_raw = raw
+        self.host_token_embedding_mapped_storage = storage
         if not raw.flags.c_contiguous:
             raise ValueError("GGUF mapped host embedding storage must be contiguous")
         host_ptr = int(raw.ctypes.data)
@@ -2200,6 +2206,7 @@ class Qwen35GGUFFullStackRunner:
     def _unmap_host_token_embedding(self) -> None:
         host_ptr = int(self.host_token_embedding_registered_ptr)
         self.host_token_embedding_mapped_weight = None
+        self.host_token_embedding_mapped_storage = None
         self.host_token_embedding_registered_ptr = 0
         if host_ptr and self.runtime is not None:
             self.runtime.host_unregister(host_ptr)
@@ -2263,6 +2270,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_full_attn_decode_batch_shared_native_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_k_grid_y_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_short_batch_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_qk_postprocess_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
     def _gdn_decode_output_cast_fn(self):
@@ -2428,6 +2436,39 @@ class Qwen35GGUFFullStackRunner:
                 missing="none",
             )
             self._gguf_full_attn_k_grid_y_batch_fn_cache = fn
+        return fn
+
+    def _full_attn_qk_postprocess_fn(self):
+        """Resolve the exact serial full-attention Q/K postprocess composite."""
+
+        missing = object()
+        fn = getattr(self, "_gguf_full_attn_qk_postprocess_fn_cache", missing)
+        if fn is missing:
+            assert self.weights is not None
+            cfg = self.weights.config
+            policies = backend_package_capability(
+                self.backend,
+                "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
+                {},
+            )
+            variant = (
+                policies.get(
+                    (1, cfg.head_count, cfg.head_count_kv, cfg.key_length)
+                )
+                if isinstance(policies, Mapping)
+                else None
+            )
+            fn = (
+                resolve(
+                    backend=self.backend,
+                    layer="split_qgate+head_rmsnorm+partial_rotary",
+                    quant="gguf_f32_weight",
+                    variant=str(variant),
+                )
+                if variant is not None
+                else None
+            )
+            self._gguf_full_attn_qk_postprocess_fn_cache = fn
         return fn
 
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
@@ -4372,6 +4413,14 @@ class Qwen35GGUFFullStackRunner:
             t_stage,
         )
         retained_spans = getattr(scratch, "retained_append_spans", None)
+        retained_decode_spans = getattr(scratch, "retained_decode_spans", None)
+        retained_decode_kernel = getattr(scratch, "retained_decode_kernel", None)
+        direct_retained_batch = bool(
+            rows > 1
+            and retained_spans is not None
+            and retained_decode_spans is not None
+            and callable(retained_decode_kernel)
+        )
         if retained_spans is None:
             qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
                 scratch.full_key.ptr,
@@ -4434,20 +4483,21 @@ class Qwen35GGUFFullStackRunner:
                     library=kv_write_library,
                     runtime=runtime,
                 )
-            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-                scratch.full_key.ptr,
-                scratch.full_v.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.append_spans,
-                rows,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
+            if not direct_retained_batch:
+                qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_v.ptr,
+                    scratch.key_cache.ptr,
+                    scratch.value_cache.ptr,
+                    scratch.append_spans,
+                    rows,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -4455,7 +4505,62 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_kv_write",
             t_stage,
         )
-        if max_context_len < 1024:
+        attention_route = "kv_live_spans_batch"
+        if direct_retained_batch:
+            assert retained_decode_spans is not None
+            metadata = retained_decode_spans.scale_metadata
+            retained_key_cache = getattr(scratch, "retained_key_cache", None)
+            retained_value_cache = getattr(scratch, "retained_value_cache", None)
+            num_splits = (max_context_len + int(scratch.block_size) - 1) // int(
+                scratch.block_size
+            )
+            if (
+                metadata is None
+                or retained_key_cache is None
+                or retained_value_cache is None
+            ):
+                raise RuntimeError("direct INT8 batch attention requires payload and scale planes")
+            if (
+                split_workspace is None
+                or int(split_workspace.rows) < rows
+                or int(split_workspace.num_splits) < num_splits
+            ):
+                raise NotImplementedError(
+                    "direct INT8 batch attention requires a row-sized split-K workspace"
+                )
+            retained_decode_kernel(
+                scratch.full_query.ptr,
+                retained_key_cache.ptr,
+                retained_value_cache.ptr,
+                metadata.k_scale.ptr,
+                metadata.v_scale.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                split_workspace.partial_out.ptr,
+                split_workspace.partial_m.ptr,
+                split_workspace.partial_l.ptr,
+                retained_decode_spans,
+                rows,
+                int(scratch.block_size),
+                num_splits,
+                int(scratch.block_size),
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                self.q_width,
+                self.q_width,
+                cfg.key_length,
+                1,
+                self.q_width,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            attention_route = "kv_live_spans_int8_batch"
+        elif max_context_len < 1024:
             context_batch = self._paged_attn_context_batch
             if not callable(context_batch):  # pragma: no cover - registry resolve is fail-closed
                 raise RuntimeError("paged context-batch attention kernel is unavailable")
@@ -4567,7 +4672,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
         )
-        return "kv_live_spans_batch"
+        return attention_route
 
     def _run_linear_attention_layer(
         self,
@@ -4683,27 +4788,51 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_gate")
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
-        self._run_linear_attention_alpha_beta_rows(
-            layer,
-            scratch.norm.ptr,
-            attn_norm_f32_ptr,
-            scratch,
-            rows=1,
-            stream=stream,
-            runtime=runtime,
+        alpha_beta_conv_fused = (
+            attn_norm_f32_ptr is None
+            and _try_launch_dense_f32_alpha_beta_conv_decode(
+                layer.weight("ssm_alpha"),
+                layer.weight("ssm_beta"),
+                scratch.norm.ptr,
+                linear_alpha_ptr,
+                linear_beta_ptr,
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                channels=self.linear_qkv_width,
+                kernel_size=cfg.ssm_conv_kernel,
+                backend=self.backend,
+                stream=stream,
+                runtime=runtime,
+            )
         )
+        if not alpha_beta_conv_fused:
+            self._run_linear_attention_alpha_beta_rows(
+                layer,
+                scratch.norm.ptr,
+                attn_norm_f32_ptr,
+                scratch,
+                rows=1,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_alpha_beta")
-        qwen35_linear_attn_conv_decode_bf16(
-            scratch.linear_qkv.ptr,
-            conv_state.ptr,
-            layer.weight("ssm_conv1d").allocation().tensor.ptr,
-            scratch.conv_out.ptr,
-            self.linear_qkv_width,
-            cfg.ssm_conv_kernel,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not alpha_beta_conv_fused:
+            qwen35_linear_attn_conv_decode_bf16(
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_conv")
         ssm_out_weight = layer.weight("ssm_out")
@@ -7432,43 +7561,66 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
-        qwen35_split_qgate_bf16(
-            scratch.full_q.ptr,
-            scratch.full_query_raw.ptr,
-            scratch.full_gate.ptr,
-            1,
-            cfg.head_count,
-            cfg.key_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        bf16_to_f32(
-            scratch.full_k.ptr,
-            scratch.full_key_raw.ptr,
-            self.kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
-        )
-        gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
-            scratch.full_query_raw.ptr,
-            scratch.full_key_raw.ptr,
-            layer.weight("attn_q_norm").allocation().tensor.ptr,
-            layer.weight("attn_k_norm").allocation().tensor.ptr,
-            scratch.cos_table.ptr,
-            scratch.sin_table.ptr,
-            scratch.position_tensor.ptr,
-            scratch.full_query.ptr,
-            scratch.full_key.ptr,
-            cfg.rms_norm_eps,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.rope_dimension_count,
-            scratch.max_positions,
-            stream=stream,
-            runtime=runtime,
-        )
+        qk_postprocess = self._full_attn_qk_postprocess_fn()
+        if qk_postprocess is None:
+            qwen35_split_qgate_bf16(
+                scratch.full_q.ptr,
+                scratch.full_query_raw.ptr,
+                scratch.full_gate.ptr,
+                1,
+                cfg.head_count,
+                cfg.key_length,
+                stream=stream,
+                runtime=runtime,
+            )
+            bf16_to_f32(
+                scratch.full_k.ptr,
+                scratch.full_key_raw.ptr,
+                self.kv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
+                scratch.full_query_raw.ptr,
+                scratch.full_key_raw.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            qk_postprocess(
+                scratch.full_q.ptr,
+                scratch.full_k.ptr,
+                layer.weight("attn_q_norm").allocation().tensor.ptr,
+                layer.weight("attn_k_norm").allocation().tensor.ptr,
+                scratch.cos_table.ptr,
+                scratch.sin_table.ptr,
+                scratch.position_tensor.ptr,
+                scratch.full_query.ptr,
+                scratch.full_key.ptr,
+                scratch.full_gate.ptr,
+                cfg.rms_norm_eps,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.rope_dimension_count,
+                scratch.max_positions,
+                stream=stream,
+                runtime=runtime,
+            )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
         key_cache, value_cache = scratch.full_cache(layer_id)
@@ -7936,6 +8088,8 @@ class Qwen35GGUFFullStackRunner:
                     post_norm_f32_ptr=post_norm_f32_ptr,
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
+                    gpu_stage_recorder=gpu_stage_recorder,
+                    stage_prefix=f"{stage_prefix}_moe",
                 )
             else:
                 self._run_post_attention_moe_rows(
@@ -7976,6 +8130,7 @@ class Qwen35GGUFFullStackRunner:
                 in {
                     "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
                     "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
+                    "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
                 }
             ),
             planes=2,
@@ -7995,6 +8150,10 @@ class Qwen35GGUFFullStackRunner:
             use_gemv_decode=(True if dense_decode_variant is not None else None),
             registered_decode_variant=dense_decode_variant,
             q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
+            pair_workspace_ptr=scratch.ffn_gate_up.ptr,
+            pair_workspace_nbytes=int(
+                getattr(scratch.ffn_gate_up, "nbytes", 0)
+            ),
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
@@ -8172,6 +8331,8 @@ class Qwen35GGUFFullStackRunner:
         post_norm_f32_ptr: int | None = None,
         next_norm_weight_ptr: int | None = None,
         next_norm_out_ptr: int | None = None,
+        gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        stage_prefix: str = "decode_ffn_moe",
     ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
@@ -8264,6 +8425,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_router")
 
         gate_weight = layer.weight("ffn_gate_exps")
         up_weight = layer.weight("ffn_up_exps")
@@ -8272,7 +8435,7 @@ class Qwen35GGUFFullStackRunner:
         if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
             raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
 
-        if (
+        compact_moe = bool(
             not f32_residual
             and _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
             and _try_run_post_attention_moe_c1_compact_gemv(
@@ -8289,7 +8452,10 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        ):
+        )
+        if compact_moe:
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark(f"{stage_prefix}_compact")
             return
         selected_rows = top_k
         selected_down_is_f32 = False
@@ -8321,6 +8487,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_selected")
 
         if _try_launch_shared_gate_up_from_f32_post_norm(
             layer.weight("ffn_gate_shexp"),
@@ -8404,6 +8572,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up")
         shared_down_is_f32 = False
         if (
             _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
@@ -8438,6 +8608,8 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_shared_down")
         if f32_residual:
             if selected_down_is_f32 and shared_down_is_f32:
                 weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(
@@ -8550,6 +8722,8 @@ class Qwen35GGUFFullStackRunner:
                         stream=stream,
                         runtime=runtime,
                     )
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark(f"{stage_prefix}_combine")
 
     def _run_post_attention_moe_c1_unfused_selected_ffn(
         self,
@@ -10011,22 +10185,31 @@ def _gguf_dense_pair_silu_decode_variant(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return None
-    try:
-        policies = backend_package_capability(
-            backend, "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES", {}
-        )
-    except (ImportError, ValueError):
-        return None
-    if not isinstance(policies, Mapping):
-        return None
     identity = _gguf_policy_identity(weights)
     if identity is None:
         return None
-    shapes = policies.get(identity, {})
-    if not isinstance(shapes, Mapping):
-        return None
-    variant = shapes.get((int(rows), int(in_features), int(out_features)))
-    return variant if isinstance(variant, str) and variant else None
+    capability_names = (
+        (
+            "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",
+            "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+        )
+        if gguf_native_batch_decode_enabled()
+        else ("GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",)
+    )
+    for capability_name in capability_names:
+        try:
+            policies = backend_package_capability(backend, capability_name, {})
+        except (ImportError, ValueError):
+            continue
+        if not isinstance(policies, Mapping):
+            continue
+        shapes = policies.get(identity, {})
+        if not isinstance(shapes, Mapping):
+            continue
+        variant = shapes.get((int(rows), int(in_features), int(out_features)))
+        if isinstance(variant, str) and variant:
+            return variant
+    return None
 
 
 def _gguf_dense_down_residual_decode_fused(
@@ -10038,6 +10221,8 @@ def _gguf_dense_down_residual_decode_fused(
 ) -> bool:
     """Resolve an exact model/backend/shape-qualified c1 down+residual owner."""
 
+    if not _env_flag("HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE", True):
+        return False
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
@@ -10455,6 +10640,25 @@ def _resolve_gguf_token_embedding_placement(
         return "device", "explicit_device"
     if mode == "host":
         return "host", "explicit_private_c1"
+    mapped_host_type_rejected = False
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+            False,
+        )
+    ):
+        supported_types = tuple(
+            str(value)
+            for value in backend_package_capability(
+                backend,
+                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+                (),
+            )
+        )
+        if not supported_types or str(token_embedding_type_name) in supported_types:
+            return "host", "mapped_host_private_c1_auto"
+        mapped_host_type_rejected = True
     if bool(
         backend_package_capability(
             backend,
@@ -10473,25 +10677,58 @@ def _resolve_gguf_token_embedding_placement(
         if str(token_embedding_type_name) not in supported_types:
             return "device", "host_type_device_fallback"
         return "host", "gfx1151_private_c1_auto"
-    if bool(
+    if mapped_host_type_rejected:
+        return "device", "mapped_host_type_device_fallback"
+    return "device", "backend_device_fallback"
+
+
+def _gguf_mapped_host_token_embedding_enabled(
+    *,
+    backend: str,
+    quant_key: str,
+) -> bool:
+    """Return whether this raw embedding type may use a mapped host pointer."""
+
+    if not bool(
         backend_package_capability(
             backend,
             "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
             False,
         )
     ):
-        supported_types = tuple(
-            str(value)
-            for value in backend_package_capability(
-                backend,
-                "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
-                (),
-            )
+        return False
+    supported_types = tuple(
+        str(value)
+        for value in backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+            (),
         )
-        if supported_types and str(token_embedding_type_name) not in supported_types:
-            return "device", "mapped_host_type_device_fallback"
-        return "host", "mapped_host_private_c1_auto"
-    return "device", "backend_device_fallback"
+    )
+    ggml_type_name = str(quant_key).removeprefix("gguf_").upper()
+    return not supported_types or ggml_type_name in supported_types
+
+
+def _gguf_mapped_host_token_embedding_storage(
+    *,
+    backend: str,
+    raw: np.ndarray,
+) -> tuple[np.ndarray, str]:
+    """Prepare backend-qualified mapped storage without mutating GGUF bytes."""
+
+    source = np.asarray(raw)
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY",
+            False,
+        )
+    ):
+        return (
+            np.array(source, dtype=np.uint8, copy=True, order="C"),
+            "hip_registered_host_copy",
+        )
+    return source, "hip_registered_gguf_mmap"
 
 
 def _resolve_gguf_private_c1_small_weight_arena(
@@ -10857,6 +11094,29 @@ def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
 
 def _gguf_t16_selected_dp4a_enabled() -> bool:
     return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
+
+
+def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool:
+    """Resolve the backend-qualified all-projection rowtile width floor."""
+
+    if rows <= 0:
+        raise ValueError("Q8T16 decode rows must be positive")
+    if bool(
+        backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+            False,
+        )
+    ):
+        return True
+    min_rows = int(
+        backend_package_capability(
+            backend,
+            "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+            0,
+        )
+    )
+    return min_rows > 0 and rows >= min_rows
 
 
 @contextmanager
@@ -11680,6 +11940,86 @@ def _try_launch_dense_q8_triple_dp4a_f32(
     return True
 
 
+def _try_launch_dense_f32_alpha_beta_conv_decode(
+    weight_a: Qwen35GGUFDeviceWeight,
+    weight_b: Qwen35GGUFDeviceWeight,
+    norm_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    conv_out_ptr: int,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    channels: int,
+    kernel_size: int,
+    backend: str,
+    stream: int,
+    runtime: HipRuntime,
+) -> bool:
+    """Launch the exact architecture-qualified serial alpha/beta plus Conv."""
+
+    shape = (
+        int(rows),
+        int(in_features),
+        int(out_features),
+        int(channels),
+        int(kernel_size),
+    )
+    admitted = backend_package_capability(
+        backend,
+        "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+        (),
+    )
+    key = KernelKey(
+        backend,
+        "linear_attn_alpha_beta+conv_decode",
+        "f32",
+        "bf16_k5120_n48_c10240_k4_c1",
+    )
+    if (
+        shape not in admitted
+        or getattr(weight_a, "backend", None) != backend
+        or getattr(weight_b, "backend", None) != backend
+        or getattr(getattr(weight_a, "spec", None), "quant_key", None) != "f32"
+        or getattr(getattr(weight_b, "spec", None), "quant_key", None) != "f32"
+        or not is_registered(key)
+    ):
+        return False
+    try:
+        weight_a_ptr = weight_a.allocation("raw").tensor.ptr
+        weight_b_ptr = weight_b.allocation("raw").tensor.ptr
+    except (KeyError, ValueError):
+        return False
+    kernel = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    kernel(
+        norm_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        conv_out_ptr,
+        in_features,
+        out_features,
+        channels,
+        kernel_size,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 def _try_launch_dense_q8_pair_dp4a(
     weight_a: Qwen35GGUFDeviceWeight,
     weight_b: Qwen35GGUFDeviceWeight,
@@ -11983,6 +12323,41 @@ def _qualified_no_mirror_int8_capability(
         and requested.get("storage_layout") == "uniform"
         and evidence.get("persistent_bf16_mirror") is False
         and int(evidence.get("max_direct_rows", 0)) >= 1
+    )
+
+
+def _qualified_kv_decode_batch_route(
+    backend: str,
+    capability: Mapping[str, object] | None,
+) -> tuple[int, object | None]:
+    """Resolve an artifact-qualified exact decode variant and its physical width."""
+
+    if not _qualified_no_mirror_int8_capability(capability):
+        return 1, None
+    assert isinstance(capability, Mapping)
+    evidence = capability.get("evidence")
+    requested = capability.get("requested")
+    if not isinstance(evidence, Mapping) or not isinstance(requested, Mapping):
+        return 1, None
+    max_rows = max(1, int(evidence.get("max_direct_rows", 1)))
+    variant = evidence.get("decode_batch_variant")
+    quant = requested.get("kv_storage")
+    if not isinstance(variant, str) or not variant.strip() or not isinstance(quant, str):
+        return 1, None
+    key = KernelKey(
+        str(backend),
+        "paged_attn_decode",
+        quant,
+        variant.strip(),
+    )
+    if not is_registered(key):
+        return 1, None
+    return max_rows, resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+        missing="none",
     )
 
 
@@ -12706,6 +13081,8 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
+    packed_decode_max_rows: int = field(default=8, init=False)
+    _retained_decode_kernel: object | None = field(default=None, init=False, repr=False)
     small_weight_arena_enabled: bool = field(default=False, init=False)
     small_weight_arena_reason: str = field(default="disabled", init=False)
     small_weight_arena_max_allocation_bytes: int = field(
@@ -12949,6 +13326,21 @@ class Qwen35GGUFResidentSession:
             self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
             and _qualified_no_mirror_int8_capability(self.kv_capability)
         )
+        self.packed_decode_max_rows = 8
+        self._retained_decode_kernel = None
+        if self.int8_kv_no_mirror_qualified:
+            direct_rows, direct_kernel = _qualified_kv_decode_batch_route(
+                self.runner.backend,
+                self.kv_capability,
+            )
+            self._retained_decode_kernel = (
+                direct_kernel if callable(direct_kernel) and not self.int8_kv_value_bf16 else None
+            )
+            self.packed_decode_max_rows = (
+                max(1, int(direct_rows))
+                if self._retained_decode_kernel is not None
+                else 1
+            )
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
             int(self.runner.weights.config.context_length),
@@ -15009,7 +15401,7 @@ class Qwen35GGUFResidentSession:
         capacity = int(capacity)
         if capacity <= 0:
             raise ValueError("prefill capacity must be positive")
-        return max(
+        rows = max(
             1,
             min(
                 capacity,
@@ -15019,6 +15411,11 @@ class Qwen35GGUFResidentSession:
                 ),
             ),
         )
+        row_cap = _gguf_dense_prefill_scratch_row_cap(
+            self.runner,
+            capacity=capacity,
+        )
+        return rows if row_cap is None else min(rows, row_cap)
 
     def _int8_retained_prefill_spans(
         self,
@@ -15128,17 +15525,26 @@ class Qwen35GGUFResidentSession:
                 retained_key_cache=None,
                 retained_value_cache=None,
                 retained_append_spans=None,
+                retained_decode_spans=None,
                 int8_kv_value_bf16=False,
             )
         mirror = packed_state.full_bf16_mirror_cache(layer_id)
         if mirror is None:
-            if not allow_direct_int8_prefill:
+            if callable(getattr(packed_scratch, "retained_decode_kernel", None)):
+                mirror = (key_cache, value_cache)
+            elif allow_direct_int8_prefill:
+                mirror = self._int8_prefill_oracle_cache_for_layer(layer_id)
+            else:
                 raise NotImplementedError(
                     "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
                 )
-            mirror = self._int8_prefill_oracle_cache_for_layer(layer_id)
         retained_append_spans = replace(
             packed_scratch.append_spans,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            scale_metadata=metadata,
+        )
+        retained_decode_spans = replace(
+            packed_scratch.prefill_spans,
             storage_dtype=DType.INT8_PER_TOKEN_HEAD,
             scale_metadata=metadata,
         )
@@ -15149,6 +15555,7 @@ class Qwen35GGUFResidentSession:
             retained_key_cache=key_cache,
             retained_value_cache=value_cache,
             retained_append_spans=retained_append_spans,
+            retained_decode_spans=retained_decode_spans,
             int8_kv_value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
         )
 
@@ -15708,7 +16115,10 @@ class Qwen35GGUFResidentSession:
 
         try:
             if chunk_outer:
-                chunk_size = self._prefill_scratch_rows(rows)
+                chunk_size = min(
+                    self._prefill_scratch_rows(rows),
+                    int(self._bulk_prefill_scratch.rows),
+                )
                 ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
                 last_src_ptr = 0
                 last_bulk_scratch = None
@@ -18151,6 +18561,8 @@ class Qwen35GGUFResidentSession:
         sessions: tuple["Qwen35GGUFResidentSession", ...],
         *,
         allow_direct_int8_prefill: bool = False,
+        allow_direct_int8_decode: bool = False,
+        physical_rows: int | None = None,
     ) -> Qwen35GGUFKVChunkLayout:
         layout = self._resident_ar_kv_layout_for_sessions(sessions)
         int8_layers = tuple(
@@ -18162,15 +18574,47 @@ class Qwen35GGUFResidentSession:
         has_direct_int8 = any(
             layer_id not in mirror_layers for layer_id in int8_layers
         )
+        if allow_direct_int8_prefill and allow_direct_int8_decode:
+            raise ValueError("direct INT8 prefill and decode admission are distinct work classes")
         if has_direct_int8 and allow_direct_int8_prefill and len(sessions) != 1:
             raise NotImplementedError(
-                "packed AR direct INT8 is admitted only for single-row prefill until row-batched attention is qualified"
+                "packed AR direct INT8 is admitted only for single-row prefill until shared prefill ownership is qualified"
             )
-        if has_direct_int8 and not allow_direct_int8_prefill:
+        if has_direct_int8 and allow_direct_int8_decode:
+            width = len(sessions) if physical_rows is None else int(physical_rows)
+            direct_limit = min(
+                max(1, int(getattr(session, "packed_decode_max_rows", 1)))
+                for session in sessions
+            )
+            if width <= 0 or width > direct_limit:
+                raise NotImplementedError(
+                    f"packed AR direct INT8 physical width {width} exceeds artifact-qualified limit {direct_limit}"
+                )
+        elif has_direct_int8 and not allow_direct_int8_prefill:
             raise NotImplementedError(
                 "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
             )
         return layout
+
+    @staticmethod
+    def _packed_ar_direct_decode_kernel_for_sessions(
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        *,
+        physical_rows: int,
+    ):
+        if not sessions:
+            return None
+        width = int(physical_rows)
+        if width <= 1:
+            return None
+        kernels = tuple(getattr(session, "_retained_decode_kernel", None) for session in sessions)
+        if any(not callable(kernel) for kernel in kernels):
+            return None
+        if any(kernel is not kernels[0] for kernel in kernels[1:]):
+            return None
+        if any(int(getattr(session, "packed_decode_max_rows", 1)) < width for session in sessions):
+            return None
+        return kernels[0]
 
     def prefill_batch_native(
         self,
@@ -18966,12 +19410,9 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        q8_t16_rowtile_all = bool(
-            backend_package_capability(
-                self.runner.backend,
-                "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
-                False,
-            )
+        q8_t16_rowtile_all = _gguf_q8_t16_decode_rowtile_all_for_rows(
+            self.runner.backend,
+            rows=rows,
         )
         q8_t16_pair_rowtile_min_rows = int(
             backend_package_capability(
@@ -19143,7 +19584,6 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed AR decode requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
-        self._packed_ar_kv_layout_for_sessions(session_tuple)
 
         active_rows = len(session_tuple)
         row_count = active_rows if physical_rows is None else int(physical_rows)
@@ -19161,6 +19601,15 @@ class Qwen35GGUFResidentSession:
             or any(index < 0 or index >= row_count for index in active_slots)
         ):
             raise ValueError("active_slot_indices must be unique lanes within physical_rows")
+        retained_decode_kernel = self._packed_ar_direct_decode_kernel_for_sessions(
+            session_tuple,
+            physical_rows=row_count,
+        )
+        self._packed_ar_kv_layout_for_sessions(
+            session_tuple,
+            allow_direct_int8_decode=retained_decode_kernel is not None,
+            physical_rows=row_count,
+        )
         physical_sessions: list[Qwen35GGUFResidentSession | None] = [None] * row_count
         physical_tokens = [0] * row_count
         physical_positions = [-1] * row_count
@@ -19220,6 +19669,7 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
             if int(layout.max_live_count) >= 1024
+            or (retained_decode_kernel is not None and rows > 1)
             else None
         )
         imported_slot_indices = self._sync_packed_decode_initial_state(
@@ -19229,11 +19679,14 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
-        packed_scratch = packed_scratch_base.for_packed_verify_layout(
-            layout,
-            runtime=runtime,
-            stream=stream,
-            metadata_prepare_fn=self.runner._packed_decode_metadata_kernel(),
+        packed_scratch = replace(
+            packed_scratch_base.for_packed_verify_layout(
+                layout,
+                runtime=runtime,
+                stream=stream,
+                metadata_prepare_fn=self.runner._packed_decode_metadata_kernel(),
+            ),
+            retained_decode_kernel=retained_decode_kernel,
         )
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
@@ -23384,6 +23837,66 @@ def _gguf_dense_prefill_scratch_policy(runner: object) -> Mapping | None:
     return policy if isinstance(policy, Mapping) else None
 
 
+def _gguf_dense_prefill_scratch_row_cap(
+    runner: object,
+    *,
+    capacity: int,
+) -> int | None:
+    """Return a geometry-qualified exact outer-chunk scratch-row ceiling."""
+
+    weights = getattr(runner, "weights", None)
+    cfg = getattr(weights, "config", None)
+    backend = getattr(runner, "backend", None)
+    if (
+        cfg is None
+        or bool(getattr(cfg, "is_moe", False))
+        or not isinstance(backend, str)
+    ):
+        return None
+    try:
+        policies = backend_package_capability(
+            backend,
+            "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
+            {},
+        )
+    except ValueError:
+        return None
+    if not isinstance(policies, Mapping):
+        return None
+    identity = _gguf_policy_identity(weights)
+    policy = None if identity is None else policies.get(identity)
+    if not isinstance(policy, Mapping):
+        return None
+    try:
+        min_capacity = int(policy.get("min_capacity", 1))
+    except (TypeError, ValueError):
+        min_capacity = 1
+    by_capacity = policy.get("max_rows_by_capacity")
+    if isinstance(by_capacity, Mapping):
+        # Capacity-conditional ceiling: pick the largest threshold that the
+        # request capacity reaches (e.g. 4K-class grows to the natural 4096-row
+        # plateau to enable source-F16 while 8K and larger keep 1024-row chunks
+        # that measured faster than 4096-row chunks). None = no cap for that
+        # capacity.
+        if int(capacity) < max(1, min_capacity):
+            return None
+        for threshold, mr in sorted(
+            by_capacity.items(),
+            key=lambda item: int(item[0]),
+            reverse=True,
+        ):
+            if int(capacity) >= int(threshold) and int(mr) > 0:
+                return int(mr)
+        return None
+    try:
+        max_rows = int(policy["max_rows"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if int(capacity) < max(1, min_capacity) or max_rows <= 0:
+        return None
+    return min(int(capacity), max_rows)
+
+
 def _gguf_prefill_scratch_priority_min_live_stages(
     runner: object,
     *,
@@ -23588,6 +24101,8 @@ class _GGUFFullAttentionPrefillScratch:
     cos_table: object | None = None
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
+    retained_decode_spans: KVLiveSpans | None = None
+    retained_decode_kernel: object | None = None
     head_major_key_cache: object | None = None
     head_major_value_cache: object | None = None
     head_major_kv_capacity: int = 0

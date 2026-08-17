@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
 from dataclasses import dataclass
 from types import MethodType, SimpleNamespace
 
@@ -674,6 +675,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         ssm_inner_size=6,
         ssm_group_count=1,
         ssm_conv_kernel=4,
+        ssm_group_count=2,
         ssm_time_step_rank=2,
         ssm_state_size=3,
         head_count_kv=2,
@@ -1067,6 +1069,7 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
 
 @dataclass(frozen=True)
 class _DirectInt8PrefillSpans:
+    kind: str = "unknown"
     storage_dtype: DType = DType.BF16
     scale_metadata: object | None = None
 
@@ -1074,12 +1077,15 @@ class _DirectInt8PrefillSpans:
 @dataclass(frozen=True)
 class _DirectInt8PrefillScratch:
     append_spans: _DirectInt8PrefillSpans
+    prefill_spans: _DirectInt8PrefillSpans
     key_cache: object | None = None
     value_cache: object | None = None
     retained_key_cache: object | None = None
     retained_value_cache: object | None = None
     retained_append_spans: object | None = None
+    retained_decode_spans: object | None = None
     int8_kv_value_bf16: bool = False
+    retained_decode_kernel: object | None = None
 
 
 def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent_mirror() -> None:
@@ -1104,7 +1110,10 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
-    scratch = _DirectInt8PrefillScratch(append_spans=_DirectInt8PrefillSpans())
+    scratch = _DirectInt8PrefillScratch(
+        append_spans=_DirectInt8PrefillSpans(kind="append_position"),
+        prefill_spans=_DirectInt8PrefillSpans(kind="decode_context"),
+    )
 
     with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
         owner._packed_full_attention_scratch_for_layer(scratch, state, 0)
@@ -1121,8 +1130,39 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
         retained_key,
         retained_value,
     )
+    assert direct.retained_append_spans.kind == "append_position"
+    assert direct.retained_decode_spans.kind == "decode_context"
     assert direct.retained_append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
     assert direct.retained_append_spans.scale_metadata is metadata
+    assert direct.retained_decode_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
+    assert direct.retained_decode_spans.scale_metadata is metadata
+
+    owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: pytest.fail(
+        "direct decode must not allocate the transient BF16 prefill oracle"
+    )
+    decode = owner._packed_full_attention_scratch_for_layer(
+        _DirectInt8PrefillScratch(
+            append_spans=_DirectInt8PrefillSpans(kind="append_position"),
+            prefill_spans=_DirectInt8PrefillSpans(kind="decode_context"),
+            retained_decode_kernel=lambda *args, **kwargs: None,
+        ),
+        state,
+        0,
+    )
+    assert (decode.key_cache, decode.value_cache) == (retained_key, retained_value)
+    assert callable(decode.retained_decode_kernel)
+
+
+def test_gguf_direct_int8_batch_uses_decode_counts_and_skips_bf16_oracle_write() -> None:
+    source = inspect.getsource(
+        gguf_runner.Qwen35GGUFFullStackRunner._run_full_attention_decode_batch_layer_rows
+    )
+    direct_call = source.split("retained_decode_kernel(", 1)[1].split(")\n", 1)[0]
+
+    assert "retained_decode_spans" in direct_call
+    assert "retained_spans," not in direct_call
+    assert "if not direct_retained_batch:" in source
+    assert 'attention_route = "kv_live_spans_int8_batch"' in source
 
 
 def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -> None:
@@ -1164,6 +1204,34 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         )
     with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
         owner._packed_ar_kv_layout_for_sessions((owner, peer))
+
+    owner.packed_decode_max_rows = 4
+    peer.packed_decode_max_rows = 4
+    kernel = lambda *args, **kwargs: None
+    owner._retained_decode_kernel = kernel
+    peer._retained_decode_kernel = kernel
+    assert owner._packed_ar_direct_decode_kernel_for_sessions(
+        (owner, peer),
+        physical_rows=4,
+    ) is kernel
+    peer._retained_decode_kernel = lambda *args, **kwargs: None
+    assert owner._packed_ar_direct_decode_kernel_for_sessions(
+        (owner, peer),
+        physical_rows=4,
+    ) is None
+    peer._retained_decode_kernel = kernel
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_decode=True,
+        physical_rows=4,
+    ) == direct
+    peer.packed_decode_max_rows = 1
+    with pytest.raises(NotImplementedError, match="physical width 4"):
+        owner._packed_ar_kv_layout_for_sessions(
+            (owner, peer),
+            allow_direct_int8_decode=True,
+            physical_rows=4,
+        )
 
 
 def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:

@@ -1960,6 +1960,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     high_water_pages = int(args.max_active_requests) * max_pages_per_request
     env = {
         **_EXACT_ENV,
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": str(args.gdn_mode),
         "HIPENGINE_PREFILL_DECODE_POLICY": str(args.initial_policy),
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
@@ -2469,6 +2470,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Generate serial c1 references on the measured owner (default), or "
             "use bounded diagnostic worker processes"
         ),
+    )
+    parser.add_argument(
+        "--gdn-mode",
+        default="exact",
+        help="GGUF GDN prefill execution mode (exact or a qualified profile route)",
     )
     parser.add_argument(
         "--workloads",

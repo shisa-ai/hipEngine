@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-07-20
+Last updated: 2026-08-16
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -19,8 +19,10 @@ false unless the variable says otherwise.
 - `LLM(model)` and `hipengine serve --model ...` resolve the model plugin's
   quantization. Supported GGUF models also select decode-repack and the public
   WMMA-prefill/GEMV-decode session profile.
-- Server metadata reports the concrete backend and quant after model load;
-  auto-selected GGUF routes retain their four-request grouping caps.
+- Server metadata reports the concrete backend, quant, and explicit execution
+  profile manifest hash after model load. Omit `HIPENGINE_EXECUTION_PROFILE`
+  during migration to preserve incumbent package behavior; set it only when the
+  selected model/backend/quant has a registered fail-closed plan.
 - Set `HIPENGINE_BACKEND=hip_gfx1100` or `HIPENGINE_BACKEND=hip_gfx1151` only
   when auto-detection falls back or you are forcing a nearby target explicitly.
 - Leave diagnostic fusion/tuning knobs unset.
@@ -115,6 +117,7 @@ qwen35moe fast-path safety gate.
 | Variable | Owner | Default | Values / notes |
 | --- | --- | --- | --- |
 | `HIPENGINE_BACKEND` | Backend selection | unset / `auto` | Force a backend key such as `hip_gfx1100` or `hip_gfx1151`; otherwise auto-detects supported HIP arches and falls back to `cpu_reference` with a warning. |
+| `HIPENGINE_EXECUTION_PROFILE` | Execution-profile plan selection | unset (migration default) | `strict`, `production`, or `batch_invariant`; equivalent to Python `execution_profile=` and server `--execution-profile`. Explicit selectors resolve only registered model/backend/quant plans, verify selected/fallback kernel keys, and fail closed. An omitted selector temporarily preserves incumbent package behavior and is not a fourth profile. |
 | `HIPENGINE_HIP_ARCH` | HIP JIT build | unset | Force native HIP offload arch in build cache keys, e.g. `gfx1100` or `gfx1151`. The backend helper sets this temporarily when needed. |
 | `GPU_MAX_HW_QUEUES` | HIP runtime / gfx1151 branch concurrency | gfx1151: `2`; otherwise unset (ROCm default `4`) | Must be applied before `libamdhip64` loads. hipEngine sets `2` only when all recognized visible HIP arches map to gfx1151 and the user has not provided a value. Explicit values always win; use `1` for the prior single-queue rollback or `4` for the ROCm-default scheduler diagnostic. The exact Laguna shared/routed MoE gate admits two queues at short contexts, but neither one nor two queues is a repeated-128K lifecycle guarantee. |
 | `HSA_SCRATCH_SINGLE_LIMIT` | HIP runtime / gfx1100 scratch reserve | gfx1100: `8388608` (8 MiB); otherwise ROCr default | Must be applied before `libamdhip64` loads. On ROCr 7.2.4 the upstream default is 140 MiB, is reserved per process/GPU, and dispatches above it use a use-once scheme. hipEngine lowers only the homogeneous gfx1100 process default to 8 MiB; this retains full-engine behavior with the 300-MiB AOTriton use-once path while removing 132 MiB of unused reserve. Explicit user values always win; use `146800640` to reproduce the upstream default. Mixed recognized architectures receive no backend-local default. |
@@ -147,6 +150,7 @@ Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 | Variable | Default | Classification | Values / notes |
 | --- | --- | --- | --- |
 | `HIPENGINE_GGUF_DECODE_REPACK` | true | Retained release default with rollback opt-out | Materializes resident T16 decode layouts on load. The public Qwen3.6 GGUF path uses this accepted layout despite its load-time and resident-memory cost because raw decode is substantially slower. Set false only for diagnostics or memory comparisons. |
+| `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` | backend-scoped (gfx1151 physical rows >=4; otherwise false) | Retained c4/c8 rollback and broad diagnostic | Unset uses the backend-qualified width floor: gfx1151 routes Q8T16 singleton/pair/triple decode through rowtile bodies from physical c4, while c2 and gfx1100 remain direct. Set `0` to disable all-projection rowtiling at every width (the separately qualified c8 pair policy still resolves independently); set `1` only to reproduce the broad rows>1 diagnostic, which loses `1.795%` at c2. |
 | `HIPENGINE_GGUF_WMMA_PREFILL` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_wmma_prefill=True`; benchmark CLI/session arguments remain explicit for artifact provenance. |
 | `HIPENGINE_GGUF_GEMV_DECODE` | false | Low-level performance selector | Process-wide default for low-level GGUF sessions. The public generator passes `use_gemv_decode=True`. For qwen35moe, effective use is safety-gated unless decode-repack is active or the unsafe override is set. |
 | `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS` | false | Unsafe diagnostic | Bypasses qwen35moe GGUF fast-path safety. Do not set for normal use or promoted correctness claims. |

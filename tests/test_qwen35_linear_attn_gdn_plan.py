@@ -4,6 +4,7 @@ import pytest
 
 from hipengine.kernels.hip_gfx1100.linear_attn import (
     plan_qwen35_linear_attn_gdn_build,
+    plan_qwen35_linear_attn_gdn_grouped_heads_build,
     qwen35_gdn_prefill_recurrent_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -206,6 +207,18 @@ def test_qwen35_linear_attn_gdn_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert artifact.output_path.name == "qwen35_linear_attn_gdn.so"
     assert artifact.compiler_version == "hipcc qwen35 linear attn gdn test version"
     assert any(str(path).endswith("gdn.hip") for path in artifact.sources)
+    assert not artifact.cache_dir.exists()
+
+
+def test_qwen35_grouped_head_gdn_build_plan_is_separately_cached(tmp_path) -> None:
+    artifact = plan_qwen35_linear_attn_gdn_grouped_heads_build(
+        cache_root=tmp_path / "cache",
+        compiler_version="hipcc qwen35 grouped-head gdn test version",
+    )
+
+    assert artifact.family == "qwen35_linear_attn_gdn_grouped_heads"
+    assert "-DHIPENGINE_GDN_GROUPED_HEADS=1" in artifact.flags
+    assert artifact.output_path.name == "qwen35_linear_attn_gdn_grouped_heads.so"
     assert not artifact.cache_dir.exists()
 
 

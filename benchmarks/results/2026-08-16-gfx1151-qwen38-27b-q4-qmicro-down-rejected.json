@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4_qmicro_down_owner",
+  "status": "rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "40fabc01a2b8c396f761d98fb0365d0bd1ba3d1d",
+    "control": "clean detached 40fabc01a worktree",
+    "candidate": "40fabc01a development tree with sole qmicro-Q4 FFN-down ownership",
+    "candidate_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "layers": 64,
+      "q4_down_weights_considered": 32,
+      "in_features": 17408,
+      "out_features": 5120
+    }
+  },
+  "candidate": {
+    "layout": "gguf_q4_k_qmicro_t16_v1",
+    "scope": "only Q4_K layers.*.ffn_down tensors at N5120/K17408 on gfx1151",
+    "decode": "direct compact-metadata c1 and rows2-4 residual producers",
+    "prefill": "direct shared-B compact-metadata WMMA below 4096 rows and transient metadata expansion at 4096 rows",
+    "fallbacks": "standard-T16 owner for every role, shape, and backend miss",
+    "persistent_sidecar_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "leaf_gate": {
+    "actual_q4_down_layers": [8, 32, 47],
+    "c1_fused_residual": {
+      "standard_t16_ms": [0.23238, 0.23237, 0.23259],
+      "qmicro_ms": [0.23091, 0.23128, 0.23110],
+      "speedups": [1.0064, 1.0047, 1.0065],
+      "wins": ["16/21", "18/21", "17/21"],
+      "bf16_bit_exact": true
+    },
+    "native_row_aggregate_speedups": {
+      "1": 1.0072,
+      "2": 1.0081,
+      "3": 1.0124,
+      "4": 1.0076
+    },
+    "synthetic_prefill_and_dispatch_exact": true
+  },
+  "complete_model_gate": {
+    "protocol": "A1 candidate / B clean control / A2 candidate; repeated token 9707; one discarded warmup plus three measured persistent-session runs per process; production bulk WMMA, GEMV, and graph replay; cached builds required",
+    "shape": "512/128",
+    "candidate_processes": [
+      {
+        "decode_tok_s": 12.433104040703217,
+        "prefill_tok_s": 399.04679846449807,
+        "tracked_peak_bytes": 17765808516,
+        "artifact_sha256": "be54c824d145e6b05514ba6959fcffc45f713c838650e26bf023bcab1124dbf0"
+      },
+      {
+        "decode_tok_s": 12.451273605357242,
+        "prefill_tok_s": 399.76908494755077,
+        "tracked_peak_bytes": 17765808516,
+        "artifact_sha256": "16ed0649be17e1c347547ba4a398a533e51c7b56b7ee08e9cfce071845807da2"
+      }
+    ],
+    "control_process": {
+      "decode_tok_s": 12.457200237566216,
+      "prefill_tok_s": 399.83830913457956,
+      "tracked_peak_bytes": 17810372996,
+      "artifact_sha256": "f8de560e9a3325bbef32d24530972494d06255e5db54e64a87eb35b75eb6ecf1"
+    },
+    "candidate_mean_decode_tok_s": 12.442188823030229,
+    "candidate_mean_prefill_tok_s": 399.4079417060244,
+    "decode_delta_percent": -0.12050391941776928,
+    "prefill_delta_percent": -0.10763536627759196,
+    "all_candidate_decode_medians_below_control": true,
+    "all_final_token_ids_exact": true,
+    "all_outputs_finite": true,
+    "tracked_after_close_bytes": 0
+  },
+  "memory": {
+    "tracked_peak_delta_bytes": -44564480,
+    "tracked_peak_delta_mib": -42.5,
+    "tracked_peak_delta_percent": -0.25021643291810447,
+    "per_weight_resident_delta_bytes": -1392640,
+    "all_32_weights_resident_delta_bytes": -44564480
+  },
+  "validation": {
+    "focused_checks_passed": 19,
+    "real_model_materialization_checked": true,
+    "c1_native_prefill_bf16_bit_exact": true,
+    "complete_model_trajectory_exact": true,
+    "memory_reduced": true,
+    "throughput_gate_passed": false,
+    "transient_code_removed": true
+  },
+  "commands": {
+    "shape": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+    "focused": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q <qmicro planning/materialization/dispatch/c1/native/prefill nodes>"
+  },
+  "evidence": {
+    "candidate_a1": "/tmp/qwen38-task22-qmicro-down-full-p512/candidate.json",
+    "control_b": "/tmp/qwen38-task22-qmicro-down-full-p512-control/control.json",
+    "candidate_a2": "/tmp/qwen38-task22-qmicro-down-full-p512-candidate2/candidate.json"
+  },
+  "decision": "Reject sole qmicro-Q4 ownership for the 32 dense FFN-down weights. Compact ownership saves 42.5 MiB and its actual-weight c1/native leaves are exact and positive, but both complete-model candidate decode medians remain below the matched clean control; the candidate mean regresses decode 0.1205% and prefill 0.1076%. The transient implementation and tests were removed before continuing the production-graph rerank."
+}

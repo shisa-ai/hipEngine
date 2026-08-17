@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q6_q4_mixed_grid",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "50e2358806642bf9e9eec3a1c8f9f68a2c6fc6d2",
+    "profile_harness_commit": "135d8a9e7795d19e5b5907cd29875096f757161b",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "recurrent_pair_count_per_token": 24,
+      "q6_qkv_width": 10240,
+      "q4_gate_width": 6144
+    }
+  },
+  "change": {
+    "scope": "gfx1151 serial rows1 Qwen3.8 recurrent standard-Q6 QKV plus Q4 gate",
+    "control": "one standard-Q6 local128/16-column projection followed by one Q4 local32/8-column projection",
+    "candidate": "one local128 mixed grid assigns independent Q6 blocks and four independent Q4 wave32 owners per Q4 workgroup without serializing either projection family",
+    "registry_key": "linear_pair/gguf_q6_k_t16_v1+gguf_q4_k_t16_v1/mixed_grid_bf16_bf16_out",
+    "capability": "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES={(1,5120,10240,6144)}",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "Capability, registry, shape, dtype, ABI, and native-session misses retain the separately registered standard-Q6 and Q4 projection primitives; rows2-4 verifier/MTP paths, prefill, other shapes, and peer backends are unchanged.",
+    "dispatch_cache_note": "Native-session state is part of the linear-pair resolve-cache key so a previously cached serial candidate cannot leak into verifier rows."
+  },
+  "actual_weight_leaf": {
+    "layers": [0, 22, 40, 62],
+    "source_pool_bytes": 242810880,
+    "q6_tile_pool_bytes": 172032000,
+    "q4_tile_pool_bytes": 72744960,
+    "warmups": 4,
+    "samples": 15,
+    "order": "counterbalanced control/candidate",
+    "control_ms_per_four_layers": 1.1662269830703735,
+    "candidate_ms_per_four_layers": 1.1455090045928955,
+    "speedup": 1.0180862641798623,
+    "delta_percent": -1.7764962377163407,
+    "candidate_wins": 14,
+    "sample_count": 15,
+    "q6_bf16_mismatches": 0,
+    "q4_bf16_mismatches": 0,
+    "tracked_teardown_bytes": 0
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 694.0,
+      "kernel_ms_per_token": 78.8729195,
+      "host_ms_per_token": 81.7952193756355,
+      "pair_span_ms_per_token": 6.910872625,
+      "q6_to_q4_gap_ms_per_token": 0.1530724375
+    },
+    "candidate": {
+      "dispatches_per_token": 670.0,
+      "kernel_ms_per_token": 78.83222075,
+      "host_ms_per_token": 81.58827024999482,
+      "pair_span_ms_per_token": 6.7410953125,
+      "composite_dispatches": 384,
+      "vgpr": 96,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_size": 128,
+      "grid_threads": 106496
+    },
+    "delta": {
+      "dispatches_per_token": -24.0,
+      "pair_span_ms_per_token": -0.16977731249999994,
+      "pair_span_percent": -2.45666968142102,
+      "kernel_ms_per_token": -0.040698749999990014,
+      "kernel_percent": -0.05160041020161321,
+      "host_ms_per_token": -0.20694912564067636,
+      "host_percent": -0.25300882768012345
+    }
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.320947901384397, 12.317997613202415],
+      "median_tok_s": 12.319472757293406,
+      "decode_cv_percent": [0.06648661416470868, 0.04620085833843503]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.340808796919648, 12.337036159350454],
+      "median_tok_s": 12.33892247813505,
+      "decode_cv_percent": [0.060727903701634986, 0.035471817357668585]
+    },
+    "speedup": 1.0015787786721742,
+    "delta_percent": 0.15787786721741526,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714,
+    "tracked_teardown_bytes": 0
+  },
+  "correctness": {
+    "actual_weight_layers_bf16_bit_exact": true,
+    "synthetic_q6_bf16_bit_exact": true,
+    "synthetic_q4_bf16_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "natural_suite_not_repeated": "The mixed grid preserves both primitive arithmetic trees, adds no prompt-sensitive branch, and makes no natural-throughput claim."
+  },
+  "validation": {
+    "red": "The focused wrapper-exposure fixture failed before implementation.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_q6_q4_mixed_pair.py",
+    "focused_green_result": "4 passed, including GPU bit identity and CPU KL/top-1",
+    "affected_bundle": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_q6_q4_mixed_pair.py tests/test_gguf_linear_dispatch_cache.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_gfx1151_backend.py tests/test_gguf_ops.py",
+    "affected_bundle_result": "66 passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/fused/gguf_q6_q4_pair.hip selected no external source",
+    "kernel_trace_gate": "The expected mixed-grid kernel executes 384 times over 16 tokens with positive plausible duration, 96 VGPR, 512-byte LDS, zero scratch, local128, and 832 blocks per recurrent pair."
+  },
+  "commands": {
+    "leaf": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-q6-q4-mixed-grid-leaf.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --layers 0,22,40,62 --warmups 4 --samples 15 --output /tmp/qwen38-task22-q6-q4-mixed-grid/leaf.json",
+    "profile": "rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/qwen38-task22-q6-q4-mixed-grid/profile-ab/{control,candidate} -o p4096-ar16 -- python3 {/tmp/qwen38-q6-q4-mixed-control.py,scripts/qwen35_gguf_bench.py} --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --graph-replay-decode --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/qwen38-task22-q6-q4-mixed-grid/hipcc-version.txt --require-cached-build",
+    "request_gate": "control/candidate/candidate/control processes using scripts/qwen35_gguf_bench.py at 512/128, one warmup and three measured runs per process, graph replay, cached gfx1151 builds"
+  },
+  "evidence": {
+    "leaf": {
+      "path": "/tmp/qwen38-task22-q6-q4-mixed-grid/leaf.json",
+      "sha256": "650976bbd9fb4867b3fffc0424afaeaf5a2554327b23d4e0f157f0621dcdbb66",
+      "bytes": 2657
+    },
+    "profile_summary": {
+      "path": "/tmp/qwen38-task22-q6-q4-mixed-grid/profile-ab/summary.json",
+      "sha256": "aacf5a3f3832dac98fdcdc029b708f474428f8dc8d51c23e3f7a3b1b1d45b100",
+      "bytes": 1726
+    },
+    "request_summary": {
+      "path": "/tmp/qwen38-task22-q6-q4-mixed-grid/p512-ab/summary.json",
+      "sha256": "5c2122fb0d2c688d9ec2b7547a247fe7fc47430f8ee14a18c5abac32fc3ea649",
+      "bytes": 2778
+    },
+    "control_wrapper": {
+      "path": "/tmp/qwen38-q6-q4-mixed-control.py",
+      "sha256": "2d43143900a94162f407f486d1fe51e277e0ad3903cb273b8bf13b8ec55f4691",
+      "bytes": 362
+    },
+    "control_trace_sha256": "0562b16cf77f0363f952a36f1bb545ce30a1703029b92eea4fcce90305e4ddf2",
+    "candidate_trace_sha256": "486e3aa808693b22b1cf796231793e131cbc64ed35f0630248a622f7074c61bd"
+  },
+  "decision": "Retain the exact gfx1151 rows1 mixed grid. It removes 24 launches/token, improves the complete pair span 2.457%, selected kernel wall 0.052%, profiled host decode 0.253%, and counterbalanced 512/128 AR 0.158% with both candidates above both controls, bit-exact outputs/final logits, unchanged peaks, and no bytes."
+}

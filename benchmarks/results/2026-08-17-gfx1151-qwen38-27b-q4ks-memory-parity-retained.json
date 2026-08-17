@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-17",
+  "kind": "qwen38_27b_gfx1151_q4ks_memory_parity",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "performance_claim_scope": "AMD Radeon 8060S gfx1151, Qwen3.8-27B Q4_K_S, BF16 KV, right-sized 512/128, 1024/128, 4096/128 and exact native B3 process-GTT plus lifecycle",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "4aa4bb654b07b3d714a5b31d88a34bd908f9d6d3",
+    "candidate_state": "the uncommitted task-24 diff represented by this retained-development artifact; task 26 owns a clean post-commit closure refresh",
+    "target_backend": "hip_gfx1151",
+    "require_cached_build": true,
+    "external_port": false,
+    "changed_paths": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "hipengine/runtime/qwen35_gguf_mtp.py",
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "scripts/qwen35_gguf_bench.py"
+    ]
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "geometry": "dense H5120, FFN17408, 64 target blocks plus NextN",
+    "kv_storage": "BF16"
+  },
+  "changes": {
+    "wide_weight_arena": {
+      "scope": "private c1, gfx1151, dense H5120, MOSTLY_Q4_K_S only",
+      "max_allocation_bytes": 83886080,
+      "logical_allocations_packed": 849,
+      "logical_weight_bytes": 15331854336,
+      "physical_weight_owners": 2,
+      "note": "one arena plus the untied root; the Q4 token table is owned by the mapped-host route"
+    },
+    "decode_scratch_arena": {
+      "scope": "private c1, gfx1151, dense H5120, MOSTLY_Q4_K_S only",
+      "logical_ranges": 188,
+      "physical_owners": 1,
+      "fallback": "shared runners, wider batches, policy misses, allocation denial, and explicit opt-out retain dedicated owners"
+    },
+    "native_state_journal": {
+      "scope": "native B1-B3 only",
+      "method": "allocate only the initial rollback state; committed rows remain in the target session's native row journal",
+      "verifier_bytes_removed_in_census": 635437056,
+      "fallback": "serial-exact and native B4 keep the complete per-row journal"
+    },
+    "prefill_scratch": {
+      "scope": "gfx1151 dense H5120 MOSTLY_Q4_K_S capacity >=4096 only",
+      "method": "keep every bulk field dedicated and cap exact outer chunks at 1024 rows",
+      "fallback": "shorter capacities and every policy miss keep their established row count"
+    },
+    "token_embedding": {
+      "scope": "private c1 gfx1151 Q4_K only",
+      "method": "register an anonymous immutable byte-for-byte copy of the compressed GGUF table",
+      "tracked_device_bytes_removed": 715161600,
+      "storage": "hip_registered_host_copy",
+      "fallback": "Q8_0 keeps the qualified CPU-copy route; shared/wider/device-requested consumers retain device ownership"
+    }
+  },
+  "rejected_or_removed_candidates": [
+    {
+      "candidate": "owner-slot and single-arena dense bulk-prefill liveness aliases",
+      "reason": "both changed complete-model logits even when token 9707 remained top-1; the dedicated oracle final logit 25.418247 changed to 22-23"
+    },
+    {
+      "candidate": "4K priority recoloring and hidden-buffer reuse aliases",
+      "reason": "complete trajectories diverged; finite-output and top-1-only checks were insufficient"
+    },
+    {
+      "candidate": "direct registration of the file-backed GGUF mmap",
+      "reason": "corrupted complete-model trajectories on gfx1151; the anonymous copied mapping is exact"
+    },
+    {
+      "candidate": "short-session liveness extension",
+      "reason": "fail-closed gate caught next-proposal token corruption; short sessions remain dedicated"
+    },
+    {
+      "candidate": "producer-folded initial-state snapshots",
+      "reason": "exact but regressed target-verify wall about 4%; the consumer initial-only journal removes the bytes without changing kernels"
+    }
+  ],
+  "protocol": {
+    "shape_rows": "one right-sized process per shape; token 9707 repeated; one discarded warmup plus one measured reset; production bulk/WMMA/GEMV/graph; cached builds; 50 ms continuous process/system/DRM sampling",
+    "shape_commands": {
+      "512/128": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-q4ks-publication-3118943eb-output/hipcc-version-gfx1151.txt --require-cached-build",
+      "1024/128": "same command with --workloads 1024/128",
+      "4096/128": "same command with --workloads 4096/128"
+    },
+    "b3_command": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+    "b3_prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "b3_prompt_count": 10,
+    "b3_train_prompt_count": 6,
+    "b3_heldout_prompt_count": 4,
+    "b3_categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "b3_visible_outputs_per_prompt": 25,
+    "b3_timed_transitions_per_prompt": 24,
+    "memory_scope": "process-run DRM GTT delta is binding; tracked allocation, process RSS, system-available drop, retained weight/KV/state/session bytes, and teardown are reported separately and are not added together on the unified-memory APU"
+  },
+  "shape_results": {
+    "512/128": {
+      "prefill_tok_s": 378.43277832623033,
+      "decode_tok_s": 13.04882710275556,
+      "prefill_vs_clean_q4ks_percent": -0.337848080867742,
+      "decode_vs_clean_q4ks_percent": 0.07664759719325787,
+      "tracked_peak_bytes": 16173452748,
+      "tracked_peak_gib": 15.062701653689146,
+      "tracked_vs_clean_q4ks_percent": -4.234548868969046,
+      "retained_weight_bytes": 15331854336,
+      "weight_physical_owners": 2,
+      "decode_scratch_bytes": 213671168,
+      "decode_scratch_physical_owners": 1,
+      "retained_bf16_kv_bytes": 50331648,
+      "retained_linear_state_bytes": 158859264,
+      "session_buffer_bytes": 627282124,
+      "bulk_prefill_scratch_bytes": 607381996,
+      "bulk_prefill_scratch_rows": 768,
+      "bulk_prefill_allocation_mode": "dedicated",
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16419581952,
+      "gtt_delta_bytes": 16400904192,
+      "gtt_delta_gib": 15.274532318115234,
+      "lower_llama_gtt_gib": 15.784839630126953,
+      "vs_lower_llama_gtt_percent": -3.232895132097169,
+      "rss_peak_gib": 4.854217529296875,
+      "system_available_drop_gib": 17.25372314453125,
+      "memory_sample_count": 1246,
+      "final_token_ids": [9707],
+      "tracked_after_close_bytes": 0
+    },
+    "1024/128": {
+      "prefill_tok_s": 376.1674138969659,
+      "decode_tok_s": 12.877576681515189,
+      "prefill_vs_clean_q4ks_percent": -0.30570739988189377,
+      "decode_vs_clean_q4ks_percent": 0.08383542872549832,
+      "tracked_peak_bytes": 16622630604,
+      "tracked_peak_gib": 15.481031130999327,
+      "tracked_vs_clean_q4ks_percent": -4.124844672135075,
+      "retained_weight_bytes": 15331854336,
+      "weight_physical_owners": 2,
+      "decode_scratch_bytes": 247536896,
+      "decode_scratch_physical_owners": 1,
+      "retained_bf16_kv_bytes": 83886080,
+      "retained_linear_state_bytes": 158859264,
+      "session_buffer_bytes": 1042594252,
+      "bulk_prefill_scratch_bytes": 1010107116,
+      "bulk_prefill_scratch_rows": 1280,
+      "bulk_prefill_allocation_mode": "dedicated",
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16887246848,
+      "gtt_delta_bytes": 16868569088,
+      "gtt_delta_gib": 15.710079193115234,
+      "lower_llama_gtt_gib": 15.816089630126953,
+      "vs_lower_llama_gtt_percent": -0.6702695766834021,
+      "rss_peak_gib": 4.85382080078125,
+      "system_available_drop_gib": 17.23550033569336,
+      "memory_sample_count": 1301,
+      "final_token_ids": [9707],
+      "tracked_after_close_bytes": 0
+    },
+    "4096/128": {
+      "prefill_tok_s": 369.8669193266834,
+      "decode_tok_s": 13.037931197308096,
+      "prefill_vs_clean_q4ks_percent": -0.24847130485994295,
+      "decode_vs_clean_q4ks_percent": 0.09591771704100527,
+      "tracked_peak_bytes": 16637006924,
+      "tracked_peak_gib": 15.494420122355223,
+      "tracked_vs_clean_q4ks_percent": -16.088325979004303,
+      "retained_weight_bytes": 15331854336,
+      "weight_physical_owners": 2,
+      "decode_scratch_bytes": 450733824,
+      "decode_scratch_physical_owners": 1,
+      "retained_bf16_kv_bytes": 285212672,
+      "retained_linear_state_bytes": 158859264,
+      "session_buffer_bytes": 853773644,
+      "bulk_prefill_scratch_bytes": 813948524,
+      "bulk_prefill_scratch_rows": 1024,
+      "bulk_prefill_allocation_mode": "dedicated",
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16905510912,
+      "gtt_delta_bytes": 16886833152,
+      "gtt_delta_gib": 15.727088928222656,
+      "lower_llama_gtt_gib": 16.003589630126953,
+      "vs_lower_llama_gtt_percent": -1.7277417647836968,
+      "rss_peak_gib": 4.853694915771484,
+      "system_available_drop_gib": 17.224525451660156,
+      "memory_sample_count": 1619,
+      "final_token_ids": [9707],
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "exact_b3_result": {
+    "sampled": {
+      "true_ar_tok_s": 13.304818694285723,
+      "b3_tok_s": 23.817437115242686,
+      "b3_vs_true_ar": 1.790136165137825,
+      "accepted_draft_tokens": 161,
+      "proposed_draft_tokens": 248,
+      "cycles": 87,
+      "target_forward_rows": 335,
+      "tracked_peak_bytes": 16810214610,
+      "tracked_peak_gib": 15.655732350423932,
+      "tracked_vs_task23_percent": -7.439211846270954,
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 17089769472,
+      "gtt_delta_bytes": 17071091712,
+      "gtt_delta_gib": 15.898693084716797,
+      "llama_hip_b3_gtt_gib": 16.357528686523438,
+      "vs_llama_hip_b3_gtt_percent": -2.805042317820683,
+      "rss_peak_gib": 4.986034393310547,
+      "system_available_drop_gib": 17.37087631225586,
+      "memory_sample_count": 2903,
+      "current_allocated_bytes_after_close": 0,
+      "active_allocations_after_close": 0
+    },
+    "unsampled_candidate": {
+      "true_ar_tok_s": 13.361530284246959,
+      "b3_tok_s": 23.922102536495526,
+      "b3_vs_true_ar": 1.7903714640155644,
+      "train_tok_s": 24.271713507657417,
+      "heldout_tok_s": 23.416170995241355,
+      "category_tok_s": {
+        "code": 28.74093427053076,
+        "general_en": 20.383296804496325,
+        "general_ja": 20.543874906178242,
+        "mixed_ja_en": 23.987440871649195
+      }
+    },
+    "adjacent_device_embedding_control": {
+      "true_ar_tok_s": 13.359905099452508,
+      "b3_tok_s": 23.928585115964957,
+      "candidate_vs_control_true_ar_percent": 0.012164643254219953,
+      "candidate_vs_control_b3_percent": -0.027091361390629842,
+      "candidate_vs_control_b3_wall_percent": 0.027098702798133978,
+      "tracked_peak_bytes": 17525376210,
+      "candidate_tracked_bytes_saved": 715161600,
+      "verdict": "anonymous mapped-host embedding is causally performance-neutral within the frozen 1% guard"
+    },
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "all_ten_prompt_trajectories_match_true_ar": true,
+      "accepted_and_proposed_counts_match_task23": true,
+      "tracked_teardown_zero": true
+    }
+  },
+  "correctness": {
+    "shape_final_ids_stable": true,
+    "dedicated_oracle_final_logit": 25.41824722290039,
+    "production_512_and_4096_final_logit": 25.41824722290039,
+    "mapped_host_storage_audit": "hip_registered_host_copy, 715161600 bytes, owns_buffer=false",
+    "bulk_prefill_fields_are_dedicated": true,
+    "serial_exact_and_b4_keep_full_state_journals": true,
+    "focused_tests": "66 passed",
+    "focused_test_command": "PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_gguf_geometry_policy.py tests/test_qwen35_gguf_host_token_embedding.py tests/test_qwen35_gguf_linear_state_snapshot.py tests/test_qwen35_gguf_prefill_scratch_liveness.py",
+    "tracked_teardown_zero_all": true
+  },
+  "comparators": {
+    "shape_lower_llama_backend": "llama.cpp HIP build 10438 9d57ce456 at all three shapes",
+    "shape_lower_llama_gtt_gib": {
+      "512/128": 15.784839630126953,
+      "1024/128": 15.816089630126953,
+      "4096/128": 16.003589630126953
+    },
+    "exact_b3_lower_valid_llama_backend": "llama.cpp HIP",
+    "exact_b3_llama_gtt_gib": 16.357528686523438,
+    "performance_guard": "sampled shape prefill moves -0.338%/-0.306%/-0.248% and AR +0.077%/+0.084%/+0.096% versus clean Q4_K_S; adjacent B3 host/device is +0.012% AR and -0.027% B3; all are within the frozen 1% wall guard"
+  },
+  "raw_evidence": {
+    "shape_512": {
+      "result_sha256": "7607e0102fa855bbd1d97ef3ce4be02679d7624d5f5ff9f9819ad8109e1f8faa",
+      "memory_sha256": "6adccedd722b55db9319c4251bde7113af732970caba381d405981febb6747ca"
+    },
+    "shape_1024": {
+      "result_sha256": "e6d4169e83d39487ad1f5be7bb46934ee22a76f56b09c8990a444d20b989013b",
+      "memory_sha256": "6b1ad0e6b1772f08c2354fb5e7264d3357d681b64ddb3389d4bd80c66489ddb9"
+    },
+    "shape_4096": {
+      "result_sha256": "2f4e0b029749f6ba79e097ce6122ded1e237a77537e0eeeda06fddfa05c0675a",
+      "memory_sha256": "e65f08efa7d9f0527cbc378ce52d3b624c4c4ce330e4f08120a191f32a06df89"
+    },
+    "b3_sampled": {
+      "result_sha256": "cb0261d2b1a76384d571e2b2753d4dca12098106efdf5c936ef489ead6aac580",
+      "memory_sha256": "5d666e874093c3fd29909ef5f6b6badbd40fdc9221ab24da41752cd14c956cab"
+    },
+    "b3_unsampled_candidate_sha256": "c62986e369e1d79249248553c0eb0d42f9fa9ed012f43c9f4c9d028b65a415e4",
+    "b3_unsampled_device_control_sha256": "3f731023cbde42234f83fd19534a698e4e94922682a40ea87e115563f2e44c21",
+    "b3_census_before_sha256": "232409824973e0e5290e3eb17c13022721bb3df6ff1052c9d77704a82f9742bc",
+    "b3_census_after_sha256": "2e5350f8ec5ce92cdeb1ada29d2e01cea5db2d9f1538e218c0b72c8eea695ce6"
+  },
+  "decision": {
+    "task24": "retain: direct candidate measurements put process GTT below the lower valid llama backend at every required shape and exact B3 with exact outputs, a causal <=1% performance guard, and zero tracked teardown",
+    "campaign_g5": "development gate passes; task 26 must refresh the binding rows from the clean retained commit before declaring final G6 closure",
+    "unsafe_aliases": "removed or fail-closed; no liveness-alias measurement is used as retained evidence"
+  }
+}

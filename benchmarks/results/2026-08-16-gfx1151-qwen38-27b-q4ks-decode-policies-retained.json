@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4ks_decode_policies",
+  "status": "retained_development",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "performance_claim_scope": "true autoregressive decode and non-speculative prefill only; Q4_K_S native MTP is correctness-blocked and none of its rates are eligible",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_base_commit": "95a8a8e9a0fd7afa8945f3adf49f237d35d2172e",
+    "candidate_diff": "only Q4_K_S entries in three existing gfx1151 decode policy maps",
+    "isolated_worktree": "/tmp/qwen38-task22-q4ks-policies-clean",
+    "llama_cpp_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llama_cpp_build": 10438,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "kv_storage": "BF16"
+  },
+  "changes": [
+    "Admit the existing exact qmicro Q4 split-weight dp4a gate+up+SiLU c1 owner for the Qwen3.8 H5120 Q4_K_S identity.",
+    "Admit the existing exact direct Q4 down+residual c1 owner; Q5 down tensors continue through their registered unfused fallback.",
+    "Admit the existing quant-independent fixed-H5120 norm and add+norm c1 owners."
+  ],
+  "matched_policy_gate": {
+    "shape": "512/128",
+    "protocol": "policy-disabled control immediately followed by candidate; each one discarded warmup plus three measured persistent resets; production bulk/WMMA/GEMV/graph routes",
+    "control_decode_tok_s": 12.42931657649241,
+    "candidate_decode_tok_s": 13.068536622728915,
+    "decode_delta_percent": 5.142841461174652,
+    "control_prefill_tok_s": 373.91871589923585,
+    "candidate_prefill_tok_s": 379.20300997409095,
+    "prefill_note": "Policies are decode-only; the observed prefill difference is not claimed causally.",
+    "control_tracked_peak_bytes": 16888609156,
+    "candidate_tracked_peak_bytes": 16888609156,
+    "final_tokens_exact": true,
+    "tracked_teardown_zero": true
+  },
+  "shape_transfer": {
+    "protocol": "one right-sized isolated process per shape; one discarded warmup plus three measured persistent resets; production bulk prefill, WMMA, GEMV decode and HIP graph replay",
+    "rows": {
+      "512/128": {
+        "prefill_tok_s": 379.20300997409095,
+        "prefill_cv_percent": 0.0433119873073802,
+        "decode_tok_s": 13.068536622728915,
+        "decode_cv_percent": 0.028314739778795544,
+        "tracked_peak_bytes": 16888609156,
+        "final_tokens": [9707, 9707, 9707]
+      },
+      "1024/128": {
+        "prefill_tok_s": 375.95196553857454,
+        "prefill_cv_percent": 0.157919880134203,
+        "decode_tok_s": 12.880491770925667,
+        "decode_cv_percent": 0.027653033088022354,
+        "tracked_peak_bytes": 17337787404,
+        "final_tokens": [9707, 9707, 9707]
+      },
+      "4096/128": {
+        "prefill_tok_s": 370.8044408717557,
+        "prefill_cv_percent": 0.13098098751291826,
+        "decode_tok_s": 13.040998204968327,
+        "decode_cv_percent": 0.06345361606839352,
+        "tracked_peak_bytes": 19826808508,
+        "final_tokens": [9707, 9707, 9707]
+      }
+    },
+    "decode_delta_vs_clean_q4_k_m_hipengine_percent": {
+      "512/128": 4.576681426773188,
+      "1024/128": 4.561006840472226,
+      "4096/128": 4.602004235257939
+    },
+    "decode_delta_vs_clean_llama_hip_q4_k_m_percent": {
+      "512/128": 7.554413747857258,
+      "1024/128": 6.763568618743765,
+      "4096/128": 13.319937291109518
+    },
+    "decode_delta_vs_clean_llama_vulkan_q4_k_m_percent": {
+      "512/128": 2.3947206639364227,
+      "1024/128": 1.2641017767683227,
+      "4096/128": 3.7610180545057936
+    },
+    "prefill_delta_vs_clean_llama_hip_q4_k_m_percent": {
+      "512/128": 7.5979653230936695,
+      "1024/128": 3.1580619346992744,
+      "4096/128": 0.7640156002140186
+    },
+    "prefill_delta_vs_clean_llama_vulkan_q4_k_m_percent": {
+      "512/128": 56.0787738959297,
+      "1024/128": 51.83201954490333,
+      "4096/128": 4.638306414013815
+    }
+  },
+  "natural_true_ar": {
+    "protocol": "ten committed prompts, four categories, six train/four heldout, three runs, 720 timed transitions",
+    "hipengine_tok_s": 13.332758980564911,
+    "all_30_trajectories_repeat_exact": true,
+    "category_tok_s": {
+      "code": 13.34048770969697,
+      "general_en": 13.330099532647013,
+      "general_ja": 13.32693924192384,
+      "mixed_ja_en": 13.325796373939957
+    },
+    "delta_vs_clean_q4_k_m_hipengine_percent": 4.839423492792916,
+    "same_file_llama_hip_tok_s": 5.538531366560844,
+    "delta_vs_same_file_llama_hip_percent": 140.72733542798187,
+    "same_file_llama_vulkan_tok_s": 7.518880143004088,
+    "delta_vs_same_file_llama_vulkan_percent": 77.32373341487992
+  },
+  "same_file_llama_prefill_512": {
+    "hipengine_tok_s": 379.20300997409095,
+    "llama_hip_tok_s": 170.45621006597185,
+    "delta_vs_llama_hip_percent": 122.4635933342221,
+    "llama_vulkan_tok_s": 176.83618648619242,
+    "delta_vs_llama_vulkan_percent": 114.43745056315132
+  },
+  "memory": {
+    "q4ks_512_tracked_peak_bytes": 16888609156,
+    "clean_q4km_512_tracked_peak_bytes": 17810372996,
+    "tracked_peak_reduction_bytes": 921763840,
+    "tracked_peak_reduction_gib": 0.85845947265625,
+    "note": "This is allocator ownership, not whole-process GTT. Task 24 retains the whole-device memory comparator obligation."
+  },
+  "correctness": {
+    "policy_tests": "8 focused passed; 43-node backend/geometry run had 42 pass plus one stale Q4_K_S GDN expectation, then the repaired failing node passed",
+    "prior_actual_weight_gate": "27 c1/rowtile/WMMA checks BF16-identical; CPU-reference max KL 3.1573721e-07 and top-1 48/48 at commit c08af0ff4",
+    "all_shape_tokens_stable": true,
+    "all_natural_ar_trajectories_repeat_exact": true,
+    "all_rates_finite_positive": true,
+    "tracked_teardown_zero": true,
+    "kernel_body_changed": false
+  },
+  "mtp_blocker": {
+    "status": "correctness_failed_not_published",
+    "scope": "native Q4_K_S B1/B2/B3",
+    "mismatching_prompts": ["general_ja_plan", "general_ja_explain"],
+    "repeat_count_per_budget_and_prompt": 3,
+    "gpu_accept_matches_cpu_all": true,
+    "interpretation": "The transactional accept decision agrees with its CPU oracle, but native batched target verification diverges from scalar true AR for these prompts. None of the measured MTP rates are eligible. Follow up under task 23."
+  },
+  "validation": {
+    "red": "the three exact policy-map assertions failed before implementation",
+    "green": "the three policy nodes plus the five-test geometry-policy module pass; a 43-node backend/geometry run established 42 other passes and its sole stale Q4_K_S GDN expectation passed after focused repair",
+    "shape_gate_passed": true,
+    "natural_true_ar_gate_passed": true,
+    "both_llama_decode_backends_beaten_all_required_rows": true,
+    "both_llama_prefill_backends_beaten_all_required_rows": true,
+    "production_policy_retained": true
+  },
+  "commands": {
+    "shape": "python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads <512/128|1024/128|4096/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+    "natural": "python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build --output result.json",
+    "llama": "llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --parallel 1 --ctx-size 768 --batch-size 512 --ubatch-size 512 --n-gpu-layers all --cache-type-k bf16 --cache-type-v bf16 --flash-attn auto; client llamacpp_server_suite.py --model-label qwen38 --mode ar"
+  },
+  "evidence": {
+    "policy_candidate": {"path": "/tmp/qwen38-task22-q4ks-p5-policies-p512-reverse/candidate.json", "sha256": "bf4ca37b9becc160eb72987baec3934943153f975d024e559640a27b955f5dbf"},
+    "policy_control": {"path": "/tmp/qwen38-task22-q4ks-p5-control-p512/control.json", "sha256": "09ab14345e4a446314e297db613fa4242cb8247bca8ca7fde23de324cc338e1c"},
+    "shape_1024": {"path": "/tmp/qwen38-task22-q4ks-shapes/1024.json", "sha256": "89b6e74d947eef8b65bf45f2d7a5951fe946abfb7ea2d2c60754488c937392f0"},
+    "shape_4096": {"path": "/tmp/qwen38-task22-q4ks-shapes/4096.json", "sha256": "5614dd1f9b080c66f26a5b0b60d0f8dbce17c82758a571190ad582f2249de9ba"},
+    "natural": {"path": "/tmp/qwen38-task22-q4ks-natural-policies/result.json", "sha256": "54fe720082136c444b08e5f64fd234abe7be7de53ba93f070e7cee9d92f1e38a"},
+    "llama_hip": {"path": "/tmp/qwen38-task22-q4ks-llama-hip/result.json", "sha256": "17c2251fb8618eb4a6383a188aae99121b3243c15393dcb41c65675949934fa6"},
+    "llama_vulkan": {"path": "/tmp/qwen38-task22-q4ks-llama-vulkan/result.json", "sha256": "8f9f7162aaea65a4a0ae6e677f4372427ff7fbb2e15cd2caa076a405488d6299"}
+  },
+  "decision": "Retain the three Q4_K_S true-AR policy transfers. They improve matched 512/128 decode 5.143%, lift all required shape rows above both frozen clean llama backends, and beat same-file llama HIP/Vulkan natural AR by 140.73%/77.32%. Do not publish native Q4_K_S MTP until task 23 resolves the two Japanese trajectory mismatches."
+}

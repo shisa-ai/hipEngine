@@ -1,0 +1,293 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4_qmicro_sole_gate_up",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "d10cf1ff086a717401c1bde4faa68b19fdcddf54",
+    "control": "clean detached d10cf1ff0 worktree",
+    "candidate": "d10cf1ff0 development tree with the qmicro sole-payload unit",
+    "candidate_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "layers": 64,
+      "gate_up_weights_replaced": 128,
+      "in_features": 5120,
+      "out_features": 17408
+    }
+  },
+  "change": {
+    "scope": "gfx1151 Qwen3.8-27B dense H5120/N17408 Q4_K gate/up only",
+    "control_layout": "gguf_q4_k_t16_v1, 2368 bytes per K256/N16 tile",
+    "candidate_layout": "gguf_q4_k_qmicro_t16_v1, 2304 bytes per K256/N16 tile",
+    "resident_policy": "one qmicro tiles allocation per target weight; no standard-T16, pack8, raw, or decode-tile sidecar",
+    "c1": "direct compact-metadata split-weight residual-Q8_1x2 dp4a+SiLU",
+    "native_rows_2_4": "direct compact-metadata rowtile and dual-rowtile+SiLU",
+    "prefill_512_1024": "direct compact-metadata singleton and dual WMMA",
+    "prefill_4096_plus": "one transient metadata expansion into the already-dead FFN gate/up scratch plane followed by the exact dual WMMA owner",
+    "fallbacks": "qmicro singleton primitives plus primitive SiLU cover fused misses; rows5-4095 use qmicro singleton WMMA; role/shape/backend misses retain their independently registered prior layouts and kernels",
+    "persistent_sidecar_bytes": 0,
+    "new_workspace_bytes": 0,
+    "graph_node_delta_c1": 0
+  },
+  "actual_weight_operation_gate": {
+    "layers": [0, 8, 63],
+    "source_pair_bytes": 100270080,
+    "standard_t16_pair_bytes": 103055360,
+    "qmicro_pair_bytes": 100270080,
+    "pair_byte_delta": -2785280,
+    "pair_byte_delta_percent": -2.7027027027026973,
+    "c1": {
+      "control_median_sum_ms": 1.4238077402114868,
+      "candidate_median_sum_ms": 1.3814987242221832,
+      "speedup": 1.030625447021766,
+      "candidate_wins": 45,
+      "pairs": 45,
+      "bf16_bit_exact": true
+    },
+    "native_rows_2_4": {
+      "control_median_sum_ms": 4.2797819674015045,
+      "candidate_median_sum_ms": 4.152053505182266,
+      "speedup": 1.0307627206778087,
+      "candidate_wins": 135,
+      "pairs": 135,
+      "bf16_bit_exact": true
+    },
+    "prefill": {
+      "512": {
+        "control_median_sum_ms": 20.74494504928589,
+        "candidate_median_sum_ms": 20.47075605392456,
+        "speedup": 1.0133941801973045,
+        "candidate_wins": 44,
+        "pairs": 45,
+        "route": "direct compact metadata"
+      },
+      "1024": {
+        "control_median_sum_ms": 40.38393688201904,
+        "candidate_median_sum_ms": 40.17276191711426,
+        "speedup": 1.0052566703116028,
+        "candidate_wins": 32,
+        "pairs": 45,
+        "route": "direct compact metadata"
+      },
+      "4096": {
+        "control_median_sum_ms": 161.01964569091797,
+        "candidate_median_sum_ms": 160.17212295532227,
+        "speedup": 1.0052913248570234,
+        "candidate_wins": 32,
+        "pairs": 45,
+        "route": "transient expanded metadata"
+      },
+      "all_bf16_bit_exact": true
+    }
+  },
+  "complete_model_gate": {
+    "protocol": "repeated token 9707; one discarded warmup plus three measured persistent-session runs; graph replay; cached builds; 512 uses control/candidate/candidate/control processes; 1K and 4K use one control and one candidate process",
+    "rows": {
+      "512/128": {
+        "control_decode_tok_s": 12.361185694143288,
+        "candidate_decode_tok_s": 12.48861852685312,
+        "decode_delta_percent": 1.0309110781355787,
+        "control_prefill_tok_s": 400.2338453431428,
+        "candidate_prefill_tok_s": 401.87044247193865,
+        "prefill_delta_percent": 0.4089102278176159,
+        "candidate_decode_process_medians": [12.488589050572127, 12.488648003134111],
+        "control_decode_process_medians": [12.3664547756516, 12.355916612634974],
+        "all_candidate_processes_above_controls": true,
+        "candidate_decode_cv_percent": [0.004118339237284305, 0.03816377816149506],
+        "control_decode_cv_percent": [0.015125130484566577, 0.05168215273574543],
+        "tracked_peak_control_gib": 16.753218058496714,
+        "tracked_peak_candidate_gib": 16.587202433496714
+      },
+      "1024/128": {
+        "control_decode_tok_s": 12.189452726865017,
+        "candidate_decode_tok_s": 12.305961248266756,
+        "decode_delta_percent": 0.9558142109609131,
+        "control_prefill_tok_s": 391.15891287570713,
+        "candidate_prefill_tok_s": 392.140436456681,
+        "prefill_delta_percent": 0.2509270653601967,
+        "control_decode_cv_percent": 0.03331041882252964,
+        "candidate_decode_cv_percent": 0.019322220980112315,
+        "tracked_peak_control_gib": 17.177651416510344,
+        "tracked_peak_candidate_gib": 17.011635791510344
+      },
+      "4096/128": {
+        "control_decode_tok_s": 12.34223694481415,
+        "candidate_decode_tok_s": 12.46215479079405,
+        "decode_delta_percent": 0.9716054432927269,
+        "control_prefill_tok_s": 385.1161444885445,
+        "candidate_prefill_tok_s": 385.3291900787772,
+        "prefill_delta_percent": 0.05531982838986682,
+        "control_decode_cv_percent": 0.03327776953636246,
+        "candidate_decode_cv_percent": 0.03835514480575227,
+        "tracked_peak_control_gib": 19.529302295297384,
+        "tracked_peak_candidate_gib": 19.363286670297384
+      }
+    },
+    "correctness": "all repeated-shape measured IDs and final logits are exactly equal; all outputs finite; teardown is zero"
+  },
+  "natural_suite": {
+    "protocol": "all ten mtp-bench prompts; code/general_en/general_ja/mixed_ja_en; six train/four heldout; 25 visible outputs; three runs; exact native B1 guard",
+    "true_ar": {
+      "control_tok_s": 12.581246808441312,
+      "candidate_tok_s": 12.71731428538565,
+      "delta_percent": 1.081510274904108,
+      "minimum_full_train_heldout_category_ratio": 1.010435256939462,
+      "all_30_trajectories_exact": true
+    },
+    "native_b1": {
+      "control_tok_s": 18.83154031058572,
+      "candidate_tok_s": 19.00472472481211,
+      "delta_percent": 0.9196508165029806,
+      "minimum_full_train_heldout_category_ratio": 1.0086962528922732,
+      "accepted_draft_tokens_control": 339,
+      "accepted_draft_tokens_candidate": 339,
+      "proposed_draft_tokens_control": 393,
+      "proposed_draft_tokens_candidate": 393,
+      "target_forward_rows_control": 786,
+      "target_forward_rows_candidate": 786,
+      "all_30_trajectories_and_economics_exact": true,
+      "all_gpu_acceptance_matches_cpu": true
+    },
+    "tracked_peak_control_bytes": 18634821232,
+    "tracked_peak_candidate_bytes": 18456563312,
+    "tracked_after_close_bytes": 0
+  },
+  "memory": {
+    "resident_gate_up_standard_t16_bytes": 6595543040,
+    "resident_gate_up_qmicro_bytes": 6417285120,
+    "resident_and_tracked_peak_delta_bytes": -178257920,
+    "resident_and_tracked_peak_delta_mib": -170.0,
+    "resident_and_tracked_peak_delta_gib": -0.166015625,
+    "p512_tracked_peak_delta_percent": -0.9909476759648694,
+    "candidate_total_weight_bytes": 16943220736,
+    "candidate_total_tracked_p512_bytes": 17810372996,
+    "alternate_layout_weight_bytes": 0,
+    "teardown_bytes": 0
+  },
+  "comparison_to_clean_llama_cpp": {
+    "note": "development hipEngine rates versus frozen clean llama.cpp build 10438 / 9d57ce456; not a clean hipEngine publication refresh",
+    "rows": {
+      "512/128": {
+        "candidate_vs_hip_decode_percent": 2.781908110324749,
+        "candidate_vs_vulkan_decode_percent": -2.149052904487847,
+        "candidate_vs_hip_prefill_percent": 14.029737440466562,
+        "candidate_vs_vulkan_prefill_percent": 65.40873346282399
+      },
+      "1024/128": {
+        "candidate_vs_hip_decode_percent": 2.0014194394028406,
+        "candidate_vs_vulkan_decode_percent": -3.2527398581196354,
+        "candidate_vs_hip_prefill_percent": 7.599936466520418,
+        "candidate_vs_vulkan_prefill_percent": 58.37019363381164
+      },
+      "4096/128": {
+        "candidate_vs_hip_decode_percent": 8.290289368306226,
+        "candidate_vs_vulkan_decode_percent": -0.8445470684655065,
+        "candidate_vs_hip_prefill_percent": 4.711010828678042,
+        "candidate_vs_vulkan_prefill_percent": 8.737016344245863
+      }
+    }
+  },
+  "rocprof": {
+    "protocol": "synthetic shape smoke using precomputed compiler version and require_cached=True before rocprofv3 --kernel-trace",
+    "symbols_observed": 8,
+    "c1_pair": {
+      "kernel": "q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<unsigned short>",
+      "duration_us": 16.79,
+      "workgroup_x": 128,
+      "grid_x_threads": 256,
+      "vgpr": 120,
+      "lds_bytes": 256,
+      "scratch_bytes": 0
+    },
+    "native_rows3_pair": {
+      "kernel": "q4_k_qmicro_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>",
+      "duration_us": 10.459,
+      "workgroup_x": 64,
+      "grid_x_threads": 256,
+      "vgpr": 144,
+      "lds_bytes": 128,
+      "scratch_bytes": 0
+    },
+    "direct_prefill_pair": {
+      "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<true, false>",
+      "duration_us": 44.042,
+      "workgroup_x": 128,
+      "grid_x_threads": 128,
+      "vgpr": 248,
+      "lds_bytes": 32768,
+      "scratch_bytes": 0
+    },
+    "expanded_prefill": {
+      "expand_kernel_duration_us": 1.403,
+      "consumer_kernel_duration_us": 44.603,
+      "consumer": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<true, true>",
+      "consumer_workgroup_x": 128,
+      "consumer_grid_x_threads": 128,
+      "consumer_vgpr": 248,
+      "consumer_lds_bytes": 32768,
+      "consumer_scratch_bytes": 0
+    }
+  },
+  "correctness": {
+    "synthetic_c1_native_prefill_bf16_bit_exact": true,
+    "actual_weight_c1_native_prefill_bf16_bit_exact": true,
+    "cpu_reference_kl_at_most_0_05": true,
+    "cpu_reference_top1_at_least_0_90": true,
+    "all_repeated_shape_ids_and_logits_exact": true,
+    "all_natural_ar_and_b1_trajectories_exact": true,
+    "all_b1_acceptance_economics_exact": true,
+    "all_outputs_finite": true
+  },
+  "validation": {
+    "red": "focused qmicro wrapper, registration, dispatch, planning, and exact-output tests failed before implementation",
+    "focused_green": "18 focused planning/dispatch/GPU/materialization checks passed before the complete-model gate",
+    "affected_bundle": "132 passed: dense-Q4 production, qmicro decode/prefill, actual materialization, gfx1151 capability, dispatch cache/repack semantics, and scratch-liveness tests",
+    "rocprof_kernel_gate_passed": true,
+    "all_complete_shapes_decode_positive": true,
+    "all_complete_shapes_prefill_positive": true,
+    "all_natural_ar_and_b1_scopes_positive": true,
+    "sole_payload_and_zero_sidecar": true,
+    "memory_reduced": true,
+    "zero_teardown": true
+  },
+  "commands": {
+    "leaf_c1": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-split-weight-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-qmicro-wave-meta-leaf/leaf.json",
+    "leaf_native_prefill": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-directmeta-leaf.py --layers 0,8,63 --rows <rows> --warmups 3 --samples 15 --output <path>",
+    "shape": "python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build",
+    "natural": "python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build --output <path>",
+    "rocprof": "rocprofv3 --kernel-trace -d /tmp/qwen38-task22-qmicro-production/rocprof -o qmicro -- python3 /tmp/qwen38-task22-qmicro-production/qmicro_trace_driver.py",
+    "tests": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_t16_dense.py <qmicro decode nodes> <mapping nodes> tests/test_gfx1151_backend.py tests/test_gguf_linear_dispatch_cache.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_qwen35_gguf_prefill_scratch_liveness.py"
+  },
+  "evidence": {
+    "c1_leaf": {"sha256": "d3d87ca20345c403970e4a80e719c35ca9ae84a958bad413074e57a8b57f8e65", "bytes": 8389},
+    "native_leaf": {"sha256": "ce311d2d54ff7585682b67ca9628c2ecd64734aaffaea8ad585ddffddf1a348c", "bytes": 13925},
+    "prefill_leaf": {"sha256": "bc4e75822ae453327b930e6ee17967ab5f1e70ba4a7c5e6bfd76d054a821f7f0", "bytes": 13642},
+    "expanded_4k_leaf": {"sha256": "7c9f0f1985b6ae38cdb59dbed9b11ebe08c3dcc39cddea3351f2c4b9ba6c7835", "bytes": 5365},
+    "full_model_smoke": {"sha256": "35de948e25d0168fddabb3ff1ed6b2240e4c89e64d05a0c758a3a2f6c076d50b", "bytes": 154397},
+    "p512_summary": {"sha256": "9b55ac87b4ce68e849dcf441b375bac34b51718d9b8dd44559c703798dc0a4e4", "bytes": 1792},
+    "shape_transfer_summary": {"sha256": "9ff5f2c26dfab5e71877814fbb6ef0b5f51a955604363a233e88ce3d502760fd", "bytes": 1101},
+    "natural_summary": {"sha256": "36a6c13a059d93300ce9937735ed6c84a0f98a39baf231fbe1b880ec82b69bfe", "bytes": 1397},
+    "natural_control": {"sha256": "6b59d6448018bf9c0ed266402d17222dd1c57e7f22b42aff5b7fa96af133e11b", "bytes": 840719},
+    "natural_candidate": {"sha256": "2b7556c5a4b705239d14c003175fa8f3c87cb55b2ff4fc66c941b7c1befbf95b", "bytes": 840758},
+    "rocprof_db": {"sha256": "2556ab692e1809ecc843e2d91a8fac160e3e660b53be38210ebcd3f53d8efdca", "bytes": 663552},
+    "rocprof_summary": {"sha256": "02d900bd0181308503b6834caff3b3efae11f18bce6a36412c1c5381b4eb1662", "bytes": 4084},
+    "trace_driver": {"sha256": "e3d6274f146aac284a964fcb4a477b15555f0846cc52ea9560cec50e0804cce9", "bytes": 5412}
+  },
+  "decision": "Retain and default sole qmicro Q4 ownership for the 128 Qwen3.8 dense gate/up weights on gfx1151. The materially new direct-metadata native consumer and bounded 4K transient expansion repair the prior operation-completeness blocker. Every repeated and natural AR/prefill/B1 scope is positive, all outputs and speculative economics are exact, tracked/resident bytes fall by 170 MiB, no sidecar or new workspace is added, and all policy misses retain registered fallbacks. This is retained development evidence; a clean post-commit publication remains separate."
+}

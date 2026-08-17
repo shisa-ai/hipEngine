@@ -8,11 +8,32 @@ should be removed or collapsed.
 ## Policy
 
 - Exact, same-suite non-regressive performance wins should become defaults.
+- Production-profile T1/T2 wins may become profile defaults only after exact
+  control/ownership plus the complete strict-teacher tail-KL/top-1,
+  determinism/isolation, BF16-relative, and task gates pass.
 - Keep opt-out flags only while they are useful for rollback, bisection, or a
   named validation gap.
 - When a flag is left in place, record the removal trigger here.
-- Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
-  runtime dispatch branches and stale experiment toggles first.
+- Do not remove registered strict unfused fallbacks required by `AGENTS.md` and
+  `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
+  experiment toggles first.
+
+## Execution-profile migration seam
+
+- Implemented for campaign P3: public `strict|production|batch_invariant`
+  selection resolves to an immutable variant manifest through
+  model/backend/quant plugin plans, with per-scope strict fallback and exact-key
+  registry validation. `LLM.execution_profile_manifest_sha256` and server model
+  discovery expose the resolution. To avoid an unannounced behavior change
+  during calibration, an omitted profile temporarily bypasses plan resolution
+  and preserves the pre-profile package selection. That compatibility behavior
+  is not a fourth named profile. `HIPENGINE_EXECUTION_PROFILE` is the sole
+  environment adapter; explicit API/CLI values win.
+- Removal trigger: after P4 re-certifies or replaces every current non-exact
+  default, P7 passes the public-default SLO/c1 guard, API/server docs name the
+  default, and one release window confirms strict fallback and
+  batch-invariant behavior. Then remove omitted-profile legacy selection and
+  any duplicate env-to-profile adapter. Keep registered strict fallbacks.
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
@@ -150,6 +171,19 @@ should be removed or collapsed.
   selector and dead default-off branch. Keep the registered primitive chain as
   the required numerical and peer-backend fallback.
 
+## gfx1151 Qwen3.8 c1 down-residual rollback seam
+
+- Added 2026-08-16 for the exact Q4T16/Q6-qmicro K17,408/N5,120
+  projection-plus-rounded-residual graph contraction. Setting
+  `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE=0` restores the registered direct
+  projections plus standalone BF16 add. Registry, model/file/shape, rows>1,
+  and peer-backend misses also keep that primitive chain; no resident or
+  scratch bytes depend on the composite.
+- Removal trigger: after one release window with 512/1K/4K graph decode,
+  natural AR/B1, and lifecycle gates stable, remove the environment selector
+  and cached negative branch. Keep the primitive projection-plus-add chain as
+  the required numerical and peer-backend fallback.
+
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
@@ -238,6 +272,22 @@ should be removed or collapsed.
 - Q4/Q6 source-F16 maps are explicit empty denials after complete pp512 losses.
   Remove those declarations only when package capability defaults are made
   fail-closed per quant; do not interpret absence as inheriting gfx1100 policy.
+
+## gfx1151 Qwen3.8 Q4_K_M residual-Q8_1x2 diagnostic
+
+- Demoted for Q4_K_M on 2026-08-16 after production-numerics requalification.
+  The changed route passes the 450-row strict-teacher envelope at max KL
+  `0.0008333`, `99.778%` top-1, and exact three-run repeatability, but seven
+  current same-session p512/d128 pairs measure only `0.998071x` the exact
+  local32 owner with one candidate win. Q4_K_M therefore defaults this serial
+  c1 shape to exact local32; no rollback flag or duplicate payload was added.
+  Q4_K_S independently retains split-weight c1 and row-independent native
+  rows2-4 because those owners pass its exact trajectory and performance gates.
+- Removal trigger: after the Q4_K_M requalification artifact has served one
+  release window, remove only its comparison harness if unused. Keep the shared
+  Q8_1x2 producer and split-weight/rowtile registry keys while Q4_K_S owns them,
+  keep the non-split native Q4_K_M consumer while its policy owns it, and keep
+  the exact local32 fused/unfused chain permanently.
 
 ## gfx1151 Qwen3.8 compact-peer GDN rollback seam
 
@@ -509,17 +559,25 @@ should be removed or collapsed.
   W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
   true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
   peak delta falls **45.50-47.03%**.
+- Task 24 adds an independent gfx1151 dense-H5120/Q4_K_S 80-MiB policy. With
+  anonymous host embedding it packs 849 logical allocations into one arena,
+  leaves only the 1,042,944,000-byte untied root dedicated, and exposes two
+  physical weight owners. The retained combined 512/1K/4K rows are within the
+  1% wall guard and below the lower llama process-GTT row at every shape.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Its dense-H5120 removal trigger is
-  closed; remove the shared environment seam after the next cumulative gfx1151 GGUF
-  policy refresh confirms retained **3/4 fork-memory parity** and no supported
-  gfx1151 private-c1 consumer requires rollback.
+  disable-only rollback/bisection seam. Remove the shared environment seam
+  after task 26's clean gfx1100/gfx1151 cumulative closure confirms both dense
+  H5120 policies and no supported private-c1 consumer requires rollback. The
+  gfx1151 half of that confirmation is complete on 2026-08-17 at `20e5106da`
+  (see the
+  [`G6 closure artifact`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json));
+  the gfx1100 half remains pending on W7900 hardware, so the seam stays.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
-  telemetry while this production owner is active. Do not add the rejected SH15
-  state arena or compact-Q4 stack to this package; 4K still needs a separately
-  admitted structural owner.
+  telemetry while this production owner is active. Do not revive the rejected
+  SH15 whole-session state arena or compact-Q4 stack; task 24's dedicated 1K
+  outer-chunk policy is the separately admitted Q4_K_S 4K owner.
 
-## Dense-H5120 gfx1100 private-c1 decode-scratch arena
+## Dense-H5120 private-c1 decode-scratch arena
 
 - Added 2026-08-14 as an architecture/geometry/quant/backend-policy-scoped
   default plus the disable-only
@@ -538,6 +596,34 @@ should be removed or collapsed.
   stable. If a later binding gate fails, remove the capability, resolver,
   arena path, telemetry, tests, and this open entry together; retain dedicated
   allocation unchanged.
+- Task 24 independently enables the same allocator contract for gfx1151 dense
+  H5120/Q4_K_S. One owner exposes all 188 logical ranges; shared runners,
+  wider batches, Q4_K_M, peer models/backends, and opt-out retain dedicated
+  allocations. The combined policy is exact, stays within the 1% wall guard,
+  and contributes physical-allocation savings without changing requested
+  bytes. Extend the removal trigger through task 26's clean gfx1151 closure.
+
+## gfx1151 Qwen3.8 Q4 host embedding and bounded 4K scratch
+
+- Added 2026-08-17 for private-c1 dense-H5120/Q4_K_S memory parity. Automatic
+  Q4 placement uses a byte-for-byte anonymous copy of the 715,161,600-byte
+  compressed embedding and HIP-registers that copy. Direct registration of the
+  file-backed GGUF mmap changed complete-model trajectories and is forbidden on
+  gfx1151. Q8_0 retains its existing CPU-copy route; shared/wider/device-forced
+  sessions retain device ownership.
+- `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=device` is the temporary common rollback.
+  Adjacent exact natural-suite measurement puts mapped host versus device at
+  **+0.012% true AR / -0.027% B3** while removing exactly 715,161,600 tracked
+  bytes. Remove the rollback only after task 26's clean shape/B3 refresh and one
+  release window; keep explicit device fallback for shared and wider sessions.
+- The Q4_K_S prefill policy keeps all bulk-prefill fields dedicated and is
+  capacity-conditional (4K-class grows to the natural 4,096-row full-attention
+  plateau to admit the Q5 source-F16 route, +2.95%; 8K and larger keep
+  1,024-row chunks because 4,096-row chunks measured -2.3% slower at 8K). Do
+  not replace the dedicated fields with owner-slot, single-arena, priority,
+  hidden-buffer, or short-session aliases: stronger gates found final-logit or
+  trajectory corruption. Revisit the 4,096-row plateau only if a later exact
+  owner is non-regressive at 8K+ and keeps memory flat.
 
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
@@ -1522,7 +1608,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
-| GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the default-on gfx1100 cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` temporarily restores the selected-ID counter alias plus per-layer host reset instead of the default dedicated self-resetting four-byte counter. | Production-shape logits, selected IDs, and routing weights are byte-exact. Clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**. The persistent follow-up removes exactly 40 reset nodes/token, improves the cache-cycled fused leaf **14.667 -> 10.444 us (-28.79%)**, and cleanly improves the 4K graph gate **98.812 -> 100.446 tok/s (+1.65%)**, with all IDs/final values exact and only eight added tracked bytes. The unfused chain remains the required numerical fallback for unsupported hidden/backend/quant shapes. | Remove both env opt-outs after one defaults-only gfx1100 refresh remains non-regressive. Keep registry-driven fallback resolution, not experiment toggles. |
+| GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the incumbent cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` restores the selected-ID counter alias plus per-layer host reset instead of the dedicated self-resetting four-byte counter. | gfx1100 clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**; its persistent follow-up removed 40 reset nodes/token and improved the graph gate another **+1.65%**. Independent ZBook/gfx1151 requalification now keeps the same package route: **450/450** full-logit rows, three repeats, 18/18 live-state fingerprints, and 18/18 natural d128 trajectories are byte-exact; natural eager AR improves **30.438 -> 33.219 tok/s (+9.136%)** versus the strict chain, and fixed p512/d128 improves **+8.748%**. The unfused chain remains the required numerical fallback. | Keep both opt-outs until real Qwen3.6 strict/production profile plans bind the selected/fallback variants and exact control capture passes. Then remove the env experiment surface after defaults-only refreshes on both gfx11 targets, while keeping the registered unfused fallback permanently. |
 | GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after LCP-D2 (**+1.23%/+3.95%/+7.80%** at 32K/64K/128K, max KL **1.904e-6**). SH7-A1 independently promotes gfx1151 from 32K: one-queue 32K/64K decode improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)**, all **1,296/1,296** semantic logits are byte-exact, and tracked/GTT/lifecycle are unchanged. | Keep the serial implementation permanently for <32K, unsupported routes, and numerical fallback. Remove the env/min-context experiment overrides after one release window plus defaults-only long-context refreshes on both gfx11 backends. |
 | GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
 | GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
@@ -1908,30 +1994,33 @@ should be boring.
   refresh and gfx1100 transfer. Keep `_small_b_rowtile_chunks` and all 2-6 row
   kernels because they remain exact fallbacks for arbitrary packed widths.
 
-## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
-- Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
+## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
+- Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
   `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
-  rowtile4 wrappers where available. It also enables the pair rowtile diagnostic
-  unless `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is set explicitly. Suite route:
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall`.
-- The original verifier decision remains rejected. Correctness passes against
-  the exact singleton/pair/triple wrappers and its B2 profile moved dense Q8
-  **11.420 -> 10.811 ms/block**, but async llama-compat moved **68.78 -> 68.54
-  tok/s** with identical acceptance.
-- F3 re-evaluated the original 64-thread bodies for native packed AR c2/c4/c8.
-  A clean p512/d64 screen looked positive, but p512/d128 changed one prompt's
-  trajectory at every packed width. The later model-hidden oracle localized the
-  cause to 64-thread reduction order, not cross-row weight reuse. Moving all
-  rowtiles to the production 128-thread partition makes the first-transition
-  model-hidden gate exact, but broad all-projection model wall remains neutral
-  or negative: C2/C4/C8 **77.940/107.798/133.377 tok/s** versus retained
-  **78.552/108.050/133.251**. Therefore all-projection promotion stays rejected;
-  only the separately scoped physical-C8 pair above is eligible.
-- `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is false on both gfx11 backend packages and
-  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` remains diagnostic-only at 128 threads.
-  Remove this broad hook when the investigation is archived. Do not promote it
-  for AR or MTP without a new full-horizon correctness and performance gate.
+  rowtile4 wrappers where available. It also enables pair rowtiling unless
+  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is explicit.
+- The original verifier and F3 broad-promotion decisions remain useful history,
+  but both bound free-running generated-ID equality as if it were request/state
+  correctness. The calibrated production contract instead binds strict-teacher
+  logits and keeps cross-route free-running IDs diagnostic.
+- Fresh clean ZBook-local evidence applies that distinction without weakening
+  determinism; its rates are independent of the other gfx1151 host:
+  18 prompt+heldout cases produce **1,050/1,050 bit-identical strict-teacher
+  full-logit rows** across static c4/c8, c8->c4->c2->c1 retirement, sparse
+  physical c8, every category/shape/transition scope, and three exact repeats.
+  Same-route p512/d128 trajectories are repeat-deterministic; strict/candidate
+  trajectories differ, as allowed for production.
+- Seven current-package counterbalanced pairs retain only physical c4/c8:
+  c4 **78.624 -> 78.974 tok/s (+0.445%, 7/7)** and c8 **96.482 -> 97.125
+  (+0.666%, 6/7)**. C2 loses **59.412 -> 58.345 (-1.795%, 0/7)**.
+  Therefore gfx1151 sets `GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS=4` while
+  `GGUF_Q8_T16_DECODE_ROWTILE_ALL` stays false; gfx1100 keeps floor `0`.
+- Unset uses the backend width floor. Explicit `=0` restores direct singleton/
+  triple and the pre-existing pair policy at every width; explicit `=1` still
+  forces the broad c2 diagnostic. Remove the broad override after one release
+  window and defaults-only dynamic/server refresh, while retaining direct
+  kernels as unsupported-width and rollback fallbacks.
 
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag
@@ -3815,3 +3904,15 @@ should be boring.
   by the complete-model campaign A/B; other shapes fail closed. Remove the env
   branch when the parity campaign closes and no A/B still needs the naive
   control; expand the shape policy only with matched evidence.
+
+## Qwen3.6 shared-prefill SiLU/rotate rollback env
+
+- `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0` rolls packed-PARO shared
+  expert prefill back to registered `silu_mul_separate_out_fp16` followed by
+  `paro_rotate1_fp16`. The default exact pair-rotate route preserves the FP16
+  activation rounding point, removes one launch and the intermediate store/load
+  per layer, and measures **29.643 -> 21.617 us (1.371x)** at the actual
+  512x512/group128/krot8 leaf on gfx1151. Bracketed c4/c8 complete runs remain
+  within noise while prefill throughput is non-regressive. Remove this env
+  branch after one non-regressive release window when no campaign bisection
+  needs the two-launch control; keep the registered primitive fallback.

@@ -831,6 +831,14 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
         "path": "/models/fake",
         "backend": "auto",
         "quant": "auto",
+        "execution_profile": {
+            "requested": None,
+            "resolved": None,
+            "manifest_sha256": None,
+            "strict_manifest_sha256": None,
+            "fell_back_to_strict": None,
+            "migration_default_preserved": True,
+        },
         "loaded": True,
         "resident_context": True,
         "context": {
@@ -843,6 +851,21 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "scale_dtype": "fp16",
             "scale_granularity": "per_token_head",
             "estimate": None,
+            "capability": {
+                "schema_version": 1,
+                "status": "unavailable",
+                "runtime_action": "not_applicable",
+                "promotion_eligible": False,
+                "diagnostic_override": False,
+                "requested": None,
+                "effective_kv_storage": None,
+                "artifact": None,
+                "evidence": None,
+                "reason": (
+                    "loaded engine does not expose artifact-scoped KV capability"
+                    " provenance"
+                ),
+            },
         },
         "capabilities": {
             "completions": True,
@@ -888,8 +911,17 @@ def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
     fake = FakeLLM()
     fake._resolved_backend = "hip_gfx1151"
     fake._resolved_quant = "gguf_q4_k_m"
+    fake.resolved_execution_profile = "production"
+    fake.execution_profile_manifest_sha256 = "a" * 64
+    fake.execution_profile_strict_manifest_sha256 = "b" * 64
+    fake.execution_profile_fell_back_to_strict = False
     app = create_app(
-        ServerConfig(model="/models/fake.gguf", served_model_name="fake-model", eager_load=False),
+        ServerConfig(
+            model="/models/fake.gguf",
+            served_model_name="fake-model",
+            execution_profile="production",
+            eager_load=False,
+        ),
         llm=fake,
     )
     client = TestClient(app)
@@ -898,6 +930,14 @@ def test_models_endpoint_reports_resolved_auto_backend_and_quant() -> None:
 
     assert model["backend"] == "hip_gfx1151"
     assert model["quant"] == "gguf_q4_k_m"
+    assert model["execution_profile"] == {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "a" * 64,
+        "strict_manifest_sha256": "b" * 64,
+        "fell_back_to_strict": False,
+        "migration_default_preserved": False,
+    }
 
 
 def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
@@ -942,6 +982,29 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "path": "/models/fake",
         "backend": "auto",
         "quant": "auto",
+        "execution_profile": {
+            "requested": None,
+            "resolved": None,
+            "manifest_sha256": None,
+            "strict_manifest_sha256": None,
+            "fell_back_to_strict": None,
+            "migration_default_preserved": True,
+        },
+        "kv_capability": {
+            "schema_version": 1,
+            "status": "unavailable",
+            "runtime_action": "not_applicable",
+            "promotion_eligible": False,
+            "diagnostic_override": False,
+            "requested": None,
+            "effective_kv_storage": None,
+            "artifact": None,
+            "evidence": None,
+            "reason": (
+                "loaded engine does not expose artifact-scoped KV capability"
+                " provenance"
+            ),
+        },
     }
     assert body["context"] == {
         "configured_max_context_tokens": 2048,
@@ -2677,6 +2740,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         *,
         backend: str,
         quant: str,
+        execution_profile: str | None = None,
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
@@ -2689,6 +2753,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "model": model,
                 "backend": backend,
                 "quant": quant,
+                "execution_profile": execution_profile,
                 "max_active_requests": max_active_requests,
                 "max_sequence_length": max_sequence_length,
                 "prefix_cache": prefix_cache,
@@ -2721,6 +2786,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "model": "fake-path",
         "backend": "auto",
         "quant": "auto",
+        "execution_profile": None,
         "max_active_requests": 8,
         "max_sequence_length": 768,
         "prefix_cache": "radix",

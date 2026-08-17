@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 _BASELINE_KERNELS: dict[Any, Any] | None = None
+_BASELINE_RUNTIME_PROFILE_PLANS: dict[Any, Any] | None = None
 
 
 @pytest.fixture(scope="session")
@@ -51,10 +52,12 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     """
 
     del session
+    from hipengine import execution_profiles
     from hipengine.kernels import registry
 
-    global _BASELINE_KERNELS
+    global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
     _BASELINE_KERNELS = dict(registry._KERNELS)
+    _BASELINE_RUNTIME_PROFILE_PLANS = dict(execution_profiles._RUNTIME_PROFILE_PLANS)
 
 
 @pytest.hookimpl(trylast=True)
@@ -62,6 +65,11 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
     del item, nextitem
     if _BASELINE_KERNELS is None:
         return
+    from hipengine import execution_profiles
     from hipengine.kernels import registry
 
     registry.restore_registry_for_tests(_BASELINE_KERNELS)
+    if _BASELINE_RUNTIME_PROFILE_PLANS is not None:
+        execution_profiles.restore_runtime_profile_registry_for_tests(
+            _BASELINE_RUNTIME_PROFILE_PLANS
+        )

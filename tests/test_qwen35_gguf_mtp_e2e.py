@@ -126,7 +126,10 @@ def _assert_committed_state_matches(
     )
 
 
-@pytest.mark.parametrize("quant", ("gguf_ud_q3_k_m", "gguf_q4_k_m"))
+@pytest.mark.parametrize(
+    "quant",
+    ("gguf_ud_q3_k_m", "gguf_q4_k_m", "gguf_q4_k_s"),
+)
 def test_gguf_mtp_uses_registered_shared_gpu_accept_route(quant: str) -> None:
     assert (
         resolve(

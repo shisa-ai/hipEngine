@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_qmicro_q4_paired_adjacent_qloads",
+  "status": "rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "c3ead79c67430e2d0593f5568b10a5468132fedc",
+    "candidate_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "profile_premise": {
+    "production_family": "qmicro Q4 dense gate/up Q8_1x2 split-weight dp4a+SiLU",
+    "production_ms_per_token": 30.06949575,
+    "production_selected_percent": 38.291702116652786,
+    "observation": "each qmicro packed-Q byte contains two adjacent output nibbles; the retained source requests it once per nibble",
+    "candidate": "load four packed bytes once, publish both adjacent dp4a packs explicitly, and freeze K ownership, integer dots, FP32 update order, reductions, and stores"
+  },
+  "actual_weight_gate": {
+    "layers": [0, 8, 63],
+    "source_pair_mib_each": 95.625,
+    "protocol": "four warmups, 15 counterbalanced HIP-event samples, burst four; each actual pair exceeds 2x 32-MiB MALL",
+    "control_median_ms": [0.46269598603248596, 0.46237725019454956, 0.460283488035202],
+    "candidate_median_ms": [0.48528650403022766, 0.48628199100494385, 0.48249998688697815],
+    "speedups": [0.9534491113803268, 0.950841813489755, 0.953955441542882],
+    "candidate_wins": [0, 0, 0],
+    "pair_counts": [15, 15, 15],
+    "aggregate_control_ms": 1.3853567242622375,
+    "aggregate_candidate_ms": 1.4540684819221497,
+    "aggregate_speedup": 0.9527451708676876,
+    "candidate_delta_percent": 4.95986026245363,
+    "bf16_bit_exact": true,
+    "kl_vs_control": 0.0,
+    "top1_agreement": 1.0
+  },
+  "validation": {
+    "red": "focused test failed import before the sibling existed",
+    "green": "focused synthetic HIP test passed with BF16-bit identity",
+    "actual_weight_correctness_passed": true,
+    "actual_weight_performance_passed": false,
+    "graph_or_request_gate_run": false,
+    "transient_code_removed": true
+  },
+  "commands": {
+    "focused": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_qmicro_q4_dense_dual_q8_1x2_pairq_is_bit_exact",
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-q4-qmicro-pairq-leaf.py --layers 0,8,63 --warmups 4 --samples 15 --burst 4 --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build --allow-dirty --output /tmp/qwen38-task22-q4-qmicro-pairq-leaf/leaf.json"
+  },
+  "evidence": {
+    "leaf": "/tmp/qwen38-task22-q4-qmicro-pairq-leaf/leaf.json",
+    "leaf_sha256": "9cb5b498f207cf0566f0ec3729cecd59595370dc5648b27e6cb9a2c85256eac2",
+    "leaf_bytes": 8700
+  },
+  "decision": "Reject explicit adjacent-nibble qload pairing. Although outputs are BF16-bit exact, the candidate regresses all three actual layers and loses all 45 counterbalanced pairs; aggregate family wall rises 4.960%. Compiler/cache reuse in the retained direct qloads is superior. Remove the sibling before any graph or request gate."
+}

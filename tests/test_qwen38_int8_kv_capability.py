@@ -9,7 +9,12 @@ from hipengine.models.kv_capabilities import (
     ModelArtifactIdentity,
     model_artifact_identity,
 )
+from hipengine.kernels.hip_gfx1100.attention import (
+    qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans,
+    register_qwen35_paged_attn_decode_kernels,
+)
 from hipengine.models.qwen35 import Qwen35GGUFModel
+from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -105,7 +110,7 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
 
     payload = resolution.as_dict()
     assert payload["capability_id"] == (
-        "705a637209c4d2ecbad20934eec5770287e992b2fb2523dded69a2b0487ba778"
+        "3a1055955c47e3a1493d63b0ee7485437769c20679a6d0b7f14f863b5d53827b"
     )
     assert payload["status"] == "qualified"
     assert payload["runtime_action"] == "admit"
@@ -113,10 +118,34 @@ def test_qwen38_gfx1100_exact_artifact_int8_capability_is_qualified() -> None:
     assert payload["effective_kv_storage"] == "int8_per_token_head"
     assert payload["evidence"]["max_direct_rows"] == 1
     assert payload["evidence"]["max_serial_resident_rows"] == 4
+    assert payload["evidence"]["decode_batch_variant"] == (
+        "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+    )
     assert payload["evidence"]["persistent_bf16_mirror"] is False
     assert payload["evidence"]["quality_artifact"].endswith(
         "2026-08-16-qwen38-27b-actual-context-quality-w7900.json"
     )
+
+
+def test_qwen38_gfx1100_capability_resolves_exact_batch_kernel_but_keeps_c1_limit() -> None:
+    plugin = Qwen35GGUFModel()
+    resolution = plugin.resolve_kv_capability(
+        key=_key(
+            sha256=_PASS_SHA256,
+            size_bytes=17_106_773_984,
+            backend="hip_gfx1100",
+        ),
+        artifact=_artifact(sha256=_PASS_SHA256, size_bytes=17_106_773_984),
+    )
+    register_qwen35_paged_attn_decode_kernels()
+
+    max_rows, kernel = gguf_runner._qualified_kv_decode_batch_route(
+        "hip_gfx1100",
+        resolution.as_dict(),
+    )
+
+    assert max_rows == 1
+    assert kernel is qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans
 
 
 def test_qwen38_gfx1151_exact_artifact_int8_capability_remains_rejected() -> None:

@@ -107,6 +107,14 @@ _EXPECTED_DENSE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
     }
 )
 
+_EXPECTED_DENSE_Q4_K_S_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
+    {
+        **_EXPECTED_DENSE_QTYPES,
+        "attn_v": GGMLQuantizationType.Q4_K,
+        "ffn_down": GGMLQuantizationType.Q4_K,
+    }
+)
+
 
 @dataclass(frozen=True)
 class Qwen35GGUFNextNValidation:
@@ -219,7 +227,10 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
 
     slot_names = _slot_names(block_id, config=config)
     dtype_errors: list[str] = []
-    for slot, expected in _expected_qtypes(config).items():
+    for slot, expected in _expected_qtypes(
+        config,
+        file_type_name=info.file_type_name,
+    ).items():
         tensor = actual.get(slot_names[slot])
         if tensor is not None and int(tensor.ggml_type) != int(expected):
             dtype_errors.append(
@@ -305,10 +316,15 @@ def _nextn_layer_slots(
 
 def _expected_qtypes(
     config: Qwen35GGUFConfig,
+    *,
+    file_type_name: str | None = None,
 ) -> dict[str, GGMLQuantizationType]:
-    architecture_qtypes = (
-        _EXPECTED_MOE_QTYPES if config.is_moe else _EXPECTED_DENSE_QTYPES
-    )
+    if config.is_moe:
+        architecture_qtypes = _EXPECTED_MOE_QTYPES
+    elif file_type_name == "MOSTLY_Q4_K_S":
+        architecture_qtypes = _EXPECTED_DENSE_Q4_K_S_QTYPES
+    else:
+        architecture_qtypes = _EXPECTED_DENSE_QTYPES
     return {**_EXPECTED_COMMON_QTYPES, **architecture_qtypes}
 
 

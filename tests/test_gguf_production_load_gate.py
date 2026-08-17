@@ -307,9 +307,16 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
     defaults = parser.parse_args([])
     assert defaults.prefix_cache == "off"
     assert defaults.oracle_mode == "same_owner"
+    assert defaults.gdn_mode == "exact"
     assert defaults.initial_policy == "token_budget"
     assert defaults.tuning_candidates.startswith("token_budget:128,token_budget:256")
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
+    assert (
+        parser.parse_args(
+            ["--gdn-mode", "chain_lds32_direct_nonvolatile"]
+        ).gdn_mode
+        == "chain_lds32_direct_nonvolatile"
+    )
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
 
 

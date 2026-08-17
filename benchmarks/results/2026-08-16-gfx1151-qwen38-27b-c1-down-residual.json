@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_c1_down_residual_graph_contraction",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "f905a9dab8632a46517ecc5a3ec43542bc2e53de",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "feed_forward_length": 17408,
+      "layers": 64,
+      "q4_ffn_down_layers": 32,
+      "q6_ffn_down_layers": 32
+    }
+  },
+  "change": {
+    "scope": "gfx1151 Qwen3.8 dense-H5120 Q4_K_M serial-c1 K17408/N5120 FFN-down only",
+    "control": "direct Q4T16 or planar-qmicro-Q6 projection followed by standalone BF16 residual add",
+    "candidate": "same-resident direct projection with rounded-BF16 residual folded into the producer store",
+    "math_contract": "Preserve the direct producer's K/FMA order and reduction tree, round its projection to BF16, add the BF16 residual in FP32, and round the sum to BF16.",
+    "selector_repairs": [
+      "Resolve explicitly admitted rows1 decode before the independent WMMA-prefill session gate.",
+      "Launch registered T16 residual composites from the existing sole tiles allocation."
+    ],
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "rollback": "HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE=0"
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches": 14944,
+      "dispatches_per_token": 934.0,
+      "kernel_ms_per_token": 79.0593335,
+      "host_ms_per_token": 82.46295243679924,
+      "bf16_add_dispatches": 1024,
+      "final_token_id": 9707,
+      "tracked_peak_gib": 19.529302295297384
+    },
+    "candidate": {
+      "dispatches": 13920,
+      "dispatches_per_token": 870.0,
+      "kernel_ms_per_token": 79.0552530625,
+      "host_ms_per_token": 82.3170723124349,
+      "q4_residual_dispatches": 512,
+      "q4_residual_median_us": 227.127,
+      "q6_residual_dispatches": 512,
+      "q6_residual_median_us": 326.7735,
+      "final_token_id": 9707,
+      "tracked_peak_gib": 19.529302295297384
+    },
+    "delta": {
+      "dispatches_per_token": -64.0,
+      "kernel_ms_per_token": -0.00408043749999365,
+      "kernel_percent": -0.005161234378470159,
+      "host_ms_per_token": -0.14588012436433928,
+      "host_percent": -0.17690383384726394
+    },
+    "interpretation": "The exact composite removes one graph node per dense block. Kernel wall is flat; the retained saving is the eliminated graph/device-gap boundary."
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "warmup_decode_tokens": 1,
+      "decode_tokens": 128,
+      "graph_replay": true,
+      "timing": "load/build and graph capture excluded from steady decode"
+    },
+    "control": {
+      "process_median_tok_s": [12.241135781174906, 12.219202420515016],
+      "median_tok_s": 12.230169100844961,
+      "decode_cv_percent": [0.057810100930682416, 0.028128722249098452],
+      "prefill_median_tok_s": 399.9033986320154,
+      "tracked_peak_gib": [16.753218058496714, 16.753218058496714]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.258948391435634, 12.25961574006873],
+      "median_tok_s": 12.259282065752181,
+      "decode_cv_percent": [0.049532516915088136, 0.03049395663840697],
+      "prefill_median_tok_s": 400.1065620918631,
+      "tracked_peak_gib": [16.753218058496714, 16.753218058496714]
+    },
+    "speedup": 1.0023804221075905,
+    "delta_percent": 0.23804221075904852,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344
+  },
+  "correctness": {
+    "q4_random_fixture_bf16_bit_exact": true,
+    "q6_random_fixture_bf16_bit_exact": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logits_finite": true,
+    "profile_final_logit_exact": true,
+    "request_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "fallbacks": "Rows greater than one, Q8, shape/model/backend misses, and peer backends retain the primitive chain or their prior registered composites.",
+    "natural_suite_not_repeated": "The new leaves are bit-identical to the retained projection-plus-add boundary and no prompt-sensitive or changed-arithmetic branch is introduced; this artifact makes no natural-throughput claim. Existing clean post-norm natural AR/B1 evidence remains applicable."
+  },
+  "validation": {
+    "red": [
+      "Registered c1 decode failed closed when the unrelated WMMA-prefill session axis was enabled.",
+      "Registered sole-T16 c1 residual owners resolved but failed closed because the residual ABI launcher lacked T16 allocation wiring."
+    ],
+    "focused_tests": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_qmicro_planar_c1_down_residual_is_bit_exact tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_c1_down_residual_is_bit_exact tests/test_gguf_linear_dispatch.py::test_launch_gguf_linear_residual_routes_registered_c1_t16_abi tests/test_gguf_linear_dispatch.py::test_launch_gguf_linear_residual_routes_registered_c1_pack8_and_dense_abis tests/test_gguf_linear_dispatch.py::test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners tests/test_gfx1151_backend.py::test_gfx1151_backend_scopes_dense_down_residual_fusions tests/test_qwen35_gguf_prefill_scratch_liveness.py::test_dense_down_residual_decode_policy_is_model_backend_shape_scoped",
+    "focused_result": "7 passed",
+    "affected_cpu_bundle": "All other nodes in tests/test_gguf_linear_dispatch.py, tests/test_gfx1151_backend.py, and tests/test_qwen35_gguf_prefill_scratch_liveness.py passed; one stale exact-map assertion expected only the older 0.8B policy.",
+    "focused_repair": "The repaired exact-map assertion plus scoped-registration node pass 2/2; already-passing broad nodes were not repeated.",
+    "kernel_trace_gate": "Both expected residual kernel names execute 512 times over 16 tokens with positive plausible durations."
+  },
+  "commands": {
+    "profile": "bash /tmp/qwen38-task22-down-residual-graph/run-profile.sh",
+    "request_gate": "bash /tmp/qwen38-task22-down-residual-graph/run-p512-active.sh"
+  },
+  "evidence": {
+    "profile_summary": {"path": "/tmp/qwen38-task22-down-residual-graph/profile-ab/summary.json", "sha256": "5c94c10a0372bbe6d760e958dbc1535faee9d1b36758e85dc55140db2d437aa8", "bytes": 1761},
+    "control_trace": {"path": "/tmp/qwen38-task22-down-residual-graph/profile-ab/control/p4096-ar16_kernel_trace.csv", "sha256": "eefa1fb68fd5063b3cb4499d84aebbbf80fa0a96a4f792436f44295038e40e0d", "bytes": 4110560},
+    "candidate_trace": {"path": "/tmp/qwen38-task22-down-residual-graph/profile-ab/candidate/p4096-ar16_kernel_trace.csv", "sha256": "46d5033771d53f7ee227f42501b3a53ea03be3f8a2d034db054f7cca82e2a4f7", "bytes": 3918624},
+    "request_summary": {"path": "/tmp/qwen38-task22-down-residual-graph/p512-active-ab/summary.json", "sha256": "ce330873225620e54b88291e31b38271d97c7477610da6f574aa5547be624f55", "bytes": 1277}
+  },
+  "decision": "Retain the exact shape-scoped c1 Q4/Q6 down-residual composites and selector repairs. They remove exactly 64 launches/token, reduce profiled host decode by 0.177%, and improve counterbalanced 512/128 graph AR by 0.238% with both candidate processes above both controls, exact outputs, identical peaks, and no resident/workspace bytes. Do not infer a new clean publication topline until the next selector-unset refresh."
+}

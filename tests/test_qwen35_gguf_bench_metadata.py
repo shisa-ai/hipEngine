@@ -80,6 +80,28 @@ def test_exact_command_payload_preserves_argv_and_shell_command() -> None:
     assert shlex.split(payload["command"]) == argv
 
 
+def test_precomputed_compiler_version_bypasses_provenance_probe(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def collect(**kwargs):
+        calls.append(kwargs)
+        return {"kind": "test-provenance"}
+
+    monkeypatch.setattr(bench, "collect_artifact_provenance", collect)
+    result = bench._collect_benchmark_provenance(
+        compiler_version="HIP version: cached",
+        repo_root=Path("/repo"),
+    )
+
+    assert result == {"kind": "test-provenance"}
+    assert calls == [
+        {
+            "repo_root": Path("/repo"),
+            "hipcc_version": "HIP version: cached",
+        }
+    ]
+
+
 def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> None:
     class NoGraphSession:
         pass

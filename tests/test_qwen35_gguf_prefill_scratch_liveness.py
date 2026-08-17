@@ -11,6 +11,7 @@ from hipengine.kernels.policy import (
     QWEN35_DENSE_H5120_GEOMETRY,
 )
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
+from hipengine.runtime.gguf_linear import native_batch_decode_session
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
 
 _MIB = 1 << 20
@@ -77,6 +78,13 @@ def _fake_dense_qwen36_runner() -> SimpleNamespace:
             file_type_name="MOSTLY_Q4_K_M",
         ),
     )
+
+
+def _fake_dense_qwen38_q4ks_runner() -> SimpleNamespace:
+    runner = _fake_dense_qwen36_runner()
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q4_K_S"
+    return runner
 
 
 def _fake_dense_qwen35_08b_runner() -> SimpleNamespace:
@@ -204,13 +212,37 @@ def test_q8_t16_dual_wmma_prefill_is_model_quant_request_scoped() -> None:
 def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
     dense_27b = _fake_dense_qwen36_runner()
     dense_27b.backend = "hip_gfx1151"
-    expected_27b = "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+    expected_27b = "dense_dual_local32_bf16_bf16_out"
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
         dense_27b, rows=1, in_features=5_120, out_features=17_408
     ) == expected_27b
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
         dense_27b, rows=2, in_features=5_120, out_features=17_408
     ) is None
+    with native_batch_decode_session(True):
+        assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+            dense_27b, rows=1, in_features=5_120, out_features=17_408
+        ) == "dense_dual_q8_1x2_dp4a_bf16_bf16_out"
+
+    dense_27b.weights.file_type_name = "MOSTLY_Q4_K_S"
+    q4ks_c1 = "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        dense_27b, rows=1, in_features=5_120, out_features=17_408
+    ) == q4ks_c1
+    assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+        dense_27b, rows=2, in_features=5_120, out_features=17_408
+    ) is None
+    with native_batch_decode_session(True):
+        assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+            dense_27b, rows=1, in_features=5_120, out_features=17_408
+        ) == q4ks_c1
+        for rows in (2, 3, 4):
+            assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+                dense_27b, rows=rows, in_features=5_120, out_features=17_408
+            ) == "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
+        assert gguf_runner._gguf_dense_pair_silu_decode_variant(
+            dense_27b, rows=5, in_features=5_120, out_features=17_408
+        ) is None
     dense_27b.backend = "hip_gfx1100"
     assert gguf_runner._gguf_dense_pair_silu_decode_variant(
         dense_27b, rows=1, in_features=5_120, out_features=17_408
@@ -241,6 +273,19 @@ def test_dense_pair_silu_decode_variant_is_model_backend_shape_scoped() -> None:
 
 
 def test_dense_down_residual_decode_policy_is_model_backend_shape_scoped() -> None:
+    dense_27b = _fake_dense_qwen36_runner()
+    dense_27b.backend = "hip_gfx1151"
+    assert gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=1, in_features=17_408, out_features=5_120
+    )
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=2, in_features=17_408, out_features=5_120
+    )
+    dense_27b.backend = "hip_gfx1100"
+    assert not gguf_runner._gguf_dense_down_residual_decode_fused(
+        dense_27b, rows=1, in_features=17_408, out_features=5_120
+    )
+
     runner = _fake_dense_qwen35_08b_runner()
     assert gguf_runner._gguf_dense_down_residual_decode_fused(
         runner, rows=1, in_features=3_584, out_features=1_024
@@ -322,6 +367,60 @@ def test_fixed1024_norm_residual_decode_kernel_is_exactly_scoped(
     assert gguf_runner._gguf_norm_residual_decode_kernel(
         runner, layer="add_rmsnorm", rows=1, hidden_size=1_024
     ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    assert len(resolved) == 2
+
+
+def test_fixed5120_norm_residual_decode_kernel_is_exactly_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _fake_dense_qwen36_runner()
+    runner.backend = "hip_gfx1151"
+    resolved: list[dict[str, object]] = []
+
+    def candidate(*args, **kwargs):
+        return None
+
+    def fake_resolve(**kwargs):
+        resolved.append(kwargs)
+        return candidate
+
+    monkeypatch.setattr(gguf_runner, "resolve", fake_resolve)
+    for layer in ("rmsnorm", "add_rmsnorm"):
+        selected = gguf_runner._gguf_norm_residual_decode_kernel(
+            runner,
+            layer=layer,
+            rows=1,
+            hidden_size=5_120,
+        )
+        assert selected.func is candidate
+        assert selected.keywords == {"_prevalidated": True}
+    assert resolved == [
+        {
+            "backend": "hip_gfx1151",
+            "layer": "rmsnorm",
+            "quant": "gguf_f32_weight",
+            "variant": "bf16_out_fixed5120_wave256",
+        },
+        {
+            "backend": "hip_gfx1151",
+            "layer": "add_rmsnorm",
+            "quant": "gguf_f32_weight",
+            "variant": "bf16_out_fixed5120_wave256",
+        },
+    ]
+
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="rmsnorm", rows=2, hidden_size=5_120
+    ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
+    runner.backend = "hip_gfx1100"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="add_rmsnorm", rows=1, hidden_size=5_120
+    ) is gguf_runner.gguf_add_rmsnorm_bf16_f32_weight
+    runner.backend = "hip_gfx1151"
+    runner.weights.file_type_name = "MOSTLY_Q8_0"
+    assert gguf_runner._gguf_norm_residual_decode_kernel(
+        runner, layer="rmsnorm", rows=1, hidden_size=5_120
+    ) is gguf_runner.gguf_rmsnorm_bf16_f32_weight
     assert len(resolved) == 2
 
 
@@ -888,6 +987,45 @@ def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(
     assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
+
+
+def test_gfx1151_dense_qwen38_q4ks_prefill_keeps_dedicated_fields_and_caps_rows(
+    monkeypatch,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    runner = _fake_dense_qwen38_q4ks_runner()
+
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=4_352,
+    ) == 4_096
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=8_192,
+    ) == 1_024
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=1_280,
+    ) is None
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        runner,
+        rows=1_024,
+        capacity=4_352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "dedicated"
+    assert scratch.allocation_offsets == {}
+    assert scratch.allocation_inplace_aliases == {}
+    hidden_a, hidden_b = gguf_runner._allocate_prefill_hidden_buffers(
+        runner,
+        rows=1_024,
+        nbytes=1_024 * 5_120 * 2,
+        runtime=SimpleNamespace(),
+    )
+    assert hidden_a.ptr != hidden_b.ptr
 
 
 def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None:
