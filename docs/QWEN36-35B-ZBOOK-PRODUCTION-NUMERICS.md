@@ -897,14 +897,73 @@ and verdict.
 
 ### PN3 — Select candidate 1
 
-- [ ] Confirm fresh stage ranking; do not rely on the prior 6.022/5.949 ms rows
-      without reproduction.
-- [ ] Check `REFACTOR.md` and lineage to avoid rejected/superseded paths.
-- [ ] Select one operation family only.
-- [ ] Fill every field in the candidate declaration template.
-- [ ] Predeclare scope, numerical class, controls, task/BF16 rows, performance
-      ceiling, strict fallback, and retention/removal rules.
-- [ ] Add and observe RED before implementation.
+- [x] Confirm fresh stage ranking; do not rely on the prior 6.022/5.949 ms rows
+      without reproduction. Reproduced from the PN2 rocprofv3 marker trace
+      (24 decode tokens, gfx1151) with correct nested-exclusive GPU-visible
+      walls: `scripts/pn3_stage_ranking_from_trace.py`. The PN2 host-wall
+      authority over-attributes `decode_linear_attn_qkv_gate` (7.74 ms/token
+      host wall vs 2.29 ms/token GPU-exclusive). Fresh GPU-exclusive ranking:
+      `moe_router_combine` 10.66 (dominated by the retained cooperative/persistent
+      router), `gdn_attention_core` 5.19 (conv+SSM recurrence), `gdn_decay` 3.85,
+      shared experts ~3.0 each, selected experts ~2.7-2.9 each, full-attn core
+      2.39, `gdn_input_projections` (linear-attn QKV/gate) 2.29. Leaf timing
+      (`scripts/pn3_q4_t16_laq_gemv_leaf.py`) shows the qkv/gate stage is ~70%
+      kernel-bound (leaf pair 1.52 ms/token) and is the most kernel-bound clean
+      family in the top-10; the GDN core leaf (conv+recurrence, 0.67 ms/token
+      burst / 1.2 ms/token single-launch, `scripts/pn3_gdn_core_leaf.py`) is far
+      below its 5.19 ms marker wall, i.e. much of the profile is host-dispatch
+      idle, so a T0 leaf mechanism on a kernel-bound family is the soundest
+      first increment.
+- [x] Check `REFACTOR.md` and lineage to avoid rejected/superseded paths. The
+      selected leaf (`dense_single_local32_bf16_bf16_out`, the exact Q4_K T16
+      c1 dense GEMV) is the retained local32 owner; no REFACTOR entry or
+      do-not-repeat ledger item covers a software-pipelined T0 variant of it
+      (Q8_1x2, split-weight, rowtile, DP4A, and pack8 alternatives are distinct
+      and remain rejected/retained as recorded).
+- [x] Select one operation family only: c1 linear-attention QKV/gate projection
+      (`gdn_input_projections` / `decode_linear_attn_qkv_gate`).
+- [x] Fill every field in the candidate declaration template (below).
+- [x] Predeclare scope, numerical class, controls, task/BF16 rows, performance
+      ceiling, strict fallback, and retention/removal rules (below).
+- [x] Add and observe RED before implementation: `tests/test_pn3_laq_gemv_red.py`
+      (4 tests). Bit-exact guard (local32 T16 == pack8 control) GREEN; three
+      leaf perf ceilings RED on the current kernel: attn_qkv 0.0328 > 0.026 ms,
+      attn_gate 0.018 > 0.0145 ms, pair 0.0472 > 0.042 ms/layer (gfx1151).
+
+#### P3-LAQ1 candidate declaration
+
+- **Candidate ID / arithmetic class:** P3-LAQ1, T0 (bit-exact; per-lane K
+  ownership, FMA order, wave tree, and BF16 rounding unchanged).
+- **Scope / shape / stateful surfaces:** c1 (rows=1) linear-attention
+  `attn_qkv` (2048->8192) and `attn_gate` (2048->4096), both Q4_K T16, all 30
+  layers, leaf `gguf_q4_k_t16_dense_single_local32_bf16_bf16_out`. Stateless
+  projections: no KV/state/mask surfaces affected; only the input hidden row
+  and the two output scratch buffers.
+- **Source / lineage / why it helps gfx1151:** the exact local32 Q4_K dense
+  GEMV owner (`gguf_t16_selected_gemv.hip`, pack8-local32 bit-exact sibling).
+  Single-wave32/block with a serial 8-super-block loop and dependent
+  byte-scattered dequant loads -> latency-bound at rows=1; the leaf runs at
+  ~296 GB/s effective (attn_qkv 32.8 us for 9.7 MiB tiles) on gfx1151's 40 CU /
+  80 SIMD machine, i.e. a real cycle/occupancy ceiling far below achievable
+  BW. Software-pipelining the super-block loads keeps the math bit-exact.
+- **Operation-complete boundary / expected kernel or launch change / measured
+  complete-wall ceiling:** producer->consumer is the c1 linear-attention
+  norm->qkv->gate chain; the variant keeps the same kernel ABI/launch shape and
+  only reschedules the inner loop, so the operation-complete gate is unchanged.
+  Measured ceiling: leaf pair 1.52 ms/token of the 2.29 ms/token stage; a ~30%
+  leaf reduction is worth ~0.5 ms/token (~1% complete-request, above the
+  in-tree exact threshold; the 7.74 ms PN2 host-wall figure is not the
+  denominator).
+- **Strict fallback / rollback-removal trigger:** the unmodified local32 owner
+  stays registered and default; the pipelined variant is a separately
+  registered T0 variant. Any bit mismatch vs the pack8 control, any same-suite
+  complete-wall regression, or any KL/top-1 binding failure removes the variant.
+- **Downstream expert/top-1 change:** none (T0 bit-exact).
+- **Binding rows:** leaf bit-exact (pack8 control); c1 450-row KL=0/top-1=1.0;
+  18-prompt greedy-output equality; c1/c2/c4/c8, dynamic/sparse, graph/eager,
+  and long-context rows that touch linear attention; task/BF16 rules in 4.3.
+- **Performance ceiling rows:** c1 fixed p512/d128 and 18-prompt natural c1 A/B
+  vs same-commit strict and incumbent production.
 
 ### PN4 — Candidate correctness
 
