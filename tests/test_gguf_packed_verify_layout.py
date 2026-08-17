@@ -109,6 +109,13 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     session._packed_decode_state_dirty = True
     session._packed_decode_session_ids = (33,)
     session._packed_decode_positions = (5,)
+    flush_calls: list[int] = []
+
+    def fake_flush(self, *, stream: int = 0):
+        flush_calls.append(int(stream))
+        return True
+
+    session.flush_packed_decode_state = MethodType(fake_flush, session)
 
     session.reset(stream=7)
 
@@ -116,6 +123,9 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
         ("zero_states", session.runtime, 7, False),
         ("set_position", 0, 7),
     ]
+    # Deferred packed decode state is scattered back before the shared
+    # bookkeeping is cleared (other resident rows may still need it).
+    assert flush_calls == [0]
     assert session.position == 0
     assert session._hidden_seed_fp32_populated is False
     assert session._last_pre_output_norm_hidden is None

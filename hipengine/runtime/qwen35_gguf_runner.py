@@ -14288,6 +14288,15 @@ class Qwen35GGUFResidentSession:
     def _commit_prefix_state_clone(self, boundary: int, *, stream: int) -> None:
         self._set_full_attention_position_device(int(boundary), stream=int(stream))
         self._position = int(boundary)
+        # Slot-local clone must not discard owner-wide deferred packed decode
+        # state that other in-flight rows still need: scatter it back to the
+        # recorded sessions first, then clear the shared bookkeeping.
+        if bool(self._packed_decode_state_dirty):
+            if not self.flush_packed_decode_state():
+                raise RuntimeError(
+                    "GGUF slot state clone could not flush deferred packed"
+                    " decode state owned by other resident rows"
+                )
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -15143,6 +15152,15 @@ class Qwen35GGUFResidentSession:
             self._target_scratch_owner.zero_states(runtime, stream=stream)
         self._position = 0
         self._last_target_hidden_ptr = 0
+        # Slot-local reset must not discard owner-wide deferred packed decode
+        # state that other in-flight rows still need: scatter it back to the
+        # recorded sessions first, then clear the shared bookkeeping.
+        if bool(self._packed_decode_state_dirty):
+            if not self.flush_packed_decode_state():
+                raise RuntimeError(
+                    "GGUF slot reset could not flush deferred packed decode"
+                    " state owned by other resident rows"
+                )
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -19436,9 +19454,11 @@ class Qwen35GGUFResidentSession:
                 )
                 session._verify_hidden_seed_rows_populated = slot_rows
                 session._hidden_seed_fp32_populated = True
-        self._packed_decode_sessions = ()
-        self._packed_decode_last_layout = None
+        # Clear the scatter-dirty flag before the recipient tuple so an
+        # interleaved reader never observes dirty state with no recipients.
         self._packed_decode_state_dirty = False
+        self._packed_decode_last_layout = None
+        self._packed_decode_sessions = ()
         self._packed_decode_session_ids = (
             ()
             if slot_local_full_prefill
@@ -21857,7 +21877,14 @@ class Qwen35GGUFResidentSession:
         if self._packed_verify_state is None or self._packed_decode_last_layout is None:
             return False
         if not self._packed_decode_sessions:
-            return False
+            # A packed prefill slab reused the slots after this deferred
+            # state was created, discarding its recipient sessions. There is
+            # nothing left to scatter; clear the stale bookkeeping so the
+            # next decode round re-gathers state through its initial-state
+            # sync instead of wedging every caller that tries to flush.
+            self._packed_decode_last_layout = None
+            self._packed_decode_state_dirty = False
+            return True
         runtime = self.runtime or get_hip_runtime()
         self._scatter_packed_decode_state(
             self._packed_decode_sessions,
