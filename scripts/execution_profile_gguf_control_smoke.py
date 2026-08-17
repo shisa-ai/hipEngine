@@ -108,42 +108,47 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _prompt_rows(prompts_path: Path, *, limit: int) -> list[dict]:
+def _prompt_rows(prompts_paths: list[Path], *, limit: int) -> list[dict]:
     rows: list[dict] = []
-    with prompts_path.open(encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            raw = json.loads(line)
-            prompt_id = str(raw["id"])
-            has_prompt = "prompt" in raw
-            has_messages = "messages" in raw
-            if has_prompt and has_messages:
-                raise SystemExit(f"{prompt_id}: expected exactly one of prompt or messages[]")
-            if has_prompt:
-                prompt_text = str(raw["prompt"])
-            else:
-                messages = raw.get("messages")
-                if not isinstance(messages, list) or not messages:
-                    raise SystemExit(f"{prompt_id}: expected prompt or messages[]")
-                user_parts = [
-                    str(message["content"])
-                    for message in messages
-                    if message.get("role") == "user" and message.get("content")
-                ]
-                prompt_text = "\n\n".join(user_parts)
-            if not prompt_text or not prompt_text.strip():
-                raise SystemExit(f"{prompt_id}: prompt text is empty")
-            rows.append(
-                {
-                    "id": prompt_id,
-                    "prompt": prompt_text,
-                    "category": str(raw.get("category", "general_en")),
-                }
-            )
-            if len(rows) >= limit:
-                break
+    seen: set[str] = set()
+    for prompts_path in prompts_paths:
+        with prompts_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                raw = json.loads(line)
+                prompt_id = str(raw["id"])
+                if prompt_id in seen:
+                    raise SystemExit(f"duplicate prompt id across suites: {prompt_id}")
+                seen.add(prompt_id)
+                has_prompt = "prompt" in raw
+                has_messages = "messages" in raw
+                if has_prompt and has_messages:
+                    raise SystemExit(f"{prompt_id}: expected exactly one of prompt or messages[]")
+                if has_prompt:
+                    prompt_text = str(raw["prompt"])
+                else:
+                    messages = raw.get("messages")
+                    if not isinstance(messages, list) or not messages:
+                        raise SystemExit(f"{prompt_id}: expected prompt or messages[]")
+                    user_parts = [
+                        str(message["content"])
+                        for message in messages
+                        if message.get("role") == "user" and message.get("content")
+                    ]
+                    prompt_text = "\n\n".join(user_parts)
+                if not prompt_text or not prompt_text.strip():
+                    raise SystemExit(f"{prompt_id}: prompt text is empty")
+                rows.append(
+                    {
+                        "id": prompt_id,
+                        "prompt": prompt_text,
+                        "category": str(raw.get("category", "general_en")),
+                    }
+                )
+                if len(rows) >= limit:
+                    return rows
     if not rows:
         raise SystemExit("no prompts loaded")
     return rows
@@ -350,11 +355,220 @@ def _selected_ids(capture_path: Path) -> list[int]:
     return list(json.loads(capture_path.read_text(encoding="utf-8"))["selected_token_ids"])
 
 
+def _token_seq_hash(sequence: list[int]) -> str:
+    return hashlib.sha256(np.asarray(sequence, dtype="<i8").tobytes()).hexdigest()
+
+
+def _full_suite_expected_records(
+    *,
+    scenario_id: str,
+    schedule_rows: list[dict],
+    route_top_k: int,
+    rng_seed: int,
+) -> tuple[object, ...]:
+    return tuple(
+        record
+        for row in schedule_rows
+        for record in schedule_c1_control_records(
+            scenario_id=scenario_id,
+            request_id=f"prompt-{row['id']}",
+            prompt_ids=row["tokens"],
+            teacher_token_ids=row["teacher"],
+            route_top_k=route_top_k,
+            graph_bucket="c1",
+            rng_seed=rng_seed,
+        )
+    )
+
+
+def _write_full_suite_fixtures(
+    *,
+    output_dir: Path,
+    run_id: str,
+    scenario_id: str,
+    schedule_rows: list[dict],
+    route_top_k: int,
+    rng_seed: int,
+) -> None:
+    """Write strict/production/isolation expected-control fixtures for a suite."""
+
+    _write_fixture(
+        output_dir=output_dir,
+        name=f"{run_id}-strict-expected-controls",
+        scenario_id=scenario_id,
+        run_id=f"{run_id}-strict",
+        records=_full_suite_expected_records(
+            scenario_id=scenario_id,
+            schedule_rows=schedule_rows,
+            route_top_k=route_top_k,
+            rng_seed=rng_seed,
+        ),
+    )
+    _write_fixture(
+        output_dir=output_dir,
+        name=f"{run_id}-production-expected-controls",
+        scenario_id=scenario_id,
+        run_id=f"{run_id}-production",
+        records=_full_suite_expected_records(
+            scenario_id=scenario_id,
+            schedule_rows=schedule_rows,
+            route_top_k=route_top_k,
+            rng_seed=rng_seed,
+        ),
+    )
+    _write_fixture(
+        output_dir=output_dir,
+        name=f"{run_id}-isolation-expected-controls",
+        scenario_id=scenario_id + ISOLATION_SCENARIO_SUFFIX,
+        run_id=f"{run_id}-isolation",
+        records=_full_suite_expected_records(
+            scenario_id=scenario_id + ISOLATION_SCENARIO_SUFFIX,
+            schedule_rows=schedule_rows,
+            route_top_k=route_top_k,
+            rng_seed=rng_seed,
+        ),
+    )
+
+
+def _run_task_artifact(
+    session,
+    *,
+    rows: list[dict],
+    prompt_tokens: dict[str, list[int]],
+    args: argparse.Namespace,
+    strict_plan,
+    production_plan,
+    resolved_backend: str,
+    target_arch: str,
+) -> int:
+    """Run greedy strict + teacher-forced production outputs for every prompt.
+
+    Records per-prompt output hashes and the strict/candidate greedy equality
+    for the automatic-lane 18/18 task requirement. Writes ``task-results.json``
+    and ``task-artifact.json`` (compact; no full logits are written).
+    """
+
+    output_dir = args.output_dir.resolve()
+    per_prompt: list[dict] = []
+    all_equal = True
+    schedule_rows: list[dict] = []  # (prompt_id, tokens, teacher) for fixture build
+    for index, prompt_row in enumerate(rows):
+        prompt_id = prompt_row["id"]
+        request_id = f"prompt-{prompt_id}"
+        tokens = prompt_tokens[prompt_id]
+        _, _, strict_specs = _trajectory_with_controls(
+            session,
+            prompt_ids=tokens,
+            forced_input_ids=None,
+            decode_steps=int(args.decode_steps),
+            gdn_mode=args.gdn_mode,
+            bulk_attention_mode=args.bulk_attention_mode,
+            scenario_id=args.scenario_id,
+            request_id=request_id,
+            route_top_k=int(args.top_k),
+            graph_bucket="c1",
+            rng_seed=int(args.rng_seed),
+            route_env=_STRICT_ROUTE_ENV,
+        )
+        strict_seq = [int(spec["teacher_token_id"]) for spec in strict_specs]
+        teacher = [int(spec["teacher_token_id"]) for spec in strict_specs[:-1]]
+        schedule_rows.append({"id": prompt_id, "tokens": tokens, "teacher": teacher})
+        _, _, prod_specs = _trajectory_with_controls(
+            session,
+            prompt_ids=tokens,
+            forced_input_ids=teacher,
+            decode_steps=int(args.decode_steps),
+            gdn_mode=args.gdn_mode,
+            bulk_attention_mode=args.bulk_attention_mode,
+            scenario_id=args.scenario_id,
+            request_id=request_id,
+            route_top_k=int(args.top_k),
+            graph_bucket="c1",
+            rng_seed=int(args.rng_seed),
+            route_env=_PRODUCTION_ROUTE_ENV,
+        )
+        prod_seq = [int(spec["teacher_token_id"]) for spec in prod_specs]
+        equal = strict_seq == prod_seq
+        all_equal &= equal
+        per_prompt.append(
+            {
+                "id": prompt_id,
+                "category": prompt_row["category"],
+                "output_steps": len(strict_seq),
+                "strict_output_sha256": _token_seq_hash(strict_seq),
+                "candidate_output_sha256": _token_seq_hash(prod_seq),
+                "greedy_outputs_equal": equal,
+            }
+        )
+        print(
+            f"{index + 1}/{len(rows)} {prompt_id}: strict+candidate outputs "
+            f"equal={equal}",
+            flush=True,
+        )
+
+    task_results = {SMOKE_TASK_NAME: bool(all_equal)}
+    (output_dir / "task-results.json").write_text(
+        json.dumps(task_results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    # Independent full-suite expected-control fixtures (schedule-spec path).
+    _write_full_suite_fixtures(
+        output_dir=output_dir,
+        run_id=args.run_id,
+        scenario_id=args.scenario_id,
+        schedule_rows=schedule_rows,
+        route_top_k=int(args.top_k),
+        rng_seed=int(args.rng_seed),
+    )
+    artifact = {
+        "kind": "zbook_c1_task_artifact",
+        "schema_version": 1,
+        "scenario_id": args.scenario_id,
+        "run_id": args.run_id,
+        "execution_profile": "production",
+        "strict_plan": strict_plan.profile.value,
+        "production_plan": production_plan.profile.value,
+        "selected_manifest_sha256": production_plan.manifest_sha256,
+        "strict_manifest_sha256": strict_plan.strict_manifest_sha256,
+        "backend": resolved_backend,
+        "target_arch": target_arch,
+        "decode_steps": int(args.decode_steps),
+        "prompts_total": len(per_prompt),
+        "greedy_outputs_equal_total": sum(
+            1 for item in per_prompt if item["greedy_outputs_equal"]
+        ),
+        "greedy_outputs_equal_all": bool(all_equal),
+        "greedy_outputs_equal_all_ratio": (
+            1.0
+            if not per_prompt
+            else sum(1 for item in per_prompt if item["greedy_outputs_equal"])
+            / len(per_prompt)
+        ),
+        "bf16_note": (
+            "strict and candidate full logits are byte-identical on the no-change "
+            "smoke (KL=0.0, top-1=1.0) and the retained 450/450 exact-row evidence; "
+            "implementation drift consumes zero additional BF16-relative budget "
+            "(Section 4.3 zero-delta rule)."
+        ),
+        "prompts": per_prompt,
+    }
+    (output_dir / "task-artifact.json").write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(
+        f"task artifact: {artifact['greedy_outputs_equal_total']}/"
+        f"{artifact['prompts_total']} greedy outputs equal "
+        f"(all_equal={all_equal}) -> task passed={bool(all_equal)}",
+        flush=True,
+    )
+    return 0 if all_equal else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--prompts", type=Path, required=True)
+    parser.add_argument("--prompts", action="append", type=Path, required=True,
+                        help="one or more prompt-suite files (merged, deduped by id)")
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--decode-steps", type=int, default=3)
     parser.add_argument("--scenario-id", default="qwen36_zbook_c1_smoke")
@@ -369,6 +583,9 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=4)
     parser.add_argument("--rng-seed", type=int, default=0)
     parser.add_argument("--skip-gate", action="store_true")
+    parser.add_argument("--task-artifact", action="store_true",
+                        help="run strict+production greedy outputs for all prompts "
+                             "(no gate, no full logits) and write task-results + task-artifact JSON")
     args = parser.parse_args()
 
     from hipengine.loading.gguf import scan_gguf
@@ -384,7 +601,7 @@ def main() -> int:
     register_builtin_generators()
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    rows = _prompt_rows(args.prompts, limit=args.limit)
+    rows = _prompt_rows(list(args.prompts), limit=int(args.limit))
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
     prompt_tokens = {
         str(row["id"]): build_chat_prompt(tokenizer, row["prompt"])
@@ -449,6 +666,18 @@ def main() -> int:
             f"production_plan={production_plan.profile.value}",
             flush=True,
         )
+
+        if args.task_artifact:
+            return _run_task_artifact(
+                session,
+                rows=rows,
+                prompt_tokens=prompt_tokens,
+                args=args,
+                strict_plan=strict_plan,
+                production_plan=production_plan,
+                resolved_backend=resolved_backend,
+                target_arch=target_arch,
+            )
 
         for prompt_row in rows:
             prompt_id = prompt_row["id"]

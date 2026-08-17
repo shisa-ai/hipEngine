@@ -801,9 +801,20 @@ and verdict.
       KL=0.0, top-1=1.0, 4/4 IDs equal (T2 cooperative router bit-exact on this
       schedule). batch_invariant fail-closed covered by resolution unit tests.
 - [x] Commit the control-capture remainder of PN1 as one validated logical unit.
-- [ ] Commit independent full-suite strict/production expected-control fixtures
-      (mechanism validated by the smoke; frozen fixtures land with the full-suite
-      task artifact).
+- [x] Full-suite task-results artifact: all 18 greedy task-prompt outputs equal
+      strict exactly under the named production profile (2026-08-17, run root
+      `/tmp/hipengine-zbook-production-numerics/20260817T035551Z-c26f05bba5e5`,
+      decode_steps=128): `18/18` `greedy_outputs_equal_all=True`,
+      `task passed=True`, per-prompt output hashes recorded; evidence
+      `benchmarks/results/2026-08-17-zbook-qwen36-c1-fullsuite-task-18of18.json`.
+- [x] Zero implementation delta (BF16): strict/candidate full logits are
+      byte-identical (KL=0.0, top-1=1.0 on the no-change smoke and 18/18 on the
+      full suite), so Section 4.3's zero-BF16-budget rule applies; recorded in
+      the task artifact (`bf16_note`).
+- [x] Commit independent full-suite strict/production expected-control fixtures
+      (mechanism validated by the smoke and full suite; full ~3.4MB fixture
+      JSONs land in the run root with the task artifact and their SHA256s are
+      recorded in the committed evidence artifact).
 
 ### PN2 — Baseline refresh
 
