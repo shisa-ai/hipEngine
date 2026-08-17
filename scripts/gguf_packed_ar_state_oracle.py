@@ -21,6 +21,16 @@ from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 
+# Resolve the hipengine package from THIS repository checkout. Without this,
+# ``python3 scripts/gguf_packed_ar_state_oracle.py`` puts only ``scripts/`` on
+# ``sys.path``, and ``import hipengine`` resolves through the environment's
+# editable install -- which may point at a different worktree/branch and make
+# the oracle silently qualify the wrong kernel sources (observed 2026-08-17:
+# gates ran a ``redline-integration-spike`` checkout instead of this tree).
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 _GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
@@ -1010,6 +1020,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "HIP_VISIBLE_DEVICES",
         )
     }
+    import hipengine
+
+    payload["hipengine_module"] = str(getattr(hipengine, "__file__", "<unknown>"))
+    if REPO_ROOT not in Path(payload["hipengine_module"]).resolve().parents:
+        payload["environment_warning"] = (
+            f"hipengine resolved from outside this checkout: {payload['hipengine_module']}"
+        )
     text = json.dumps(payload, indent=2, allow_nan=False)
     print(text)
     if args.json is not None:
