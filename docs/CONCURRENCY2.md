@@ -1143,7 +1143,7 @@ new round planner from silently violating an old model-state lifecycle.
 ### C2-6 — graphs, long context, and production load
 
 - [x] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
-- [ ] Qualify 4K/16K/32K and model-supported long-context mixed membership under
+- [x] Qualify 4K/16K/32K and model-supported long-context mixed membership under
       real resource accounting.
 - [ ] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
       sustained c1-c32 soaks.
@@ -1192,7 +1192,7 @@ accepted serial fallback
 and promoted global/native packet
 [`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
 
-The subsequent actual long-context campaign passes exact c2 1K/4K/32K/64K,
+The subsequent actual long-context campaign passes exact c2 1K/4K/16K/32K/64K,
 exact mixed 1K/4K/32K, and changed-page graph replay. Under a 134-page global
 generation, an exact 32K survivor coexists with an isolated retryable 4K
 rejection; regrow changes its table from pages `0..128` to `5..133`, records
@@ -1448,9 +1448,8 @@ dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
 
-The executable completion audit currently records **27 passed, 7 blocked, and 1
+The executable completion audit currently records **28 passed, 6 blocked, and 1
 unavailable** rows with no missing evidence. The thread implementation spans
 C2-0 through C2-8, but the product goal is not complete: canonical C2-6 load,
-actual 16K/external/default closure, and DMS HIP/checkpoint conformance remain
-open. See
+external/default closure and DMS HIP/checkpoint conformance remain open. See
 [`2026-08-17-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).

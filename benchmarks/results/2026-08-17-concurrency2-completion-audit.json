@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-17T03:25:55.907849+00:00",
+  "created_at": "2026-08-17T03:42:50.304570+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
-    "passed": 27,
-    "blocked": 7,
+    "passed": 28,
+    "blocked": 6,
     "unavailable": 1
   },
   "requirements": [
@@ -200,12 +200,12 @@
       "requirement_id": "C2-6.long",
       "section": "roadmap",
       "summary": "actual 4K/16K/32K mixed model execution",
-      "status": "blocked",
+      "status": "passed",
       "evidence_paths": [
         "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
       ],
-      "validation": "actual 1K/4K/32K/64K and mixed pass; 16K only host-accounted",
-      "blocker": "fresh actual 16K row and canonical packet still required",
+      "validation": "actual c2 1K/4K/16K/32K/64K and mixed 1K/4K/32K pass with SLO/resource/drain evidence",
+      "blocker": null,
       "evidence": [
         {
           "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
@@ -914,11 +914,6 @@
     }
   ],
   "blockers": [
-    {
-      "requirement_id": "C2-6.long",
-      "status": "blocked",
-      "blocker": "fresh actual 16K row and canonical packet still required"
-    },
     {
       "requirement_id": "C2-6.load",
       "status": "blocked",

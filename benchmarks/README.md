@@ -143,12 +143,12 @@ physical c2 groups plus a c1 edge. The retained matched c8 packet measures
 **35.773 tok/s** native versus **27.586 tok/s** serial (+29.68%), with 24/24
 exact rows on both routes. C17 live refill is 17/17 exact with admission before
 the first completion. This qualifies the named short-request gfx1100 package.
-Actual c2 1K/4K/32K/64K, mixed context, pressure, and changed-page graphs also
+Actual c2 1K/4K/16K/32K/64K, mixed context, pressure, and changed-page graphs also
 pass, but the canonical full-load campaign is blocked by a repeated ROCm fault
 during high-count oracle ownership; no complete load or gfx1151 claim is made.
 Evidence: [`global/native packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
 and [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
-The executable Generation-2 audit currently reports **27 passed / 7 blocked /
+The executable Generation-2 audit currently reports **28 passed / 6 blocked /
 1 unavailable** requirements with no missing evidence; full product completion
 is not claimed. [`Audit artifact`](results/2026-08-17-concurrency2-completion-audit.json).
 
