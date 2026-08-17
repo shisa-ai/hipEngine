@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_8_optional_tier_gate",
+  "status": "accepted_host_tier",
+  "passed": true,
+  "performance_claim": false,
+  "created_at": "2026-08-17T03:35:00Z",
+  "implementation": {
+    "composition": "TieredKVCacheBackend delegates all attention to the resolved hot backend",
+    "cold_codec": "kvtc_zlib_v1",
+    "cold_tiers": ["host", "nvme"],
+    "resource_pools": ["tier.host_bytes", "tier.nvme_bytes", "tier.transfer_workspace_bytes"],
+    "maintenance_work": ["offload", "restore", "evict"],
+    "ownership": "separate tier ResourceLedger with cache/work-item lifetimes",
+    "scheduler": "existing backend maintenance API; no second request scheduler",
+    "identity": ["hot backend fingerprint", "artifact", "generation", "hot codec", "cold codec", "token digest", "request scope", "state fingerprint"],
+    "attention_dtype": "hot backend only"
+  },
+  "host_gate": {
+    "command": "python3 scripts/tier_backend_gate.py --payload-bytes 1048576 --repetitions 5 --recompute-rounds 16 --json /tmp/hipengine-c2-8-tier-host.json",
+    "payload_bytes": 1048576,
+    "encoded_bytes": 2839,
+    "synthetic_compression_ratio": 369.3469531525185,
+    "restore_seconds": [0.0018947748467326164, 0.001203145831823349, 0.0011969860643148422, 0.0009925328195095062, 0.0012062550522387028],
+    "recompute_seconds": [0.0089665069244802, 0.008648172952234745, 0.008423800114542246, 0.009425852913409472, 0.009666815865784883],
+    "restore_median_seconds": 0.001203145831823349,
+    "recompute_median_seconds": 0.0089665069244802,
+    "synthetic_savings_seconds": 0.007763361092656851,
+    "restore_selected": true,
+    "offload_passed": true,
+    "restore_passed": true,
+    "final_object_count": 0,
+    "final_ledger_owners": 0
+  },
+  "tests": {
+    "nodes": 94,
+    "passed": true,
+    "scope": "tier codec/key/store/NVMe/quota/LRU/offload/restore/failure/drain/economics plus DMS/global/ledger/token-budget"
+  },
+  "lifecycle": {
+    "checksum_and_key_mismatch_fail_closed": true,
+    "tenant_quota": true,
+    "pinned_lru": true,
+    "atomic_offload_then_hot_reclaim": true,
+    "restore_failure_keeps_cold_and_reclaims_hot": true,
+    "successful_restore_deletes_cold": true,
+    "nvme_atomic_replace_and_cleanup": true,
+    "final_drain": true
+  },
+  "limitations": [
+    "Payload and recompute timings are synthetic host proxies, not model TTFT or a product performance claim.",
+    "The synthetic repeated payload is highly compressible; its ratio is not representative model evidence.",
+    "No tier is enabled by default. A model workload must independently show restore beats prefix recomputation.",
+    "Cold bytes are never consumed by attention and must restore into a compatible hot backend."
+  ],
+  "decision": {
+    "retain_optional_tier_backend": true,
+    "enable_default": false,
+    "claim_model_ttft": false,
+    "close_c2_8_implementation": true,
+    "required_product_gate": "matched model prefix restore vs recompute with realistic payloads, quotas, cancellation, and soak"
+  }
+}
