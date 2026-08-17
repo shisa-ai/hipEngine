@@ -7464,6 +7464,12 @@ class Qwen35GGUFResidentModelRunner:
         slot = row.slot
         if slot is None:
             raise RuntimeError("GGUF resident c1 decode row is missing its session slot")
+        if len(getattr(self, "_rows", {})) > 1:
+            # Slot views deliberately share the batch owner's execution buffers.
+            # A scalar graph captured for the c1 edge of a wider logical round
+            # would be overwritten by the peer packed group before replay.
+            self._close_c1_decode_graph(row)
+            return slot.session.step(int(slot.prev_token), return_logits=False)
         graph = slot.c1_decode_graph
         if graph is None:
             minimum_fn = getattr(slot.session, "decode_graph_min_replay_steps", None)
