@@ -137,6 +137,7 @@ from hipengine.kvcache import (
     DeviceChunkedKVPool,
     DeviceKVPoolAllocation,
     FixedPagedKVPolicy,
+    GlobalDeviceKVPool,
     KVLiveSpans,
     KVScaleMetadata,
 )
@@ -12758,7 +12759,9 @@ class Qwen35GGUFResidentSession:
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b3_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_selected_hidden_bf16: object | None = field(default=None, init=False, repr=False)
-    _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    _device_kv_pool: DeviceChunkedKVPool | GlobalDeviceKVPool | None = field(
+        default=None, init=False, repr=False
+    )
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -13364,7 +13367,21 @@ class Qwen35GGUFResidentSession:
             + scale_bytes
             + mirror_bytes
         )
+        device_pool = self._device_kv_pool
+        storage_view = (
+            device_pool.storage_view()
+            if callable(getattr(device_pool, "storage_view", None))
+            else None
+        )
         return {
+            "pool_contract": (
+                "global_generation2"
+                if bool(getattr(device_pool, "generation2_compatible", False))
+                else "legacy_single_backing"
+            ),
+            "pool_storage_layout": (
+                None if storage_view is None else str(storage_view.layout_key)
+            ),
             "storage_dtype": layout.storage_dtype.value,
             "storage_layout": str(layout.storage_layout),
             "scale_dtype": layout.scale_dtype.value,
@@ -13396,7 +13413,7 @@ class Qwen35GGUFResidentSession:
 
     def bind_device_kv_allocation(
         self,
-        pool: DeviceChunkedKVPool,
+        pool: DeviceChunkedKVPool | GlobalDeviceKVPool,
         allocation: DeviceKVPoolAllocation,
     ) -> None:
         """Bind one scheduler-owned allocation to this otherwise resident session."""
@@ -13895,6 +13912,131 @@ class Qwen35GGUFResidentSession:
                 backing, runtime=runtime
             ),
             page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
+        )
+
+    def create_global_device_kv_pool(
+        self,
+        *,
+        page_capacity: int,
+    ) -> GlobalDeviceKVPool:
+        """Allocate one stable arbitrary-page pool and per-plane pointer tables."""
+
+        capacity = int(page_capacity)
+        if capacity <= 0:
+            raise ValueError("GGUF global KV page capacity must be positive")
+        if not self.defer_kv_allocation:
+            raise RuntimeError("GGUF session was not created for deferred KV allocation")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        cfg = self.runner.weights.config
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        backing = _allocate_qwen35_gguf_kv_chunk(
+            self.runner,
+            runtime=runtime,
+            start_block_id=0,
+            pages=capacity,
+            layout=layout,
+        )
+        plane_page_pointers: dict[str, tuple[int, ...]] = {}
+
+        def add_plane(role: str, buffer: DeviceBuffer | None) -> None:
+            if buffer is None:
+                return
+            if int(buffer.nbytes) % capacity:
+                raise RuntimeError(
+                    f"GGUF global KV plane {role} does not contain whole pages"
+                )
+            page_nbytes = int(buffer.nbytes) // capacity
+            plane_page_pointers[role] = tuple(
+                int(buffer.ptr) + page_id * page_nbytes
+                for page_id in range(capacity)
+            )
+
+        for layer_id in range(len(layout.layer_storage_dtypes)):
+            add_plane(f"layer{layer_id}.key_payload", backing.full_key_caches[layer_id])
+            add_plane(f"layer{layer_id}.value_payload", backing.full_value_caches[layer_id])
+            add_plane(
+                f"layer{layer_id}.bf16_mirror_key",
+                backing.full_bf16_mirror_key_caches[layer_id],
+            )
+            add_plane(
+                f"layer{layer_id}.bf16_mirror_value",
+                backing.full_bf16_mirror_value_caches[layer_id],
+            )
+            add_plane(f"layer{layer_id}.key_scale", backing.full_k_scale_caches[layer_id])
+            add_plane(f"layer{layer_id}.value_scale", backing.full_v_scale_caches[layer_id])
+        if not plane_page_pointers:
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            raise RuntimeError("GGUF global KV layout has no full-attention planes")
+
+        pointer_tables: dict[str, DeviceBuffer] = {}
+        descriptor: DeviceBuffer | None = None
+        try:
+            for role, pointers in plane_page_pointers.items():
+                host = np.ascontiguousarray(pointers, dtype=np.uint64)
+                table = malloc(host.nbytes, runtime=runtime)
+                copy_host_to_device(
+                    table,
+                    host_array_ptr(host),
+                    host.nbytes,
+                    runtime=runtime,
+                )
+                pointer_tables[role] = table
+            descriptor_host = np.zeros((256,), dtype=np.uint8)
+            descriptor_host[:16] = np.asarray(
+                [1, capacity],
+                dtype=np.uint64,
+            ).view(np.uint8)
+            descriptor = malloc(descriptor_host.nbytes, runtime=runtime)
+            copy_host_to_device(
+                descriptor,
+                host_array_ptr(descriptor_host),
+                descriptor_host.nbytes,
+                runtime=runtime,
+            )
+        except Exception:
+            if descriptor is not None:
+                free(descriptor, runtime=runtime)
+            for table in reversed(tuple(pointer_tables.values())):
+                free(table, runtime=runtime)
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            raise
+
+        closed = False
+
+        def close_storage() -> None:
+            nonlocal closed
+            if closed:
+                return
+            assert descriptor is not None
+            free(descriptor, runtime=runtime)
+            for table in reversed(tuple(pointer_tables.values())):
+                free(table, runtime=runtime)
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            closed = True
+
+        page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
+        fingerprint = (
+            f"{self.runner.backend}:qwen35_gguf:{Path(self.model_path).resolve()}:"
+            f"{self.kv_storage_dtype.value}:{self.kv_storage_layout}:"
+            f"{layout.scale_dtype.value}:{layout.scale_granularity}"
+        )
+        assert descriptor is not None
+        return GlobalDeviceKVPool(
+            page_bytes=page_bytes,
+            backend_fingerprint=fingerprint,
+            generation=1,
+            backing=backing,
+            plane_page_pointers=plane_page_pointers,
+            pointer_table_pointers={
+                role: int(table.ptr) for role, table in pointer_tables.items()
+            },
+            metadata_descriptor_pointer=int(descriptor.ptr),
+            close_storage=close_storage,
         )
 
     def decode_graph_min_replay_steps(self) -> int | None:
@@ -21732,7 +21874,7 @@ class Qwen35GGUFResidentSession:
     ) -> bool:
         """Accuracy-traded verifier lm-head path matching the llama-compat top-1 class."""
 
-        if not _gguf_verify_lm_head_q6_top1_dp4a_enabled():
+        if not _gguf_verify_lm_head_q6_top1_dp4a_enabled() or int(rows) != 1:
             return False
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")

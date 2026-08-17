@@ -1083,8 +1083,12 @@ pool set, a request may use arbitrary free pages without same-chunk constraints,
 and BF16-to-INT8 replacement does not fork continuous batching.
 `GlobalKVPoolSet` owns one stable arbitrary-page table per plane;
 `DenseKVResidentRunnerAdapter` refuses runners that do not consume a
-backend-produced `KVBatchView`. The legacy GGUF base-pointer/chunk path remains
-an explicitly tracked compatibility fallback pending the C2-6 hardware gates.
+backend-produced `KVBatchView`. C2-6 now wires the gfx1100 Qwen3.6 GGUF BF16
+package through a model-specific `GlobalDeviceKVPool` bridge: one load-time
+arena, stable per-layer/per-plane device pointer tables, generation-tagged
+`KVStorageView`, and arbitrary free-page leases. The legacy chunk path remains
+a separately tracked numerical/peer-package fallback until the remaining
+long-context and second-gfx11 gates pass.
 
 ### C2-4 — integrated radix cache and eviction
 
@@ -1151,28 +1155,42 @@ new round planner from silently violating an old model-state lifecycle.
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
 
-Current gate status remains **blocked**, so no C2-6 checkbox or native/default
-promotion is made. The generation-checked graph/page/slot host gates,
-resource-accounted 4K/16K/32K mixed membership,
+Current overall gate status remains **blocked**, so the C2-6 checkboxes are not
+closed. The generation-checked graph/page/slot host gates, resource-accounted
+4K/16K/32K mixed membership,
 fixed/ragged/burst/Poisson/overload/disconnect loads, and c1-c32
 planner/conservation suites pass. The W7900 exact-file Qwen3.6-35B-A3B
-`UD-Q4_K_M` BF16-KV compatibility path now owns one batch-shaped target scratch
-with lightweight slot-local state/KV/cursor views instead of constructing one
-full session per row. Owner-packed prefill plus honest physical-c1 decode is
-same-loaded-server exact at p128/d8 for c1/c2/c4/c8/c17/c32; c17 live refill is
-17/17 exact and admits work before the first request completes. Startup remains
-77.36-78.61 seconds across widths instead of scaling with resident capacity.
+`UD-Q4_K_M` BF16-KV short-request package is now promoted within that scope:
 
-That is a retained numerical fallback, not C2 production closure. Shared-slot
-native physical c8 and c4 both emit invalid sentinel `2147483647` at the second
-packed row and therefore fail closed. The live GGUF device path also still uses
-the single-backing `DeviceChunkedKVPool` compatibility adapter rather than
-`GlobalKVPoolSet` arbitrary-page tables. Registered arbitrary-page GGUF kernels,
-native shared-slot state repair, gfx1151 hardware, and matched vLLM/SGLang gates
-remain unavailable. Evidence: the original failure packet
-[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json)
-and accepted fallback packet
-[`2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json).
+- one batch-shaped target scratch owns execution workspaces while lightweight
+  views preserve slot-local recurrent/KV/cursor state;
+- the live allocator is `GlobalKVPoolSet` through the model-specific
+  `GlobalDeviceKVPool`, with stable per-layer/per-plane pointer tables,
+  `global-arbitrary-pages:g1`, arbitrary free-page leases, and zero final
+  active/refcounted/pinned ownership;
+- the Q8_1 direct-top1 shortcut is c1-only; registered gfx1100 shared-slot
+  physical widths are `(1, 2)`, and wider logical batches decompose into exact
+  c2 groups plus an honest c1 edge;
+- owner state is scattered whenever another physical group reuses the packed
+  workspace.
+
+Same-loaded-server p128/d8 is exact for c1/c2/c4/c8/c17/c32, c17 live refill is
+17/17 exact with admission before the first completion, and startup stays
+78.12-79.87 seconds across widths. A matched c8 one-warmup/three-measurement
+comparison improves aggregate HTTP wall **27.586 -> 35.773 tok/s (+29.68%)**
+versus the exact serial-c1 fallback; live improves **27.458 -> 34.072 tok/s
+(+24.08%)**. The earlier physical c4/c8 sentinel candidates remain unregistered,
+not mislabeled as native.
+
+C2-6 remains open for 4K/16K/32K model execution and SLO/soak evidence, graph
+replay across live page/prefix changes, gfx1151 hardware, and available matched
+external comparisons. vLLM/SGLang and gfx1151 are unavailable on this host.
+Evidence: original failure
+[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json),
+accepted serial fallback
+[`2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json),
+and promoted global/native packet
+[`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
 
 ### C2-7 — FastDMS topology and codec composition
 

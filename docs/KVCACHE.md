@@ -39,10 +39,12 @@ arbitrary-page pointer tables, explicit page states, typed growth credits,
 COW/in-flight protection, and one dense lifecycle shared by BF16 and an
 artifact-qualified no-mirror INT8 composition. `DenseKVResidentRunnerAdapter`
 requires kernels to consume the backend's generation-checked `KVBatchView`; it
-does not silently fall back to request-private base pointers. The existing GGUF
-single-backing implementation remains an explicit compatibility path until the
-C2-6 gfx1100/gfx1151 hardware gates, as tracked in `REFACTOR.md`. This host
-substrate carries no new performance or product-support claim by itself.
+does not silently fall back to request-private base pointers. C2-6 additionally
+provides `GlobalDeviceKVPool` for resident plugins: the gfx1100 Qwen3.6 GGUF BF16
+package now allocates one stable load-time arena plus per-layer/per-plane pointer
+tables, publishes `global-arbitrary-pages:g1`, and leases arbitrary free global
+page IDs. The old GGUF chunk allocator remains an explicit numerical and
+peer-package compatibility path as tracked in `REFACTOR.md`.
 
 C2-4 integrates that pool with generation-checked backend radix snapshots.
 Only complete immutable pages are indexed; every key includes model, revision,
@@ -55,14 +57,14 @@ incompatible/stale handles miss or fail closed, and sampled reuse requires an
 explicit eligibility policy. The default remains unchanged pending C2-6
 p256+s1 and 2K/8K hardware correctness/economics on both gfx11 targets.
 
-C2-6 production promotion is currently blocked at the adapter boundary. The
-new global-pool graph, eviction, slot-reuse, long-context, and load/conservation
-host gates pass, but the live GGUF runner still binds Generation-1
-`DeviceChunkedKVPool` request-private backing. W7900 exact-file
-Qwen3.6-35B-A3B BF16-KV passes independent c1 p128/d8; logical c8 independent
-children fail both native packed and serial-c1 correctness, so c17/c32 and any
-default/performance promotion are stopped. See
-[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json).
+C2-6 is no longer blocked at the gfx1100 short-request adapter boundary. The
+W7900 exact-file Qwen3.6-35B-A3B BF16-KV global-pool route is exact at p128/d8
+for logical c1/c2/c4/c8/c17/c32 and exact under c17 live refill. Registered
+shared-slot physical c2 improves matched exact c8 aggregate HTTP wall by 29.68%
+over serial c1, while final active/refcounted/pinned ownership is zero. The
+broader C2-6 milestone remains open for model-executed 4K/16K/32K, graph/prefix
+page-change, SLO/soak, gfx1151, and available external gates. See
+[`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
 
 ## Executive decision
 

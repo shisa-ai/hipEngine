@@ -6939,3 +6939,61 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
         "logits_d2h_bytes": 12,
     }
     assert len([call for call in calls if call[0] == "step"]) == 1
+
+
+def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    packed_calls: list[tuple[tuple[int, ...], int]] = []
+    serial_calls: list[tuple[int, ...]] = []
+    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices: (
+        packed_calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+            )
+        )
+        or True
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: serial_calls.append(
+        tuple(int(row.request_id) for row in rows)
+    )
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "backend_package_capability",
+        lambda backend, key, default=None: (
+            (1, 2) if key == "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS" else default
+        ),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    rows = [
+        SimpleNamespace(
+            request_id=request_id,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(kv_attention_source="bf16"),
+                c1_decode_graph=None,
+            ),
+        )
+        for request_id in range(5)
+    ]
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=tuple(range(5)),
+        row_to_request=tuple(range(5)),
+        slot_ids=tuple(range(5)),
+        active_mask=(True,) * 5,
+    )
+
+    runner._step_native_rows(rows, work=work)
+
+    assert packed_calls == [((0, 1), 2), ((2, 3), 2)]
+    assert serial_calls == [(4,)]
+    assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2]
+    assert runner._last_physical_group_plan["group_count"] == 3

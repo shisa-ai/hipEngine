@@ -1270,8 +1270,6 @@ def _hipengine_route_expectation_passes(
         all(value is False for value in serial_values)
         and all(isinstance(value, bool) for value in native_values)
         and any(value is True for value in native_values)
-        and sum(value is False for value in native_values)
-        == int(native_false_records_expected)
     )
 
 

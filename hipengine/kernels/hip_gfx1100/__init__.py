@@ -365,6 +365,10 @@ GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
     (4_096, 6_144, 512): -1_140_855_996,
 }
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
+# Concurrency2 C2-6 W7900 same-loaded-server p128/d8 qualification. The
+# batch-shaped scratch owner is exact through physical c2; c4/c8 remain absent
+# until their packed lm-head/state paths pass the same gate.
+GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2)
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -851,6 +855,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
+    "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",

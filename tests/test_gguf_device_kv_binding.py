@@ -257,6 +257,8 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     assert session.scratch.full_kv_scale_metadata == (None, metadata)
     assert copied_tables[0].tolist() == [0, 1]
     assert session.device_kv_layout_audit() == {
+        "pool_contract": "legacy_single_backing",
+        "pool_storage_layout": None,
         "storage_dtype": "int8_per_token_head",
         "storage_layout": "uniform",
         "scale_dtype": "fp16",

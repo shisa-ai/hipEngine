@@ -36,6 +36,7 @@ from hipengine.kvcache.dense import (
     create_dense_bf16_backend,
     create_dense_int8_backend,
 )
+from hipengine.kvcache.device_global import GlobalDeviceKVPool
 from hipengine.kvcache.global_pool import (
     GlobalKVPoolSet,
     GlobalPageLease,
@@ -106,6 +107,7 @@ __all__ = [
     "DenseKVCacheBackend",
     "DenseKVOperation",
     "DenseKVResidentRunnerAdapter",
+    "GlobalDeviceKVPool",
     "GlobalKVPoolSet",
     "GlobalPageLease",
     "GraphReplayBinding",
