@@ -405,6 +405,10 @@ but does not switch the public default: its canonical server packet fails soak
 completion (87 completed, 33 overloaded of 120), and named-profile manifest,
 task, and BF16-relative evidence remains open. See the
 [`bundle decision`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
+The next same-host tuning cycle is governed by the frozen
+[`ZBook production-numerics PLAN/PUNCHLIST`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md);
+its PN1 named-profile/control foundation must land before new candidate
+arithmetic or kernel tuning begins.
 
 ## Architecture
 
