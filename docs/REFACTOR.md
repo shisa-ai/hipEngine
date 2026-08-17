@@ -47,9 +47,11 @@ should be removed or collapsed.
   load harness can partition oracle keys into isolated workers, verify merged
   token digests, and start a separate measured owner. This is benchmark
   containment, not runtime serving architecture.
-- The current GPU generation remained unstable even after 4/4/4/1 partitioning,
-  so the canonical packet is blocked and the worker path is retained only for a
-  fresh-generation rerun/bisection.
+- The current GPU generation remained unstable after 4/4/4/1 partitioning and
+  after replacing workers with fully drained same-owner serial c1 oracles.
+  Disabling decode graphs during all 13 same-owner oracle rows still faults
+  before the first tuning result. The canonical packet is blocked; worker and
+  same-owner modes remain only for fresh-generation rerun/bisection.
 - Removal trigger: after the canonical clean-source production packet completes
   twice without an oracle teardown/handoff fault, collapse to the simplest
   stable independent-oracle protocol and remove abandoned worker variants.
