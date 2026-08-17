@@ -851,6 +851,21 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "scale_dtype": "fp16",
             "scale_granularity": "per_token_head",
             "estimate": None,
+            "capability": {
+                "schema_version": 1,
+                "status": "unavailable",
+                "runtime_action": "not_applicable",
+                "promotion_eligible": False,
+                "diagnostic_override": False,
+                "requested": None,
+                "effective_kv_storage": None,
+                "artifact": None,
+                "evidence": None,
+                "reason": (
+                    "loaded engine does not expose artifact-scoped KV capability"
+                    " provenance"
+                ),
+            },
         },
         "capabilities": {
             "completions": True,
@@ -974,6 +989,21 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "strict_manifest_sha256": None,
             "fell_back_to_strict": None,
             "migration_default_preserved": True,
+        },
+        "kv_capability": {
+            "schema_version": 1,
+            "status": "unavailable",
+            "runtime_action": "not_applicable",
+            "promotion_eligible": False,
+            "diagnostic_override": False,
+            "requested": None,
+            "effective_kv_storage": None,
+            "artifact": None,
+            "evidence": None,
+            "reason": (
+                "loaded engine does not expose artifact-scoped KV capability"
+                " provenance"
+            ),
         },
     }
     assert body["context"] == {
