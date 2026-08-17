@@ -1105,6 +1105,23 @@ per-call host timing during eager decode:
 > diagnostic `scripts/pn4_host_bound_ab_probe.py`. Candidate kernels reverted;
 > owner remains default.
 
+> **c1 CAMPAIGN NO-WIN CONCLUSION (PN4, closes PN3/PN4 for the c1 path):** every
+> c1 mechanism attempted has a durable verdict and none is retainable:
+> P3-LAQ1 (Q4 GEMV, wrong quant) rejected; P3-LA2 (launch fusion, already
+> fused) rejected; P3-LAQ1-B (Q8 dual GEMV T0) rejected; host memoization
+> A/B (`scripts/pn4_host_bound_ab_probe.py`) recovers only ~857 us/token from
+> fast-pathing the biggest launcher; recurrence-path host fast-path A/B
+> (`scripts/pn4_recurrence_fastpath_ab.py`) recovers ~0 (fully hidden). A
+> recurrence conv+recurrence no-op probe
+> (`scripts/pn4_recurrence_ab_probe.py`) drops the wall 30.86 -> 28.41 ms/token
+> (-2.44 ms), i.e. the gdn_attention_core conv+recurrence kernels are a real
+> ~2.4 ms/token GPU-bound slice (not the 5.19 ms marker wall, which overlaps
+> other stages' GPU work, and not the 0.67-1.2 ms burst/single-launch leaf,
+> which understates in-context time). The model is ~94% GPU-bound (eager
+> sync'd wall ~30.5 ms/token). Next dominant owner: the MoE expert / router
+> GPU path (the largest GPU slice per the PN3 ranking) -> the cN/A4 campaign
+> (PN3-PN5 extension), not a c1 GEMV or host mechanism.
+
 ### PN4 — Candidate correctness
 
 - [ ] Pass leaf oracle and edge/sentinel tests.

@@ -82,5 +82,11 @@
     "perf_ceilings": "NOT FLIPPED: best T0 variant 58-62 us/layer vs ~60 us/layer owner; target 42-48 us/layer (20-30% reduction) unreachable by bit-exact T0 variants",
     "conclusion": "the Q8_0 t16 dual GEMV is at its practical limit for T0 bit-exact variants, matching the Q4_K T16 precedent (P3-LAQ1: vecq -10%, tile16 +5/-7%)"
   },
-  "disposition": "candidate kernels/launchers/exports/wrappers/registrations reverted to committed state; owner remains default. No T0 variant flips the leaf RED; the qkv_gate stage stays kernel-bound at ~2.29 ms/token. The plan's P3-LAQ1-B section is marked rejected. Next candidate options: (a) accept the ~2-3% complete-wall scale and move to a different GPU slice (e.g. the MoE-expert Q4_K T16 family, the largest GPU consumer per the PN3 ranking), or (b) close the c1 campaign with the measured ~31 ms/token eager ceiling and focus on prefill/server economics per PN2."
+  "disposition": "candidate kernels/launchers/exports/wrappers/registrations reverted to committed state; owner remains default. No T0 variant flips the leaf RED; the qkv_gate stage stays kernel-bound at ~2.29 ms/token. The plan's P3-LAQ1-B section is marked rejected.",
+  "c1_campaign_no_win": {
+    "recurrence_noop_probe": "scripts/pn4_recurrence_ab_probe.py: no-opping conv+recurrent launches drops the sync'd eager wall 30.86 -> 28.41 ms/token (-2.44 ms/token): the gdn_attention_core conv+recurrence kernels are a real ~2.4 ms/token GPU-bound slice, not the 5.19 ms marker wall (overlaps other stages) and not the 0.67-1.2 ms burst leaf (understates in-context time)",
+    "recurrence_fastpath_ab": "scripts/pn4_recurrence_fastpath_ab.py: caching the resolved fn+argtypes for the conv+recurrent launchers (skipping per-call build/getattr/argtypes-reassignment) gives ~0 wall change (interleaved medians 30.46 vs 30.48 ms/token): the recurrence host dispatch is fully hidden by other GPU work",
+    "host_memoization_ab": "scripts/pn4_host_bound_ab_probe.py: fast-pathing launch_gguf_linear recovers only ~857 us/token from ~6.8 ms of host reduction -> model ~94% GPU-bound",
+    "verdict": "no retainable c1 mechanism: GEMV T0 families at practical limit (P3-LAQ1 Q4, P3-LAQ1-B Q8), host mechanisms A/B-neutral, model ~94% GPU-bound. Next dominant owner: the MoE expert / router GPU path (cN/A4 campaign), not a c1 GEMV or host mechanism"
+  }
 }
