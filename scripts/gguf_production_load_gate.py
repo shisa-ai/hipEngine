@@ -64,6 +64,7 @@ from scripts.gguf_live_server_bench import (
 REPO_ROOT = _SCRIPT_REPO_ROOT
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
+_SCHEDULER_POLICIES = ("token_budget", "protect_decode", "protect_ttft", "fair")
 _NATIVE_EXECUTION_PATHS = frozenset(
     {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}
 )
@@ -720,7 +721,7 @@ def _load_tuning_protocol(
         window = float(row.get("batch_window_ms", -1.0))
         if not candidate_id:
             raise ValueError("tuning protocol candidate id must not be empty")
-        if policy not in {"protect_decode", "protect_ttft", "fair"}:
+        if policy not in _SCHEDULER_POLICIES:
             raise ValueError(f"unsupported tuning policy {policy!r}")
         if chunk <= 0 or burst <= 0 or window < 0.0:
             raise ValueError("tuning protocol chunk/burst/window values are invalid")
@@ -1622,7 +1623,7 @@ def _parse_tuning_candidates(raw: str) -> tuple[tuple[str, int], ...]:
             policy, chunk = value.split(":", 1)
         except ValueError as exc:
             raise ValueError("tuning candidates must use policy:chunk") from exc
-        if policy not in {"protect_decode", "protect_ttft", "fair"}:
+        if policy not in _SCHEDULER_POLICIES:
             raise ValueError(f"unsupported tuning policy {policy!r}")
         parsed_chunk = int(chunk)
         if parsed_chunk <= 0:
@@ -2240,12 +2241,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stream-queue-max-chunks", type=int, default=16)
     parser.add_argument("--queue-retry-after-seconds", type=int, default=1)
     parser.add_argument("--batch-window-ms", type=float, default=100.0)
-    parser.add_argument("--initial-policy", choices=("protect_decode", "protect_ttft", "fair"), default="fair")
+    parser.add_argument(
+        "--initial-policy",
+        choices=_SCHEDULER_POLICIES,
+        default="token_budget",
+    )
     parser.add_argument("--initial-prefill-chunk-tokens", type=int, default=128)
     parser.add_argument("--initial-fair-prefill-burst-chunks", type=int, default=1)
     parser.add_argument(
         "--tuning-candidates",
-        default="protect_decode:128,protect_ttft:128,fair:128,fair:256",
+        default=(
+            "token_budget:128,token_budget:256,protect_decode:128,"
+            "protect_ttft:128,fair:128,fair:256"
+        ),
     )
     parser.add_argument(
         "--tuning-protocol",
