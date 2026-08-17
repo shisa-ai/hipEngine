@@ -154,9 +154,8 @@ llm.close()
 automatically. You can also pass a local GGUF or Maple path. Advanced users can
 override the choice with `backend=` and `quant=`. The opt-in
 `execution_profile="strict"|"production"|"batch_invariant"` selector is
-fail-closed to model/backend/quant plans with registered kernel variants and
-exact fallbacks. Omitting it preserves the current migration default until
-profile calibration is complete.
+fail-closed to registered kernel plans with exact fallbacks; omitting it
+preserves the migration default until profile calibration completes.
 
 ## Performance highlights
 
