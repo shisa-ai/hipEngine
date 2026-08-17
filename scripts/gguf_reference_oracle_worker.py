@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -20,7 +20,7 @@ from scripts.gguf_live_server_bench import _read_compiler_version, _run_referenc
 from scripts.gguf_production_load_gate import WorkloadRequest, _prompt_manifest
 
 
-def run(args: argparse.Namespace) -> dict[str, Any]:
+def run(args: argparse.Namespace) -> None:
     specs_payload = json.loads(args.specs_json.read_text(encoding="utf-8"))
     if not isinstance(specs_payload, list) or not specs_payload:
         raise ValueError("oracle specs must be a non-empty list")
@@ -44,8 +44,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
+    serializable_rows = {
+        key: {
+            **row,
+            "token_ids": list(row["token_ids"]),
+        }
+        for key, row in prompt_rows.items()
+    }
     reference_tokens: dict[str, list[int]] = {}
-    for key, row in sorted(prompt_rows.items()):
+    ordered_rows = tuple(sorted(prompt_rows.items()))
+    for index, (key, row) in enumerate(ordered_rows, start=1):
         session = Qwen35GGUFResidentSession(
             args.model,
             backend=str(args.backend),
@@ -63,27 +71,38 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 row["token_ids"],
                 max(spec.max_tokens for spec in specs if spec.oracle_key == key),
             )
-        finally:
+        except BaseException:
             session.close()
+            raise
         reference_tokens[key] = [int(token) for token in result.generated_tokens]
+        is_last = index == len(ordered_rows)
+        if is_last:
+            args.output_json.write_text(
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "prompt_rows": serializable_rows,
+                        "reference_tokens": reference_tokens,
+                    },
+                    indent=2,
+                    allow_nan=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        else:
+            session.close()
         print(
-            f"reference {len(reference_tokens)}/{len(prompt_rows)}: {key}",
+            f"reference {index}/{len(ordered_rows)}: {key}",
             file=sys.stderr,
             flush=True,
         )
-
-    serializable_rows = {
-        key: {
-            **row,
-            "token_ids": list(row["token_ids"]),
-        }
-        for key, row in prompt_rows.items()
-    }
-    return {
-        "schema": 1,
-        "prompt_rows": serializable_rows,
-        "reference_tokens": reference_tokens,
-    }
+        if is_last:
+            # The worker owns this complete HIP generation. Exit before final
+            # diagnostic session teardown can race queued device completion;
+            # process teardown releases all oracle allocations atomically.
+            os._exit(0)
+    raise AssertionError("oracle worker did not process any rows")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -102,14 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    payload = run(args)
-    args.output_json.write_text(
-        json.dumps(payload, indent=2, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
-    # This process exists only to own diagnostic GPU state. Let process teardown
-    # release HIP allocations instead of running production-owner cleanup paths.
-    os._exit(0)
+    run(args)
+    raise AssertionError("oracle worker returned without exiting")
 
 
 if __name__ == "__main__":
