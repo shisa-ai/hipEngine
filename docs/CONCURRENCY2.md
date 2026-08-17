@@ -1205,8 +1205,9 @@ overload/soak packet remains **blocked**: repeated high-count oracle campaigns
 trigger a ROCm GPU page fault before tuning, despite successful static focused
 runs and process/owner isolation. Host versions of every load mode pass, but no
 complete product-load/default claim is made. gfx1151 and vLLM/SGLang remain
-unavailable; the available llama.cpp comparison was stopped after the local GPU
-generation became unstable. Evidence:
+unavailable; llama.cpp HIP is also unavailable because the default binary
+requires a higher CPU ISA and the alternate build targets missing ROCm 6
+sonames. Evidence:
 [`2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 
 ### C2-7 — FastDMS topology and codec composition

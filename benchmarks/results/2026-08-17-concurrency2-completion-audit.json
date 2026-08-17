@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-17T04:41:24.227171+00:00",
+  "created_at": "2026-08-17T04:51:14.161999+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
@@ -251,7 +251,7 @@
         "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
       ],
       "validation": "availability recorded",
-      "blocker": "gfx1151/vLLM/SGLang unavailable; llama rerun stopped after GPU instability",
+      "blocker": "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility",
       "evidence": [
         {
           "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
@@ -922,7 +922,7 @@
     {
       "requirement_id": "C2-6.external",
       "status": "unavailable",
-      "blocker": "gfx1151/vLLM/SGLang unavailable; llama rerun stopped after GPU instability"
+      "blocker": "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility"
     },
     {
       "requirement_id": "C2-6.default",

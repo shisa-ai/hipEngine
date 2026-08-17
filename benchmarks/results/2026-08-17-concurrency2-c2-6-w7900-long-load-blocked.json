@@ -125,7 +125,7 @@
     "gfx1151": "unavailable on host",
     "vllm": "not installed",
     "sglang": "not installed",
-    "llamacpp_hip": "binary available but matched rerun stopped after local production campaign became hardware-unstable"
+    "llamacpp_hip": "unavailable: default binary requires a higher CPU ISA; alternate rocWMMA binary requires missing ROCm 6 sonames libhipblas.so.2/librocblas.so.4/libamdhip64.so.6"
   },
   "decision": {
     "retain_global_native_short_default": true,
