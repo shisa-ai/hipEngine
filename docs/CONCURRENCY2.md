@@ -70,19 +70,36 @@ generation, and physical c8 kernels:
 | Scale vs old c1 | 1.000x | 2.197x | 1.898x | 1.794x |
 
 These absolute rows **must not be divided against the p128/d8 Generation-2
-numbers**: prompt/decode lengths, HTTP protocol, batching window, source/model
-fingerprint, and runtime differ. Directionally, the old physical-c8 route had
-stronger c8 scaling, while the current architecture supplies exact independent
-children, fungible global KV, refill, pressure, and smooth residency through
-c32 but currently composes only physical c2. The remaining performance work is
-therefore explicit: qualify shared-slot physical c4/c8 (or a faster equivalent)
-and run current code under the exact old p512/d128 SSE/20-ms protocol before
-claiming old-to-new parity or regression.
+numbers** on protocol grounds: prompt/decode lengths, HTTP protocol, batching
+window, source/model fingerprint, and runtime differ. To close that gap the
+current engine was re-run under the **exact old protocol** (p512/d128, SSE
+streaming-primary, 20 ms generation batch window, 256 prefill chunk, ctx 1024,
+1 warmup + 3 measured, independent c1 oracles, W7900 device 0).
+
+### Measured apples-to-apples old-protocol comparison (2026-08-17)
+
+| c | Current G2 (SSE median) | Old G1 (SSE) | Ratio |
+| ---: | ---: | ---: | ---: |
+| 1 | 76.371 tok/s | 72.169 tok/s | **1.058x** |
+| 8 | 47.239 tok/s | 158.542 tok/s | **0.298x** |
+
+- **c1**: Generation-2 is ~5.8% faster on the identical protocol — the cleanest
+  apples-to-apples point, reflecting graph/workspace improvements.
+- **c8**: Generation-2 is ~70% slower **entirely because of the physical-c2
+  shared-slot cap**: logical c8 lowers to c2 groups, while the old design ran
+  one physical c8. This is a physical-width-composition effect, not a kernel
+  regression, and is the direct target of the shared-slot c4/c8 qualification.
+
+All c1/c8 burst rows were byte-exact (c1 3/3, c8 24/24, streaming passed).
+An open issue surfaced in the c8 live-admission sub-gate (the new harness's
+join-after-N-decode protocol, which differs from the old live test): all join
+requests hit a server-side request-cancellation (HTTP 499); tracked separately.
 
 Evidence:
-[`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
+[`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
+[`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json),
 and
-[`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json).
+[`measured apples-to-apples old-protocol diagnostic`](../benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json).
 
 ## Executive decision
 
