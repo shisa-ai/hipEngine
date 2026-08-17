@@ -1082,6 +1082,29 @@ per-call host timing during eager decode:
   kernel) is the target. Do NOT invest in a large gguf_linear.py refactor
   before this A/B.
 
+> **A/B RESOLUTION (PN4):** the complete-wall A/B resolved the question. A
+> memoized fast path on `launch_gguf_linear` (skips key construction / env
+> reads / session gets / cache lookup, jumps to the launch tail; 4400 of 5781
+> calls) moved the sync'd eager wall 30.59 -> 29.73 ms/token (only -857 us,
+> -2.8%). The model is ~94% GPU-bound; a gguf_linear launch-memoization refactor
+> is not worth it. P3-LAQ1-B (GPU-side Q8 dual) was the correct family.
+
+> **P3-LAQ1-B REJECTED (PN4, binding failure):** three bit-exact T0 variants of
+> the Q8_0 t16 dual GEMV were implemented and measured (wordload 2x uint64 +
+> 4x uint32; wordload+occupancy launch_bounds 128,8; wordload+ILP+occupancy).
+> All are bit-exact vs the owner, but none flips the leaf RED: owner 62 us,
+> wordload 62 us, wordload+occ8 58 us, wordload+ILP+occ8 60 us/layer
+> (interleaved A/B) vs the 42-48 us (20-30%) target. The kernel is
+> latency/occupancy-bound (one block per 16-col tile, 768 blocks; per-block
+> wave reduce + xchg + syncthreads) at ~510-540 GB/s vs a ~650 GB/s marginal
+> L2 ceiling, and T0 variants cannot close the latency gap (threads=64 is both
+> slower and not bit-exact). This matches the Q4_K T16 precedent (P3-LAQ1:
+> vecq -10%, tile16 +5/-7%). The qkv_gate stage stays kernel-bound at
+> ~2.29 ms/token. Evidence:
+> `benchmarks/results/2026-08-17-zbook-qwen36-pn4-laq1b-rejected.json`;
+> diagnostic `scripts/pn4_host_bound_ab_probe.py`. Candidate kernels reverted;
+> owner remains default.
+
 ### PN4 — Candidate correctness
 
 - [ ] Pass leaf oracle and edge/sentinel tests.
