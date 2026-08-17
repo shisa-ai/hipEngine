@@ -98,7 +98,10 @@ def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
 def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None:
     parser = build_parser()
 
-    assert parser.parse_args([]).prefix_cache == "off"
+    defaults = parser.parse_args([])
+    assert defaults.prefix_cache == "off"
+    assert defaults.initial_policy == "token_budget"
+    assert defaults.tuning_candidates.startswith("token_budget:128,token_budget:256")
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
 
