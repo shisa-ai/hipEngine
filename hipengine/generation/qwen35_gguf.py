@@ -7071,6 +7071,7 @@ class Qwen35GGUFResidentModelRunner:
                     group_rows,
                     physical_rows=group.physical_rows,
                     active_slot_indices=group.active_slot_indices,
+                    allow_graph=len(groups) == 1,
                 )
             if packed:
                 execution_path = "packed_native"
@@ -7180,6 +7181,7 @@ class Qwen35GGUFResidentModelRunner:
         *,
         physical_rows: int | None = None,
         active_slot_indices: Sequence[int] = (),
+        allow_graph: bool = True,
     ) -> bool:
         for row in rows:
             self._close_c1_decode_graph(row)
@@ -7223,21 +7225,35 @@ class Qwen35GGUFResidentModelRunner:
         graph = next(iter(graphs.values())) if len(graphs) == 1 else None
         if graph is not None and tuple(getattr(graph, "sessions", ())) != expected_session_tuple:
             graph = None
+        if not bool(allow_graph):
+            graph = None
         if graphs and graph is None:
             self._close_packed_decode_graphs(rows)
 
         self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
         graph_eligible = bool(
-            graph is not None
-            or (
-                _gguf_decode_graph_enabled()
-                and len(concrete) == width
-                and active_indices == tuple(range(width))
-                and all(row.native_greedy and not row.native_sampled for row in rows)
-                and self._packed_graph_capture_membership_stable()
-                and not any(
-                    bool(getattr(slot, "packed_decode_graph_unavailable", False))
-                    for slot in concrete
+            bool(allow_graph)
+            and (
+                graph is not None
+                or (
+                    _gguf_decode_graph_enabled()
+                    and len(concrete) == width
+                    and active_indices == tuple(range(width))
+                    and all(
+                        row.native_greedy and not row.native_sampled
+                        for row in rows
+                    )
+                    and self._packed_graph_capture_membership_stable()
+                    and not any(
+                        bool(
+                            getattr(
+                                slot,
+                                "packed_decode_graph_unavailable",
+                                False,
+                            )
+                        )
+                        for slot in concrete
+                    )
                 )
             )
         )

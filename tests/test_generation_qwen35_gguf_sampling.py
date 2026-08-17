@@ -3202,7 +3202,14 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     runner._last_execution_manifest = {}
     runner._last_physical_group_plan = {}
 
-    def step_native_chunk(rows, *, physical_rows=None, active_slot_indices=()):
+    def step_native_chunk(
+        rows,
+        *,
+        physical_rows=None,
+        active_slot_indices=(),
+        allow_graph=True,
+    ):
+        assert allow_graph is False
         calls.append(
             (
                 tuple(int(row.request_id) for row in rows),
@@ -6995,7 +7002,7 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
     runner._last_physical_group_plan = {}
     packed_calls: list[tuple[tuple[int, ...], int]] = []
     serial_calls: list[tuple[int, ...]] = []
-    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices: (
+    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices, allow_graph: (
         packed_calls.append(
             (
                 tuple(int(row.request_id) for row in rows),
