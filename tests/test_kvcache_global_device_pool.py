@@ -87,6 +87,7 @@ def test_global_device_pool_rejects_capacity_and_live_close() -> None:
     pool.allocate(1, 2)
     with pytest.raises(MemoryError, match="cannot allocate"):
         pool.allocate(2, 1)
+    assert pool.stats.grow_failures == 1
     with pytest.raises(RuntimeError, match="live request"):
         pool.close()
     pool.release(1)

@@ -13918,12 +13918,16 @@ class Qwen35GGUFResidentSession:
         self,
         *,
         page_capacity: int,
+        generation: int,
     ) -> GlobalDeviceKVPool:
         """Allocate one stable arbitrary-page pool and per-plane pointer tables."""
 
         capacity = int(page_capacity)
+        pool_generation = int(generation)
         if capacity <= 0:
             raise ValueError("GGUF global KV page capacity must be positive")
+        if pool_generation <= 0:
+            raise ValueError("GGUF global KV generation must be positive")
         if not self.defer_kv_allocation:
             raise RuntimeError("GGUF session was not created for deferred KV allocation")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -13988,7 +13992,7 @@ class Qwen35GGUFResidentSession:
                 pointer_tables[role] = table
             descriptor_host = np.zeros((256,), dtype=np.uint8)
             descriptor_host[:16] = np.asarray(
-                [1, capacity],
+                [pool_generation, capacity],
                 dtype=np.uint64,
             ).view(np.uint8)
             descriptor = malloc(descriptor_host.nbytes, runtime=runtime)
@@ -14029,7 +14033,7 @@ class Qwen35GGUFResidentSession:
         return GlobalDeviceKVPool(
             page_bytes=page_bytes,
             backend_fingerprint=fingerprint,
-            generation=1,
+            generation=pool_generation,
             backing=backing,
             plane_page_pointers=plane_page_pointers,
             pointer_table_pointers={

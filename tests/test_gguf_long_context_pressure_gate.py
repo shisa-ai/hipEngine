@@ -21,7 +21,7 @@ def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     }
     assert plan.initial_pages == plan.low_water_pages == 5
     assert plan.pressure_high_water_pages == 134
-    assert plan.mixed_high_water_pages == 519
+    assert plan.mixed_high_water_pages == 514
     assert plan.chunk_pages == 5
 
     assert plan.pressure_high_water_pages - plan.initial_pages == plan.pages_by_context[32_768]
@@ -53,7 +53,9 @@ def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:
         for row in rows
     )
     assert [row.max_tokens for row in workloads["graph_seed_32k_c1"]] == [129]
-    assert [row.max_tokens for row in workloads["graph_regrow_32k_c1"]] == [129]
+    assert [row.prompt_length for row in workloads["graph_regrow_32k_c1"]] == [1_024, 32_768]
+    assert [row.max_tokens for row in workloads["graph_regrow_32k_c1"]] == [129, 129]
+    assert workloads["graph_regrow_32k_c1"][1].arrival_offset_seconds == 0.1
 
     gfx1100 = gate.build_workload_specs(
         decode_tokens=32,
@@ -61,6 +63,7 @@ def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:
         backend="hip_gfx1100",
     )
     assert [row.max_tokens for row in gfx1100["graph_seed_32k_c1"]] == [32]
+    assert [row.max_tokens for row in gfx1100["graph_regrow_32k_c1"]] == [32, 32]
 
 
 def _passing_packet_inputs():
@@ -87,19 +90,19 @@ def _passing_packet_inputs():
         },
     }
     final_pool = {
-        "current_pages": plan.low_water_pages,
-        "free_pages": plan.low_water_pages,
+        "current_pages": plan.pressure_high_water_pages,
+        "free_pages": plan.pressure_high_water_pages,
         "refcounted_pages": 0,
         "pinned_pages": 0,
-        "grow_events": 6,
+        "grow_events": 0,
         "grow_failures": 1,
-        "shrink_events": 6,
+        "shrink_events": 0,
     }
     graph_delta = {"captures": 2, "replays": 8, "invalidations": 2}
     return plan, workloads, pressure, final_pool, graph_delta
 
 
-def test_packet_gate_requires_exact_pressure_lifecycle_and_fresh_block_ids() -> None:
+def test_packet_gate_requires_exact_pressure_lifecycle_and_changed_page_table() -> None:
     plan, workloads, pressure, final_pool, graph_delta = _passing_packet_inputs()
 
     result = gate.evaluate_packet(
@@ -115,7 +118,7 @@ def test_packet_gate_requires_exact_pressure_lifecycle_and_fresh_block_ids() -> 
     assert result == {"passed": True, "failure_reasons": []}
 
 
-def test_packet_gate_fails_closed_on_wrong_admission_or_stale_logical_ids() -> None:
+def test_packet_gate_fails_closed_on_wrong_admission_or_unchanged_page_table() -> None:
     plan, workloads, pressure, final_pool, graph_delta = _passing_packet_inputs()
     pressure["candidate_admission"]["requested_units"] = 16
 
@@ -126,13 +129,13 @@ def test_packet_gate_fails_closed_on_wrong_admission_or_stale_logical_ids() -> N
         final_pool=final_pool,
         graph_delta=graph_delta,
         pressure_block_ids=(100, 101, 102),
-        regrow_block_ids=(102, 200, 201),
+        regrow_block_ids=(100, 101, 102),
     )
 
     assert result["passed"] is False
     assert result["failure_reasons"] == [
         "pressure_admission_metadata_mismatch",
-        "regrow_reused_retired_logical_block_ids",
+        "regrow_page_table_did_not_change",
     ]
 
 

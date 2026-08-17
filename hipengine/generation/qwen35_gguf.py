@@ -4925,6 +4925,7 @@ class Qwen35GGUFResidentModelRunner:
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
+        self._kv_pool_generation = 0
         self._engine_loop_config: Any | None = None
         self._prefix_cache_mode = "off"
         self._prefix_cache: RadixCache | None = None
@@ -5293,7 +5294,16 @@ class Qwen35GGUFResidentModelRunner:
         high_water_pages = None if requested_high is None else int(requested_high)
         chunk_pages = min(max(1, int(config.kv_pool_chunk_pages)), total_pages)
         if callable(create_global_pool):
-            self._kv_pool = create_global_pool(page_capacity=total_pages)
+            global_capacity = total_pages
+            if high_water_pages is not None:
+                global_capacity = min(global_capacity, high_water_pages)
+            if global_capacity <= 0:
+                raise ValueError("GGUF global KV capacity must be positive")
+            self._kv_pool_generation += 1
+            self._kv_pool = create_global_pool(
+                page_capacity=global_capacity,
+                generation=self._kv_pool_generation,
+            )
         else:
             assert callable(create_legacy_pool)
             self._kv_pool = create_legacy_pool(
