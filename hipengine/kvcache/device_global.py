@@ -73,6 +73,7 @@ class GlobalDeviceKVPool:
         self._prefix_reused_pages = 0
         self._cow_fork_events = 0
         self._cow_forked_pages = 0
+        self._allocation_failures = 0
         self._closed = False
         self._lock = threading.RLock()
 
@@ -110,7 +111,7 @@ class GlobalDeviceKVPool:
                 ),
                 pinned_pages=sum(record.session_pins > 0 for record in records),
                 grow_events=0,
-                grow_failures=0,
+                grow_failures=self._allocation_failures,
                 shrink_events=0,
                 prefix_reuse_events=self._prefix_reuse_events,
                 prefix_reused_pages=self._prefix_reused_pages,
@@ -146,11 +147,15 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            lease = self.global_pool.allocate(
-                self._lease_id(rid),
-                private_pages=count,
-                growth_credit_pages=0,
-            )
+            try:
+                lease = self.global_pool.allocate(
+                    self._lease_id(rid),
+                    private_pages=count,
+                    growth_credit_pages=0,
+                )
+            except MemoryError:
+                self._allocation_failures += 1
+                raise
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)
@@ -176,12 +181,16 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            lease = self.global_pool.allocate(
-                self._lease_id(rid),
-                private_pages=private,
-                growth_credit_pages=0,
-                shared_page_ids=shared,
-            )
+            try:
+                lease = self.global_pool.allocate(
+                    self._lease_id(rid),
+                    private_pages=private,
+                    growth_credit_pages=0,
+                    shared_page_ids=shared,
+                )
+            except MemoryError:
+                self._allocation_failures += 1
+                raise
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)

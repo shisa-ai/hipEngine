@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Run the gfx11 GGUF OpenAI production workload and SLO gate.
 
 The gate owns one prepared GGUF model and serves it over a real localhost
@@ -39,6 +40,13 @@ from pathlib import Path
 from types import MethodType
 from typing import Any, Mapping, Sequence
 
+# Direct ``python scripts/...`` execution otherwise resolves the namespace-only
+# ``scripts`` package from whichever editable hipEngine checkout was installed.
+# Put this file's worktree first so code and provenance cannot cross branches.
+_SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_SCRIPT_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_REPO_ROOT))
+
 import uvicorn
 
 from hipengine import LLM, SamplingParams
@@ -53,7 +61,7 @@ from scripts.gguf_live_server_bench import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = _SCRIPT_REPO_ROOT
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _NATIVE_EXECUTION_PATHS = frozenset(
@@ -317,10 +325,20 @@ class _LiveSampler:
                 loop = snapshot.get("loop", {})
                 bucket = loop.get("physical_bucket", {})
                 requests = loop.get("requests", {})
+                route_plan = (
+                    snapshot.get("runner", {})
+                    .get("routes", {})
+                    .get("last_physical_group_plan", {})
+                )
                 depths = tuple(int(value) for value in self.batcher.stream_queue_depths())
                 self.samples.append(
                     {
                         "observed_at": time.perf_counter(),
+                        "physical_group_plan": (
+                            copy.deepcopy(route_plan)
+                            if isinstance(route_plan, Mapping) and route_plan
+                            else None
+                        ),
                         "active": int(requests.get("active", 0)),
                         "pending": int(requests.get("pending", 0)),
                         "occupancy_ratio": float(bucket.get("occupancy_ratio", 0.0)),
@@ -1183,6 +1201,12 @@ def _occupancy_summary(
         for plan in item.get("physical_group_plans", ())
         if isinstance(plan, dict) and plan
     ]
+    plans.extend(
+        copy.deepcopy(plan)
+        for item in samples
+        for plan in (item.get("physical_group_plan"),)
+        if isinstance(plan, dict) and plan
+    )
     execution_paths = sorted(
         {
             str(group.get("execution_path"))

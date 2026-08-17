@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Validate gfx11 GGUF long-context concurrency and bounded device-KV pressure.
 
 The packet reuses the production OpenAI/Uvicorn machinery but gives memory
@@ -28,6 +29,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import MethodType
 from typing import Any, Mapping, Sequence
+
+# Keep direct-script execution in this worktree even when another editable
+# hipEngine checkout has registered the namespace-only ``scripts`` package.
+_SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_SCRIPT_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_REPO_ROOT))
 
 from hipengine import LLM, SamplingParams
 from hipengine.benchmark.provenance import collect_artifact_provenance
@@ -109,14 +116,10 @@ def _request_pages(prompt_tokens: int, decode_tokens: int, *, block_size: int = 
 
 
 def _phase_pool_pages(request_pages: Sequence[int], *, initial_pages: int) -> int:
-    remaining = [int(value) for value in request_pages]
-    fitting = [index for index, pages in enumerate(remaining) if pages <= int(initial_pages)]
-    if fitting:
-        # One request may consume the initial contiguous chunk.  Every other
-        # request needs a separate chunk because one allocation cannot span
-        # device chunks under the current base-pointer + block-table ABI.
-        remaining.pop(max(fitting, key=lambda index: remaining[index]))
-    return int(initial_pages) + sum(remaining)
+    del initial_pages
+    # GlobalKVPoolSet admits every request from one fungible page set; capacity
+    # is the simultaneous page sum, not a per-request chunk packing bound.
+    return sum(int(value) for value in request_pages)
 
 
 def build_pool_plan(
@@ -219,7 +222,14 @@ def build_workload_specs(
         WorkloadRequest("graph-seed-32k", 9709, 32_768, graph_decode),
     )
     workloads["graph_regrow_32k_c1"] = (
-        WorkloadRequest("graph-regrow-32k", 9710, 32_768, graph_decode),
+        WorkloadRequest("graph-regrow-blocker-1k", 9708, 1_024, graph_decode),
+        WorkloadRequest(
+            "graph-regrow-32k",
+            9710,
+            32_768,
+            graph_decode,
+            arrival_offset_seconds=0.1,
+        ),
     )
     return workloads
 
@@ -274,15 +284,17 @@ def evaluate_packet(
     if pressure.get("candidate_admission") != _required_admission(plan):
         reasons.append("pressure_admission_metadata_mismatch")
     if not (
-        int(final_pool.get("current_pages", -1)) == int(plan.low_water_pages)
-        and int(final_pool.get("free_pages", -1)) == int(plan.low_water_pages)
+        int(final_pool.get("current_pages", -1))
+        == int(plan.pressure_high_water_pages)
+        and int(final_pool.get("free_pages", -1))
+        == int(plan.pressure_high_water_pages)
         and int(final_pool.get("refcounted_pages", -1)) == 0
         and int(final_pool.get("pinned_pages", -1)) == 0
-        and int(final_pool.get("grow_events", 0)) > 0
+        and int(final_pool.get("grow_events", -1)) == 0
         and int(final_pool.get("grow_failures", 0)) > 0
-        and int(final_pool.get("shrink_events", 0)) > 0
+        and int(final_pool.get("shrink_events", -1)) == 0
     ):
-        reasons.append("final_pool_lifecycle_failed")
+        reasons.append("final_global_pool_lifecycle_failed")
     if not (
         int(graph_delta.get("captures", 0)) > 0
         and int(graph_delta.get("replays", 0)) > 0
@@ -293,8 +305,10 @@ def evaluate_packet(
     regrow_ids = {int(block_id) for block_id in regrow_block_ids}
     if not pressure_ids or not regrow_ids:
         reasons.append("regrow_block_ids_missing")
-    elif pressure_ids & regrow_ids:
-        reasons.append("regrow_reused_retired_logical_block_ids")
+    elif tuple(int(value) for value in pressure_block_ids) == tuple(
+        int(value) for value in regrow_block_ids
+    ):
+        reasons.append("regrow_page_table_did_not_change")
     return {"passed": not reasons, "failure_reasons": reasons}
 
 
@@ -594,11 +608,16 @@ def _allocation_for_workload(
     reclaimed: Mapping[int, _ReclaimedRow],
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
     ids = summary.get("ownership", {}).get("new_reclaimed_request_ids", ())
-    for request_id in ids:
-        row = reclaimed.get(int(request_id))
-        if row is not None and row.block_ids:
-            return tuple(row.block_ids), tuple(row.pointers)
-    return (), ()
+    candidates = [
+        row
+        for request_id in ids
+        for row in (reclaimed.get(int(request_id)),)
+        if row is not None and row.block_ids
+    ]
+    if not candidates:
+        return (), ()
+    selected = max(candidates, key=lambda row: len(row.block_ids))
+    return tuple(selected.block_ids), tuple(selected.pointers)
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -646,7 +665,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     env = {
         **_EXACT_ENV,
-        "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+        "HIPENGINE_PREFILL_DECODE_POLICY": "token_budget",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
         "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": str(int(args.prefill_chunk_tokens)),
@@ -909,7 +928,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         build_profile=f"{scope}_gguf_long_context_pressure",
         timing_protocol=(
             "one prepared model; real localhost Uvicorn SSE; independent c1 token oracle; "
-            "concurrent 1K/4K/32K/mixed/longer rows; forced device-KV reject; shrink/regrow"
+            "concurrent 1K/4K/32K/mixed/longer rows; forced global-page reject; "
+            "generation rebuild and changed page-table replay"
         ),
         warmups=0,
         repetitions=1,
@@ -939,7 +959,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "max_sequence_length": max_sequence_length,
             "max_active_requests": int(args.max_active_requests),
-            "prefill_decode_policy": "protect_ttft",
+            "prefill_decode_policy": "token_budget",
             "prefill_chunk_tokens": int(args.prefill_chunk_tokens),
             "pool_plan": plan.to_json_dict(),
             "slo_thresholds": asdict(slos),
@@ -967,10 +987,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pressure_pointers": list(pressure_pointers),
             "regrow_block_ids": list(regrow_block_ids),
             "regrow_pointers": list(regrow_pointers),
-            "retired_logical_ids_disjoint": bool(
+            "regrow_page_table_changed": bool(
                 pressure_block_ids
                 and regrow_block_ids
-                and not (set(pressure_block_ids) & set(regrow_block_ids))
+                and tuple(pressure_block_ids) != tuple(regrow_block_ids)
             ),
         },
         "graph_lifecycle": {
@@ -989,7 +1009,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "This packet covers greedy Q4_K_M with BF16 device KV only.",
             "Uniform INT8 and tail4 Hadamard INT8 remain fail-closed in the continuous owner because deferred dynamic KV and packed c>N kernels currently require BF16.",
             "128K is not retried: the retained gfx1151 production artifact documents a repeated-lifecycle firmware/runtime stall; 64K is the default feasible longer-context row.",
-            "Protect-TTFT is used to force joined long-context decode membership; production fair-policy SLO selection remains the separate F4 artifact.",
+            "Generation-2 token-budget scheduling is used; sustained arrival-rate SLO selection remains the separate production-load gate.",
         ],
     }
 

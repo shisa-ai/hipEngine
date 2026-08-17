@@ -18,6 +18,7 @@ from scripts.gguf_production_load_gate import (
     _LocalUvicorn,
     _openai_error_fields,
     _load_tuning_protocol,
+    _occupancy_summary,
     _parse_workload_names,
     _poisson_arrival_offsets,
     _rotated_tuning_plan,
@@ -49,6 +50,37 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["p99"] == pytest.approx(99.0)
     assert summary["min"] == pytest.approx(1.0)
     assert summary["max"] == pytest.approx(100.0)
+
+
+def test_occupancy_route_uses_live_snapshot_plan_when_hook_timeline_is_empty() -> None:
+    plan = {
+        "logical_c": 3,
+        "groups": [
+            {"physical_rows": 2, "active_mask": [True, True], "execution_path": "packed_native"},
+            {"physical_rows": 1, "active_mask": [True], "execution_path": "native_c1_eager"},
+        ],
+    }
+
+    summary = _occupancy_summary(
+        [
+            {
+                "active": 3,
+                "pending": 0,
+                "occupancy_ratio": 1.0,
+                "generation_queue_depth": 0,
+                "stream_queue_max_depth": 1,
+                "physical_group_plan": plan,
+            }
+        ],
+        [],
+        stream_queue_limit=4,
+    )
+
+    assert summary["route_passed"] is True
+    assert summary["execution_paths"] == ["native_c1_eager", "packed_native"]
+    assert summary["logical_physical_shapes"] == [
+        {"logical_c": 3, "physical_widths": [2, 1], "active_masks": ["11", "1"]}
+    ]
 
 
 def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
