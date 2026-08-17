@@ -673,7 +673,6 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         expert_count=4,
         expert_shared_feed_forward_length=8,
         ssm_inner_size=6,
-        ssm_group_count=1,
         ssm_conv_kernel=4,
         ssm_group_count=2,
         ssm_time_step_rank=2,
