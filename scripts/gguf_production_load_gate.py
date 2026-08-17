@@ -1150,8 +1150,18 @@ def _counter_delta(before: Mapping[str, float], after: Mapping[str, float]) -> d
 def _wait_for_idle(llm: LLM, batcher: Any, *, timeout_seconds: float) -> dict[str, Any]:
     deadline = time.monotonic() + float(timeout_seconds)
     last: dict[str, Any] = {}
+    control_timeouts = 0
     while time.monotonic() < deadline:
-        snapshot = llm.live_loop_snapshot() or {}
+        try:
+            snapshot = llm.live_loop_snapshot() or {}
+        except TimeoutError:
+            # A synchronous long-prefill model transition can outlive the
+            # EngineService control RPC timeout even though its HTTP request is
+            # still healthy. Do not turn that observability gap into a second
+            # request failure or enqueue a tight polling storm.
+            control_timeouts += 1
+            time.sleep(0.05)
+            continue
         loop = snapshot.get("loop", {})
         requests = loop.get("requests", {})
         runner = snapshot.get("runner", {}).get("model_runner", {})
@@ -1168,9 +1178,12 @@ def _wait_for_idle(llm: LLM, batcher: Any, *, timeout_seconds: float) -> dict[st
             and int(batcher.queue_depth()) == 0
             and int(batcher.active_requests()) == 0
         ):
+            last["control_timeouts"] = int(control_timeouts)
             return last
         time.sleep(0.01)
-    raise TimeoutError(f"serving owner did not drain: {last}")
+    raise TimeoutError(
+        f"serving owner did not drain after {control_timeouts} control timeout(s): {last}"
+    )
 
 
 def _occupancy_summary(
