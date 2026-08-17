@@ -1345,6 +1345,15 @@ Soak/stability:
 - Enable debug checks for early development: bounds, monotonic positions, live
   count ≤ capacity, no negative slot mappings, and no stale `evict_mask` entries.
 
+C2-7 host/backend implementation status (2026-08-17): strict retrofit metadata,
+atomic compact extents, no-shadow streaming pack, transactional decode metadata,
+grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
+and a fixture-qualified INT8 codec are implemented. The current Qwen3.6 GGUF
+artifact has no packaged retrofit and therefore fails closed. HIP kernel and
+real-checkpoint quality/capacity/performance gates remain open; no DMS default or
+model claim is made. See
+[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+
 ## Later research: AQUA, HIGGS, TurboQuant-style int4
 
 These are deliberately after dense INT8 and DMS:
