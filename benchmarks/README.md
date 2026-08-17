@@ -131,22 +131,28 @@ diagnostic never replaces a retained row.
 ## Current Generation-2 short-request qualification
 
 W7900 Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8, token-budget scheduling,
-and same-loaded-server exact c1 oracles:
+and same-loaded-server exact c1 oracles. As of the c4/c8 promotion, logical cN
+lowers to registered physical c4/c8 buckets (plus a c1 edge), not just c2:
 
 | Logical concurrency | 1 | 2 | 4 | 8 | 17 | 32 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Aggregate HTTP wall tok/s | **28.355** | **37.466** | **36.594** | **35.892** | **35.102** | **35.119** |
+| Aggregate HTTP wall tok/s | **28.126** | **33.523** | **42.676** | **46.030** | **45.518** | **45.165** |
 | Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
 
-All widths use the stable global-page pool; logical cN lowers to registered
-physical c2 groups plus a c1 edge. The retained matched c8 packet measures
-**35.773 tok/s** native versus **27.586 tok/s** serial (+29.68%), with 24/24
-exact rows on both routes. C17 live refill is 17/17 exact with admission before
-the first completion. This qualifies the named short-request gfx1100 package.
-Actual c2 1K/4K/16K/32K/64K, mixed context, pressure, and changed-page graphs also
-pass, but the canonical full-load campaign is blocked by a repeated ROCm fault
-during high-count oracle ownership; no complete load or gfx1151 claim is made.
-Evidence: [`global/native packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
+The c4/c8 promotion recovers the c2-cap cost: c4/c8/c17/c32 are **+16.6 / +28.2 /
++29.7 / +28.6%** over the prior c2-only rows (36.594 / 35.892 / 35.102 / 35.119),
+all byte-exact. The matched c8 packet now measures **44.223 tok/s** native
+physical-c8 versus **27.595 tok/s** serial (**+60.25%**, was +29.68% at c2), 24/24
+exact on both routes. Under the exact old p512/d128 protocol, c8 reaches
+**~154-156 tok/s ≈ 0.973x the old design** (was 0.298x at the c2 cap), closing
+the c8 gap. C17 live refill is 17/17 exact with admission before the first
+completion. This qualifies the named short-request gfx1100 package. The canonical
+full-load campaign (tuning/ragged/fixed/Poisson/cancel/disconnect/overload/soak)
+and p512 c8 live-admission remain blocked by a repeated ROCm page fault; no
+complete-load or gfx1151 claim is made.
+Evidence: [`c4/c8 promotion packet`](results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json),
+[`prior global/native (c2-cap) packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
+[`old-protocol apples-to-apples diagnostic`](results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json),
 and [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 The executable Generation-2 audit currently reports **28 passed / 6 blocked /
 1 unavailable** requirements with no missing evidence; full product completion

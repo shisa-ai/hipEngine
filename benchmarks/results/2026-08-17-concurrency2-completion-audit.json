@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-17T04:51:14.161999+00:00",
+  "created_at": "2026-08-17T06:20:30.319771+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
@@ -272,9 +272,10 @@
       "status": "blocked",
       "evidence_paths": [
         "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
         "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
       ],
-      "validation": "short global/native default exact and +29.68% at c8",
+      "validation": "short global/native default exact; c4/c8 promoted byte-exact, matched c8 +60.25% vs serial, p512 c8 ~0.973x old",
       "blocker": "complete-load SLO/memory/throughput packet is blocked",
       "evidence": [
         {
@@ -282,6 +283,15 @@
           "exists": true,
           "artifact": {
             "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
             "passed": true,
             "performance_claim": true
           }
@@ -698,9 +708,10 @@
       "summary": "logical concurrency independent of physical width",
       "status": "passed",
       "evidence_paths": [
-        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json"
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
       ],
-      "validation": "logical c32 over physical c2",
+      "validation": "logical c32 over registered physical (1,2,4,8); c4/c8 lower to one bucket",
       "blocker": null,
       "evidence": [
         {
@@ -708,6 +719,15 @@
           "exists": true,
           "artifact": {
             "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
             "passed": true,
             "performance_claim": true
           }
@@ -754,9 +774,10 @@
       "summary": "c1 direct and cN beats honest serial under SLO",
       "status": "passed",
       "evidence_paths": [
-        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json"
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
       ],
-      "validation": "matched c8 +29.68%, exact/SLO; c1 direct retained",
+      "validation": "matched c8 +60.25% after c4/c8 promotion (was +29.68% at c2 cap), exact/SLO; c1 direct retained",
       "blocker": null,
       "evidence": [
         {
@@ -764,6 +785,15 @@
           "exists": true,
           "artifact": {
             "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
             "passed": true,
             "performance_claim": true
           }
