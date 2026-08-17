@@ -35,7 +35,7 @@ should be removed or collapsed.
   masked-lane shrink-sparse, fixed-width graph, and p512 state-oracle gates), so
   the registered widths are now `(1, 2, 4, 8)`: logical c4/c8 lower to one
   physical c4/c8 bucket. Matched W7900 p128/d8 c8 improved exact serial-c1
-  **27.595 -> 44.223 tok/s (+60.25%)** (was +29.68% at c2), and p512/d128 c8
+  **27.634 -> 44.031 tok/s (+59.27%)** (was +29.68% at c2), and p512/d128 c8
   reaches ~0.973x the old design. Serial remains the required numerical fallback.
 - Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8
   global adapters execute the C2-6 graph-pointer, lifecycle, cancellation,

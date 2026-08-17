@@ -136,13 +136,13 @@ lowers to registered physical c4/c8 buckets (plus a c1 edge), not just c2:
 
 | Logical concurrency | 1 | 2 | 4 | 8 | 17 | 32 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Aggregate HTTP wall tok/s | **28.126** | **33.523** | **42.676** | **46.030** | **45.518** | **45.165** |
+| Aggregate HTTP wall tok/s | **27.443** | **34.394** | **43.337** | **46.158** | **45.797** | **44.320** |
 | Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
 
 The c4/c8 promotion recovers the c2-cap cost: c4/c8/c17/c32 are **+16.6 / +28.2 /
 +29.7 / +28.6%** over the prior c2-only rows (36.594 / 35.892 / 35.102 / 35.119),
-all byte-exact. The matched c8 packet now measures **44.223 tok/s** native
-physical-c8 versus **27.595 tok/s** serial (**+60.25%**, was +29.68% at c2), 24/24
+all byte-exact. The matched c8 packet now measures **44.031 tok/s** native
+physical-c8 versus **27.634 tok/s** serial (**+59.27%**, was +29.68% at c2), 24/24
 exact on both routes. Under the exact old p512/d128 protocol, c8 reaches
 **~154-156 tok/s ≈ 0.973x the old design** (was 0.298x at the c2 cap), closing
 the c8 gap. C17 live refill is 17/17 exact with admission before the first

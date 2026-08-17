@@ -61,7 +61,7 @@ C2-6 is no longer blocked at the gfx1100 short-request adapter boundary. The
 W7900 exact-file Qwen3.6-35B-A3B BF16-KV global-pool route is exact at p128/d8
 for logical c1/c2/c4/c8/c17/c32 and exact under c17 live refill. After the
 2026-08-17 shared-slot c4/c8 promotion (registered physical widths `(1, 2, 4, 8)`),
-matched exact c8 aggregate HTTP wall improves **+60.25%** over serial c1 (was
+matched exact c8 aggregate HTTP wall improves **+59.27%** over serial c1 (was
 +29.68% at the c2 cap), c4/c8/c17/c32 short-request rows are +16.6–+29.7% over
 the c2 cap, all byte-exact, and p512/d128 c8 reaches ~0.973x the old design,
 while final active/refcounted/pinned ownership is zero. Actual
