@@ -1,6 +1,12 @@
 # Qwen3.6-35B ZBook Production-Numerics Tuning
 
-Status: **ready to execute PN1 control-capture; strict/production registration landed**
+Status: **closed 2026-08-17 — measured no-win for the c1 mechanism search; next dominant owner explicit**
+
+AR punchlist PN0-PN8 executed: P3-LAQ1 / P3-LA2 / P3-LAQ1-B rejected with durable
+evidence, host and recurrence A/Bs neutral, model ~94% GPU-bound at ~30.5 ms/token
+sync'd eager. Next dominant owner: the `launch_gguf_linear` T16 GEMV path
+(~8.9 ms/token, ~29% of wall); only a non-T0 (production-envelope) mechanism or a
+launch restructure has real headroom. PN7 (MTP) is a separate deferred lane.
 
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
@@ -760,13 +766,15 @@ and verdict.
 
 ### PN0 — Campaign start
 
-- [ ] Create campaign-start worklog entry and run tag.
-- [ ] Confirm clean source and record commit.
-- [ ] Confirm full model and both prompt hashes.
-- [ ] Record `rocminfo`, ROCm/HIP/compiler, power, thermal, TTM, memory, and idle
+> Completed in the PN0 unit (2026-08-17); the checkboxes record the evidence.
+
+- [x] Create campaign-start worklog entry and run tag.
+- [x] Confirm clean source and record commit.
+- [x] Confirm full model and both prompt hashes.
+- [x] Record `rocminfo`, ROCm/HIP/compiler, power, thermal, TTM, memory, and idle
       snapshots.
-- [ ] Create compiler-version file and warm all required caches outside timing.
-- [ ] Run and review kernel lineage report before kernel work.
+- [x] Create compiler-version file and warm all required caches outside timing.
+- [x] Run and review kernel lineage report before kernel work.
 
 ### PN1 — Named profile/control foundation
 
@@ -871,7 +879,7 @@ and verdict.
       and TTFT p95 up to 12.2s (SLO 10s) in some runs; policy sweep selected
       `fair_128` which passes its single run at 27.75 tok/s goodput (TTFT p95
       1.98s, ITL p99 0.42s) but the full workload still fails.
-- [ ] Run strict complete server packet (strict SLO-goodput/default
+- [x] Run strict complete server packet (strict SLO-goodput/default
       denominator) — **done 2026-08-17**: `HIPENGINE_EXECUTION_PROFILE=strict`
       complete packet also fails (soak blocker present in both profiles): 49
       rejected (16 overload + 33 soak), selected `fair_128` @ 27.27 tok/s
@@ -1162,13 +1170,25 @@ per-call host timing during eager decode:
 
 ### PN6 — Evidence/cleanup
 
-- [ ] Write compact artifact with model/hardware/command/sample/control hashes.
-- [ ] Update benchmark README/date and changelog for retained performance.
-- [ ] Update worklog, this punchlist, kernel catalog/lineage, and refactor ledger.
-- [ ] Remove rejected candidate code/flags or retain only an explicitly justified
-      diagnostic.
-- [ ] Run focused tests and applicable milestone suite.
-- [ ] Stage explicit files, inspect staged diff, and commit immediately.
+> Completed 2026-08-17 for the rejected candidates (P3-LAQ1, P3-LA2, P3-LAQ1-B)
+> and the host/recurrence A/B diagnostics.
+
+- [x] Write compact artifact with model/hardware/command/sample/control hashes
+      (`2026-08-17-zbook-qwen36-pn3-laq1-rejected.json`,
+      `2026-08-17-zbook-qwen36-pn4-laq1b-rejected.json`).
+- [x] N/A — no retained performance to roll up (no-win); benchmark README/date
+      and changelog are intentionally unchanged for this campaign.
+- [x] Update worklog, this punchlist, kernel catalog/lineage, and refactor
+      ledger (worklog entries + punchlist updated; no kernel ownership change
+      and no new flags, so catalog/lineage/refactor are unchanged).
+- [x] Remove rejected candidate code/flags or retain only an explicitly
+      justified diagnostic (all candidate kernels reverted; host/recurrence/
+      next-owner A/B probes retained as explicit diagnostics).
+- [x] Run focused tests and applicable milestone suite
+      (`tests/test_pn4_laq1b_red.py`: bit-exact guard PASS, leaf timing xfail;
+      broader suite not rerun for a docs-only closure per the focused-repair
+      rule).
+- [x] Stage explicit files, inspect staged diff, and commit immediately.
 
 ### PN7 — Optional exact MTP follow-up
 
