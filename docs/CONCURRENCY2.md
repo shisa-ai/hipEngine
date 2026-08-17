@@ -31,7 +31,7 @@ Related source-of-truth documents:
 | C2-2 resource admission | Format-neutral atomic ledger, fit-aware bounded lookahead, named pressure telemetry. | Closed. |
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
-| C2-5 token budget/c1-c32 | Logical c1-c32, exact physical-c2 decomposition, same-round prefill/decode fairness. | Closed for retained gfx1100 short route. |
+| C2-5 token budget/c1-c32 | Logical c1-c32, byte-exact physical-c4/c8 decomposition (registered `(1,2,4,8)`), same-round prefill/decode fairness. | Closed for retained gfx1100 short route; c4/c8 promoted byte-exact (steady/shrink-sparse/graph/p512) with c1-c32 end-to-end exact. |
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, and changed-page graphs. | Canonical tuning/ragged/fixed/Poisson/cancel/disconnect/40-request-overload/soak packet faults before tuning across seven attempts; full default stays open. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
@@ -45,18 +45,22 @@ Executable source-to-evidence audit:
 
 W7900, exact-file Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8,
 token-budget scheduling, zero generation batch window, same-loaded-server c1
-oracles, one measured production sweep:
+oracles. After the c4/c8 promotion, logical cN lowers to registered physical
+c4/c8 buckets (plus a c1 edge):
 
 | Logical c | 1 | 2 | 4 | 8 | 17 | 32 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Aggregate HTTP wall tok/s | 28.355 | 37.466 | 36.594 | 35.892 | 35.102 | 35.119 |
-| Scale vs c1 | 1.000x | 1.321x | 1.291x | 1.266x | 1.238x | 1.239x |
+| Aggregate HTTP wall tok/s (c4/c8) | 28.126 | 33.523 | 42.676 | 46.030 | 45.518 | 45.165 |
+| Aggregate HTTP wall tok/s (prior c2 cap) | 28.355 | 37.466 | 36.594 | 35.892 | 35.102 | 35.119 |
 | Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
 
-The binding same-protocol c8 comparison (one warmup, three measurements) is
-**35.773 tok/s native physical-c2 decomposition versus 27.586 tok/s exact
-serial-c1 (+29.68%)**; live refill is **34.072 versus 27.458 tok/s (+24.08%)**.
-This is the valid retained performance claim for Generation 2.
+The c4/c8 promotion recovers the c2-cap cost: c4/c8/c17/c32 are **+16.6 / +28.2 /
++29.7 / +28.6%** over the prior c2-only rows, all byte-exact. The binding
+same-protocol c8 comparison (one warmup, three measurements) is now **44.223
+tok/s native physical-c8 versus 27.595 tok/s exact serial-c1 (+60.25%)**; it was
+35.773 versus 27.586 (+29.68%) at the c2 cap. Live refill is 17/17 exact at
+c17. This is the valid retained performance claim for Generation 2.
+Evidence: [`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
 
 ### Retained old implementation (not an apples-to-apples A/B)
 
@@ -81,25 +85,30 @@ streaming-primary, 20 ms generation batch window, 256 prefill chunk, ctx 1024,
 | c | Current G2 (SSE median) | Old G1 (SSE) | Ratio |
 | ---: | ---: | ---: | ---: |
 | 1 | 76.371 tok/s | 72.169 tok/s | **1.058x** |
-| 8 | 47.239 tok/s | 158.542 tok/s | **0.298x** |
+| 8 (c2 cap, pre-flip) | 47.239 tok/s | 158.542 tok/s | 0.298x |
+| 8 (c4/c8, post-flip) | ~154.322 tok/s | 158.542 tok/s | **0.973x** |
 
 - **c1**: Generation-2 is ~5.8% faster on the identical protocol — the cleanest
   apples-to-apples point, reflecting graph/workspace improvements.
-- **c8**: Generation-2 is ~70% slower **entirely because of the physical-c2
-  shared-slot cap**: logical c8 lowers to c2 groups, while the old design ran
-  one physical c8. This is a physical-width-composition effect, not a kernel
-  regression, and is the direct target of the shared-slot c4/c8 qualification.
+- **c8 (pre-flip)**: ~70% slower **entirely because of the physical-c2
+  shared-slot cap**: logical c8 lowered to c2 groups, while the old design ran
+  one physical c8 — a physical-width-composition effect, not a kernel regression.
+- **c8 (post-flip)**: after the shared-slot c4/c8 promotion, c8 reaches
+  **~154-156 tok/s ≈ 0.973x the old design**, closing the c2-cap gap. All c8
+  burst/streaming rows are byte-exact.
 
-All c1/c8 burst rows were byte-exact (c1 3/3, c8 24/24, streaming passed).
-An open issue surfaced in the c8 live-admission sub-gate (the new harness's
-join-after-N-decode protocol, which differs from the old live test): all join
-requests hit a server-side request-cancellation (HTTP 499); tracked separately.
+An open issue remains in the c8 live-admission sub-gate (the new harness's
+join-after-N-decode protocol, which differs from the old live test): it hit a
+server-side request-cancellation (HTTP 499) pre-flip and a GPU page fault
+post-flip — the same ROCm page-fault instability that blocks the canonical
+C2-6 full-load packet; tracked under that blocker.
 
 Evidence:
 [`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
 [`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json),
+[`measured apples-to-apples old-protocol diagnostic`](../benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json),
 and
-[`measured apples-to-apples old-protocol diagnostic`](../benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json).
+[`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
 
 ## Executive decision
 

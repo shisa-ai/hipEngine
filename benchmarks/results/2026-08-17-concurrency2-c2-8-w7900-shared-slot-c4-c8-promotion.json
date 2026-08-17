@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_c2-8_w7900_shared_slot_c4_c8_promotion",
+  "created_at": "2026-08-17T05:58:00Z",
+  "status": "accepted_c4_c8_promotion",
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B Q4_K_M/BF16-KV Generation-2 shared-slot packed AR decode promoted from registered physical widths (1,2) to (1,2,4,8); byte-exact at c4/c8 and end-to-end exact c1-c32, with c4/c8/c17/c32 throughput recovered from the c2 cap",
+  "decision": "promote gfx1100 shared-slot physical c4/c8 to the default registered widths; logical c4 lowers to one physical c4 and logical c8 to one physical c8",
+  "supersedes": {
+    "path": "benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json",
+    "finding": "that pre-flip diagnostic measured c8 at 0.298x the old design because logical c8 lowered to c2 groups; the c4/c8 promotion closes that gap to ~0.97x"
+  },
+  "repository": {
+    "branch": "concurrency2",
+    "base_commit": "ad030591db9415664a3033224bbf8ea437f95303",
+    "worktree": "/home/lhl/hipEngine-concurrency2",
+    "change": "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS (1,2) -> (1,2,4,8) in hipengine/kernels/hip_gfx1100/__init__.py"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "device_selector": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 --gpu 0",
+    "rocm": "HIP 7.2.53211-3d9ef42 / AMD clang 22.0.0git f58b06dce1f9"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "byte_exact_gates": {
+    "harness": "scripts/gguf_packed_ar_state_oracle.py",
+    "oracle": "independent c1, tokens + Conv/GDN state + live KV + every layer hidden",
+    "gates": {
+      "steady_eager_p128_d8": {
+        "c4": {"status": "passed", "tokens_exact": true, "initial_state_exact": true, "final_state_exact": true, "lifecycle_state_exact": true, "layer_hidden_comparisons": 1280, "layer_hidden_exact": true},
+        "c8": {"status": "passed", "tokens_exact": true, "initial_state_exact": true, "final_state_exact": true, "lifecycle_state_exact": true, "layer_hidden_comparisons": 2560, "layer_hidden_exact": true}
+      },
+      "shrink_sparse_masked_lanes": {
+        "c4_d4": {"status": "passed", "tokens_exact": true, "final_state_exact": true, "lifecycle_state_exact": true, "layer_hidden_comparisons": 400, "layer_hidden_exact": true},
+        "c8_d5": {"status": "passed", "tokens_exact": true, "final_state_exact": true, "lifecycle_state_exact": true, "layer_hidden_comparisons": 840, "layer_hidden_exact": true}
+      },
+      "fixed_width_graph": {
+        "c4": {"status": "passed", "tokens_exact": true, "graph_manifests": 1},
+        "c8": {"status": "passed", "tokens_exact": true, "final_state_exact": true, "graph_manifests": 1, "layer_hidden_comparisons": 2560, "layer_hidden_exact": true}
+      },
+      "p512_context": {
+        "c4_d16": {"status": "passed", "tokens_exact": true, "final_state_exact": true, "layer_hidden_comparisons": 2560, "layer_hidden_exact": true},
+        "c8_d16": {"status": "passed", "tokens_exact": true, "final_state_exact": true, "layer_hidden_comparisons": 5120, "layer_hidden_exact": true}
+      }
+    },
+    "raw_sources": [
+      "/tmp/hipengine-c2-8-rows4-steady-eager-p128.json",
+      "/tmp/hipengine-c2-8-rows8-steady-eager-p128.json",
+      "/tmp/hipengine-c2-8-rows4-shrink-sparse.json",
+      "/tmp/hipengine-c2-8-rows8-shrink-sparse.json",
+      "/tmp/hipengine-c2-8-rows4-graph.json",
+      "/tmp/hipengine-c2-8-rows8-graph.json",
+      "/tmp/hipengine-c2-8-rows4-p512.json",
+      "/tmp/hipengine-c2-8-rows8-p512.json"
+    ]
+  },
+  "end_to_end_f1_sweep": {
+    "harness": "scripts/server_f1_concurrency_bench.py",
+    "workload": "p128/d8, token_budget, zero batch window, same-server c1 oracle, c1..c32 + live 17",
+    "route_expectation": "native",
+    "status": "accepted_backend_packet",
+    "rows": {
+      "c1":  {"tok_s": 28.126, "prior_c2_cap": 28.355, "exact": "1/1"},
+      "c2":  {"tok_s": 33.523, "prior_c2_cap": 37.466, "exact": "2/2"},
+      "c4":  {"tok_s": 42.676, "prior_c2_cap": 36.594, "delta_pct": 16.6, "exact": "4/4"},
+      "c8":  {"tok_s": 46.030, "prior_c2_cap": 35.892, "delta_pct": 28.2, "exact": "8/8"},
+      "c17": {"tok_s": 45.518, "prior_c2_cap": 35.102, "delta_pct": 29.7, "exact": "17/17", "live_refill": {"tok_s": 43.209, "admission_during_first": true}},
+      "c32": {"tok_s": 45.165, "prior_c2_cap": 35.119, "delta_pct": 28.6, "exact": "32/32"}
+    },
+    "route_evidence": "resident_bucket_capacity=8, serial_decode_fallback_steps=0, path=gguf_packed_ar_server_decode, native_caware_decode=True",
+    "raw_source": "/tmp/hipengine-c2-8-w48-production.json"
+  },
+  "matched_c8": {
+    "workload": "p128/d8, 1 warmup + 3 measured, same-server c1 oracle",
+    "native_physical_c8": {"samples_tok_s": [44.180, 44.223, 44.280], "median_tok_s": 44.223, "exact": "24/24", "live": {"tok_s": 41.178, "admission_during_first": true}},
+    "serial_c1_per_row": {"samples_tok_s": [27.595, 27.499, 27.723], "median_tok_s": 27.595, "exact": "24/24"},
+    "native_vs_serial_pct": 60.25,
+    "prior_c2_native_vs_serial_pct": 29.68,
+    "native_c8_vs_prior_c2_c8_pct": 23.62,
+    "raw_sources": ["/tmp/hipengine-c2-8-w48-c8-native.json", "/tmp/hipengine-c2-8-w48-c8-serial.json"]
+  },
+  "old_protocol_apples_to_apples": {
+    "workload": "p512/d128, SSE streaming-primary, 20 ms batch window, 256 prefill chunk, ctx 1024, 1 warmup + 3 measured, independent c1 oracles",
+    "note": "burst rows measured before the live-admission step; the live step hit the known C2-6 GPU page-fault blocker (see open_issue)",
+    "current_c8_blocking_median_tok_s": 156.070,
+    "current_c8_streaming_median_tok_s": 154.322,
+    "old_g1_c8_streaming_tok_s": 158.542,
+    "current_c8_vs_old_streaming_ratio": 0.9734,
+    "prior_c2_cap_c8_vs_old_streaming_ratio": 0.2980,
+    "raw_log": "/tmp/vstack-pi-bg/bg-68 (c8 rep0/1/2 = 157.068/156.070/155.753; stream = 155.426/154.013/154.322)"
+  },
+  "host_gates": {
+    "registered_widths_test": "test_gfx1100_registers_shared_slot_ar_physical_widths_through_c8 GREEN",
+    "lowering_mechanism_test": "test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups GREEN"
+  },
+  "open_issue": {
+    "id": "c2-8-p512-c8-live-admission-gpu-fault",
+    "summary": "p512/d128 c8 live-admission (new-harness join-after-N-decode) hit a GPU memory-access-fault (page not present) after the burst/streaming reps; the c8 live at p128/d8 and c17 live pass cleanly. This is the same ROCm page-fault instability that blocks the canonical C2-6 full-load packet and also appeared pre-flip (as HTTP 499 cancellation). Not caused by the c4/c8 promotion; tracked under the C2-6 canonical load blocker.",
+    "server_log_line": "Memory access fault by GPU node-1 ... Reason: Page not present or supervisor privilege."
+  },
+  "limitations": [
+    "p512/d128 c8 live-admission not closed due to the known C2-6 GPU page-fault blocker; the burst/streaming c8 parity numbers were measured before that step.",
+    "c17/c32 sweep rows are single-measured (production-packet shape); the matched 1w3m packet was run at c8 for a robust claim.",
+    "No full canonical C2-6 load (tuning/ragged/Poisson/overload/soak) is claimed here; that remains blocked by the GPU fault."
+  ],
+  "next": [
+    "Fold into C2-6: re-attempt the canonical full-load packet once the ROCm page-fault instability is resolved.",
+    "Re-check p512/d128 c8 live-admission on a clean ROCm state to confirm it is the hardware fault, not a width-specific bug."
+  ]
+}
