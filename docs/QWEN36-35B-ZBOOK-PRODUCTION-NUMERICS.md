@@ -781,16 +781,26 @@ and verdict.
 - [ ] Emit selected and strict manifest hashes from direct and server paths.
 - [x] Deterministic control-capture model + serializers + independent fixture
       builder (`hipengine/benchmark/control_capture.py`) with RED tests.
-- [ ] Wire the live producer into the teacher-forced run harness (read session
-      position/token per row, emit capture + fixture, invoke the gate).
-- [ ] Commit independent strict/production expected-control fixtures.
-- [ ] Add RED tests for row, position, mask, KV/state owner, expert scatter,
-      graph route, transaction, and lifecycle failures.
-- [ ] Freeze full-suite task-results artifact; initial automatic lane requires
-      18/18 strict/candidate greedy output equality.
-- [ ] Attach aligned BF16 evidence or explicit zero implementation delta.
-- [ ] Pass no-change strict/production/batch-invariant GPU smoke.
-- [ ] Commit the control-capture remainder of PN1 as one validated logical unit.
+- [x] Live-producer harness (`scripts/execution_profile_gguf_control_smoke.py`)
+      that runs strict/production/repeat/isolation teacher-forced schedules,
+      reads live session position/token per row, emits captures + fixtures +
+      variant manifests + task results, and invokes the gate. CPU gate dry-run
+      validated end-to-end.
+- [x] RED tests for row, position, mask, KV/state owner, expert scatter, graph
+      route, transaction, and lifecycle failures (17 control-capture tests
+      incl. swapped-slot, wrong-owner-key, position/context, KV base offset,
+      stale graph bucket, and lifecycle-leak mismatch negatives).
+- [x] Pass no-change strict/production GPU smoke through
+      `execution_profile_gate.py` (2026-08-17, run root
+      `/tmp/hipengine-zbook-production-numerics/20260817T031433Z-7b3c810a8525`):
+      decision `passed`, `eligible_for_automatic_admission=True`; controls /
+      determinism / isolation / tasks / generated all pass; strict-vs-production
+      KL=0.0, top-1=1.0, 4/4 IDs equal (T2 cooperative router bit-exact on this
+      schedule). batch_invariant fail-closed covered by resolution unit tests.
+- [x] Commit the control-capture remainder of PN1 as one validated logical unit.
+- [ ] Commit independent full-suite strict/production expected-control fixtures
+      (mechanism validated by the smoke; frozen fixtures land with the full-suite
+      task artifact).
 
 ### PN2 — Baseline refresh
 

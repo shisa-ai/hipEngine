@@ -286,3 +286,72 @@ def test_fixture_and_capture_agree_across_c1_schedule() -> None:
         scenario_id=SCENARIO, run_id=RUN_ID, records=derive_control_records(_c1_primitives(7))
     )
     assert fixtures["controls"] == capture["controls"]
+
+
+def test_schedule_fixture_agrees_with_live_derived_primitives() -> None:
+    from hipengine.benchmark.control_capture import schedule_c1_control_records
+
+    prompt_ids = tuple(range(512))
+    teacher = tuple(1000 + step for step in range(4))
+    fixture = schedule_c1_control_records(
+        scenario_id=SCENARIO,
+        request_id="prompt-0",
+        prompt_ids=prompt_ids,
+        teacher_token_ids=teacher,
+        route_top_k=ROUTE_TOP_K,
+        graph_bucket=GRAPH_BUCKET,
+        rng_seed=42,
+    )
+    # The live producer reads the same values from the resident session: the
+    # prefill-last row and one step per teacher token.
+    live = derive_control_records(
+        (
+            _primitive(
+                step=0,
+                token=prompt_ids[-1],
+                position=511,
+                context=512,
+                rng_seed=42,
+            ),
+            *(
+                _primitive(
+                    step=step,
+                    token=teacher[step - 1],
+                    position=511 + step,
+                    context=512 + step,
+                    rng_seed=42,
+                )
+                for step in range(1, 5)
+            ),
+        )
+    )
+    assert [record.to_dict() for record in fixture] == [record.to_dict() for record in live]
+    assert [record.scenario_step for record in fixture] == [0, 1, 2, 3, 4]
+    assert [record.input_token_id for record in fixture] == [
+        prompt_ids[-1],
+        *teacher,
+    ]
+    assert [record.kv_live_count for record in fixture] == [512, 513, 514, 515, 516]
+
+
+def test_schedule_fixture_rejects_bad_spec() -> None:
+    from hipengine.benchmark.control_capture import schedule_c1_control_records
+
+    with pytest.raises(ValueError, match="prompt_ids"):
+        schedule_c1_control_records(
+            scenario_id=SCENARIO,
+            request_id="p",
+            prompt_ids=(),
+            teacher_token_ids=(1,),
+            route_top_k=8,
+            graph_bucket="eager",
+        )
+    with pytest.raises(ValueError, match="teacher_token_ids"):
+        schedule_c1_control_records(
+            scenario_id=SCENARIO,
+            request_id="p",
+            prompt_ids=(1, 2),
+            teacher_token_ids=(),
+            route_top_k=8,
+            graph_bucket="eager",
+        )
