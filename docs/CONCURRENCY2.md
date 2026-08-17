@@ -1240,17 +1240,27 @@ checkbox and product exit remain open. Evidence:
 
 ### C2-8 — optional hot/cold tiering
 
-- [ ] Add backend-declared offload/restore maintenance work and host/NVMe
+- [x] Add backend-declared offload/restore maintenance work and host/NVMe
       resource pools without blocking due decode work.
-- [ ] Treat KVTC-style storage as a cold codec that restores to the resolved hot
+- [x] Treat KVTC-style storage as a cold codec that restores to the resolved hot
       backend; do not present it as an attention dtype.
-- [ ] Key cold objects by complete hot-backend/artifact identity and validate
+- [x] Key cold objects by complete hot-backend/artifact identity and validate
       deterministic restore, cancellation, eviction, quotas, and final drain.
-- [ ] Measure transfer/decompression workspace and TTFT against prefix
+- [x] Measure transfer/decompression workspace and TTFT against prefix
       recomputation before promotion.
 
 Exit: tiering adds a backend capability and maintenance work class, not another
 scheduler or request lifecycle.
+
+Implemented host status: `TieredKVCacheBackend` delegates all execution views to
+the hot backend and adds typed offload/restore/evict work, separate host/NVMe
+cache and transfer-workspace ledger pools, complete fingerprinted cold keys,
+KVTC-style checksummed compression, tenant quotas, pin-aware LRU, atomic hot/cold
+ownership transfer, restore rollback, and deterministic drain. A synthetic 1
+MiB host packet measures median restore **1.203 ms** versus **8.967 ms**
+recompute proxy, but its repeated payload is intentionally non-representative;
+no model TTFT or default claim follows. Evidence:
+[`2026-08-17-concurrency2-c2-8-tier-host-accepted.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
 
 ## Acceptance gates
 

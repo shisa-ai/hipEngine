@@ -304,6 +304,14 @@ has cross-layer state, OSCAR-like layouts have protected BF16 and packed history
 planes, and DMS changes physical liveness dynamically. It means none of them may
 fork continuous batching, request completion, cancellation, or admission logic.
 
+C2-8 now implements optional cold tiering with exactly that boundary:
+`TieredKVCacheBackend` delegates every attention view to the hot backend and adds
+fingerprinted/checksummed KVTC-style host/NVMe objects, cache/workspace claims,
+tenant quotas, pin-aware LRU, and atomic offload/restore/rollback/drain work. A
+synthetic host gate measures restore versus a recompute proxy but makes no model
+TTFT claim; tiering remains default-off. See
+[`2026-08-17-concurrency2-c2-8-tier-host-accepted.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
+
 ### Qwen3.6/PARO dense K/V size
 
 Only ten full-attention layers own dense K/V. The other 30 layers use recurrent
