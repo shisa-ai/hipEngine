@@ -865,7 +865,11 @@ and verdict.
       `fair_128` which passes its single run at 27.75 tok/s goodput (TTFT p95
       1.98s, ITL p99 0.42s) but the full workload still fails.
 - [ ] Run strict complete server packet (strict SLO-goodput/default
-      denominator).
+      denominator) — **done 2026-08-17**: `HIPENGINE_EXECUTION_PROFILE=strict`
+      complete packet also fails (soak blocker present in both profiles): 49
+      rejected (16 overload + 33 soak), selected `fair_128` @ 27.27 tok/s
+      goodput (TTFT p95 1.88s, ITL p99 0.42s); bound into the baseline
+      artifact as the strict denominator.
 - [ ] Reconcile >=90% of complete wall or record measured residual.
 - [ ] Record soak occupancy, physical-width exposure, rejection timing, and the
       throughput ceiling required to clear offered load.

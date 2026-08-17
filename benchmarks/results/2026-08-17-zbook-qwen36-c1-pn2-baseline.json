@@ -86,7 +86,7 @@
     "state_kv_c1_bit_exact": false,
     "state_kv_exact": false
   },
-  "commit": "905dd75342319541ba8a9b015e4693e291049a05",
+  "commit": "bb9e36739f820973bfcb2f1c71a0da96a7ec52a6",
   "date_utc": "2026-08-17",
   "execution_profile": "production",
   "host": "zbook",
@@ -141,10 +141,31 @@
     "cn_perf": "0581df7d69e3113d39c25135f9721f86a709e7cd9503859dd1a018b58fa9e625",
     "cn_quality": "d99b4be9e0a1a1bd5a2484ae90b8e1ab686bb4c1449db2cb4b864919fb2448b0",
     "production_load_full": "5d6c074d5420213820e8684c60944f2548c32adacb7d7c40e3b4fb4a5bdba8fb",
-    "production_load_screen": "a0f310293857a987de1869f2a3ac5dbe659bd7606b9530fd01d987394b54783d"
+    "production_load_screen": "a0f310293857a987de1869f2a3ac5dbe659bd7606b9530fd01d987394b54783d",
+    "strict_load_full": "e65b360d7787cbe59bb77f5dbf60bd28304b9de6516155ac901e7936eceb581f"
   },
   "run_root": "/tmp/hipengine-zbook-production-numerics/20260817T040401Z-53be617b835b",
   "schema_version": 1,
+  "strict_server": {
+    "complete_packet": true,
+    "denominator": "strict SLO-goodput/default denominator for PN3+ candidate comparison",
+    "execution_profile": "strict",
+    "final_rejected_total": 49.0,
+    "rejection_timing": {
+      "overload_workload_rejected": 16,
+      "soak_workload_rejected": 33
+    },
+    "selected_tuning": {
+      "candidate_id": "fair_128",
+      "end_to_end_p95_seconds": 10.331436664040666,
+      "goodput_generated_tokens_per_second": 27.267388665099826,
+      "itl_p99_seconds": 0.42458660202100873,
+      "passed": true,
+      "ttft_p95_seconds": 1.8787254759809002
+    },
+    "status": "failed",
+    "workloads_passed": false
+  },
   "vs_retained_2026_08_16": {
     "fixed_candidate_delta_pct": -2.278128109969302,
     "fixed_strict_delta_pct": -1.616274688033359,
