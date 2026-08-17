@@ -1626,6 +1626,60 @@ def _parse_workload_names(
     return names
 
 
+def _run_same_owner_references(
+    llm: LLM,
+    prompt_rows: Mapping[str, Mapping[str, Any]],
+    specs: Sequence[WorkloadRequest],
+) -> tuple[dict[str, tuple[int, ...]], dict[str, Any]]:
+    """Generate serial c1 oracle trajectories on the measured model owner."""
+
+    reference_tokens: dict[str, tuple[int, ...]] = {}
+    for key, row in sorted(prompt_rows.items()):
+        max_tokens = max(
+            spec.max_tokens for spec in specs if spec.oracle_key == key
+        )
+        outputs = llm.generate_detailed(
+            (str(row["text"]),),
+            SamplingParams(
+                max_tokens=int(max_tokens),
+                temperature=0.0,
+                top_p=1.0,
+                top_k=1,
+                ignore_eos=True,
+            ),
+        )
+        if len(outputs) != 1 or outputs[0].generated_token_ids is None:
+            raise RuntimeError(f"same-owner oracle {key} returned no token IDs")
+        generated = tuple(int(token) for token in outputs[0].generated_token_ids)
+        if len(generated) != int(max_tokens):
+            raise RuntimeError(
+                f"same-owner oracle {key} returned {len(generated)} token(s); "
+                f"expected {max_tokens}"
+            )
+        reference_tokens[key] = generated
+        print(
+            f"reference {len(reference_tokens)}/{len(prompt_rows)}: {key}",
+            file=sys.stderr,
+            flush=True,
+        )
+    snapshot = llm.live_loop_snapshot() or {}
+    requests = snapshot.get("loop", {}).get("requests", {})
+    runner = snapshot.get("runner", {}).get("model_runner", {})
+    if (
+        int(requests.get("active", 0))
+        or int(requests.get("pending", 0))
+        or int(runner.get("active_requests", 0))
+    ):
+        raise RuntimeError("same-owner oracle generation did not drain")
+    return reference_tokens, {
+        "mode": "same_owner_serial_c1",
+        "process_isolated": False,
+        "oracle_rows": len(reference_tokens),
+        "final_active_requests": int(requests.get("active", 0)),
+        "final_pending_requests": int(requests.get("pending", 0)),
+    }
+
+
 def _run_isolated_reference_worker(
     *,
     model: Path,
@@ -1743,6 +1797,7 @@ def _run_isolated_reference_worker(
     if set(merged_prompt_rows) != set(key_order):
         raise RuntimeError("isolated reference worker key coverage drift")
     metadata = {
+        "mode": "isolated_workers",
         "process_isolated": True,
         "max_oracle_keys_per_process": 4,
         "worker_processes": len(worker_records),
@@ -1930,18 +1985,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     workload_results: dict[str, dict[str, Any]] = {}
     selection_error: str | None = None
     with _temporary_environment(env):
-        prompt_rows, reference_tokens, oracle_worker = (
-            _run_isolated_reference_worker(
-                model=model,
-                backend=str(args.backend),
-                max_active_requests=int(args.max_active_requests),
-                max_sequence_length=max_sequence_length,
-                max_output_tokens=max_output,
-                specs=all_specs,
-                compiler_version_file=args.compiler_version_file,
-                require_cached_build=bool(args.require_cached_build),
+        prompt_rows: dict[str, dict[str, Any]] | None = None
+        reference_tokens: dict[str, tuple[int, ...]] | None = None
+        oracle_worker: dict[str, Any] | None = None
+        if str(args.oracle_mode) == "isolated":
+            prompt_rows, reference_tokens, oracle_worker = (
+                _run_isolated_reference_worker(
+                    model=model,
+                    backend=str(args.backend),
+                    max_active_requests=int(args.max_active_requests),
+                    max_sequence_length=max_sequence_length,
+                    max_output_tokens=max_output,
+                    specs=all_specs,
+                    compiler_version_file=args.compiler_version_file,
+                    require_cached_build=bool(args.require_cached_build),
+                )
             )
-        )
         llm = LLM(
             model,
             backend=str(args.backend),
@@ -1958,17 +2017,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 runner.generator.tokenizer,
                 all_specs,
             )
-            if {
-                key: row["token_ids_sha256"]
-                for key, row in measured_prompt_rows.items()
-            } != {
-                key: row["token_ids_sha256"]
-                for key, row in prompt_rows.items()
-            }:
-                raise RuntimeError(
-                    "measured owner tokenizer differs from isolated oracle owner"
+            if str(args.oracle_mode) == "same_owner":
+                prompt_rows = measured_prompt_rows
+                reference_tokens, oracle_worker = _run_same_owner_references(
+                    llm,
+                    prompt_rows,
+                    all_specs,
                 )
-            prompt_rows = measured_prompt_rows
+            else:
+                assert prompt_rows is not None and reference_tokens is not None
+                if {
+                    key: row["token_ids_sha256"]
+                    for key, row in measured_prompt_rows.items()
+                } != {
+                    key: row["token_ids_sha256"]
+                    for key, row in prompt_rows.items()
+                }:
+                    raise RuntimeError(
+                        "measured owner tokenizer differs from isolated oracle owner"
+                    )
+                prompt_rows = measured_prompt_rows
+            assert reference_tokens is not None and oracle_worker is not None
             reclaimed: dict[int, _ReclaimedRow] = {}
             reclaimed_lock = threading.Lock()
             original_reclaim = runner.reclaim
@@ -2318,6 +2387,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "quant": str(args.quant),
             "kv_dtype": "bf16",
             "prefix_cache": str(args.prefix_cache),
+            "oracle_mode": str(args.oracle_mode),
             "max_sequence_length": max_sequence_length,
             "max_active_requests": int(args.max_active_requests),
             "max_pending_requests": int(args.max_pending_requests),
@@ -2387,6 +2457,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument("--prefix-cache", choices=("off", "radix"), default="off")
+    parser.add_argument(
+        "--oracle-mode",
+        choices=("same_owner", "isolated"),
+        default="same_owner",
+        help=(
+            "Generate serial c1 references on the measured owner (default), or "
+            "use bounded diagnostic worker processes"
+        ),
+    )
     parser.add_argument(
         "--workloads",
         default=",".join(_CANONICAL_WORKLOADS),
