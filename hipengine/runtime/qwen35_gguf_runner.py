@@ -23830,24 +23830,15 @@ class _GGUFFullAttentionPrefillScratch:
             else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
         )
         if liveness_disabled_fields is not None:
-            if (
-                _gguf_gdn_prefill_session_mode(
-                    runner.backend,
-                    weights=getattr(runner, "weights", None),
-                    cfg=getattr(getattr(runner, "weights", None), "config", None),
-                )
-                != "fused"
-            ):
-                # Split GDN prepare consumes conv_out completely before
-                # recurrent_out begins. End stage 4 is exclusive, so both
-                # full-row planes may share physical arena pages while keeping
-                # the admitted kernels and raw-pointer ABI unchanged.
-                scratch_lifetimes = MappingProxyType(
-                    {
-                        **scratch_lifetimes,
-                        "conv_out": (("linear", 2, 4),),
-                    }
-                )
+            # NOTE: no conv_out lifetime override here. 59fd48631 briefly
+            # shrank conv_out to stage (2, 4) so its full-row plane could share
+            # arena pages with recurrent_out on the claim that split prepare
+            # consumes conv_out completely before recurrence begins. That is
+            # false: the exact recurrence reads the full convolution sequence
+            # while writing recurrent_out, so the shared pages alias and
+            # corrupt state in multi-row prefill (bit-exactness broken for
+            # packed c2/c8 vs independent c1; W7900 state oracle 2026-08-17).
+            # Keep the base ("linear", 2, 5) lifetime for every GDN mode.
             arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
             # Dense SiLU consumes gate/up elementwise and may replace the dead
             # gate plane in place.  Keep this intentional source/output alias
