@@ -1,0 +1,92 @@
+{
+  "id": "zbook-qwen36-pn4-laq1b-rejected",
+  "date": "2026-08-17",
+  "hardware": "AMD Radeon 8060S (ZBook Ultra G1a, gfx1151, 40 CU / 80 SIMD)",
+  "status": "rejected",
+  "mechanism": "P3-LAQ1-B Q8_0 t16 dual GEMV T0 variant (word-loads / occupancy / ILP)",
+  "family": "c1 linear-attention QKV/gate projection (gdn_input_projections / decode_linear_attn_qkv_gate)",
+  "source_plan": "docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md (PN3 corrected P3-LAQ1-B declaration, PN4 implementation attempt)",
+  "host_bound_ab_resolution": {
+    "question": "host-vs-GPU bound (the PN4 checkpoint asked for a complete-wall A/B before investing in a host refactor)",
+    "experiment": "scripts/pn4_host_bound_ab_probe.py monkeypatches launch_gguf_linear with a memoized fast path that skips the cache-key construction, _resolve_use_* env reads, session gets, and _DISPATCH_RESOLVE_CACHE lookup on cache hit, jumping straight to the launch tail with a cached (abi, fn, quant, variant)",
+    "result": "complete-wall (sync'd eager decode, 32 steps): OFF 30.59 ms/token, ON 29.73 ms/token, delta -857 us/token (-2.8%)",
+    "coverage": "fast path fired 4400 of 5781 launch_gguf_linear calls (the ~180/token MoE-expert + per-layer linears); pair/triple launchers have separate launch tails and were NOT fast-pathed",
+    "conclusion": "the model is ~94% GPU-bound (wall tracks only ~12% of host-dispatch reduction; extrapolated total host-optimization ceiling ~1.8 ms/token or ~6%). A large gguf_linear.py launch-memoization refactor is NOT worth it. The GPU-side P3-LAQ1-B was the correct mechanism family to attempt."
+  },
+  "leaf_ceiling": {
+    "owner": "q8_0_t16_dual_split_gemv_kernel (already fused qkv+gate via q8_t16_dual_split)",
+    "leaf_burst30_sync_us_per_layer": 60.1,
+    "leaf_burst40_sync_us_per_layer": 62.0,
+    "effective_gb_s": 467,
+    "marginal_bw_ceiling_gb_s": 650,
+    "bw_gap": "kernel at ~510-540 GB/s effective vs ~650 GB/s marginal L2 ceiling for the tile-read pattern (size-scaling probe: 26.7MB/52us, 13.4MB/31us, 6.7MB/21us, 3.3MB/17us => ~12us fixed + ~650 GB/s marginal)",
+    "theoretical_floor_us_per_layer": 41,
+    "latency_bound": "kernel is latency/occupancy-bound; one block per 16-col tile (768 blocks) with a per-block wave reduce + xchg + syncthreads"
+  },
+  "variants_tested": [
+    {
+      "id": "owner",
+      "kernel": "q8_0_t16_dual_split_gemv_kernel",
+      "description": "committed exact Q8_0 t16 dual GEMV owner (128 threads, 4 waves, byte-scattered d/q loads)",
+      "leaf_us_per_layer_median": 62.0
+    },
+    {
+      "id": "wordload",
+      "kernel": "q8_0_t16_dual_split_wordload_gemv_kernel",
+      "description": "T0 variant: d[16] fp16 as 2x uint64 + q[16] int8 as 4x uint32 word loads, identical per-lane K ownership / FMA order / wave tree / BF16 rounding",
+      "bit_exact_vs_owner": true,
+      "leaf_us_per_layer_median": 62.4,
+      "result": "~5% (within noise); kernel is NOT load-instruction-bound (matches the Q4_K vecq finding)"
+    },
+    {
+      "id": "wordload_occ8",
+      "kernel": "q8_0_t16_dual_split_wordload_gemv_kernel (launch_bounds 128,8)",
+      "description": "wordload + doubled resident-block occupancy",
+      "bit_exact_vs_owner": true,
+      "leaf_us_per_layer_median": 58.0,
+      "result": "~9% (best single run, not reproduced on re-measure)"
+    },
+    {
+      "id": "wordload_ilp_occ8",
+      "kernel": "q8_0_t16_dual_split_wordload_gemv_kernel (2-block ILP + launch_bounds 128,8)",
+      "description": "process two k-blocks per iteration to double outstanding loads",
+      "bit_exact_vs_owner": true,
+      "leaf_us_per_layer_median": 60.0,
+      "result": "interleaved A/B vs owner: 60.0 vs 62.0 us/layer, delta -1.9 us (~3%, within run-to-run clock noise)"
+    },
+    {
+      "id": "threads64",
+      "description": "owner with threads=64 (2 waves)",
+      "bit_exact_vs_owner": false,
+      "leaf_us_per_layer_median": 75.6,
+      "result": "slower AND not bit-exact (different reduction tree) -> not usable"
+    }
+  ],
+  "leaf_measurements_us_per_layer": {
+    "owner_median": 62.0,
+    "wordload_median": 62.4,
+    "wordload_occ8_median": 58.0,
+    "wordload_ilp_occ8_median": 60.0,
+    "threads64_median": 75.6,
+    "red_target_20_to_30pct": "42-48"
+  },
+  "stage_wall": {
+    "stage": "gdn_input_projections (linear-attn QKV/gate)",
+    "gpu_exclusive_ms_per_token": 2.29,
+    "us_per_layer": 72,
+    "leaf_ms_per_token": 2.03
+  },
+  "red_state": {
+    "test": "tests/test_pn4_laq1b_red.py (planned RED fixture)",
+    "bit_exact_guard": "PASS for all retained T0 variants (wordload/occ/ilp outputs == owner outputs)",
+    "perf_ceilings": "NOT FLIPPED: best T0 variant 58-62 us/layer vs ~60 us/layer owner; target 42-48 us/layer (20-30% reduction) unreachable by bit-exact T0 variants",
+    "conclusion": "the Q8_0 t16 dual GEMV is at its practical limit for T0 bit-exact variants, matching the Q4_K T16 precedent (P3-LAQ1: vecq -10%, tile16 +5/-7%)"
+  },
+  "disposition": "candidate kernels/launchers/exports/wrappers/registrations reverted to committed state; owner remains default. No T0 variant flips the leaf RED; the qkv_gate stage stays kernel-bound at ~2.29 ms/token. The plan's P3-LAQ1-B section is marked rejected.",
+  "c1_campaign_no_win": {
+    "recurrence_noop_probe": "scripts/pn4_recurrence_ab_probe.py: no-opping conv+recurrent launches drops the sync'd eager wall 30.86 -> 28.41 ms/token (-2.44 ms/token): the gdn_attention_core conv+recurrence kernels are a real ~2.4 ms/token GPU-bound slice, not the 5.19 ms marker wall (overlaps other stages) and not the 0.67-1.2 ms burst leaf (understates in-context time)",
+    "recurrence_fastpath_ab": "scripts/pn4_recurrence_fastpath_ab.py: caching the resolved fn+argtypes for the conv+recurrent launchers (skipping per-call build/getattr/argtypes-reassignment) gives ~0 wall change (interleaved medians 30.46 vs 30.48 ms/token): the recurrence host dispatch is fully hidden by other GPU work",
+    "host_memoization_ab": "scripts/pn4_host_bound_ab_probe.py: fast-pathing launch_gguf_linear recovers only ~857 us/token from ~6.8 ms of host reduction -> model ~94% GPU-bound",
+    "verdict": "no retainable c1 mechanism: GEMV T0 families at practical limit (P3-LAQ1 Q4, P3-LAQ1-B Q8), host mechanisms A/B-neutral, model ~94% GPU-bound. Next dominant owner: the MoE expert / router GPU path (cN/A4 campaign), not a c1 GEMV or host mechanism"
+  }
+}

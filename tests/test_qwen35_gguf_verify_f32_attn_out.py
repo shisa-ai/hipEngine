@@ -81,6 +81,47 @@ def test_post_attention_f32_attn_out_uses_f32_add_norm_when_flagged(
     assert calls[1][2]["out_f32_ptr"] == 700
 
 
+def test_post_attention_c1_moe_closes_device_stage_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _runner()
+    scratch = SimpleNamespace(
+        post_norm=SimpleNamespace(ptr=400),
+        residual=SimpleNamespace(ptr=401),
+    )
+    marks: list[str] = []
+    monkeypatch.setattr(
+        qgr,
+        "_gguf_norm_residual_decode_kernel",
+        lambda *args, **kwargs: lambda *args, **kwargs: None,
+    )
+    def fake_moe(*args, **kwargs):
+        recorder = kwargs["gpu_stage_recorder"]
+        prefix = kwargs["stage_prefix"]
+        recorder.mark(f"{prefix}_router")
+        recorder.mark(f"{prefix}_combine")
+
+    monkeypatch.setattr(runner, "_run_post_attention_moe_c1", fake_moe)
+    recorder = SimpleNamespace(mark=lambda name: marks.append(name))
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=500,
+        scratch=scratch,
+        rows=1,
+        stage_prefix="decode_ffn",
+        gpu_stage_recorder=recorder,
+    )
+
+    assert marks == [
+        "decode_ffn_post_norm_residual",
+        "decode_ffn_moe_router",
+        "decode_ffn_moe_combine",
+    ]
+
+
 def test_post_attention_f32_attn_out_falls_back_without_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

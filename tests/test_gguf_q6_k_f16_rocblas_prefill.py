@@ -225,6 +225,11 @@ def test_q6_f16_rocblas_registry_build_scope_and_workspace_contract() -> None:
 
 
 def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    q6_f16.register_gguf_q6_k_f16_rocblas_prefill_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
+
     q4_dequant = getattr(
         q6_f16,
         "gguf_q4_k_t16_dequantize_f16_tile",
@@ -286,9 +291,12 @@ def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> N
         quant=q4_key.quant,
         variant=q4_key.variant,
     ) is q4_linear
-    assert not is_registered(
-        KernelKey("hip_gfx1151", q4_key.layer, q4_key.quant, q4_key.variant)
-    )
+    assert resolve(
+        backend="hip_gfx1151",
+        layer=q4_key.layer,
+        quant=q4_key.quant,
+        variant=q4_key.variant,
+    ) is q4_linear
 
     q5_key = KernelKey(
         "hip_gfx1100",
@@ -302,9 +310,12 @@ def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> N
         quant=q5_key.quant,
         variant=q5_key.variant,
     ) is q5_linear
-    assert not is_registered(
-        KernelKey("hip_gfx1151", q5_key.layer, q5_key.quant, q5_key.variant)
-    )
+    assert resolve(
+        backend="hip_gfx1151",
+        layer=q5_key.layer,
+        quant=q5_key.quant,
+        variant=q5_key.variant,
+    ) is q5_linear
 
     for variant, function_name in (
         ("t16_f16_tile_pair_local64", "gguf_q5_k_t16_dequantize_f16_tile_pair"),
@@ -324,14 +335,12 @@ def test_q4_q5_q6_t16_f16_rocblas_registry_and_bounded_workspace_contract() -> N
             quant=dequant_key.quant,
             variant=dequant_key.variant,
         ) is function
-        assert not is_registered(
-            KernelKey(
-                "hip_gfx1151",
-                dequant_key.layer,
-                dequant_key.quant,
-                dequant_key.variant,
-            )
-        )
+        assert resolve(
+            backend="hip_gfx1151",
+            layer=dequant_key.layer,
+            quant=dequant_key.quant,
+            variant=dequant_key.variant,
+        ) is function
 
     key = KernelKey(
         "hip_gfx1100",

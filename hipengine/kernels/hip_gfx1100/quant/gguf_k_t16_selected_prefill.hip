@@ -43,6 +43,17 @@ constexpr int Q4_T16_SCALE_OFFSET = Q4_T16_DMIN_OFFSET + T16_COLS * 2;
 constexpr int Q4_T16_MIN_OFFSET = Q4_T16_SCALE_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q4_T16_Q_OFFSET = Q4_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q4_T16_BLOCK_BYTES = Q4_T16_Q_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
+constexpr int Q4_QMICRO_T16_D_OFFSET = 0;
+constexpr int Q4_QMICRO_T16_DMIN_OFFSET =
+    Q4_QMICRO_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q4_QMICRO_T16_META_OFFSET =
+    Q4_QMICRO_T16_DMIN_OFFSET + T16_COLS * 2;
+constexpr int Q4_QMICRO_T16_Q_OFFSET =
+    Q4_QMICRO_T16_META_OFFSET + 2 * Q4_SUBBLOCKS * (T16_COLS / 4) * 3;
+constexpr int Q4_QMICRO_T16_BLOCK_BYTES =
+    Q4_QMICRO_T16_Q_OFFSET +
+    Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
+constexpr int Q4_EXPANDED_META_BYTES = 2 * Q4_SUBBLOCKS * T16_COLS;
 
 // ---- Q5T16 layout (matches hipengine/quant/gguf_t16.py) ----------------
 constexpr int Q5_T16_D_OFFSET = 0;
@@ -209,6 +220,17 @@ __device__ inline uint8_t q4_t16_quant(
   return (col & 1) ? (packed >> 4) : (packed & 0x0Fu);
 }
 
+__device__ inline uint8_t q4_qmicro_t16_quant(
+    const uint8_t* __restrict__ tile,
+    int subblock,
+    int lane32,
+    int col) {
+  const uint8_t packed = tile[Q4_QMICRO_T16_Q_OFFSET +
+                              (subblock * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+                              (col >> 1)];
+  return (col & 1) ? (packed >> 4) : (packed & 0x0Fu);
+}
+
 // Q5T16 dequant: ``col`` is the column inside the 16-col tile slab; the kernel
 // pre-loads d/dmin/scale/min once per (subblock, col) so the hot WMMA inner
 // loop only does the K-tile-local low / high nibble assembly.
@@ -223,6 +245,38 @@ __device__ inline uint8_t qmicro_coefficient(
                         (static_cast<uint32_t>(ptr[1]) << 8) |
                         (static_cast<uint32_t>(ptr[2]) << 16);
   return static_cast<uint8_t>((word >> (6 * (col & 3))) & 0x3Fu);
+}
+
+// Load one packed record for an adjacent even column pair. Both coefficients
+// always reside in the same 24-bit quartet, so this avoids independently
+// reconstructing the same record twice in dense dual-Q4 prefill.
+__device__ inline uint32_t qmicro_unpack_record(
+    const uint8_t* __restrict__ ptr) {
+  const uint32_t word = static_cast<uint32_t>(ptr[0]) |
+                        (static_cast<uint32_t>(ptr[1]) << 8) |
+                        (static_cast<uint32_t>(ptr[2]) << 16);
+  return (word & 0x3Fu) |
+         (((word >> 6) & 0x3Fu) << 8) |
+         (((word >> 12) & 0x3Fu) << 16) |
+         (((word >> 18) & 0x3Fu) << 24);
+}
+
+__device__ inline uint16_t qmicro_coefficient_pair(
+    const uint8_t* __restrict__ tile,
+    int plane,
+    int subblock,
+    int even_col) {
+  const int record =
+      ((plane * Q4_SUBBLOCKS + subblock) * (T16_COLS / 4)) +
+      (even_col >> 2);
+  const uint8_t* __restrict__ ptr =
+      tile + Q4_QMICRO_T16_META_OFFSET + record * 3;
+  const uint32_t word = static_cast<uint32_t>(ptr[0]) |
+                        (static_cast<uint32_t>(ptr[1]) << 8) |
+                        (static_cast<uint32_t>(ptr[2]) << 16);
+  const uint32_t pair = (word >> (6 * (even_col & 3))) & 0xFFFu;
+  return static_cast<uint16_t>(
+      (pair & 0x3Fu) | (((pair >> 6) & 0x3Fu) << 8));
 }
 
 template <bool qmicro = false>
@@ -468,6 +522,7 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 // selected producer above. One wave owns 48 output columns x 64 input rows so
 // each decoded weight fragment feeds four independent activation fragments;
 // every output retains the original K16 WMMA association and BF16 store.
+template <bool qmicro = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -511,7 +566,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
           blk,
           out_tiles,
           blocks_per_row,
-          Q4_T16_BLOCK_BYTES);
+          qmicro ? Q4_QMICRO_T16_BLOCK_BYTES : Q4_T16_BLOCK_BYTES);
       d_f[tm] = fp16_bytes_to_float(
           tile[tm] + Q4_T16_D_OFFSET + lane16 * 2);
       dmin_f[tm] = fp16_bytes_to_float(
@@ -528,10 +583,14 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
       float min_f[OUT_TILES_PER_BLOCK];
 #pragma unroll
       for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-        scale_f[tm] = d_f[tm] * static_cast<float>(
-            tile[tm][Q4_T16_SCALE_OFFSET + sb * T16_COLS + lane16]);
-        min_f[tm] = dmin_f[tm] * static_cast<float>(
-            tile[tm][Q4_T16_MIN_OFFSET + sb * T16_COLS + lane16]);
+        const uint8_t scale = qmicro
+            ? qmicro_coefficient(tile[tm], 0, sb, lane16)
+            : tile[tm][Q4_T16_SCALE_OFFSET + sb * T16_COLS + lane16];
+        const uint8_t min_value = qmicro
+            ? qmicro_coefficient(tile[tm], 1, sb, lane16)
+            : tile[tm][Q4_T16_MIN_OFFSET + sb * T16_COLS + lane16];
+        scale_f[tm] = d_f[tm] * static_cast<float>(scale);
+        min_f[tm] = dmin_f[tm] * static_cast<float>(min_value);
       }
 #pragma unroll
       for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
@@ -554,8 +613,9 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
 #pragma unroll
           for (int kk = 0; kk < 16; ++kk) {
             const int lane32 = kt * K_TILE + kk;
-            const uint8_t q =
-                q4_t16_quant(tile[tm], sb, lane32, lane16);
+            const uint8_t q = qmicro
+                ? q4_qmicro_t16_quant(tile[tm], sb, lane32, lane16)
+                : q4_t16_quant(tile[tm], sb, lane32, lane16);
             b_reg[kk] = static_cast<half_t>(
                 scale_f[tm] * static_cast<float>(q) - min_f[tm]);
           }
@@ -1043,17 +1103,51 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_tail_bf16_kernel(
   }
 }
 
+// Expand both compact metadata streams once per operation. The consumer below
+// reuses these 256-byte coefficient planes across every 256-row workgroup while
+// retaining the sole qmicro quant payload.
+__launch_bounds__(128, 4)
+__global__ void gguf_q4_qmicro_expand_dual_metadata_kernel(
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint8_t* __restrict__ metadata_a,
+    uint8_t* __restrict__ metadata_b,
+    int64_t tile_count) {
+  const int64_t tile_index = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (tile_index >= tile_count || tid >= 2 * 64) return;
+  const bool matrix_b = tid >= 64;
+  const int record = tid & 63;
+  const uint8_t* __restrict__ source_tiles = matrix_b ? tiles_b : tiles_a;
+  uint8_t* __restrict__ destination = matrix_b ? metadata_b : metadata_a;
+  const uint8_t* __restrict__ source =
+      source_tiles + tile_index * Q4_QMICRO_T16_BLOCK_BYTES +
+      Q4_QMICRO_T16_META_OFFSET + record * 3;
+  const int plane = record / (Q4_SUBBLOCKS * (T16_COLS / 4));
+  const int within_plane = record % (Q4_SUBBLOCKS * (T16_COLS / 4));
+  const int subblock = within_plane / (T16_COLS / 4);
+  const int quartet = within_plane % (T16_COLS / 4);
+  uint32_t* __restrict__ output = reinterpret_cast<uint32_t*>(
+      destination + tile_index * Q4_EXPANDED_META_BYTES +
+      plane * Q4_SUBBLOCKS * T16_COLS + subblock * T16_COLS +
+      quartet * 4);
+  *output = qmicro_unpack_record(source);
+}
+
 // Operation-complete dense Q4T16 gate/up prefill. Four waves own one 32-column
 // x 256-row tile. Each wave loads each activation K16 fragment once, then
 // applies independently decoded gate and up fragments with the retained WMMA
 // K16 association. The two 16-KiB weight slabs share LDS; after the final K
 // block that storage holds independently rounded BF16 gate/up tiles so SiLU
 // observes the exact unfused projection boundary without global intermediates.
+template <bool qmicro = false, bool external_meta = false>
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles_a,
     const uint8_t* __restrict__ tiles_b,
+    const uint8_t* __restrict__ metadata_a,
+    const uint8_t* __restrict__ metadata_b,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
@@ -1102,9 +1196,19 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
       const int tile_pair = matrix_pair % (T16_COLS / 2);
       const int tile_col0 = tile_pair * 2;
       const uint8_t* __restrict__ tiles = matrix == 0 ? tiles_a : tiles_b;
+      constexpr int tile_bytes = qmicro
+          ? Q4_QMICRO_T16_BLOCK_BYTES
+          : Q4_T16_BLOCK_BYTES;
+      const int64_t tile_index =
+          (col_tile_base + tm) * blocks_per_row + blk;
       const uint8_t* __restrict__ tile = k_t16_tile_ptr(
           tiles, 0, col_tile_base + tm, blk, out_tiles, blocks_per_row,
-          Q4_T16_BLOCK_BYTES);
+          tile_bytes);
+      const uint8_t* __restrict__ expanded_metadata = nullptr;
+      if constexpr (external_meta) {
+        expanded_metadata = (matrix == 0 ? metadata_a : metadata_b) +
+            tile_index * Q4_EXPANDED_META_BYTES;
+      }
       const float d0 = fp16_bytes_to_float(
           tile + Q4_T16_D_OFFSET + tile_col0 * 2);
       const float d1 = fp16_bytes_to_float(
@@ -1116,10 +1220,21 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
       const int k_segment = (threadIdx.x & 3) * 8;
 #pragma unroll
       for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
-        const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(
-            tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + tile_col0);
-        const uint16_t min_pair = *reinterpret_cast<const uint16_t*>(
-            tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + tile_col0);
+        const uint16_t scale_pair = qmicro
+            ? (external_meta
+                   ? *reinterpret_cast<const uint16_t*>(
+                         expanded_metadata + sb * T16_COLS + tile_col0)
+                   : qmicro_coefficient_pair(tile, 0, sb, tile_col0))
+            : *reinterpret_cast<const uint16_t*>(
+                  tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + tile_col0);
+        const uint16_t min_pair = qmicro
+            ? (external_meta
+                   ? *reinterpret_cast<const uint16_t*>(
+                         expanded_metadata + Q4_SUBBLOCKS * T16_COLS +
+                         sb * T16_COLS + tile_col0)
+                   : qmicro_coefficient_pair(tile, 1, sb, tile_col0))
+            : *reinterpret_cast<const uint16_t*>(
+                  tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + tile_col0);
         const float scale0 = d0 * static_cast<float>(scale_pair & 0xFFu);
         const float scale1 = d1 * static_cast<float>(scale_pair >> 8);
         const float min0 = dmin0 * static_cast<float>(min_pair & 0xFFu);
@@ -1127,8 +1242,11 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
 #pragma unroll
         for (int kk = 0; kk < 8; ++kk) {
           const int lane32 = k_segment + kk;
+          constexpr int q_offset = qmicro
+              ? Q4_QMICRO_T16_Q_OFFSET
+              : Q4_T16_Q_OFFSET;
           const uint8_t packed = tile[
-              Q4_T16_Q_OFFSET +
+              q_offset +
               (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
           const int k = sb * Q4_SUBBLOCK + lane32;
           const int col0 = tm * T16_COLS + tile_col0;
@@ -1545,6 +1663,7 @@ int launch_k_t16_selected(
   return static_cast<int>(hipGetLastError());
 }
 
+template <bool qmicro = false>
 int launch_q4_t16_dense_wmma_prefill_bf16(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -1567,7 +1686,7 @@ int launch_q4_t16_dense_wmma_prefill_bf16(
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      gguf_q4_t16_dense_wmma_prefill_bf16_kernel,
+      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<qmicro>),
       grid,
       block,
       0,
@@ -1617,10 +1736,13 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+template <bool qmicro = false, bool external_meta = false>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
     const uint8_t* tiles_a,
     const uint8_t* tiles_b,
+    uint8_t* metadata_a,
+    uint8_t* metadata_b,
     uint16_t* out,
     int64_t rows,
     int64_t in_features,
@@ -1629,8 +1751,30 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
   if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
       out == nullptr || rows <= 0 || in_features <= 0 ||
       (in_features % QK_K) != 0 || out_features <= 0 ||
-      (out_features % (2 * T16_COLS)) != 0) {
+      (out_features % (2 * T16_COLS)) != 0 ||
+      (external_meta && (metadata_a == nullptr || metadata_b == nullptr))) {
     return static_cast<int>(hipErrorInvalidValue);
+  }
+  if constexpr (external_meta) {
+    const int64_t tile_count =
+        (out_features / T16_COLS) * (in_features / QK_K);
+    const dim3 metadata_block(128);
+    const dim3 metadata_grid(static_cast<unsigned int>(tile_count));
+    hipLaunchKernelGGL(
+        gguf_q4_qmicro_expand_dual_metadata_kernel,
+        metadata_grid,
+        metadata_block,
+        0,
+        stream,
+        tiles_a,
+        tiles_b,
+        metadata_a,
+        metadata_b,
+        tile_count);
+    const hipError_t metadata_status = hipGetLastError();
+    if (metadata_status != hipSuccess) {
+      return static_cast<int>(metadata_status);
+    }
   }
   constexpr int Q4_DENSE_TILE_COLS = 2 * T16_COLS;
   constexpr int Q4_DENSE_TILE_ROWS = 4 * 4 * 16;
@@ -1641,7 +1785,8 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel,
+      (gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<
+          qmicro, external_meta>),
       grid,
       block,
       0,
@@ -1649,6 +1794,8 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
       x,
       tiles_a,
       tiles_b,
+      metadata_a,
+      metadata_b,
       out,
       rows,
       in_features,
@@ -1808,7 +1955,19 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_bf16_bf16_out(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  return launch_q4_t16_dense_wmma_prefill_bf16(
+  return launch_q4_t16_dense_wmma_prefill_bf16<false>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_bf16<true>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
@@ -1833,8 +1992,40 @@ extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_ou
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
-      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<true, false>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint8_t* metadata_a,
+    uint8_t* metadata_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<true, true>(
+      x, tiles_a, tiles_b, metadata_a, metadata_b, out, rows, in_features,
+      out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out(

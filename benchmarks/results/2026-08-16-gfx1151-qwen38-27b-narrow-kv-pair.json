@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_narrow_kv_pair",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "1fcf83c49cc366adef5d44b8b1009e48b52ede73",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "target_full_attention_layers": 16,
+      "kv_width": 1024,
+      "q4_q4_pairs_per_token": 8,
+      "q4_planar_q6_pairs_per_token": 8
+    }
+  },
+  "change": {
+    "scope": "gfx1151 serial rows1 Qwen3.8 target full-attention K/V projection pairs",
+    "control": "two qualified singleton launches: Q4T16 col4 K followed by either Q4T16 col4 or planar-qmicro-Q6 V",
+    "candidate": "one local128 block-parallel grid per K/V pair, with four independent Q4 col4 waves per workgroup and the unchanged local128 planar-Q6 owner",
+    "registry_keys": [
+      "linear_pair/gguf_q4_k_t16_v1/narrow_col4_pair_bf16_bf16_out",
+      "linear_pair/gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1/narrow_col4_planar_pair_bf16_bf16_out"
+    ],
+    "capability": "GGUF_NARROW_KV_PAIR_DECODE_SHAPES={(1,5120,1024,1024)}",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "Capability, registry, shape, dtype, ABI, c1-owner, and native-session misses retain the separately registered Q4-col4/Q4-col4 or Q4-col4/planar-Q6 primitives; rows2-4 verifier/MTP paths, prefill, NextN, other shapes, and peer backends are unchanged."
+  },
+  "actual_weight_leaf": {
+    "layers": [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63],
+    "pair_counts": {
+      "q4_q4": 8,
+      "q4_planar_q6": 8
+    },
+    "source_pool_bytes": 105185280,
+    "resident_pool_bytes": 107151360,
+    "q4_tile_pool_bytes": 72744960,
+    "q6_tile_pool_bytes": 34406400,
+    "warmups": 4,
+    "samples": 15,
+    "order": "counterbalanced control/candidate",
+    "control_ms_per_16_layers": 0.6485769748687744,
+    "candidate_ms_per_16_layers": 0.5799279808998108,
+    "speedup": 1.118375033159201,
+    "delta_percent": -10.58455613273247,
+    "candidate_wins": 15,
+    "sample_count": 15,
+    "k_bf16_mismatches": 0,
+    "v_bf16_mismatches": 0,
+    "tracked_teardown_bytes": 0
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 670.0,
+      "kernel_ms_per_token": 78.7288015,
+      "host_ms_per_token": 81.48301068649744,
+      "kv_pair_span_ms_per_token": 0.6474756875,
+      "k_to_v_gap_ms_per_token": 0.0309148125
+    },
+    "candidate": {
+      "dispatches_per_token": 654.0,
+      "kernel_ms_per_token": 78.7752704375,
+      "host_ms_per_token": 81.51807350077434,
+      "kv_pair_span_ms_per_token": 0.5619525625,
+      "composite_dispatches": 256,
+      "q4_q4_vgpr": 88,
+      "q4_q6_vgpr": 80,
+      "q4_q4_lds_bytes": 0,
+      "q4_q6_lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_size": 128,
+      "grid_threads": 16384
+    },
+    "delta": {
+      "dispatches_per_token": -16.0,
+      "kv_pair_span_ms_per_token": -0.08552312499999992,
+      "kv_pair_span_percent": -13.208700596962563,
+      "kernel_ms_per_token": 0.04646893749999492,
+      "kernel_percent": 0.05902406313145203,
+      "host_ms_per_token": 0.03506281427689828,
+      "host_percent": 0.0430308281217151,
+      "interpretation": "The named complete K/V sub-window and launch count improve, while one-run aggregate kernel/host wall moves 0.04-0.06% in the opposite direction within profiler variance; the counterbalanced unprofiled request gate is the retain/reject authority."
+    }
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.343744607800916, 12.338787973014792],
+      "median_tok_s": 12.341266290407855,
+      "decode_cv_percent": [0.029153234810789123, 0.03622434232355723]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.34774236796556, 12.349146287674179],
+      "median_tok_s": 12.34844432781987,
+      "decode_cv_percent": [0.05420772735993028, 0.017196316133414664]
+    },
+    "speedup": 1.0005816289222762,
+    "delta_percent": 0.058162892227620056,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714,
+    "tracked_teardown_bytes": 0
+  },
+  "correctness": {
+    "actual_weight_layers_bf16_bit_exact": true,
+    "synthetic_q4_bf16_bit_exact": true,
+    "synthetic_q6_bf16_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "natural_suite_not_repeated": "Both composites preserve the already-qualified primitive arithmetic trees exactly, add no prompt-conditioned behavior, and make no natural-suite throughput claim."
+  },
+  "validation": {
+    "red": "The focused wrapper-exposure fixture failed before implementation.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_narrow_kv_pair.py",
+    "focused_green_result": "4 passed, including GPU bit identity and CPU KL/top-1",
+    "affected_bundle": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_narrow_kv_pair.py tests/test_qwen38_q6_q4_mixed_pair.py tests/test_gguf_linear_dispatch_cache.py tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_gguf_decode_repack_semantics.py tests/test_gfx1151_backend.py tests/test_gguf_ops.py -> 70 passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/fused/gguf_q6_q4_pair.hip selected no external source",
+    "kernel_trace_gate": "The expected q4_q4 and q4_q6 narrow kernels each execute 128 times over 16 tokens with positive plausible duration, 88/80 VGPR, 0/512-byte LDS, zero scratch, local128, and 128 blocks per K/V pair."
+  },
+  "commands": {
+    "leaf": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python /tmp/qwen38-task22-narrow-kv-pair-leaf.py --warmups 4 --samples 15 --require-cached-build --output /tmp/qwen38-task22-narrow-kv-pair/leaf.json",
+    "profile": "rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/qwen38-task22-narrow-kv-pair/profile-ab/{control,candidate} -o p4096-ar16 -- python3 {/tmp/qwen38-narrow-kv-control.py,scripts/qwen35_gguf_bench.py} --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 16 --graph-replay-decode --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt --require-cached-build",
+    "request_gate": "control/candidate/candidate/control processes using scripts/qwen35_gguf_bench.py at 512/128, one warmup and three measured runs per process, graph replay, cached gfx1151 builds"
+  },
+  "evidence": {
+    "leaf": {
+      "path": "/tmp/qwen38-task22-narrow-kv-pair/leaf.json",
+      "sha256": "9753453202f2a28e7d44134f81dc57f7b4351725df77f6ea47c94c4c29c02d45",
+      "bytes": 6229
+    },
+    "profile_summary": {
+      "path": "/tmp/qwen38-task22-narrow-kv-pair/profile-ab/summary.json",
+      "sha256": "6dc4fdb0d0a24c48e53db7d58e7b0592f791ac76dff808269847f4cc1fc9566a",
+      "bytes": 1934
+    },
+    "request_summary": {
+      "path": "/tmp/qwen38-task22-narrow-kv-pair/p512-ab/summary.json",
+      "sha256": "ff2d6d0c45b25ccc68789428c439d72fdbe3e77877ab60c96f6acdc99ebf235f",
+      "bytes": 2770
+    },
+    "control_wrapper": {
+      "path": "/tmp/qwen38-narrow-kv-control.py",
+      "sha256": "2d4b429dcb58c49eae94fe1a8959cfc023c629cd48b2463b62cebc70f990d489",
+      "bytes": 356
+    },
+    "leaf_runner": {
+      "path": "/tmp/qwen38-task22-narrow-kv-pair-leaf.py",
+      "sha256": "e441420524a904d356a84132073a1a4e5e69a7b9aa918c1085cacc29f324a3fc",
+      "bytes": 11982
+    },
+    "control_trace_sha256": "a0cb8579e98b14b59bf48c819df6339984e3b6b843ae09bfdd034a88aefd2a7f",
+    "candidate_trace_sha256": "e0618f5a03d8fb9ae7f503dc6a20ab3af159d81f54454a0a0137cb79342a54d8"
+  },
+  "decision": "Retain the exact gfx1151 rows1 narrow K/V grids. They remove 16 launches/token, improve the complete K/V span 13.209%, and improve counterbalanced 512/128 AR 0.058% with both candidates above both controls, bit-exact outputs/final logits, unchanged peaks, and no bytes."
+}

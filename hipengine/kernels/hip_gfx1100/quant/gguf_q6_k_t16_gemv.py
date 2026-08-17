@@ -36,6 +36,10 @@ _Q6_T16_ROWTILE_COL8_BF16_BF16 = (
 _Q6_T16_QMICRO_PLANAR_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_BF16_RESIDUAL_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_decode_"
+    "bf16_residual_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_BF16_F32 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out"
 )
@@ -192,6 +196,38 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
         _Q6_T16_QMICRO_PLANAR_BF16_BF16,
         x_ptr,
         tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_residual_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact serial-c1 planar-Q6 projection plus rounded residual."""
+
+    if rows != 1:
+        raise ValueError("planar Q6 c1 down-residual requires rows == 1")
+    _launch_residual(
+        _Q6_T16_QMICRO_PLANAR_BF16_RESIDUAL_BF16,
+        x_ptr,
+        tiles_ptr,
+        residual_ptr,
         out_ptr,
         rows,
         in_features,
@@ -1129,6 +1165,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_residual_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_decode_bf16_f32_out",
@@ -1271,6 +1317,7 @@ __all__ = [
     "gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out",
     "gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",

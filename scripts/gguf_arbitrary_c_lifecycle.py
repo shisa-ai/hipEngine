@@ -25,6 +25,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from hipengine import LLM, SamplingParams  # noqa: E402
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
 from hipengine.generation import GenerationRequest  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     Qwen35GGUFResidentSession,
@@ -157,6 +158,69 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
     ]
 
 
+def _expected_dense_group_masks(rows: int) -> list[str]:
+    remaining = int(rows)
+    masks: list[str] = []
+    while remaining > 0:
+        active = min(8, remaining)
+        width = next(bucket for bucket in (1, 2, 4, 8) if bucket >= active)
+        masks.append("1" * active + "0" * (width - active))
+        remaining -= active
+    return masks
+
+
+def _expected_hole_group_masks(
+    rows: int,
+    cancel_slots: Sequence[int],
+    *,
+    compact: bool,
+) -> list[str]:
+    if compact:
+        return _expected_dense_group_masks(int(rows) - len(cancel_slots))
+    masks = [list(mask) for mask in _expected_dense_group_masks(rows)]
+    for slot in cancel_slots:
+        group_index, local_index = divmod(int(slot), 8)
+        masks[group_index][local_index] = "0"
+    return ["".join(mask) for mask in masks]
+
+
+def _state_kv_accepted(*, bit_exact: bool, allow_c1_arithmetic_drift: bool) -> bool:
+    return bool(bit_exact or allow_c1_arithmetic_drift)
+
+
+def _load_quality_gate(
+    path: Path,
+    *,
+    model: Path,
+    backend: str,
+) -> dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    payload = json.loads(resolved.read_text(encoding="utf-8"))
+    summary = payload.get("quality", {}).get("summary", {})
+    provenance = payload.get("provenance", {})
+    if not (
+        payload.get("kind")
+        == "hipengine_execution_profile_gguf_batch_route_requalification_capture"
+        and payload.get("measurement_valid") is True
+        and payload.get("quality", {}).get("hard_gates_passed") is True
+        and float(summary.get("kl_max", float("inf"))) <= 0.05
+        and float(summary.get("top1_agreement", 0.0)) >= 0.90
+        and provenance.get("dirty") is False
+        and str(provenance.get("resolved_backend")) == str(backend)
+        and Path(str(provenance.get("model_path", ""))).resolve() == model
+    ):
+        raise ValueError(f"quality artifact is not a valid matching hard gate: {resolved}")
+    return {
+        "path": str(resolved),
+        "hipengine_commit": provenance.get("hipengine_commit"),
+        "host_name": provenance.get("host_name"),
+        "hard_gate_passed": True,
+        "kl_max": float(summary["kl_max"]),
+        "top1_agreement": float(summary["top1_agreement"]),
+        "rows": int(summary["rows"]),
+    }
+
+
 def _row_resource_identity(row: Any) -> dict[str, Any]:
     lease = row.lease
     if lease is None:
@@ -193,8 +257,8 @@ def _row_resource_identity(row: Any) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     logical_c = int(args.rows)
-    if logical_c <= 8:
-        raise ValueError("rows must be greater than 8 for the arbitrary-C lifecycle gate")
+    if logical_c < 4:
+        raise ValueError("rows must be at least 4 for the arbitrary-C lifecycle gate")
     cancel_slots = tuple(int(slot) for slot in args.cancel_slots)
     if len(cancel_slots) != 2 or len(set(cancel_slots)) != 2:
         raise ValueError("cancel-slots must contain two unique slots")
@@ -207,6 +271,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
         raise ValueError(f"model does not exist: {model}")
+    quality_gate = None
+    if bool(args.allow_c1_arithmetic_drift):
+        if args.quality_artifact is None:
+            raise ValueError(
+                "--allow-c1-arithmetic-drift requires --quality-artifact"
+            )
+        quality_gate = _load_quality_gate(
+            args.quality_artifact,
+            model=model,
+            backend=str(args.backend),
+        )
 
     prompt_base = int(args.prompt_token_id)
     original_prompts = tuple(
@@ -647,11 +722,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for group in plan["groups"]
             )
             no_serial_fallback = all(_all_packed(plan) for plan in all_plans)
-            expected_initial_masks = ["11111111", "11111000"]
-            expected_hole_masks = [
-                "11011111",
-                "11011000",
-            ]
+            expected_initial_masks = _expected_dense_group_masks(logical_c)
+            expected_hole_masks = _expected_hole_group_masks(
+                logical_c,
+                cancel_slots,
+                compact=bool(args.compact_after_middle_hole),
+            )
             expected_refill_masks = expected_initial_masks
             expected_newcomer_slots = (
                 tuple(range(logical_c - len(cancel_slots), logical_c))
@@ -684,10 +760,42 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             session_reused = set(newcomer_reclaimed_session_ids) == set(
                 cancelled_session_ids
             )
+            state_kv_accepted = _state_kv_accepted(
+                bit_exact=state_exact,
+                allow_c1_arithmetic_drift=bool(args.allow_c1_arithmetic_drift),
+            )
+            provenance = collect_artifact_provenance(
+                repo_root=_REPO_ROOT,
+                configured_backend=str(args.backend),
+                resolved_backend=str(runner._shared_runner.backend),
+                target_arch=str(runner._shared_runner.target_arch),
+                model_path=model,
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                command=[sys.executable, *sys.argv],
+                environment={
+                    "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+                    "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
+                    "HIPENGINE_GGUF_GDN_PREFILL_MODE": os.environ.get(
+                        "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+                    ),
+                    "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
+                        "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+                    ),
+                    "HIPENGINE_GGUF_ROUTER_F32W_COOP": os.environ.get(
+                        "HIPENGINE_GGUF_ROUTER_F32W_COOP"
+                    ),
+                },
+                build_profile="gguf_arbitrary_c_lifecycle",
+                timing_protocol="none_correctness_only_v1",
+                warmups=0,
+                repetitions=1,
+                profiler={"enabled": False, "kind": None, "command": None},
+            )
             passed = bool(
                 original_tokens_exact
                 and newcomer_tokens_exact
-                and state_exact
+                and state_kv_accepted
                 and cancelled_finish_ok
                 and newcomer_slots == expected_newcomer_slots
                 and session_reused
@@ -703,11 +811,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and scheduler_active == 0
             )
             return {
-                "schema": 2,
+                "schema": 3,
                 "kind": "gguf_arbitrary_c_lifecycle",
                 "status": "passed" if passed else "failed",
                 "passed": passed,
                 "performance_claim": False,
+                "provenance": provenance,
                 "model": str(model),
                 "backend": str(args.backend),
                 "target_arch": str(runner._shared_runner.target_arch),
@@ -740,6 +849,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "original_tokens_exact": original_tokens_exact,
                 "newcomer_tokens_exact": newcomer_tokens_exact,
                 "state_kv_exact": state_exact,
+                "state_kv_c1_bit_exact": state_exact,
+                "state_kv_accepted": state_kv_accepted,
+                "allow_c1_arithmetic_drift": bool(args.allow_c1_arithmetic_drift),
+                "external_numerical_quality_gate": quality_gate,
                 "state_kv_mismatches": {
                     "cancelled": cancelled_mismatches,
                     "survivors_middle_hole": survivor_hole_mismatches,
@@ -790,8 +903,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         else "The gate preserves scheduler slot identity; no physical compaction is performed."
                     ),
                     "Every decode group must use only declared c1/c2/c4/c8 physical widths.",
-                    "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints.",
-                    "Compaction must invalidate every observed live slot-bound graph before post-move replay.",
+                    "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints; arithmetic drift remains reported even when an external numerical gate makes byte identity non-binding.",
+                    "Same-run state/KV preservation across compaction, ownership, routes, masks, and graph invalidation remain hard requirements.",
                 ],
             }
         finally:
@@ -816,6 +929,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--allow-c1-arithmetic-drift",
+        action="store_true",
+        help="report but do not bind cN-vs-c1 state/KV byte differences",
+    )
+    parser.add_argument(
+        "--quality-artifact",
+        type=Path,
+        help="matching passed distributional gate required with arithmetic drift",
+    )
     parser.add_argument("--json", type=Path)
     return parser
 

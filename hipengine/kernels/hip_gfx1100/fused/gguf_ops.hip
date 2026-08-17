@@ -250,6 +250,70 @@ __global__ void gguf_norm_fixed1024_wave256_kernel(
   }
 }
 
+template <bool kAddResidual>
+__launch_bounds__(256, 1)
+__global__ void gguf_norm_fixed5120_wave256_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ add,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ residual_out,
+    float eps) {
+  constexpr int kHidden = 5120;
+  constexpr int kThreads = 256;
+  constexpr int kValuesPerThread = kHidden / kThreads;
+  constexpr int kWave = 32;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int lane = tid & (kWave - 1);
+  float values[kValuesPerThread];
+  float sum = 0.0f;
+#pragma unroll
+  for (int i = 0; i < kValuesPerThread; ++i) {
+    const int idx = tid + i * kThreads;
+    const float value = bf16_bits_to_float(x[idx]) +
+        (kAddResidual ? bf16_bits_to_float(add[idx]) : 0.0f);
+    values[i] = value;
+    sum += value * value;
+  }
+
+  // Preserve the generic local256 reduction tree exactly while replacing its
+  // nine tree barriers with two block barriers and five wave exchanges. The
+  // first three tree levels join threads 128, 64, and 32 apart from the
+  // immutable per-thread partials; the remaining levels are wholly wave-local.
+  __shared__ float partial[kThreads];
+  __shared__ float shared_inv_rms;
+  partial[tid] = sum;
+  __syncthreads();
+  if (tid < kWave) {
+    float total = partial[tid] + partial[tid + 128];
+    total += partial[tid + 64] + partial[tid + 192];
+    const float upper =
+        (partial[tid + 32] + partial[tid + 160]) +
+        (partial[tid + 96] + partial[tid + 224]);
+    total += upper;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      total += __shfl_down(total, offset, kWave);
+    }
+    if (lane == 0) {
+      shared_inv_rms =
+          rsqrtf(total / static_cast<float>(kHidden) + eps);
+    }
+  }
+  __syncthreads();
+
+  const float inv_rms = shared_inv_rms;
+#pragma unroll
+  for (int i = 0; i < kValuesPerThread; ++i) {
+    const int idx = tid + i * kThreads;
+    const float value = values[i];
+    norm_out[idx] = float_to_bf16_bits(value * inv_rms * weight[idx]);
+    if constexpr (kAddResidual) {
+      residual_out[idx] = float_to_bf16_bits(value);
+    }
+  }
+}
+
 __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
     const uint16_t* __restrict__ x,
     const uint16_t* __restrict__ add,
@@ -662,6 +726,73 @@ __global__ void gguf_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight_ke
   }
 }
 
+// Exact serial full-attention postprocess contraction. Query blocks read the
+// packed BF16 Q/gate projection directly, preserve the established FP32
+// RMSNorm/RoPE tree, and copy gate BF16 bits. K blocks consume the projected
+// BF16 key directly through the same conversion and reduction sequence as the
+// primitive split/cast/head chain.
+__global__ void gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(
+    const uint16_t* __restrict__ q_projected,
+    const uint16_t* __restrict__ key,
+    const float* __restrict__ q_weight,
+    const float* __restrict__ k_weight,
+    const float* __restrict__ cos_table,
+    const float* __restrict__ sin_table,
+    const int64_t* __restrict__ position_ptr,
+    float* __restrict__ query_out,
+    float* __restrict__ key_out,
+    uint16_t* __restrict__ gate_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions) {
+  const int64_t position = position_ptr[0];
+  if (position < 0 || position >= max_positions) {
+    return;
+  }
+  const int64_t head = blockIdx.x;
+  if (head >= num_q_heads + num_kv_heads) {
+    return;
+  }
+  const bool is_query = head < num_q_heads;
+  const int64_t local_head = is_query ? head : head - num_q_heads;
+  const float* cos = cos_table + position * rotary_dim;
+  const float* sin = sin_table + position * rotary_dim;
+  extern __shared__ float partial[];
+  if (is_query) {
+    const int64_t src_offset = local_head * 2 * head_dim;
+    const int64_t out_offset = local_head * head_dim;
+    const uint16_t* __restrict__ src = q_projected + src_offset;
+    gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+        src,
+        q_weight,
+        cos,
+        sin,
+        query_out + out_offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      gate_out[out_offset + dim] = src[head_dim + dim];
+    }
+  } else {
+    const int64_t offset = local_head * head_dim;
+    gguf_head_rmsnorm_partial_rotary_bf16_input_f32_weight_row(
+        key + offset,
+        k_weight,
+        cos,
+        sin,
+        key_out + offset,
+        eps,
+        head_dim,
+        rotary_dim,
+        partial);
+  }
+}
+
 template <bool PACK_QUERY_TILES>
 __global__ void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(
     const float* __restrict__ query,
@@ -875,6 +1006,45 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256(
     return static_cast<int>(hipErrorInvalidValue);
   }
   gguf_norm_fixed1024_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
+      x, add, weight, norm_out, residual_out, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    const uint16_t* x,
+    const float* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows != 1 ||
+      hidden_size != 5120 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed5120_wave256_kernel<false><<<dim3(1), dim3(256), 0, stream>>>(
+      x, nullptr, weight, out, nullptr, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    const uint16_t* x,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || add == nullptr || weight == nullptr || norm_out == nullptr ||
+      residual_out == nullptr || rows != 1 || hidden_size != 5120 ||
+      threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_norm_fixed5120_wave256_kernel<true><<<dim3(1), dim3(256), 0, stream>>>(
       x, add, weight, norm_out, residual_out, eps);
   return static_cast<int>(hipGetLastError());
 }
@@ -1168,6 +1338,59 @@ extern "C" int hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf
       position,
       query_out,
       key_out,
+      eps,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      rotary_dim,
+      max_positions);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_qwen35_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight(
+    const uint16_t* q_projected,
+    const uint16_t* key,
+    const float* q_weight,
+    const float* k_weight,
+    const float* cos_table,
+    const float* sin_table,
+    const int64_t* position,
+    float* query_out,
+    float* key_out,
+    uint16_t* gate_out,
+    float eps,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t max_positions,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!q_projected || !key || !q_weight || !k_weight || !cos_table ||
+      !sin_table || !position || !query_out || !key_out || !gate_out ||
+      num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 ||
+      rotary_dim <= 0 || rotary_dim > head_dim || (rotary_dim % 2) != 0 ||
+      max_positions <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel<<<
+      static_cast<unsigned int>(num_q_heads + num_kv_heads),
+      static_cast<unsigned int>(threads),
+      static_cast<size_t>(threads) * sizeof(float),
+      stream>>>(
+      q_projected,
+      key,
+      q_weight,
+      k_weight,
+      cos_table,
+      sin_table,
+      position,
+      query_out,
+      key_out,
+      gate_out,
       eps,
       num_q_heads,
       num_kv_heads,

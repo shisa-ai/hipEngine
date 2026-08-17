@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-17",
+  "kind": "qwen38_27b_gfx1151_q4ks_g6_closure",
+  "status": "complete_exact",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "performance_claim_scope": "clean post-commit G6 closure refresh at merged HEAD; three-shape prefill/AR unsampled, exact native B3 unsampled, memory scopes from 50 ms sampled processes",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "4aa4bb654b07b3d714a5b31d88a34bd908f9d6d3",
+    "candidate_state": "the uncommitted task-24 diff represented by this retained-development artifact; task 26 owns a clean post-commit closure refresh",
+    "target_backend": "hip_gfx1151",
+    "require_cached_build": true,
+    "external_port": false,
+    "changed_paths": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "hipengine/runtime/qwen35_gguf_mtp.py",
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "scripts/qwen35_gguf_bench.py"
+    ],
+    "hipengine_commit": "20e5106dae6307b6150453beaba2eac4186da1f4",
+    "worktree": "hipEngine-main (clean tracked tree)"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "geometry": "dense H5120, FFN17408, 64 target blocks plus NextN",
+    "kv_storage": "BF16"
+  },
+  "protocol": {
+    "source_commit": "20e5106dae6307b6150453beaba2eac4186da1f4",
+    "shape_rows": "one clean detached process per shape; token 9707 repeated; one discarded warmup plus three measured resets; production bulk/WMMA/GEMV/HIP-graph routes; cached builds; 50 ms process/system/DRM sampling",
+    "b3_rows": "full ten-prompt category suite; 25 visible outputs/24 timed transitions per prompt; native target verification; one warmup; unsampled binding row plus one independent sampled memory process",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "commands": {
+      "shape": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads <512/128|1024/128|4096/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+      "b3": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+      "memory_sampler": "memory_sampler.py --pid <workload> --interval 0.05 (process RSS + /proc/meminfo + DRM sysfs GTT), baseline snapshot before each process"
+    },
+    "milestone_tests": "full pytest at HEAD on .venv (uv sync --extra dev): 9333 passed / 207 skipped / 6 failed; the 6 failures are gfx1100-only gates whose arch guard needs the GPU visibility env and skip with explicit gfx1100-only reasons under the canonical gfx1151 env; no gfx1151-applicable failure"
+  },
+  "shape_results": {
+    "512/128": {
+      "prefill_tok_s": 379.39835363075156,
+      "prefill_cv_percent": 0.041549312630020666,
+      "decode_tok_s": 13.10116503733339,
+      "decode_cv_percent": 0.04481876088878264,
+      "measured_runs": 3,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "persistent_session_load_seconds": 40.22672369499924,
+      "tracked_peak_gib": 15.062701653689146,
+      "tracked_after_close_bytes": 0,
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16419581952,
+      "gtt_delta_gib": 15.274532318115234,
+      "rss_peak_gib": 4.8542327880859375,
+      "system_available_drop_gib": 17.25143814086914,
+      "memory_sample_count": 1679
+    },
+    "1K/128": {
+      "prefill_tok_s": 376.55369734491705,
+      "prefill_cv_percent": 0.13558987433196285,
+      "decode_tok_s": 12.92309716174884,
+      "decode_cv_percent": 0.019699898554476167,
+      "measured_runs": 3,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "persistent_session_load_seconds": 40.324563595000654,
+      "tracked_peak_gib": 15.481031130999327,
+      "tracked_after_close_bytes": 0,
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16887246848,
+      "gtt_delta_gib": 15.710079193115234,
+      "rss_peak_gib": 4.854427337646484,
+      "system_available_drop_gib": 17.227394104003906,
+      "memory_sample_count": 1799
+    },
+    "4K/128": {
+      "prefill_tok_s": 369.7546524020675,
+      "prefill_cv_percent": 0.06223334288868466,
+      "decode_tok_s": 13.0949512706563,
+      "decode_cv_percent": 0.04642147502065104,
+      "measured_runs": 3,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "final_token_ids_stable": true,
+      "persistent_session_load_seconds": 40.23553788900608,
+      "tracked_peak_gib": 15.494420122355223,
+      "tracked_after_close_bytes": 0,
+      "gtt_baseline_bytes": 18677760,
+      "gtt_peak_bytes": 16905510912,
+      "gtt_delta_gib": 15.727088928222656,
+      "rss_peak_gib": 4.854400634765625,
+      "system_available_drop_gib": 17.239227294921875,
+      "memory_sample_count": 2440
+    }
+  },
+  "exact_b3_result": {
+    "unsampled": {
+      "true_ar_tok_s": 13.366409158111567,
+      "b3_tok_s": 23.852633997687143,
+      "b3_vs_true_ar": 1.7845207127459422,
+      "accepted_draft_tokens": 161,
+      "proposed_draft_tokens": 248,
+      "cycles": 87,
+      "target_forward_rows": 335,
+      "train": {
+        "tok_s": 24.213781674417575,
+        "ratio": 1.8112862345460068
+      },
+      "heldout": {
+        "tok_s": 23.330669853822645,
+        "ratio": 1.7458366962850382
+      },
+      "categories": {
+        "code": {
+          "tok_s": 28.625937587390283,
+          "ratio": 2.141439259500807
+        },
+        "general_en": {
+          "tok_s": 20.339308022959425,
+          "ratio": 1.5207788605947297
+        },
+        "general_ja": {
+          "tok_s": 20.459419870709823,
+          "ratio": 1.530171074278746
+        },
+        "mixed_ja_en": {
+          "tok_s": 23.974706205579707,
+          "ratio": 1.7956038735199396
+        }
+      },
+      "status": "complete_exact",
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "tracked_after_close_bytes": 0,
+      "active_allocations_after_close": 0
+    },
+    "sampled": {
+      "true_ar_tok_s": 13.385904437560464,
+      "b3_tok_s": 23.86243295953076,
+      "b3_vs_true_ar": 1.7826537661940465,
+      "tracked_peak_gib": 15.655732350423932,
+      "gtt_delta_gib": 15.898693084716797,
+      "rss_peak_gib": 4.986442565917969,
+      "system_available_drop_gib": 17.41797637939453,
+      "memory_sample_count": 2896,
+      "status": "complete_exact",
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "tracked_after_close_bytes": 0,
+      "active_allocations_after_close": 0
+    }
+  },
+  "correctness": {
+    "all_final_token_ids_9707_stable": true,
+    "shape_tracked_teardown_zero": true,
+    "b3_all_exact_greedy": true,
+    "b3_all_gpu_accept_match_cpu": true,
+    "b3_tracked_teardown_zero": true,
+    "kernel_body_changed": false
+  },
+  "comparators": {
+    "llama_hip": {
+      "prefill": {
+        "512/128": 352.42581849519684,
+        "1K/128": 364.442641212626,
+        "4K/128": 367.99291757391904
+      },
+      "ar": {
+        "512/128": 12.15062791692198,
+        "1K/128": 12.064500969354377,
+        "4K/128": 11.508123586502663
+      },
+      "gtt_delta_gib": {
+        "512/128": 15.784839630126953,
+        "1K/128": 15.816089630126953,
+        "4K/128": 16.003589630126953
+      }
+    },
+    "llama_vulkan": {
+      "prefill": {
+        "512/128": 242.95616918860227,
+        "1K/128": 247.61046231581554,
+        "4K/128": 354.3677775179427
+      },
+      "ar": {
+        "512/128": 12.762900799954693,
+        "1K/128": 12.719701704101562,
+        "4K/128": 12.568302094065688
+      },
+      "gtt_delta_gib": {
+        "512/128": 15.8707275390625,
+        "1K/128": 15.8717041015625,
+        "4K/128": 16.023681640625
+      }
+    },
+    "source": "frozen clean G0 three-engine baseline 943ec15f5 vs llama.cpp 10438 9d57ce456, BF16 KV, exact-shape token 9707; see 2026-08-15-gfx1151-qwen38-27b-p0-baseline.json",
+    "llama_hip_b3": {
+      "tok_s": 19.63473,
+      "gtt_gib": 16.357528686523438,
+      "source": "G0 natural matrix; correctness-valid comparator (Vulkan B3 invalid 27/30)"
+    },
+    "llama_q4ks_natural_ar": {
+      "hip": 5.53853,
+      "vulkan": 7.51888,
+      "source": "same-file llama Q4_K_S natural AR, 2026-08-16 decode-policies artifact"
+    }
+  },
+  "raw_evidence": {
+    "shape_512": {
+      "result_sha256": "b0fee07221d68ef830df38debfb33570933cf5ad7dc608302fa49a13dd03686f",
+      "memory_sha256": "6e80515f4c6820bcba4ba07d621fd046fc2af163f784bd365bf567c5eb1d9169"
+    },
+    "shape_1024": {
+      "result_sha256": "03899ea681dac24d99d8709e59169973f60604e2016d7bca6a3e863a5d06d653",
+      "memory_sha256": "5295c21fa19a25a91c8c2ca9dbcbcc982ec99a6010692135ebdc7bf3510cdfc3"
+    },
+    "shape_4096": {
+      "result_sha256": "ca6366822c1d2111219c179ff71bfb3d5a42c9db8e1837b16455ff09734968bc",
+      "memory_sha256": "2c4e61a40aace72d58ed4be95f2dcecee2cf0f14363013d926a76aed871148d0"
+    },
+    "b3_unsampled": {
+      "result_sha256": "8fd9aaa6aff18227c99606a587c706d507d4fd0d96058581deaaafca0059598d"
+    },
+    "b3_sampled": {
+      "result_sha256": "079cca8b1b9b52714fb1de0530ec6ea05551b7343dcd4af92398fb1e5c41486b",
+      "memory_sha256": "02113362e910907a35b6fc70b51216a942e15ec318f996eb7bf9987f55b222ff"
+    },
+    "pytest_log": "/tmp/qwen38-task26-pytest/full.log (local evidence, not committed)"
+  },
+  "decision": "G6 closure at 20e5106da: G2-G5 all pass on one clean retained source. Prefill and true AR beat both frozen llama backends at every shape; exact native B3 is 23.85263 tok/s (1.7845x own AR) and beats correctness-valid llama HIP B3 by 21.36%; process GTT stays below the lower valid llama row at 512/1K/4K and B3. Campaign refactor debt is documented seams with triggers; the shared 80-MiB arena env seam additionally awaits the pending gfx1100 cumulative confirmation."
+}

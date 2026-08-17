@@ -6,12 +6,15 @@ modes remain byte-exact to scalar decode. The optimized bulk verifier uses the
 repository's peer-aligned reassociated GDN contract, so its rollback-slot gate
 is prefix equivalence: a captured row committed from a wider block must match
 an independently executed bulk prefix under the production no-copy capture
-mode, including hidden seed and every Conv/GDN state element.
+mode, including hidden seed and every Conv/GDN state element. The legacy
+Qwen3.6 ``Q4_K_M`` native-to-scalar bit-exact gate is gfx1100-specific;
+gfx1151 native routes use their model-scoped full-trajectory gates instead.
 """
 
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -316,6 +319,10 @@ def test_bulk_direct_commit_matches_wrong_branch(monkeypatch) -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
+@pytest.mark.skipif(
+    os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100") != "gfx1100",
+    reason="Qwen3.6 Q4_K_M scalar-bit-exact native commit gate is gfx1100-only",
+)
 def test_native_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]

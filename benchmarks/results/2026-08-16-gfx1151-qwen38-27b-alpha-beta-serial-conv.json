@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_alpha_beta_serial_conv",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "0fee61d453041e23ac1c1ea5897506769602ebf2",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "linear_attention_layers": 48,
+      "alpha_beta_weight_shape_each": [48, 5120],
+      "conv_channels": 10240,
+      "conv_kernel_size": 4
+    }
+  },
+  "change": {
+    "scope": "gfx1151 serial rows1 K5120/N48+N48 alpha/beta plus C10240/K4 in-place Conv",
+    "control": "retained dense-F32 pair launch followed by ordinary BF16-input in-place Conv",
+    "candidate": "one exact mixed-grid alpha/beta plus in-place Conv launch",
+    "registry_key": "linear_attn_alpha_beta+conv_decode/f32/bf16_k5120_n48_c10240_k4_c1",
+    "capability": "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES={(1,5120,48,10240,4)}",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "Capability, registry, weight-layout, or shape misses retain the dense-F32 pair plus ordinary Conv; gfx1100, verifier rows, and the rollback-safe snapshot composite remain unchanged.",
+    "prior_rejection": "benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json",
+    "new_premise": "The current gfx1151 serial graph exposes the pair-to-Conv boundary, does not need verifier snapshots, and independently improves complete profiled and request wall."
+  },
+  "proxy_screen": {
+    "protocol": "48-layer >64-MiB rotating weight pool, 15 counterbalanced event samples",
+    "control_median_ms": 0.9052979946136475,
+    "snapshot_candidate_median_ms": 0.7678800225257874,
+    "speedup": 1.1789576080334154,
+    "candidate_wins": "15/15",
+    "note": "The proxy candidate included extra rollback-snapshot writes; the retained serial specialization omits them."
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 774.0,
+      "kernel_ms_per_token": 78.8931059375,
+      "host_ms_per_token": 81.95911137408984,
+      "alpha_beta_conv_ms_per_token": 0.8527059375
+    },
+    "candidate": {
+      "dispatches_per_token": 726.0,
+      "kernel_ms_per_token": 78.817290625,
+      "host_ms_per_token": 81.81703512491367,
+      "alpha_beta_conv_ms_per_token": 0.655492375,
+      "composite_dispatches": 768,
+      "composite_median_us": 13.625,
+      "vgpr": 32,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "workgroup_size": 256,
+      "grid_size": 34816
+    },
+    "delta": {
+      "dispatches_per_token": -48.0,
+      "alpha_beta_conv_ms_per_token": -0.1972135625,
+      "alpha_beta_conv_percent": -23.1279687201662,
+      "kernel_ms_per_token": -0.07581531249999784,
+      "kernel_percent": -0.09609878024077201,
+      "host_ms_per_token": -0.14207624917617068,
+      "host_percent": -0.1733501581388408
+    }
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.29215103973893, 12.276535631270313],
+      "median_tok_s": 12.284343335504623,
+      "decode_cv_percent": [0.026150990478418634, 0.012237593027939161]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.314203345632784, 12.305113713132448],
+      "median_tok_s": 12.309658529382617,
+      "decode_cv_percent": [0.022445824357087935, 0.05659190060793112]
+    },
+    "speedup": 1.0020607689956718,
+    "delta_percent": 0.2060768995671758,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714
+  },
+  "correctness": {
+    "serial_alpha_bf16_bit_exact": true,
+    "serial_beta_bf16_bit_exact": true,
+    "serial_conv_f32_bit_exact": true,
+    "serial_conv_state_f32_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "native_and_mtp_unchanged": "The route is installed only in the scalar serial attention method; verifier chain/snapshot registry keys and row-bulk paths remain unchanged.",
+    "natural_suite_not_repeated": "The composite preserves each projection FMA/reduction/BF16 store and each Conv state/output bit, adds no prompt-sensitive branch, and makes no natural-throughput claim."
+  },
+  "validation": {
+    "red": "Four focused tests failed on the missing registry key, wrapper, runtime route, and serial GPU exactness contract.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt python3 -m pytest -q tests/test_dense_f32_pair_chain_conv.py --tb=short",
+    "focused_green_result": "10 passed, including rows1-4 snapshot regression coverage and serial CPU/GPU exactness gates",
+    "affected_bundle": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt python3 -m pytest -q tests/test_dense_f32_pair_chain_conv.py tests/test_dense_f32_pair.py tests/test_qwen35_gguf_verify_f32_alpha_beta.py tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py --tb=short",
+    "affected_bundle_result": "176 passed",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/linear_attn/conv.hip selected no external source",
+    "kernel_trace_gate": "The expected serial <1,false> symbol executes 768 times over 16 tokens with positive plausible durations, 32 VGPR, 1 KiB LDS, zero scratch, and local256."
+  },
+  "commands": {
+    "proxy_screen": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/qwen38-screen-f32-pair-serial-conv-proxy.py",
+    "profile": "bash /tmp/qwen38-task22-alpha-beta-conv-profile.sh",
+    "request_gate": "bash /tmp/qwen38-task22-alpha-beta-conv-request.sh"
+  },
+  "evidence": {
+    "profile_summary": {"path": "/tmp/qwen38-task22-alpha-beta-conv/profile-ab/summary.json", "sha256": "8a89ed437ab72f71cc28d5988f64df092c72e15f8567a0785ddd5a483006ba6a", "bytes": 2299},
+    "request_summary": {"path": "/tmp/qwen38-task22-alpha-beta-conv/p512-ab/summary.json", "sha256": "5d38b663010f39eaa4925ea8fb0329ceb2750b5c75d2632e36e135948e7fd2b0", "bytes": 2989},
+    "proxy_script": {"path": "/tmp/qwen38-screen-f32-pair-serial-conv-proxy.py", "sha256": "cc5a1225e23065cc2bb56f3e028301a4e822c9b031ba77b2f48464aef8526d91", "bytes": 5097},
+    "control_wrapper": {"path": "/tmp/qwen38-alpha-beta-conv-control.py", "sha256": "ebc638716559548559d121f2f207fe810d57ebbb8c45122cb4b561caa0995f2a", "bytes": 549}
+  },
+  "decision": "Retain the exact gfx1151 serial alpha/beta plus Conv composite. It removes 48 launches/token, improves the operation span by 23.128%, selected kernel wall by 0.096%, profiled host decode by 0.173%, and counterbalanced 512/128 AR by 0.206% with both candidates above both controls, exact outputs/state/final logits, unchanged peaks, and no bytes."
+}

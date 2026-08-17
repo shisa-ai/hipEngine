@@ -25,6 +25,9 @@ _SYMBOL_CHAIN_BF16_SNAPSHOT_TLOOP = (
 _SYMBOL_ALPHA_BETA_CHAIN_CONV_SNAPSHOT_BF16_F32W = (
     "hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w"
 )
+_SYMBOL_ALPHA_BETA_CONV_DECODE_BF16_F32W = (
+    "hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w"
+)
 _SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
@@ -47,6 +50,22 @@ _ARGTYPES_ALPHA_BETA_CHAIN_CONV_SNAPSHOT = (
     ctypes.c_void_p,  # conv_weight
     ctypes.c_void_p,  # conv_out
     ctypes.c_int64,   # rows
+    ctypes.c_int64,   # in_features
+    ctypes.c_int64,   # out_features
+    ctypes.c_int64,   # channels
+    ctypes.c_int64,   # kernel_size
+    ctypes.c_void_p,  # stream
+)
+_ARGTYPES_ALPHA_BETA_CONV_DECODE = (
+    ctypes.c_void_p,  # norm
+    ctypes.c_void_p,  # weight_a
+    ctypes.c_void_p,  # weight_b
+    ctypes.c_void_p,  # out_a
+    ctypes.c_void_p,  # out_b
+    ctypes.c_void_p,  # hidden_states
+    ctypes.c_void_p,  # conv_state
+    ctypes.c_void_p,  # conv_weight
+    ctypes.c_void_p,  # conv_out
     ctypes.c_int64,   # in_features
     ctypes.c_int64,   # out_features
     ctypes.c_int64,   # channels
@@ -427,6 +446,65 @@ def qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_tloop(
     _check_launch(runtime, err)
 
 
+def qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w(
+    norm_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    hidden_states_ptr: int,
+    conv_state_ptr: int,
+    conv_weight_ptr: int,
+    conv_out_ptr: int,
+    in_features: int,
+    out_features: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact scalar alpha/beta projections and in-place Conv once."""
+
+    if in_features != 5120:
+        raise ValueError("in_features must equal 5120 for alpha/beta serial Conv")
+    if out_features != 48:
+        raise ValueError("out_features must equal 48 for alpha/beta serial Conv")
+    if channels != 10240:
+        raise ValueError("channels must equal 10240 for alpha/beta serial Conv")
+    if kernel_size != 4:
+        raise ValueError("kernel_size must equal 4 for alpha/beta serial Conv")
+    if threads != 256:
+        raise ValueError("threads must equal 256 for alpha/beta serial Conv")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_ALPHA_BETA_CONV_DECODE_BF16_F32W,
+        _ARGTYPES_ALPHA_BETA_CONV_DECODE,
+        ctypes.c_int,
+    )
+    err = fn(
+        norm_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        hidden_states_ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        conv_out_ptr,
+        in_features,
+        out_features,
+        channels,
+        kernel_size,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_linear_attn_chain_conv_decode_f32_tloop(
     hidden_states_ptr: int,
     base_conv_state_ptr: int,
@@ -767,6 +845,16 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
             "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
         ),
         qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_tloop,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_alpha_beta+conv_decode",
+            "f32",
+            "bf16_k5120_n48_c10240_k4_c1",
+        ),
+        qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w,
         replace=replace,
     )
     register(

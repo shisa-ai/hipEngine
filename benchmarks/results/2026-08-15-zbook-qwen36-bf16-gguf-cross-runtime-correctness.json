@@ -1,0 +1,557 @@
+{
+  "bf16_reference": {
+    "device": "cpu",
+    "dtype": "bfloat16",
+    "forward_logits": {
+      "dtype": "float32",
+      "finite": true,
+      "max": 23.75,
+      "mean": -0.2873493731021881,
+      "min": -8.25,
+      "sha256_f32": "59b2d9b42bc5b107b2adf6969b7afc8a35b2345864768dafda3fcaf7f3db76cc",
+      "shape": [
+        248320
+      ],
+      "top10_ids": [
+        44812,
+        1206,
+        623,
+        760,
+        8692,
+        1919,
+        9764,
+        13962,
+        7090,
+        2064
+      ],
+      "top10_logits": [
+        23.75,
+        22.25,
+        20.25,
+        20.0,
+        18.875,
+        17.875,
+        17.5,
+        17.125,
+        16.875,
+        16.75
+      ]
+    },
+    "greedy_generated_text": "Transformer inference is typically **memory-bandwidth",
+    "greedy_generated_token_ids": [
+      44812,
+      42903,
+      369,
+      10813,
+      2972,
+      16759,
+      65393,
+      2998
+    ],
+    "load_passed": true,
+    "ru_maxrss_kib": 29667860,
+    "runtime": "Transformers 5.15.0 / PyTorch 2.10.0+rocm7.15 CPU"
+  },
+  "campaign": "docs/QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md",
+  "commands": [
+    "sha256sum every resolved BF16 safetensors blob and compare to its Hugging Face blob/LFS object name",
+    "hipengine.load_weight_index(snapshot) plus exact index/header/tensor-byte validation",
+    "Qwen3_5MoeForConditionalGeneration.from_pretrained(snapshot, dtype=bfloat16, low_cpu_mem_usage=true) on CPU; one full-logit forward and eight-token greedy generation",
+    "hipengine.LLM(GGUF, backend=hip_gfx1151, quant=gguf_q4_k_m).generate_detailed(exact_ids, greedy eight tokens), repeated in a fresh process",
+    "Qwen35GGUFResidentSession.prefill(exact_ids, use_bulk=true, bulk_attention_mode=bulk, return_logits=true)",
+    "llama-completion -m GGUF -dev ROCm0|Vulkan0 -ngl 99 -c 128 -n 8 -f official-rendered-prompt --temp 0 --top-k 1 --top-p 1 --ignore-eos --no-warmup --no-display-prompt -no-cnv -fa on -ctk f16 -ctv f16",
+    "llama-server /v1/completions logprobs=10 diagnostic for first-row and close-argmax attribution"
+  ],
+  "hipengine_bf16_route": {
+    "bf16_generation_supported": false,
+    "blocker": "The HF Qwen MoE plugin exposes w4_paro only; no (qwen3_5_moe_paro, hip_gfx1151, bf16) generator is registered. BF16 is therefore an external CPU quality oracle, not a hipEngine product route.",
+    "metadata_load_passed": true,
+    "registered_routes": [
+      {
+        "backend": "hip_gfx1151",
+        "mode": "greedy_one_token",
+        "model": "qwen3_5_moe_paro",
+        "quant": "w4_paro"
+      }
+    ],
+    "resolved_default_quant": "w4_paro"
+  },
+  "hipengine_commit": "2f1632e74bc7c9d0cc8e246e71b3387e9b145a23",
+  "hipengine_gguf": {
+    "backend": "hip_gfx1151",
+    "common_prefix_vs_bf16": 2,
+    "first_row_sha256_f32": "dc675c393d7cd79263a5665ba1b530612bcee1f126bb2d91c38a25dd1af92493",
+    "first_token_vs_bf16": true,
+    "full_logits_finite": true,
+    "one_row_kl_bf16_to_q4km": 0.0038508413184452535,
+    "one_row_top1_agreement": true,
+    "one_row_top1_bf16": 44812,
+    "one_row_top1_q4km": 44812,
+    "public_api_generated_text": "Transformer inference on local GPUs is typically **",
+    "public_api_generated_token_ids": [
+      44812,
+      42903,
+      383,
+      2136,
+      68022,
+      369,
+      10813,
+      2972
+    ],
+    "public_api_load_passed": true,
+    "repeat_deterministic": true
+  },
+  "host": "zbook",
+  "kind": "qwen36_bf16_gguf_cross_runtime_correctness_checkpoint",
+  "llamacpp": {
+    "hip": {
+      "build": "10423",
+      "completion_path": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-completion",
+      "completion_sha256": "6d760e70d9e2e228d7473ac3542f6cedb440d6add6ec8ee4687da5b8dcac110d",
+      "device": "ROCm0: AMD Radeon 8060S Graphics",
+      "exact_vs_hipengine_public_api": true,
+      "first_row": {
+        "top10": [
+          {
+            "id": 44812,
+            "logprob": -0.24690479040145874
+          },
+          {
+            "id": 1206,
+            "logprob": -1.7591232061386108
+          },
+          {
+            "id": 760,
+            "logprob": -4.221338748931885
+          },
+          {
+            "id": 623,
+            "logprob": -4.384188175201416
+          },
+          {
+            "id": 8692,
+            "logprob": -5.061743259429932
+          },
+          {
+            "id": 1919,
+            "logprob": -6.458946704864502
+          },
+          {
+            "id": 13962,
+            "logprob": -6.6263909339904785
+          },
+          {
+            "id": 9764,
+            "logprob": -6.7015767097473145
+          },
+          {
+            "id": 7090,
+            "logprob": -6.857943058013916
+          },
+          {
+            "id": 2064,
+            "logprob": -7.188623905181885
+          }
+        ],
+        "top1_id": 44812,
+        "top1_logprob": -0.24690479040145874
+      },
+      "first_row_max_abs_logprob_delta_vs_hipengine_top10": 0.16840291426566623,
+      "generated_text": "Transformer inference on local GPUs is typically **",
+      "generated_token_ids": [
+        44812,
+        42903,
+        383,
+        2136,
+        68022,
+        369,
+        10813,
+        2972
+      ],
+      "load_passed": true,
+      "source_commit": "a94d563ed801d1da1b8c2432946de07d0231bb3d",
+      "tokenize_sha256": "517f2144c4086f296882a6ef451308025a18f116736ca972b910ac675041bc46"
+    },
+    "source_revision_match": false,
+    "source_revision_note": "HIP is eight upstream commits newer than Vulkan; intervening commits do not touch the tested Qwen/HIP/Vulkan kernels. A binding cross-backend gate should rebuild both at one revision.",
+    "vulkan": {
+      "build": "10415",
+      "common_prefix_vs_hipengine": 6,
+      "completion_path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-completion",
+      "completion_sha256": "d0eb37689b1834eab1f9f33bf1dc13c878bb36e68414ffb2d051452d7f3fa41a",
+      "device": "Vulkan0: AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "exact_vs_hipengine_public_api": false,
+      "first_row": {
+        "top10": [
+          {
+            "id": 44812,
+            "logprob": -0.27498936653137207
+          },
+          {
+            "id": 1206,
+            "logprob": -1.6093647480010986
+          },
+          {
+            "id": 760,
+            "logprob": -4.441298484802246
+          },
+          {
+            "id": 623,
+            "logprob": -4.521971702575684
+          },
+          {
+            "id": 8692,
+            "logprob": -5.22598934173584
+          },
+          {
+            "id": 1919,
+            "logprob": -6.5058698654174805
+          },
+          {
+            "id": 7090,
+            "logprob": -6.651404857635498
+          },
+          {
+            "id": 13962,
+            "logprob": -6.754767417907715
+          },
+          {
+            "id": 9764,
+            "logprob": -6.8895978927612305
+          },
+          {
+            "id": 2064,
+            "logprob": -7.382254600524902
+          }
+        ],
+        "top1_id": 44812,
+        "top1_logprob": -0.27498936653137207
+      },
+      "first_row_max_abs_logprob_delta_vs_hipengine_top10": 0.2639286477765701,
+      "generated_text": "Transformer inference on local GPUs is predominantly **",
+      "generated_token_ids": [
+        44812,
+        42903,
+        383,
+        2136,
+        68022,
+        369,
+        45239,
+        2972
+      ],
+      "load_passed": true,
+      "source_commit": "1d2869c6e54d5003f3927a79efbca0fefa034a6d",
+      "tokenize_sha256": "ff9906e1d0074c07d148360b1fba4974fed34623ecb49cc6120a774dd85d2b2a"
+    }
+  },
+  "models": {
+    "bf16": {
+      "all_shards_sha256_verified": true,
+      "ar_tensor_count": 1026,
+      "dtype_counts": {
+        "BF16": 1045
+      },
+      "index_exact": true,
+      "mtp_tensor_count": 19,
+      "repo": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "shard_count": 26,
+      "shard_file_bytes": 71903776776,
+      "shards": [
+        {
+          "bytes": 3996199712,
+          "name": "model-00001-of-00026.safetensors",
+          "sha256": "adee7bcb930aed22e0677e58d4873b48dadb1ed8001cb5c6a0487286eadb3478"
+        },
+        {
+          "bytes": 1284907696,
+          "name": "model-00002-of-00026.safetensors",
+          "sha256": "88f2dfd2b9e73e4b70be533dbf61bcfa3c9a0003758900fcbc9d9b96f5751d4b"
+        },
+        {
+          "bytes": 3357898360,
+          "name": "model-00003-of-00026.safetensors",
+          "sha256": "8f7d72178d3f4431864978e5bcfa4c6cb1c204bc00590644d90bb19d6d522eeb"
+        },
+        {
+          "bytes": 3370808712,
+          "name": "model-00004-of-00026.safetensors",
+          "sha256": "12d7db38689ba3c8af74b23ef8523eca41e0cd95db870583d0663a3ee8a6bd60"
+        },
+        {
+          "bytes": 3357898360,
+          "name": "model-00005-of-00026.safetensors",
+          "sha256": "a836047305d0f7a7b50f0815d09d5c03ec03d59ec2c763fcdc4bf7e9936bf902"
+        },
+        {
+          "bytes": 3959424904,
+          "name": "model-00006-of-00026.safetensors",
+          "sha256": "c9080d718e9c5f9e337443225aa417d4c24d00ae7995d76ee3f1cc296b557d15"
+        },
+        {
+          "bytes": 1096788232,
+          "name": "model-00007-of-00026.safetensors",
+          "sha256": "e8c05e23131b1dd45a455ec38cfac7db14667358268623c3938d00cf3e959a68"
+        },
+        {
+          "bytes": 3946842008,
+          "name": "model-00008-of-00026.safetensors",
+          "sha256": "4b6a6d495053089f4a80e7cbc82e848fba44e2c0c60122233d8fdff79fa7b296"
+        },
+        {
+          "bytes": 1096460848,
+          "name": "model-00009-of-00026.safetensors",
+          "sha256": "a31a954bb72d1c714e751bf0aabf2ff533f5a509693ebf7dd22ad6e90be46f67"
+        },
+        {
+          "bytes": 3946841992,
+          "name": "model-00010-of-00026.safetensors",
+          "sha256": "246560e66570fe746653b8443e245dc334c9b8b831ea43d2d9f1b7d98623994e"
+        },
+        {
+          "bytes": 1096460752,
+          "name": "model-00011-of-00026.safetensors",
+          "sha256": "7180392817fe3ecb3a27a1da43b7ff22c1a94806bac49975f9f122c3126df675"
+        },
+        {
+          "bytes": 3409971080,
+          "name": "model-00012-of-00026.safetensors",
+          "sha256": "043fb525f6625c2f2acb75e65a9959ee3fa7b6e3fdd2034b5cfe1859b01d3cfb"
+        },
+        {
+          "bytes": 1633331664,
+          "name": "model-00013-of-00026.safetensors",
+          "sha256": "33a20fb20a21379bf43c84a43105f9c0cc35bd50d740b1c302dcbe4b700f5425"
+        },
+        {
+          "bytes": 3422553872,
+          "name": "model-00014-of-00026.safetensors",
+          "sha256": "be823e33c5cb6120ad3769d081f34a2449dc2358041fca7c29d636c1ba19130d"
+        },
+        {
+          "bytes": 1633659224,
+          "name": "model-00015-of-00026.safetensors",
+          "sha256": "a89d547c6f9d0b535ee5ea2f2478f163089539f3f0dd330cb23d278a19d76123"
+        },
+        {
+          "bytes": 3946842136,
+          "name": "model-00016-of-00026.safetensors",
+          "sha256": "69fc3ae0316482288afdcdd0b9eb7d626703ae26f7567e89aa3fc8d1ffd4ff5b"
+        },
+        {
+          "bytes": 1096460608,
+          "name": "model-00017-of-00026.safetensors",
+          "sha256": "e356e3943cf3852b76bb8992e674f3256013e27d54b78e8250514151cdc29637"
+        },
+        {
+          "bytes": 3946841992,
+          "name": "model-00018-of-00026.safetensors",
+          "sha256": "9e5e63fd1cc7d6848330c1fa363dfcb661bbc2ac87e672d0e28b71c9cb7f3c7f"
+        },
+        {
+          "bytes": 1096460808,
+          "name": "model-00019-of-00026.safetensors",
+          "sha256": "708644ad34f1de727bf484f396944d8ec628645d52c183e9a992e65671685e21"
+        },
+        {
+          "bytes": 3409971072,
+          "name": "model-00020-of-00026.safetensors",
+          "sha256": "ca083a1d1aa64f8e8a785998f543a43374f13436dc85d396eee4e72c7a84e1ae"
+        },
+        {
+          "bytes": 1633331744,
+          "name": "model-00021-of-00026.safetensors",
+          "sha256": "ada4ae48f3d48fe01b4c53f2f82bce25e798a9631fd33959c881156fef2ccbce"
+        },
+        {
+          "bytes": 3370808752,
+          "name": "model-00022-of-00026.safetensors",
+          "sha256": "def207fb42d7db31efb512755557763c23233c6e4d4c433027cb5102a7bce2f7"
+        },
+        {
+          "bytes": 3357898392,
+          "name": "model-00023-of-00026.safetensors",
+          "sha256": "864d52ca7768a36f514069222e8de8626264ae124097ba8fcce5b5da2c6e2ed7"
+        },
+        {
+          "bytes": 3370808752,
+          "name": "model-00024-of-00026.safetensors",
+          "sha256": "391acd27420cdce5935ff18152423c70620d19dac3c39a5ef1a81d369f82d737"
+        },
+        {
+          "bytes": 3832888256,
+          "name": "model-00025-of-00026.safetensors",
+          "sha256": "778e7f76602f05042b69ba7f3ec91f1fdffef390540b16074041c258fb81d154"
+        },
+        {
+          "bytes": 2231416848,
+          "name": "model-00026-of-00026.safetensors",
+          "sha256": "1a97404220077ed3d4182e10385b152004cab608377f50cec9f54a6b8d28b613"
+        }
+      ],
+      "snapshot": "/home/lhl/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/snapshots/995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "tensor_count": 1045,
+      "tensor_payload_bytes": 71903645408
+    },
+    "gguf": {
+      "admission_artifact": "benchmarks/results/2026-08-15-zbook-qwen36-35b-q4km-admission.json",
+      "bytes": 22663387424,
+      "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "tensor_count": 753
+    }
+  },
+  "near_tie_diagnostic": {
+    "hip_server": {
+      "selected_id": 45239,
+      "top2": [
+        {
+          "id": 45239,
+          "logprob": -0.9934099316596985
+        },
+        {
+          "id": 10813,
+          "logprob": -0.9971922039985657
+        }
+      ],
+      "top2_margin_logprob": 0.0037822723388671875
+    },
+    "initial_context_hip_server_token3": {
+      "selected_id": 369,
+      "selected_logprob": -0.716676652431488,
+      "top": [
+        {
+          "id": 369,
+          "logprob": -0.716676652431488
+        },
+        {
+          "id": 383,
+          "logprob": -0.7378616333007812
+        },
+        {
+          "id": 11,
+          "logprob": -3.991434097290039
+        }
+      ]
+    },
+    "initial_context_vulkan_server_token3": {
+      "selected_id": 383,
+      "selected_logprob": -0.6612845659255981,
+      "top": [
+        {
+          "id": 383,
+          "logprob": -0.6612845659255981
+        },
+        {
+          "id": 369,
+          "logprob": -0.8015967607498169
+        },
+        {
+          "id": 11,
+          "logprob": -3.8650848865509033
+        }
+      ]
+    },
+    "interpretation": "Free-running argmax changes occur at close alternatives and even change between llama.cpp HIP completion/server execution shapes. This is a numerical follow-up, not evidence of a gross load or state failure.",
+    "shared_six_token_context": "Transformer inference on local GPUs is",
+    "vulkan_server": {
+      "selected_id": 45239,
+      "top2": [
+        {
+          "id": 45239,
+          "logprob": -0.8920068740844727
+        },
+        {
+          "id": 10813,
+          "logprob": -1.0668573379516602
+        }
+      ],
+      "top2_margin_logprob": 0.1748504638671875
+    }
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "timestamp": "2026-08-15T17:29:53Z",
+  "token_contract": {
+    "count": 40,
+    "fixture": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "gguf_chat_template": {
+      "bytes": 8057,
+      "sha256": "55d4931433fe502b794226ee7f4d206a6bdd436ac9f80eb7d8ebb4c639f9ea0c"
+    },
+    "input_token_ids": [
+      248045,
+      846,
+      198,
+      814,
+      20139,
+      3069,
+      41163,
+      42903,
+      369,
+      5802,
+      4779,
+      65393,
+      2998,
+      6973,
+      383,
+      2136,
+      68022,
+      13,
+      13262,
+      424,
+      10597,
+      321,
+      13769,
+      11,
+      440,
+      9989,
+      314,
+      1092,
+      4203,
+      61610,
+      13,
+      248046,
+      198,
+      248045,
+      74455,
+      198,
+      248068,
+      271,
+      248069,
+      271
+    ],
+    "input_token_ids_sha256": "3e8bfe394535b68702963bdf6ba1e7b68cb786da0891a9f4f7b00f7f239e95ea",
+    "llamacpp_hip_exact": true,
+    "llamacpp_vulkan_exact": true,
+    "native_chat_templates_identical": false,
+    "note": "Binding smoke passed the official rendered text/IDs directly; it did not let each runtime choose its native template.",
+    "official_chat_template": {
+      "bytes": 7764,
+      "sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+    },
+    "official_vs_gguf_exact": true,
+    "prompt_id": "general_en_explain",
+    "rendered_sha256": "151f9d2b50f1bcc5399bd966f250ff5c6bc7e98e4ca0c6347a9b6e020a3e5e3e",
+    "rendering": "official BF16 HF chat template; add_generation_prompt=true; enable_thinking=false"
+  },
+  "verdict": {
+    "bf16_snapshot_admitted": true,
+    "full_quality_gate_complete": false,
+    "hipengine_gguf_load_passed": true,
+    "hipengine_vs_llamacpp_hip_exact_8_tokens": true,
+    "llamacpp_hip_load_passed": true,
+    "llamacpp_vulkan_load_passed": true,
+    "notes": [
+      "All runtimes consumed exactly the same 40 official rendered token IDs.",
+      "All routes agree on first-token top-1 44812. hipEngine Q4_K_M versus BF16 has one-row KL 0.00385084.",
+      "hipEngine public Q4_K_M is deterministic across two fresh processes and exactly matches llama.cpp HIP for all eight generated tokens.",
+      "Vulkan differs at one close argmax after a six-token shared prefix; full teacher-forced multi-prompt logits are required before declaring cross-backend correctness closed.",
+      "The official BF16 checkpoint cannot generate through hipEngine today; only metadata ingestion is supported."
+    ],
+    "performance_claim": false,
+    "preliminary_implementation_status": "pass_with_vulkan_numerical_followup",
+    "vulkan_exact_8_tokens": false
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_wide_weight_arena",
+  "status": "rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "9c649e28d6850faf89c597425493dd04c09e19e0",
+    "worktree": "clean detached",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "candidate": {
+    "max_allocation_bytes": 83886080,
+    "selection_reason": "80 MiB is the first inventory crossover that captures every non-root weight owner, matching the prior Qwen3.6 gfx1100 premise",
+    "alignment_bytes": 4096,
+    "selected_allocation_count": 849,
+    "selected_requested_bytes": 15185115136,
+    "owner_capacity_bytes": 15185760256,
+    "alignment_padding_bytes": 645120,
+    "dedicated_allocation_count": 2,
+    "dedicated_requested_bytes": 1758105600,
+    "physical_owner_count": 3
+  },
+  "control": {
+    "max_allocation_bytes": 16777216,
+    "selected_allocation_count": 481,
+    "selected_requested_bytes": 212105216,
+    "owner_capacity_bytes": 212750336,
+    "dedicated_allocation_count": 370,
+    "dedicated_requested_bytes": 16731115520,
+    "physical_owner_count": 371
+  },
+  "protocol": {
+    "order": "candidate wide arena then retained control",
+    "shape": "512/128",
+    "prompt": "token 9707 repeated 512 times",
+    "runs_per_process": "one discarded warmup plus three measured persistent-session resets",
+    "routes": "production bulk attention, WMMA prefill, GEMV decode, graph replay",
+    "gpu_processes_overlapped": false
+  },
+  "result": {
+    "candidate_decode_tok_s": 12.397010118109055,
+    "control_decode_tok_s": 12.414875021019522,
+    "decode_delta_percent": -0.14389917643327088,
+    "candidate_prefill_tok_s": 400.74292384624226,
+    "control_prefill_tok_s": 402.31937181588205,
+    "prefill_delta_percent": -0.39183993614934076,
+    "candidate_tracked_peak_bytes": 17810372996,
+    "control_tracked_peak_bytes": 17810372996,
+    "final_token_ids_exact": true,
+    "tracked_after_close_bytes": 0
+  },
+  "validation": {
+    "arena_created": true,
+    "allocation_count_and_capacity_match_plan": true,
+    "complete_trajectory_exact": true,
+    "tracked_lifecycle_exact": true,
+    "throughput_gate_passed": false,
+    "production_policy_changed": false
+  },
+  "commands": {
+    "candidate": "patch runner.GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES=80*1024**2 before runpy of scripts/qwen35_readme_sweep.py; otherwise same control command",
+    "control": "GPU_MAX_HW_QUEUES=2 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "evidence": {
+    "candidate": "/tmp/qwen38-task22-wide80-weight-arena/candidate.json",
+    "candidate_sha256": "3572649b0ec43319526b5d54753a6868d4f162cfb1f736a1140d92dab48af567",
+    "control": "/tmp/qwen38-task22-wide80-weight-arena-control/control.json",
+    "control_sha256": "30b391dc34c4d61b6bee6b21db712375725040c875b6b420b9740250b83983a4"
+  },
+  "decision": "Reject the 80-MiB wide immutable-weight arena as a Qwen3.8 decode optimization. It is exact and collapses 368 physical owners, but matched graph AR regresses 0.1439% and prefill regresses 0.3918%. Keep the retained 16-MiB selective arena. Any later memory-only reconsideration requires matched whole-GTT evidence under task 24."
+}

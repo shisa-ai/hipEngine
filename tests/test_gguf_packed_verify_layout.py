@@ -675,6 +675,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         ssm_inner_size=6,
         ssm_group_count=1,
         ssm_conv_kernel=4,
+        ssm_group_count=2,
         ssm_time_step_rank=2,
         ssm_state_size=3,
         head_count_kv=2,

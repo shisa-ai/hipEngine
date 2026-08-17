@@ -68,13 +68,17 @@ def _spec(
 
 
 @pytest.mark.parametrize(
-    "model",
+    ("model", "expected_q4_count"),
     (
-        Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"),
-        Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"),
+        (Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"), 5),
+        (Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"), 5),
+        (Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"), 7),
     ),
 )
-def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(model: Path) -> None:
+def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(
+    model: Path,
+    expected_q4_count: int,
+) -> None:
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
     info = GGUFReader(model).info
@@ -92,12 +96,15 @@ def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(model: Path) ->
         spec for spec in plan.draft_specs if spec.source.ggml_type_name == "Q4_K"
     )
 
-    assert len(q4_specs) == 5
+    assert len(q4_specs) == expected_q4_count
     assert all(spec.layout == LAYOUT_GGUF_Q4_K_T16 for spec in q4_specs)
     assert all(spec.quant_key == "gguf_q4_k_t16_v1" for spec in q4_specs)
     assert all(spec.allocation_names == ("tiles",) for spec in q4_specs)
-    assert plan.layer_specs["attn_v"].layout == "raw_gguf"
-    assert plan.layer_specs["ffn_down"].layout == "raw_gguf"
+    expected_wide_layout = (
+        LAYOUT_GGUF_Q4_K_T16 if info.file_type_name == "MOSTLY_Q4_K_S" else "raw_gguf"
+    )
+    assert plan.layer_specs["attn_v"].layout == expected_wide_layout
+    assert plan.layer_specs["ffn_down"].layout == expected_wide_layout
     lm_head = plan.fallback_specs["lm_head"]
     assert lm_head.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
     assert lm_head.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"

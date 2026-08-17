@@ -16,7 +16,7 @@ from hipengine.loading.gguf import (
     MissingGGUFTensorError,
     scan_gguf,
 )
-from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf import GGMLQuantizationType, LlamaFileType
 from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
@@ -825,6 +825,16 @@ def test_qwen35_dense_gguf_mtp_ffn_cpu_reference_matches_manual_chain() -> None:
     np.testing.assert_allclose(actual, expected.astype(np.float32), rtol=1.0e-6, atol=1.0e-6)
 
 
+def test_qwen35_dense_q4ks_nextn_accepts_q4_wide_roles() -> None:
+    info = _synthetic_qwen35_dense_mtp_info(q4ks=True)
+
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    assert validation.passed
+    model_map = build_qwen35_gguf_nextn_tensor_map(info)
+    assert model_map.tensor("attn_v").ggml_type_name == "Q4_K"
+    assert model_map.tensor("ffn_down").ggml_type_name == "Q4_K"
+
+
 def test_qwen35_dense_gguf_nextn_validation_rejects_dense_contract_errors() -> None:
     missing = _synthetic_qwen35_dense_mtp_info(
         drop_tensors={"blk.2.ffn_gate.weight"},
@@ -888,9 +898,13 @@ def _synthetic_qwen35_dense_mtp_info(
     *,
     drop_tensors: set[str] | None = None,
     extra_tensors: list[GGUFTensorInfo] | None = None,
+    q4ks: bool = False,
 ) -> GGUFModelInfo:
     metadata = {
         "general.architecture": "qwen35",
+        "general.file_type": int(
+            LlamaFileType.MOSTLY_Q4_K_S if q4ks else LlamaFileType.MOSTLY_Q4_K_M
+        ),
         "qwen35.block_count": 3,
         "qwen35.embedding_length": 8,
         "qwen35.feed_forward_length": 5,
@@ -929,8 +943,8 @@ def _synthetic_qwen35_dense_mtp_info(
     )
     tensors.extend(_dense_mlp_tensors(1))
     tensors.extend(_full_attention_tensors(1))
-    tensors.extend(_dense_mlp_tensors(2, nextn=True))
-    tensors.extend(_dense_nextn_full_attention_tensors(2))
+    tensors.extend(_dense_mlp_tensors(2, nextn=True, q4ks=q4ks))
+    tensors.extend(_dense_nextn_full_attention_tensors(2, q4ks=q4ks))
     tensors.extend(
         [
             _tensor("blk.2.nextn.eh_proj.weight", (8, 16), GGMLQuantizationType.Q8_0),
@@ -957,10 +971,16 @@ def _dense_mlp_tensors(
     layer_id: int,
     *,
     nextn: bool = False,
+    q4ks: bool = False,
 ) -> list[GGUFTensorInfo]:
     prefix = f"blk.{layer_id}"
     gate_up_qtype = GGMLQuantizationType.Q4_K if nextn else GGMLQuantizationType.F32
-    down_qtype = GGMLQuantizationType.Q6_K if nextn else GGMLQuantizationType.F32
+    if not nextn:
+        down_qtype = GGMLQuantizationType.F32
+    elif q4ks:
+        down_qtype = GGMLQuantizationType.Q4_K
+    else:
+        down_qtype = GGMLQuantizationType.Q6_K
     return [
         _tensor(f"{prefix}.attn_norm.weight", (8,)),
         _tensor(f"{prefix}.post_attention_norm.weight", (8,)),
@@ -970,12 +990,20 @@ def _dense_mlp_tensors(
     ]
 
 
-def _dense_nextn_full_attention_tensors(layer_id: int) -> list[GGUFTensorInfo]:
+def _dense_nextn_full_attention_tensors(
+    layer_id: int,
+    *,
+    q4ks: bool = False,
+) -> list[GGUFTensorInfo]:
     prefix = f"blk.{layer_id}"
     return [
         _tensor(f"{prefix}.attn_q.weight", (16, 8), GGMLQuantizationType.Q4_K),
         _tensor(f"{prefix}.attn_k.weight", (4, 8), GGMLQuantizationType.Q4_K),
-        _tensor(f"{prefix}.attn_v.weight", (4, 8), GGMLQuantizationType.Q6_K),
+        _tensor(
+            f"{prefix}.attn_v.weight",
+            (4, 8),
+            GGMLQuantizationType.Q4_K if q4ks else GGMLQuantizationType.Q6_K,
+        ),
         _tensor(f"{prefix}.attn_output.weight", (8, 8), GGMLQuantizationType.Q4_K),
         _tensor(f"{prefix}.attn_q_norm.weight", (4,)),
         _tensor(f"{prefix}.attn_k_norm.weight", (4,)),

@@ -4,6 +4,7 @@ import ctypes
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.core.memory import DeviceBuffer
 from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import (
@@ -204,6 +205,51 @@ def test_state_journal_initial_snapshot_and_rollback_use_one_pointer_table_launc
         ]
     finally:
         unregister(key)
+
+
+def test_native_state_journal_consumer_fallback_owns_only_initial_state(
+    monkeypatch,
+) -> None:
+    allocated: list[DeviceBuffer] = []
+    freed: list[int] = []
+
+    def fake_malloc(nbytes: int, *, runtime) -> DeviceBuffer:
+        _ = runtime
+        buffer = DeviceBuffer(0xA000 + len(allocated) * 0x1000, int(nbytes))
+        allocated.append(buffer)
+        return buffer
+
+    def fake_free(buffer: DeviceBuffer, *, runtime) -> None:
+        _ = runtime
+        freed.append(int(buffer.ptr))
+
+    monkeypatch.setattr(mtp_module, "malloc", fake_malloc)
+    monkeypatch.setattr(mtp_module, "free", fake_free)
+    target = _fake_target(backend="missing_native_state_journal_copy")
+    journal = _StateJournal.allocate(
+        target,
+        max_rows=4,
+        initial_state_only=True,
+    )
+
+    assert journal.initial_state_only
+    assert not journal.producer_capture_initial_state
+    assert [buffer.nbytes for buffer in allocated] == [64, 64, 128, 128, 8, 32]
+    journal.capture_initial(stream=7)
+    assert target.runtime.memcpy_async_calls == [
+        (0xE000, 0x5000, 8, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0xA000, 0x1000, 64, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0xB000, 0x2000, 64, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0xC000, 0x3000, 128, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0xD000, 0x4000, 128, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+    ]
+    with pytest.raises(RuntimeError, match="initial-state-only"):
+        journal.capture_row(0)
+    with pytest.raises(RuntimeError, match="initial-state-only"):
+        journal.restore_row(0)
+
+    journal.close()
+    assert freed == [0xF000, 0xE000, 0xD000, 0xC000, 0xB000, 0xA000]
 
 
 def test_state_journal_producer_capture_preserves_post_commit_rollback(monkeypatch) -> None:

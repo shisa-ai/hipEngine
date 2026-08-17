@@ -21,6 +21,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     silu_mul_separate_out_f32,
     silu_mul_separate_out_fp16,
 )
+from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import build_paro_rotate, paro_rotate1_fp16
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
 
@@ -257,3 +258,86 @@ def test_silu_mul_separate_bf16_may_replace_gate_in_place() -> None:
         gate_f32 * (1.0 / (1.0 + np.exp(-gate_f32))) * up_f32
     )
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_silu_mul_pair_rotate_fp16_matches_unfused_qwen36_shared_shape() -> None:
+    rng = np.random.default_rng(20260816)
+    rows = 16
+    features = 512
+    group_size = 128
+    krot = 8
+    gate = (rng.normal(size=(rows, features)) * 1.5).astype(np.float16)
+    up = (rng.normal(size=(rows, features)) * 1.5).astype(np.float16)
+    scales = rng.uniform(0.5, 1.5, size=features).astype(np.float16)
+    theta = (rng.normal(size=(krot, features // 2)) * 0.1).astype(np.float16)
+    pairs = np.empty((krot, features), dtype=np.int16)
+    half_group = group_size // 2
+    for rotation in range(krot):
+        for group in range(features // group_size):
+            base = group * group_size
+            for lane in range(half_group):
+                pairs[rotation, base + 2 * lane] = lane
+                pairs[rotation, base + 2 * lane + 1] = lane + half_group
+
+    unfused = np.empty_like(gate)
+    fused = np.empty_like(gate)
+    runtime = get_hip_runtime()
+    silu_library = build_paro_silu(load=True)
+    rotate_library = build_paro_rotate(load=True)
+    bufs: list = []
+    try:
+        gate_d = _dev(np.ascontiguousarray(gate), runtime, bufs)
+        up_d = _dev(np.ascontiguousarray(up), runtime, bufs)
+        pairs_d = _dev(np.ascontiguousarray(pairs), runtime, bufs)
+        theta_d = _dev(np.ascontiguousarray(theta), runtime, bufs)
+        scales_d = _dev(np.ascontiguousarray(scales), runtime, bufs)
+        intermediate_d = malloc(gate.nbytes, runtime=runtime)
+        unfused_d = malloc(gate.nbytes, runtime=runtime)
+        fused_d = malloc(gate.nbytes, runtime=runtime)
+        bufs.extend((intermediate_d, unfused_d, fused_d))
+
+        silu_mul_separate_out_fp16(
+            gate_d.ptr,
+            up_d.ptr,
+            intermediate_d.ptr,
+            rows,
+            features,
+            library=silu_library,
+            runtime=runtime,
+        )
+        paro_rotate1_fp16(
+            intermediate_d.ptr,
+            unfused_d.ptr,
+            pairs_d.ptr,
+            theta_d.ptr,
+            scales_d.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=rotate_library,
+            runtime=runtime,
+        )
+        silu_mul_pair_rotate_out_fp16(
+            gate_d.ptr,
+            up_d.ptr,
+            pairs_d.ptr,
+            theta_d.ptr,
+            scales_d.ptr,
+            fused_d.ptr,
+            rows,
+            features,
+            group_size,
+            krot,
+            library=silu_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(unfused), unfused_d, runtime=runtime)
+        copy_device_to_host(host_array_ptr(fused), fused_d, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(fused.view(np.uint16), unfused.view(np.uint16))

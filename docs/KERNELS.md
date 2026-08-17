@@ -22,6 +22,8 @@ Related documents:
 
 - [`PLAN.md`](PLAN.md) — architecture and roadmap.
 - [`TESTING.md`](TESTING.md) — RED/GREEN workflow, fixtures, and correctness gates.
+- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) — strict/production/
+  batch-invariant arithmetic, ownership, fallback, and manifest contracts.
 - [`BENCHMARK.md`](BENCHMARK.md) — benchmark protocols and evidence policy.
 - [`REFACTOR.md`](REFACTOR.md) — temporary flags and fallback-removal ledger.
 - [`source_lineage.json`](source_lineage.json) — external source baselines.
@@ -109,7 +111,7 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
-| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus fixed c1/hidden-1024 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
+| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus gfx1151-qualified fixed c1/hidden-1024 and hidden-5120 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
 | Rotary/prelude | `rotary/paro_rotate.{hip,py}`, `rotary/qwen35_rotary.{hip,py}` | `paro_rotate1/2/3`, `paro_rmsnorm_rotate2`, `partial_rotary`, `head_rmsnorm+partial_rotary`, `split_qgate` | BF16/FP16 PARO rotation and Qwen partial-RoPE/head-normalization families. |
 | Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. gfx1151 rows512/K3584/N1024 dense-BF16 FFN down uses the WMMA exact rounded-residual sibling; the unfused projection+add chain remains registered. |
 | PARO AWQ projection | `quant/paro_awq_gemv.{hip,py}` | `pack8_gemv`, `dual_pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm`, rotate/SiLU composites (`w4_paro`) | Strided/transposed, BF16/FP16, selected-expert, fused-W4 prefill, and small-row routes. |
@@ -159,6 +161,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. The p512 pack8-Q4 rounded-residual output-store sibling is rejected (0.958x core / 0.952x public complete-model prefill) and is not registered. |
 | Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear`, `linear_pair` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. gfx1151 rows512/K1024/N16+N16 alpha/beta uses the exact two-wave dual owner; singleton WMMA remains the fallback. |
 | Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. |
+| Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs; gfx1151 qualifies Qwen3.8 recurrent K5120/N10240+N6144 and full-attention K/V K5120/N1024+N1024 while primitive projections remain fallbacks. |
 | Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Rows<512, narrow V, root, shape misses, and peer backends retain exact one-wave/16x16 primitives. |
 | IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. |
 | IQ selected prefill | `quant/gguf_iq_selected_prefill.{hip,py}` | `moe_linear` | Grouped/expert-major, active-expert, rowbatch, and output-ownership variants. |
@@ -190,24 +193,32 @@ dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12
 [`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
 and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 
-For dense Qwen3.8-27B Q4_K_M on gfx1151, the same capability-driven H=5,120
+For dense Qwen3.8-27B Q4_K_M on gfx1151, the capability-driven H=5,120
 plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
-`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, and alternate Q4 sidecars are
-absent. The rows1 H=5,120/N=17,408 gate/up pair uses a model/quant/shape-
-qualified primary-plus-residual Q8_1 producer and same-resident dual-Q4T16
-dp4a+SiLU consumer. Serial true AR defaults to the exact four-wave split-weight
-sibling: independent two-wave gate/up owners preserve the prior K/FMA/reduction
-order while lowering traced resources from 224 to 120 VGPR and 1,024 to 512 B
-LDS. It reuses the same 11,520-byte rows1 workspace and adds no resident bytes.
-`native_batch_decode_session` retains the prior Q8_1x2 consumer after the
-split-weight B1 diagnostic regressed; the exact two-local32-plus-primitive-SiLU
-chain remains the policy-miss rollback. Exact rows-2-4 rowtile, same-T16
-residual and unfused fallbacks, bulk/tail WMMA, dual-SiLU, and unequal
-attention-pair owners cover the remaining operation set. The raw token
-embedding remains raw GGUF, peer geometries retain prior policy, and no
-`KVLiveSpans` ABI changes are involved. Evidence:
-[`Qwen3.8 Q8_1x2 dp4a decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-dp4a.json) and
-[`Qwen3.8 Q4T16 split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json).
+`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, raw, and alternate-Q4 sidecars are
+absent. The serial rows1 H=5,120/N=17,408 gate/up pair defaults to the exact
+local32 dual+SiLU owner. Its former changed-arithmetic Q8_1x2 split-weight route
+passes the strict-teacher gate but loses the current seven-pair ZBook timing at
+`0.998071x` with one win, so it remains diagnostic. Native B1 retains its
+separately qualified non-split Q8_1x2 owner.
+
+The selected Q4_K_S representation independently replaces only its 128
+H=5,120/N=17,408 gate/up weights with
+`gguf_q4_k_qmicro_t16_v1/tiles`; its other rank-2 Q4 weights remain standard
+T16. Each qmicro K256/N16 tile is 2,304 rather than 2,368 bytes, removing 170
+MiB. Serial c1 uses the exact split-weight Q8_1x2 owner over compact metadata;
+native rows2-4 use the exact shared-weight rowtile8 sibling because direct-BF16
+association can change greedy trajectories. Bulk 512/1K uses direct-metadata
+WMMA; from 4K, one bounded expansion writes only compact coefficients into the
+already-dead FFN scratch plane before the same exact dual WMMA. This adds no
+workspace or persistent bytes. Rows5-4095 and misses retain the qualified
+singleton/primitive fallbacks. The raw token embedding remains raw GGUF, peer
+geometries retain prior policy, and no `KVLiveSpans` ABI changes are involved.
+Evidence:
+[`current Q4_K_M strict requalification`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json),
+[`current Q4_K_M counterbalanced A/B`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json),
+[`Q4_K_S split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json), and
+[`Q4_K_S sole qmicro gate/up`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
 The serial-c1 K=5,120/N=1,024 full-attention K/V subset independently selects
 the exact four-column Q4T16 owner; native sessions, peers, and all shape misses
 retain local32 direct. Evidence:
@@ -225,6 +236,33 @@ resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
 independently shape-qualified. Evidence:
 [`Qwen3.8 Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
 
+Qwen3.8-27B Q4_K_S is qualified on gfx1151 using the same operation-complete
+Q5T16 family. Its 60 rank-2 Q5 owners consist of the 48 existing recurrent
+outputs plus eight K17,408/N5,120 FFN-down, three K5,120/N10,240 recurrent-QKV,
+and one K5,120/N1,024 full-attention-V tensor; all own only `tiles`, with no
+dense-BF16 Q5 shadow. The exact 16K/48V/128x128 GDN geometry also selects
+`chain_compact_peer_wave32`. True AR independently transfers three exact
+Q4_K_M-derived policies whose representation and math are unchanged: qmicro Q4
+split-weight gate+up+SiLU, Q4 down+residual (Q5 down remains unfused), and
+quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
+**12.42932 -> 13.06854 tok/s (+5.143%)**. Clean commit `3118943eb` publishes
+**13.03883/12.86679/13.02544 tok/s** at 512/1K/4K, above both frozen clean
+llama backends at every shape. Natural true AR is **13.33276 tok/s**,
+repeat-exact across 30 requests.
+Native Q4_K_S MTP uses a separately qualified rows2-4 qmicro Q8_1x2
+rowtile8 owner for H5120/N17408 gate/up+SiLU. It shares each compact-weight
+traversal across rows while preserving c1's dp4a/FMA/reduction and BF16
+association independently per row. Rows2/3/4 are BF16-bit exact to serial c1;
+the complete ten-prompt AR/B1/B2/B3 gate is exact with GPU/CPU acceptance
+agreement, and B3 reaches **24.19347 tok/s / 1.8228x** own AR. Cache-only
+`rocprofv3` records rows3 at local128, 120 VGPR, 512-byte LDS, zero scratch,
+and 0.462-0.465 ms on an actual layer-0 pair. The policy adds no bytes, and the
+direct-BF16 rowtile plus primitive chain remain registered fallbacks. Evidence:
+[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
+[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),
+[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json), and
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
+
 The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
 than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
 attention-V tensors, and untied root own one
@@ -233,9 +271,10 @@ K=5,120/N=10,240 QKV tensors retain one `gguf_q6_k_t16_v1/tiles` payload each
 because planar c1 loses 8.72% on actual weights; no tensor retains both layouts
 and dense-BF16 Q6 bytes are zero. Exact native c1, rows2-4, WMMA, residual,
 and top-1 leaves remain registered. On gfx1151, rows2 F32 uses a dedicated
-planar col16 owner, while FFN down+residual deliberately uses planar projection
-plus the primitive BF16 add: the exact fused sibling loses 17.35%/11.44%/11.15%
-at rows2/3/4 and remains a peer-backend/diagnostic leaf. Complete actual-weight,
+planar col16 owner, while native rows2-4 FFN down+residual deliberately uses
+planar projection plus the primitive BF16 add: the exact native fused sibling
+loses 17.35%/11.44%/11.15% at rows2/3/4 and remains a
+peer-backend/diagnostic leaf. Complete actual-weight,
 512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
 gates retain the role-qualified route. Evidence:
 [`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
@@ -250,6 +289,14 @@ adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
 teardown. All natural tokens/acceptance are identical; every full/train/
 heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
 [`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
+On 2026-08-17 the same admission was extended to the byte-identical Q4_K_S
+model (MOSTLY_Q4_K_S added to the dense H5120 F16 policy; its 48 recurrent
+outputs are byte-identical to K_M), and the Q4_K_S bulk-prefill scratch row cap
+became capacity-conditional: 4K-class requests grow to the natural 4,096-row
+full-attention plateau so the source-F16 route stays active there (+2.95%),
+while 8K and larger keep 1,024-row chunks (4,096-row chunks measured -2.3%
+slower at 8K regardless of source-F16), keeping memory flat past 8K. Evidence:
+[`Q4_K_S Q5 source-F16 retention`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json).
 
 For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
 keeps one compact Q4T16 payload for the six full-attention Q projections at
@@ -292,6 +339,76 @@ and peer backends retain the primitive projection+add or their prior registered
 small-row composites. Evidence:
 [`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
 
+Dense-H5120 has an independent exact c1 K=17,408/N=5,120 policy for its 32
+Q4T16 and 32 planar-qmicro-Q6 FFN-down owners. Each same-resident
+`linear+residual` sibling freezes the direct projection's K/FMA/reduction tree,
+rounds that projection to BF16, then folds only the BF16 residual read/add/final
+round into the producer store. The mixed prefill/decode selector treats this
+explicit rows1 policy independently of the WMMA-prefill axis, and the T16 ABI
+launches from the existing sole `tiles` allocation. A selected-region graph
+trace removes exactly **64 launches/token (934 -> 870)** and changes profiled
+host decode **82.46295 -> 82.31707 ms/token (-0.177%)** while selected kernel
+wall is flat within **0.005%**. Rows>1, Q8, other shapes/models, and peer
+backends retain the registered primitive chain; no payload, workspace, or
+tracked peak changes. Evidence:
+[`Qwen3.8 c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
+
+For scalar gfx1151 Q5T16 recurrent-output ownership, the registered
+`gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_lowp_f32_bf16_out`
+producer writes both the unchanged FP32 recurrent output/state and the exact RNE
+BF16 handoff consumed by `ssm_out`. It removes one standalone cast per recurrent
+layer without changing payload, scratch, or math. Registry misses and other
+quants retain ordinary GDN plus explicit cast; the verifier-chain sibling stays
+excluded pending its independent MTP gate. Evidence:
+[`Qwen3.8 scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
+
+The same gfx1151 scalar graph independently admits the existing exact
+`linear_pair/f32/bf16_hidden_bf16_out` body only at rows1 K5120/N48+N48. One
+local256 grid assigns independent alpha/beta output blocks while preserving each
+singleton K/FMA/reduction tree. Capability or registry misses, gfx1100, and
+rows2-4 retain two singleton dense-F32 projections. No payload or scratch is
+added. Evidence:
+[`Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+
+A second gfx1151-only rows1 capability joins those pair blocks to the independent
+C10240/K4 in-place Conv blocks under
+`linear_attn_alpha_beta+conv_decode/f32/bf16_k5120_n48_c10240_k4_c1`.
+The local256 mixed grid preserves both dense-F32 reduction trees and every Conv
+state/output bit, needs 32 VGPR, 1 KiB LDS, zero scratch, and adds no bytes.
+Capability/registry/shape misses, verifier rows, and peers retain pair plus
+ordinary Conv. Evidence:
+[`Qwen3.8 serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
+
+The gfx1151-only serial 24Q/4KV/D256 full-attention route also registers
+`split_qgate+head_rmsnorm+partial_rotary/gguf_f32_weight/qwen35_position_qk_bf16_f32`.
+One local256 grid reads packed BF16 Q/gate and BF16 K directly, reproduces the
+existing FP32 head RMSNorm reduction and partial-RoPE expression bit for bit,
+and copies gate BF16 bits. It removes the standalone split and K-cast nodes;
+the complete primitive chain remains registered for shape/capability misses,
+native rows, prefill, and peers. No payload or scratch is added. Evidence:
+[`Qwen3.8 Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
+
+The gfx1151 rows1 recurrent QKV/gate boundary independently registers
+`linear_pair/gguf_q6_k_t16_v1+gguf_q4_k_t16_v1/mixed_grid_bf16_bf16_out` for
+K5120/N10240+N6144. One local128 grid assigns the established Q6 local128
+blocks and four independent Q4 local32 waves per Q4 workgroup, preserving both
+primitive arithmetic trees without serializing either owner. It removes 24
+launches/token, uses 96 VGPR, 512-byte LDS, zero scratch, and adds no payload or
+workspace. Native rows, prefill, capability/registry misses, and peers retain
+the two primitive projections. Evidence:
+[`Qwen3.8 Q6/Q4 mixed grid`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
+
+The same gfx1151 rows1 family independently registers two narrow full-attention
+K/V keys for K5120/N1024+N1024:
+`linear_pair/gguf_q4_k_t16_v1/narrow_col4_pair_bf16_bf16_out` and
+`linear_pair/gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1/narrow_col4_planar_pair_bf16_bf16_out`.
+Each local128 grid preserves the qualified Q4-col4 K owner and either the
+Q4-col4 or planar-qmicro-Q6 V owner. The target's eight Q4/Q4 and eight Q4/Q6
+pairs remove 16 launches/token; both kernels use zero scratch and add no
+payload or workspace. Native rows/MTP, prefill, NextN, capability/registry
+misses, and peer backends retain the two primitives. Evidence:
+[`Qwen3.8 narrow K/V pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
+
 The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
 registry candidates:
 `rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and
@@ -308,6 +425,19 @@ entry points retain their full validation contract. Q8, output norm, verifier
 F32, rows>1, other shapes/models, and peer backends stay generic. Evidence:
 [`0.8B retained norm/residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
 [`screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
+
+Dense-H5120 has an independently qualified pair under variants
+`bf16_out_fixed5120_wave256`. Each local256 thread caches 20 values, preserves
+the generic per-thread accumulation and complete FP32 reduction tree, replaces
+nine tree barriers with shared-partial and inverse-RMS publication barriers
+plus five wave32 exchanges, and reuses the cached values for output. On gfx1151 Qwen3.8-27B,
+all 128 actual-weight norm/residual outputs are BF16-bit exact; the package
+improves **1.23268 -> 0.35870 ms/token (3.4365x, 15/15)** and complete graph AR
+**1.37-1.46%** across 512/1K/4K. `rocprofv3` records local256/grid256, 56/80
+VGPR, 1,536-byte LDS, and zero scratch. The model/backend/shape capability is
+rows1 Q4_K_M only; generic kernels remain the rows>1, Q8, output-norm,
+other-model, and peer-backend fallbacks. Evidence:
+[`dense-H5120 norm route`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
@@ -523,7 +653,12 @@ hipengine/kernels/cuda_sm120a/
 
 ## Fused and composite fallback map
 
-A `+` in a registry layer name denotes a composite boundary. Every fused composite must have a numerically equivalent unfused route. The table groups registered composites by semantic family; exact variants/dtypes remain in source.
+A `+` in a registry layer name denotes a composite boundary. Every fused
+composite must have a registered strict unfused route. Strict composites satisfy
+their declared exact/parent-parity boundary; production composites may
+reassociate only under a certified profile manifest and still fall back to the
+strict chain. The table groups registered composites by semantic family; exact
+variants/dtypes remain in source.
 
 | Composite family | Backends / paths | Required unfused chain |
 | --- | --- | --- |
@@ -552,8 +687,11 @@ A `+` in a registry layer name denotes a composite boundary. Every fused composi
 
 Fallback requirements:
 
-- Fused and unfused paths must share fixtures or direct equality tests at every published low-precision boundary.
-- Removing a fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
+- Strict fused and unfused paths share exact/parent-parity fixtures at every
+  published low-precision boundary. Production fused paths share the strict
+  fixture plus the full strict-teacher profile gate; free-running ID equality is
+  diagnostic unless strict/batch-invariant says otherwise.
+- Removing a strict fallback is an architectural change and requires updating this table plus `PLAN.md` if the invariant changes.
 - A library call can be one stage of an unfused chain, but it does not waive the independent primitive/oracle route.
 
 ## Source-lineage audit
@@ -648,29 +786,45 @@ register(
 
 The resolver tries exact variant, no variant, same-backend FP16 fallback, then CPU-reference candidates. Code that needs to know whether a *specific* optimized key exists must use `is_registered()`, not broad fallback resolution.
 
+Execution profile does not change `KernelKey`. Model/session construction
+resolves `strict`, `production`, or `batch_invariant` to an immutable selection
+of existing variant keys plus a strict fallback for each production selection.
+Dispatch consumes that plan; do not add profile branches or a fifth registry
+axis. Artifacts record the selected and strict manifest hashes.
+
 Backend packages may refresh missing keys after test isolation. `hip_gfx1151` aliases only allowed gfx11 registrations; `cuda_sm120a` registers only independent CUDA implementations.
 
 ## Correctness and profiler gate
 
 A new or ported kernel lands only when all applicable checks pass:
 
-1. **RED fixture/oracle:** write or identify the CPU/primitive oracle before implementation when math or storage changes.
-2. **Registry:** exact intended keys resolve under the correct backend, layer, quant, and variant.
-3. **Numerics:** KL ≤ 0.05 and top-1 agreement ≥ 90% versus `cpu_reference` for net-new math; a mechanical split/port also preserves its parent or prior in-tree boundary.
-4. **Fallback:** fused composites match their registered unfused chain.
-5. **Profiler:** cache-only `rocprofv3 --kernel-trace` or Nsight trace names the expected kernel with plausible resources/duration.
-6. **Integration:** run the narrowest applicable deterministic/model gate from `TESTING.md`.
-7. **Evidence:** performance claims follow `BENCHMARK.md` and update artifact/rollup/changelog/worklog; do not add the narrative here.
+1. **Declaration:** name execution profile, T0/T1/T2/T3 source, supported
+   backend/model/quant/shape envelope, and strict fallback.
+2. **RED fixture/oracle:** write or identify the strict/CPU/primitive oracle
+   before implementation when math or storage changes.
+3. **Registry:** exact intended and strict-fallback keys resolve under the correct backend, layer, quant, and variant; manifest selection adds no fifth axis.
+4. **Numerics:** the CPU-reference KL ≤ 0.05 / top-1 ≥ 90% outer floor passes.
+   Strict preserves its exact/parent boundary. Production additionally passes
+   calibrated strict-teacher mean/tail/max KL and top-1 by category/shape/
+   transition, same-schedule determinism, isolation, BF16-relative, and task
+   gates.
+5. **Fallback:** every fused/production composite retains its registered strict unfused chain.
+6. **Profiler:** cache-only `rocprofv3 --kernel-trace` or Nsight trace names the expected kernel with plausible resources/duration.
+7. **Integration:** run the narrowest applicable strict, production, or batch-invariant model/dynamic gate from `TESTING.md`.
+8. **Evidence:** performance claims follow `BENCHMARK.md` and record profile/schema and selected/fallback manifest hashes in artifact/rollup/changelog/worklog; do not add the narrative here.
 
 ## Per-family port checklist
 
 1. Audit `source_lineage.json` and run the narrow lineage check.
-2. Add the CPU reference or bit-exact fixture (RED).
+2. Declare the execution profile/arithmetic class and add the strict exact/
+   parent-parity or production numerical fixture (RED), plus the CPU-reference
+   outer oracle.
 3. Copy one functional family into `hipengine/kernels/<backend>/<family>/`; do not mix unrelated families.
 4. Retype launch wrappers to raw pointers and explicit metadata.
 5. Preserve or document storage layout, low-precision boundaries, `KVLiveSpans`, launch bounds, and build profile.
-6. Register exact four-axis keys and any required unfused fallback keys.
+6. Register exact four-axis keys and the required strict unfused/fallback keys;
+   profile selection remains outside the key.
 7. Update the relevant catalog row and fused fallback map without benchmark commentary.
-8. Run registry, numerical, profiler, and narrow integration gates.
+8. Run registry, declared-profile numerical/control, profiler, and narrow integration gates.
 9. Record decisions/results in a new immutable worklog entry; write compact benchmark artifacts only when making a performance claim.
 10. Commit the validated family as one logical unit with source commit provenance when ported.

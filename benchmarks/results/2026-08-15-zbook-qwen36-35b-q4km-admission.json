@@ -1,0 +1,252 @@
+{
+  "campaign": "docs/QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md",
+  "commands": [
+    "printf '%s  %s\\n' 0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf | sha256sum --check -",
+    "uv run python scripts/inspect_gguf.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --json --check-dequant --smoke-rows 2 --fail-on-unsupported-dequant",
+    "hipengine GGUFReader + build_qwen35_gguf_tensor_map(strict=True) + Qwen35GGUFTokenizer ten-prompt raw-content smoke",
+    "llama-tokenize mixed_ja_en_review raw-content exact-ID spot check"
+  ],
+  "kind": "model_admission",
+  "local_file": {
+    "alignment": 32,
+    "bytes": 22663387424,
+    "gguf_version": 3,
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sha256_check": "passed",
+    "tensor_data_offset": 10991392,
+    "total_tensor_nbytes": 22652396032
+  },
+  "mapping": {
+    "ignored": 20,
+    "missing": [],
+    "passed": true,
+    "present": 733,
+    "shape_errors": [],
+    "unexpected": []
+  },
+  "model": {
+    "architecture": "qwen35moe",
+    "config": {
+      "architecture": "qwen35moe",
+      "block_count": 40,
+      "context_length": 262144,
+      "declared_block_count": 41,
+      "expert_count": 256,
+      "expert_feed_forward_length": 512,
+      "expert_shared_feed_forward_length": 512,
+      "expert_used_count": 8,
+      "feed_forward_length": 512,
+      "full_attention_interval": 4,
+      "head_count": 16,
+      "head_count_kv": 2,
+      "hidden_size": 2048,
+      "ignored_block_ids": [
+        40
+      ],
+      "key_length": 256,
+      "layer_type_counts": {
+        "full_attention": 10,
+        "linear_attention": 30
+      },
+      "lm_head_tensor_name": "output.weight",
+      "rms_norm_eps": 9.999999974752427e-07,
+      "rope_dimension_count": 64,
+      "rope_dimension_sections": [
+        11,
+        11,
+        10,
+        0
+      ],
+      "rope_freq_base": 10000000.0,
+      "ssm_conv_kernel": 4,
+      "ssm_group_count": 16,
+      "ssm_inner_size": 4096,
+      "ssm_state_size": 128,
+      "ssm_time_step_rank": 32,
+      "value_length": 256,
+      "vocab_size": 248320
+    },
+    "dequant_smoke": {
+      "all_finite": true,
+      "rows_per_type": 2,
+      "types": [
+        "Q6_K",
+        "F32",
+        "Q8_0",
+        "Q5_K",
+        "Q4_K",
+        "BF16"
+      ]
+    },
+    "file_type": "MOSTLY_Q4_K_M",
+    "name": "Qwen3.6-35B-A3B",
+    "size_label": "35B-A3B",
+    "tensor_bytes_by_type": {
+      "BF16": 1052672,
+      "F32": 104624640,
+      "Q4_K": 12381585408,
+      "Q5_K": 7012876288,
+      "Q6_K": 1077780480,
+      "Q8_0": 2074476544
+    },
+    "tensor_count": 753,
+    "tensor_count_by_type": {
+      "BF16": 2,
+      "F32": 368,
+      "Q4_K": 82,
+      "Q5_K": 38,
+      "Q6_K": 4,
+      "Q8_0": 259
+    },
+    "unsupported_dequant_types": []
+  },
+  "mtp": {
+    "ar_blocks": 40,
+    "blocks": [
+      {
+        "fallbacks": {
+          "nextn.embed_tokens": "token_embd.weight",
+          "nextn.shared_head_head": "output.weight"
+        },
+        "layer_id": 40,
+        "optional_missing": [
+          "blk.40.nextn.embed_tokens.weight",
+          "blk.40.nextn.shared_head_head.weight"
+        ],
+        "passed": true,
+        "required_missing": [],
+        "unexpected": []
+      }
+    ],
+    "declared_blocks": 41,
+    "ignored_block_ids": [
+      40
+    ]
+  },
+  "performance_claim": false,
+  "prompt_token_smoke": {
+    "all_roundtrip": true,
+    "fixture": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "llamacpp_spot_check": {
+      "exact_ids": true,
+      "hipengine_count": 59,
+      "llamacpp_count": 59,
+      "prompt": "mixed_ja_en_review"
+    },
+    "rendering": "raw user content only; binding chat-template fixture remains Z1 work",
+    "rows": [
+      {
+        "category": "code",
+        "id": "code_merge_intervals",
+        "ids_sha256": "11e34e7660b887b2aa98f0bf11fe53afdd8f2f492377113c10866a06bf175ba9",
+        "roundtrip": true,
+        "tokens": 28
+      },
+      {
+        "category": "code",
+        "id": "code_topological_sort",
+        "ids_sha256": "58fe38bef04288a32cd5deff7429a69a879c3218885c12439be8e74e9bc50b18",
+        "roundtrip": true,
+        "tokens": 38
+      },
+      {
+        "category": "code",
+        "id": "code_lru_cache",
+        "ids_sha256": "f290715a3af6e23435d6c206b9a5f40eb5d2de64bcfe4feb5c3512c377e4373b",
+        "roundtrip": true,
+        "tokens": 35
+      },
+      {
+        "category": "code",
+        "id": "code_markdown_table",
+        "ids_sha256": "8870e2c352892a6fd52772c99e1e3cf603b91467a50e97a043d5b34ee953b39f",
+        "roundtrip": true,
+        "tokens": 40
+      },
+      {
+        "category": "general_en",
+        "id": "general_en_plan",
+        "ids_sha256": "f6744db6fc7e7038b1601bdc6130b19dda78b764bba48489fe1922fb4a38cc09",
+        "roundtrip": true,
+        "tokens": 27
+      },
+      {
+        "category": "general_en",
+        "id": "general_en_explain",
+        "ids_sha256": "cd811b62845e297389c2bac34290984f733d9269222893c9a7e784edbe31bb02",
+        "roundtrip": true,
+        "tokens": 28
+      },
+      {
+        "category": "general_ja",
+        "id": "general_ja_plan",
+        "ids_sha256": "f90746c899426a1115808a1aa0af8977e042ec03a683bc68494a207de255beec",
+        "roundtrip": true,
+        "tokens": 31
+      },
+      {
+        "category": "general_ja",
+        "id": "general_ja_explain",
+        "ids_sha256": "5c19f97d855ada3cac6e8abb41ad74f3ffc00c415fbca4cb455a318f2702c13b",
+        "roundtrip": true,
+        "tokens": 31
+      },
+      {
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_translate",
+        "ids_sha256": "7862e6beef05a4bab51b5669d2ede4ec811515b086bf58c9f736e06223955eb2",
+        "roundtrip": true,
+        "tokens": 52
+      },
+      {
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_review",
+        "ids_sha256": "09df6a4a0d8c4a0e84d73fff785ee7a6ea3ed4b5fc6deac043d016889624d4a1",
+        "roundtrip": true,
+        "tokens": 59
+      }
+    ]
+  },
+  "schema": 1,
+  "software": {
+    "hipengine_commit": "357e63c967cabb54d64ae87634f0d4d05e802bfd",
+    "inspection_tool": "scripts/inspect_gguf.py",
+    "llama_tokenize": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-tokenize",
+      "sha256": "ff9906e1d0074c07d148360b1fba4974fed34623ecb49cc6120a774dd85d2b2a",
+      "version": "0.1.0-dev build 10415 commit 1d2869c6e"
+    }
+  },
+  "source": {
+    "file_last_commit": "b8efbbece76dc9103a6a45b7ed95b26c3932fc5f",
+    "filename": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "lfs_oid": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "license": "Apache-2.0",
+    "repo": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+    "repo_revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d"
+  },
+  "status": "diagnostic_retained",
+  "timestamp": "2026-08-15T16:47:04Z",
+  "tokenizer": {
+    "add_bos": false,
+    "add_eos": null,
+    "bos_id": 248044,
+    "chat_template_sha256": "55d4931433fe502b794226ee7f4d206a6bdd436ac9f80eb7d8ebb4c639f9ea0c",
+    "eos_id": 248046,
+    "model": "gpt2",
+    "padding_id": 248055,
+    "pre": "qwen35",
+    "vocab_entries": 248320
+  },
+  "verdict": {
+    "admitted_for_zbook_baseline": true,
+    "notes": [
+      "This is the 753-tensor MTP-bearing artifact, not the older 733-tensor non-MTP GGUF with the same basename.",
+      "All 733 required AR tensors map with no missing, unexpected, or shape errors; 20 trailing block-40 tensors are deliberately AR-ignored and available to MTP.",
+      "MTP required tensors are present; optional private embedding/head tensors correctly fall back to target token_embd.weight and output.weight.",
+      "This admission is identity/intake evidence only and contains no speed or generation-quality claim."
+    ],
+    "passed": true
+  }
+}
