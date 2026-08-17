@@ -1637,76 +1637,119 @@ def _run_isolated_reference_worker(
     compiler_version_file: Path | None,
     require_cached_build: bool,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[int, ...]], dict[str, Any]]:
+    specs_by_key: dict[str, list[WorkloadRequest]] = {}
+    for spec in specs:
+        specs_by_key.setdefault(spec.oracle_key, []).append(spec)
+    key_order = tuple(specs_by_key)
+    key_groups = tuple(
+        key_order[offset : offset + 4]
+        for offset in range(0, len(key_order), 4)
+    )
+    merged_prompt_rows: dict[str, dict[str, Any]] = {}
+    merged_reference_tokens: dict[str, tuple[int, ...]] = {}
+    worker_records: list[dict[str, Any]] = []
     with tempfile.TemporaryDirectory(prefix="hipengine-reference-") as directory:
         root = Path(directory)
-        specs_path = root / "specs.json"
-        output_path = root / "oracle.json"
-        specs_path.write_text(
-            json.dumps([asdict(spec) for spec in specs], allow_nan=False),
-            encoding="utf-8",
-        )
-        command = [
-            sys.executable,
-            str(REPO_ROOT / "scripts/gguf_reference_oracle_worker.py"),
-            "--model",
-            str(model),
-            "--backend",
-            str(backend),
-            "--max-active-requests",
-            str(int(max_active_requests)),
-            "--max-sequence-length",
-            str(int(max_sequence_length)),
-            "--max-output-tokens",
-            str(int(max_output_tokens)),
-            "--specs-json",
-            str(specs_path),
-            "--output-json",
-            str(output_path),
-        ]
-        if compiler_version_file is not None:
-            command.extend(
-                ["--compiler-version-file", str(compiler_version_file)]
+        for worker_index, keys in enumerate(key_groups):
+            worker_specs = tuple(
+                spec
+                for key in keys
+                for spec in specs_by_key[key]
             )
-        if require_cached_build:
-            command.append("--require-cached-build")
-        child_env = dict(os.environ)
-        child_env["PYTHONPATH"] = str(REPO_ROOT)
-        completed = subprocess.run(
-            command,
-            cwd=REPO_ROOT,
-            env=child_env,
-            text=True,
-            capture_output=True,
-            timeout=1200.0,
-            check=False,
-        )
-        if completed.stderr:
-            print(completed.stderr, file=sys.stderr, end="", flush=True)
-        if completed.returncode != 0 or not output_path.is_file():
-            raise RuntimeError(
-                "isolated reference worker failed: "
-                f"returncode={completed.returncode} stdout={completed.stdout[-2000:]!r} "
-                f"stderr={completed.stderr[-2000:]!r}"
+            specs_path = root / f"specs-{worker_index}.json"
+            output_path = root / f"oracle-{worker_index}.json"
+            specs_path.write_text(
+                json.dumps(
+                    [asdict(spec) for spec in worker_specs],
+                    allow_nan=False,
+                ),
+                encoding="utf-8",
             )
-        payload = json.loads(output_path.read_text(encoding="utf-8"))
-    prompt_rows = {
-        str(key): {
-            **row,
-            "token_ids": tuple(int(token) for token in row["token_ids"]),
-        }
-        for key, row in payload["prompt_rows"].items()
-    }
-    reference_tokens = {
-        str(key): tuple(int(token) for token in tokens)
-        for key, tokens in payload["reference_tokens"].items()
-    }
+            command = [
+                sys.executable,
+                str(REPO_ROOT / "scripts/gguf_reference_oracle_worker.py"),
+                "--model",
+                str(model),
+                "--backend",
+                str(backend),
+                "--max-active-requests",
+                str(int(max_active_requests)),
+                "--max-sequence-length",
+                str(int(max_sequence_length)),
+                "--max-output-tokens",
+                str(int(max_output_tokens)),
+                "--specs-json",
+                str(specs_path),
+                "--output-json",
+                str(output_path),
+            ]
+            if compiler_version_file is not None:
+                command.extend(
+                    ["--compiler-version-file", str(compiler_version_file)]
+                )
+            if require_cached_build:
+                command.append("--require-cached-build")
+            child_env = dict(os.environ)
+            child_env["PYTHONPATH"] = str(REPO_ROOT)
+            completed = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                env=child_env,
+                text=True,
+                capture_output=True,
+                timeout=1200.0,
+                check=False,
+            )
+            if completed.stderr:
+                print(completed.stderr, file=sys.stderr, end="", flush=True)
+            if completed.returncode != 0 or not output_path.is_file():
+                raise RuntimeError(
+                    f"isolated reference worker {worker_index} failed: "
+                    f"returncode={completed.returncode} "
+                    f"stdout={completed.stdout[-2000:]!r} "
+                    f"stderr={completed.stderr[-2000:]!r}"
+                )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            overlap = set(merged_prompt_rows) & set(payload["prompt_rows"])
+            if overlap:
+                raise RuntimeError(
+                    f"isolated reference workers returned duplicate keys: {sorted(overlap)!r}"
+                )
+            merged_prompt_rows.update(
+                {
+                    str(key): {
+                        **row,
+                        "token_ids": tuple(
+                            int(token) for token in row["token_ids"]
+                        ),
+                    }
+                    for key, row in payload["prompt_rows"].items()
+                }
+            )
+            merged_reference_tokens.update(
+                {
+                    str(key): tuple(int(token) for token in tokens)
+                    for key, tokens in payload["reference_tokens"].items()
+                }
+            )
+            worker_records.append(
+                {
+                    "worker_index": int(worker_index),
+                    "oracle_keys": list(keys),
+                    "command": command,
+                    "returncode": int(completed.returncode),
+                }
+            )
+    if set(merged_prompt_rows) != set(key_order):
+        raise RuntimeError("isolated reference worker key coverage drift")
     metadata = {
-        "command": command,
-        "returncode": int(completed.returncode),
         "process_isolated": True,
-        "oracle_rows": len(reference_tokens),
+        "max_oracle_keys_per_process": 4,
+        "worker_processes": len(worker_records),
+        "workers": worker_records,
+        "oracle_rows": len(merged_reference_tokens),
     }
-    return prompt_rows, reference_tokens, metadata
+    return merged_prompt_rows, merged_reference_tokens, metadata
 
 
 def _reconfigure_loaded_loop(
