@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_6_long_load_gate",
+  "status": "blocked",
+  "passed": false,
+  "performance_claim": false,
+  "created_at": "2026-08-17T02:25:00Z",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "rocm": "7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "scheduler": {
+    "policy": "token_budget",
+    "prefill_chunk_tokens": 1024,
+    "global_pool": true,
+    "shared_slot_physical_widths": [1, 2]
+  },
+  "accepted_evidence": {
+    "broad_long_context_before_focused_repairs": {
+      "source_commit": "faf74c1f2",
+      "command": "python3 scripts/gguf_long_context_pressure_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --decode-tokens 32 --longer-context-tokens 65536 --max-active-requests 3 --prefill-chunk-tokens 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --request-timeout-seconds 1200 --idle-timeout-seconds 180 --json /tmp/hipengine-c2-6-global-long-context-complete.json",
+      "results": {
+        "context_1k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 36.986477},
+        "context_4k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 14.831881},
+        "context_32k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 1.437059},
+        "context_64k_c2": {"exact": "2/2", "passed": true, "exact_generated_tokens_per_second": 0.504083},
+        "graph_seed_32k_c1": {"exact": "1/1", "passed": true, "exact_generated_tokens_per_second": 1.397374}
+      },
+      "repair_policy": "completed broad nodes retained; only failed mixed/pressure nodes rerun"
+    },
+    "mixed_context_focused": {
+      "source_commit": "9c6410134",
+      "artifact": "/tmp/hipengine-c2-6-global-mixed-focused-eager-edge.json",
+      "exact": "3/3",
+      "contexts": [1024, 4096, 32768],
+      "route": ["packed_native", "native_c1_eager"],
+      "all_slos_passed": true,
+      "exact_generated_tokens_per_second": 3.705316805224394
+    },
+    "pressure_and_graph_focused": {
+      "source_commit": "821e33f54",
+      "artifact": "/tmp/hipengine-c2-6-global-pressure-graph-focused-fair.json",
+      "pressure": {
+        "survivor_32k_exact": true,
+        "candidate_4k_status": 429,
+        "candidate_code": "engine_busy",
+        "requested_pages": 17,
+        "current_pages": 134,
+        "capacity_pages": 134
+      },
+      "page_table": {
+        "before": "0..128",
+        "after": "5..133",
+        "changed": true
+      },
+      "graph_lifecycle": {"captures": 4, "replays": 100, "invalidations": 4},
+      "blocker_1k_max_itl_seconds": 0.8032026551663876,
+      "final_pool": {"current_pages": 134, "free_pages": 134, "refcounted_pages": 0, "pinned_pages": 0, "grow_failures": 1},
+      "final_ownership_passed": true
+    },
+    "production_static": {
+      "static_c1": {
+        "source_commit": "821e33f54",
+        "artifact": "/tmp/hipengine-c2-6-production-static-c1-isolation.json",
+        "exact": "1/1",
+        "all_slos_passed": true,
+        "final_ownership_passed": true
+      },
+      "static_c8": {
+        "source_commit": "eb2d669d1",
+        "artifact": "/tmp/hipengine-c2-6-production-static-c8-eager-groups.json",
+        "exact": "8/8",
+        "all_slos_passed": true,
+        "qualifying_generated_tokens_per_second": 55.81316859975822,
+        "route": ["packed_native", "native_c1_eager"],
+        "final_ownership_passed": true
+      }
+    },
+    "host_gates": {
+      "fixed_ragged_burst_poisson_overload_disconnect_soak": "passed",
+      "logical_widths_1_through_32": "passed",
+      "resource_accounting_4k_16k_32k": "passed",
+      "graph_prefix_eviction_slot_reuse": "passed",
+      "final_conservation": "passed"
+    }
+  },
+  "blocked_campaign": {
+    "command": "python3 scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/hipengine-c2-6-global-production-load-complete-*.json",
+    "required_modes": ["scheduler tuning", "static", "ragged", "fixed", "Poisson", "cancellation", "disconnect", "40-request overload", "idle recovery", "60-second soak"],
+    "failure": "repeated ROCm GPU page fault during high-count exact-oracle ownership/teardown before tuning",
+    "observed_fault": "Memory access fault by GPU node-1: Page not present or supervisor privilege",
+    "repetitions": 5,
+    "focused_isolation": "static_c1 and static_c8 pass; 13-key oracle generation completes but teardown/handoff faults; process isolation and 4/4/4/1 partitioning did not restore a stable measured owner after repeated GPU faults",
+    "artifact_written_by_campaign": false
+  },
+  "availability": {
+    "gfx1151": "unavailable on host",
+    "vllm": "not installed",
+    "sglang": "not installed",
+    "llamacpp_hip": "binary available but matched rerun stopped after local production campaign became hardware-unstable"
+  },
+  "decision": {
+    "retain_global_native_short_default": true,
+    "close_c2_6_implementation": true,
+    "promote_complete_production_load_claim": false,
+    "close_c2_6_product_gate": false,
+    "continue_to_c2_7_host_implementation": true,
+    "required_future_rerun": "fresh stable ROCm generation: canonical production packet, gfx1151, and available external comparisons"
+  }
+}

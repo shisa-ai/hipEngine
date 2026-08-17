@@ -61,10 +61,14 @@ C2-6 is no longer blocked at the gfx1100 short-request adapter boundary. The
 W7900 exact-file Qwen3.6-35B-A3B BF16-KV global-pool route is exact at p128/d8
 for logical c1/c2/c4/c8/c17/c32 and exact under c17 live refill. Registered
 shared-slot physical c2 improves matched exact c8 aggregate HTTP wall by 29.68%
-over serial c1, while final active/refcounted/pinned ownership is zero. The
-broader C2-6 milestone remains open for model-executed 4K/16K/32K, graph/prefix
-page-change, SLO/soak, gfx1151, and available external gates. See
-[`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
+over serial c1, while final active/refcounted/pinned ownership is zero. Actual
+c2 1K/4K/32K/64K, mixed 1K/4K/32K, isolated pressure, and changed-page graph
+replay also pass; the fixed pool drains exactly. C2-6 product closure remains
+blocked because the canonical tuning/load/40-request-overload/soak campaign
+repeatedly triggers a ROCm page fault during high-count oracle ownership before
+measured load. gfx1151 and external gates remain unavailable/unrun. See
+[`short global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
+and [`long/load blocked`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 
 ## Executive decision
 

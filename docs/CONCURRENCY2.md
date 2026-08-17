@@ -1142,7 +1142,7 @@ new round planner from silently violating an old model-state lifecycle.
 
 ### C2-6 — graphs, long context, and production load
 
-- [ ] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
+- [x] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
 - [ ] Qualify 4K/16K/32K and model-supported long-context mixed membership under
       real resource accounting.
 - [ ] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
@@ -1191,6 +1191,23 @@ accepted serial fallback
 [`2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json),
 and promoted global/native packet
 [`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
+
+The subsequent actual long-context campaign passes exact c2 1K/4K/32K/64K,
+exact mixed 1K/4K/32K, and changed-page graph replay. Under a 134-page global
+generation, an exact 32K survivor coexists with an isolated retryable 4K
+rejection; regrow changes its table from pages `0..128` to `5..133`, records
+**4 captures / 100 replays / 4 invalidations**, bounds the 1K blocker's max ITL
+at **0.803 s**, and drains all 134 pages with zero refs/pins. Static production
+c1/c8 also pass exactness, SLO, route, memory, and ownership gates.
+
+The canonical tuning + ragged/fixed/Poisson/cancel/disconnect/40-request
+overload/soak packet remains **blocked**: repeated high-count oracle campaigns
+trigger a ROCm GPU page fault before tuning, despite successful static focused
+runs and process/owner isolation. Host versions of every load mode pass, but no
+complete product-load/default claim is made. gfx1151 and vLLM/SGLang remain
+unavailable; the available llama.cpp comparison was stopped after the local GPU
+generation became unstable. Evidence:
+[`2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 
 ### C2-7 — FastDMS topology and codec composition
 
