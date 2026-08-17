@@ -18744,6 +18744,16 @@ class Qwen35GGUFResidentSession:
         """Run bounded packed prefill and release every transient BF16 oracle."""
 
         session_tuple = (self,) if sessions is None else tuple(sessions)
+        # A deferred packed decode may still hold canonical state in the
+        # shared packed slots. Prefill reuses those slots, so scatter the
+        # state back to its sessions first; otherwise the decode rows lose
+        # their recurrent/KV state and later steps sample garbage.
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            if not self.flush_packed_decode_state():
+                raise RuntimeError(
+                    "packed prefill could not flush deferred packed decode"
+                    " state before reusing the packed workspace slots"
+                )
         try:
             return self._prefill_batch_native_impl(
                 prompt_token_ids,

@@ -7211,7 +7211,15 @@ class Qwen35GGUFResidentModelRunner:
             flush_owner = getattr(execution_owner, "flush_packed_decode_state", None)
             if not callable(flush_owner) or not bool(flush_owner()):
                 raise RuntimeError(
-                    "GGUF shared packed owner could not flush a changed session tuple"
+                    "GGUF shared packed owner could not flush a changed session"
+                    " tuple (dirty="
+                    f"{bool(getattr(execution_owner, '_packed_decode_state_dirty', False))}"
+                    ", state="
+                    f"{getattr(execution_owner, '_packed_verify_state', None) is not None}"
+                    ", layout="
+                    f"{getattr(execution_owner, '_packed_decode_last_layout', None) is not None}"
+                    f", recorded_sessions={len(owner_sessions)}"
+                    f", expected_sessions={len(expected_session_tuple)})"
                 )
         graphs = {
             id(graph): graph
