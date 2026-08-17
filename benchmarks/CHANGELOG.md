@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-17
 
+- [Concurrency2 executable completion audit; no performance claim] C2-0 through C2-8: verify **27 passed / 7 blocked / 1 unavailable** roadmap/definition rows with zero missing evidence; implementation spans every phase, while canonical C2-6 load/external/default and DMS checkpoint/HIP/product conformance remain explicitly open, so no full-product claim is made; `benchmarks/results/2026-08-17-concurrency2-completion-audit.json`.
+
 - [Concurrency2 C2-8 optional tier host gate; no model performance claim] hot dense BF16 + KVTC-style host/NVMe: fingerprinted checksummed objects, cache/workspace ledger claims, tenant quotas, pin-aware LRU, atomic offload/restore rollback, corruption rejection, and final drain pass; synthetic 1 MiB median restore is **1.203 ms** versus **8.967 ms** recompute proxy, but the repeated payload is non-representative and tiering remains default-off; `benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json`.
 
 - [blocked Concurrency2 C2-7 DMS product gate; host backend retained] compact DMS / BF16 + fixture-qualified INT8: strict retrofit metadata, atomic per-layer/head extents, no-shadow pack, variable spans, transactional append, grouped CPU attention, c1/c2/c4/c8/c16/c32, pressure/fragmentation/drain, and codec-neutral scheduler lifecycle pass; exact Qwen3.6 has no retrofit and HIP correctness/rocprof cannot run on the unstable GPU generation, so no model quality/device savings/performance claim; `benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json`.

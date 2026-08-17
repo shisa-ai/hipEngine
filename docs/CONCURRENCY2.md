@@ -1425,25 +1425,32 @@ oracle in `CONCURRENCY.md` and retained benchmark artifacts.
 Generation 2 is complete for a model/hardware/KV-cache-backend combination only
 when:
 
-- [ ] one engine service owns all blocking, SSE, and library child requests;
-- [ ] independent terminal publication/reclaim removes the head-of-line barrier;
-- [ ] one format-neutral resource ledger governs atomic admission and pressure;
-- [ ] all compatible requests share one backend-declared global pool set;
-- [ ] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
+- [x] one engine service owns all blocking, SSE, and library child requests;
+- [x] independent terminal publication/reclaim removes the head-of-line barrier;
+- [x] one format-neutral resource ledger governs atomic admission and pressure;
+- [x] all compatible requests share one backend-declared global pool set;
+- [x] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
       evictable;
-- [ ] logical resident concurrency is independent of physical kernel width;
+- [x] logical resident concurrency is independent of physical kernel width;
 - [ ] the width/load/overload/lifecycle matrices pass through c32;
-- [ ] c1 retains its direct route and c=N beats honest old/serial baselines under
+- [x] c1 retains its direct route and c=N beats honest old/serial baselines under
       declared SLOs;
-- [ ] graph, pool, state, collectors, and completion ownership drain cleanly;
+- [x] graph, pool, state, collectors, and completion ownership drain cleanly;
 - [ ] the common conformance suite passes for dense BF16 and a format-distinct
       compact backend without scheduler/frontend forks;
-- [ ] replacing topology/codec/tier requires only a registered backend,
+- [x] replacing topology/codec/tier requires only a registered backend,
       artifacts, pool/storage plans, and kernels—not a new concurrency path;
-- [ ] documentation, artifacts, and telemetry disclose exact routes and memory.
+- [x] documentation, artifacts, and telemetry disclose exact routes and memory.
 
 DMS is complete only after the same list passes with compact allocator-visible
 storage, DMS checkpoint quality gates, per-head live-span accounting, and no
 dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
+
+The executable completion audit currently records **27 passed, 7 blocked, and 1
+unavailable** rows with no missing evidence. The thread implementation spans
+C2-0 through C2-8, but the product goal is not complete: canonical C2-6 load,
+actual 16K/external/default closure, and DMS HIP/checkpoint conformance remain
+open. See
+[`2026-08-17-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).

@@ -1078,7 +1078,7 @@ normative scheduler/backend boundary is
 
 #### `KVLiveSpans` — the fundamental kernel interface
 
-Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it. `num_seqs` is intentionally a row count: it can mean active decode requests (`C`), prefill chunks, or speculative verification rows (`V`). Stable request identity remains scheduler metadata, not an implicit row index. The liveness object references a registered `KVStorageView`; quantizer planes and reconstruction rules do not become scheduler fields.
+Every attention / paged-KV-write kernel takes a `KVLiveSpans` instead of the classic `(block_table, context_len)` tuple. Uniform policies fill it the same for every head; DMS varies it. `num_seqs` is intentionally a row count: it can mean active decode requests (`C`), prefill chunks, or speculative verification rows (`V`). Stable request identity remains scheduler metadata, not an implicit row index. `KVBatchView` pairs liveness with a registered `KVStorageView`; quantizer planes and reconstruction rules do not become scheduler fields.
 
 ```python
 # hipengine/kvcache/spans.py
@@ -1098,8 +1098,10 @@ class KVLiveSpans:
     request_ids:     Tensor | None   # [num_seqs] int64 — stable scheduler ids for row ownership
     row_positions:   Tensor | None   # [num_seqs] int32 — decode/verify query or write positions
     span_role:       str             # "prefill", "decode", "verify_chain", "verify_tree"
-    storage_view:    KVStorageView   # registered layout key + stable payload/metadata planes
 ```
+
+`KVBatchView` pairs this liveness object with the registered `KVStorageView` and
+kernel bundle; storage is not embedded into `KVLiveSpans`.
 
 #### `KVCacheBackend` protocol
 
@@ -1126,9 +1128,12 @@ class KVCacheBackend(Protocol):
 `ResourceClaimSet` atomically accounts named persistent planes, resident
 metadata, prefill/attention/maintenance workspace, transactions, graph slabs,
 and whole-device reserve. `KVBatchView` combines `KVLiveSpans`, a registered
-`KVStorageView`, and the matching kernel bundle. The existing
-`KVPolicy`/`FixedPagedKVPolicy` is a compatibility adapter while C2 lands; scalar
-`admission_cap()` is not the final scheduler contract.
+`KVStorageView`, and the matching kernel bundle. `GlobalKVPoolSet`, dense
+BF16/qualified INT8, compact-DMS host composition, and optional cold tiering are
+implemented; `KVPolicy`/`FixedPagedKVPolicy` remains only a compatibility
+adapter for unported packages. Scalar `admission_cap()` is not the scheduler
+contract. Product blockers and exact evidence are tracked by the executable
+[`CONCURRENCY2` audit](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).
 
 Example resolved compositions include `paged_dense+bf16`,
 `paged_dense+int8_per_token_head`, `sliding_sink+bf16`, `dms_compact+bf16`,
