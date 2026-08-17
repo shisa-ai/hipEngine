@@ -403,16 +403,21 @@ def _server_execution_profile(
             "requested": requested,
             "resolved": None,
             "manifest_sha256": None,
+            "strict_manifest_sha256": None,
             "fell_back_to_strict": None,
             "migration_default_preserved": requested is None,
         }
     resolved = getattr(engine, "resolved_execution_profile", requested)
     manifest_hash = getattr(engine, "execution_profile_manifest_sha256", None)
+    strict_manifest_hash = getattr(
+        engine, "execution_profile_strict_manifest_sha256", None
+    )
     fell_back = getattr(engine, "execution_profile_fell_back_to_strict", None)
     return {
         "requested": requested,
         "resolved": resolved,
         "manifest_sha256": manifest_hash,
+        "strict_manifest_sha256": strict_manifest_hash,
         "fell_back_to_strict": fell_back,
         "migration_default_preserved": resolved is None,
     }

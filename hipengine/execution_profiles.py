@@ -89,6 +89,7 @@ class ResolvedRuntimeProfile:
     profile: ExecutionProfile
     manifest: Mapping[str, Any]
     manifest_sha256: str
+    strict_manifest_sha256: str
     factory: Callable[..., Any] | None
     binder: Callable[[Any, "ResolvedRuntimeProfile"], None] | None
     fell_back_to_strict: bool
@@ -109,6 +110,7 @@ class ResolvedRuntimeProfile:
             ("execution_profile", self.profile.value),
             ("execution_profile_manifest", self.manifest),
             ("execution_profile_manifest_sha256", self.manifest_sha256),
+            ("execution_profile_strict_manifest_sha256", self.strict_manifest_sha256),
             ("execution_profile_fell_back_to_strict", self.fell_back_to_strict),
         ):
             existing = getattr(generator, name, None)
@@ -485,6 +487,16 @@ def resolve_runtime_profile(
             "no strict execution-profile plan registered for "
             f"({model_key}, {backend_key}, {quant_key})"
         )
+    strict_manifest = build_variant_manifest(
+        profile=ExecutionProfile.STRICT,
+        backend=backend_key,
+        model=model_key,
+        quant=quant_key,
+        kv_policy=strict_plan.kv_policy,
+        graph_policy=strict_plan.graph_policy,
+        selections=strict_plan.selections,
+    )
+    strict_manifest_hash = manifest_sha256(strict_manifest)
     requested_plan = _RUNTIME_PROFILE_PLANS.get(
         RuntimeProfileKey(
             model=model_key,
@@ -517,6 +529,7 @@ def resolve_runtime_profile(
         profile=requested,
         manifest=_freeze_json(manifest),
         manifest_sha256=manifest_sha256(manifest),
+        strict_manifest_sha256=strict_manifest_hash,
         factory=source_plan.factory,
         binder=source_plan.binder,
         fell_back_to_strict=fell_back,

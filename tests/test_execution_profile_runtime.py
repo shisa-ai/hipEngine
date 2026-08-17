@@ -306,10 +306,18 @@ def test_llm_explicit_profile_constructs_from_resolved_plan_without_changing_leg
     assert production.resolved_execution_profile == "production"
     assert production.execution_profile_manifest["execution_profile"] == "production"
     assert len(production.execution_profile_manifest_sha256) == 64
+    assert len(production.execution_profile_strict_manifest_sha256) == 64
+    assert (
+        production.execution_profile_strict_manifest_sha256
+        != production.execution_profile_manifest_sha256
+    )
     assert production.execution_profile_fell_back_to_strict is True
     assert production._text_generator.execution_profile == "production"
     assert production._text_generator.execution_profile_manifest_sha256 == (
         production.execution_profile_manifest_sha256
+    )
+    assert production._text_generator.execution_profile_strict_manifest_sha256 == (
+        production.execution_profile_strict_manifest_sha256
     )
     assert production._text_generator._inner.execution_profile == "production"
     assert production._text_generator.execution_profile_fell_back_to_strict is True
