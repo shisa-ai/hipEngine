@@ -1172,11 +1172,19 @@ per-call host timing during eager decode:
 
 ### PN7 — Optional exact MTP follow-up
 
-- [ ] Start only after the AR verdict.
-- [ ] Use clean same-host true AR denominator.
-- [ ] Run full train/heldout/category suite and exact transaction oracle.
-- [ ] Repeat adaptive B2/B3 brackets before changing any cap.
-- [ ] Keep MTP/default and AR/default decisions separate.
+> **Deferred to a separate MTP unit (out of scope for this AR campaign).**
+> MTP is an independent speculative/economics lane with its own run tag and
+> artifact family; its numbers never form an AR candidate denominator. The AR
+> verdict (P3-LAQ1-B rejected, c1 no-win) is recorded, so a future MTP unit
+> may start from this state, but it is not part of this production-numerics
+> AR punchlist.
+
+- [x] N/A (separate MTP unit, deferred) — start after the AR verdict (recorded).
+- [x] N/A (separate MTP unit, deferred) — clean same-host true AR denominator.
+- [x] N/A (separate MTP unit, deferred) — full train/heldout/category suite.
+- [x] N/A (separate MTP unit, deferred) — repeat adaptive B2/B3 brackets.
+- [x] N/A (separate MTP unit, deferred) — keep MTP/default and AR/default
+      decisions separate.
 
 ### PN8 — Closure
 
