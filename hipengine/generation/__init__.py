@@ -114,6 +114,11 @@ def register_builtin_generators() -> None:
     from hipengine.generation import maple as _maple  # noqa: F401
     from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
     from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
+    from hipengine.generation.qwen36_gguf_profiles import (
+        register_qwen36_gguf_gfx1151_profiles,
+    )
+
+    register_qwen36_gguf_gfx1151_profiles()
 
     _BUILTINS_REGISTERED = True
 
