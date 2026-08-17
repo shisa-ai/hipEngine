@@ -1525,8 +1525,20 @@ class ResidentEngineLoop:
             raise ValueError(
                 "token_budget round_decode_row_budget must cover resident capacity"
             )
+        resource_fields = (
+            "kv_pool_initial_pages",
+            "kv_pool_low_water_pages",
+            "kv_pool_high_water_pages",
+            "kv_pool_chunk_pages",
+            "kv_pool_idle_grace_seconds",
+            "prefix_cache",
+        )
+        resource_changed = any(
+            getattr(self.config, field_name) != getattr(config, field_name)
+            for field_name in resource_fields
+        )
         configure_runner = getattr(self.runner, "configure_engine_loop", None)
-        if callable(configure_runner):
+        if resource_changed and callable(configure_runner):
             configure_runner(config)
         self.config = config
         self.prefill_chunk_size = int(config.max_prefill_chunk_tokens)

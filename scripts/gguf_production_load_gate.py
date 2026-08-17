@@ -1626,6 +1626,27 @@ def _parse_workload_names(
     return names
 
 
+def _reconfigure_loaded_loop(
+    llm: LLM,
+    adapter: Any,
+    *,
+    policy: str,
+    prefill_chunk_tokens: int,
+    fair_prefill_burst_chunks: int,
+) -> None:
+    config = replace(
+        adapter._loop.config,
+        prefill_decode_policy=str(policy),
+        max_prefill_chunk_tokens=int(prefill_chunk_tokens),
+        fair_prefill_burst_chunks=int(fair_prefill_burst_chunks),
+    )
+    loaded_driver = llm._get_text_generator()
+    reconfigure = getattr(loaded_driver, "reconfigure_engine_loop", None)
+    if not callable(reconfigure):
+        raise RuntimeError("loaded engine service cannot serialize loop reconfiguration")
+    reconfigure(config)
+
+
 def _parse_tuning_candidates(raw: str) -> tuple[tuple[str, int], ...]:
     result: list[tuple[str, int]] = []
     for item in str(raw).split(","):
@@ -1952,14 +1973,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 for repetition, plan in (() if args.skip_tuning else enumerate(tuning_plans)):
                     for order_index, configuration in enumerate(plan):
-                        adapter._loop.prefill_decode_policy = str(
-                            configuration.prefill_decode_policy
-                        )
-                        adapter._loop.prefill_chunk_size = int(
-                            configuration.prefill_chunk_tokens
-                        )
-                        adapter._loop.fair_prefill_burst_chunks = int(
-                            configuration.fair_prefill_burst_chunks
+                        _reconfigure_loaded_loop(
+                            llm,
+                            adapter,
+                            policy=configuration.prefill_decode_policy,
+                            prefill_chunk_tokens=configuration.prefill_chunk_tokens,
+                            fair_prefill_burst_chunks=(
+                                configuration.fair_prefill_burst_chunks
+                            ),
                         )
                         batcher._batch_window_seconds = (
                             float(configuration.batch_window_ms) / 1000.0
@@ -2040,10 +2061,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     except ValueError as exc:
                         selection_error = str(exc)
                 if selected is not None:
-                    adapter._loop.prefill_decode_policy = selected.prefill_decode_policy
-                    adapter._loop.prefill_chunk_size = selected.prefill_chunk_tokens
-                    adapter._loop.fair_prefill_burst_chunks = int(
-                        selected.fair_prefill_burst_chunks
+                    _reconfigure_loaded_loop(
+                        llm,
+                        adapter,
+                        policy=selected.prefill_decode_policy,
+                        prefill_chunk_tokens=selected.prefill_chunk_tokens,
+                        fair_prefill_burst_chunks=selected.fair_prefill_burst_chunks,
                     )
                     batcher._batch_window_seconds = (
                         float(selected.batch_window_ms) / 1000.0

@@ -6976,6 +6976,13 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
     assert len([call for call in calls if call[0] == "step"]) == 1
 
 
+def test_shared_slot_runner_declares_same_round_prefill_decode_only() -> None:
+    runner_type = qwen35_gguf.Qwen35GGUFResidentModelRunner
+
+    assert runner_type.supports_prefill_decode_same_round is True
+    assert runner_type.supports_multiple_prefill_quanta_per_round is False
+
+
 def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

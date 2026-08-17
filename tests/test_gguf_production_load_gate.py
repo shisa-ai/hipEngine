@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
+
+from hipengine.generation import EngineLoopConfig
 
 from scripts.gguf_production_load_gate import (
     RequestResult,
@@ -21,6 +25,7 @@ from scripts.gguf_production_load_gate import (
     _occupancy_summary,
     _parse_workload_names,
     _poisson_arrival_offsets,
+    _reconfigure_loaded_loop,
     _rotated_tuning_plan,
     _select_tuning_candidate,
     _wait_for_idle,
@@ -51,6 +56,32 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["p99"] == pytest.approx(99.0)
     assert summary["min"] == pytest.approx(1.0)
     assert summary["max"] == pytest.approx(100.0)
+
+
+def test_tuning_reconfiguration_uses_loaded_driver_control() -> None:
+    observed: list[EngineLoopConfig] = []
+    driver = SimpleNamespace(
+        reconfigure_engine_loop=lambda config: observed.append(config)
+    )
+    llm = SimpleNamespace(_get_text_generator=lambda: driver)
+    adapter = SimpleNamespace(
+        _loop=SimpleNamespace(
+            config=EngineLoopConfig(max_active_requests=8),
+        )
+    )
+
+    _reconfigure_loaded_loop(
+        llm,
+        adapter,
+        policy="token_budget",
+        prefill_chunk_tokens=256,
+        fair_prefill_burst_chunks=2,
+    )
+
+    assert len(observed) == 1
+    assert observed[0].prefill_decode_policy == "token_budget"
+    assert observed[0].max_prefill_chunk_tokens == 256
+    assert observed[0].fair_prefill_burst_chunks == 2
 
 
 def test_wait_for_idle_tolerates_long_transition_control_timeout() -> None:
