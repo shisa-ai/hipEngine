@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-16**
+Last updated: **2026-08-17**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -148,6 +148,9 @@ pass, but the canonical full-load campaign is blocked by a repeated ROCm fault
 during high-count oracle ownership; no complete load or gfx1151 claim is made.
 Evidence: [`global/native packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
 and [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
+The executable Generation-2 audit currently reports **27 passed / 7 blocked /
+1 unavailable** requirements with no missing evidence; full product completion
+is not claimed. [`Audit artifact`](results/2026-08-17-concurrency2-completion-audit.json).
 
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained

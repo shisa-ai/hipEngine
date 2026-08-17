@@ -40,6 +40,20 @@ should be removed or collapsed.
   same-backing admission/identity branches, and compatibility-only fixtures.
   Keep a separately registered unfused/serial numerical fallback as required.
 
+## C2-6 production oracle process-partition seam
+
+- Added 2026-08-17 after repeated W7900 page faults when a 13-key exact-oracle
+  campaign handed the same HIP generation to measured serving. The production
+  load harness can partition oracle keys into isolated workers, verify merged
+  token digests, and start a separate measured owner. This is benchmark
+  containment, not runtime serving architecture.
+- The current GPU generation remained unstable even after 4/4/4/1 partitioning,
+  so the canonical packet is blocked and the worker path is retained only for a
+  fresh-generation rerun/bisection.
+- Removal trigger: after the canonical clean-source production packet completes
+  twice without an oracle teardown/handoff fault, collapse to the simplest
+  stable independent-oracle protocol and remove abandoned worker variants.
+
 ## Generation-1 prefill/decode policy compatibility choices
 
 - Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling
