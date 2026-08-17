@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -75,34 +74,26 @@ def run(args: argparse.Namespace) -> None:
             session.close()
             raise
         reference_tokens[key] = [int(token) for token in result.generated_tokens]
-        is_last = index == len(ordered_rows)
-        if is_last:
-            args.output_json.write_text(
-                json.dumps(
-                    {
-                        "schema": 1,
-                        "prompt_rows": serializable_rows,
-                        "reference_tokens": reference_tokens,
-                    },
-                    indent=2,
-                    allow_nan=False,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-        else:
-            session.close()
+        session.close()
         print(
             f"reference {index}/{len(ordered_rows)}: {key}",
             file=sys.stderr,
             flush=True,
         )
-        if is_last:
-            # The worker owns this complete HIP generation. Exit before final
-            # diagnostic session teardown can race queued device completion;
-            # process teardown releases all oracle allocations atomically.
-            os._exit(0)
-    raise AssertionError("oracle worker did not process any rows")
+    args.output_json.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "prompt_rows": serializable_rows,
+                "reference_tokens": reference_tokens,
+            },
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    llm.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -122,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     run(args)
-    raise AssertionError("oracle worker returned without exiting")
+    return 0
 
 
 if __name__ == "__main__":
