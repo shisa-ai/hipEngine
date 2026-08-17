@@ -7501,6 +7501,11 @@ class Qwen35GGUFResidentModelRunner:
             self._close_c1_decode_graph(row)
             return slot.session.step(int(slot.prev_token), return_logits=False)
         graph = slot.c1_decode_graph
+        if graph is not None and bool(getattr(graph, "closed", False)):
+            # A shared-buffer growth invalidated this graph; fall back to the
+            # eager step and let the next eligible round re-capture.
+            slot.c1_decode_graph = None
+            graph = None
         if graph is None:
             minimum_fn = getattr(slot.session, "decode_graph_min_replay_steps", None)
             minimum = minimum_fn() if callable(minimum_fn) else None

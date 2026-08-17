@@ -21145,18 +21145,25 @@ class Qwen35GGUFResidentSession:
         if views:
             sessions.extend(views)
         closed = 0
+        candidates: list[object] = []
         for session in sessions:
-            for graph in tuple(getattr(session, "_decode_graphs", ())):
-                if bool(getattr(graph, "closed", False)):
-                    continue
-                close = getattr(graph, "close", None)
-                if not callable(close):
-                    raise RuntimeError(
-                        "cannot resize the packed verify workspace: a live"
-                        " packed decode graph exposes no close()"
-                    )
-                close()
-                closed += 1
+            candidates.extend(getattr(session, "_decode_graphs", ()))
+            handles = getattr(session, "_device_kv_graph_handles", None)
+            if isinstance(handles, dict):
+                candidates.extend(handles.values())
+        seen: set[int] = set()
+        for graph in candidates:
+            if id(graph) in seen or bool(getattr(graph, "closed", False)):
+                continue
+            seen.add(id(graph))
+            close = getattr(graph, "close", None)
+            if not callable(close):
+                raise RuntimeError(
+                    "cannot resize the packed verify workspace: a live"
+                    " decode graph exposes no close()"
+                )
+            close()
+            closed += 1
         return closed
 
     def _packed_verify_union_geometry(
@@ -21499,6 +21506,15 @@ class Qwen35GGUFResidentSession:
         can_reuse = (
             self._packed_decode_session_ids == session_ids
             and len(prior_positions) == len(sessions)
+            # Import reuse additionally requires a consistent recorded
+            # session tuple; anything that discarded deferred state cleared
+            # it, and reusing across a private-slot reuse would attend over
+            # the wrong occupant's KV.
+            and tuple(
+                0 if session is None else id(session)
+                for session in self._packed_decode_sessions
+            )
+            == session_ids
         )
         cfg = self.runner.weights.config
         imported_slot_indices: list[int] = []
@@ -21879,11 +21895,15 @@ class Qwen35GGUFResidentSession:
         if not self._packed_decode_sessions:
             # A packed prefill slab reused the slots after this deferred
             # state was created, discarding its recipient sessions. There is
-            # nothing left to scatter; clear the stale bookkeeping so the
-            # next decode round re-gathers state through its initial-state
-            # sync instead of wedging every caller that tries to flush.
+            # nothing left to scatter; clear the stale bookkeeping --
+            # including the import-reuse tokens, or a later round with the
+            # same membership would skip the KV re-import and attend over
+            # the prefill's slots -- and let the next decode round
+            # re-gather state through its initial-state sync.
             self._packed_decode_last_layout = None
             self._packed_decode_state_dirty = False
+            self._packed_decode_session_ids = ()
+            self._packed_decode_positions = ()
             return True
         runtime = self.runtime or get_hip_runtime()
         self._scatter_packed_decode_state(
@@ -22457,6 +22477,14 @@ class Qwen35GGUFResidentSession:
             raise ValueError("verify lm-head rows must be positive")
         if rows <= int(self._verify_lm_rows_capacity):
             return
+        # Growth frees buffers that live decode graphs may still bind (the
+        # token/index planes are replay targets). Invalidate binding graphs
+        # first and let the scheduler re-capture, mirroring the packed
+        # workspace growth contract.
+        self._invalidate_live_packed_decode_graphs()
+        synchronize = getattr(runtime, "device_synchronize", None)
+        if callable(synchronize):
+            synchronize()
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,
