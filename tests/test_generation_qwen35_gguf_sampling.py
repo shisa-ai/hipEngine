@@ -3427,7 +3427,7 @@ def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
     runner._last_execution_manifest = {"mode": "native_int8_batch"}
     runner._last_physical_group_plan = {}
 
-    def step_chunk(rows, *, physical_rows, active_slot_indices):
+    def step_chunk(rows, *, physical_rows, active_slot_indices, allow_graph=True):
         calls.append(
             (
                 tuple(int(row.request_id) for row in rows),

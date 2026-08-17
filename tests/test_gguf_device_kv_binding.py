@@ -398,7 +398,11 @@ def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> 
     assert view._position == 0
     assert view._decode_graphs == []
     assert view._device_kv_graph_handles == {}
-    assert view._packed_verify_state is None
+    # Views share the batch owner's packed workspace bookkeeping instead of
+    # owning a private allocation (serving-load stability contract).
+    assert view._packed_verify_state is session._packed_verify_state
+    assert view._packed_verify_scratch is session._packed_verify_scratch
+    assert view._packed_decode_state_dirty is session._packed_decode_state_dirty
     assert view._resident_batch_owner is session
     assert view._resident_slot_index == 2
 

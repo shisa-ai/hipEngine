@@ -1267,6 +1267,37 @@ class _GGUFPackedARAttentionWorkspace:
         )
 
 
+@dataclass
+class _PackedWorkspaceState:
+    """Shared mutable packed-workspace bookkeeping for one batch owner.
+
+    The batch owner and every ``resident_slot_view`` reference one instance so
+    the packed verify/decode state, deferred-scatter dirtiness, and workspace
+    geometry stay consistent no matter which session object executes a step
+    or triggers a resize.
+    """
+
+    verify_state: object | None = None
+    verify_scratch: object | None = None
+    ar_attention_workspace: object | None = None
+    verify_session_ids: tuple[int, ...] = ()
+    verify_max_written_positions: tuple[int, ...] = ()
+    decode_sessions: tuple = ()
+    decode_last_layout: object | None = None
+    decode_state_dirty: bool = False
+    decode_session_ids: tuple[int, ...] = ()
+    decode_positions: tuple[int, ...] = ()
+
+
+# Union-geometry defaults for the packed verify workspace. Physical packed
+# decode/verify groups are bounded by the certified graph width (8) and the
+# packed AR paths reject context >= 1024, so the first allocation sizes to
+# these caps and steady-state prefill/decode interleaving never resizes.
+_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY = 8
+_PACKED_VERIFY_MIN_MAX_SEQUENCE = 1024
+_PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot recurrent state plus policy-shaped packed KV backing."""
@@ -1352,11 +1383,13 @@ class _GGUFPackedTargetState:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
                     recurrent_state = buf(recurrent_state_nbytes)
+                    # Track both buffers before any runtime call so a memset
+                    # failure cannot leak the pair.
+                    state_buffers.extend((conv_state, recurrent_state))
                     memset = getattr(runtime, "memset", None)
                     if callable(memset):
                         memset(conv_state.ptr, 0, conv_state.nbytes)
                         memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
-                    state_buffers.extend((conv_state, recurrent_state))
                     layer_conv_states.append(conv_state)
                     layer_recurrent_states.append(recurrent_state)
                 elif layer_type == FULL_ATTENTION:
@@ -13032,19 +13065,98 @@ class Qwen35GGUFResidentSession:
     _verify_linear_state_conv_row_nbytes: int = field(default=0, init=False)
     _verify_linear_state_recurrent_row_nbytes: int = field(default=0, init=False)
     _verify_linear_state_layer_count: int = field(default=0, init=False)
-    _packed_verify_state: _GGUFPackedTargetState | None = field(default=None, init=False)
-    _packed_verify_scratch: object | None = field(default=None, init=False)
-    _packed_verify_session_ids: tuple[int, ...] = field(default=(), init=False)
-    _packed_verify_max_written_positions: tuple[int, ...] = field(default=(), init=False)
-    _packed_decode_sessions: tuple["Qwen35GGUFResidentSession | None", ...] = field(default=(), init=False)
-    _packed_decode_last_layout: _GGUFPackedVerifyLayout | None = field(default=None, init=False)
-    _packed_decode_state_dirty: bool = field(default=False, init=False)
-    _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
-    _packed_decode_positions: tuple[int, ...] = field(default=(), init=False)
-    _packed_ar_attention_workspace: _GGUFPackedARAttentionWorkspace | None = field(
-        default=None,
-        init=False,
-    )
+    # Packed verify/decode workspace bookkeeping lives in one shared
+    # _PackedWorkspaceState holder so the batch owner and its resident slot
+    # views observe the same allocations, geometry, and deferred-scatter
+    # dirtiness (see the serving-load stability contracts in
+    # tests/test_gguf_packed_workspace_stability.py).
+
+    def _packed_workspace_state(self) -> _PackedWorkspaceState:
+        state = self.__dict__.get("_packed_ws_state")
+        if state is None:
+            state = _PackedWorkspaceState()
+            self.__dict__["_packed_ws_state"] = state
+        return state
+
+    @property
+    def _packed_verify_state(self):
+        return self._packed_workspace_state().verify_state
+
+    @_packed_verify_state.setter
+    def _packed_verify_state(self, value) -> None:
+        self._packed_workspace_state().verify_state = value
+
+    @property
+    def _packed_verify_scratch(self):
+        return self._packed_workspace_state().verify_scratch
+
+    @_packed_verify_scratch.setter
+    def _packed_verify_scratch(self, value) -> None:
+        self._packed_workspace_state().verify_scratch = value
+
+    @property
+    def _packed_verify_session_ids(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().verify_session_ids
+
+    @_packed_verify_session_ids.setter
+    def _packed_verify_session_ids(self, value) -> None:
+        self._packed_workspace_state().verify_session_ids = value
+
+    @property
+    def _packed_verify_max_written_positions(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().verify_max_written_positions
+
+    @_packed_verify_max_written_positions.setter
+    def _packed_verify_max_written_positions(self, value) -> None:
+        self._packed_workspace_state().verify_max_written_positions = value
+
+    @property
+    def _packed_decode_sessions(self) -> tuple:
+        return self._packed_workspace_state().decode_sessions
+
+    @_packed_decode_sessions.setter
+    def _packed_decode_sessions(self, value) -> None:
+        self._packed_workspace_state().decode_sessions = value
+
+    @property
+    def _packed_decode_last_layout(self):
+        return self._packed_workspace_state().decode_last_layout
+
+    @_packed_decode_last_layout.setter
+    def _packed_decode_last_layout(self, value) -> None:
+        self._packed_workspace_state().decode_last_layout = value
+
+    @property
+    def _packed_decode_state_dirty(self) -> bool:
+        return self._packed_workspace_state().decode_state_dirty
+
+    @_packed_decode_state_dirty.setter
+    def _packed_decode_state_dirty(self, value: bool) -> None:
+        self._packed_workspace_state().decode_state_dirty = bool(value)
+
+    @property
+    def _packed_decode_session_ids(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().decode_session_ids
+
+    @_packed_decode_session_ids.setter
+    def _packed_decode_session_ids(self, value) -> None:
+        self._packed_workspace_state().decode_session_ids = value
+
+    @property
+    def _packed_decode_positions(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().decode_positions
+
+    @_packed_decode_positions.setter
+    def _packed_decode_positions(self, value) -> None:
+        self._packed_workspace_state().decode_positions = value
+
+    @property
+    def _packed_ar_attention_workspace(self):
+        return self._packed_workspace_state().ar_attention_workspace
+
+    @_packed_ar_attention_workspace.setter
+    def _packed_ar_attention_workspace(self, value) -> None:
+        self._packed_workspace_state().ar_attention_workspace = value
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -13621,16 +13733,10 @@ class Qwen35GGUFResidentSession:
         view._device_kv_graph_handles = {}
         view._int8_prefill_oracle_buffers = {}
         view._linear_state_snapshot_backups = ()
-        view._packed_verify_state = None
-        view._packed_verify_scratch = None
-        view._packed_verify_session_ids = ()
-        view._packed_verify_max_written_positions = ()
-        view._packed_decode_sessions = ()
-        view._packed_decode_last_layout = None
-        view._packed_decode_state_dirty = False
-        view._packed_decode_session_ids = ()
-        view._packed_decode_positions = ()
-        view._packed_ar_attention_workspace = None
+        # Share the batch owner's packed workspace bookkeeping: views never
+        # own a packed allocation and every resize/dirty check is owner-wide.
+        view.__dict__["_packed_ws_state"] = self._packed_workspace_state()
+        view.__dict__.pop("_resident_slot_views", None)
         view._native_sampler_workspace = None
         view._last_layer_output_hidden = {}
         view.last_verify_stage_timings_ms = {}
@@ -13641,6 +13747,12 @@ class Qwen35GGUFResidentSession:
         view.last_packed_execution_manifest = {}
         view._resident_batch_owner = self
         view._resident_slot_index = index
+        views = self.__dict__.setdefault("_resident_slot_views", [])
+        if not any(
+            getattr(candidate, "_resident_slot_index", None) == index
+            for candidate in views
+        ):
+            views.append(view)
         return view
 
     @property
@@ -20922,6 +21034,15 @@ class Qwen35GGUFResidentSession:
         return released_bytes
 
     def _free_packed_verify_workspace(self, *, runtime: HipRuntime) -> None:
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            delegate._free_packed_verify_workspace(runtime=runtime)
+            return
+        # Return pages to the allocator only after queued work that may
+        # still reference them has completed.
+        synchronize = getattr(runtime, "device_synchronize", None)
+        if callable(synchronize):
+            synchronize()
         attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
         if attention_workspace is not None:
             for buffer in reversed(attention_workspace.buffers):
@@ -20965,6 +21086,10 @@ class Qwen35GGUFResidentSession:
             or int(workspace.num_splits) < required_splits
         ):
             if workspace is not None:
+                self._assert_no_live_packed_decode_graphs()
+                synchronize = getattr(runtime, "device_synchronize", None)
+                if callable(synchronize):
+                    synchronize()
                 for buffer in reversed(workspace.buffers):
                     free(buffer, runtime=runtime)
             workspace = _GGUFPackedARAttentionWorkspace.allocate(
@@ -20976,6 +21101,66 @@ class Qwen35GGUFResidentSession:
             self._packed_ar_attention_workspace = workspace
         return workspace
 
+    def _assert_no_live_packed_decode_graphs(self) -> None:
+        """Fail closed before freeing memory a replay graph still binds."""
+
+        sessions = [self]
+        views = self.__dict__.get("_resident_slot_views")
+        if views:
+            sessions.extend(views)
+        for session in sessions:
+            for graph in tuple(getattr(session, "_decode_graphs", ())):
+                if not bool(getattr(graph, "closed", False)):
+                    raise RuntimeError(
+                        "cannot resize the packed verify workspace while a live"
+                        " packed decode graph still binds its buffers; close or"
+                        " invalidate the graph first"
+                    )
+
+    def _packed_verify_union_geometry(
+        self,
+        *,
+        slot_count: int,
+        rows: int,
+        max_sequence_length: int,
+    ) -> tuple[int, int, int, int]:
+        """Union the request with current holdings and serving caps.
+
+        The workspace is sized once to the union of every geometry the serving
+        loop can request (prefill chunk width, physical packed width, the
+        1024-token context cap) so prefill/decode interleaving never frees or
+        reallocates buffers mid-tick.
+        """
+
+        state = self._packed_verify_state
+        scratch = self._packed_verify_scratch
+        state_slots = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        state_max_seq = _PACKED_VERIFY_MIN_MAX_SEQUENCE
+        if state is not None:
+            state_slots = max(state_slots, int(state.slot_count))
+            state_max_seq = max(state_max_seq, int(state.max_sequence_length))
+        scratch_rows = self._packed_verify_prefill_row_cap()
+        scratch_segments = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        if scratch is not None:
+            scratch_rows = max(scratch_rows, int(scratch.rows))
+            scratch_segments = max(
+                scratch_segments, int(scratch.gdn_segment_capacity)
+            )
+        return (
+            max(slot_count, state_slots),
+            max(rows, scratch_rows),
+            max(max_sequence_length, state_max_seq),
+            max(slot_count, scratch_segments),
+        )
+
+    def _packed_verify_prefill_row_cap(self) -> int:
+        bulk = getattr(self, "_bulk_prefill_scratch", None)
+        rows = getattr(bulk, "rows", None)
+        try:
+            return max(int(rows), _PACKED_VERIFY_DEFAULT_PREFILL_ROWS)
+        except (TypeError, ValueError):
+            return _PACKED_VERIFY_DEFAULT_PREFILL_ROWS
+
     def _ensure_packed_verify_workspace(
         self,
         *,
@@ -20985,6 +21170,18 @@ class Qwen35GGUFResidentSession:
         runtime: HipRuntime,
         stream: int = 0,
     ) -> tuple[_GGUFPackedTargetState, object]:
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            state, scratch = delegate._ensure_packed_verify_workspace(
+                slot_count=slot_count,
+                rows=rows,
+                max_sequence_length=max_sequence_length,
+                runtime=runtime,
+                stream=stream,
+            )
+            self._packed_verify_state = state
+            self._packed_verify_scratch = scratch
+            return state, scratch
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
         slot_count = int(slot_count)
@@ -21009,25 +21206,41 @@ class Qwen35GGUFResidentSession:
             and int(self._packed_verify_scratch.gdn_segment_capacity) >= slot_count
         )
         if not state_ready or not scratch_ready:
+            # Genuine growth (never shrink): graphs must not bind the buffers
+            # we are about to free, and deferred decode state must be
+            # scattered back to the slot sessions first.
+            self._assert_no_live_packed_decode_graphs()
             if getattr(self, "_packed_decode_state_dirty", False):
                 if not self.flush_packed_decode_state(stream=stream):
                     raise RuntimeError(
                         "cannot resize packed workspace before deferred state is scattered"
                     )
             self._free_packed_verify_workspace(runtime=runtime)
+        (
+            union_slots,
+            union_rows,
+            union_max_seq,
+            union_segments,
+        ) = self._packed_verify_union_geometry(
+            slot_count=slot_count,
+            rows=rows,
+            max_sequence_length=max_sequence_length,
+        )
+        if self._packed_verify_state is None:
             self._packed_verify_state = _GGUFPackedTargetState.allocate(
                 self.runner,
-                slot_count=slot_count,
-                max_sequence_length=max_sequence_length,
+                slot_count=union_slots,
+                max_sequence_length=union_max_seq,
                 runtime=runtime,
                 kv_layout=kv_layout,
             )
+        if self._packed_verify_scratch is None:
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
-                rows=rows,
-                capacity=max_sequence_length,
+                rows=union_rows,
+                capacity=union_max_seq,
                 allocate_kv_cache=False,
-                segments=slot_count,
+                segments=union_segments,
                 runtime=runtime,
             )
         if self._packed_verify_state is None or self._packed_verify_scratch is None:
@@ -23571,7 +23784,15 @@ def _allocate_prefill_scratch_liveness_owner_slots(
             slot_members.append([name])
             slot_sizes.append(size)
 
-    owners = tuple(malloc(_align_prefill_scratch(size), runtime=runtime) for size in slot_sizes)
+    tracked: list[DeviceBuffer] = []
+    try:
+        for size in slot_sizes:
+            tracked.append(malloc(_align_prefill_scratch(size), runtime=runtime))
+    except BaseException:
+        for buffer in reversed(tracked):
+            free(buffer, runtime=runtime)
+        raise
+    owners = tuple(tracked)
     views: dict[str, DeviceBuffer] = {}
     virtual_offsets: dict[str, tuple[int, int]] = {}
     field_groups: dict[str, str] = {}
@@ -24335,234 +24556,254 @@ class _GGUFFullAttentionPrefillScratch:
             tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
         ] = MappingProxyType({})
         owners: list[DeviceBuffer] = []
-        liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
-            runner,
-            rows=rows,
-        )
-        scratch_lifetimes = (
-            _GGUF_PREFILL_SCRATCH_LIFETIMES
-            if bool(cfg.is_moe)
-            else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
-        )
-        if liveness_disabled_fields is not None:
-            # NOTE: no conv_out lifetime override here. 59fd48631 briefly
-            # shrank conv_out to stage (2, 4) so its full-row plane could share
-            # arena pages with recurrent_out on the claim that split prepare
-            # consumes conv_out completely before recurrence begins. That is
-            # false: the exact recurrence reads the full convolution sequence
-            # while writing recurrent_out, so the shared pages alias and
-            # corrupt state in multi-row prefill (bit-exactness broken for
-            # packed c2/c8 vs independent c1; W7900 state oracle 2026-08-17).
-            # Keep the base ("linear", 2, 5) lifetime for every GDN mode.
-            arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
-            # Dense SiLU consumes gate/up elementwise and may replace the dead
-            # gate plane in place.  Keep this intentional source/output alias
-            # separate from ordinary stage-disjoint arena coloring. Owner-slot
-            # arenas cannot describe subranges and retain the ordinary layout.
-            inplace_aliases = (
-                {"ffn_intermediate": "ffn_gate_up"}
-                if not bool(cfg.is_moe) and arena_grouping == "single"
-                else {}
-            )
-            active_names = {
-                name
-                for name in field_sizes
-                if name not in liveness_disabled_fields and name not in inactive_fields
-            }
-            active_sizes = {
-                name: int(field_sizes[name])
-                for name in active_names
-                if name not in inplace_aliases
-            }
-            allocation_plan_lifetimes = dict(scratch_lifetimes)
-            planned_subranges: dict[
-                str,
-                tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-            ] = {}
-            for alias, source in inplace_aliases.items():
-                source_lifetimes = scratch_lifetimes[source]
-                alias_lifetimes = scratch_lifetimes[alias]
-                alias_nbytes = int(field_sizes[alias])
-                source_nbytes = int(field_sizes[source])
-                combined_lifetimes = tuple(
-                    dict.fromkeys((*source_lifetimes, *alias_lifetimes))
-                )
-                allocation_plan_lifetimes[source] = combined_lifetimes
-                source_subranges = [(0, alias_nbytes, combined_lifetimes)]
-                if source_nbytes > alias_nbytes:
-                    source_subranges.append(
-                        (
-                            alias_nbytes,
-                            source_nbytes - alias_nbytes,
-                            source_lifetimes,
-                        )
-                    )
-                planned_subranges[source] = tuple(source_subranges)
-            arenas, active_fields, allocation_offsets, allocation_groups = (
-                _allocate_prefill_scratch_liveness_arenas(
-                    active_sizes,
-                    grouping=arena_grouping,
-                    runtime=runtime,
-                    lifetimes=allocation_plan_lifetimes,
-                    allocation_subranges=planned_subranges,
-                    priority_min_live_stages=(
-                        _gguf_prefill_scratch_priority_min_live_stages(
-                            runner,
-                            rows=rows,
-                        )
-                    ),
-                )
-            )
-            fields = {
-                name: (
-                    _GGUF_PREFILL_SCRATCH_EMPTY
-                    if name in liveness_disabled_fields or name in inactive_fields
-                    else active_fields.get(name)
-                )
-                for name in field_sizes
-            }
-            offsets = dict(allocation_offsets)
-            groups = dict(allocation_groups)
-            for alias, source in inplace_aliases.items():
-                alias_nbytes = int(field_sizes[alias])
-                source_view = fields[source]
-                if source_view is None or alias_nbytes > int(source_view.nbytes):
-                    raise RuntimeError(
-                        f"invalid dense prefill in-place alias {alias} -> {source}"
-                    )
-                fields[alias] = DeviceBuffer(
-                    ptr=int(source_view.ptr),
-                    nbytes=alias_nbytes,
-                )
-                source_offset, _source_nbytes = offsets[source]
-                offsets[alias] = (int(source_offset), alias_nbytes)
-                groups[alias] = groups[source]
-            owners.extend(arenas)
-            allocation_mode = "liveness_aliased"
-            allocation_offsets = MappingProxyType(offsets)
-            allocation_lifetimes = MappingProxyType(
-                {
-                    name: (
-                        scratch_lifetimes[name]
-                        if name in inplace_aliases
-                        else allocation_plan_lifetimes[name]
-                    )
-                    for name in active_names
-                }
-            )
-            allocation_groups = MappingProxyType(groups)
-            allocation_inplace_aliases = MappingProxyType(inplace_aliases)
-            allocation_subranges = MappingProxyType(planned_subranges)
-        else:
-            fields = {
-                name: (_GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes))
-                for name, nbytes in field_sizes.items()
-            }
-            owners.extend(
-                value for name, value in fields.items() if name not in inactive_fields
-            )
-
-        dedicated_fields = {
-            "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),
-            "gdn_state_indices": buf(segments * DType.INT64.itemsize),
-            "key_cache": buf(cache_nbytes) if allocate_kv_cache else None,
-            "value_cache": buf(cache_nbytes) if allocate_kv_cache else None,
-            "block_table": buf(block_table_arr.nbytes),
-            "positions": buf(positions_arr.nbytes),
-            "context_counts": buf(context_arr.nbytes),
-            "cu_q": buf(cu_arr.nbytes),
-            "cu_k": buf(cu_arr.nbytes),
-            "softmax_lse": buf(cfg.head_count * rows * 4),
-            "full_attn_split_partial": buf(full_attn_split_partial_bytes),
-            "full_attn_split_m": buf(full_attn_split_stat_bytes),
-            "full_attn_split_l": buf(full_attn_split_stat_bytes),
-            "atomic": buf(atomic_arr.nbytes),
-            "moe_router_counter": buf(DType.INT32.itemsize),
-        }
-        fields.update(dedicated_fields)
-        owners.extend(value for value in dedicated_fields.values() if value is not None)
-        copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
-        copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
-        copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
-        copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
-        copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
-        copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
-        copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
-        gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
-        copy_host_to_device(
-            fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
-        )
-        copy_host_to_device(
-            fields["gdn_state_indices"],
-            host_array_ptr(gdn_state_indices_arr),
-            gdn_state_indices_arr.nbytes,
-            runtime=runtime,
-        )
-        block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
-        positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
-        context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
-        append_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table_tensor,
-            live_counts=positions_tensor,
-            max_live_count=rows - 1,
-            storage_dtype=DType.BF16,
-            row_positions=positions_tensor,
-            span_role="prefill",
-        )
-        prefill_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table_tensor,
-            live_counts=context_tensor,
-            max_live_count=rows,
-            storage_dtype=DType.BF16,
-            row_positions=positions_tensor,
-            span_role="prefill",
-        )
-        weights = getattr(runner, "weights", None)
-        cfg = getattr(weights, "config", None)
         try:
-            gdn_mode = _gguf_gdn_prefill_session_mode(
-                runner.backend, weights=weights, cfg=cfg
+            liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
+                runner,
+                rows=rows,
             )
-        except ValueError:
-            # Unvalidated/exotic backends have no capability policy; keep the
-            # neutral frozen marker so dispatch still resolves env-side.
-            gdn_mode = "auto"
-        return cls(
-            **fields,
-            rows=rows,
-            backend=runner.backend,
-            gdn_effective_mode=gdn_mode,
-            gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
-            block_table_tensor=block_table_tensor,
-            positions_tensor=positions_tensor,
-            context_counts_tensor=context_tensor,
-            retained_key_cache=None,
-            retained_value_cache=None,
-            retained_append_spans=None,
-            append_spans=append_spans,
-            prefill_spans=prefill_spans,
-            block_size=block_size,
-            blocks=blocks,
-            max_positions=capacity,
-            full_attn_split_batch_rows=full_attn_split_batch_rows,
-            full_attn_split_count=full_attn_split_count,
-            moe_group_counts_zero=moe_group_counts_zero,
-            moe_scatter_offsets_zero=moe_scatter_offsets_zero,
-            moe_wmma_total_host=moe_wmma_total_host,
-            moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
-            moe_selected_rows_capacity=moe_selected_rows_capacity,
-            moe_wmma_rows_capacity=moe_wmma_rows_capacity,
-            buffers=tuple(owners),
-            runtime_state_library=runtime_state_library,
-            allocation_mode=allocation_mode,
-            allocation_offsets=allocation_offsets,
-            allocation_lifetimes=allocation_lifetimes,
-            allocation_groups=allocation_groups,
-            allocation_inplace_aliases=allocation_inplace_aliases,
-            allocation_subranges=allocation_subranges,
-            gdn_segment_capacity=segments,
-            gdn_active_segments=1,
-        )
+            scratch_lifetimes = (
+                _GGUF_PREFILL_SCRATCH_LIFETIMES
+                if bool(cfg.is_moe)
+                else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
+            )
+            if liveness_disabled_fields is not None:
+                # NOTE: no conv_out lifetime override here. 59fd48631 briefly
+                # shrank conv_out to stage (2, 4) so its full-row plane could share
+                # arena pages with recurrent_out on the claim that split prepare
+                # consumes conv_out completely before recurrence begins. That is
+                # false: the exact recurrence reads the full convolution sequence
+                # while writing recurrent_out, so the shared pages alias and
+                # corrupt state in multi-row prefill (bit-exactness broken for
+                # packed c2/c8 vs independent c1; W7900 state oracle 2026-08-17).
+                # Keep the base ("linear", 2, 5) lifetime for every GDN mode.
+                arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
+                # Dense SiLU consumes gate/up elementwise and may replace the dead
+                # gate plane in place.  Keep this intentional source/output alias
+                # separate from ordinary stage-disjoint arena coloring. Owner-slot
+                # arenas cannot describe subranges and retain the ordinary layout.
+                inplace_aliases = (
+                    {"ffn_intermediate": "ffn_gate_up"}
+                    if not bool(cfg.is_moe) and arena_grouping == "single"
+                    else {}
+                )
+                active_names = {
+                    name
+                    for name in field_sizes
+                    if name not in liveness_disabled_fields and name not in inactive_fields
+                }
+                active_sizes = {
+                    name: int(field_sizes[name])
+                    for name in active_names
+                    if name not in inplace_aliases
+                }
+                allocation_plan_lifetimes = dict(scratch_lifetimes)
+                planned_subranges: dict[
+                    str,
+                    tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+                ] = {}
+                for alias, source in inplace_aliases.items():
+                    source_lifetimes = scratch_lifetimes[source]
+                    alias_lifetimes = scratch_lifetimes[alias]
+                    alias_nbytes = int(field_sizes[alias])
+                    source_nbytes = int(field_sizes[source])
+                    combined_lifetimes = tuple(
+                        dict.fromkeys((*source_lifetimes, *alias_lifetimes))
+                    )
+                    allocation_plan_lifetimes[source] = combined_lifetimes
+                    source_subranges = [(0, alias_nbytes, combined_lifetimes)]
+                    if source_nbytes > alias_nbytes:
+                        source_subranges.append(
+                            (
+                                alias_nbytes,
+                                source_nbytes - alias_nbytes,
+                                source_lifetimes,
+                            )
+                        )
+                    planned_subranges[source] = tuple(source_subranges)
+                arenas, active_fields, allocation_offsets, allocation_groups = (
+                    _allocate_prefill_scratch_liveness_arenas(
+                        active_sizes,
+                        grouping=arena_grouping,
+                        runtime=runtime,
+                        lifetimes=allocation_plan_lifetimes,
+                        allocation_subranges=planned_subranges,
+                        priority_min_live_stages=(
+                            _gguf_prefill_scratch_priority_min_live_stages(
+                                runner,
+                                rows=rows,
+                            )
+                        ),
+                    )
+                )
+                fields = {
+                    name: (
+                        _GGUF_PREFILL_SCRATCH_EMPTY
+                        if name in liveness_disabled_fields or name in inactive_fields
+                        else active_fields.get(name)
+                    )
+                    for name in field_sizes
+                }
+                offsets = dict(allocation_offsets)
+                groups = dict(allocation_groups)
+                for alias, source in inplace_aliases.items():
+                    alias_nbytes = int(field_sizes[alias])
+                    source_view = fields[source]
+                    if source_view is None or alias_nbytes > int(source_view.nbytes):
+                        raise RuntimeError(
+                            f"invalid dense prefill in-place alias {alias} -> {source}"
+                        )
+                    fields[alias] = DeviceBuffer(
+                        ptr=int(source_view.ptr),
+                        nbytes=alias_nbytes,
+                    )
+                    source_offset, _source_nbytes = offsets[source]
+                    offsets[alias] = (int(source_offset), alias_nbytes)
+                    groups[alias] = groups[source]
+                owners.extend(arenas)
+                allocation_mode = "liveness_aliased"
+                allocation_offsets = MappingProxyType(offsets)
+                allocation_lifetimes = MappingProxyType(
+                    {
+                        name: (
+                            scratch_lifetimes[name]
+                            if name in inplace_aliases
+                            else allocation_plan_lifetimes[name]
+                        )
+                        for name in active_names
+                    }
+                )
+                allocation_groups = MappingProxyType(groups)
+                allocation_inplace_aliases = MappingProxyType(inplace_aliases)
+                allocation_subranges = MappingProxyType(planned_subranges)
+            else:
+                fields = {}
+                for name, nbytes in field_sizes.items():
+                    buffer = (
+                        _GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes)
+                    )
+                    fields[name] = buffer
+                    if name not in inactive_fields:
+                        owners.append(buffer)
+
+            dedicated_fields: dict[str, DeviceBuffer | None] = {}
+            for name, nbytes in (
+                ("gdn_cu_seqlens", (segments + 1) * DType.INT32.itemsize),
+                ("gdn_state_indices", segments * DType.INT64.itemsize),
+                ("block_table", block_table_arr.nbytes),
+                ("positions", positions_arr.nbytes),
+                ("context_counts", context_arr.nbytes),
+                ("cu_q", cu_arr.nbytes),
+                ("cu_k", cu_arr.nbytes),
+                ("softmax_lse", cfg.head_count * rows * 4),
+                ("full_attn_split_partial", full_attn_split_partial_bytes),
+                ("full_attn_split_m", full_attn_split_stat_bytes),
+                ("full_attn_split_l", full_attn_split_stat_bytes),
+                ("atomic", atomic_arr.nbytes),
+                ("moe_router_counter", DType.INT32.itemsize),
+            ):
+                buffer = buf(nbytes)
+                dedicated_fields[name] = buffer
+                owners.append(buffer)
+            if allocate_kv_cache:
+                for name in ("key_cache", "value_cache"):
+                    buffer = buf(cache_nbytes)
+                    dedicated_fields[name] = buffer
+                    owners.append(buffer)
+            else:
+                dedicated_fields["key_cache"] = None
+                dedicated_fields["value_cache"] = None
+            fields.update(dedicated_fields)
+            try:
+                copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
+                copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
+                copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
+                copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
+                copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
+                copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+                copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
+                gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
+                copy_host_to_device(
+                    fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+                )
+                copy_host_to_device(
+                    fields["gdn_state_indices"],
+                    host_array_ptr(gdn_state_indices_arr),
+                    gdn_state_indices_arr.nbytes,
+                    runtime=runtime,
+                )
+                block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
+                positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
+                context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
+                append_spans = KVLiveSpans.paged_uniform(
+                    block_table=block_table_tensor,
+                    live_counts=positions_tensor,
+                    max_live_count=rows - 1,
+                    storage_dtype=DType.BF16,
+                    row_positions=positions_tensor,
+                    span_role="prefill",
+                )
+                prefill_spans = KVLiveSpans.paged_uniform(
+                    block_table=block_table_tensor,
+                    live_counts=context_tensor,
+                    max_live_count=rows,
+                    storage_dtype=DType.BF16,
+                    row_positions=positions_tensor,
+                    span_role="prefill",
+                )
+                weights = getattr(runner, "weights", None)
+                cfg = getattr(weights, "config", None)
+                try:
+                    gdn_mode = _gguf_gdn_prefill_session_mode(
+                        runner.backend, weights=weights, cfg=cfg
+                    )
+                except ValueError:
+                    # Unvalidated/exotic backends have no capability policy; keep the
+                    # neutral frozen marker so dispatch still resolves env-side.
+                    gdn_mode = "auto"
+                return cls(
+                    **fields,
+                    rows=rows,
+                    backend=runner.backend,
+                    gdn_effective_mode=gdn_mode,
+                    gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
+                    block_table_tensor=block_table_tensor,
+                    positions_tensor=positions_tensor,
+                    context_counts_tensor=context_tensor,
+                    retained_key_cache=None,
+                    retained_value_cache=None,
+                    retained_append_spans=None,
+                    append_spans=append_spans,
+                    prefill_spans=prefill_spans,
+                    block_size=block_size,
+                    blocks=blocks,
+                    max_positions=capacity,
+                    full_attn_split_batch_rows=full_attn_split_batch_rows,
+                    full_attn_split_count=full_attn_split_count,
+                    moe_group_counts_zero=moe_group_counts_zero,
+                    moe_scatter_offsets_zero=moe_scatter_offsets_zero,
+                    moe_wmma_total_host=moe_wmma_total_host,
+                    moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
+                    moe_selected_rows_capacity=moe_selected_rows_capacity,
+                    moe_wmma_rows_capacity=moe_wmma_rows_capacity,
+                    buffers=tuple(owners),
+                    runtime_state_library=runtime_state_library,
+                    allocation_mode=allocation_mode,
+                    allocation_offsets=allocation_offsets,
+                    allocation_lifetimes=allocation_lifetimes,
+                    allocation_groups=allocation_groups,
+                    allocation_inplace_aliases=allocation_inplace_aliases,
+                    allocation_subranges=allocation_subranges,
+                    gdn_segment_capacity=segments,
+                    gdn_active_segments=1,
+                )
+            except BaseException:
+                for buffer in reversed(owners):
+                    free(buffer, runtime=runtime)
+                raise
+        except BaseException:
+            for buffer in reversed(owners):
+                free(buffer, runtime=runtime)
+            raise
 
     def for_chunk(self, start: int, rows: int, total_tokens: int, *, runtime: HipRuntime, stream: int = 0):
         start = int(start)
