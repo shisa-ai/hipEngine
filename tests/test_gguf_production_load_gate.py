@@ -91,7 +91,67 @@ def test_isolated_oracle_worker_roundtrips_prompt_and_tokens(monkeypatch) -> Non
     assert prompts["token=7:prompt=2"]["token_ids"] == (7, 7)
     assert references == {"token=7:prompt=2": (8, 9)}
     assert metadata["process_isolated"] is True
+    assert metadata["max_oracle_keys_per_process"] == 4
+    assert metadata["worker_processes"] == 1
     assert metadata["oracle_rows"] == 1
+
+
+def test_isolated_oracle_workers_partition_to_four_keys(monkeypatch) -> None:
+    calls: list[list[dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        import json
+        from pathlib import Path
+
+        specs_path = Path(command[command.index("--specs-json") + 1])
+        output_path = Path(command[command.index("--output-json") + 1])
+        specs = json.loads(specs_path.read_text(encoding="utf-8"))
+        calls.append(specs)
+        prompt_rows = {}
+        references = {}
+        for spec in specs:
+            key = f"token={spec['token_id']}:prompt={spec['prompt_length']}"
+            prompt_rows[key] = {
+                "token_ids": [spec["token_id"]] * spec["prompt_length"],
+                "token_ids_sha256": key,
+            }
+            references[key] = [spec["token_id"]]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "prompt_rows": prompt_rows,
+                    "reference_tokens": references,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "scripts.gguf_production_load_gate.subprocess.run",
+        fake_run,
+    )
+    specs = tuple(
+        WorkloadRequest(f"row-{index}", 100 + index, 2, 1)
+        for index in range(5)
+    )
+
+    prompts, references, metadata = _run_isolated_reference_worker(
+        model=SimpleNamespace(__str__=lambda self: "/models/fake"),
+        backend="hip_gfx1100",
+        max_active_requests=2,
+        max_sequence_length=16,
+        max_output_tokens=1,
+        specs=specs,
+        compiler_version_file=None,
+        require_cached_build=False,
+    )
+
+    assert [len(rows) for rows in calls] == [4, 1]
+    assert len(prompts) == len(references) == 5
+    assert metadata["worker_processes"] == 2
+    assert [len(worker["oracle_keys"]) for worker in metadata["workers"]] == [4, 1]
 
 
 def test_tuning_reconfiguration_uses_loaded_driver_control() -> None:
