@@ -108,7 +108,16 @@
     "required_modes": ["scheduler tuning", "static", "ragged", "fixed", "Poisson", "cancellation", "disconnect", "40-request overload", "idle recovery", "60-second soak"],
     "failure": "repeated ROCm GPU page fault during high-count exact-oracle ownership/teardown before tuning",
     "observed_fault": "Memory access fault by GPU node-1: Page not present or supervisor privilege",
-    "repetitions": 5,
+    "repetitions": 6,
+    "latest_attempt": {
+      "source_commit": "739ccbd44",
+      "oracle_partition": "4/4/4/1",
+      "oracle_workers_completed": 4,
+      "oracle_keys_completed": 13,
+      "measured_owner_started": true,
+      "first_tuning_result_observed": false,
+      "failure": "Memory access fault by GPU node-1: Page not present or supervisor privilege"
+    },
     "focused_isolation": "static_c1 and static_c8 pass; 13-key oracle generation completes but teardown/handoff faults; process isolation and 4/4/4/1 partitioning did not restore a stable measured owner after repeated GPU faults",
     "artifact_written_by_campaign": false
   },
