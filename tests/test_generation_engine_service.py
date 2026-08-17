@@ -63,6 +63,7 @@ class _FakeSoleDriver:
         self.poll_thread_ids: set[int] = set()
         self.release_order: list[int] = []
         self.abort_reasons: dict[int, str] = {}
+        self.reconfigurations: list[tuple[int, object]] = []
         self.closed = False
 
     def submit_detailed(self, request: GenerationRequest) -> GenerationSubmission:
@@ -147,10 +148,27 @@ class _FakeSoleDriver:
     def live_loop_snapshot(self):
         return {"active_request_ids": sorted(self._active)}
 
+    def reconfigure_engine_loop(self, config: object) -> None:
+        if self._active:
+            raise RuntimeError("driver must be idle")
+        self.reconfigurations.append((threading.get_ident(), config))
+
     def close(self) -> None:
         self.closed = True
         self._active.clear()
         self._outputs.clear()
+
+
+def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    config = object()
+    try:
+        service.reconfigure_engine_loop(config)
+    finally:
+        service.close()
+
+    assert driver.reconfigurations == [(service.driver_thread_id, config)]
 
 
 def test_engine_service_is_sole_driver_and_refills_before_long_neighbor_finishes() -> None:

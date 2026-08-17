@@ -655,6 +655,13 @@ class SubmitPollTextGenerator:
     def _abort_submission(self, submission: GenerationSubmission) -> None:
         self.abort_submission(submission, reason="cancel")
 
+    def reconfigure_engine_loop(self, config: EngineLoopConfig) -> None:
+        """Apply one idle configuration on the sole scheduler driver."""
+
+        with self._loop_lock:
+            self._loop.reconfigure(config)
+            self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
+
     def live_loop_snapshot(self) -> dict[str, object]:
         """Return one lock-consistent scheduler plus model-runner snapshot."""
 
@@ -1472,6 +1479,39 @@ class ResidentEngineLoop:
             max_pending_requests=resolved_config.max_pending_requests,
             reclaim_callback=self._reclaim_runner_state,
         )
+
+    def reconfigure(self, config: EngineLoopConfig) -> None:
+        """Apply an idle resource/policy generation without replacing the loop."""
+
+        if self.scheduler.active_count or self.scheduler.pending_count:
+            raise RuntimeError("cannot reconfigure a non-idle resident engine loop")
+        capacity = int(self.scheduler.capacity)
+        if (
+            config.max_active_requests is not None
+            and int(config.max_active_requests) != capacity
+        ):
+            raise ValueError("reconfiguration cannot change resident capacity")
+        if (
+            config.prefill_decode_policy == "token_budget"
+            and int(config.round_decode_row_budget) < capacity
+        ):
+            raise ValueError(
+                "token_budget round_decode_row_budget must cover resident capacity"
+            )
+        configure_runner = getattr(self.runner, "configure_engine_loop", None)
+        if callable(configure_runner):
+            configure_runner(config)
+        self.config = config
+        self.prefill_chunk_size = int(config.max_prefill_chunk_tokens)
+        self.prefill_decode_policy = config.prefill_decode_policy
+        self.fair_prefill_burst_chunks = int(config.fair_prefill_burst_chunks)
+        self.round_prefill_token_budget = int(config.round_prefill_token_budget)
+        self.round_decode_row_budget = int(config.round_decode_row_budget)
+        self._last_work_kind = None
+        self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
+        self._round_prefill_tokens = 0
+        self._round_decode_rows = 0
 
     @property
     def pending_count(self) -> int:

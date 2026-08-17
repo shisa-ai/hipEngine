@@ -802,8 +802,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         kv_pool_chunk_pages=plan.chunk_pages,
                         kv_pool_idle_grace_seconds=0.0,
                     )
-                    runner.configure_engine_loop(pressure_config)
-                    adapter._loop.config = pressure_config
+                    active_driver = llm._get_text_generator()
+                    reconfigure = getattr(
+                        active_driver,
+                        "reconfigure_engine_loop",
+                        None,
+                    )
+                    if not callable(reconfigure):
+                        raise RuntimeError(
+                            "loaded engine service cannot serialize KV reconfiguration"
+                        )
+                    reconfigure(pressure_config)
                     pressure_result, pressure_block_ids, pressure_pointers = (
                         _execute_pressure_workload(
                             host="127.0.0.1",
