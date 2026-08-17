@@ -1819,20 +1819,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prompt_rows = _prompt_manifest(runner.generator.tokenizer, all_specs)
             from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
-            reference_session = Qwen35GGUFResidentSession(
-                model,
-                backend=str(args.backend),
-                runtime=runner._shared_runner.runtime,
-                shared_runner=runner._shared_runner,
-                max_sequence_length=max_sequence_length,
-                use_wmma_prefill=True,
-                use_gemv_decode=True,
-                compiler_version=compiler_version,
-                require_cached_build=bool(args.require_cached_build),
-            )
-            try:
-                reference_runs = {
-                    key: _run_reference(
+            reference_runs: dict[str, Any] = {}
+            for key, row in sorted(prompt_rows.items()):
+                reference_session = Qwen35GGUFResidentSession(
+                    model,
+                    backend=str(args.backend),
+                    runtime=runner._shared_runner.runtime,
+                    shared_runner=runner._shared_runner,
+                    max_sequence_length=max_sequence_length,
+                    use_wmma_prefill=True,
+                    use_gemv_decode=True,
+                    compiler_version=compiler_version,
+                    require_cached_build=bool(args.require_cached_build),
+                )
+                try:
+                    reference_runs[key] = _run_reference(
                         reference_session,
                         row["token_ids"],
                         max(
@@ -1841,10 +1842,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             if spec.oracle_key == key
                         ),
                     )
-                    for key, row in sorted(prompt_rows.items())
-                }
-            finally:
-                reference_session.close()
+                finally:
+                    reference_session.close()
+                print(
+                    f"reference {len(reference_runs)}/{len(prompt_rows)}: {key}",
+                    file=sys.stderr,
+                    flush=True,
+                )
             reference_tokens = {
                 key: tuple(int(token) for token in run.generated_tokens)
                 for key, run in reference_runs.items()
