@@ -125,6 +125,10 @@ def test_gfx1151_qwen38_memory_policies_are_geometry_and_quant_scoped() -> None:
     assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
         runner,
         capacity=4_352,
+    ) == 4_096
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=8_192,
     ) == 1_024
     assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
         runner,
