@@ -779,7 +779,10 @@ and verdict.
       generator construction (production) and disables both (strict).
 - [x] Resolution/fallback/duplicate/missing/binder RED tests green.
 - [ ] Emit selected and strict manifest hashes from direct and server paths.
-- [ ] Implement standardized actual-control capture.
+- [x] Deterministic control-capture model + serializers + independent fixture
+      builder (`hipengine/benchmark/control_capture.py`) with RED tests.
+- [ ] Wire the live producer into the teacher-forced run harness (read session
+      position/token per row, emit capture + fixture, invoke the gate).
 - [ ] Commit independent strict/production expected-control fixtures.
 - [ ] Add RED tests for row, position, mask, KV/state owner, expert scatter,
       graph route, transaction, and lifecycle failures.
