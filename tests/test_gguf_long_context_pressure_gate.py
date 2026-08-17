@@ -16,6 +16,7 @@ def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     assert plan.pages_by_context == {
         1_024: 5,
         4_096: 17,
+        16_384: 65,
         32_768: 129,
         65_536: 257,
     }
@@ -37,12 +38,14 @@ def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:
     assert tuple(workloads) == (
         "context_1k_c2",
         "context_4k_c2",
+        "context_16k_c2",
         "context_32k_c2",
         "mixed_1k_4k_32k",
         "context_64k_c2",
         "graph_seed_32k_c1",
         "graph_regrow_32k_c1",
     )
+    assert [row.prompt_length for row in workloads["context_16k_c2"]] == [16_384, 16_384]
     assert [row.prompt_length for row in workloads["context_32k_c2"]] == [32_768, 32_768]
     assert [row.prompt_length for row in workloads["mixed_1k_4k_32k"]] == [1_024, 4_096, 32_768]
     assert [row.prompt_length for row in workloads["context_64k_c2"]] == [65_536, 65_536]
