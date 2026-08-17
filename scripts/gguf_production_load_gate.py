@@ -489,7 +489,7 @@ def _build_workload_specs(
             prompt_length=64,
             max_tokens=8,
         )
-        for index in range(32)
+        for index in range(40)
     )
     return {
         "static_c1": (
