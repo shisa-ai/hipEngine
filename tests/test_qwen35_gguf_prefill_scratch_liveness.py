@@ -994,6 +994,10 @@ def test_gfx1151_dense_qwen38_q4ks_prefill_keeps_dedicated_fields_and_caps_rows(
     assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
         runner,
         capacity=4_352,
+    ) == 4_096
+    assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
+        runner,
+        capacity=8_192,
     ) == 1_024
     assert gguf_runner._gguf_dense_prefill_scratch_row_cap(
         runner,

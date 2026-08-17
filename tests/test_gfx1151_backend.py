@@ -415,6 +415,7 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
 def test_gfx1151_backend_admits_only_q5_source_f16_prefill() -> None:
     assert GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
     }
     assert GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES == {}
     assert GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES == {}

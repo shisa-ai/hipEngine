@@ -8,7 +8,12 @@ all pass on the one clean retained source. Clean closure rows are
 at 23.85263 tok/s (1.7845x own AR, 21.48% above correctness-valid llama HIP
 B3), and process GTT 15.275/15.710/15.727 GiB at the shapes and 15.899 GiB at
 B3 (below every lower valid llama row). K0-K3 native INT8 K/V is closed below
-K4 on model-level correctness; BF16 remains the supported route.** The working
+K4 on model-level correctness; BF16 remains the supported route.** Post-closure
+(2026-08-17) retention extends the byte-identical K_M-derived Q5 source-F16
+prefill route to Q4_K_S: counterbalanced 512/1K prefill improves to
+**396.091/387.648 tok/s** (+4.51%/+3.02%) and 4K to **380.305 tok/s** (+2.95%)
+via a capacity-conditional scratch cap (4K grows to the 4,096-row plateau;
+8K+ keeps 1,024-row chunks with memory flat). The working
 performance set is `512/128`, `1024/128`, and `4096/128`. The current model
 representation is Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
 
