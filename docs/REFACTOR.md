@@ -454,7 +454,11 @@ should be removed or collapsed.
 - Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
   disable-only rollback/bisection seam. Remove the shared environment seam
   after task 26's clean gfx1100/gfx1151 cumulative closure confirms both dense
-  H5120 policies and no supported private-c1 consumer requires rollback.
+  H5120 policies and no supported private-c1 consumer requires rollback. The
+  gfx1151 half of that confirmation is complete on 2026-08-17 at `20e5106da`
+  (see the
+  [`G6 closure artifact`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json));
+  the gfx1100 half remains pending on W7900 hardware, so the seam stays.
 - Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
   telemetry while this production owner is active. Do not revive the rejected
   SH15 whole-session state arena or compact-Q4 stack; task 24's dedicated 1K

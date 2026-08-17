@@ -1,15 +1,16 @@
 # Qwen3.8-27B GGUF gfx1151 Optimization Campaign
 
-Status: **G1 single-layout ownership, G2 prefill, G3 true AR, and G4 exact MTP
-are complete. Task 24's retained G5 candidate reaches 15.275/15.710/15.727-GiB
-process GTT at 512/1K/4K and 15.899 GiB for exact native B3, below the lower
-valid llama.cpp row at every scope with exact output and zero teardown. Clean
-P5 Q4_K_S commit `3118943eb` still owns the binding prefill/AR rows, and
-retained P6 reaches exact native B3 at 24.19347 tok/s. G6's clean post-commit
-closure audit remains open; K0-K3 native INT8 K/V is closed below K4 on
-model-level correctness.** The working performance set is `512/128`,
-`1024/128`, and `4096/128`. The current model representation is Qwen3.8-27B
-Q4_K_S on Radeon 8060S / `gfx1151`.
+Status: **Campaign closed 2026-08-17 at merged commit `20e5106da`. G1
+single-layout ownership, G2 prefill, G3 true AR, G4 exact MTP, and G5 memory
+all pass on the one clean retained source. Clean closure rows are
+379.398/376.554/369.755 prefill and 13.1014/12.9231/13.0953 AR tok/s at
+512/1K/4K (above both frozen llama backends at every shape), exact native B3
+at 23.85263 tok/s (1.7845x own AR, 21.48% above correctness-valid llama HIP
+B3), and process GTT 15.275/15.710/15.727 GiB at the shapes and 15.899 GiB at
+B3 (below every lower valid llama row). K0-K3 native INT8 K/V is closed below
+K4 on model-level correctness; BF16 remains the supported route.** The working
+performance set is `512/128`, `1024/128`, and `4096/128`. The current model
+representation is Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
 
 The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
@@ -358,8 +359,24 @@ Evidence:
 [`Q4_K_S true-AR policy retention`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json), and
 [`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
 
-This document remains a campaign plan. Section 2 freezes the clean G0 snapshot
-used as the optimization denominator; it is not itself an optimization claim.
+The campaign closes on 2026-08-17 at merged commit `20e5106da`. One clean
+refresh per scope confirms every milestone on the final source: 512/1K/4K
+prefill **379.398/376.554/369.755 tok/s** and AR **13.1014/12.9231/13.0953
+tok/s** beat both frozen llama backends at every shape (+0.479-7.653% prefill,
++1.599-4.190% AR over the faster comparator); natural true AR is
+**13.36641 tok/s**; exact native B3 is **23.85263 tok/s / 1.7845x own AR**
+(train 1.8113x, heldout 1.7458x; every category above 1.52x), **21.48%** above
+the correctness-valid llama HIP B3 row. The retained task-24 memory package
+costs **-1.41%** B3 versus the pre-merge 24.19347 row while lifting AR and
+keeping process GTT at **15.275/15.710/15.727 GiB** (shapes) and **15.899
+GiB** (B3), below every lower valid llama row. All trajectories, acceptance
+decisions, and teardowns are exact, and the milestone pytest tier passes with
+only host-inapplicable gfx1100-only skips. Evidence:
+[`G6 closure`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json).
+
+This document is the closed campaign record. Section 2 freezes the clean G0
+snapshot used as the optimization denominator; it is not itself an optimization
+claim.
 
 Related authorities:
 
@@ -1299,10 +1316,10 @@ Do not start or repeat these without a new measured complete-owner premise:
 | **G2 Prefill win — complete 2026-08-16** | Clean `a06589f34` reaches 399.031/391.276/385.330 tok/s and beats both llama backends at all three shapes with retained correctness and zero teardown. |
 | **G3 AR win — complete 2026-08-16** | Clean Q4_K_S beats both backends at all three shape-AR rows and natural true AR. |
 | **G4 Exact MTP win — complete 2026-08-17** | Exact Q4_K_S full-suite B3 is 24.19347 tok/s / 1.8228x own AR, 23.218% above correctness-valid llama HIP, with all split/category disclosures and GPU/CPU acceptance agreement. |
-| **G5 Memory win — retained candidate 2026-08-17** | Task-24 candidate process GTT is **15.275/15.710/15.727 GiB** at 512/1K/4K and **15.899 GiB** at exact B3, below every lower valid llama row with exact outputs and zero teardown; task 26 owns the clean post-commit refresh. |
+| **G5 Memory win — complete 2026-08-17** | Clean post-commit refresh at `20e5106da` confirms process GTT **15.275/15.710/15.727 GiB** at 512/1K/4K and **15.899 GiB** at exact B3, below every lower valid llama row with exact outputs and zero teardown. |
 | **K-G1 INT8 working-set support — blocked 2026-08-15** | No bounded representation passes the required native 512 -> 1K quality transfer; BF16 remains supported. |
 | **K-G2 INT8 long support** | Independent 32K/128K natural quality and real 256K capacity/runtime gates pass. |
-| **G6 Closure — open** | G2-G5 pass on one clean retained source, applicable INT8 status is accurately published, no unresolved campaign refactor debt remains, and final tests/rollups are committed and pushed. |
+| **G6 Closure — complete 2026-08-17** | G2-G5 pass on the one clean retained source `20e5106da` with exact outputs, acceptance, and zero teardown; the full pytest tier passes with only host-inapplicable gfx1100-only skips; INT8 status is published accurately; campaign refactor debt is explicit seams with triggers (the shared 80-MiB arena env seam still awaits the pending gfx1100 cumulative confirmation); rollups are committed and pushed. Evidence: [`G6 closure`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json). |
 
 A milestone is blocked, not complete, if one column fails. Wins in prefill, AR,
 MTP, or memory do not hide another failure.

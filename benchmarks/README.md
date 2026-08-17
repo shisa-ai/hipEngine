@@ -46,7 +46,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **379.716** | **13.039** |
+| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **379.398** | **13.101** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
 
@@ -60,7 +60,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **24.193 tok/s** | **1.8228x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -238,23 +238,27 @@ The superseded dual-layout publication remains in the
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
 
-Qwen3.8 uses `Q4_K_S` with BF16 K/V. Clean commit `3118943eb` owns the
-published throughput rows; task 24's exact memory package is retained at
-`6e4a34bf2` pending the final clean closure refresh.
+Qwen3.8 uses `Q4_K_S` with BF16 K/V. The campaign is closed at merged commit
+`20e5106da`: prefill and true AR beat both clean llama backends at every
+working shape, exact native B3 beats the correctness-valid llama HIP row, and
+process GTT stays below the lower valid llama row at every scope.
 
 | Shape | Clean prefill | Clean AR | Retained process GTT | Lower valid llama GTT |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **379.716** | **13.0388** | **15.275 GiB** | 15.785 GiB |
-| 1K/128 | **377.321** | **12.8668** | **15.710 GiB** | 15.816 GiB |
-| 4K/128 | **370.788** | **13.0254** | **15.727 GiB** | 16.004 GiB |
+| 512/128 | **379.398** | **13.1014** | **15.275 GiB** | 15.785 GiB |
+| 1K/128 | **376.554** | **12.9231** | **15.710 GiB** | 15.816 GiB |
+| 4K/128 | **369.755** | **13.0953** | **15.727 GiB** | 16.004 GiB |
 
-Exact native B3 is **24.19347 tok/s / 1.8228x AR** with all ten prompt
+Exact native B3 is **23.85263 tok/s / 1.7845x AR** with all ten prompt
 trajectories and GPU/CPU acceptance decisions exact; retained process GTT is
-**15.899 GiB** versus valid llama HIP's **16.358 GiB**. Rejected aliases and
-direct file mapping remain recorded—not discarded—in the linked evidence.
+**15.899 GiB** versus valid llama HIP's **16.358 GiB**. Natural true AR is
+**13.36641 tok/s** versus same-file llama Q4_K_S HIP/Vulkan at
+**5.53853/7.51888 tok/s**. Rejected aliases and direct file mapping remain
+recorded—not discarded—in the linked evidence.
 Evidence: [`clean Q4_K_S`](results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json),
 [`exact B3`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
-[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json), and the
+[`memory package`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-memory-parity-retained.json),
+[`G6 closure`](results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json), and the
 [`campaign plan`](../docs/QWEN38-27B-GFX1151-CAMPAIGN.md).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
