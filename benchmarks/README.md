@@ -128,6 +128,24 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
+## Current Generation-2 short-request qualification
+
+W7900 Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8, token-budget scheduling,
+and same-loaded-server exact c1 oracles:
+
+| Logical concurrency | 1 | 2 | 4 | 8 | 17 | 32 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Aggregate HTTP wall tok/s | **28.355** | **37.466** | **36.594** | **35.892** | **35.102** | **35.119** |
+| Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
+
+All widths use the stable global-page pool; logical cN lowers to registered
+physical c2 groups plus a c1 edge. The retained matched c8 packet measures
+**35.773 tok/s** native versus **27.586 tok/s** serial (+29.68%), with 24/24
+exact rows on both routes. C17 live refill is 17/17 exact with admission before
+the first completion. This qualifies the named short-request gfx1100 package,
+not long-context or gfx1151 C2-6 closure. Evidence:
+[`global/native packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
+
 Current campaign diagnostic: Qwen3.5-0.8B on Radeon 8060S/`gfx1151` ran the
 full Vulkan-parity campaign (D08) to a blocked closure, then D08-X retained
 Q8_0 cluster8 GDN, pack8-WMMA bulk, dense-BF16 WMMA, and operation-complete Q4

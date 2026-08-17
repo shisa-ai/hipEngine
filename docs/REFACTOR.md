@@ -18,31 +18,27 @@ should be removed or collapsed.
 
 - Added 2026-08-17 with C2-3. Generation-2 dense backends use one load-time
   `GlobalKVPoolSet`, stable per-plane arbitrary-page pointer tables,
-  `KVStorageView`, typed leases, growth credits, and a runner adapter that
-  requires KV-aware prefill/decode entry points. The existing
-  `DeviceChunkedKVPool` plus GGUF base-pointer identity checks remain the
-  explicit compatibility path for current gfx1100/gfx1151 kernels; they are not
-  the Generation-2 allocator contract and must not leak same-chunk constraints
-  into the new scheduler or backend ledger.
-- C2-6 now gives this compatibility path one batch-shaped target scratch plus
-  lightweight slot-local state/KV/cursor views. Owner-packed prefill and honest
-  physical-c1 decode pass same-loaded-server exact p128/d8 at
-  c1/c2/c4/c8/c17/c32 on W7900, including exact c17 live refill. This removes
-  per-row session/workspace duplication and retains a usable numerical fallback,
-  but does not make the old pool a Generation-2 allocator.
-- Native shared-slot physical c8 and c4 both emit sentinel `2147483647` at the
-  second packed row and fail closed to serial c1. The live path still consumes
-  chunk-local base pointers and IDs, not arbitrary-page `GlobalKVPoolSet`
-  tables. Do not use fallback exactness or its 26.31-28.58 diagnostic tok/s as
-  evidence that Generation-2 native execution or performance is production
-  qualified.
-- Removal trigger: after registered BF16 and artifact-qualified no-mirror INT8
-  arbitrary-page GGUF kernels plus the repaired shared-slot packed-state path
-  execute the C2-6 correctness, graph-pointer, lifecycle, cancellation,
-  pressure, and production-load gates on both gfx1100 and gfx1151, switch the
-  registered GGUF packages to the KV-aware runner adapter, retain a separately
-  registered numerical fallback as required, and remove the single-backing
-  admission/identity branches and compatibility fixtures.
+  `KVStorageView`, typed leases, and KV-aware execution. C2-6 migrates the
+  gfx1100 Qwen3.6 GGUF BF16 package through `GlobalDeviceKVPool`: one stable
+  arena and per-layer/per-plane pointer tables back arbitrary free-page leases;
+  no request-local chunk, contiguous-run admission, growth, or shrink remains
+  on that selected path.
+- `DeviceChunkedKVPool` and base-pointer identity binding remain as explicit
+  numerical/peer-package fallbacks for unported GGUF layouts and backends. They
+  must not leak same-chunk constraints into the Generation-2 scheduler, ledger,
+  or new backend contracts.
+- Shared-slot physical c4/c8 remain unregistered after their old direct-top1
+  route emitted sentinel `2147483647`. The exact promoted package scopes Q8_1
+  direct-top1 to c1, registers physical `(1, 2)`, flushes canonical state between
+  c2 groups, and decomposes logical c1-c32 honestly. Matched W7900 p128/d8 c8
+  improves exact serial-c1 **27.586 -> 35.773 tok/s (+29.68%)**; serial remains
+  the required numerical fallback.
+- Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8
+  global adapters execute the C2-6 graph-pointer, lifecycle, cancellation,
+  pressure, SLO, and production-load gates on both gfx1100 and gfx1151, migrate
+  every remaining registered GGUF package and remove the chunk allocator,
+  same-backing admission/identity branches, and compatibility-only fixtures.
+  Keep a separately registered unfused/serial numerical fallback as required.
 
 ## Generation-1 prefill/decode policy compatibility choices
 

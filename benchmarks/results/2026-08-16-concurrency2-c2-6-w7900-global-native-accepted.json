@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_6_global_native_gate",
+  "status": "accepted_backend_packet",
+  "passed": true,
+  "performance_claim": true,
+  "created_at": "2026-08-16T23:42:21.156936+00:00",
+  "completed_at": "2026-08-16T23:55:17.305416+00:00",
+  "repo": {
+    "branch": "concurrency2",
+    "base_commit": "1bf1fa7760d4f4cc7f8bd2e6bed3368da081c6b7",
+    "worktree_clean": false,
+    "reason": "global-pool/native repair was under validation"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "device_selector": "HIP_VISIBLE_DEVICES=0",
+    "rocm": "7.2.53211-3d9ef42",
+    "hipcc_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "workload": {
+    "prompt_tokens_per_request": 128,
+    "decode_tokens_per_request": 8,
+    "prompt_token_ids": "9707 with four deterministic final-token variants",
+    "logical_widths": [1, 2, 4, 8, 17, 32],
+    "live_refill_width": 17,
+    "scheduler_policy": "token_budget",
+    "prefill_chunk_tokens": 128,
+    "context_tokens_per_sequence": 512,
+    "production_packet_warmups": 0,
+    "production_packet_measured_repetitions": 1,
+    "c8_matched_warmups": 1,
+    "c8_matched_measured_repetitions": 3,
+    "oracle": "serial c1 trajectories generated on each width's same loaded server"
+  },
+  "commands": {
+    "production": "python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2 --hipengine-route-expectation native --hipengine-prefill-decode-policy token_budget --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 1,2,4,8,17,32 --live-concurrency 17 --prompt-token-id 9707 --prompt-length 128 --decode-tokens 8 --oracle-rows 4 --same-server-oracle --warmup-runs 0 --measured-runs 1 --generation-batch-window-ms 0 --hipengine-prefill-chunk-tokens 128 --ctx-per-seq 512 --server-ready-timeout 600 --request-timeout 600 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-global-native-production --json /tmp/hipengine-c2-6-global-native-production.json",
+    "native_c8": "same command scoped to --concurrencies 8 --live-concurrency 8 --warmup-runs 1 --measured-runs 3 --work-dir /tmp/hipengine-c2-6-c8-global-native-perf --json /tmp/hipengine-c2-6-c8-global-native-perf.json",
+    "serial_c8": "HIPENGINE_GGUF_AR_PACKED_DECODE=0 with the native-c8 command and --hipengine-route-expectation serial-c1-per-row --work-dir /tmp/hipengine-c2-6-c8-global-serial-perf --json /tmp/hipengine-c2-6-c8-global-serial-perf.json"
+  },
+  "pool_contract": {
+    "kind": "global_generation2",
+    "storage_layout": "global-arbitrary-pages:g1",
+    "allocation": "one load-time arena with stable per-layer/per-plane device pointer tables",
+    "lease_policy": "GlobalKVPoolSet arbitrary free page IDs; no request-local chunk or contiguous-run constraint",
+    "growth_or_shrink": false,
+    "final_refcounted_pages": 0,
+    "final_pinned_pages": 0,
+    "final_active_rows": 0,
+    "final_occupied_slots": 0
+  },
+  "execution": {
+    "ownership": "one batch-shaped target scratch owner with lightweight slot-local state/KV/cursor views",
+    "prefill": "owner-packed single-row prefill into scheduler-owned global pages",
+    "registered_gfx1100_shared_slot_physical_widths": [1, 2],
+    "logical_decomposition": "qualified physical c2 groups plus honest c1 edge",
+    "multirow_lm_head": "Q6 rowtile logits plus GPU argmax; Q8_1 direct-top1 remains c1-only",
+    "group_switch": "prior packed owner tuple is scattered before another tuple reuses the workspace"
+  },
+  "production_results": {
+    "c1": {"exact_rows": "1/1", "http_wall_tokens_per_second": 28.355369359820738, "startup_seconds": 78.11725030373782, "pool_pages": 2},
+    "c2": {"exact_rows": "2/2", "http_wall_tokens_per_second": 37.46640832370969, "startup_seconds": 79.86538645997643, "pool_pages": 4},
+    "c4": {"exact_rows": "4/4", "http_wall_tokens_per_second": 36.593782690066874, "startup_seconds": 78.36232899408787, "pool_pages": 8},
+    "c8": {"exact_rows": "8/8", "http_wall_tokens_per_second": 35.89221999668858, "startup_seconds": 79.61095879971981, "pool_pages": 16},
+    "c17": {"exact_rows": "17/17", "http_wall_tokens_per_second": 35.101875146352775, "startup_seconds": 79.10985825397074, "pool_pages": 34},
+    "c32": {"exact_rows": "32/32", "http_wall_tokens_per_second": 35.11853186753433, "startup_seconds": 79.62299590185285, "pool_pages": 64},
+    "c17_live_refill": {"exact_rows": "17/17", "http_wall_tokens_per_second": 35.03476940676271, "admission_during_first_request": true}
+  },
+  "matched_c8": {
+    "native_samples_http_wall_tokens_per_second": [35.77273964640022, 36.28814823621188, 35.30078601558782],
+    "native_median_http_wall_tokens_per_second": 35.77273964640022,
+    "native_exact_rows": "24/24",
+    "native_live_exact_rows": "8/8",
+    "native_live_http_wall_tokens_per_second": 34.071537344332995,
+    "serial_samples_http_wall_tokens_per_second": [27.732122054322197, 27.53864192028239, 27.58626040816942],
+    "serial_median_http_wall_tokens_per_second": 27.58626040816942,
+    "serial_exact_rows": "24/24",
+    "serial_live_exact_rows": "8/8",
+    "serial_live_http_wall_tokens_per_second": 27.458265875501482,
+    "native_vs_serial_median_percent": 29.675929673332767,
+    "native_vs_serial_live_percent": 24.084811105030248
+  },
+  "host_gates": {
+    "global_arbitrary_page_fragmentation_and_lifecycle": "passed",
+    "graph_page_id_prefix_eviction_slot_reuse": "passed",
+    "long_context_4k_16k_32k_resource_accounting": "passed_host_contract",
+    "fixed_ragged_burst_poisson_overload_disconnect": "passed_host_contract",
+    "logical_widths_1_through_32": "passed",
+    "final_pool_and_ledger_conservation": "passed"
+  },
+  "limitations": [
+    "The retained hardware workload is p128/d8 with a 512-token per-request capacity; 4K/16K/32K model execution remains a separate C2-6 gate.",
+    "No gfx1151 device is present on this host.",
+    "vLLM and SGLang are not installed; no matched current-commit external comparison was run.",
+    "The c4/c8 physical kernels remain unregistered for shared-slot ownership; logical widths use exact physical c2 decomposition."
+  ],
+  "decision": {
+    "promote_gfx1100_global_pool": true,
+    "promote_gfx1100_shared_slot_physical_c2": true,
+    "retain_serial_c1_fallback": true,
+    "close_task_19": true,
+    "close_c2_6": false,
+    "remaining_c2_6": "model long-context/SLO/soak, gfx1151, and available external comparisons"
+  }
+}
