@@ -1,0 +1,154 @@
+{
+ "baseline_eligible": false,
+ "comparators": {
+  "8k_4096_chunk_regression": "4,096-row chunks measure -2.3% at 8K vs 1,024-row chunks regardless of source-F16 (350.7-351.1 vs 359.0), hence the cap returns to 1,024 at 8K+",
+  "g6_4k_old_cap": "4K tracked 15.494 GiB; relaxed 4K tracked 17.863 GiB (fixed +2.30 GiB bulk-prefill scratch; source-F16 workspace only +0.06 GiB)",
+  "g6_frozen_baseline": {
+   "1K/128": {
+    "ar": 12.9231,
+    "prefill": 376.554,
+    "tracked_gib": 15.481
+   },
+   "4K/128": {
+    "ar": 13.0953,
+    "prefill": 369.755,
+    "tracked_gib": 15.4944
+   },
+   "512/128": {
+    "ar": 13.1014,
+    "prefill": 379.398,
+    "tracked_gib": 15.0627
+   }
+  }
+ },
+ "correctness": {
+  "all_final_token_ids_9707_stable": true,
+  "kernel_body_changed": false,
+  "natural_complete_exact": true,
+  "natural_gpu_accept_match_cpu": true,
+  "shape_tracked_teardown_zero": true
+ },
+ "counterbalanced_ab": {
+  "1024/128": {
+   "candidate_wins": 5,
+   "off_decode_med": 12.891896554599121,
+   "off_prefill_med": 376.33228280105305,
+   "on_decode_med": 12.894140466396893,
+   "on_prefill_med": 387.64799019461634,
+   "paired_delta_percent": 3.0191104972482785,
+   "paired_median_ratio": 1.0301911049724828,
+   "paired_ratios": [
+    1.031,
+    1.0302,
+    1.0301,
+    1.0328,
+    1.0276
+   ],
+   "pairs": 5
+  },
+  "512/128": {
+   "candidate_wins": 5,
+   "off_decode_med": 13.080794995547103,
+   "off_prefill_med": 379.30133641579226,
+   "on_decode_med": 13.068739261582737,
+   "on_prefill_med": 396.0905353578578,
+   "paired_delta_percent": 4.513274872422168,
+   "paired_median_ratio": 1.0451327487242217,
+   "paired_ratios": [
+    1.0442,
+    1.0467,
+    1.0427,
+    1.0473,
+    1.0451
+   ],
+   "pairs": 5
+  }
+ },
+ "date": "2026-08-17",
+ "decision": "Retain Q4_K_S Q5 source-F16 prefill at 512/1K/4K on gfx1151: +4.51%/+3.02% at 512/1K (counterbalanced, 5/5 pairs) and +2.95% at 4K via a capacity-conditional scratch cap that grows 4K-class requests to the 4096-row plateau (enabling source-F16) while keeping 1,024-row chunks at 8K+ where they measured faster; 4K tracked peak grows a fixed +2.30 GiB (bounded, flat past 8K) and 8K+ memory stays below llama GTT. Full ten-prompt natural gate complete_exact. Change is gfx1151-only; gfx1100/24GB cards are untouched (no K_S F16 admission, no row-cap policy, autotuner self-limits at 52K+/128K+).",
+ "hardware": {
+  "arch": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "memory": "128 GiB unified GTT aperture",
+  "rocm": "TheRock HIP 7.15.0-0000000"
+ },
+ "kind": "qwen38_27b_gfx1151_q4ks_q5_source_f16_prefill_retention",
+ "model": {
+  "geometry": "dense H5120, FFN17408, 64 target blocks plus NextN",
+  "kv_storage": "BF16",
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "Q4_K_S",
+  "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9"
+ },
+ "natural_gate": {
+  "all_exact_greedy": true,
+  "all_gpu_accept_match_cpu": true,
+  "b1_tok_s": 20.010856961045466,
+  "b2_tok_s": 23.633933425315448,
+  "b3_cycles": 261,
+  "b3_tok_s": 24.499708657138935,
+  "b3_vs_ar": 1.8308022810744524,
+  "peak_allocated_bytes": 16829681812,
+  "status": "complete_exact",
+  "tracked_after_close_bytes": 0,
+  "true_ar_tok_s": null
+ },
+ "performance_claim": true,
+ "performance_claim_scope": "retained Q4_K_S Q5 source-F16 prefill at 512/1K/4K on gfx1151; counterbalanced 512/1K prefill A/B; 4K capacity-conditional +2.95%; 8K+ unchanged; decode flat; full ten-prompt natural gate complete_exact; gfx1151-only (no 24GB/gfx1100 impact)",
+ "protocol": {
+  "commands": {
+   "counterbalanced_ab": "KS_F16=<off|on> HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3.12 /tmp/ks_f16_ab.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads <512/128|1024/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+   "natural_gate": "HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 3 --warmup --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build",
+   "shape_4k_8k": "HIPENGINE_HIP_ARCH=gfx1151 /home/lhl/miniforge3/envs/therock/bin/python3.12 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads <4096/128|8192/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "counterbalanced_ab": "5 interleaved pairs per shape (512/128, 1024/128), alternating order; one discarded warmup + three measured resets per process; fresh process per variant; shared JIT cache; only the one F16-admission dict entry differs between off/on",
+  "natural_gate": "full ten-prompt/four-category mtpbench suite; 25 visible outputs/24 timed transitions per prompt; native target verification; runs=3; budgets 1/2/3; one warmup",
+  "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "shape_rows": "one clean detached process per shape on the committed file; one discarded warmup + three measured resets; production bulk/WMMA/GEMV/HIP-graph routes; cached builds; token 9707 repeated"
+ },
+ "publishable": true,
+ "schema_version": 1,
+ "shape_results": {
+  "4K/128": {
+   "decode_tok_s": 13.037781616537508,
+   "final_token_ids": [
+    9707,
+    9707,
+    9707
+   ],
+   "final_token_ids_stable": true,
+   "hip_used_peak_sampled_gib": 18.120529174804688,
+   "measured_runs": 3,
+   "prefill_cv_percent": 0.03589360854899919,
+   "prefill_tok_s": 380.30491854890636,
+   "source": "committed capacity-conditional cap (source-F16 active)",
+   "tracked_after_close_bytes": 0,
+   "tracked_peak_gib": 17.862589430063963
+  },
+  "8K/128": {
+   "decode_tok_s": 12.846323535658431,
+   "final_token_ids": [
+    9707,
+    9707,
+    9707
+   ],
+   "final_token_ids_stable": true,
+   "hip_used_peak_sampled_gib": 15.993671417236328,
+   "measured_runs": 3,
+   "prefill_cv_percent": 0.08585528062272417,
+   "prefill_tok_s": 359.08601596676664,
+   "source": "committed capacity-conditional cap (1,024-row chunks, source-F16 off)",
+   "tracked_after_close_bytes": 0,
+   "tracked_peak_gib": 15.79518897458911
+  }
+ },
+ "software": {
+  "candidate_state": "uncommitted retention diff: gfx1151 __init__.py F16 admission + capacity-conditional scratch row cap; qwen35_gguf_runner.py row-cap resolver + chunk-size resident cap; tests",
+  "external_port": false,
+  "hipengine_commit": "90cc4505dd82dca7e3ddcb73c04e263ca1c503e7",
+  "require_cached_build": true,
+  "target_backend": "hip_gfx1151"
+ },
+ "status": "complete_exact"
+}

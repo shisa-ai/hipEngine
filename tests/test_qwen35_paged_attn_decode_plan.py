@@ -19,6 +19,7 @@ from hipengine.kernels.cpu_reference import (
 )
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
+    qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_spans,
@@ -97,6 +98,30 @@ def _int8_spans(
         block_table=_tensor(0x1000, block_table_shape, "int32"),
         live_counts=_tensor(0x2000, (1,), live_dtype),
         max_live_count=2,
+        storage_dtype="int8_per_token_head",
+        scale_metadata=metadata,
+    )
+
+
+def _int8_batch_spans(
+    *,
+    rows: int = 2,
+    blocks_per_row: int = 2,
+    live_rows: int | None = None,
+    granularity: str = "per_token_head",
+) -> KVLiveSpans:
+    scale_groups = () if granularity == "per_token_head" else (16,)
+    scale_shape = (rows * blocks_per_row, 256, 4, *scale_groups)
+    metadata = KVScaleMetadata(
+        k_scale=_tensor(0x3000, scale_shape, "fp32"),
+        v_scale=_tensor(0x4000, scale_shape, "fp32"),
+        scale_dtype="fp32",
+        granularity=granularity,
+    )
+    return KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (rows, blocks_per_row), "int32"),
+        live_counts=_tensor(0x2000, (rows if live_rows is None else live_rows,), "int64"),
+        max_live_count=rows * blocks_per_row * 256,
         storage_dtype="int8_per_token_head",
         scale_metadata=metadata,
     )
@@ -426,6 +451,153 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
         )
         is qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans
     )
+
+
+def test_qwen38_int8_gqa_splitk_batch_registers_distinct_c2_variant() -> None:
+    """IKV-C2 must not silently alias the existing c1-shaped INT8 wrapper."""
+
+    register_qwen35_paged_attn_decode_kernels()
+    candidate = resolve(
+        backend="hip_gfx1100",
+        layer="paged_attn_decode",
+        quant="int8_per_token_head",
+        variant="per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+        missing="none",
+    )
+
+    assert candidate is getattr(
+        paged_attn_decode,
+        "qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans",
+        None,
+    )
+    assert candidate is not None
+    assert candidate is not qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans
+
+
+def test_qwen38_int8_gqa_splitk_batch_source_owns_rows_and_explicit_strides() -> None:
+    source = Path(paged_attn_decode.__file__).with_suffix(".hip").read_text()
+    producer = source.split(
+        "__global__ void "
+        "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernel(",
+        1,
+    )[1].split("\ntemplate <", 1)[0]
+    reducer = source.split(
+        "__global__ void "
+        "qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_kernel(",
+        1,
+    )[1].split("\ntemplate <", 1)[0]
+
+    assert "const int64_t row = blockIdx.z;" in producer
+    assert "block_tables + row * block_table_len" in producer
+    assert "context_len_ptr[row]" in producer
+    assert "row * query_row_stride" in producer
+    assert "row * num_q_heads + q_base + h" in producer
+    assert "row * gate_row_stride" in reducer
+    assert "row * out_row_stride" in reducer
+    assert "q_head * gate_head_stride" in reducer
+    assert "q_head * out_head_stride" in reducer
+
+
+def test_qwen38_int8_gqa_splitk_batch_validates_layout_and_forwards_strides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        def launch(*args, **kwargs):
+            calls.append((name, args, kwargs))
+
+        return launch
+
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "_launch_int8_gqa_split_context_batch",
+        record("producer"),
+    )
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "_launch_gate_reduce_batch_strided",
+        record("reducer"),
+    )
+    spans = _int8_batch_spans()
+    args = (
+        0x10000,
+        0x20000,
+        0x30000,
+        spans.scale_metadata.k_scale.ptr,
+        spans.scale_metadata.v_scale.ptr,
+        0x40000,
+        0x50000,
+        0x60000,
+        0x70000,
+        0x80000,
+        spans,
+        2,
+        256,
+        2,
+        256,
+        24,
+        4,
+        256,
+        24 * 256 + 7,
+        24 * 256 + 11,
+        256,
+        1,
+        24 * 256 + 13,
+        256,
+        1,
+        256**-0.5,
+    )
+    qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+        *args,
+        library=object(),
+        runtime=object(),
+    )
+
+    assert [name for name, _, _ in calls] == ["producer", "reducer"]
+    assert calls[0][1][9:16] == (2, 24 * 256 + 7, 256, 2, 256, 2, 24)
+    assert calls[1][1][10:16] == (
+        24 * 256 + 11,
+        256,
+        1,
+        24 * 256 + 13,
+        256,
+        1,
+    )
+
+    bad_table = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (3,), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=512,
+        storage_dtype="int8_per_token_head",
+        scale_metadata=spans.scale_metadata,
+    )
+    with pytest.raises(ValueError, match="row-major"):
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+            *(*args[:10], bad_table, *args[11:]),
+            library=object(),
+            runtime=object(),
+        )
+    with pytest.raises(ValueError, match="live_counts"):
+        short_live = _int8_batch_spans(live_rows=1)
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+            *(*args[:10], short_live, *args[11:]),
+            library=object(),
+            runtime=object(),
+        )
+    with pytest.raises(ValueError, match="per_token_head"):
+        grouped = _int8_batch_spans(granularity="block16")
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+            *(*args[:10], grouped, *args[11:]),
+            library=object(),
+            runtime=object(),
+        )
+    with pytest.raises(ValueError, match="query_row_stride"):
+        qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
+            *(*args[:18], 24 * 256 - 1, *args[19:]),
+            library=object(),
+            runtime=object(),
+        )
 
 
 def test_qwen35_decode_order_prefill_uses_query_batch_gqa_crossover(

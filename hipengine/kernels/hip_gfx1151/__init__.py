@@ -749,17 +749,32 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
         "transport": "hipgraph"
     },
 }
-# SH3-M1 admits loader-time host ownership only for private c1 sessions. Any
-# shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
-# or transactionally restores the exact resident Q8_0 table.
+# SH3-M1 admits loader-time host ownership only for private c1 sessions. Q8_0
+# retains its CPU-copy route. Qwen3.8 Q4_K uses an anonymous immutable host
+# copy: directly registering the file-backed mmap corrupted complete-model
+# trajectories on gfx1151, while the copied mapping is graph-safe and exact.
 GGUF_HOST_TOKEN_EMBEDDING_C1 = True
-GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q8_0",)
-# gfx1151 retains its qualified CPU-copy Q8_0 route; mapped host kernel reads
-# require an independent lifecycle/performance gate on that device.
-GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = False
+GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q8_0", "Q4_K")
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES = ("Q4_K",)
+GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY = True
 # SH16-M2 retains one bounded private-c1 owner for allocations <=16 MiB.
 # The environment selector is a temporary explicit opt-out for rollback.
 GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
+# Qwen3.8 Q4_K_S packs every non-root immutable owner through the first complete
+# inventory crossover. The matched 4K gate collapses 371 physical weight owners
+# to three while preserving exact output and complete wall.
+GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        "enabled": True,
+        "max_allocation_bytes": 80 * 1024 * 1024,
+    },
+}
+# The same private-c1 geometry exposes its 188 logical state/KV ranges through
+# one physical owner. Shared runners and wider batches retain dedicated owners.
+GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {"enabled": True},
+}
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
@@ -774,6 +789,9 @@ GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE = {
     # the peer-wave oracle and 1.42-1.52x faster than direct LDS32 at
     # 512/1K/4K when recurrence chunks are capped at 1K rows.
     ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
+    # Qwen3.8-27B Q4_K_S has the same GDN geometry and unchanged recurrent
+    # state math; only projection tensor quant assignments differ.
+    ("MOSTLY_Q4_K_S", 16, 48, 128, 128): "chain_compact_peer_wave32",
     # D08-X2-K2 (2026-08-15): the exact-core gate measures the Vulkan-shaped
     # cluster8 recurrence at +16.70% Q8_0 pp512 with neutral core-graph tg128,
     # so the same one-V-head-per-K-head geometry now uses cluster8 for Q8_0 too.
@@ -794,6 +812,25 @@ GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768
 GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
+# Dense Qwen3.8 Q4_K_S keeps every bulk-prefill field dedicated: both owner-slot
+# and single-arena liveness aliases changed logits despite preserving repeated-
+# token top-1. Bulk-prefill scratch rows are capacity-conditional: 4K-class
+# requests grow to the natural full-attention 4K query-chunk plateau (which
+# admits the Q5 source-F16 route, +2.97% measured at 4K), while 8K and larger
+# keep 1,024-row chunks because 4,096-row chunks measured -2.3% slower at 8K
+# regardless of source-F16. Memory therefore stays flat as context grows past
+# 8K; on 24GB-class cards the autotuner drops the full-attn query chunk to
+# 1024/768 at 52K+/128K+ anyway, and gfx1100 has no K_S source-F16 admission,
+# so this policy is gfx1151-only.
+GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        "min_capacity": 4_096,
+        "max_rows_by_capacity": {
+            4_096: 4_096,
+            8_192: 1_024,
+        },
+    },
+}
 # Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
 # 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
 # AOTriton. Runtime capacity remains capped at the validated 64K allocation
@@ -802,13 +839,16 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
-# F3's canonical p512/d128 gate rejects automatic Q8T16 row amortization:
-# one non-repeated prompt trajectory diverges consistently at c2/c4/c8 even
-# though the shorter d64 screen passed. Keep the env-only diagnostic available.
+# The unrestricted historical policy remains false because current
+# ZBook-local counterbalanced p512/d128 evidence rejects c2; its absolute rates
+# are independent of the other gfx1151 host. Production free-running IDs are
+# diagnostic, not binding; the complete strict-teacher gate admits exact c4/c8
+# logits, and width-scoped timing wins both shapes. Keep c2 on the direct owner.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 4
 # The repaired 128-thread pair-only route preserves production reduction order.
-# Scope its small repeatable win to the independently gated physical-c8 shape;
-# c2/c4 stay on their faster per-row schedule.
+# Its independent fallback floor remains physical c8; the all-projection c4
+# policy above may still select the same rowtile pair under that broader scope.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
 # Exact dynamic expert-ID pairing removes duplicate C8 Q4T16 gate/up weight
 # reads while keeping each row's production 128-thread reduction order.
@@ -826,10 +866,21 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # operation-complete T16 family. Architecture-local primitive, actual-weight,
 # full-state, natural-suite, memory, and performance gates decide retention.
 GGUF_DENSE_Q4_T16 = True
+# Qwen3.8 P5 replaces only the Q4_K_S H5120/N17408 gate/up pair with the
+# byte-neutral qmicro payload. Direct-metadata c1/native leaves and the bounded
+# 4K metadata expansion route are exact and operation-complete; Q4_K_M keeps
+# the later requalified standard-T16 owner and every other Q4 role keeps its
+# independently qualified T16 owner.
+GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = True
+GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES = ("MOSTLY_Q4_K_S",)
 # Qwen3.8-27B P2 retains the 48 K6144/N5120 recurrent outputs as sole
 # Q5T16 after architecture-local actual-weight, GDN-handoff, full-state,
 # natural-suite, memory, and performance gates.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
+# Qwen3.8-27B Q4_K_S candidate: compact the exact H5120 Q5 FFN-down,
+# recurrent-QKV, and full-attention-V roles through the operation-complete
+# direct/rowtile/WMMA T16 family. Q4_K_M has no Q5 tensors at these shapes.
+GGUF_DENSE_Q5_T16_H5120 = True
 # D08-P6 admits the same sole-resident family independently for the exact
 # Qwen3.5-0.8B K2,048/N1,024 recurrent-output role.
 GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
@@ -838,35 +889,106 @@ GGUF_DENSE_Q5_T16_SSM_OUT_08B = True
 GGUF_DENSE_Q4_T16_ATTN_Q_08B = True
 # D08-D3 keeps every Qwen3.5-0.8B Q4 gate/up pair in its sole pack8 layout and
 # selects the existing operation-complete fused-SiLU leaf at t128 only for c1.
-# Qwen3.8 P5 independently selects primary+residual Q8_1 dp4a over the sole
-# Q4T16 H5120 gate/up pair. Its exact split-weight sibling assigns independent
-# two-wave gate/up owners, lowering VGPR 224 -> 120 and LDS 1,024 -> 512 bytes
-# without changing any output operation. Native-session B1 retains the prior
-# Q8_1x2 owner; rows>1 native batches and peer geometries retain their owners.
+# Qwen3.8 Q4_K_M serial c1 uses exact local32 after the formerly retained
+# residual-Q8_1x2 split-weight owner lost a ZBook-local counterbalanced rebase;
+# native B1 keeps its independently qualified Q8_1x2 owner. Q4_K_S serial c1
+# independently keeps the exact split-weight owner. Its native rows2-4 require
+# the row-independent Q8_1x2 rowtile because direct-BF16 association can change
+# greedy trajectories. Peer geometries and policy misses retain their owners.
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024, 3_584): "pack8_dual_decode_t128_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
         (1, 5_120, 17_408): (
             "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
         ),
     },
 }
+GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 5_120, 17_408): (
+            "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
+        ),
+        **{
+            (rows, 5_120, 17_408): (
+                "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
+            )
+            for rows in (2, 3, 4)
+        },
+    },
+}
+# Qwen3.8 P5 independently qualifies the exact same-input F32 alpha/beta pair
+# for scalar recurrent layers. Native rows and every other shape retain two
+# singleton dense-F32 projections.
+GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 48, 48)}
+)
+# Qwen3.8's 24 standard-Q6 recurrent QKV owners and Q4 gates consume the same
+# BF16 norm row. One local128 mixed grid preserves both singleton arithmetic
+# trees while removing their serial launch boundary. Shape/backend misses and
+# native rows retain the two registered primitive projections.
+GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 10_240, 6_144)}
+)
+# The 16 full-attention K/V pairs share one BF16 norm row. K is compact Q4T16
+# and V is either Q4T16 or byte-neutral planar-Q6; one local128 block-parallel
+# grid preserves each qualified singleton arithmetic tree while removing the
+# serial launch boundary. Native rows, other shapes, and peers retain the two
+# primitive projections.
+GGUF_NARROW_KV_PAIR_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 1_024, 1_024)}
+)
+# The graph-safe serial composite joins those independent projections with the
+# current in-place Conv channel blocks. Wider/native rows and peer backends keep
+# the separately registered pair plus Conv fallback.
+GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES = frozenset(
+    {(1, 5_120, 48, 10_240, 4)}
+)
+# Qwen3.8 serial full-attention consumes packed BF16 Q/gate and BF16 K in one
+# exact head RMSNorm/RoPE launch, removing the split and K-cast graph nodes.
+GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
+    (1, 24, 4, 256): "qwen35_position_qk_bf16_f32",
+}
 # D08-D3B keeps the current Q4-pack8 and dense-BF16 residents and selects their
 # exact rounded-BF16 residual siblings only for the 24 c1 dense-down owners.
-# Q8, native batches, other models/shapes, and peer backends remain unfused.
+# Qwen3.8 P5 independently admits same-resident direct Q4/Q6 c1 siblings at
+# H5120/FFN17408 after the complete graph-node gate. Q4_K_S transfers only its
+# Q4 down owners; its Q5 down owners retain the registered unfused fallback.
+# Native rows, Q8, other models/shapes, and peer backends remain unchanged.
 GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 3_584, 1_024): True,
     },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 17_408, 5_120): True,
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 17_408, 5_120): True,
+    },
 }
 # D08-D5 admits both fixed-hidden wave-reduction leaves as one inseparable C
-# route for the exact dense-0.8B Q4 decode owner. Q8, native batches, output
-# norm, other shapes/models, and peer backends keep the generic primitives.
+# route for the exact dense-0.8B Q4 decode owner. The dense-H5120 sibling
+# preserves the generic local256 reduction tree exactly while caching 20 values
+# per lane; all 128 actual Qwen3.8 leaves are bit exact and clear the P5 package
+# gate. The reduction is quant-independent, so the qualified Q4_K_S geometry
+# shares it. Q8, native batches, output norm, other shapes/models, and peer
+# backends keep the generic primitives.
 GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 1_024): "bf16_out_fixed1024_wave256",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120): "bf16_out_fixed5120_wave256",
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 5_120): "bf16_out_fixed5120_wave256",
     },
 }
 # The measured physical-c8 owner is two exact c4 rowtiles, not generic WMMA.
@@ -917,11 +1039,16 @@ GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 512
 GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = frozenset({(17_408, 5_120)})
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
 }
 # P4 retains changed-arithmetic source-F16 only for the sole-Q5T16 recurrent
 # output. Q6 and Q4 complete pp512 screens lose wall and/or memory, so their
 # exact T16/WMMA owners remain production. The Q5 octet producer consumes one
 # bounded dead-input cast and temporary tile; sole T16 residency is unchanged.
+# Q4_K_S shares the same 48 byte-identical Q5T16 K6144/N5120 recurrent outputs
+# and therefore admits the same source-F16 route (MOSTLY_Q4_K_S added 2026-08-17);
+# the K_S qualification had not extended this K_M-derived prefill policy, leaving
+# all 60 Q5 prefill tensors on the single-wave exact WMMA owner.
 GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES = {}
 GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
@@ -1053,13 +1180,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         ),
-        # Dense-H5120 F32 alpha/beta pair is W7900-only pending an
-        # independent gfx1151 occupancy and full-model gate.
-        (
-            "linear_pair",
-            "f32",
-            "bf16_hidden_bf16_out",
-        ),
+        # The exact scalar F32 alpha/beta pair is independently admitted on
+        # gfx1151; wider/native rows retain singleton projections.
         # The cross-family alpha/beta plus snapshot-Conv owner has only been
         # screened on gfx1100; gfx1151 retains three independent leaves.
         (
@@ -1093,13 +1215,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_m",
             "mixed_bf16_shared_batch_spans",
         ),
-        # Dense Q5T16 ssm_out fusions remain W7900-only; D08-P1 aliases the
-        # generic direct/rowtile/WMMA leaves for its independently gated QKV.
-        (
-            "gdn_recurrent_rmsnorm_gate+cast",
-            "gguf_q5_k_t16_v1",
-            "bf16_lowp_f32_bf16_out",
-        ),
+        # The scalar Q5T16 ssm_out GDN+cast handoff is independently admitted
+        # on gfx1151; verifier-chain ownership remains W7900-only. D08-P1
+        # aliases the generic direct/rowtile/WMMA leaves for its QKV role.
         (
             "gdn_chain_recurrent_rmsnorm_gate+cast",
             "gguf_q5_k_t16_v1",
@@ -2014,10 +2132,15 @@ __all__ = [
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
     "GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS",
     "GGUF_GDN_PREFILL_EXACT_MODE",
+    "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
+    "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_COPY",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
+    "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
+    "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
@@ -2037,13 +2160,20 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",
+    "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES",
+    "GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES",
+    "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
+    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES",
     "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
     "GGUF_DENSE_Q5_T16_QKV",
+    "GGUF_DENSE_Q5_T16_H5120",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
@@ -2054,6 +2184,8 @@ __all__ = [
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
+    "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
@@ -2065,6 +2197,7 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES",
     "GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES",

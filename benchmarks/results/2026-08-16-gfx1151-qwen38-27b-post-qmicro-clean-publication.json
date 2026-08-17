@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_post_qmicro_clean_publication",
+  "status": "clean_publication",
+  "publishable": true,
+  "baseline_eligible": true,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT aperture",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "9c649e28d6850faf89c597425493dd04c09e19e0",
+    "tracked_tree_clean": true,
+    "llama_cpp_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llama_cpp_build": 10438,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv_storage": "BF16"
+  },
+  "protocol": {
+    "prompt_token": 9707,
+    "shapes": [
+      "512/128",
+      "1024/128",
+      "4096/128"
+    ],
+    "process_contract": "one right-sized clean detached process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "prefill_mode": "production bulk WMMA",
+    "decode_mode": "production HIP graph replay",
+    "timing": "load, JIT prebuild, and graph capture excluded",
+    "memory": "250 ms whole-process GTT sampling plus hipEngine tracked allocator"
+  },
+  "rows": {
+    "512/128": {
+      "prefill_tok_s": 402.062396020815,
+      "prefill_cv_percent": 0.14263035958402295,
+      "decode_tok_s": 12.49660674294755,
+      "decode_cv_percent": 0.04519752020339682,
+      "llama_hip_prefill_tok_s": 352.42581849519684,
+      "prefill_vs_llama_hip_percent": 14.084262537165593,
+      "llama_vulkan_prefill_tok_s": 242.95616918860227,
+      "prefill_vs_llama_vulkan_percent": 65.48762575717993,
+      "llama_hip_decode_tok_s": 12.15062791692198,
+      "decode_vs_llama_hip_percent": 2.8474151985489637,
+      "llama_vulkan_decode_tok_s": 12.762900799954693,
+      "decode_vs_llama_vulkan_percent": -2.0864696919691506,
+      "tracked_peak_gib": 16.587202433496714,
+      "process_gtt_gib": 17.07263946533203,
+      "llama_hip_process_gtt_gib": 15.784839630126953,
+      "llama_vulkan_process_gtt_gib": 15.8707275390625,
+      "tracked_after_close_bytes": 0
+    },
+    "1024/128": {
+      "prefill_tok_s": 391.4523693120814,
+      "prefill_cv_percent": 0.024717108567335538,
+      "decode_tok_s": 12.318637855675314,
+      "decode_cv_percent": 0.02722345237601307,
+      "llama_hip_prefill_tok_s": 364.442641212626,
+      "prefill_vs_llama_hip_percent": 7.411242550977226,
+      "llama_vulkan_prefill_tok_s": 247.61046231581554,
+      "prefill_vs_llama_vulkan_percent": 58.0920150348099,
+      "llama_hip_decode_tok_s": 12.064500969354377,
+      "decode_vs_llama_hip_percent": 2.1064848597259322,
+      "llama_vulkan_decode_tok_s": 12.71970179454124,
+      "decode_vs_llama_vulkan_percent": -3.153092307856198,
+      "tracked_peak_gib": 17.011635791510344,
+      "process_gtt_gib": 17.555103302001953,
+      "llama_hip_process_gtt_gib": 15.816089630126953,
+      "llama_vulkan_process_gtt_gib": 15.8717041015625,
+      "tracked_after_close_bytes": 0
+    },
+    "4096/128": {
+      "prefill_tok_s": 385.7803804704053,
+      "prefill_cv_percent": 0.07450477084608795,
+      "decode_tok_s": 12.46725461936477,
+      "decode_cv_percent": 0.008601954698918559,
+      "llama_hip_prefill_tok_s": 367.99291757380905,
+      "prefill_vs_llama_hip_percent": 4.833642727112708,
+      "llama_vulkan_prefill_tok_s": 354.3677775179427,
+      "prefill_vs_llama_vulkan_percent": 8.86440724731865,
+      "llama_hip_decode_tok_s": 11.508123386502662,
+      "decode_vs_llama_hip_percent": 8.334384335738253,
+      "llama_vulkan_decode_tok_s": 12.568302094065688,
+      "decode_vs_llama_vulkan_percent": -0.803986679701385,
+      "tracked_peak_gib": 19.363286670297384,
+      "process_gtt_gib": 19.931354522705078,
+      "llama_hip_process_gtt_gib": 16.003589630126953,
+      "llama_vulkan_process_gtt_gib": 16.023681640625,
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "delta_vs_prior_clean_15a2ca45b": {
+    "prefill_percent": {
+      "512/128": 0.5569004725263227,
+      "1024/128": 0.16862502799153134,
+      "4096/128": 0.2777425001050826
+    },
+    "decode_percent": {
+      "512/128": 2.348528905472258,
+      "1024/128": 2.217438214915002,
+      "4096/128": 2.1107706470877563
+    },
+    "tracked_peak_delta_mib": -170.0,
+    "process_gtt_delta_gib": {
+      "512/128": -0.2498626708984375,
+      "1024/128": -0.24982070922851562,
+      "4096/128": -0.24982070922851562
+    },
+    "note": "The clean-to-clean decode delta includes all eight exact post-15a2ca45b retained graph/dataflow units; the qmicro-only same-source causal delta is +0.956% to +1.031%."
+  },
+  "delta_vs_campaign_opening_943ec15f5": {
+    "prefill_percent": {
+      "512/128": 371.4174905915709,
+      "1024/128": 363.2756543378024,
+      "4096/128": 358.1478241510508
+    },
+    "decode_percent": {
+      "512/128": 77.87115453148094,
+      "1024/128": 77.01119518656925,
+      "4096/128": 85.68030251171908
+    },
+    "process_gtt_percent": {
+      "512/128": -48.459356850107085,
+      "1024/128": -47.772714020295716,
+      "4096/128": -44.70545455392089
+    }
+  },
+  "natural_suite": {
+    "true_ar_tok_s": 12.71731428538565,
+    "true_ar_qmicro_only_delta_percent": 1.081510274904108,
+    "native_b1_tok_s": 19.00472472481211,
+    "native_b1_qmicro_only_delta_percent": 0.9196508165029806,
+    "all_30_ar_and_b1_trajectories_exact": true,
+    "all_gpu_acceptance_matches_cpu": true,
+    "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json",
+    "not_repeated": "The exact same-source full suite already covered commit-equivalent code; repeating the greater-than-five-minute suite would add no new correctness premise."
+  },
+  "correctness": {
+    "final_token_ids": {
+      "512/128": [9707, 9707, 9707],
+      "1024/128": [9707, 9707, 9707],
+      "4096/128": [9707, 9707, 9707]
+    },
+    "final_token_ids_stable_all": true,
+    "all_rates_finite_positive": true,
+    "tracked_teardown_zero_all": true
+  },
+  "commands": {
+    "runner": "cd /tmp/qwen38-task22-qmicro-publication-9c649e28d && ./run.sh",
+    "prebuild": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt",
+    "measured": "scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <512/128|1K/128|4K/128> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt --require-cached-build"
+  },
+  "evidence": {
+    "summary": {
+      "path": "/tmp/qwen38-task22-qmicro-publication-9c649e28d/summary.json",
+      "sha256": "4d90ce30b06b93a975dd0c59ab8adcde941cd000cba4eeabd2c4777cdfaf0683",
+      "bytes": 4836
+    },
+    "environment": {
+      "path": "/tmp/qwen38-task22-qmicro-publication-9c649e28d/environment.txt",
+      "sha256": "85fdabefbb8e29b15eeebc7899104ffecdc0b4684882e237db9d4d3612a5ce38",
+      "bytes": 1226
+    },
+    "runner": {
+      "path": "/tmp/qwen38-task22-qmicro-publication-9c649e28d/run.sh",
+      "sha256": "4d0cfcd997848c24c97ccf0b60b9f956f58523ad5750fb3a59ed8d0582d2f920",
+      "bytes": 8424
+    },
+    "shape_run_sha256": {
+      "512/128": "55f1d9d01f71252a44e8beeee650ca2dbe6a2b8df9542de317a8da6e6cf2533a",
+      "1024/128": "261b5ee0dde85a15bb0820aa25068d84942319199b9c432c83f2ea1d05ec5e19",
+      "4096/128": "ddecc280a3a1d484748d5bb5dd4ee615342fb3b4ac226affd216a0bc16f50e8a"
+    },
+    "shape_memory_sha256": {
+      "512/128": "fff4e163bad1bd35e7530ad0737e154d0cc9dfe8c489c342260f8977400f500e",
+      "1024/128": "32d4bf221a3ba1148cad5c8ac84252fc17c9f5a71a4243f8afa88a9408809f70",
+      "4096/128": "6fd90cfcdfe2c6dd35f1dbb5a9977b64e80c5d46b20752f971aff67d5b2ca652"
+    }
+  },
+  "decision": "Promote clean commit 9c649e28d as the current Qwen3.8-27B gfx1151 baseline. Prefill beats both frozen llama.cpp build-10438 backends at all shapes, and true AR now beats llama HIP at all shapes. Vulkan remains 0.804% to 3.153% faster in AR and sampled GTT remains 7.57% to 24.54% above llama, so P5 and G5 remain open."
+}

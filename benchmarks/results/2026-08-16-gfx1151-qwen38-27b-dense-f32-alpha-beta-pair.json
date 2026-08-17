@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_dense_f32_alpha_beta_pair",
+  "status": "retained_development",
+  "publishable": true,
+  "baseline_eligible": false,
+  "performance_claim": true,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "8745482b593ab848c574bccdefc475d9beb6e33f",
+    "development_tree_dirty": true,
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "geometry": {
+      "hidden_size": 5120,
+      "layers": 64,
+      "linear_attention_layers": 48,
+      "alpha_beta_weight_shape": [48, 5120],
+      "alpha_beta_weight_dtype": "f32"
+    }
+  },
+  "change": {
+    "scope": "gfx1151 rows1 K5120 N48+N48 dense-F32 linear-attention alpha/beta only",
+    "control": "two exact dense_gemv_bf16_f32w_bf16_out launches",
+    "candidate": "one existing exact same-input dense_pair_gemv_bf16_f32w_bf16_out launch",
+    "registry_key": "linear_pair/f32/bf16_hidden_bf16_out",
+    "capability": "GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES={(1,5120,48,48)}",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "gfx1100 retains its prior runtime rejection; gfx1151 rows2-4, shape misses, other backends, and unregistered keys retain two singleton projections.",
+    "prior_rejection": "benchmarks/results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json",
+    "new_premise": "The gfx1151 serial graph has a measured alpha/beta launch-gap boundary and differs from the rejected W7900 native B1-B3 route; this candidate is architecture- and rows1-scoped."
+  },
+  "profile_4k_16": {
+    "prompt_token": 9707,
+    "prompt_length": 4096,
+    "decode_tokens": 16,
+    "graph_replay": true,
+    "selected_region": "measured_decode_graph",
+    "control": {
+      "dispatches_per_token": 822.0,
+      "kernel_ms_per_token": 79.0583438125,
+      "host_ms_per_token": 82.22447262505739,
+      "singleton_dispatches": 1536,
+      "singleton_total_ms": 10.790581,
+      "alpha_beta_to_conv_ms_per_token": 0.8557285
+    },
+    "candidate": {
+      "dispatches_per_token": 774.0,
+      "kernel_ms_per_token": 78.952610625,
+      "host_ms_per_token": 82.02509849979833,
+      "pair_dispatches": 768,
+      "pair_total_ms": 9.350239,
+      "pair_median_us": 12.143,
+      "alpha_beta_to_conv_ms_per_token": 0.6795946249999999,
+      "vgpr": 24,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "workgroup_size": 256
+    },
+    "delta": {
+      "dispatches_per_token": -48.0,
+      "alpha_beta_to_conv_ms_per_token": -0.1761338750000001,
+      "alpha_beta_to_conv_percent": -20.5829156093317,
+      "alpha_beta_to_conv_speedup": 1.259174908865708,
+      "kernel_ms_per_token": -0.10573318749999316,
+      "kernel_percent": -0.1337407064215257,
+      "host_ms_per_token": -0.1993741252590553,
+      "host_percent": -0.24247540773925103
+    }
+  },
+  "request_gate_512_128": {
+    "protocol": {
+      "process_order": ["control", "candidate", "candidate", "control"],
+      "warmup_runs_per_process": 1,
+      "measured_runs_per_process": 3,
+      "warmup_decode_tokens": 1,
+      "decode_tokens": 128,
+      "graph_replay": true
+    },
+    "control": {
+      "process_median_tok_s": [12.262624469680103, 12.255698373492914],
+      "median_tok_s": 12.259161421586509,
+      "decode_cv_percent": [0.0068872586326739925, 0.0503670361230585]
+    },
+    "candidate": {
+      "process_median_tok_s": [12.274048095032631, 12.277713379309414],
+      "median_tok_s": 12.275880737171022,
+      "decode_cv_percent": [0.0088626363506232, 0.03304397753646528]
+    },
+    "speedup": 1.0013638221253105,
+    "delta_percent": 0.13638221253104987,
+    "candidate_all_above_control": true,
+    "final_token_ids_exact": true,
+    "final_logit_exact": true,
+    "final_logit": 25.243370056152344,
+    "tracked_peak_gib": 16.753218058496714
+  },
+  "correctness": {
+    "rows1_to4_scalar_bf16_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true,
+    "full_chain_final_ids_exact": true,
+    "full_chain_final_logit_exact": true,
+    "tracked_peaks_identical": true,
+    "native_and_mtp_unchanged": "The capability admits rows1 only; rows2-4 retain singleton projections.",
+    "natural_suite_not_repeated": "The pair preserves each singleton K/FMA/reduction tree and BF16 output bit, adds no prompt-sensitive branch, and this artifact makes no natural-throughput claim."
+  },
+  "validation": {
+    "red": "Two focused tests failed because gfx1151 still excluded the pair key and exposed no qualified runtime shape.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-fixed5120-norm/hipcc-version.txt python3 -m pytest -q tests/test_dense_f32_pair.py",
+    "focused_green_result": "9 passed, including four HIP rows1-4 exactness and CPU KL/top-1 gates",
+    "affected_cpu_bundle": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py",
+    "affected_cpu_bundle_result": "150 passed",
+    "kernel_trace_gate": "The expected flat pair symbol executes 768 times over 16 tokens with positive plausible durations, 24 VGPR, 1 KiB LDS, zero scratch, and local256."
+  },
+  "commands": {
+    "profile": "bash /tmp/qwen38-task22-dense-f32-pair-profile.sh",
+    "request_gate": "bash /tmp/qwen38-task22-dense-f32-pair-request.sh"
+  },
+  "evidence": {
+    "profile_summary": {"path": "/tmp/qwen38-task22-dense-f32-pair/profile-ab/summary.json", "sha256": "4224964245c635c8ef6a47e3f57800f590c147ba0dff1cf5a989620c38230406", "bytes": 1763},
+    "request_summary": {"path": "/tmp/qwen38-task22-dense-f32-pair/p512-ab/summary.json", "sha256": "cf3c697f2c2d49e9f8bb63a9e250e71dae279721374e7d05959c676ea5717628", "bytes": 2989},
+    "control_wrapper": {"path": "/tmp/qwen38-dense-f32-pair-control.py", "sha256": "81cba12cb367e13cb8fd20bedf2eb0df47a67bf34950a23902c457a3832dd523", "bytes": 528}
+  },
+  "decision": "Retain the exact gfx1151 rows1 dense-F32 alpha/beta pair. It removes 48 launches/token, improves the 4K operation span by 20.583%, selected kernel wall by 0.134%, profiled host decode by 0.242%, and counterbalanced 512/128 AR by 0.136% with both candidates above both controls, exact outputs, identical peaks, and no bytes. Keep the prior gfx1100 runtime rejection and all native/MTP rows unchanged."
+}

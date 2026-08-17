@@ -21,7 +21,7 @@ _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _NORMALIZED_PACKAGE_SHA256 = (
-    "44191bb8020cb613837d09cfebec7c1204ef5fe734064dc29ce20a89852f784f"
+    "0a9b15c511107681d7ef0ff525a79115d4970d3d34b568afd82de0c44353aa06"
 )
 _RUNTIME_ARTIFACT_RUNNER_SHA256 = (
     "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
@@ -59,8 +59,9 @@ _SOURCE_SHA256 = {
     ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
+    # Later Qwen3.8 and execution-profile policies do not alter H8B's owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "53c7d2e41d54098c5c5befa670d76ca1476b8e10146b5188057888d499b2594c"
+        "9f77b84cb9faa0ed37431f8edaf296db30676e5ce2fee2d2390ab779c1a7690d"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
@@ -69,7 +70,7 @@ _POST_MERGE_SOURCE_SHA256 = {
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
     ),
     "docs/REFACTOR.md": (
-        "b745a94936a45289a1f4d0b7eb7940209aa940b1b5da6dd1185316d2727e3bd4"
+        "8abf4916f8fceeb3a52f57b7ec5a1431248bb8947e05ad5fa81391a59a91040d"
     ),
 }
 _SOURCE_TOPOLOGY = {

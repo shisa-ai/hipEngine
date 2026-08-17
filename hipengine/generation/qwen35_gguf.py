@@ -7049,21 +7049,18 @@ class Qwen35GGUFResidentModelRunner:
                 for row in group_rows
             )
             group_slots = [getattr(row, "slot", None) for row in group_rows]
-            direct_int8_serial = bool(group_slots) and all(
-                slot is not None
-                and getattr(slot.session, "kv_attention_source", None)
-                == "int8_direct"
+            packed_decode_limit = min(
+                (
+                    int(getattr(slot.session, "packed_decode_max_rows", 8))
+                    if slot is not None
+                    else max(_GGUF_AR_PHYSICAL_BUCKET_WIDTHS)
+                )
                 for slot in group_slots
             )
             if native_sampler_rows and host_sampler_rows:
                 serial_fallback_reason = "mixed_sampler_routes"
-            elif (
-                group.active_rows > 1
-                and direct_int8_serial
-                and _qualified_compact_serial_int8_max_rows(self.generator)
-                >= group.active_rows
-            ):
-                serial_fallback_reason = "int8_direct_c1_only"
+            elif group.physical_rows > packed_decode_limit:
+                serial_fallback_reason = "packed_decode_width_unqualified"
             elif _gguf_ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
@@ -8755,6 +8752,7 @@ _GGUF_GENERATOR_FACTORY_OVERRIDES = {
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
     for _quant in (
         "gguf_q4_k_m",
+        "gguf_q4_k_s",
         "gguf_q8_0",
         "gguf_q4_1",
         "gguf_ud_q4_k_xl",

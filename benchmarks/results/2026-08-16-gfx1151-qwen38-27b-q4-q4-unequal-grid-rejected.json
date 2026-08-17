@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-16",
+  "kind": "qwen38_27b_gfx1151_q4_q4_unequal_grid",
+  "status": "leaf_rejected",
+  "publishable": false,
+  "baseline_eligible": false,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000"
+  },
+  "software": {
+    "base_commit": "fc4720965cd31973513fe56603091fac4806deb6",
+    "development_tree_dirty": true,
+    "runtime_change_retained": false,
+    "source_restored": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "geometry": {
+      "hidden_size": 5120,
+      "pair_count_per_token": 24,
+      "q4_qkv_width": 10240,
+      "q4_gate_width": 6144
+    }
+  },
+  "candidate": {
+    "scope": "rows1 recurrent homogeneous-Q4 QKV plus Q4 gate",
+    "control": "one Q4T16 local32/8-column grid for QKV followed by one for gate",
+    "mechanism": "concatenate both unchanged local32 block ranges into one grid; each workgroup selects one resident tensor and output",
+    "registry_key": "linear_pair/gguf_q4_k_t16_v1/dense_unequal_local32_bf16_bf16_out",
+    "persistent_byte_delta": 0,
+    "workspace_byte_delta": 0,
+    "fallback": "The two registered local32 primitive projections remain production after source restoration."
+  },
+  "actual_weight_leaf": {
+    "layers": [8, 29, 44, 54],
+    "source_pool_bytes": 188743680,
+    "qkv_tile_pool_bytes": 121241600,
+    "gate_tile_pool_bytes": 72744960,
+    "warmups": 4,
+    "samples": 15,
+    "order": "counterbalanced control/candidate",
+    "control_ms_per_four_layers": 0.9325889945030212,
+    "candidate_ms_per_four_layers": 0.9388800263404846,
+    "speedup": 0.9932994294681247,
+    "delta_percent": 0.6745771046564819,
+    "candidate_wins": 2,
+    "sample_count": 15,
+    "qkv_bf16_mismatches": 0,
+    "gate_bf16_mismatches": 0,
+    "tracked_teardown_bytes": 0
+  },
+  "correctness": {
+    "actual_weight_layers_bf16_bit_exact": true,
+    "synthetic_qkv_bf16_bit_exact": true,
+    "synthetic_gate_bf16_bit_exact": true,
+    "cpu_kl_at_most_0_05": true,
+    "cpu_top1_at_least_0_90": true
+  },
+  "validation": {
+    "red": "The focused wrapper-exposure fixture failed before implementation.",
+    "focused_green": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. uv run pytest -q tests/test_qwen38_q4_q4_unequal_pair.py",
+    "focused_green_result": "4 passed before source restoration, including GPU bit identity and CPU KL/top-1",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat --file hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip selected no external source",
+    "graph_gate_not_run": "The independently resident operation-complete leaf regressed 0.675% with only 2/15 paired wins."
+  },
+  "commands": {
+    "leaf": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/qwen38-task22-q4-q4-unequal-grid-leaf.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --warmups 4 --samples 15 --require-cached-build --output /tmp/qwen38-task22-q4-q4-unequal-grid/leaf.json"
+  },
+  "evidence": {
+    "leaf": {
+      "path": "/tmp/qwen38-task22-q4-q4-unequal-grid/leaf.json",
+      "sha256": "bd5d26648423330374af30c3880c95f9847926cfffb5bef8292b93178f39f7d3",
+      "bytes": 2679
+    },
+    "leaf_harness": {
+      "path": "/tmp/qwen38-task22-q4-q4-unequal-grid-leaf.py",
+      "sha256": "8f12910a7878e8640c74b45830959bae186d60f3c11fb9990981010c7af1cd62",
+      "bytes": 10266
+    }
+  },
+  "decision": "Reject and restore the exact Q4/Q4 concatenated grid. It preserves both primitive arithmetic trees and all BF16 bits but regresses the complete four-pair operation 0.675% with only 2/15 wins. Do not spend a graph or request gate without a materially different scheduling premise."
+}

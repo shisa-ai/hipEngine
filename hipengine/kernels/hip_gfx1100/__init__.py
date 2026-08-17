@@ -208,6 +208,8 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = False
 # Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
 # independent native-AR width gate passes on W7900.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# Zero keeps the width-scoped all-projection policy disabled on gfx1100.
+GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # The exact 128-thread c8 pair schedule is admitted only on independently
 # measured backends. Zero disables automatic pair rowtiling on gfx1100.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 0
@@ -223,6 +225,9 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
+# W7900 retains the expanded-metadata T16 gate/up payload. The qmicro replacement
+# is qualified independently for gfx1151 and must fail closed on this backend.
+GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = False
 # Private-c1 token lookup reads one compressed row from a pinned GGUF mmap.
 # The mapping is device-visible but does not create a VRAM weight shadow.
 GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1 = True
@@ -834,6 +839,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
     "GGUF_DENSE_Q4_T16",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
@@ -861,6 +867,7 @@ __all__ = [
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",

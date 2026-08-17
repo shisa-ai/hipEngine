@@ -36,8 +36,9 @@
   ],
   "properties": {
     "kind": {"const": "hipengine_artifact_provenance"},
-    "schema_version": {"const": 1},
+    "schema_version": {"enum": [1, 2]},
     "collected_at": {"type": "string"},
+    "host_name": {"type": "string", "minLength": 1},
     "repo_root": {"type": "string", "minLength": 1},
     "hipengine_commit": {"type": "string", "minLength": 1},
     "git_branch": {"type": ["string", "null"]},
@@ -94,5 +95,11 @@
     "repetitions": {"type": ["integer", "null"], "minimum": 0},
     "profiler": {"type": ["object", "null"]}
   },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": 2}}},
+      "then": {"required": ["host_name"]}
+    }
+  ],
   "additionalProperties": false
 }
