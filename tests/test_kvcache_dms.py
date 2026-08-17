@@ -87,29 +87,37 @@ def _prompt_arrays(tokens: int = 8):
     return k, v, evict
 
 
+def _write_metadata(path, *, artifact: str = "artifact:dms-fixture") -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "dms": {
+                    "artifact_fingerprint": artifact,
+                    "model_family": "fixture-qwen",
+                    "num_layers": 2,
+                    "num_q_heads": 4,
+                    "num_kv_heads": 2,
+                    "head_dim": 4,
+                    "window_size": 2,
+                    "target_compression_ratio": 4,
+                    "alpha_scale": 100.0,
+                    "alpha_offset": 5.0,
+                    "borrowed_query_channel": -1,
+                    "corrected_mask": True,
+                    "trained_checkpoint": True,
+                    "evidence_source": "fixture://dms",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_dms_metadata_loader_requires_packaged_qualified_checkpoint(tmp_path) -> None:
     model = tmp_path / "model"
     model.mkdir()
-    metadata = {
-        "schema_version": 1,
-        "dms": {
-            "artifact_fingerprint": "sha256:model",
-            "model_family": "qwen",
-            "num_layers": 2,
-            "num_q_heads": 4,
-            "num_kv_heads": 2,
-            "head_dim": 4,
-            "window_size": 256,
-            "target_compression_ratio": 4,
-            "alpha_scale": 100.0,
-            "alpha_offset": 5.0,
-            "borrowed_query_channel": -1,
-            "corrected_mask": True,
-            "trained_checkpoint": True,
-            "evidence_source": "training://run-1",
-        },
-    }
-    (model / "dms_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    _write_metadata(model / "dms_metadata.json", artifact="sha256:model")
 
     config = load_dms_retrofit_config(
         model,
@@ -128,6 +136,43 @@ def test_dms_metadata_loader_requires_packaged_qualified_checkpoint(tmp_path) ->
     (model / "dms_metadata.json").unlink()
     with pytest.raises(FileNotFoundError, match="no packaged"):
         load_dms_retrofit_config(model)
+
+
+def test_dms_backend_gate_blocks_missing_metadata_and_accepts_fixture(tmp_path) -> None:
+    from scripts import dms_backend_gate
+
+    model = tmp_path / "model"
+    model.mkdir()
+    blocked_args = dms_backend_gate.build_parser().parse_args(
+        ["--model", str(model)]
+    )
+    blocked = dms_backend_gate.run(blocked_args)
+    assert blocked["status"] == "blocked_metadata"
+    assert blocked["passed"] is False
+
+    metadata = model / "dms_metadata.json"
+    _write_metadata(metadata)
+    accepted_args = dms_backend_gate.build_parser().parse_args(
+        [
+            "--model",
+            str(model),
+            "--expected-artifact",
+            "artifact:dms-fixture",
+            "--slots-per-layer",
+            "1024",
+            "--prompt-tokens",
+            "8",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    accepted = dms_backend_gate.run(accepted_args)
+
+    assert accepted["status"] == "accepted_host_backend"
+    assert accepted["passed"] is True
+    assert [row["width"] for row in accepted["widths"]] == [1, 2, 4, 8, 16, 32]
+    assert accepted["pressure"]["retryable_rejection_observed"] is True
+    assert accepted["no_dense_shadow"] is True
 
 
 def test_dms_metadata_rejects_untrained_or_uncorrected_checkpoint() -> None:

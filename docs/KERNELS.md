@@ -131,6 +131,12 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
+Compact DMS currently has CPU-reference registrations only:
+`dms_extract_decision`, `dms_streaming_pack`, `dms_compact_attn_decode`, and
+INT8 payload encode/decode under `hipengine/kernels/cpu_reference/dms.py`.
+No gfx11 DMS kernel is registered or defaulted; porting requires the CPU-reference
+correctness gate and a rocprof kernel-identity row on a fresh stable GPU.
+
 Qwen3.8-27B Q4_K_M is the independent 16K/48V/128x128 gfx1151 GDN
 exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
 head and carries one FP32 recurrent state across at most 1,024 rows per launch;

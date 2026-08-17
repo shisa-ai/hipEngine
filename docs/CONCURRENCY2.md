@@ -1211,20 +1211,32 @@ generation became unstable. Evidence:
 
 ### C2-7 — FastDMS topology and codec composition
 
-- [ ] Complete the metadata/checkpoint gate from `KVCACHE.md`.
-- [ ] Add global compact pool-set/extent accounting and scheduler-owned atomic
+- [x] Complete the metadata/checkpoint gate from `KVCACHE.md`.
+- [x] Add global compact pool-set/extent accounting and scheduler-owned atomic
       admission through the existing backend protocol.
 - [ ] Port streaming no-shadow prefill pack and compact decode in BF16 first.
-- [ ] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
-- [ ] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
-- [ ] Replace the BF16 payload with at least one qualified compressed codec by
+- [x] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
+- [x] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
+- [x] Replace the BF16 payload with at least one qualified compressed codec by
       changing topology/codec composition, pool plan, and kernel bundle only;
       rerun the same scheduler/lifecycle suite.
-- [ ] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
+- [x] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
 
 Exit: DMS provides allocator-visible capacity and attention-work savings without
 forking the concurrency architecture, and changing its payload format does not
 fork it either.
+
+Host/backend status: the torch-free implementation now includes strict
+checkpoint metadata, atomic per-layer/head extents, variable `KVLiveSpans`,
+streaming no-shadow BF16 pack, transactional append/eviction, grouped-GQA CPU
+attention, common token-budget c1-c32 lifecycle, pressure/fragmentation/drain,
+and a fixture-qualified INT8 composition over the same topology. Prefix reuse
+is hard-off. The exact Qwen3.6 artifact correctly fails the metadata gate
+because it has no retrofit. Registered HIP pack/attention kernels, rocprof, real
+checkpoint quality, device savings, and hardware soak remain blocked by the
+missing checkpoint and unstable current GPU generation, so the BF16 kernel-port
+checkbox and product exit remain open. Evidence:
+[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
 
 ### C2-8 — optional hot/cold tiering
 
