@@ -40,7 +40,11 @@ from hipengine import LLM, SamplingParams
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.server import ServerConfig, create_app
-from scripts.gguf_live_server_bench import _artifact_backend_scope, _memory_snapshot
+from scripts.gguf_live_server_bench import (
+    _artifact_backend_scope,
+    _memory_snapshot,
+    _run_reference,
+)
 from scripts.gguf_production_load_gate import (
     REPO_ROOT,
     SLOThresholds,
@@ -60,7 +64,6 @@ from scripts.gguf_production_load_gate import (
     _prompt_manifest,
     _read_compiler_version,
     _reclaimed_overrides,
-    _run_reference,
     _stream_request,
     _temporary_environment,
     _wait_for_idle,
@@ -69,7 +72,7 @@ from scripts.gguf_production_load_gate import (
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
-_REQUIRED_CONTEXTS = (1_024, 4_096, 32_768)
+_REQUIRED_CONTEXTS = (1_024, 4_096, 16_384, 32_768)
 # _execute_workload is shared with the production packet and intentionally
 # sends this retained model id. Keep the focused pressure request identical.
 _SERVED_MODEL_NAME = "qwen35-production-load"
@@ -143,8 +146,9 @@ def build_pool_plan(
     phase_shapes = [
         (pages[1_024], pages[1_024]),
         (pages[4_096], pages[4_096]),
+        (pages[16_384], pages[16_384]),
         (pages[32_768], pages[32_768]),
-        (pages[1_024], pages[4_096], pages[32_768]),
+        (pages[1_024], pages[4_096], pages[16_384], pages[32_768]),
         (pages[32_768],),
     ]
     if longer is not None:
@@ -200,6 +204,10 @@ def build_workload_specs(
         "context_4k_c2": (
             WorkloadRequest("context-4k-a", 9707, 4_096, decode),
             WorkloadRequest("context-4k-b", 9708, 4_096, decode),
+        ),
+        "context_16k_c2": (
+            WorkloadRequest("context-16k-a", 9707, 16_384, decode),
+            WorkloadRequest("context-16k-b", 9708, 16_384, decode),
         ),
         "context_32k_c2": (
             WorkloadRequest("context-32k-a", 9707, 32_768, decode),
