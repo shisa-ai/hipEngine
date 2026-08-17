@@ -850,8 +850,22 @@ and verdict.
       --decode-steps 128`): `status=complete`, all trajectories exact,
       candidate wins 3/7 (c2 direct, neutral), 7/7 (c4, paired median 1.0063),
       6/7 (native_c8, 1.0083); memory teardown exact.
-- [ ] Run focused production-load screen.
-- [ ] Run strict and incumbent complete server packets.
+- [x] Run focused production-load screen
+      (`gguf_production_load_gate.py --workloads
+      static_c1,static_c8,ragged_burst,continuous_fixed --skip-tuning
+      --fixed-rate-per-second 20`): all gates passed (workloads, ownership,
+      memory recovery), 0 rejects, occupancy-adaptive packing to width 8,
+      TTFT p95 4.47s at full load.
+- [x] Run incumbent complete production server packet
+      (`gguf_production_load_gate.py` canonical workloads + tuning + 60s
+      soak): **soak blocker reproduced** — `workloads_passed=False`, 48
+      rejected requests (16 overload + 32 soak, all engine_busy), bucket
+      saturated 0.875-1.0 through the soak, ITL p99 up to 1.84s (SLO 0.5s)
+      and TTFT p95 up to 12.2s (SLO 10s) in some runs; policy sweep selected
+      `fair_128` which passes its single run at 27.75 tok/s goodput (TTFT p95
+      1.98s, ITL p99 0.42s) but the full workload still fails.
+- [ ] Run strict complete server packet (strict SLO-goodput/default
+      denominator).
 - [ ] Reconcile >=90% of complete wall or record measured residual.
 - [ ] Record soak occupancy, physical-width exposure, rejection timing, and the
       throughput ceiling required to clear offered load.
