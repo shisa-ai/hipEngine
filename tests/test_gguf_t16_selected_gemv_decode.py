@@ -3025,7 +3025,7 @@ def test_qmicro_q4_dense_dual_q8_1x2_split_weight_is_bit_exact(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [2, 3, 4])
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_qmicro_q4_dense_dual_q8_1x2_shared_rowbatch_matches_serial_c1_bits(
     rows,
     t16_selected_library,
