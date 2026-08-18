@@ -766,7 +766,7 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
                 (rows, 5_120, 17_408): (
                     "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
                 )
-                for rows in (2, 3, 4)
+                for rows in range(2, 65)
             },
         },
     }

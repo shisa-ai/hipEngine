@@ -1002,7 +1002,17 @@ GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    "gguf_q5_k_t16_v1": 4,
+    # Q5: the 27B ssm_out/ffn_down/qkv/v shapes rowtile to c8; the narrow
+    # 0.8B SSM-out shape keeps cap 4 so its measured direct leaf wins at c5-c8.
+    "gguf_q5_k_t16_v1": {
+        "default": 4,
+        "shapes": {
+            (6_144, 5_120): 8,  # 27B ssm_out
+            (17_408, 5_120): 8,  # 27B ffn_down
+            (5_120, 10_240): 8,  # 27B attn_qkv
+            (5_120, 1_024): 8,  # 27B attn_v
+        },
+    },
 }
 # The narrow 0.8B SSM-out shape wins with the direct leaf at c5-c8; QKV and
 # bulk rows retain the independently measured WMMA route.

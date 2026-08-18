@@ -1,0 +1,55 @@
+{
+ "schema_version": 1,
+ "date": "2026-08-18",
+ "kind": "qwen38_gfx1151_q4ks_c8_single_projection_rowtile8",
+ "status": "retained_unit2",
+ "publishable": false,
+ "performance_claim": false,
+ "purpose": "Unit 2 of the c=8 GEMV decode campaign: route the single Q4/Q5 projections (attn_qkv, attn_q/k/v/o, attn_gate, ffn_down, ssm_out) to rows-2..8 rowtile owners at c8, eliminating the remaining 226.8 ms of WMMA prefill.",
+ "hardware": {"gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "rocm": "HIP 7.15.0"},
+ "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf", "quant": "Q4_K_S"},
+ "kernels": [
+  "q4_k_t16_dense_rowtile_gemv_kernel (ROW_TILE 2..8, 8-col)",
+  "q4_k_t16_dense_rowtile_col4_gemv_kernel (ROW_TILE 1..8)",
+  "q5_k_t16_dense_rowtile_col4_gemv_kernel (ROW_TILE 2..8)"
+ ],
+ "changes": [
+  "gguf_t16_selected_gemv.hip: extend launch_q4_dense_rowtile / _col4 / launch_q5_dense_rowtile_col4 to rows 2-8",
+  "gguf_t16_selected_gemv.py: _check_dense_q4_t16_rowtile_shape + _check_dense_q5_t16_shape(rowtile) accept rows 2..8",
+  "gguf_linear.py: _q4_t16_sidecar_decode_variants + _q4_t16_dense_native_dispatch rows 2..8",
+  "hip_gfx1151/__init__.py: GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT q5 4 -> 8"
+ ],
+ "red_test": {"rows": "Q4 2..8, Q5 1..8", "result": "15/15 passed, BF16-bit exact vs c1 / pack8 rows 2-4"},
+ "benchmark": {
+  "command": "gguf_packed_ar_bench.py --backend hip_gfx1151 --model Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompt-length 512 --decode-steps 64 --measured-runs 3",
+  "env": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 (lm_head rowtile rows[2,4] workaround)",
+  "c1_tok_s": 12.88,
+  "c4_tok_s_aggregate": 42.50,
+  "c4_tok_s_per_request": 10.63,
+  "c4_aggregate_vs_c1": 3.30,
+  "native_c8_tok_s_aggregate": 56.64,
+  "native_c8_tok_s_per_request": 7.08,
+  "native_c8_aggregate_vs_c1": 4.40,
+  "unit1_native_c8_aggregate": 25.23,
+  "baseline_before_campaign": {"native_c8_aggregate": 19.31, "native_c8_vs_c1": 1.49},
+  "correctness": {"c1_c2_c4_prefix_exact": true, "native_c8_rows_match_c4": true, "all_measured_runs_repeatable": true}
+ },
+ "rocprofv3": {
+  "method": "gguf_packed_ar_rocprof.py c8 eager, token 9707 exact",
+  "c8_step_ms": [408.9, 312.4, 139.8],
+  "c8_breakdown_ms": {"gate_up_rowtile8": 64.2, "q4_single_rowtile": 35.1, "q5_single_rowtile": 15.3, "q6_lm_head_rowtile_col8": 9.6, "gdn_recurrent": 8.1, "full_attn": 3.5},
+  "wmma_prefill_in_decode": "eliminated"
+ },
+ "combination_map": {
+  "c1": "dense_dual_q8_1x2_split_weight_dp4a (gate/up) + dense_single_local32 (singles)",
+  "c2_8": "rowtile8 owners: gate/up pair_silu, Q4 single, Q5 single, Q6 lm_head (lm_head currently rows 2-4 chunked)",
+  "c9_64": "<=8-row chunking (exact)",
+  "c_ge512": "WMMA prefill bulk owner"
+ },
+ "remaining_headroom": [
+  "Q6 lm_head rowtile still rows [2,4] -> c8 lm_head chunked 4+4 (~9.6 ms); extending to rows 8 saves ~half",
+  "fp16 recurrent state (R2) ~6% decode gain at c8, harvestable now that the dense path is native",
+  "Full natural-suite AR/B1/B2/B3 + arbitrary-c lifecycle gates for c8 pending"
+ ],
+ "worklog": "worklog/entries/20260818T145822.920371Z-lhl-qwen38-gfx1151-c8-single-rowtile8-294f87.md"
+}
