@@ -1329,13 +1329,17 @@ streaming pack, append/decode, and compact decode attention in the
 `dms_compact` family, bit-exact data movement plus the KL/top-1 gated
 attention, each with its registered cpu_reference strict fallback). The
 kernels are registered but not defaulted or wired into the production DMS
-path, where the host parent remains the production path. The family's rocprof
+path, where the host parent remains the production path; the device
+payloads are available behind the opt-in `device_payloads` flag on
+`DMSCompactBackend` (U6, 2026-08-18 worklog entry: bit-exact
+pack/append/attention parity vs the host parent, fail-closed overflow,
+no host payload shadow, determinism). The family's rocprof
 kernel-identity rows are blocked on this W7900 host by a deterministic
 `rocprofv3 --kernel-trace` dispatch hang (recorded in the U1 entry,
 reproduced 2026-08-19, not faked); real checkpoint quality, device savings,
 and hardware soak remain blocked by the missing trained
-`dms_metadata.json`, so the BF16 kernel-port checkbox and product exit remain
-open. Evidence:
+`dms_metadata.json`, so the BF16 kernel-port checkbox and product exit
+remain open. Evidence:
 [`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
 
 ### C2-8 — optional hot/cold tiering
