@@ -24,6 +24,7 @@ Examples:
 ## 2026-08-18
 
 - [checkpoint gfx1151 Qwen3.8 R2 fp16 recurrent state] Qwen3.8-27B / Q4_K_S / layer-0 GDN: host-side emulation on 64 captured gfx1151 positions shows fp16-state recurrent-output drift rms **4.72e-6 = 0.05x** the device's accepted bf16 output rounding (1.02e-4) while bf16-state drift is **539x** (5.50e-2); GDN gate = 1.43% of decode wall so fp16 state bounds c=1 decode gain ~0.5-0.7%; full multi-kernel device change deferred for c=1 (external's win was concurrency, out of scope), FP32 state stays strict default; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json`.
+- [checkpoint gfx1151 Qwen3.8 R3 lm_head/embed int8] Qwen3.8-27B / Q4_K_S: lm_head/embed int8 is a non-starter on this path — GGUF already stores `output.weight` as Q6_K (1.043 GB) and `token_embd.weight` as Q4_K (0.715 GB), both below int8 (1.271 GB), so int8 would increase bytes; the w8a16 lm_head kernel is PARO-only; lm_head is ~5.9% of decode wall (4.63 ms/token) so only a lower head quant (Q4_K) could cut it, a separate top-1-drift-risky experiment; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r3-lmhead-embed-int8.json`.
 
 ## 2026-08-17
 
