@@ -249,15 +249,22 @@ quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
 **13.03883/12.86679/13.02544 tok/s** at 512/1K/4K, above both frozen clean
 llama backends at every shape. Natural true AR is **13.33276 tok/s**,
 repeat-exact across 30 requests.
-Native Q4_K_S MTP uses a separately qualified rows2-4 qmicro Q8_1x2
+Native Q4_K_S MTP uses a separately qualified rows2-8 qmicro Q8_1x2
 rowtile8 owner for H5120/N17408 gate/up+SiLU. It shares each compact-weight
 traversal across rows while preserving c1's dp4a/FMA/reduction and BF16
-association independently per row. Rows2/3/4 are BF16-bit exact to serial c1;
+association independently per row. Rows2-8 are BF16-bit exact to serial c1;
 the complete ten-prompt AR/B1/B2/B3 gate is exact with GPU/CPU acceptance
 agreement, and B3 reaches **24.19347 tok/s / 1.8228x** own AR. Cache-only
 `rocprofv3` records rows3 at local128, 120 VGPR, 512-byte LDS, zero scratch,
 and 0.462-0.465 ms on an actual layer-0 pair. The policy adds no bytes, and the
-direct-BF16 rowtile plus primitive chain remain registered fallbacks. Evidence:
+direct-BF16 rowtile plus primitive chain remain registered fallbacks. On
+2026-08-18 the owner was extended to ROW_TILE 5..8 and the packed-AR decode
+step (`_enqueue_packed_decode_model_step`) now enters
+`native_batch_decode_session(True)`, so eager `step_batch_native` and graph
+capture route c2..c8 gate/up through the rowtile8 owner instead of WMMA
+prefill (c8 step 408.9 -> 312.4 ms; c4 42.5 tok/s agg 3.31x c1 with no
+regression; native_c8 25.2 tok/s agg, rows exact vs c4). c>8 chunks into
+<=8-row rowtile8 groups; c>=512 stays on WMMA. Evidence:
 [`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
 [`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),
 [`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json), and

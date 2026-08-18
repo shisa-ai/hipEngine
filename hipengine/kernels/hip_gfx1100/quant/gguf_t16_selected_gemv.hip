@@ -4386,10 +4386,12 @@ void q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel(
   }
 }
 
-// Exact native rows2-4 sibling of the retained qmicro Q8_1x2 c1 owner.
+// Exact native rows2-8 sibling of the retained qmicro Q8_1x2 c1 owner.
 // Four waves preserve c1's gate/up and K-half ownership. Each block owns eight
 // output columns and carries independent row accumulators, so one qmicro weight
 // traversal serves all rows without changing any row's dp4a/FMA/reduction tree.
+// ROW_TILE is instantiated for 2..8 so any small decode batch (c<=8) shares one
+// weight traversal; c>8 chunks into <=8-row groups at the dispatch site.
 template <typename scalar_t, int ROW_TILE>
 __global__ __launch_bounds__(128, 1)
 void q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel(
@@ -6795,7 +6797,7 @@ int launch_q4_qmicro_dense_dual_q8_1x2_rowtile8_dp4a_silu(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!xq || !tiles_a || !tiles_b || !out || rows < 2 || rows > 4 ||
+  if (!xq || !tiles_a || !tiles_b || !out || rows < 2 || rows > 8 ||
       in_features <= 0 || out_features <= 0 ||
       (in_features % QK_K) != 0 ||
       (out_features % T16_COLS) != 0) {
@@ -6820,6 +6822,10 @@ int launch_q4_qmicro_dense_dual_q8_1x2_rowtile8_dp4a_silu(
     Q4_QMICRO_Q8X2_ROWTILE8_CASE(2);
     Q4_QMICRO_Q8X2_ROWTILE8_CASE(3);
     Q4_QMICRO_Q8X2_ROWTILE8_CASE(4);
+    Q4_QMICRO_Q8X2_ROWTILE8_CASE(5);
+    Q4_QMICRO_Q8X2_ROWTILE8_CASE(6);
+    Q4_QMICRO_Q8X2_ROWTILE8_CASE(7);
+    Q4_QMICRO_Q8X2_ROWTILE8_CASE(8);
     default:
       return static_cast<int>(hipErrorInvalidValue);
   }

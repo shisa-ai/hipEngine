@@ -1158,8 +1158,8 @@ def gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out(
 ) -> None:
     """Launch exact c1-association Q8_1x2 while sharing weights across rows."""
 
-    if rows < 2 or rows > 4:
-        raise ValueError("dense qmicro Q8_1x2 rowtile8 requires rows in [2, 4]")
+    if rows < 2 or rows > 8:
+        raise ValueError("dense qmicro Q8_1x2 rowtile8 requires rows in [2, 8]")
     if in_features <= 0 or in_features % _QK_K:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:

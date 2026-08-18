@@ -19242,6 +19242,7 @@ class Qwen35GGUFResidentSession:
         with (
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
+            native_batch_decode_session(True),
             _gguf_t16_selected_pairreuse_min_rows_scope(selected_pairreuse_min_rows),
             _gguf_t16_selected_down_pairreuse_min_rows_scope(selected_down_pairreuse_min_rows),
             _gguf_t16_selected_q6_down_pairreuse_min_rows_scope(

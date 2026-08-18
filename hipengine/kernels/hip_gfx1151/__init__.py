@@ -920,7 +920,10 @@ GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
             (rows, 5_120, 17_408): (
                 "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
             )
-            for rows in (2, 3, 4)
+            # rowtile8 instantiates ROW_TILE 2..8 in one launch; c>8 chunks
+            # into <=8-row groups at the dispatch site. c>=512 routes to the
+            # existing WMMA prefill owner before this policy is consulted.
+            for rows in range(2, 65)
         },
     },
 }

@@ -3948,6 +3948,30 @@ def launch_gguf_linear_pair(
     return False
 
 
+def _rowtile8_row_chunks(rows: int) -> list[tuple[int, int]]:
+    """Split a decode batch into <=8-row rowtile8 groups, all groups >= 2.
+
+    The qmicro Q8_1x2 rowtile8 owner instantiates ROW_TILE 2..8, so any
+    concurrency c>8 is decomposed into contiguous groups of 2..8 rows. The
+    tail-1 case is folded into the prior group (e.g. c=9 -> (7, 2)) so no
+    single-row group is ever produced. Returns ``(group_rows, row_base)`` pairs.
+    """
+    rows = int(rows)
+    if rows < 2:
+        raise ValueError("rowtile8 chunking requires rows >= 2")
+    chunks: list[tuple[int, int]] = []
+    remaining = rows
+    row_base = 0
+    while remaining > 0:
+        take = min(8, remaining)
+        if remaining - take == 1:
+            take -= 1
+        chunks.append((take, row_base))
+        row_base += take
+        remaining -= take
+    return chunks
+
+
 def launch_gguf_linear_pair_silu(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -4008,16 +4032,6 @@ def launch_gguf_linear_pair_silu(
                 return False
             if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
                 return False
-            q4_library = None if libraries is None else libraries.get("gguf_q4_k")
-            gguf_q4_k_quantize_bf16_q8_1x2(
-                x_ptr,
-                int(q8_1_workspace_ptr),
-                rows,
-                in_features,
-                stream=stream,
-                library=q4_library,
-                runtime=runtime,
-            )
             fn = resolve(
                 backend=fused_key.backend,
                 layer=fused_key.layer,
@@ -4028,16 +4042,35 @@ def launch_gguf_linear_pair_silu(
             library = None if libraries is None else libraries.get(fused_key.quant)
             if library is not None:
                 kwargs["library"] = library
-            fn(
-                int(q8_1_workspace_ptr),
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
-            )
+            tiles_a_ptr = weight_a.allocation("tiles").tensor.ptr
+            tiles_b_ptr = weight_b.allocation("tiles").tensor.ptr
+            q4_library = None if libraries is None else libraries.get("gguf_q4_k")
+            # The rowtile8 owner instantiates ROW_TILE 2..8; any c>8 chunks
+            # into <=8-row groups (all groups >= 2) so every decode concurrency
+            # shares one weight traversal per group. Groups are row-independent
+            # (per-row Q8_1x2 quantization and per-row SiLU), so chunking is
+            # exact: each row keeps the same dp4a/FMA/BF16 association as c1.
+            for chunk_rows, row_base in _rowtile8_row_chunks(rows):
+                x_chunk = int(x_ptr) + row_base * in_features * 2
+                gguf_q4_k_quantize_bf16_q8_1x2(
+                    x_chunk,
+                    int(q8_1_workspace_ptr),
+                    chunk_rows,
+                    in_features,
+                    stream=stream,
+                    library=q4_library,
+                    runtime=runtime,
+                )
+                fn(
+                    int(q8_1_workspace_ptr),
+                    tiles_a_ptr,
+                    tiles_b_ptr,
+                    int(out_ptr) + row_base * out_features * 2,
+                    chunk_rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
             return True
         pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
             dispatch_a,
