@@ -327,6 +327,99 @@ __global__ void dms_append_decode_kernel(
   status[rowhead] = 0;
 }
 
+// U4: compact decode attention. GQA decode over the dense-in-extent DMS
+// storage written by U2/U3: one workgroup per (row, q_head), K/V rows read
+// from the slot-major extent at base_offsets + [0, live). Numerics mirror
+// the paged decode kernel (qwen35_full_attn_decode_impl, ported from
+// nano-vllm-amd@59195ed): fp32 score accumulation, tree max, expf softmax
+// with a floored denominator, fp32 P@V output. live == 0 writes zeros
+// (the host oracle rejects live=0, so zero is the safe neutral); live == 1
+// is bit-exact against the reference (softmax of one element is exactly 1).
+__global__ void dms_compact_attn_decode_kernel(
+    const float* __restrict__ q,
+    const uint16_t* __restrict__ k_slot,
+    const uint16_t* __restrict__ v_slot,
+    const int32_t* __restrict__ base_offsets,
+    const int32_t* __restrict__ live_counts,
+    float* __restrict__ out,
+    const int32_t rows,
+    const int32_t q_heads,
+    const int32_t kv_heads,
+    const int32_t dim,
+    const float scale,
+    const int32_t score_capacity) {
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t r = gid / q_heads;
+  const int32_t g = gid - r * q_heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t group = q_heads / kv_heads;
+  const int32_t h = g / group;
+  const int64_t rowhead = static_cast<int64_t>(r) * kv_heads + h;
+  const int32_t live = live_counts[rowhead];
+  const int32_t base = base_offsets[rowhead];
+  const int64_t q_off = (static_cast<int64_t>(r) * q_heads + g) * dim;
+  float* o = out + q_off;
+  if (live <= 0) {
+    for (int32_t d = tid; d < dim; d += kDmsPackThreads) {
+      o[d] = 0.0f;
+    }
+    return;
+  }
+  const uint16_t* ks = k_slot + static_cast<int64_t>(base) * dim;
+  const uint16_t* vs = v_slot + static_cast<int64_t>(base) * dim;
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  float* partial = shared + score_capacity;
+
+  float local_max = -3.4028234663852886e38f;
+  for (int32_t t = tid; t < live; t += kDmsPackThreads) {
+    float acc = 0.0f;
+    const uint16_t* krow = ks + static_cast<int64_t>(t) * dim;
+    for (int32_t d = 0; d < dim; ++d) {
+      acc += q[q_off + d] * dms_bf16_bits_to_float(krow[d]);
+    }
+    const float score = acc * scale;
+    scores[t] = score;
+    local_max = fmaxf(local_max, score);
+  }
+  partial[tid] = local_max;
+  __syncthreads();
+  for (int32_t stride = kDmsPackThreads / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] = fmaxf(partial[tid], partial[tid + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_score = partial[0];
+
+  float local_sum = 0.0f;
+  for (int32_t t = tid; t < live; t += kDmsPackThreads) {
+    local_sum += expf(scores[t] - max_score);
+  }
+  partial[tid] = local_sum;
+  __syncthreads();
+  for (int32_t stride = kDmsPackThreads / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_denom = 1.0f / fmaxf(partial[0], 1.0e-20f);
+
+  for (int32_t t = tid; t < live; t += kDmsPackThreads) {
+    scores[t] = expf(scores[t] - max_score) * inv_denom;
+  }
+  __syncthreads();
+  for (int32_t d = tid; d < dim; d += kDmsPackThreads) {
+    float acc = 0.0f;
+    for (int32_t t = 0; t < live; ++t) {
+      acc += scores[t] * dms_bf16_bits_to_float(vs[static_cast<int64_t>(t) * dim + d]);
+    }
+    o[d] = acc;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_dms_extract_decision_bf16(
@@ -451,5 +544,48 @@ extern "C" int hipengine_dms_streaming_pack_bf16(
       heads,
       dim,
       window_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dms_compact_attn_decode_bf16(
+    const float* q,
+    const uint16_t* k_slot,
+    const uint16_t* v_slot,
+    const int32_t* base_offsets,
+    const int32_t* live_counts,
+    float* out,
+    int32_t rows,
+    int32_t q_heads,
+    int32_t kv_heads,
+    int32_t dim,
+    float scale,
+    int32_t score_capacity,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (q_heads % kv_heads != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (!(scale > 0.0f) || score_capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int blocks = rows * q_heads;
+  const size_t shared_bytes =
+      static_cast<size_t>(2 * score_capacity) * sizeof(float);
+  hipLaunchKernelGGL(
+      dms_compact_attn_decode_kernel, dim3(blocks), dim3(kDmsPackThreads),
+      shared_bytes, stream, q,
+      k_slot,
+      v_slot,
+      base_offsets,
+      live_counts,
+      out,
+      rows,
+      q_heads,
+      kv_heads,
+      dim,
+      scale,
+      score_capacity);
   return static_cast<int>(hipGetLastError());
 }

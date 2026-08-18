@@ -1,10 +1,13 @@
 """Raw-pointer wrappers for the compact DMS kernel family (C2-7 device port).
 
-U1 of the streaming no-shadow DMS port: ``dms_extract_decision_bf16`` reads
-the borrowed decision neuron (last channel of the first query head of each
-GQA group) from pre-RoPE Q, publishes per-KV-head eviction bits, and zeroes
-the channel in place. The CPU oracle is the registered ``cpu_reference``
-``dms_extract_decision``; the device kernel is bit-exact against it.
+Units of the streaming no-shadow DMS port: ``dms_extract_decision_bf16``
+reads the borrowed decision neuron (last channel of the first query head of
+each GQA group) from pre-RoPE Q and publishes per-KV-head eviction bits;
+``dms_streaming_pack_bf16`` scatters the surviving prompt tokens into the
+reserved compact extents; ``dms_append_decode_bf16`` advances one decode
+step (strict parent keep-recompute + append, fail closed on overflow);
+``dms_compact_attn_decode_bf16`` runs GQA decode attention over the dense
+extents. The ``cpu_reference`` siblings are the registered strict fallbacks.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ _OUTPUT_NAME = "dms_compact.so"
 _SYMBOL_EXTRACT_DECISION = "hipengine_dms_extract_decision_bf16"
 _SYMBOL_STREAMING_PACK = "hipengine_dms_streaming_pack_bf16"
 _SYMBOL_APPEND_DECODE = "hipengine_dms_append_decode_bf16"
+_SYMBOL_COMPACT_ATTN_DECODE = "hipengine_dms_compact_attn_decode_bf16"
 
 
 def plan_dms_compact_build(
@@ -245,12 +249,11 @@ def dms_append_decode_bf16(
     ``k_new``/``v_new`` are ``[heads, dim]`` BF16 for the new token, ``evict_new``
     is ``[heads]`` uint8, ``row_positions`` is ``[rows]`` int32 (the new
     token's absolute position per row), and the per-(row, head) extent arrays
-    are ``[rows, heads]`` int32. Steady-state parity with the host parent:
-    the single row at position ``p - window - 1`` is dropped when evicted,
-    then the new row is appended. ``status`` (``[rows, heads]`` int32) is set
-    to 1 when appending would overflow the extent with no evictable victim
-    (the host parent raises MemoryError without mutating state); the extent
-    is left untouched in that case.
+    are ``[rows, heads]`` int32. Strict parent walk: keep = ~evict |
+    p - pos <= window recomputed over the extent, new row appended.
+    ``status`` (``[rows, heads]`` int32) is set to 1 when appending would
+    overflow the extent (the host parent raises MemoryError without
+    mutating state); the extent is left untouched in that case.
     """
     if int(rows) <= 0:
         raise ValueError("rows must be positive")
@@ -307,6 +310,86 @@ def dms_append_decode_bf16(
         raise RuntimeError(f"dms_append_decode_bf16 failed with HIP error {err}")
 
 
+def dms_compact_attn_decode_bf16(
+    q_ptr: int,
+    k_slot_ptr: int,
+    v_slot_ptr: int,
+    base_offsets_ptr: int,
+    live_counts_ptr: int,
+    out_ptr: int,
+    rows: int,
+    q_heads: int,
+    kv_heads: int,
+    dim: int,
+    scale: float,
+    score_capacity: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """GQA decode attention over compact DMS extents (BF16 K/V, FP32 Q/out).
+
+    ``q``/``out`` are ``[rows, q_heads, dim]`` FP32; ``k_slot``/``v_slot`` are
+    slot-major ``[total_slots, dim]`` BF16 bits with each (row, kv_head) row
+    dense in its extent at ``base_offsets`` for ``live_counts`` rows; the
+    extent arrays are ``[rows, kv_heads]`` int32. ``score_capacity`` must
+    cover the maximum live count (shared-memory sizing). live == 0 writes
+    zeros; live == 1 is bit-exact (single-row softmax).
+    """
+    if int(rows) <= 0:
+        raise ValueError("rows must be positive")
+    if int(q_heads) <= 0:
+        raise ValueError("q_heads must be positive")
+    if int(kv_heads) <= 0:
+        raise ValueError("kv_heads must be positive")
+    if int(q_heads) % int(kv_heads) != 0:
+        raise ValueError("q_heads must be a multiple of kv_heads for GQA")
+    if int(dim) <= 0:
+        raise ValueError("dim must be positive")
+    if not (float(scale) > 0.0):
+        raise ValueError("scale must be positive")
+    if int(score_capacity) <= 0:
+        raise ValueError("score_capacity must be positive")
+
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ATTN_DECODE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_float,
+        ctypes.c_int,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(q_ptr),
+        ctypes.c_void_p(k_slot_ptr),
+        ctypes.c_void_p(v_slot_ptr),
+        ctypes.c_void_p(base_offsets_ptr),
+        ctypes.c_void_p(live_counts_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int(rows),
+        ctypes.c_int(q_heads),
+        ctypes.c_int(kv_heads),
+        ctypes.c_int(dim),
+        ctypes.c_float(scale),
+        ctypes.c_int(score_capacity),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(f"dms_compact_attn_decode_bf16 failed with HIP error {err}")
+
+
 def register_dms_compact_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dms_extract_decision", "bf16", "corrected_mask"),
@@ -321,6 +404,11 @@ def register_dms_compact_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dms_append_decode", "bf16", "compact_append_evict"),
         dms_append_decode_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+        dms_compact_attn_decode_bf16,
         replace=replace,
     )
 
