@@ -1864,7 +1864,11 @@ def _memory_recovery_gate(
 ) -> dict[str, Any]:
     baseline_tracked = int(baseline.get("tracked", {}).get("current_bytes", 0))
     final_tracked = int(final.get("tracked", {}).get("current_bytes", 0))
-    pool = final.get("kv_pool", {}).get("dynamic_pool") or {}
+    kv_pool = final.get("kv_pool", {})
+    pool = kv_pool.get("dynamic_pool") or {}
+    # The packed-execution workspace lease is a load-time pinned reservation,
+    # not a leak: it stays held until engine close by design (task #5).
+    workspace_lease_pages = int(kv_pool.get("packed_workspace_lease_pages", 0))
     refcounted = int(pool.get("refcounted_pages", 0))
     pinned = int(pool.get("pinned_pages", 0))
     current_pages = int(pool.get("current_pages", 0))
@@ -1873,8 +1877,8 @@ def _memory_recovery_gate(
     passed = bool(
         tracked_delta <= int(tracked_tolerance_bytes)
         and refcounted == 0
-        and pinned == 0
-        and current_pages == free_pages
+        and pinned == workspace_lease_pages
+        and current_pages == free_pages + workspace_lease_pages
     )
     return {
         "passed": passed,
@@ -1886,6 +1890,7 @@ def _memory_recovery_gate(
         "kv_pool_free_pages": free_pages,
         "kv_pool_refcounted_pages": refcounted,
         "kv_pool_pinned_pages": pinned,
+        "kv_pool_workspace_lease_pages": workspace_lease_pages,
     }
 
 

@@ -2129,3 +2129,201 @@ def test_packed_decode_metadata_gate_rejects_nonidentity_rebound_layout() -> Non
         _rebind_test_state(slot_count=2, blocks_per_slot=2, page_ids=(4, 5, 8, 9)),
     )
     assert not _packed_decode_metadata_device_eligible(arena)
+
+
+def _lease_test_runner() -> SimpleNamespace:
+    return SimpleNamespace(
+        linear_qkv_width=10,
+        ssm_value_dim=2,
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                layer_types=(FULL_ATTENTION,),
+                ssm_conv_kernel=4,
+                ssm_time_step_rank=2,
+                ssm_state_size=3,
+                head_count_kv=2,
+                key_length=4,
+            )
+        ),
+    )
+
+
+def _lease_test_layout() -> gguf_runner.Qwen35GGUFKVChunkLayout:
+    return gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.BF16,),
+    )
+
+
+def _lease_test_backing(layout: gguf_runner.Qwen35GGUFKVChunkLayout) -> SimpleNamespace:
+    # One full-attention layer, BF16 payload: 256 * head_count_kv * key_length * 2
+    # bytes per plane page; the fake arena holds 8 pages per plane.
+    page_nbytes = 256 * 2 * 4 * DType.BF16.itemsize
+    key_plane = DeviceBuffer(ptr=0xA00000, nbytes=8 * page_nbytes)
+    value_plane = DeviceBuffer(ptr=0xB00000, nbytes=8 * page_nbytes)
+    return SimpleNamespace(
+        layout=layout,
+        full_key_caches=(key_plane,),
+        full_value_caches=(value_plane,),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+        full_kv_scale_metadata=(None,),
+        buffers=(key_plane, value_plane),
+    )
+
+
+def test_gguf_packed_target_state_allocate_uses_pool_workspace_lease(monkeypatch) -> None:
+    allocated: list[int] = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(int(nbytes))
+        return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+    lease_pages = (5, 6, 7, 8)
+    pool = SimpleNamespace(
+        backing=backing,
+        workspace_pages=lambda key: (
+            lease_pages
+            if key == gguf_runner._GGUF_PACKED_WORKSPACE_LEASE_KEY
+            else None
+        ),
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(),
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=pool,
+    )
+
+    assert state.kv_backing_kind == "pool_lease"
+    assert state.page_ids == lease_pages
+    assert state.full_key_caches == backing.full_key_caches
+    assert state.full_value_caches == backing.full_value_caches
+    # The arena planes are borrowed, never owned: no fresh allocation and the
+    # plane buffers are not part of the state's owned buffer set.
+    assert allocated == []
+    assert backing.full_key_caches[0] not in state.buffers
+    assert backing.full_value_caches[0] not in state.buffers
+
+
+def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) -> None:
+    allocated: list[int] = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(int(nbytes))
+        return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    layout = _lease_test_layout()
+
+    state = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(),
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+    )
+    assert state.kv_backing_kind == "private"
+    assert state.page_ids == (0, 1, 2, 3)
+    assert len(allocated) == 2  # private key + value planes
+    assert all(buffer in state.buffers for buffer in state.full_key_caches)
+
+    allocated.clear()
+    leaseless_pool = SimpleNamespace(workspace_pages=lambda key: None)
+    state2 = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(),
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=leaseless_pool,
+    )
+    assert state2.kv_backing_kind == "private"
+    assert len(allocated) == 2
+
+
+def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
+    )
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+
+    small_pool = SimpleNamespace(
+        backing=backing,
+        workspace_pages=lambda key: (1, 2),
+    )
+    with pytest.raises(RuntimeError, match="pages"):
+        _GGUFPackedTargetState.allocate(
+            _lease_test_runner(),
+            slot_count=2,
+            max_sequence_length=512,
+            runtime=SimpleNamespace(),
+            kv_layout=layout,
+            kv_pool=small_pool,
+        )
+
+    mismatched_layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+    )
+    mismatched_pool = SimpleNamespace(
+        backing=_lease_test_backing(mismatched_layout),
+        workspace_pages=lambda key: (5, 6, 7, 8),
+    )
+    with pytest.raises(RuntimeError, match="layout"):
+        _GGUFPackedTargetState.allocate(
+            _lease_test_runner(),
+            slot_count=2,
+            max_sequence_length=512,
+            runtime=SimpleNamespace(),
+            kv_layout=layout,
+            kv_pool=mismatched_pool,
+        )
+
+
+def test_gguf_session_workspace_pool_binding_delegates_to_owner() -> None:
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    pool = GlobalDeviceKVPool(
+        page_bytes=4096,
+        backend_fingerprint="test",
+        generation=1,
+        backing=None,
+        plane_page_pointers={"payload": (0x1000, 0x2000)},
+        pointer_table_pointers={"payload": 0x3000},
+        metadata_descriptor_pointer=0x4000,
+        close_storage=lambda: None,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._workspace_kv_pool = None
+    view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view._workspace_kv_pool = None
+    view._resident_batch_owner = owner
+
+    view.bind_workspace_kv_pool(pool)
+    assert owner._workspace_kv_pool is pool
+    assert view._workspace_kv_pool is None
+    view.bind_workspace_kv_pool(None)
+    assert owner._workspace_kv_pool is None
+
+    with pytest.raises(TypeError, match="GlobalDeviceKVPool"):
+        owner.bind_workspace_kv_pool(object())
