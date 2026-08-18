@@ -116,6 +116,7 @@ def _case(
     num_layers: int,
     seeds: list[int],
     row_starts: list[int],
+    custom_masks: list[np.ndarray] | None = None,
 ) -> None:
     from hipengine.kernels.hip_gfx1100.attention import (
         build_dms_compact,
@@ -142,11 +143,16 @@ def _case(
             rng.standard_normal((tokens, num_layers, heads, dim))
         )
         for layer in range(num_layers):
-            evict_all[token_offset:token_offset + tokens, layer, :] = (
-                _eviction_mask(
-                    tokens, heads, seed=seeds[r] + layer, window=window
+            if custom_masks is not None:
+                evict_all[token_offset:token_offset + tokens, layer, :] = (
+                    custom_masks[r]
                 )
-            )
+            else:
+                evict_all[token_offset:token_offset + tokens, layer, :] = (
+                    _eviction_mask(
+                        tokens, heads, seed=seeds[r] + layer, window=window
+                    )
+                )
         _admit(backend, request_id=r, tokens=tokens)
 
     # Host parent implementation per row (per-request 0-based positions).
@@ -365,4 +371,63 @@ def test_dms_streaming_pack_all_evicted_except_window_bit_exact() -> None:
         num_layers=1,
         seeds=[44],
         row_starts=[128],
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_streaming_pack_long_prompt_multi_tile_bit_exact() -> None:
+    # Regression (U2b): a prompt longer than one 256-token tile. Kept
+    # tokens exist in both tiles, which the old lane-prefix rank ordered
+    # wrong (second-tile kepts scattered before first-tile kepts).
+    _case(
+        rows_tokens=[300],
+        heads=2,
+        dim=16,
+        window=32,
+        num_layers=1,
+        seeds=[42],
+        row_starts=[0],
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_streaming_pack_mixed_tile_lengths_bit_exact() -> None:
+    # Regression (U2b): one multi-tile row alongside a short row, offset
+    # row starts; per-row token_base arithmetic with chunked ranks.
+    _case(
+        rows_tokens=[300, 16],
+        heads=4,
+        dim=128,
+        window=32,
+        num_layers=1,
+        seeds=[43, 44],
+        row_starts=[0, 4000],
+    )
+
+
+def _multi_tile_mask(tokens: int, heads: int) -> np.ndarray:
+    """Kept = {1} + {118..150} + {267..299}: kept tokens in tile 0 (threads
+    118..150) that outrank the tile-1 kept tokens' threads (11..43), which
+    the old lane-prefix rank missed."""
+    mask = np.ones((tokens, heads), dtype=bool)
+    mask[1, :] = False
+    mask[118:151, :] = False
+    mask[267:300, :] = False
+    return mask
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_streaming_pack_multi_tile_kept_interleaved_bit_exact() -> None:
+    # Regression (U2b): kept tokens in both tiles, with the tile-0 kept
+    # tokens held by higher-numbered threads than the tile-1 kept tokens.
+    # The old lane-prefix rank scattered tile-1 kepts ahead of them.
+    _case(
+        rows_tokens=[300],
+        heads=2,
+        dim=16,
+        window=32,
+        num_layers=1,
+        seeds=[42],
+        row_starts=[0],
+        custom_masks=[_multi_tile_mask(300, 2)],
     )
