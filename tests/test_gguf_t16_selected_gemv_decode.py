@@ -872,7 +872,7 @@ def _run_pack8_dual_rowtile_silu(
             free(buffer)
 
 
-@pytest.mark.parametrize("rows", [2, 3, 4])
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     rows: int,
     t16_selected_library,
@@ -891,12 +891,6 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
     tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
 
-    single_control = _run_pack8_single(
-        x_bf16,
-        packed_a,
-        out_features,
-        q4_library,
-    )
     single_actual = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
         x_bf16,
@@ -904,22 +898,6 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         out_features,
         np.uint16,
         t16_selected_library,
-    )
-    dual_control = _run_pack8_dual_rowtile_silu(
-        x_bf16,
-        packed_a,
-        packed_b,
-        out_features,
-        q4_library,
-    )
-    dual_actual = _run_dense_dual_silu(
-        x_bf16,
-        tiles_a,
-        tiles_b,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-        fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     )
     single_col4 = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
@@ -929,9 +907,51 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         np.uint16,
         t16_selected_library,
     )
-    np.testing.assert_array_equal(single_actual, single_control)
-    np.testing.assert_array_equal(dual_actual, dual_control)
-    np.testing.assert_array_equal(single_col4, single_control)
+    if rows <= 4:
+        single_control = _run_pack8_single(
+            x_bf16,
+            packed_a,
+            out_features,
+            q4_library,
+        )
+        dual_control = _run_pack8_dual_rowtile_silu(
+            x_bf16,
+            packed_a,
+            packed_b,
+            out_features,
+            q4_library,
+        )
+        dual_actual = _run_dense_dual_silu(
+            x_bf16,
+            tiles_a,
+            tiles_b,
+            out_features,
+            np.uint16,
+            t16_selected_library,
+            fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+        )
+        np.testing.assert_array_equal(single_actual, single_control)
+        np.testing.assert_array_equal(dual_actual, dual_control)
+        np.testing.assert_array_equal(single_col4, single_control)
+    else:
+        # rows 5-8: the pack8 rowtile production control caps at rows 4, so
+        # assert bit-exactness against the retained serial-c1 owner instead.
+        single_control = np.concatenate(
+            [
+                _run_dense_single(
+                    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+                    x_bf16[row : row + 1],
+                    tiles_a,
+                    out_features,
+                    np.uint16,
+                    t16_selected_library,
+                )
+                for row in range(rows)
+            ],
+            axis=0,
+        )
+        np.testing.assert_array_equal(single_actual, single_control)
+        np.testing.assert_array_equal(single_col4, single_control)
     expected_single = gguf_quant_gemv(
         _bf16_u16_to_f32(x_bf16),
         raw_a,
@@ -1103,7 +1123,7 @@ def test_q4_t16_dense_c1_down_residual_is_bit_exact(
     np.testing.assert_array_equal(candidate, expected)
 
 
-@pytest.mark.parametrize("rows", [1, 2, 3, 4])
+@pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 6, 7, 8])
 def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
     rows: int,
     t16_selected_library,
@@ -1679,13 +1699,13 @@ def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
 
 
 def test_p9_h3d_wrappers_validate_args() -> None:
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
     with pytest.raises(ValueError, match="rows in 2..4"):
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
             0, 0, 0, 0, 5, 256, 16
         )
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
     with pytest.raises(ValueError, match="compact_rows must be positive"):
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 0, 256, 16, 16, 1)

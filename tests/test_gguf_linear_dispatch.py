@@ -2519,6 +2519,87 @@ def test_gfx1151_q5_t16_ssm_out_uses_direct_through_c8_and_wmma_for_bulk() -> No
     ]
 
 
+def test_gfx1151_q5_t16_27b_shapes_use_rowtile_through_c8() -> None:
+    """27B Q5 ssm_out/ffn_down/qkv/v shapes rowtile to c8 (per-shape cap)."""
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    quant_key = "gguf_q5_k_t16_v1"
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key=quant_key)
+    keys = {
+        "rowtile": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            quant_key,
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+        "wmma": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            quant_key,
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        label: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for label, key in keys.items()
+    }
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **_kwargs):
+            calls.append((label, args))
+
+        return fake_kernel
+
+    for label, key in keys.items():
+        register(key, capture(label), replace=True)
+    try:
+        with native_batch_decode_session(True):
+            # 27B ssm_out (6144, 5120) rowtiles to c8 (cap 8 via per-shape cap).
+            for rows in (2, 4, 8):
+                launch_gguf_linear(
+                    weight,
+                    100,
+                    200,
+                    rows=rows,
+                    in_features=6_144,
+                    out_features=5_120,
+                    backend="hip_gfx1151",
+                    runtime="runtime-sentinel",
+                    use_wmma_prefill=False,
+                )
+            # 27B ffn_down (17408, 5120) rowtiles to c8.
+            launch_gguf_linear(
+                weight,
+                101,
+                201,
+                rows=8,
+                in_features=17_408,
+                out_features=5_120,
+                backend="hip_gfx1151",
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        for label, key in keys.items():
+            register(key, originals[label], replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        ("rowtile", (100, 14, 200, 2, 6_144, 5_120)),
+        ("rowtile", (100, 14, 200, 4, 6_144, 5_120)),
+        ("rowtile", (100, 14, 200, 8, 6_144, 5_120)),
+        ("rowtile", (101, 14, 201, 8, 17_408, 5_120)),
+    ]
+
+
 def test_gfx1151_q4_t16_full_kv_c1_uses_exact_col4_shape_owner() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 

@@ -1207,9 +1207,9 @@ def gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact compact-T16 row-reuse owner for rows 2-4."""
+    """Launch the exact compact-T16 row-reuse owner for rows 2-8."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_BF16)
@@ -1485,9 +1485,9 @@ def gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact four-column compact-T16 row-reuse control."""
+    """Launch the exact four-column compact-T16 row-reuse control (rows 1-8)."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_COL4_BF16)
@@ -1521,9 +1521,11 @@ def _check_dense_q4_t16_rowtile_shape(
     rows: int,
     in_features: int,
     out_features: int,
+    *,
+    max_rows: int = 4,
 ) -> None:
-    if rows not in (2, 3, 4):
-        raise ValueError("dense Q4T16 rowtile requires rows in 2..4")
+    if not 2 <= rows <= int(max_rows):
+        raise ValueError(f"dense Q4T16 rowtile requires rows in 2..{int(max_rows)}")
     if in_features <= 0 or in_features % _QK_K:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
@@ -1627,8 +1629,8 @@ def _check_dense_q5_t16_shape(
     rowtile: bool,
 ) -> None:
     if rowtile:
-        if rows not in (2, 3, 4):
-            raise ValueError("dense Q5T16 rowtile requires rows in 2..4")
+        if rows not in (2, 3, 4, 5, 6, 7, 8):
+            raise ValueError("dense Q5T16 rowtile requires rows in 2..8")
     elif rows <= 0:
         raise ValueError("dense Q5T16 decode requires rows to be positive")
     if in_features <= 0 or in_features % _QK_K:

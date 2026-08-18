@@ -263,7 +263,17 @@ step (`_enqueue_packed_decode_model_step`) now enters
 `native_batch_decode_session(True)`, so eager `step_batch_native` and graph
 capture route c2..c8 gate/up through the rowtile8 owner instead of WMMA
 prefill (c8 step 408.9 -> 312.4 ms; c4 42.5 tok/s agg 3.31x c1 with no
-regression; native_c8 25.2 tok/s agg, rows exact vs c4). c>8 chunks into
+regression; native_c8 25.2 tok/s agg, rows exact vs c4). On 2026-08-18 the
+single Q4/Q5 projections (attn_qkv, attn_q/k/v/o, attn_gate, ffn_down,
+ssm_out) were also extended to rows 2..8: `launch_q4_dense_rowtile` (8-col),
+`launch_q4_dense_rowtile_col4`, and `launch_q5_dense_rowtile_col4` now
+instantiate ROW_TILE 5..8, `_q4_t16_dense_native_dispatch`/`_q4_t16_
+sidecar_decode_variants` cover rows 2..8, and gfx1151's
+`GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT` for Q5 is 8. c8 WMMA prefill is
+eliminated: packed-AR c8 step 312.4 -> 139.8 ms, native_c8 aggregate
+25.2 -> 56.6 tok/s (4.40x c1, 7.1/stream), c4 unchanged (42.5 tok/s agg),
+RED rows 2..8 bit-exact vs c1. Remaining: Q6 lm_head rowtile still rows [2,4]
+(c8 chunked 4+4, ~9.6 ms) and fp16 recurrent state (R2). c>8 chunks into
 <=8-row rowtile8 groups; c>=512 stays on WMMA. Evidence:
 [`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
 [`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),

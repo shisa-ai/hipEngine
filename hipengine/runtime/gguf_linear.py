@@ -2540,7 +2540,7 @@ def _q4_t16_sidecar_decode_variants(
 
     if rows == 1:
         return ("dense_single_local32_bf16_bf16_out",)
-    if not 2 <= rows <= 4:
+    if not 2 <= rows <= 8:
         return ()
     shape = (in_features, out_features)
     if shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
@@ -2558,13 +2558,13 @@ def _q4_t16_dense_native_dispatch(
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select qualified rows-2-4 leaves for a sole-resident Q4T16 owner."""
+    """Select qualified rows-2-8 leaves for a sole-resident Q4T16 owner."""
 
     if (
         not _native_batch_decode_session_enabled
         or dispatch.abi != "t16"
         or dispatch.key.quant not in _Q4_T16_DENSE_QUANTS
-        or not 2 <= rows <= 4
+        or not 2 <= rows <= 8
     ):
         return dispatch
     for variant in _q4_t16_sidecar_decode_variants(
@@ -5656,15 +5656,36 @@ def _native_batch_decode_dispatch(
         {},
     )
     if isinstance(t16_rowtile_limits, Mapping):
-        try:
-            t16_rowtile_max_rows = int(
-                t16_rowtile_limits.get(
-                    dispatch.key.quant,
-                    t16_rowtile_max_rows,
-                )
-            )
-        except (TypeError, ValueError):
-            t16_rowtile_max_rows = 0
+        raw = t16_rowtile_limits.get(dispatch.key.quant, 6)
+        if isinstance(raw, Mapping):
+            # Per-shape caps: {"default": N, "shapes": {(in_features,
+            # out_features): N}}. Used when a backend measures different
+            # rowtile bounds for different shapes of the same quant (e.g.
+            # Q5 27B ssm_out/ffn_down/qkv rowtile to c8 while the narrow
+            # 0.8B shape keeps the direct leaf above c4).
+            try:
+                t16_rowtile_max_rows = int(raw.get("default", 6))
+            except (TypeError, ValueError):
+                t16_rowtile_max_rows = 0
+            shape_caps = raw.get("shapes", {})
+            if isinstance(shape_caps, Mapping):
+                try:
+                    t16_rowtile_max_rows = max(
+                        t16_rowtile_max_rows,
+                        int(
+                            shape_caps.get(
+                                (int(in_features), int(out_features)),
+                                0,
+                            )
+                        ),
+                    )
+                except (TypeError, ValueError):
+                    pass
+        else:
+            try:
+                t16_rowtile_max_rows = int(raw)
+            except (TypeError, ValueError):
+                t16_rowtile_max_rows = 0
     if (
         dispatch.abi == "t16"
         and dispatch.key.variant == "t16_gemv_decode_bf16_bf16_out"
