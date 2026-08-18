@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 30.78 -> 29.83 ms/tok (+957 us/tok, +3.2%) by hoisting the router .so into a module cache (per-launch host dispatch dropped ~45 -> ~15 us); tokens byte-identical; artifact results/2026-08-18-zbook-qwen36-pn5-router-lib-hoist.json.
+
 Entry format:
 
 ```text

@@ -8,6 +8,15 @@ sync'd eager. Next dominant owner: the `launch_gguf_linear` T16 GEMV path
 (~8.9 ms/token, ~29% of wall); only a non-T0 (production-envelope) mechanism or a
 launch restructure has real headroom. PN7 (MTP) is a separate deferred lane.
 
+PN5 (new unit, 2026-08-18): the MoE router slice is **host-dispatch-bound**, not
+GPU-bound — 40 cooperative router launches/step each re-ran
+`build_qwen35_router(load=True)` (~34 us/call with a pinned session compiler
+version). Hoisted the router library handle into a module cache; counter-rotated
+exact A/B: 30.78 -> 29.83 ms/tok, **+957 us/tok (+3.2%)**, tokens byte-identical
+(see worklog `pn5-router-lib-hoist`). The same `library or build_X(load=True)`
+pattern exists at ~609 kernel sites; a targeted audit of the largest families is
+a cheap follow-up.
+
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
 Model lane: Qwen3.6-35B-A3B GGUF `UD-Q4_K_M`, BF16 KV, greedy autoregressive

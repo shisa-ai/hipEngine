@@ -164,6 +164,24 @@ def build_qwen35_router(
     )
 
 
+# Hoisted per-process router library. Every router launch used to call
+# ``build_qwen35_router(load=True)`` per call; with a pinned compiler version on
+# the session that key misses the loaded-library cache (the launch path passes
+# ``compiler_version=None``) and re-runs the full build/load machinery, costing
+# ~30-35 us per call (~1.7 ms/step for 40 cooperative router launches on the
+# ZBook gfx1151 eager decode). Caching the handle once keeps the launch path a
+# plain ctypes call (~15 us). Callers that need a distinct build (custom
+# cache_root / compiler_version) must pass ``library=`` explicitly.
+_ROUTER_LIBRARY: ctypes.CDLL | None = None
+
+
+def _router_library() -> ctypes.CDLL:
+    global _ROUTER_LIBRARY
+    if _ROUTER_LIBRARY is None:
+        _ROUTER_LIBRARY = build_qwen35_router(load=True)
+    return _ROUTER_LIBRARY
+
+
 def qwen35_router_logits_bf16(
     hidden_ptr: int,
     weight_ptr: int,
@@ -183,7 +201,7 @@ def qwen35_router_logits_bf16(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
@@ -209,7 +227,7 @@ def qwen35_router_logits_fp16(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS_FP16, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
@@ -235,7 +253,7 @@ def qwen35_router_logits_bf16_f32w(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS_F32W, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
@@ -291,7 +309,7 @@ def _qwen35_router_logits_bf16_f32w_token_tile(
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
 
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -400,7 +418,7 @@ def qwen35_router_logits_bf16_f32w_wave0_tree(
         (logits_ptr, "logits_ptr"),
     ):
         _check_nonzero_pointer(pointer, name)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -450,7 +468,7 @@ def qwen35_router_logits_bf16_f32w_wave0_tree_anyorder(
         (completion_counter_ptr, "completion_counter_ptr"),
     ):
         _check_nonzero_pointer(pointer, name)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -491,7 +509,7 @@ def qwen35_router_logits_fp16_f32w(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS_FP16_F32W, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
@@ -517,7 +535,7 @@ def qwen35_router_logits_f32_f32w(
     _check_positive(hidden_size, "hidden_size")
     _check_positive(num_rows, "num_rows")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS_F32_F32W, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
@@ -542,7 +560,7 @@ def qwen35_router_select(
 
     _check_router_select_shape(tokens, logits_stride, num_experts, top_k)
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_SELECT, _ARGTYPES_ROUTER_SELECT, ctypes.c_int)
     err = fn(logits_ptr, selected_ptr, routing_ptr, tokens, logits_stride, num_experts, top_k, threads, stream)
@@ -579,7 +597,7 @@ def qwen35_router_topk_shared_out_bf16(
     if num_experts >= num_rows:
         raise ValueError("num_experts must be smaller than num_rows for shared-gate routing")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -613,7 +631,7 @@ def qwen35_router_topk_shared_out_fp16(
     if num_experts >= num_rows:
         raise ValueError("num_experts must be smaller than num_rows for shared-gate routing")
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -642,7 +660,7 @@ def qwen35_router_topk_shared_sigmoid_out_bf16(
 
     _check_prefill_sigmoid_shape(tokens, hidden_size, num_rows, num_experts, top_k)
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -671,7 +689,7 @@ def qwen35_router_topk_shared_sigmoid_out_fp16(
 
     _check_prefill_sigmoid_shape(tokens, hidden_size, num_rows, num_experts, top_k)
     _check_threads(threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_SIGMOID_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -699,7 +717,7 @@ def qwen35_router_topk_shared_coop_out_bf16(
     """Launch decode-only cooperative router logits + top-k in one kernel."""
 
     _check_decode_coop_shape(tokens, hidden_size, num_rows, num_experts, top_k, threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_COOP_OUT, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -727,7 +745,7 @@ def qwen35_router_topk_shared_coop_out_fp16(
     """Launch decode-only cooperative router logits + top-k for FP16 hidden."""
 
     _check_decode_coop_shape(tokens, hidden_size, num_rows, num_experts, top_k, threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_TOPK_SHARED_COOP_OUT_FP16, _ARGTYPES_TOPK_SHARED, ctypes.c_int)
     err = fn(hidden_ptr, combined_weight_ptr, logits_ptr, selected_ptr, routing_ptr,
@@ -755,7 +773,7 @@ def qwen35_router_topk_split_shared_coop_out_bf16(
     """Launch decode-only router logits + top-k for split expert/shared weights."""
 
     _check_split_decode_coop_shape(tokens, hidden_size, num_experts, top_k, threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT)
     fn.argtypes = [
@@ -814,7 +832,7 @@ def qwen35_router_topk_split_shared_coop_out_bf16_f32w(
         raise ValueError("F32-weight cooperative router requires 256 threads")
     if hidden_size > 2048:
         raise ValueError("F32-weight cooperative router requires hidden_size <= 2048")
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -866,7 +884,7 @@ def qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(
         raise ValueError("F32-weight cooperative router requires hidden_size <= 2048")
     if completion_counter_ptr == 0:
         raise ValueError("completion_counter_ptr must be nonzero")
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -912,7 +930,7 @@ def qwen35_router_topk_split_shared_coop_out_fp16(
     """Launch decode-only split-weight router top-k for FP16 hidden."""
 
     _check_split_decode_coop_shape(tokens, hidden_size, num_experts, top_k, threads)
-    library = library or build_qwen35_router(load=True)
+    library = library or _router_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_TOPK_SPLIT_SHARED_COOP_OUT_FP16)
     fn.argtypes = [
