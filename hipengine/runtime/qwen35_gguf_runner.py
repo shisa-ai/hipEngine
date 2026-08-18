@@ -1125,6 +1125,52 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _rebind_packed_verify_layout_pages(
+    layout: _GGUFPackedVerifyLayout,
+    packed_state: _GGUFPackedTargetState,
+) -> _GGUFPackedVerifyLayout:
+    """Rebind a packed layout's block table to the state's physical pages.
+
+    Layout builders emit slot-local identity block tables; the packed state's
+    ``page_ids`` supply the authoritative physical page mapping (identity for
+    the private chunk, arbitrary arena pages under a GlobalDeviceKVPool
+    workspace lease). The paged attention kernels and the page-aware copy
+    segments must consume the same mapping, so the table is rewritten through
+    ``page_ids`` once the workspace geometry is known. Identity mappings keep
+    the original layout object so the private-chunk path is unchanged.
+    """
+
+    state_slots = int(packed_state.slot_count)
+    state_bps = int(packed_state.blocks_per_slot)
+    layout_bps = int(layout.blocks_per_slot)
+    if int(layout.slot_count) > state_slots:
+        raise ValueError(
+            f"packed layout slot_count {layout.slot_count} exceeds packed state slot_count {state_slots}"
+        )
+    if layout_bps > state_bps:
+        raise ValueError(
+            f"packed layout blocks_per_slot {layout_bps} exceeds packed state blocks_per_slot {state_bps}"
+        )
+    page_ids = packed_state.page_ids
+    if state_bps == layout_bps and all(
+        int(page_id) == index for index, page_id in enumerate(page_ids)
+    ):
+        return layout
+    block_table = np.empty_like(layout.block_table)
+    for slot_index in range(int(layout.slot_count)):
+        row_start = int(layout.cu_seqlens[slot_index])
+        row_end = int(layout.cu_seqlens[slot_index + 1])
+        if not bool(layout.active_mask[slot_index]):
+            block_table[row_start:row_end, :] = -1
+            continue
+        base = slot_index * state_bps
+        block_table[row_start:row_end, :] = np.asarray(
+            page_ids[base : base + layout_bps],
+            dtype=np.int32,
+        )[None, :]
+    return replace(layout, block_table=block_table)
+
+
 def _packed_ar_slot_capacity(
     max_live_count: int,
     *,
@@ -16881,6 +16927,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
@@ -19181,6 +19228,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         hidden_seed_buf = None
         if return_hidden_seeds:
             self._ensure_verify_block_buffers(rows, runtime=runtime)
@@ -19859,6 +19907,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         split_workspace = (
             self._ensure_packed_ar_attention_workspace(
                 rows=rows,

@@ -96,6 +96,23 @@ should be removed or collapsed.
   unification moves packed workspace ownership into the load-time resource
   ledger, where reclaim is ownership-based rather than session-based.
 
+## Packed workspace page table and identity-table device kernels
+
+- Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries
+  slot-major `page_ids` + `copy_segments()`, and
+  `_rebind_packed_verify_layout_pages` fills layout block tables from them.
+  Production page IDs are still identity (private chunk), so
+  `prepare_packed_decode_metadata*` device kernels (which write identity block
+  tables on device) and packed decode graph replay (which refreshes metadata
+  through them) remain correct; the `_packed_decode_metadata_device_eligible`
+  gate already falls back to host upload for non-identity tables, but the
+  graph-replay refresh path has no such fallback.
+- Removal trigger: with S1d (pool-leased workspace pages), either extend the
+  device metadata kernels to consume a device-resident page table and rebind
+  graphs against it, or fail closed on graph capture when `page_ids` are
+  non-identity. Delete the private-chunk allocation path from
+  `_GGUFPackedTargetState` once the lease-backed path is the only producer.
+
 ## Generation-1 prefill/decode policy compatibility choices
 
 - Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling
