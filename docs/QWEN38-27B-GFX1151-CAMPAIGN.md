@@ -1493,6 +1493,20 @@ this lane must re-run the full B3 transaction / candidate-MTP exactness gate
 versus its own candidate AR. Acceptance economics must be validated on the full
 multi-prompt suite — never a single fixed prompt.
 
+**Assessed 2026-08-18 — deferred on the Q4_K_S topline.** On the retained
+exact B3 topline the entire draft/proposal stage is only **2.08% of decode
+wall** (0.206 s of 9.920 s; 2.37 ms/cycle), while target verify is **97.41%**
+(9.663 s) — so even a fully-free draft buys ~2% B3, and a truncated draft-vocab
+head (which only touches the draft lm_head, ~57% of a ~2% draft stage) would
+recover **well under 1%** of decode wall while risking acceptance loss that
+could inflate the dominant verify term. The mechanism **already exists**
+(`mtp_draft_vocab_cap` / `vocab_cap` in `Qwen35GGUFResidentMTPDraftRunner`,
+retained at cap=65536 for Qwen3.6-PARO; `draft_vocab_cap` in `mtp_nextn.py`),
+but the Qwen3.8 topline draft path is the dense `NextN` executor
+(`Qwen35GGUFNextNExecutor`, no vocab cap, full 248320 vocab). Revisit only
+under a concurrency/throughput target where the draft share grows. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r4-cheaper-mtp-drafts.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r4-cheaper-mtp-drafts.json).
+
 ### R5 — KVarN 4/2-bit K/V (mention; lower priority)
 
 The external port (Huawei CSL KVarN: Hadamard + variance normalization + 4-bit
@@ -1533,6 +1547,6 @@ profile gate passes with no input-overfit.
 1. R1 — gfx1151 INT8 K/V revalidation (stated start).
 2. R2 — fp16 recurrent state + quality tradeoff.
 3. R3 — lm_head / embed_tokens int8.
-4. R4 — cheaper MTP drafts.
+4. R4 — cheaper MTP drafts (deferred, see assessed note above).
 5. R6 — int8 activations poke (prefill / concurrency).
 6. R5 — KVarN 4/2-bit K/V (mention only).

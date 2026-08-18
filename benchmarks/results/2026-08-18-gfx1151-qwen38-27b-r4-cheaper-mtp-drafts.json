@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-18",
+  "kind": "qwen38_27b_gfx1151_q4ks_r4_cheaper_mtp_drafts",
+  "status": "checkpoint_deferred",
+  "publishable": false,
+  "performance_claim": false,
+  "purpose": "Assess whether cheaper MTP drafts (truncated draft-vocab head / int8 drafter) transfer to the Qwen3.8 Q4_K_S gfx1151 topline.",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "geometry": "dense H5120, FFN17408, 64 target blocks + NextN",
+    "kv_storage": "BF16"
+  },
+  "base_commit": "51a013d7058510b73e75ee510905dfc02d78ebdd",
+  "finding": {
+    "external_premise": "external stack made 3 drafts pay off by cutting per-draft cost: int8 drafter module + 40k-token truncated draft-vocab head (~1ms vs ~3ms per draft).",
+    "draft_stage_share_of_decode_wall_percent": 2.08,
+    "target_verify_share_of_decode_wall_percent": 97.41,
+    "source": "retained exact B3 topline artifact benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json (decode wall 9.920s; proposal 0.206s; target_verify 9.663s)",
+    "draft_stage_seconds": {
+      "proposal": 0.206,
+      "target_verify": 9.6632,
+      "target_commit_finish": 0.0193,
+      "scheduler_accept_replay_host_residual": 0.0315
+    },
+    "resident_runner_draft_lmhead_share": {
+      "pct_of_draft_kernel_time": 56.9,
+      "ms_per_step": 3.7,
+      "source": "2026-07-01 gguf-mtp-draft-rocprof llama-compat b2 (Qwen3.6-35B-MoE resident runner rocprof)"
+    },
+    "topline_draft_path": "Qwen35GGUFNextNExecutor / Qwen35GGUFNextNDraftProvider (dense NextN executor) via scripts/qwen36_dense_gguf_suite.py; uses proposal_top1_exact_bf16 over full vocab 248320; NO vocab cap exposed",
+    "resident_draft_path": "Qwen35GGUFResidentMTPDraftRunner with vocab_cap built-in (default 32768; retained cap=65536 for Qwen3.6-PARO); Qwen3.8 _new_mtp_draft_runner passes full vocab 248320",
+    "mechanism_exists": true,
+    "mechanism_detail": "mtp_draft_vocab_cap / vocab_cap in Qwen35GGUFResidentMTPDraftRunner and draft_vocab_cap in kernels/hip_gfx1100/speculative/mtp_nextn.py shared_head_logits"
+  },
+  "economics": {
+    "ceiling_if_draft_free_percent": 2.08,
+    "ceiling_from_truncated_head_only_percent": "well under 1 (draft lm_head is ~57% of a ~2% draft stage)",
+    "acceptance_risk": "a truncated draft-vocab head changes which tokens the draft can propose; risk of acceptance-rate loss, which would increase target_forward_rows (the 97.4% verify term), offsetting the draft savings",
+    "concurrency_note": "external material win was concurrency via cheaper per-request state, not c=1 draft speed; same as R2 fp16-state finding"
+  },
+  "decision": "Do not invest in cheaper MTP drafts for the c=1 Qwen3.8 Q4_K_S gfx1151 topline. The draft/proposal stage is only ~2% of decode wall (target verify is 97.4%); even a fully-free draft buys ~2%, and a truncated draft-vocab head recovers well under 1% while carrying acceptance-rate risk that could inflate the dominant verify term. The truncated-head mechanism already exists (vocab_cap / mtp_draft_vocab_cap) and is retained at cap=65536 for Qwen3.6-PARO, but wiring it into the Qwen3.8 dense NextN path is not worth it at c=1. Revisit only if a multi-request / concurrency target is adopted where the draft share grows.",
+  "evidence": {
+    "topline_artifact": "benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json",
+    "resident_runner_draft_rocprof": "benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2.json",
+    "codesearched": [
+      "hipengine/generation/qwen35_gguf.py:_new_mtp_draft_runner (full vocab 248320)",
+      "hipengine/speculative/mtp_resident_draft.py:Qwen35GGUFResidentMTPDraftRunner vocab_cap",
+      "hipengine/runtime/qwen35_gguf_nextn.py:Qwen35GGUFNextNExecutor (no vocab cap)",
+      "scripts/gguf_mtp_bench.py --mtp-draft-vocab-cap experiment flag"
+    ]
+  }
+}
