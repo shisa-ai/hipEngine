@@ -28,6 +28,11 @@ from hipengine.kvcache.backend import (
     ResourceDelta,
 )
 from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
+from hipengine.kvcache.dms_device import (
+    DMSDevicePayloadStore,
+    DMSDeviceUnavailable,
+    device_payloads_requested,
+)
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 _CPU = Device("cpu", 0)
@@ -215,6 +220,13 @@ class DMSCodecQualification:
             raise ValueError("DMS codec qualification requires top-1 >= 90%")
         if not self.no_dense_shadow:
             raise ValueError("DMS codec qualification must prove no dense shadow")
+
+
+def _bf16_bits(values: np.ndarray) -> np.ndarray:
+    """Round-to-nearest-even BF16 bits (identical arithmetic to the bf16 payload codec)."""
+    bits = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
+    rounded = (bits + np.uint32(0x7FFF) + ((bits >> 16) & 1)) & np.uint32(0xFFFF0000)
+    return (rounded >> np.uint32(16)).astype(np.uint16)
 
 
 def encode_dms_payload(
@@ -553,9 +565,12 @@ class DMSCompactBackend:
         physical_widths: tuple[int, ...] = (1, 2, 4, 8),
         generation: int = 1,
         codec_qualification: DMSCodecQualification | None = None,
+        device_payloads: bool | None = None,
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
+        if device_payloads_requested(device_payloads) and codec != "bf16":
+            raise ValueError("compact DMS device payloads are BF16-only")
         if codec == "int8_per_token_head":
             if codec_qualification is None:
                 raise ValueError("compact INT8 DMS requires artifact qualification")
@@ -603,6 +618,22 @@ class DMSCompactBackend:
         self.pack_calls = 0
         self.decode_appends = 0
         self.evicted_tokens = 0
+        self._device_store: DMSDevicePayloadStore | None = None
+        if device_payloads_requested(device_payloads):
+            try:
+                self._device_store = DMSDevicePayloadStore(
+                    retrofit=retrofit,
+                    slots_per_layer=self.slots_per_layer,
+                    max_pack_rows=self.max_pack_rows,
+                )
+            except DMSDeviceUnavailable:
+                # Host parent remains the registered fallback.
+                self._device_store = None
+
+    @property
+    def device_payloads_enabled(self) -> bool:
+        """True when the registered dms_compact kernels own the payloads."""
+        return self._device_store is not None
 
     @property
     def storage_dtype(self) -> DType:
@@ -762,6 +793,7 @@ class DMSCompactBackend:
             raise ValueError("DMS streaming pack eviction shape mismatch")
         tokens = key.shape[0]
         positions = np.arange(tokens, dtype=np.int32)
+        device_store = self._device_store
         for layer in range(self.retrofit.num_layers):
             for head in range(self.retrofit.num_kv_heads):
                 keep = build_dms_live_mask(
@@ -775,22 +807,32 @@ class DMSCompactBackend:
                 capacity = int(state.range_capacity[layer, head])
                 if live > capacity:
                     raise MemoryError("DMS packed live rows exceed reserved extent")
-                k_payload, k_scale = encode_dms_payload(
-                    key[keep, layer, head, :], codec=self.codec
-                )
-                v_payload, v_scale = encode_dms_payload(
-                    value[keep, layer, head, :], codec=self.codec
-                )
-                state.k_payload[(layer, head)] = k_payload
-                state.v_payload[(layer, head)] = v_payload
-                if k_scale is not None:
-                    state.k_scales[(layer, head)] = k_scale
-                    state.v_scales[(layer, head)] = v_scale
+                if device_store is None:
+                    k_payload, k_scale = encode_dms_payload(
+                        key[keep, layer, head, :], codec=self.codec
+                    )
+                    v_payload, v_scale = encode_dms_payload(
+                        value[keep, layer, head, :], codec=self.codec
+                    )
+                    state.k_payload[(layer, head)] = k_payload
+                    state.v_payload[(layer, head)] = v_payload
+                    if k_scale is not None:
+                        state.k_scales[(layer, head)] = k_scale
+                        state.v_scales[(layer, head)] = v_scale
                 state.live_counts[layer, head] = live
                 state.token_positions[layer, head, :live] = selected
                 state.token_positions[layer, head, live:] = -1
                 state.evict_mask[layer, head, :live] = evict[keep, layer, head]
                 state.evict_mask[layer, head, live:] = False
+            if device_store is not None:
+                device_store.pack_layer(
+                    layer,
+                    _bf16_bits(key[:, layer, :, :]),
+                    _bf16_bits(value[:, layer, :, :]),
+                    evict[:, layer, :].astype(np.uint8),
+                    np.ascontiguousarray(state.base_offsets[layer, :]),
+                    np.ascontiguousarray(state.range_capacity[layer, :]),
+                )
         state.logical_tokens = tokens
         self.pack_calls += 1
 
@@ -816,73 +858,186 @@ class DMSCompactBackend:
             raise ValueError("DMS decode append K/V shape mismatch")
         if evict_new.shape != shape[:2]:
             raise ValueError("DMS decode eviction shape mismatch")
-        for layer in range(shape[0]):
-            for head in range(shape[1]):
-                live = int(state.live_counts[layer, head])
-                positions = state.token_positions[layer, head, :live]
-                prior_evict = state.evict_mask[layer, head, :live]
-                keep = (~prior_evict) | (
-                    int(position) - positions <= self.retrofit.window_size
-                )
-                removed = int(live - np.count_nonzero(keep))
-                self.evicted_tokens += removed
-                prior_k = state.k_payload.get(
-                    (layer, head), np.empty((0, shape[2]), dtype=np.float32)
-                )[keep]
-                prior_v = state.v_payload.get(
-                    (layer, head), np.empty((0, shape[2]), dtype=np.float32)
-                )[keep]
-                if self.codec == "int8_per_token_head":
-                    prior_k = decode_dms_payload(
-                        prior_k,
-                        state.k_scales[(layer, head)][keep],
-                        codec=self.codec,
+        device_store = self._device_store
+        if device_store is not None:
+            # Device payload path: verify the full keep-recompute for every
+            # (layer, head) before any device mutation, so overflow fails
+            # atomically (the kernel would also fail closed per head; device
+            # mode does not replicate the host parent's partial-update-on-
+            # overflow artifact).
+            recomputed: list[tuple[int, int, np.ndarray, np.ndarray]] = []
+            for layer in range(shape[0]):
+                for head in range(shape[1]):
+                    live = int(state.live_counts[layer, head])
+                    positions = state.token_positions[layer, head, :live]
+                    prior_evict = state.evict_mask[layer, head, :live]
+                    keep = (~prior_evict) | (
+                        int(position) - positions <= self.retrofit.window_size
                     )
-                    prior_v = decode_dms_payload(
-                        prior_v,
-                        state.v_scales[(layer, head)][keep],
-                        codec=self.codec,
+                    removed = int(live - np.count_nonzero(keep))
+                    self.evicted_tokens += removed
+                    combined_positions = np.concatenate(
+                        (positions[keep], np.asarray([position], dtype=np.int32))
                     )
-                combined_k = np.concatenate((prior_k, key[layer, head][None, :]))
-                combined_v = np.concatenate((prior_v, value[layer, head][None, :]))
-                combined_positions = np.concatenate(
-                    (positions[keep], np.asarray([position], dtype=np.int32))
-                )
-                combined_evict = np.concatenate(
-                    (prior_evict[keep], np.asarray([evict_new[layer, head]]))
-                )
-                capacity = int(state.range_capacity[layer, head])
-                while len(combined_positions) > capacity:
-                    eligible = np.flatnonzero(
-                        combined_evict
-                        & (
-                            int(position) - combined_positions
-                            > self.retrofit.window_size
-                        )
+                    combined_evict = np.concatenate(
+                        (prior_evict[keep], np.asarray([evict_new[layer, head]]))
                     )
-                    if not len(eligible):
+                    if len(combined_positions) > int(state.range_capacity[layer, head]):
                         raise MemoryError("DMS decode extent has no evictable slot")
-                    victim = int(eligible[0])
-                    combined_k = np.delete(combined_k, victim, axis=0)
-                    combined_v = np.delete(combined_v, victim, axis=0)
-                    combined_positions = np.delete(combined_positions, victim)
-                    combined_evict = np.delete(combined_evict, victim)
-                    self.evicted_tokens += 1
-                k_payload, k_scale = encode_dms_payload(combined_k, codec=self.codec)
-                v_payload, v_scale = encode_dms_payload(combined_v, codec=self.codec)
-                state.k_payload[(layer, head)] = k_payload
-                state.v_payload[(layer, head)] = v_payload
-                if k_scale is not None:
-                    state.k_scales[(layer, head)] = k_scale
-                    state.v_scales[(layer, head)] = v_scale
-                live = len(combined_positions)
+                    recomputed.append(
+                        (layer, head, combined_positions, combined_evict)
+                    )
+            for layer in range(shape[0]):
+                device_store.append_layer(
+                    layer,
+                    _bf16_bits(key[layer, :, :]),
+                    _bf16_bits(value[layer, :, :]),
+                    evict_new[layer, :].astype(np.uint8),
+                    position,
+                    np.ascontiguousarray(state.base_offsets[layer, :]),
+                    np.ascontiguousarray(state.range_capacity[layer, :]),
+                    np.ascontiguousarray(state.live_counts[layer, :]),
+                )
+            for layer, head, combined_positions, combined_evict in recomputed:
+                live = int(len(combined_positions))
+                capacity = int(state.range_capacity[layer, head])
                 state.live_counts[layer, head] = live
                 state.token_positions[layer, head, :live] = combined_positions
-                state.token_positions[layer, head, live:] = -1
+                state.token_positions[layer, head, live:capacity] = -1
                 state.evict_mask[layer, head, :live] = combined_evict
-                state.evict_mask[layer, head, live:] = False
+                state.evict_mask[layer, head, live:capacity] = False
+        else:
+            for layer in range(shape[0]):
+                for head in range(shape[1]):
+                    live = int(state.live_counts[layer, head])
+                    positions = state.token_positions[layer, head, :live]
+                    prior_evict = state.evict_mask[layer, head, :live]
+                    keep = (~prior_evict) | (
+                        int(position) - positions <= self.retrofit.window_size
+                    )
+                    removed = int(live - np.count_nonzero(keep))
+                    self.evicted_tokens += removed
+                    prior_k = state.k_payload.get(
+                        (layer, head), np.empty((0, shape[2]), dtype=np.float32)
+                    )[keep]
+                    prior_v = state.v_payload.get(
+                        (layer, head), np.empty((0, shape[2]), dtype=np.float32)
+                    )[keep]
+                    if self.codec == "int8_per_token_head":
+                        prior_k = decode_dms_payload(
+                            prior_k,
+                            state.k_scales[(layer, head)][keep],
+                            codec=self.codec,
+                        )
+                        prior_v = decode_dms_payload(
+                            prior_v,
+                            state.v_scales[(layer, head)][keep],
+                            codec=self.codec,
+                        )
+                    combined_k = np.concatenate((prior_k, key[layer, head][None, :]))
+                    combined_v = np.concatenate((prior_v, value[layer, head][None, :]))
+                    combined_positions = np.concatenate(
+                        (positions[keep], np.asarray([position], dtype=np.int32))
+                    )
+                    combined_evict = np.concatenate(
+                        (prior_evict[keep], np.asarray([evict_new[layer, head]]))
+                    )
+                    capacity = int(state.range_capacity[layer, head])
+                    while len(combined_positions) > capacity:
+                        eligible = np.flatnonzero(
+                            combined_evict
+                            & (
+                                int(position) - combined_positions
+                                > self.retrofit.window_size
+                            )
+                        )
+                        if not len(eligible):
+                            raise MemoryError("DMS decode extent has no evictable slot")
+                        victim = int(eligible[0])
+                        combined_k = np.delete(combined_k, victim, axis=0)
+                        combined_v = np.delete(combined_v, victim, axis=0)
+                        combined_positions = np.delete(combined_positions, victim)
+                        combined_evict = np.delete(combined_evict, victim)
+                        self.evicted_tokens += 1
+                    k_payload, k_scale = encode_dms_payload(combined_k, codec=self.codec)
+                    v_payload, v_scale = encode_dms_payload(combined_v, codec=self.codec)
+                    state.k_payload[(layer, head)] = k_payload
+                    state.v_payload[(layer, head)] = v_payload
+                    if k_scale is not None:
+                        state.k_scales[(layer, head)] = k_scale
+                        state.v_scales[(layer, head)] = v_scale
+                    live = len(combined_positions)
+                    state.live_counts[layer, head] = live
+                    state.token_positions[layer, head, :live] = combined_positions
+                    state.token_positions[layer, head, live:] = -1
+                    state.evict_mask[layer, head, :live] = combined_evict
+                    state.evict_mask[layer, head, live:] = False
         state.logical_tokens = max(state.logical_tokens, int(position) + 1)
         self.decode_appends += 1
+
+    def compact_decode_attention(
+        self,
+        request_id: int,
+        layer: int,
+        q: np.ndarray | None = None,
+        *,
+        q_ptr: int | None = None,
+        out_ptr: int | None = None,
+        scale: float | None = None,
+    ) -> np.ndarray | None:
+        """GQA decode attention over one request's compact extents on one layer.
+
+        Takes either a host ``q`` (``[q_heads, dim]`` FP32, uploaded) or a
+        device ``q_ptr``; returns the FP32 output (``[q_heads, dim]``) when
+        no ``out_ptr`` is given, else writes to the device ``out_ptr`` and
+        returns None. Device payloads must be enabled.
+        """
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(layer)
+        if not 0 <= layer < self.retrofit.num_layers:
+            raise ValueError("layer out of range")
+        if q is not None:
+            query = np.ascontiguousarray(q, dtype=np.float32)
+            if query.shape != (self.retrofit.num_q_heads, self.retrofit.head_dim):
+                raise ValueError(
+                    "DMS compact attention expects Q [q_heads, dim]"
+                )
+        out = (
+            None
+            if out_ptr is not None
+            else np.zeros(
+                (self.retrofit.num_q_heads, self.retrofit.head_dim),
+                dtype=np.float32,
+            )
+        )
+        self._device_store.attention_layer(
+            layer,
+            q=query if q is not None else None,
+            q_ptr=q_ptr,
+            out=out,
+            out_ptr=out_ptr,
+            base=np.ascontiguousarray(state.base_offsets[layer, :]),
+            live=np.ascontiguousarray(state.live_counts[layer, :]),
+            scale=scale,
+        )
+        return out
+
+    def device_layer_view(self, request_id: int, layer: int) -> Any:
+        """Read back one layer's device slot buffers (test/observability)."""
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        self.state_for_request(request_id)
+        layer = int(layer)
+        if not 0 <= layer < self.retrofit.num_layers:
+            raise ValueError("layer out of range")
+        return self._device_store.layer_view(layer)
+
+    def close(self) -> None:
+        """Free device payload storage; the backend is unusable afterwards."""
+        if self._device_store is not None:
+            self._device_store.close()
 
     def prepare(self, work_item: Any) -> KVBatchView:
         request_ids = tuple(int(value) for value in getattr(work_item, "request_ids"))
@@ -1037,6 +1192,7 @@ class DMSCompactBackend:
                 "retrofit_fingerprint": self.retrofit.fingerprint,
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
+                "device_payloads": self.device_payloads_enabled,
                 "physical_widths": list(self.spec.physical_widths),
             },
             "capacity": {
