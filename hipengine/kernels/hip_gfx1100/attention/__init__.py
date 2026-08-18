@@ -113,6 +113,12 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_mixed_value_fp16_spans,
     register_qwen35_paged_kv_write_kernels,
 )
+from hipengine.kernels.hip_gfx1100.attention.dms_compact import (
+    build_dms_compact,
+    dms_extract_decision_bf16,
+    plan_dms_compact_build,
+    register_dms_compact_kernels,
+)
 
 __all__ = [
     "build_laguna_kv_attention",
@@ -124,7 +130,9 @@ __all__ = [
     "aotriton_gate_mul_bf16_to_fp16",
     "aotriton_gate_mul_fp16_inplace",
     "build_aotriton_wrap",
+    "build_dms_compact",
     "build_qwen35_paged_kv_write",
+    "dms_extract_decision_bf16",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_decode_single_page_bf16_spans",
     "laguna_global_attention_decode_single_page_softplus_gate_bf16_spans",
@@ -145,6 +153,7 @@ __all__ = [
     "moonshine_cross_attention_fp16",
     "moonshine_self_attention_fp16",
     "plan_aotriton_wrap_build",
+    "plan_dms_compact_build",
     "plan_laguna_kv_attention_build",
     "plan_moonshine_attention_build",
     "plan_qwen35_paged_attn_decode_build",
@@ -214,6 +223,7 @@ __all__ = [
     "qwen35_write_paged_kv_mixed_value_fp16_prompt_spans",
     "qwen35_write_paged_kv_mixed_value_fp16_spans",
     "register_aotriton_wrap_kernels",
+    "register_dms_compact_kernels",
     "register_laguna_kv_attention_kernels",
     "register_moonshine_attention_kernels",
     "register_qwen35_paged_attn_decode_kernels",
