@@ -1,0 +1,79 @@
+{
+ "schema_version": 1,
+ "date": "2026-08-18",
+ "kind": "qwen38_gfx1151_q4ks_r2_c8_decode_profile",
+ "status": "profile_checkpoint",
+ "publishable": false,
+ "performance_claim": false,
+ "purpose": "Measure the c=8 batched-decode kernel family breakdown for the Qwen3.8 Q4_K_S gfx1151 fp16-state roofline: is decode still bandwidth-bound at c8, or has it turned compute-bound? Answer: neither can be concluded yet because c8 dense decode is NOT on the GEMV decode path - it falls back to WMMA prefill kernels.",
+ "links": {
+  "r2_roofline": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json",
+  "r2_quality": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json"
+ },
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "memory": "128 GiB unified GTT",
+  "rocm": "HIP 7.15.0",
+  "compiler": "AMD clang 23.0.0git"
+ },
+ "software": {
+  "hipengine_commit": "2ec566b73b12933c22892f582438f22654f4dd73",
+  "compiler_version_file": "/tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt",
+  "env_override": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 (required: the gfx1151 default 5 chunks rows=8 as (5,3), but the Q6 lm_head FP32 rowtile kernel only supports rows [2,4]; max_chunk=4 chunks as (4,4), both legal. Does not affect the dense projection dispatch being measured.)"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "Q4_K_S",
+  "kv": "bf16"
+ },
+ "method": "scripts/gguf_packed_ar_rocprof.py --backend hip_gfx1151 --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/qwen38-task22-qmicro-publication-9c649e28d/hipcc-version-gfx1151.txt. Warmbuild outside rocprofv3; require-cached profile children; one ROCTX-windowed steady decode step per lane (c1 and c8). Correctness: c1 and c8 all tokens 9707 exact, 8 active rows.",
+ "results_c1_vs_c8": {
+  "c1_step_ms": 74.124,
+  "c1_tok_s": 13.49,
+  "c8_step_ms": 408.933,
+  "c8_tok_s_total": 19.6,
+  "c8_tok_s_per_stream": 2.45,
+  "c8_vs_c1_step_ratio": 5.52,
+  "c8_vs_c1_aggregate_tok_s": 1.45
+ },
+ "c1_kernel_families": {
+  "step_total_ms": 74.124,
+  "gemv": {"dispatches": 307, "ms": 69.740, "share": 0.941},
+  "gdn_recurrent": {"dispatches": 96, "ms": 1.776, "share": 0.024},
+  "full_attn": {"dispatches": 64, "ms": 1.679, "share": 0.023}
+ },
+ "c8_kernel_families": {
+  "step_total_ms": 408.933,
+  "wmma_prefill": {"dispatches": 340, "ms": 331.657, "share": 0.811, "note": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel 212x 183.2 ms + gguf_q4_t16_dense_wmma_prefill_bf16_kernel 128x 148.5 ms - single-projection WMMA PREFILL kernels"},
+  "gemv": {"dispatches": 158, "ms": 63.190, "share": 0.155},
+  "gdn_recurrent": {"dispatches": 96, "ms": 8.563, "share": 0.021},
+  "full_attn": {"dispatches": 64, "ms": 3.423, "share": 0.008}
+ },
+ "findings": [
+  "c8 batched decode on Qwen3.8 Q4_K_S gfx1151 dispatches WMMA PREFILL kernels for the dense Q4 projections (340 dispatches, 331.7 ms = 81.1% of the 408.9 ms step), NOT the GEMV decode path. The dense Q4_K_S native batch decode owners cover rows 1-4 only (dense_dual_q8_1x2_split_weight_dp4a c1, dense_dual_q8_1x2_rowtile8_dp4a rows 2-4); rows 5-8 fall through to a single-projection WMMA prefill path (min-rows GEMV/WMMA-silu owners require rows>=512).",
+  "Consequently the c8 step is 5.52x slower per step than c1 (74.12 -> 408.93 ms for 8 rows) and aggregate throughput is only 19.6 tok/s = 1.45x c1 (13.5), vs the ~8x a proper bandwidth-bound batched GEMV path would give (~108 tok/s). Per-stream c8 is 2.45 tok/s (5.5x worse than c1).",
+  "The bandwidth->compute crossover is therefore NOT the c8 bottleneck - the decode-path gap is. The fp16-state roofline (state byte-share ~11.7% at c8 -> ~6% fp16 gain) cannot be harvested until c8 dense decode has a native rows>=8 GEMV owner.",
+  "gdn_recurrent (the state family fp16 targets) scales cleanly with rows: 1.776 ms (c1) -> 8.563 ms (c8) = 4.82x for 8x rows, 96 dispatches in both. In an uncontaminated c8 decode (~77 ms step, i.e. 408.9 ms minus the 331.7 ms WMMA prefill fallback) the state family would be ~11.1% of the step - matching the roofline's 11.7% state-bytes share. The fp16-state gain estimate is structurally consistent; it is just not reachable on the current c8 path."
+ ],
+ "execution_manifest": {
+  "linear_attention_decode_path": "indexed_batch",
+  "gdn_recurrent_decode_path": "indexed_singleton",
+  "full_attention_decode_path": "kv_live_spans_batch",
+  "moe_decode_path": "dense_ffn_rows",
+  "lm_head_decode_path": "q6_rowtile_f32_logits",
+  "sampler_decode_path": "argmax_i32_rows",
+  "projection_execution": "packed_native"
+ },
+ "implications": [
+  "For the fp16 recurrent-state question (R2 c=N roofline): the ~6% c8 gain is contingent on first giving c8 a native GEMV decode owner; until then the state family is ~2% of an already-5.5x-too-slow step.",
+  "Separately actionable: c8 dense decode for Qwen3.8 Q4_K_S is a real throughput gap (1.45x aggregate vs the ~8x a proper batch path should give) - a native rows>=8 GEMV/rowtile owner for the dense pair_silu would be a much larger win than fp16 state on this lane.",
+  "This profile is a single synchronized decode step (route census), not a throughput sample; durations are diagnostic only (rocprof instrumentation)."
+ ],
+ "raw_profile": "/tmp/hipengine-qwen38-c8-fp16-roofline/profile.json",
+ "traces": {
+  "c1": "/tmp/hipengine-qwen38-c8-fp16-roofline/c1/trace/gfx1151/151154_kernel_trace.csv",
+  "c8": "/tmp/hipengine-qwen38-c8-fp16-roofline/c8/trace/gfx1151/151747_kernel_trace.csv"
+ },
+ "decision": "Record as evidence. c8 decode path gap is the binding constraint for both c8 throughput and the fp16-state roofline; the fp16-state c8 gain (~6%) is valid only after a native c8 GEMV owner exists."
+}
