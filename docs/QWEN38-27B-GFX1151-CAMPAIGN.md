@@ -21,7 +21,12 @@ The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
 all three working shapes for prompt processing, true autoregressive decode, and
 valid exact MTP, while minimizing resident and whole-process memory. The
 separate native INT8 K/V lane found no representation that transfers through
-1K/8 under the quality contract; BF16 therefore remains the supported route.
+1K/8 under the quality contract; BF16 therefore remains the supported route. A
+post-closure research agenda for additional INT8 / dtype directions (gfx1151
+INT8 K/V revalidation, fp16 recurrent state, lm_head/embed_tokens int8, cheap
+MTP drafts, int8 activations for prefill/concurrency, KVarN 4/2-bit K/V) is
+recorded in Section 12; nothing there is retained until a full
+production-profile gate passes.
 
 The clean retained P4 publication is
 `399.031/391.276/385.330` prefill tok/s at 512/1K/4K. It beats clean llama HIP
@@ -1349,3 +1354,134 @@ Update [`PLAN.md`](PLAN.md) only if an architectural phase or invariant changes.
 This campaign currently exercises existing backend/plugin, single-layout,
 `KVLiveSpans`, and speculative-cycle contracts, so opening this plan does not
 change the architectural source of truth.
+
+---
+
+## 12. Post-closure research agenda — additional INT8 / dtype (open)
+
+Status: **Open research, nothing retained.** The G1-G6 campaign is closed on
+BF16. This lane explores whether additional INT8 / dtype reduction makes sense
+for hipEngine, prompted by the external `syv-ai/qwen38-27b-rtx3090` vLLM
+reference (W4A16 AutoRound body, fp8 K/V, lm_head/embed_tokens int8, fp16
+recurrent state, int8 activations, cheap MTP drafts, KVarN 4/2-bit K/V on an
+RTX 3090). That stack is NVIDIA tensor-core / vLLM on GDDR6X (~936 GB/s); its
+numbers are **not** directly comparable to ours. The only transferable signal
+is where an idea reduces bytes moved on our memory-bandwidth-bound gfx1151
+decode or on our compute-heavy prefill/concurrency paths. Every row below is a
+T1/T2 production-profile arithmetic change, so none can ride the strict-parity
+path; each needs the full profile gate, a registered strict fallback, and the
+complete multi-prompt natural suite before any retention.
+
+### R1 — gfx1151 INT8 K/V revalidation (start here)
+
+Prior state: K0-K3 closed 2026-08-15 below K4 on model-level correctness — pure
+`int8_per_token_head` passes native 512/8 but rejects at 1K/8; fixed tail-four
+Hadamard rejects at 512/8; all-layer Hadamard passes its host screen and native
+512/8 then rejects native 1K/8; the one frozen mixed map reaches
+mean/max KL **0.053384/5.173312** at 1K/8 (`mixed_v1` 0.586860/5.173312)
+despite 100% top-1. BF16 is the only supported route. Full evidence in
+[`2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json).
+Rejected families (temporal-tail two-arena, key-only, block16, clipping, simple
+prefix masks) are listed in `KVCACHE.md` and are not reopened without a
+materially new representation signal.
+
+Reopen only with a new angle, then re-run the K0-K3 shape stop rule (512 -> 1K
+-> 4K transfer) before any 4K / graph / MTP / capacity claim:
+
+1. **FP8 vs our INT8 scale scheme.** The external reference uses fp8 (E4M3)
+   K/V; we use `int8_per_token_head` with FP32 scales or group32 Hadamard. A
+   same-artifact comparison of scale scheme and error profile may be the new
+   representation signal the previous closure lacked.
+2. **Decode-traffic framing on gfx1151.** The Halo has 128 GB unified memory,
+   so context capacity is not the win on this backend — the win would be
+   reduced per-step K/V bytes on a memory-bound decode. Gate on decode tok/s
+   delta plus KL/top-1, not on capacity alone.
+3. **Reuse the gfx1100 template.** The gfx1100 INT8 admission (artifact-scoped
+   by full-file SHA-256, FP32-scale, KL 1.04e-5 / 1.35e-4, 100% top-1, 126K
+   context, W7900 reaches the 256K model limit) is the evidence and admission
+   pattern to replicate, not the older gfx1151 rejection.
+
+### R2 — fp16 recurrent state (worth testing; measure the quality tradeoff)
+
+Today the DeltaNet recurrent state and conv state are allocated **FP32**
+(`DType.FP32` over `time_step_rank x ssm_state_size x value_dim`, 48/64
+layers, read + written every decode step). Halving to fp16 halves state
+traffic on a memory-bound decode — the same lever that unblocked the external
+stack's concurrency (their fp32 -> fp16 state was PPL-free; they deliberately
+kept fp16's 10 mantissa bits, not bf16's 7).
+
+This is a production-profile arithmetic change (state math is not byte-identical
+in fp16), so it cannot be strict-parity. Measure strict-teacher mean/tail/max
+KL + top-1 by category/shape/transition, the BF16-relative gate, and same-
+schedule determinism, and register an FP32 strict fallback. Also decide fp16 vs
+bf16 for our accumulators explicitly. If it clears, it applies to both gfx1151
+and gfx1100 decode.
+
+### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
+
+Qwen3.8 has untied embeddings; the external repo requantizes the two ~2.5 GB
+bf16 matrices (lm_head + embed_tokens) to int8 group-128 in place (~0.6%
+round-trip, ~1 IFBench point on W4A16). For us the lm_head is a large decode
+GEMM (K6144 -> 248k vocab), so int8 reduces per-step decode bytes.
+
+Quality caveat: our Q4_K_S weights are already more lossy than their W4A16, so
+the marginal cost of int8 lm_head may differ and must be measured against our
+KL/top-1 gate — lm_head directly determines logits, so top-1 drift is the
+primary risk. Measure decode tok/s delta plus the natural-suite KL/top-1 and
+BF16-relative rows before deciding.
+
+### R4 — cheaper MTP drafts (exploring)
+
+We are at MTP-3 **23.853 / 1.7845x AR** (topline; newest natural gate
+24.500 / 1.831x). The external stack made 3 drafts pay off by cutting per-draft
+cost (int8 drafter module + a 40k-token truncated draft-vocab head, ~1 ms vs
+~3 ms per draft). Two separate ideas map to us: (a) a compressed/int8 drafter,
+and (b) a truncated draft-vocab head. Known blocker to re-qualify: gfx1100 INT8
+K/V previously broke MTP (B3 at only 0.6423x AR), so **any** dtype/KV change in
+this lane must re-run the full B3 transaction / candidate-MTP exactness gate
+versus its own candidate AR. Acceptance economics must be validated on the full
+multi-prompt suite — never a single fixed prompt.
+
+### R5 — KVarN 4/2-bit K/V (mention; lower priority)
+
+The external port (Huawei CSL KVarN: Hadamard + variance normalization + 4-bit
+keys / 2-bit values per 128-token tile, ~840 B/token/layer) exists to fit 262k
+context on a 24 GB card. On gfx1100 W7900 we already reach the 256K model
+limit with INT8 K/V, so 4/2-bit buys little there; on the XTX it could extend
+126K -> ~200K, and on gfx1151 context is not the constraint (128 GB). Not
+something we necessarily want; if ever pursued, gate on the same KL/top-1 curve
+plus bytes-vs-quality versus our own INT8, not on the external's capacity
+headline.
+
+### R6 — int8 activations / MLP (prefill + concurrency poke)
+
+Rationale to test: we do see a perf boost on INT8 and it helps concurrency, and
+prefill (rows > 1 GEMMs) is compute-heavy — so this may help prefill even
+though our c=1 decode is memory-bound. The external stack's W4A8 Marlin path
+(int8 tensor cores, with a sign-bug workaround) only paid at 40-64 concurrent
+and bought nothing at batch size 1; PPL cost was +2.2% (whole MLP) to +3.7%
+(all linear). On RDNA3 the int8 rate advantage differs from Ampere tensor
+cores, and activation quantization violates arithmetic equality by design, so
+this is a poke, not a retention: measure prefill tok/s + KL/top-1 for int8
+MLP (gate/up, whole MLP, all-linear) on gfx1151 and retain only if a full
+profile gate passes with no input-overfit.
+
+### Gate discipline (applies to R1-R6)
+
+- Production-profile T1/T2 arithmetic changes only; strict-parity paths stay
+  at FP32/BF16 defaults with a registered strict fallback.
+- Required per change: exact control/ownership, same-schedule determinism,
+  strict-teacher mean/tail/max KL + top-1 by category/shape/transition,
+  BF16-relative/task gates, and the full multi-prompt natural suite.
+- Evidence policy: model + quant + workload shape + host + hardware + exact
+  command + result + correctness gate; retention updates `benchmarks/README.md`
+  and `benchmarks/CHANGELOG.md` with an artifact under `benchmarks/results/`.
+
+### Working order
+
+1. R1 — gfx1151 INT8 K/V revalidation (stated start).
+2. R2 — fp16 recurrent state + quality tradeoff.
+3. R3 — lm_head / embed_tokens int8.
+4. R4 — cheaper MTP drafts.
+5. R6 — int8 activations poke (prefill / concurrency).
+6. R5 — KVarN 4/2-bit K/V (mention only).
