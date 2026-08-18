@@ -9,6 +9,8 @@ load-fault investigation:
    the buffers (use-after-free via graph replay page-faulted the load gate).
 3. Scratch allocation must be atomic on failure (no leaked buffers).
 4. Resident slot views must share the batch owner's packed workspace.
+5. Packed prefill must invalidate decode graphs before reusing their bound
+   private slots, then flush canonical state before the overwrite.
 """
 
 from __future__ import annotations
@@ -235,6 +237,62 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
     assert delegated == [(4, 4, 1024)], "slot views must delegate to the batch owner"
     assert view._packed_verify_state is owner._packed_verify_state
     assert view._packed_verify_scratch is owner._packed_verify_scratch
+
+
+def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._resident_batch_owner = None
+    owner._resident_slot_views = []
+    owner._device_kv_graph_handles = {}
+    graph = SimpleNamespace(closed=False)
+    graph.close = lambda: setattr(graph, "closed", True)
+    owner._decode_graphs = [graph]
+
+    view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view._resident_batch_owner = owner
+
+    assert view._invalidate_live_packed_decode_graphs() == 1
+    assert graph.closed is True
+
+
+def test_packed_prefill_invalidates_graph_before_flush_and_slot_reuse() -> None:
+    """A replay graph must not survive a prefill overwrite of its private slots."""
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._packed_decode_state_dirty = True
+    owner._resident_batch_owner = None
+    owner._device_kv_graph_handles = {}
+    events: list[object] = []
+    result = [SimpleNamespace(token_id=7)]
+    graph = SimpleNamespace(closed=False)
+
+    def close_graph():
+        events.append("invalidate")
+        graph.closed = True
+
+    graph.close = close_graph
+    owner._decode_graphs = [graph]
+
+    def flush(self, *, stream=0):
+        assert graph.closed is True
+        events.append(("flush", int(stream)))
+        self._packed_decode_state_dirty = False
+        return True
+
+    def prefill(self, *args, **kwargs):
+        events.append("prefill")
+        return result
+
+    owner.flush_packed_decode_state = MethodType(flush, owner)
+    owner._prefill_batch_native_impl = MethodType(prefill, owner)
+    owner._release_int8_prefill_oracle_buffers = MethodType(
+        lambda self: None, owner
+    )
+
+    observed = owner.prefill_batch_native([[1]], sessions=(owner,), stream=9)
+
+    assert observed is result
+    assert events == ["invalidate", ("flush", 9), "prefill"]
 
 
 def test_prefill_scratch_allocate_is_atomic_on_failure(monkeypatch) -> None:

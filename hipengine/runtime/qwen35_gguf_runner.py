@@ -18762,12 +18762,14 @@ class Qwen35GGUFResidentSession:
         """Run bounded packed prefill and release every transient BF16 oracle."""
 
         session_tuple = (self,) if sessions is None else tuple(sessions)
-        # A deferred packed decode may still hold canonical state in the
-        # shared packed slots. Prefill reuses those slots, so scatter the
-        # state back to its sessions first; otherwise the decode rows lose
-        # their recurrent/KV state and later steps sample garbage.
+        # Decode graphs bind and mutate the shared private slots. Prefill is a
+        # different occupant of those same slots, so an old graph must not
+        # survive the overwrite and later replay against prefill-owned state.
+        # Close binding graphs first, then scatter the last synchronized graph
+        # state back to its sessions before the prefill reuses the workspace.
+        self._invalidate_live_packed_decode_graphs()
         if bool(getattr(self, "_packed_decode_state_dirty", False)):
-            if not self.flush_packed_decode_state():
+            if not self.flush_packed_decode_state(stream=stream):
                 raise RuntimeError(
                     "packed prefill could not flush deferred packed decode"
                     " state before reusing the packed workspace slots"
@@ -21134,12 +21136,15 @@ class Qwen35GGUFResidentSession:
     def _invalidate_live_packed_decode_graphs(self) -> int:
         """Close every graph that still binds the packed workspace buffers.
 
-        Growth must never free memory a replay graph still references, but
-        failing the request closed wedges serving (the graph is re-captured
-        on the next eligible round), so growth invalidates first, mirroring
-        ``invalidate_device_kv_graphs`` for pool rebinding.
+        Growth must never free memory a replay graph still references, and
+        prefill must not overwrite private slots that a graph can replay.
+        Invalidate first and let the scheduler re-capture on the next eligible
+        round, mirroring ``invalidate_device_kv_graphs`` for pool rebinding.
         """
 
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            return int(delegate._invalidate_live_packed_decode_graphs())
         sessions = [self]
         views = self.__dict__.get("_resident_slot_views")
         if views:
