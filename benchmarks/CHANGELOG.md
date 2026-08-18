@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-18
 
+- [checkpoint gfx1151 Qwen3.8 R6 int8-activation/MLP prefill] Qwen3.8-27B / Q4_K_S: int8-activation (W4A8/W8A8) MLP **prefill** is **not pursued** — the dense Q4_K_S MLP prefill dispatches `pack8_dual_wmma_prefill_bf16_bf16_out` (BF16 WMMA, no activation quant), the only in-tree int8 machinery for the dense pair is **decode-side** (Q8_1 activation quantizer + Q8_1x2 dp4a GEMV, so decode is already W8A8), and the sole W8A8 prefill prototype is a gfx1100 MoE diagnostic microbench not wired to dense dispatch; building a dense W4A8 prefill is a full new-kernel unit (prefill-scale activation quantizer + Q4_K->Q8_1/dp4a prefill + strict fallback + full profile gate) aimed at a phase (prefill 370-380 tok/s, compute-bound) that is not this campaign's bottleneck (decode ~13 tok/s, memory-bound, already W8A8); the external's W4A8 only paid at 40-64 concurrency (+2.2-3.7% PPL), out of scope; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r6-int8-activation-prefill.json`.
+
 - [rejected gfx1151 Qwen3.8 R1 INT8 K/V revalidation] Qwen3.8-27B / Q4_K_S / 512/8 / no-mirror native gate: both natively-supported INT8 representations reject at the first shape on the current Q4_K_S head (prior closure was Q4_K_M) — pure `int8_per_token_head` retains a 48 MiB BF16 mirror (layout gate fails, logits byte-identical), `tail4_hadamard_group32` has zero mirror but top-1 0.889 on `general_en_explain` < 0.90 floor (max KL only 2e-4); 1K/4K not run per shape stop rule; FP8-vs-INT8 scale-scheme angle would require an FP8 K/V path that does not exist on gfx1151; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r1-int8-kv-revalidation-512-8.json`.
 
 ## 2026-08-18
