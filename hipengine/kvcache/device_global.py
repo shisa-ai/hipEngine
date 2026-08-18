@@ -123,6 +123,17 @@ class GlobalDeviceKVPool:
     def storage_view(self):
         return self.global_pool.storage_view()
 
+    @property
+    def backing(self) -> Any:
+        """Return the pool's plane backing (per-layer contiguous plane buffers).
+
+        Workspace leases borrow these planes: a packed execution workspace
+        addresses ``plane_ptr + page_id * plane_page_bytes`` exactly like the
+        request path, so its KV payload lives inside the same arena.
+        """
+
+        return self._backing
+
     def pointer_for(self, block_id: int) -> int:
         return self.global_pool.page_pointer(self._primary_plane, int(block_id))
 

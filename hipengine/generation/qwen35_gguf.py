@@ -80,6 +80,9 @@ from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
+    _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+    _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
+    _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
     _rope_tables as _gguf_rope_tables,
 )
@@ -5234,6 +5237,18 @@ class Qwen35GGUFResidentModelRunner:
         storage_view_fn = getattr(pool, "storage_view", None)
         storage_view = storage_view_fn() if callable(storage_view_fn) else None
         tracked = memory_stats()
+        owner = self._resident_batch_owner
+        workspace_backing = (
+            None
+            if owner is None
+            else getattr(owner, "packed_workspace_backing", None)
+        )
+        workspace_pages_fn = getattr(pool, "workspace_pages", None)
+        workspace_lease = (
+            workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if callable(workspace_pages_fn)
+            else None
+        )
         return {
             "pool_contract": (
                 None
@@ -5257,11 +5272,44 @@ class Qwen35GGUFResidentModelRunner:
                 }
             ),
             "dynamic_pool": pool_stats,
+            "packed_workspace_backing": workspace_backing,
+            "packed_workspace_lease_pages": (
+                0 if workspace_lease is None else len(workspace_lease)
+            ),
             "tracked_allocator": tracked,
             "hip_used_current_bytes": self._current_hip_used_bytes(),
             "hip_used_peak_sampled_bytes": int(self._kv_hip_used_peak_sampled_bytes),
             "graph_invalidation_count": int(self._kv_graph_invalidation_count),
         }
+
+    def _teardown_kv_pool(self, *, release_workspace_state: bool) -> None:
+        """Release the packed workspace lease, then close the KV pool.
+
+        The workspace lease pins arena pages, so it must be released before
+        ``close()`` (which rejects pinned pages). When the owner-shared packed
+        workspace borrows arena planes it must also be freed first; the
+        guarded release fails closed on unflushed state or live graphs.
+        """
+
+        pool = self._kv_pool
+        if pool is None:
+            return
+        owner = self._resident_batch_owner
+        if release_workspace_state and owner is not None:
+            release = getattr(owner, "release_idle_packed_workspace", None)
+            if callable(release):
+                release()
+        workspace_pages = getattr(pool, "workspace_pages", None)
+        release_workspace = getattr(pool, "release_workspace", None)
+        if callable(workspace_pages) and callable(release_workspace):
+            if workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is not None:
+                release_workspace(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+        pool.close()
+        self._kv_pool = None
+        if owner is not None:
+            bind = getattr(owner, "bind_workspace_kv_pool", None)
+            if callable(bind):
+                bind(None)
 
     def configure_engine_loop(self, config: Any) -> None:
         """Bind engine-loop KV policy knobs to the real deferred session pool."""
@@ -5289,8 +5337,7 @@ class Qwen35GGUFResidentModelRunner:
             # Lightweight fake-session tests retain the D2 fixed-session path.
             return
         if self._kv_pool is not None:
-            self._kv_pool.close()
-            self._kv_pool = None
+            self._teardown_kv_pool(release_workspace_state=True)
         scratch = getattr(factory_session, "scratch", None)
         if scratch is None:
             raise RuntimeError("GGUF deferred session has no scratch capacity")
@@ -5307,11 +5354,33 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
+            # Eager packed-execution workspace lease: sized to the union-geometry
+            # ceiling (max(8, capacity) slots x max(1024, request context)
+            # tokens), equal to today's peak private mirror footprint, so
+            # admission accounting always sees the pinned pages and the
+            # workspace never grows.
+            workspace_pages_per_slot = max(
+                max_pages_per_request,
+                _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+            )
+            workspace_pages = (
+                max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, self.capacity)
+                * workspace_pages_per_slot
+            )
             self._kv_pool_generation += 1
             self._kv_pool = create_global_pool(
-                page_capacity=global_capacity,
+                page_capacity=global_capacity + workspace_pages,
                 generation=self._kv_pool_generation,
             )
+            self._kv_pool.lease_workspace(
+                _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+                workspace_pages,
+            )
+            owner = self._resident_batch_owner
+            if owner is not None:
+                bind = getattr(owner, "bind_workspace_kv_pool", None)
+                if callable(bind):
+                    bind(self._kv_pool)
         else:
             assert callable(create_legacy_pool)
             self._kv_pool = create_legacy_pool(
@@ -5944,8 +6013,7 @@ class Qwen35GGUFResidentModelRunner:
             config = self._engine_loop_config
             self._clear_prefix_snapshots()
             if self._kv_pool is not None:
-                self._kv_pool.close()
-                self._kv_pool = None
+                self._teardown_kv_pool(release_workspace_state=True)
             self._release_available_sessions()
             self._max_sequence_length = requested
             self._reserve_sessions()
@@ -6258,8 +6326,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
                 if self._kv_pool is not None:
-                    self._kv_pool.close()
-                    self._kv_pool = None
+                    self._teardown_kv_pool(release_workspace_state=False)
                 self._release_available_sessions()
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 error = exc

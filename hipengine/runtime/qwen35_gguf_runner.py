@@ -1343,6 +1343,11 @@ _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY = 8
 _PACKED_VERIFY_MIN_MAX_SEQUENCE = 1024
 _PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
 
+# GlobalDeviceKVPool workspace-lease key for the packed execution KV backing.
+# The generation layer takes this lease eagerly at pool creation so admission
+# accounting always sees the pinned pages (task #5 contract unification).
+_GGUF_PACKED_WORKSPACE_LEASE_KEY = "qwen35_gguf_packed_execution"
+
 
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
@@ -1368,8 +1373,15 @@ class _GGUFPackedTargetState:
     # chunk uses the identity mapping; a GlobalDeviceKVPool workspace lease
     # supplies arbitrary arena pages (task #5 contract unification).
     page_ids: tuple[int, ...] = ()
+    # "private" = owned chunk allocated by this state; "pool_lease" = planes
+    # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
+    kv_backing_kind: str = "private"
 
     def __post_init__(self) -> None:
+        if self.kv_backing_kind not in {"private", "pool_lease"}:
+            raise ValueError(
+                f"unknown packed KV backing kind {self.kv_backing_kind!r}"
+            )
         if not self.page_ids:
             object.__setattr__(
                 self,
@@ -1428,6 +1440,7 @@ class _GGUFPackedTargetState:
         runtime: HipRuntime,
         block_size: int = 256,
         kv_layout: Qwen35GGUFKVChunkLayout | None = None,
+        kv_pool: object | None = None,
     ) -> "_GGUFPackedTargetState":
         slot_count = int(slot_count)
         max_sequence_length = int(max_sequence_length)
@@ -1496,13 +1509,39 @@ class _GGUFPackedTargetState:
                     layer_recurrent_states.append(None)
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-            kv_backing = _allocate_qwen35_gguf_kv_chunk(
-                runner,
-                runtime=runtime,
-                start_block_id=0,
-                pages=total_pages,
-                layout=kv_layout,
-            )
+            lease_pages: tuple[int, ...] | None = None
+            if kv_pool is not None:
+                workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
+                if callable(workspace_pages_fn):
+                    lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if lease_pages is not None:
+                # Pool-leased backing: the arena planes back the workspace and
+                # page_ids select this state's pages inside them. The lease
+                # pages stay pinned by the pool; this state never frees them.
+                arena_backing = getattr(kv_pool, "backing", None)
+                if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
+                    raise RuntimeError(
+                        "packed workspace lease has no layout-compatible KV backing"
+                    )
+                if len(lease_pages) < total_pages:
+                    raise RuntimeError(
+                        f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
+                    )
+                kv_backing = arena_backing
+                page_ids = tuple(int(page) for page in lease_pages[:total_pages])
+                backing_kind = "pool_lease"
+                owned_buffers = tuple(state_buffers)
+            else:
+                kv_backing = _allocate_qwen35_gguf_kv_chunk(
+                    runner,
+                    runtime=runtime,
+                    start_block_id=0,
+                    pages=total_pages,
+                    layout=kv_layout,
+                )
+                page_ids = ()
+                backing_kind = "private"
+                owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
@@ -1523,7 +1562,9 @@ class _GGUFPackedTargetState:
             full_k_scale_caches=kv_backing.full_k_scale_caches,
             full_v_scale_caches=kv_backing.full_v_scale_caches,
             full_kv_scale_metadata=kv_backing.full_kv_scale_metadata,
-            buffers=(*tuple(state_buffers), *kv_backing.buffers),
+            buffers=owned_buffers,
+            page_ids=page_ids,
+            kv_backing_kind=backing_kind,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -13350,6 +13391,7 @@ class Qwen35GGUFResidentSession:
     _device_kv_pool: DeviceChunkedKVPool | GlobalDeviceKVPool | None = field(
         default=None, init=False, repr=False
     )
+    _workspace_kv_pool: GlobalDeviceKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -14013,6 +14055,33 @@ class Qwen35GGUFResidentSession:
         if self.scratch is None:
             return 0
         return 0 if self.defer_kv_allocation else int(self.scratch.max_positions)
+
+    def bind_workspace_kv_pool(self, pool: GlobalDeviceKVPool | None) -> None:
+        """Bind the load-time global KV pool backing packed workspace leases.
+
+        Owner-wide: slot views delegate to the resident batch owner so the
+        shared packed workspace sees exactly one pool.
+        """
+
+        if pool is not None and not isinstance(pool, GlobalDeviceKVPool):
+            raise TypeError("packed workspace pool must be a GlobalDeviceKVPool")
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            delegate.bind_workspace_kv_pool(pool)
+            return
+        self._workspace_kv_pool = pool
+
+    @property
+    def packed_workspace_backing(self) -> str | None:
+        """Backing kind of the owner-shared packed workspace, when allocated."""
+
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            return delegate.packed_workspace_backing
+        state = self._packed_verify_state
+        if state is None:
+            return None
+        return str(getattr(state, "kv_backing_kind", "private"))
 
     def bind_device_kv_allocation(
         self,
@@ -21394,6 +21463,7 @@ class Qwen35GGUFResidentSession:
                 max_sequence_length=union_max_seq,
                 runtime=runtime,
                 kv_layout=kv_layout,
+                kv_pool=self._workspace_kv_pool,
             )
         if self._packed_verify_scratch is None:
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(

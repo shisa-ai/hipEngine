@@ -23,6 +23,7 @@ from scripts.gguf_production_load_gate import (
     _LocalUvicorn,
     _openai_error_fields,
     _load_tuning_protocol,
+    _memory_recovery_gate,
     _occupancy_summary,
     _parse_workload_names,
     _poisson_arrival_offsets,
@@ -669,3 +670,51 @@ def test_a4_tuning_aggregation_rejects_incomplete_candidate() -> None:
             configurations=(configuration,),
             expected_repetitions=3,
         )
+
+
+def test_memory_recovery_gate_treats_workspace_lease_as_expected_pins() -> None:
+    baseline = {"tracked": {"current_bytes": 1000}}
+    final = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "packed_workspace_lease_pages": 32,
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 32,
+                "current_pages": 40,
+                "free_pages": 8,
+            },
+        },
+    }
+    verdict = _memory_recovery_gate(baseline, final, tracked_tolerance_bytes=64)
+    assert verdict["passed"] is True
+    assert verdict["kv_pool_workspace_lease_pages"] == 32
+
+    # A missing lease (pre-unification payloads) keeps the zero-pin contract.
+    legacy_final = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 0,
+                "current_pages": 8,
+                "free_pages": 8,
+            }
+        },
+    }
+    assert _memory_recovery_gate(baseline, legacy_final, tracked_tolerance_bytes=64)["passed"] is True
+
+    # Unexpected pins beyond the lease still fail closed.
+    leaked = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "packed_workspace_lease_pages": 32,
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 33,
+                "current_pages": 40,
+                "free_pages": 7,
+            },
+        },
+    }
+    assert _memory_recovery_gate(baseline, leaked, tracked_tolerance_bytes=64)["passed"] is False
