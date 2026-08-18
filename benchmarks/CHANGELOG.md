@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-18
+
+- [rejected gfx1151 Qwen3.8 R1 INT8 K/V revalidation] Qwen3.8-27B / Q4_K_S / 512/8 / no-mirror native gate: both natively-supported INT8 representations reject at the first shape on the current Q4_K_S head (prior closure was Q4_K_M) — pure `int8_per_token_head` retains a 48 MiB BF16 mirror (layout gate fails, logits byte-identical), `tail4_hadamard_group32` has zero mirror but top-1 0.889 on `general_en_explain` < 0.90 floor (max KL only 2e-4); 1K/4K not run per shape stop rule; FP8-vs-INT8 scale-scheme angle would require an FP8 K/V path that does not exist on gfx1151; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r1-int8-kv-revalidation-512-8.json`.
+
 ## 2026-08-17
 
 - [retained gfx1151 Qwen3.8 Q4_K_S Q5 source-F16 prefill] Qwen3.8-27B / Q4_K_S / BF16 KV: byte-identical K_M-derived Q5T16 recurrent-output source-F16 route now admitted for K_S; counterbalanced prefill **379.30 -> 396.09 tok/s (+4.51% at 512/128, 5/5 pairs)** and **376.33 -> 387.65 (+3.02% at 1K/128, 5/5 pairs)** with decode flat, plus **+2.95% at 4K** (369.43 -> 380.31) via a capacity-conditional bulk-prefill scratch cap (4K grows to the 4096-row plateau; 8K+ keeps 1,024-row chunks which measured -2.3% faster than 4,096-row chunks, so 8K+ memory stays flat at 15.80 GiB below llama GTT); 4K tracked peak grows a fixed +2.30 GiB; full ten-prompt natural gate **complete_exact** (AR 13.382 / B3 24.500 tok/s 1.831x), token 9707 stable, zero teardown; gfx1151-only (gfx1100 has no K_S F16 admission and no row-cap policy); `benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json`.

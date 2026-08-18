@@ -1385,6 +1385,23 @@ Rejected families (temporal-tail two-arena, key-only, block16, clipping, simple
 prefix masks) are listed in `KVCACHE.md` and are not reopened without a
 materially new representation signal.
 
+**Executed 2026-08-18 on the current Q4_K_S head** (merged `ff7293098`,
+`scripts/qwen35_native_mixed_kv_suite.py`, `--require-no-bf16-mirror`, 512/8
+shape stop rule): both natively-supported INT8 representations reject at the
+first shape. Pure `int8_per_token_head` (fp32 scale, all 16 layers) is
+`rejected_correctness` because the layout audit retains a persistent 48 MiB
+BF16 mirror (no-mirror gate fails, logits byte-identical);
+`tail4_hadamard_group32` (fp16 scale, layers 12-15) has zero mirror but top-1
+agreement drops to **0.889** on `general_en_explain` (< 0.90 floor; max KL
+only 2e-4). Native INT8 K/V on gfx1151 therefore stays closed on the current
+head too. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r1-int8-kv-revalidation-512-8.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r1-int8-kv-revalidation-512-8.json).
+
+The FP8-vs-INT8 scale-scheme angle (below) is the only path that could reopen
+this lane; it requires building an FP8 (E4M3) K/V path on gfx1151, which does
+not exist. Decode-traffic framing is moot until a quality-passing
+representation exists.
+
 Reopen only with a new angle, then re-run the K0-K3 shape stop rule (512 -> 1K
 -> 4K transfer) before any 4K / graph / MTP / capacity claim:
 
