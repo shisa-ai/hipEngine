@@ -81,6 +81,21 @@ should be removed or collapsed.
   twice without an oracle teardown/handoff fault, collapse to the simplest
   stable independent-oracle protocol and remove abandoned worker variants.
 
+## C2-6 guarded idle packed-workspace release API
+
+- Added 2026-08-18. Row reclaim no longer frees the owner-shared packed
+  workspace: the slab is union-geometry and shared by every resident view, so
+  per-reclaim release forced a same-size hot-path reallocation on the next
+  packed step (the accepted C2-6 canonical packet recorded 246 releases /
+  242.39 GiB cumulative churn). Session close frees the workspace directly;
+  `Qwen35GGUFResidentSession.release_idle_packed_workspace()` remains as a
+  guarded (unflushed-state / live-graph fail-closed) public release API with
+  no production caller.
+- Removal trigger: either wire it to a future idle-reclaim path that satisfies
+  the guards, or delete it (and its lifecycle test) once the task-5 backend
+  unification moves packed workspace ownership into the load-time resource
+  ledger, where reclaim is ownership-based rather than session-based.
+
 ## Generation-1 prefill/decode policy compatibility choices
 
 - Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling

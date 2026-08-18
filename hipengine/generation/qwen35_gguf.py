@@ -6387,18 +6387,13 @@ class Qwen35GGUFResidentModelRunner:
             invalidated = int(invalidate())
             self._record_graph_invalidations(graph_handles, invalidated)
             self._kv_graph_invalidation_count += invalidated
-        release_packed = getattr(session, "release_idle_packed_workspace", None)
-        # Preserve the established C1/C2 warm-workspace path. At C4+ repeated
-        # owner rotation otherwise leaves one 0.8+ GiB packed slab per session.
-        if self.capacity > 2 and callable(release_packed):
-            released_bytes = int(release_packed())
-            if released_bytes > 0:
-                self._packed_workspace_release_events = int(
-                    getattr(self, "_packed_workspace_release_events", 0)
-                ) + 1
-                self._packed_workspace_released_bytes = int(
-                    getattr(self, "_packed_workspace_released_bytes", 0)
-                ) + released_bytes
+        # Retain the owner-shared packed workspace across reclaim. The slab is
+        # union-geometry and shared by all resident views; freeing it here
+        # forces a same-size hot-path reallocation on the next packed step
+        # (canonical C2-6 packet: 246 releases / 242.39 GiB cumulative churn),
+        # violating the CONCURRENCY2 workspace-reuse / no-hot-path-allocation
+        # invariants. Release remains a close-path operation via
+        # session.close() / release_idle_packed_workspace().
         reset = getattr(session, "reset", None)
         if callable(reset):
             reset()

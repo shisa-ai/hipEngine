@@ -3676,7 +3676,16 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     ceiling_runner.close()
 
 
-def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session() -> None:
+def test_gguf_resident_runner_retains_packed_workspace_across_reclaim() -> None:
+    """Owner-shared packed workspace survives row release at any capacity.
+
+    CONCURRENCY2.md: workspaces are ledger-reserved and reused by
+    non-overlapping work; hot-path HIP allocation is disabled in the promoted
+    server mode. Releasing the ~1 GiB owner slab per reclaim forces a
+    same-size reallocation on the next packed step (the accepted C2-6 packet
+    recorded 246 releases / 242.39 GiB cumulative churn).
+    """
+
     events: list[str] = []
 
     class FakeSession:
@@ -3694,70 +3703,48 @@ def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session()
             events.append("release_packed")
             return 1234
 
-    session = FakeSession()
-    row = qwen35_gguf._GGUFResidentLoopRow(
-        request_id=1,
-        batch_id=0,
-        row_index=0,
-        request=_request(prompts=("first",), max_tokens=1, ignore_eos=True),
-        prompt_ids=(10, 11),
-        native_greedy=True,
-        native_sampled=False,
-        submitted_at=0.0,
-        lease=qwen35_gguf._GGUFResidentSessionLease(
-            session=session,
-            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-        ),
-    )
-    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
-        qwen35_gguf.Qwen35GGUFResidentModelRunner
-    )
-    runner.capacity = 4
-    runner._prefix_cache = None
-    runner._prefix_state_snapshots = {}
-    runner._available = []
-    runner._kv_pool = None
-    runner._kv_graph_invalidation_count = 0
-    runner._packed_workspace_release_events = 0
-    runner._packed_workspace_released_bytes = 0
-    runner._graph_handles_for_sessions = lambda sessions: ()
-    runner._observe_graph_handles = lambda sessions: None
-    runner._sample_kv_hip_memory = lambda: None
+    def _release_row(capacity: int, request_id: int, prompt: str):
+        session = FakeSession()
+        row = qwen35_gguf._GGUFResidentLoopRow(
+            request_id=request_id,
+            batch_id=request_id - 1,
+            row_index=0,
+            request=_request(prompts=(prompt,), max_tokens=1, ignore_eos=True),
+            prompt_ids=(10, 11),
+            native_greedy=True,
+            native_sampled=False,
+            submitted_at=0.0,
+            lease=qwen35_gguf._GGUFResidentSessionLease(
+                session=session,
+                pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+            ),
+        )
+        runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+            qwen35_gguf.Qwen35GGUFResidentModelRunner
+        )
+        runner.capacity = capacity
+        runner._prefix_cache = None
+        runner._prefix_state_snapshots = {}
+        runner._available = []
+        runner._kv_pool = None
+        runner._kv_graph_invalidation_count = 0
+        runner._packed_workspace_release_events = 0
+        runner._packed_workspace_released_bytes = 0
+        runner._graph_handles_for_sessions = lambda sessions: ()
+        runner._observe_graph_handles = lambda sessions: None
+        runner._sample_kv_hip_memory = lambda: None
+        runner._release_row_resources(row)
+        return runner, row
 
-    runner._release_row_resources(row)
-
-    assert events == ["invalidate", "release_packed", "reset"]
-    assert row.lease is None
-    assert runner._available == [qwen35_gguf._GGUFResidentSessionLease(
-        session=session,
-        pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-    )]
-    assert runner._packed_workspace_release_events == 1
-    assert runner._packed_workspace_released_bytes == 1234
-
-    events.clear()
-    low_occupancy_session = FakeSession()
-    low_occupancy_row = qwen35_gguf._GGUFResidentLoopRow(
-        request_id=2,
-        batch_id=1,
-        row_index=0,
-        request=_request(prompts=("second",), max_tokens=1, ignore_eos=True),
-        prompt_ids=(12, 13),
-        native_greedy=True,
-        native_sampled=False,
-        submitted_at=0.0,
-        lease=qwen35_gguf._GGUFResidentSessionLease(
-            session=low_occupancy_session,
-            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-        ),
-    )
-    runner.capacity = 2
-    runner._available = []
-    runner._release_row_resources(low_occupancy_row)
-
-    assert events == ["invalidate", "reset"]
-    assert runner._packed_workspace_release_events == 1
-    assert runner._packed_workspace_released_bytes == 1234
+    for capacity in (2, 4, 8):
+        events.clear()
+        runner, row = _release_row(capacity, capacity, f"prompt-{capacity}")
+        assert events == ["invalidate", "reset"]
+        assert "release_packed" not in events
+        assert row.lease is None
+        assert len(runner._available) == 1
+        assert runner._packed_workspace_release_events == 0
+        assert runner._packed_workspace_released_bytes == 0
 
 
 def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture() -> None:
