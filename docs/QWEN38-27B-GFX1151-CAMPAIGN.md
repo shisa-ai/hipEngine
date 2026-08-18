@@ -1467,6 +1467,20 @@ KL/top-1 gate — lm_head directly determines logits, so top-1 drift is the
 primary risk. Measure decode tok/s delta plus the natural-suite KL/top-1 and
 BF16-relative rows before deciding.
 
+**Assessed 2026-08-18 — non-starter on the Q4_K_S GGUF path.** Our GGUF
+already stores `output.weight` as **Q6_K** (6.5625 bits, 1.043 GB) and
+`token_embd.weight` as **Q4_K** (4.5 bits, 0.715 GB) — both already *below*
+int8 (8 bits, 1.271 GB) in size. The external's int8 premise was bf16 -> int8
+(-50% on their 2.5 GB heads); for us int8 would *increase* bytes (lm_head
++22%, embed +78%), so it does not transfer. The registered
+`w8a16_lm_head_argmax_rows_bf16` kernel is wired only for the PARO runner; the
+GGUF decode path runs lm_head via `launch_gguf_linear` on the Q6_K root.
+lm_head is a measurable decode cost (4.63 ms/token, ~5.9% of decode wall from
+the AR16 rocprof trace), so the only direction that could cut it is a *lower*
+head quant (Q4_K, ~0.72 GB) — a separate top-1-drift-risky experiment, not
+this int8 premise. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r3-lmhead-embed-int8.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r3-lmhead-embed-int8.json).
+
 ### R4 — cheaper MTP drafts (exploring)
 
 We are at MTP-3 **23.853 / 1.7845x AR** (topline; newest natural gate

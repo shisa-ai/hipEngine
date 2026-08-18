@@ -1,0 +1,34 @@
+{
+ "schema": 2,
+ "kind": "qwen38-gfx1151-r3-lmhead-embed-int8",
+ "status": "checkpoint",
+ "date": "2026-08-18",
+ "publishable": false,
+ "performance_claim": false,
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "lm_head_dtype": "Q6_K",
+  "embed_dtype": "Q4_K"
+ },
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151"
+ },
+ "byte_math_248320x5120": {
+  "bf16_gb": 2.543,
+  "int8_gb": 1.271,
+  "q6_k_gb": 1.043,
+  "q5_k_gb": 0.874,
+  "q4_k_gb": 0.715
+ },
+ "lm_head_decode_cost": {
+  "mean_us_per_token": 4629.1,
+  "share_of_decode_wall_percent": 5.9,
+  "dispatches": 16,
+  "kernel": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>"
+ },
+ "w8a16_lm_head_wiring": "PARO runner only (qwen35_paro_runner.py); GGUF decode uses launch_gguf_linear on Q6_K lm_head root",
+ "decision": "int8 lm_head/embed does not transfer to Q4_K_S GGUF path: both matrices already below int8 size, so int8 would increase decode bytes. Only lower quant (Q4_K) on logit-defining head could cut lm_head ~5.9% decode cost; that is a separate top-1-drift-risky experiment. Deferred.",
+ "worklog": "worklog/entries/20260818T093048.079429Z-pi-qwen38-gfx1151-r3-lmhead-embed-int8-8eac80.md"
+}
