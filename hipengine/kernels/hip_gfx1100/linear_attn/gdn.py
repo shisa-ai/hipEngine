@@ -15,14 +15,23 @@ _OUTPUT_NAME = "qwen35_linear_attn_gdn.so"
 _GROUPED_OUTPUT_NAME = "qwen35_linear_attn_gdn_grouped_heads.so"
 _GROUPED_BUILD_FLAG = "-DHIPENGINE_GDN_GROUPED_HEADS=1"
 _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
+_SYMBOL_LOWP_BF16_FP16STATE = (
+    "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state"
+)
 _SYMBOL_LOWP_F32_BF16 = (
     "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out"
+)
+_SYMBOL_LOWP_F32_BF16_FP16STATE = (
+    "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state"
 )
 _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_TREE_TLOOP_BF16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_TREE_TLOOP_FP16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_CHAIN_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16"
+_SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16_FP16STATE = (
+    "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state"
+)
 _SYMBOL_CHAIN_C1_EXACT_TLOOP_F32_BF16 = (
     "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
     "c1_exact_tloop_f32_bf16_out"
@@ -51,6 +60,9 @@ _SYMBOL_PREFILL_NORMALIZED_WAVE32_XOR = (
 )
 _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32"
+)
+_SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR_FP16STATE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state"
 )
 _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32"
@@ -140,6 +152,9 @@ _SYMBOL_INDEXED_SHARED_STATECACHE24_LOWP_BF16 = (
     "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16"
 )
 _SYMBOL_SEGMENTS_LOWP_BF16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16"
+_SYMBOL_SEGMENTS_LOWP_BF16_FP16STATE = (
+    "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state"
+)
 _SYMBOL_SEGMENTS_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16"
 _SYMBOL_PREFILL_DECODE_ORDER_BF16 = "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order"
 _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_BF16 = (
@@ -308,6 +323,75 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    eps: float,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch BF16-gated recurrent GDN with fp16-state storage (fp32 accumulate).
+
+    Production fp16-state route: ``recurrent_state`` is a ``half`` buffer; the
+    kernel reads it, accumulates in fp32, and writes fp16 state back.  The
+    FP32-state ``...lowp_bf16`` wrapper remains the registered strict fallback.
+    """
+
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_LOWP_BF16_FP16STATE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_float(eps),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
     conv_out_ptr: int,
     gate_ptr: int,
@@ -333,6 +417,58 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
 
     _launch_gdn_recurrent_rmsnorm_gate_lowp(
         _SYMBOL_LOWP_F32_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        eps,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        out_bf16_ptr=out_bf16_ptr,
+    )
+
+
+def qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    out_bf16_ptr: int,
+    eps: float,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch fused GDN+cast with fp16-state storage.
+
+    Production fp16-state route for the Qwen3.8 Q4_K_S topline: the dense
+    ``ssm_out`` projection quantizes as ``gguf_q5_k_t16_v1`` and resolves the
+    fused ``gdn_recurrent_rmsnorm_gate+cast`` owner; this wrapper launches its
+    half-state instantiation (fp32 accumulate, fp16 round-trip state).
+    """
+
+    _launch_gdn_recurrent_rmsnorm_gate_lowp(
+        _SYMBOL_LOWP_F32_BF16_FP16STATE,
         conv_out_ptr,
         gate_ptr,
         a_ptr,
@@ -639,6 +775,62 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
 
     _launch_gdn_chain_tloop(
         _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16-gated chain GDN t-loop with fp16-state storage.
+
+    Production fp16-state route: ``base_recurrent_state`` and
+    ``leaf_recurrent_state`` are ``half`` buffers; the kernel reads/accumulates
+    in fp32 and writes fp16 state back.  The FP32-state
+    ``...c1_exact_tloop_bf16`` wrapper remains the registered strict fallback.
+    """
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16_FP16STATE,
         conv_out_ptr,
         gate_ptr,
         a_ptr,
@@ -1107,6 +1299,56 @@ def qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR)
+    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch compact peer-wave32 recurrence with fp16-state storage.
+
+    Production fp16-state route: ``recurrent_state`` is a ``half`` buffer read
+    and written through the templated kernel (fp32 accumulate inside, RNE round
+    on store).  The FP32-state ``...xor_f32`` wrapper remains the registered
+    strict fallback.
+    """
+
+    _check_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR_FP16STATE)
     fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     err = fn(
@@ -3418,6 +3660,90 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
+        ctypes.c_float(eps),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    eps: float,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch segmented BF16-gated decode-order recurrent GDN with fp16 state.
+
+    Production fp16-state route: ``recurrent_state`` is a ``half`` buffer; the
+    kernel reads/accumulates in fp32 and writes fp16 state back.  The
+    FP32-state ``...segments_lowp_bf16`` wrapper remains the registered strict
+    fallback.
+    """
+
+    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    if segments <= 0:
+        raise ValueError("segments must be positive")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_BF16_FP16STATE)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,

@@ -158,13 +158,18 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state,
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
     register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
@@ -1340,7 +1345,11 @@ class _GGUFPackedTargetState:
             * int(cfg.ssm_time_step_rank)
             * int(cfg.ssm_state_size)
             * int(runner.ssm_value_dim)
-            * DType.FP32.itemsize
+            * (
+                DType.FP16.itemsize
+                if _gguf_fp16_recurrent_state_enabled()
+                else DType.FP32.itemsize
+            )
         )
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []
@@ -2323,26 +2332,39 @@ class Qwen35GGUFFullStackRunner:
         return None
 
     def _gdn_decode_output_fusion_for_weight(self, weight):
-        """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner."""
+        """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner.
+
+        Under ``HIPENGINE_GGUF_FP16_RECURRENT_STATE`` the resolved fused owner
+        is replaced by its fp16-state instantiation (fp32 accumulate, fp16
+        round-trip state) so the Qwen3.8 Q4_K_S dense ``ssm_out`` path does
+        not overflow the half-sized recurrent-state buffer.
+        """
 
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
             "_gguf_gdn_decode_output_fusion_fn_cache",
             {},
         )
-        cache_key = (str(self.backend), quant)
+        cache_key = (str(self.backend), quant, bool(_gguf_fp16_recurrent_state_enabled()))
         if cache_key not in cache:
-            cache[cache_key] = resolve(
+            fn = resolve(
                 backend=self.backend,
                 layer="gdn_recurrent_rmsnorm_gate+cast",
                 quant=quant,
                 variant="bf16_lowp_f32_bf16_out",
                 missing="none",
             )
+            if fn is not None and _gguf_fp16_recurrent_state_enabled():
+                fn = qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state
+            cache[cache_key] = fn
         return cache[cache_key]
 
     def _gdn_chain_output_fusion_for_weight(self, weight):
-        """Resolve a weight-plugin chain GDN FP32+BF16 boundary owner."""
+        """Resolve a weight-plugin chain GDN FP32+BF16 boundary owner.
+
+        The chain-journal path writes FP32 state through the fused owner, so it
+        is incompatible with the fp16-state route until fp16 variants exist.
+        """
 
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
@@ -2351,17 +2373,28 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            cache[cache_key] = resolve(
+            fn = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
+            if fn is not None and _gguf_fp16_recurrent_state_enabled():
+                raise RuntimeError(
+                    "fp16 recurrent state is incompatible with the chain-journal "
+                    "output fusion (FP32-state writer); the chain-journal path is "
+                    "gated off under HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+                )
+            cache[cache_key] = fn
         return cache[cache_key]
 
     def _gdn_chain_snapshot_output_fusion_for_weight(self, weight):
-        """Resolve the rollback-capturing sibling of a fused chain GDN."""
+        """Resolve the rollback-capturing sibling of a fused chain GDN.
+
+        FP32-state writer; gated off under the fp16-state route (see
+        ``_gdn_chain_output_fusion_for_weight``).
+        """
 
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
@@ -2370,13 +2403,19 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            cache[cache_key] = resolve(
+            fn = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
+            if fn is not None and _gguf_fp16_recurrent_state_enabled():
+                raise RuntimeError(
+                    "fp16 recurrent state is incompatible with the chain-journal "
+                    "snapshot output fusion (FP32-state writer)"
+                )
+            cache[cache_key] = fn
         return cache[cache_key]
 
     def _full_attn_decode_batch_native_fn(self):
@@ -2722,6 +2761,14 @@ class Qwen35GGUFFullStackRunner:
             )
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
+        if _gguf_fp16_recurrent_state_enabled() and mode != "chain_compact_peer_wave32":
+            raise RuntimeError(
+                "fp16 recurrent state supports only the compact-peer-wave32 "
+                "prefill route (the Q4_K_S production default); resolved route "
+                f"{mode!r} has no fp16-state recurrence. Keep "
+                "HIPENGINE_GGUF_GDN_PREFILL_MODE at auto or disable "
+                "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+            )
         use_normalized_chain = mode in {
             "chain_k2",
             "chain_peer_wave32",
@@ -2737,7 +2784,11 @@ class Qwen35GGUFFullStackRunner:
             normalized_recurrent_segments = plan.recurrent_segments_peer_wave32
         elif mode == "chain_compact_peer_wave32":
             normalized_prepare = plan.prepare_compact_peer_normalized
-            normalized_recurrent = plan.recurrent_compact_peer_wave32
+            normalized_recurrent = (
+                _gdn_prefill_recurrent_kernel()
+                if _gguf_fp16_recurrent_state_enabled()
+                else plan.recurrent_compact_peer_wave32
+            )
             normalized_recurrent_segments = None
         elif mode == "chain_peer_cluster8":
             normalized_prepare = plan.prepare_peer_normalized
@@ -4849,7 +4900,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.recurrent_out.ptr,
         )
         if gdn_output_fusion is None:
-            qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+            _gdn_decode_gate_kernel()(
                 *gdn_args,
                 cfg.rms_norm_eps,
                 cfg.ssm_group_count,
@@ -5210,7 +5261,7 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
-                qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+                _gdn_decode_gate_kernel()(
                     scratch.conv_out.ptr + row * conv_row_nbytes,
                     scratch.linear_z.ptr + row * z_row_nbytes,
                     scratch.linear_alpha.ptr + row * ab_row_nbytes,
@@ -6114,7 +6165,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
+        _gdn_decode_segments_kernel()(
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
             scratch.linear_alpha.ptr,
@@ -6849,6 +6900,13 @@ class Qwen35GGUFFullStackRunner:
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
             use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
+            if _gguf_fp16_recurrent_state_enabled() and use_prefill_gdn_capture:
+                raise RuntimeError(
+                    "fp16 recurrent state is incompatible with the verify-capture "
+                    "prefill GDN path (decode_order kernels store FP32 state); "
+                    "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE or "
+                    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+                )
             use_prefill_gdn_chain_conv = (
                 use_prefill_gdn_capture
                 and _gguf_verify_capture_prefill_gdn_chain_conv_enabled()
@@ -7009,11 +7067,23 @@ class Qwen35GGUFFullStackRunner:
                 if gpu_stage_recorder is not None:
                     gpu_stage_recorder.mark(f"{stage_prefix}_prefill_gdn_state_rows")
             else:
-                chain_gdn = (
-                    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16
-                    if _gguf_verify_capture_regular_chain_gdn_enabled()
-                    else qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
-                )
+                if _gguf_fp16_recurrent_state_enabled():
+                    if _gguf_verify_capture_regular_chain_gdn_enabled():
+                        raise RuntimeError(
+                            "fp16 recurrent state is incompatible with the regular "
+                            "chain-GDN verify-capture path (no fp16-state variant); "
+                            "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE or the "
+                            "regular-chain capture flag"
+                        )
+                    chain_gdn = (
+                        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state
+                    )
+                else:
+                    chain_gdn = (
+                        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16
+                        if _gguf_verify_capture_regular_chain_gdn_enabled()
+                        else qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
+                    )
                 chain_gdn(
                     scratch.conv_out.ptr,
                     scratch.linear_z.ptr,
@@ -7325,6 +7395,12 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv"
             )
         if active_segments > 1:
+            if _gguf_fp16_recurrent_state_enabled():
+                raise RuntimeError(
+                    "fp16 recurrent state is incompatible with the segmented "
+                    "decode_order prefill path (FP32-state writer); only the "
+                    "compact-peer-wave32 recurrence supports fp16 state"
+                )
             qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments(
                 scratch.conv_out.ptr,
                 scratch.linear_z.ptr,
@@ -11312,6 +11388,63 @@ def _gguf_verify_capture_bf16_gdn_out_enabled() -> bool:
 
 def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV, False)
+
+
+_GGUF_FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+
+
+def _gguf_fp16_recurrent_state_enabled() -> bool:
+    """Production fp16-state GDN route (fp32 accumulate, fp16 storage).
+
+    Registered FP32-state kernels remain the strict fallback.  fp16-state is
+    currently scoped to the plain AR prefill+decode path: the verify-capture
+    prefill variants and the MTP tree/chain verifier read fp32 state and are
+    gated off under this flag (see docs/REFACTOR.md).
+    """
+
+    return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+
+
+def _gdn_decode_gate_kernel():
+    fn = (
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
+    )
+    return fn
+
+
+def _gdn_decode_segments_kernel():
+    return (
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
+    )
+
+
+def _gdn_prefill_chain_kernel():
+    return (
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
+    )
+
+
+def _gdn_prefill_recurrent_kernel():
+    """Return the compact peer-wave32 recurrence with fp16-state storage.
+
+    This is the prefill writer for the gfx1100/gfx1151 Q4_K_S production route
+    (``chain_compact_peer_wave32``).  Under ``HIPENGINE_GGUF_FP16_RECURRENT_STATE``
+    the recurrent-state buffer is half-sized, so the FP32-state ``xor_f32``
+    writer would overflow it; the fp16-state variant is required instead.  The
+    FP32-state wrapper remains the registered strict fallback.
+    """
+
+    return (
+        qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else None
+    )
 
 
 def _gguf_verify_capture_prefill_gdn_chain_conv_enabled() -> bool:
@@ -22648,6 +22781,13 @@ class Qwen35GGUFResidentSession:
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
+        if _gguf_fp16_recurrent_state_enabled():
+            raise RuntimeError(
+                "fp16 recurrent state is incompatible with the MTP tree/chain "
+                "verifier (base-state readers assume FP32); disable "
+                "HIPENGINE_GGUF_FP16_RECURRENT_STATE for speculative decode "
+                "(documented in docs/REFACTOR.md)"
+            )
         from hipengine.runtime.gguf_native_spec_cycle import (
             run_qwen35_gguf_native_mtp_cycle,
         )
@@ -24763,7 +24903,11 @@ class _FullStackScratch:
         )
         recurrent_zero = np.zeros(
             (slot_count, cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim),
-            dtype=np.float32,
+            dtype=(
+                np.float16
+                if _gguf_fp16_recurrent_state_enabled()
+                else np.float32
+            ),
         )
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []

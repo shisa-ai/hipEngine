@@ -3856,3 +3856,25 @@ should be boring.
   within noise while prefill throughput is non-regressive. Remove this env
   branch after one non-regressive release window when no campaign bisection
   needs the two-launch control; keep the registered primitive fallback.
+
+## fp16 recurrent state (HIPENGINE_GGUF_FP16_RECURRENT_STATE)
+
+- Added 2026-08-19 for the gfx1151 Qwen3.8 Q4_K_S R2 topline: GDN recurrent
+  state stored fp16 (fp32 accumulate, RNE half round-trip) via templated
+  `state_t` kernels. The flag routes decode gate/segments, the compact
+  peer-wave32 prefill writer, the chain prefill, and the fused
+  `gdn_recurrent_rmsnorm_gate+cast` owner (the Qwen3.8 `ssm_out` quantizes as
+  `gguf_q5_k_t16_v1`) to fp16-state instantiations; strict FP32 remains the
+  registered fallback.
+- Fail-closed guards raise when the flag is combined with an FP32-state writer
+  that has no fp16 variant yet: verify-capture decode_order prefill
+  (state-rows kernels), segmented decode_order prefill, chain-journal output and
+  snapshot fusion, and any `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the
+  auto `chain_compact_peer_wave32` Q4_K_S route.
+- Removal triggers: (1) after the c8 fp16-vs-fp32 benchmark and the
+  strict-teacher gate validate the production route, decide whether the fp16
+  state becomes the default and the flag collapses to a
+  remove/rollback seam; (2) add fp16 variants for the verify-capture and
+  chain-journal writers (or permanently gate them off) and delete the
+  fail-closed guards; (3) drop `gdn_effective_mode`/frozen-mode assumptions if
+  the flag is later allowed beyond the compact-peer-wave32 route.
