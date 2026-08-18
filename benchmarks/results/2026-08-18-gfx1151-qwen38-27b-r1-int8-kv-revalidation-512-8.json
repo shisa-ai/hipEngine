@@ -1,0 +1,79 @@
+{
+ "schema": 2,
+ "kind": "qwen38-gfx1151-r1-int8-kv-revalidation-512-8",
+ "status": "rejected",
+ "date": "2026-08-18",
+ "publishable": false,
+ "performance_claim": false,
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "attention_shape": {
+   "query_heads": 24,
+   "kv_heads": 4,
+   "head_dim": 256,
+   "full_attention_layers": 16
+  }
+ },
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "rocm": "HIP 7.15.0",
+  "compiler": "AMD clang 23.0.0git"
+ },
+ "protocol": "scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1151 --prompt-length 512 --decode-steps 8 --require-no-bf16-mirror --kl-threshold 0.05 --top1-threshold 0.90, 11 prompts (10 natural + mixed_v1), 9 positions, shape stop rule 512->1K->4K",
+ "candidates": {
+  "pure_int8_per_token_head_fp32_scale": {
+   "status": "rejected_correctness",
+   "mirror_bytes": 50331648,
+   "mirror_passed": false,
+   "int8_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+   ],
+   "min_top1": 1.0,
+   "min_top1_prompt": "code_merge_intervals",
+   "max_mean_kl": 0.0,
+   "max_max_kl": 0.0,
+   "failing_prompts": []
+  },
+  "tail4_hadamard_group32_fp16_scale": {
+   "status": "rejected_correctness",
+   "mirror_bytes": 0,
+   "mirror_passed": true,
+   "int8_layers": [
+    12,
+    13,
+    14,
+    15
+   ],
+   "min_top1": 0.8888888888888888,
+   "min_top1_prompt": "general_en_explain",
+   "max_mean_kl": 3.272483564188863e-05,
+   "max_max_kl": 0.00019984244622084162,
+   "failing_prompts": [
+    "general_en_explain"
+   ]
+  }
+ },
+ "decision": "Both natively-supported INT8 K/V representations reject at 512/8 on the current Q4_K_S head under the no-mirror + KL/top-1 contract. Native INT8 K/V lane on gfx1151 remains closed; consistent with prior Q4_K_M closure. FP8-vs-INT8 scale-scheme angle requires an FP8 K/V path that does not exist on gfx1151 (separate kernel-dev unit).",
+ "raw_evidence": {
+  "pure_int8": "/tmp/qwen38-r1/native-512-int8-perhead.json",
+  "tail4_hadamard": "/tmp/qwen38-r1/native-512-hadamard.json"
+ },
+ "worklog": "worklog/entries/20260818T083354.568900Z-pi-qwen38-gfx1151-r1-int8-kv-revalidation-af83db.md"
+}
