@@ -35,5 +35,10 @@
  },
  "decode_traffic_framing": "GDN recurrent gate = 1.43% of selected kernel wall in post-qmicro decode profile; fp16 state bounds c=1 decode gain near 0.5-0.7% on gfx1151",
  "decision": "fp16 recurrent state quality-neutral at layer-0 recurrence (0.05x accepted bf16 output rounding); bf16 state rejected (539x). Full multi-kernel device change deferred for c=1 campaign; revisit only if concurrency/multi-request becomes a target, still gated on full natural-suite KL/top-1.",
- "worklog": "worklog/entries/20260818T092624.046425Z-pi-qwen38-gfx1151-r2-fp16-recurrent-state-dd26e5.md"
+ "worklog": "worklog/entries/20260818T092624.046425Z-pi-qwen38-gfx1151-r2-fp16-recurrent-state-dd26e5.md",
+ "cn_roofline": {
+  "summary": "c=N multi-stream fp16-state decode gain quantified: bandwidth-bound roofline c1 0.8% -> c8 5.9% -> c16 10.5% -> c64 25.8%; prefill unaffected (register-held state); capacity not a lever on gfx1151.",
+  "artifact": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json",
+  "worklog": "worklog/entries/20260818T120724.814158Z-lhl-qwen38-gfx1151-r2-cn-fp16-state-roofline-c6c76d.md"
+ }
 }

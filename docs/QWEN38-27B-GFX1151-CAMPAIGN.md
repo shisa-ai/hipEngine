@@ -1463,6 +1463,44 @@ small and the real value is concurrency. Revisit (with a device fp16-state GDN
 variant + full natural-suite KL/top-1 profile gate) only if a multi-request /
 concurrency target is adopted. FP32 state remains the strict default.
 
+**c=N roofline (2026-08-18 follow-up — the concurrency value is quantified, not
+just "outside scope").** We do target c=N, so the multi-stream gain matters and
+it grows with concurrency. State geometry (from the runner allocation):
+recurrent state = 48 layers x 3.0 MiB = **144 MiB/slot** (time_step_rank 48 x
+ssm_state_size 128 x value_dim 128 x 4 B), conv state = 48 x 0.16 MiB =
+**7.5 MiB/slot** (linear_qkv_width 10240 x conv_kernel 4 x 4 B) => **151.5 MiB/
+slot FP32**, fp16 => 79.5 MiB (saves **72 MiB/slot**). Per-step decode state
+traffic = **0.296 GiB/slot** (every GDN recurrent layer reads+writes its state
+per token, confirmed in `gdn.hip`). In batched decode the ~15.8 GiB of weights
+are read **once per step and shared across rows**, but the state is per-slot, so
+the state's share of bytes grows with c. Bandwidth-bound roofline (fp16 halves
+state traffic): c1 0.8%, c2 1.6%, c4 3.1%, **c8 5.9%, c16 10.5%**, c32 17.4%,
+c64 25.8% decode gain. Capacity is not a lever on gfx1151 (72 MiB/slot x 64 =
+4.6 GB vs 128 GB unified) — the win is purely bandwidth, unlike the external's
+24 GB VRAM story. **Prefill is unaffected**: the GDN prefill kernel holds the
+recurrent state in a register across the whole token loop (one read + one write
+per layer per prefill, ~288 MiB) so fp16 state is <0.1-0.2% of prefill wall.
+Caveats: the c>1 numbers are a **bandwidth-bound roofline, not a measurement**;
+MLP/attention GEMM work grows xN with concurrency and may turn compute-bound
+before c16-32 (no retained gfx1151 Qwen3.8 c>1 decode topline existed to pin the
+crossover — a c8 `rocprofv3` decode profile was run to check it). **Measured c8
+result (2026-08-18): the crossover question is currently unanswerable because
+c8 dense decode is not on the GEMV path at all** — `gguf_packed_ar_rocprof.py`
+c1/c8 shows the dense Q4 projections at rows=8 fall back to **WMMA prefill
+kernels** (340 dispatches, 331.7 ms = 81.1% of the 408.9 ms step; native batch
+owners cover rows 1-4 only), making the c8 step 5.52x slower than c1 and
+aggregate throughput only 1.45x c1 (19.6 vs 13.5 tok/s) vs the ~8x a proper
+batch path would give. `gdn_recurrent` scales cleanly (1.78 -> 8.56 ms = 4.82x
+for 8x rows; ~11.1% of an uncontaminated c8 step, matching the 11.7% roofline
+byte-share), so the fp16-state gain estimate is structurally consistent but
+only harvestable after a native rows>=8 GEMV owner exists. That c8 decode-path
+gap is itself a much larger win than fp16 state on this lane. Full
+calculation and c8 profile: worklog entry
+`20260818T120724.814158Z-lhl-qwen38-gfx1151-r2-cn-fp16-state-roofline-c6c76d.md`
+and
+[`2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json) +
+[`2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json).
+
 ### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
 
 Qwen3.8 has untied embeddings; the external repo requantizes the two ~2.5 GB
