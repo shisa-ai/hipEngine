@@ -1,0 +1,43 @@
+{
+ "schema_version": 1,
+ "date": "2026-08-18",
+ "kind": "qwen38_27b_gfx1151_q4ks_r6_int8_activation_prefill",
+ "status": "checkpoint_not_pursued",
+ "publishable": false,
+ "performance_claim": false,
+ "purpose": "Decision on whether int8 activation (W4A8/W8A8) MLP prefill should be built and retained for the Qwen3.8 Q4_K_S gfx1151 campaign.",
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "memory": "128 GiB unified GTT (LPDDR5X-class, ~256 GB/s)",
+  "rocm": "TheRock HIP 7.15.0"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "Q4_K_S",
+  "kv_storage": "BF16 (INT8 lane closed by R1)"
+ },
+ "base_commit": "d959e2aaf",
+ "external_premise": "External stack's W4A8 Marlin (int8 tensor cores, sign-bug workaround) paid only at 40-64 concurrent, nothing at batch size 1; PPL cost +2.2% (whole MLP) to +3.7% (all linear). On RDNA3 the int8 rate advantage over BF16 WMMA is unproven, and activation quantization violates arithmetic equality by design.",
+ "finding": {
+  "dense_prefill_path": "Dense Q4_K_S MLP prefill (rows > 1 GEMM) dispatches pack8_dual_wmma_prefill_bf16_bf16_out: BF16 WMMA with Q4_K weights, NO activation quantization.",
+  "dense_decode_path": "Dense pair_silu decode is ALREADY int8-activation (W8A8): gguf_q4_k_quantize_bf16_q8_1 feeds Q8_1x2 dp4a GEMV owners (dense_dual_q8_1x2_split_weight_dp4a serial c1, dense_dual_q8_1x2_rowtile8_dp4a native rows 2-4). The 'perf boost on INT8' is already captured on the memory-bound decode path.",
+  "w8a8_prefill_prototype": "The only W8A8 prefill prototype (hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill) is a MoE selected-expert diagnostic microbench, not wired into dense dispatch and gfx1100-only.",
+  "registered_prefill_variants": "Sole registered q8_1 prefill on gfx1151 is selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out, MoE-only (gguf_iq3_xxs / gguf_iq4_xs); never the dense linear_pair_silu / gguf_q4_k key.",
+  "blocker_to_build": "No dense W4A8 prefill kernel and no prefill-scale (rows >> 4) activation quantizer; registration against linear_pair_silu/gguf_q4_k needs a strict unfused fallback; production retention needs strict-teacher mean/tail/max KL + top-1 by category/shape/transition + BF16-relative + task gates on the full multi-prompt suite (activation quant violates arithmetic equality by design)."
+ },
+ "payoff_assessment": {
+  "prefill_is_compute_bound": "G6 closure prefill 379.40 / 376.55 / 369.75 tok/s at 512/1K/4K (beats frozen llama HIP 352.43 / 364.44 / 367.99). Weight-read at ~12 GB/s << ~256 GB/s bandwidth, so prefill is compute-bound (Q4_K dequant + WMMA), not memory-bound -> a W8A8 prefill could in principle raise prefill throughput.",
+  "decode_is_the_bottleneck": "Topline bottleneck is decode ~13 tok/s (memory-bound at ~81% of ~256 GB/s bandwidth); decode is already W8A8, so an int8 prefill cannot lift the gating metric.",
+  "concurrency_regime_out_of_scope": "External W4A8 paid only at 40-64 concurrent; this campaign is c=1-8 on a unified-memory part with a different concurrency profile.",
+  "quality_risk": "Activation quantization quality risk (external +2.2-3.7% PPL) must clear our stricter KL/top-1 production-profile gate to be retained."
+ },
+ "decision": "Not pursued. No dispatchable dense int8-activation prefill path exists for the Qwen3.8 Q4_K_S gfx1151 MLP; building one is a full new-kernel unit (prefill-scale activation quantizer + Q4_K->Q8_1/dp4a dual gate/up prefill + strict fallback + full profile gate) targeting a phase (prefill) that is not this campaign's bottleneck (decode is, and it is already int8-activation). Revisit only under a prefill-throughput/concurrency target (>=40 concurrent) where int8 GEMM rate and the external PPL floor become the governing economics.",
+ "evidence": {
+  "g6_closure_prefill": "benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json (379.40/376.55/369.75 tok/s prefill, 13.10/12.92/13.10 AR)",
+  "decode_w8a8_dispatch": "hipengine/kernels/hip_gfx1151/__init__.py GGUF_DENSE_PAIR_SILU_DECODE_POLICIES / NATIVE_DECODE_POLICIES; hipengine/runtime/gguf_linear.py launch_gguf_linear_pair_silu (gguf_q4_k_quantize_bf16_q8_1x2 before dense_dual_q8_1x2_*_dp4a GEMV)",
+  "prefill_dispatch": "hipengine/runtime/gguf_linear.py _pack8_dual_wmma_silu_dispatch -> pack8_dual_wmma_prefill_bf16_bf16_out (BF16 WMMA)",
+  "no_q8_1_dense_prefill_registration": "hipengine/kernels/hip_gfx1151/__init__.py registered linear_pair_silu variants list (13 variants; only pack8_dual_wmma_prefill_bf16_bf16_out is a prefill; q8_1x2 variants are decode GEMV)",
+  "w8a8_prototype_not_wired": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py docstring: diagnostic microbench, not wired into model dispatch"
+ }
+}

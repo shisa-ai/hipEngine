@@ -1357,9 +1357,9 @@ change the architectural source of truth.
 
 ---
 
-## 12. Post-closure research agenda — additional INT8 / dtype (open)
+## 12. Post-closure research agenda — additional INT8 / dtype (closed)
 
-Status: **Open research, nothing retained.** The G1-G6 campaign is closed on
+Status: **Closed research, nothing retained.** The G1-G6 campaign is closed on
 BF16. This lane explores whether additional INT8 / dtype reduction makes sense
 for hipEngine, prompted by the external `syv-ai/qwen38-27b-rtx3090` vLLM
 reference (W4A16 AutoRound body, fp8 K/V, lm_head/embed_tokens int8, fp16
@@ -1371,6 +1371,15 @@ decode or on our compute-heavy prefill/concurrency paths. Every row below is a
 T1/T2 production-profile arithmetic change, so none can ride the strict-parity
 path; each needs the full profile gate, a registered strict fallback, and the
 complete multi-prompt natural suite before any retention.
+
+**All six R-rows are now assessed and nothing was retained.** R1 re-closed
+native INT8 K/V on the Q4_K_S head (rejected at 512/8), R2's fp16 recurrent
+state is quality-neutral but deferred for c=1 (GDN gate is 1.43% of decode
+wall), R3's lm_head/embed int8 is a non-starter (GGUF already stores both below
+int8), R4's cheaper MTP drafts are deferred (draft stage is 2.08% of decode
+wall), R5's KVarN 4/2-bit K/V is not pursued (context not binding on this
+hardware), and R6's int8-activation prefill is not pursued (no dispatchable
+W8A8 dense prefill path; decode is already W8A8).
 
 ### R1 — gfx1151 INT8 K/V revalidation (start here)
 
@@ -1546,6 +1555,36 @@ this is a poke, not a retention: measure prefill tok/s + KL/top-1 for int8
 MLP (gate/up, whole MLP, all-linear) on gfx1151 and retain only if a full
 profile gate passes with no input-overfit.
 
+**Assessed 2026-08-18 — not pursued: no dispatchable int8-activation prefill
+path exists for the dense Q4_K_S MLP on gfx1151.** The dense MLP prefill
+(rows > 1 GEMMs) dispatches `pack8_dual_wmma_prefill_bf16_bf16_out` — BF16
+WMMA with Q4_K weights, **no activation quantization**. The only in-tree int8
+machinery for the dense `linear_pair_silu` pair is **decode-side**: the Q8_1
+activation quantizer (`gguf_q4_k_quantize_bf16_q8_1`) feeding the Q8_1x2 dp4a
+GEMV owners (`dense_dual_q8_1x2_split_weight_dp4a` serial c1, `rowtile8_dp4a`
+native rows 2-4) — so decode is *already* int8-activation (W8A8) and the
+"perf boost on INT8" this item references is already captured on the memory-
+bound path where it matters. The only W8A8 *prefill* prototype in-tree
+(`gguf_q4_k_q8_1_selected_prefill`) is a gfx1100 MoE selected-expert
+diagnostic microbench, not wired into dense dispatch; the sole registered
+q8_1 prefill variant on gfx1151 (`selected_mmq_i128_j128_k256_q8_1_ds4_`
+`prefill_compact`) is MoE-only (iq3_xxs/iq4_xs), never the dense Q4_K_S key.
+Building a dense W4A8 prefill is a full new-kernel unit — a prefill-scale
+(rows ≫ 4) activation quantizer plus a Q4_K→Q8_1 / dp4a dual gate/up prefill
+kernel, registered against `linear_pair_silu`/`gguf_q4_k` with a strict
+unfused fallback, and gated for production retention by strict-teacher
+mean/tail/max KL + top-1 by category/shape/transition, BF16-relative and task
+gates on the full multi-prompt suite (activation quantization violates
+arithmetic equality by design). Payoff is real but secondary: prefill is
+compute-bound (370-380 tok/s at 512/1K/4K, already beating llama.cpp
+352-368), but the campaign's topline bottleneck is **decode** (~13 tok/s,
+memory-bound) — which is already W8A8 — and the external's W4A8 only paid at
+40-64 concurrency (+2.2-3.7% PPL), a regime outside this campaign's c=1-8
+scope on a unified-memory part. Concrete blocker to ever revisiting: no dense
+W4A8 prefill kernel and no prefill-scale activation quantizer, plus a binding
+KL/top-1 gate on activation quantization. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r6-int8-activation-prefill.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r6-int8-activation-prefill.json).
+
 ### Gate discipline (applies to R1-R6)
 
 - Production-profile T1/T2 arithmetic changes only; strict-parity paths stay
@@ -1563,5 +1602,5 @@ profile gate passes with no input-overfit.
 2. R2 — fp16 recurrent state + quality tradeoff.
 3. R3 — lm_head / embed_tokens int8.
 4. R4 — cheaper MTP drafts (deferred, see assessed note above).
-5. R6 — int8 activations poke (prefill / concurrency).
+5. R6 — int8 activations poke (prefill / concurrency) (decided: not pursued — see assessed note above).
 6. R5 — KVarN 4/2-bit K/V (decided: not pursued — see assessed note above).
