@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-18",
+  "kind": "qwen38_27b_gfx1151_q4ks_r5_kvarn_4_2bit_kv",
+  "status": "checkpoint_not_pursued",
+  "publishable": false,
+  "performance_claim": false,
+  "purpose": "Decision on whether the external KVarN 4/2-bit K/V scheme transfers to the Qwen3.8 Q4_K_S gfx1151 campaign.",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT",
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv_storage": "BF16 (INT8 lane closed by R1)"
+  },
+  "base_commit": "410d2f252bda42a89c81496fa49accc1da6dd25e",
+  "external_premise": "Huawei CSL KVarN: Hadamard + variance normalization + 4-bit keys / 2-bit values per 128-token tile, ~840 B/token/layer, calibration-free vLLM backend (arXiv 2606.03458, github.com/huawei-csl/KVarN); exists to fit ~262k context on a 24 GB card.",
+  "decision_per_backend": {
+    "gfx1100_w7900": "INT8 K/V already reaches the 256K model limit (admitted KL 1.04e-5/1.35e-4, 100% top-1, 126K verified, projects to model max-position ceiling) -> 4/2-bit adds zero capacity; model-bound, not memory-bound.",
+    "gfx1151_campaign": "128 GB unified memory; context is not the constraint. R1 re-closed native INT8 K/V on the Q4_K_S head (pure_int8 keeps 48 MiB BF16 mirror -> layout gate fails; tail4_hadamard mirror-free but top-1 0.889 < 0.90 floor). KVarN 4/2-bit is strictly lower precision than INT8 -> even harder gate, no capacity win.",
+    "xtx_out_of_scope": "Only backend where INT8 126K -> ~200K extension has some pull; not part of this gfx1151 campaign."
+  },
+  "decision": "Do not implement or test KVarN in this campaign. If ever revisited, gate on the same KL/top-1 curve plus bytes-vs-quality versus our own INT8 (not the external's capacity headline), and only on a backend where context capacity is the binding constraint (XTX-style), never gfx1151.",
+  "evidence": {
+    "gfx1100_int8_admission": "campaign doc R1 reopen note: KL 1.04e-5/1.35e-4, 100% top-1, 126K context, W7900 reaches the 256K model limit",
+    "gfx1151_r1_closure": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r1-int8-kv-revalidation-512-8.json (status rejected)",
+    "external_source": "github.com/huawei-csl/KVarN, arXiv 2606.03458"
+  }
+}

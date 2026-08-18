@@ -1518,6 +1518,21 @@ something we necessarily want; if ever pursued, gate on the same KL/top-1 curve
 plus bytes-vs-quality versus our own INT8, not on the external's capacity
 headline.
 
+**Decided 2026-08-18 — not pursued.** This is a mention-only item, and every
+capacity motivation fails on this campaign's hardware. gfx1100 W7900 is already
+at the **256K model limit** with INT8 K/V (model-bound, not memory-bound), so
+4/2-bit adds zero headroom. gfx1151 (this campaign) is not context-constrained
+(128 GB unified), and R1 just re-closed native INT8 K/V on the current Q4_K_S
+head (both representations reject at 512/8; pure int8 keeps a 48 MiB BF16
+mirror, tail4 Hadamard is mirror-free but top-1 0.889 < 0.90). KVarN 4/2-bit is
+strictly *lower* precision than INT8, so it would face an even harder quality
+gate with no capacity benefit here. The only backend with any pull is the XTX
+(INT8 126K -> ~200K extension), which is outside this gfx1151 campaign. If ever
+revisited, gate on the same KL/top-1 curve plus bytes-vs-quality versus our own
+INT8, never on the external capacity headline, and only on a backend where
+context capacity is actually binding. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r5-kvarn-4-2bit-kv.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r5-kvarn-4-2bit-kv.json).
+
 ### R6 — int8 activations / MLP (prefill + concurrency poke)
 
 Rationale to test: we do see a perf boost on INT8 and it helps concurrency, and
@@ -1549,4 +1564,4 @@ profile gate passes with no input-overfit.
 3. R3 — lm_head / embed_tokens int8.
 4. R4 — cheaper MTP drafts (deferred, see assessed note above).
 5. R6 — int8 activations poke (prefill / concurrency).
-6. R5 — KVarN 4/2-bit K/V (mention only).
+6. R5 — KVarN 4/2-bit K/V (decided: not pursued — see assessed note above).
