@@ -27,9 +27,11 @@ handle); real-hoist validation wall 25.69 ms/tok (per-call 43.2 -> 23.2 us).
 This is the largest single-item win of the campaign (see worklog
 `pn6-gemv-lib-hoist`). Also: an explicit session compiler version is now the
 process default in `_resolve_compiler_version` so per-call loads hit the
-loaded-library cache on machines where pinned != installed. MoE active-expert
-per-call build sites (`group_scatter`/`laguna_router`/`maple_moe`) remain a
-separate follow-up.
+loaded-library cache on machines where pinned != installed. Follow-up census:
+**0 build_hip calls over 2 decode steps** — the other `library or build_X` sites
+(group_scatter/laguna_router/maple_moe) are not on this model's decode path, so
+the per-call-build host-dispatch problem is closed for eager decode (see worklog
+`pn6-hotpath-build-closure`).
 
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
