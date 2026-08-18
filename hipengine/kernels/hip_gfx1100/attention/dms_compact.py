@@ -20,6 +20,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("dms_compact.hip")
 _OUTPUT_NAME = "dms_compact.so"
 _SYMBOL_EXTRACT_DECISION = "hipengine_dms_extract_decision_bf16"
+_SYMBOL_STREAMING_PACK = "hipengine_dms_streaming_pack_bf16"
 
 
 def plan_dms_compact_build(
@@ -124,10 +125,107 @@ def dms_extract_decision_bf16(
         raise RuntimeError(f"dms_extract_decision_bf16 failed with HIP error {err}")
 
 
+def dms_streaming_pack_bf16(
+    k_ptr: int,
+    v_ptr: int,
+    evict_ptr: int,
+    base_offsets_ptr: int,
+    range_capacity_ptr: int,
+    live_counts_ptr: int,
+    row_starts_ptr: int,
+    row_tokens_ptr: int,
+    k_slot_ptr: int,
+    v_slot_ptr: int,
+    token_positions_ptr: int,
+    slot_evict_ptr: int,
+    rows: int,
+    heads: int,
+    dim: int,
+    window_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Scatter surviving prompt K/V rows straight into compact extents (BF16).
+
+    Per-layer launch: ``k``/``v`` are ``[total_tokens, heads, dim]`` BF16
+    (rows concatenated in order), ``evict`` is ``[total_tokens, heads]``
+    uint8, ``row_starts``/``row_tokens`` are ``[rows]`` int32 (absolute
+    position base and token count per row), and the per-(row, head) extent
+    arrays are ``[rows, heads]`` int32. Surviving rows
+    (``~evict | current - t <= window_size``) are scattered in token order
+    into the extent at ``base_offsets``; ``live_counts``, per-slot
+    ``token_positions`` (absolute) and ``evict_mask`` are published. Inputs
+    are never retained (no dense shadow).
+
+    Precondition: each extent's ``range_capacity`` covers its row's token
+    count (admission reserves the worst case).
+    """
+    if int(rows) <= 0:
+        raise ValueError("rows must be positive")
+    if int(heads) <= 0:
+        raise ValueError("heads must be positive")
+    if int(dim) <= 0:
+        raise ValueError("dim must be positive")
+    if int(window_size) < 0:
+        raise ValueError("window_size must be non-negative")
+
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_STREAMING_PACK)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(k_ptr),
+        ctypes.c_void_p(v_ptr),
+        ctypes.c_void_p(evict_ptr),
+        ctypes.c_void_p(base_offsets_ptr),
+        ctypes.c_void_p(range_capacity_ptr),
+        ctypes.c_void_p(live_counts_ptr),
+        ctypes.c_void_p(row_starts_ptr),
+        ctypes.c_void_p(row_tokens_ptr),
+        ctypes.c_void_p(k_slot_ptr),
+        ctypes.c_void_p(v_slot_ptr),
+        ctypes.c_void_p(token_positions_ptr),
+        ctypes.c_void_p(slot_evict_ptr),
+        ctypes.c_int(rows),
+        ctypes.c_int(heads),
+        ctypes.c_int(dim),
+        ctypes.c_int(window_size),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(f"dms_streaming_pack_bf16 failed with HIP error {err}")
+
+
 def register_dms_compact_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dms_extract_decision", "bf16", "corrected_mask"),
         dms_extract_decision_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dms_streaming_pack", "bf16", "count_rank_scatter"),
+        dms_streaming_pack_bf16,
         replace=replace,
     )
 
