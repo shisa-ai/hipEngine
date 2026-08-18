@@ -34,6 +34,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
     short = "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json"
     c4c8 = "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
     long_blocked = "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
+    canonical = "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
     dms = "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json"
     tier = "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json"
     return (
@@ -45,9 +46,9 @@ def _requirements() -> tuple[AuditRequirement, ...]:
         AuditRequirement("C2-5", "roadmap", "token-budget scheduling and logical c1-c32", "passed", ("hipengine/dispatch/execution_planner.py", "tests/test_concurrency2_token_budget.py"), "all logical widths and fairness suite"),
         AuditRequirement("C2-6.graph", "roadmap", "changing-page graph/prefix/slot lifecycle", "passed", (long_blocked,), "W7900 4 captures / 100 replays / 4 invalidations plus host prefix eviction"),
         AuditRequirement("C2-6.long", "roadmap", "actual 4K/16K/32K mixed model execution", "passed", (long_blocked,), "actual c2 1K/4K/16K/32K/64K and mixed 1K/4K/32K pass with SLO/resource/drain evidence"),
-        AuditRequirement("C2-6.load", "roadmap", "fixed/ragged/Poisson/overload/disconnect/soak", "blocked", (long_blocked,), "host modes and focused static SLO pass", "canonical production campaign repeatedly ROCm page-faults before tuning"),
-        AuditRequirement("C2-6.external", "roadmap", "matched prior/llama/vLLM/SGLang comparisons", "unavailable", (long_blocked,), "availability recorded", "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility"),
-        AuditRequirement("C2-6.default", "roadmap", "full production default promotion", "blocked", (short, c4c8, long_blocked), "short global/native default exact; c4/c8 promoted byte-exact, matched c8 +60.25% vs serial, p512 c8 ~0.973x old", "complete-load SLO/memory/throughput packet is blocked"),
+        AuditRequirement("C2-6.load", "roadmap", "fixed/ragged/Poisson/overload/disconnect/soak", "passed", (canonical,), "clean W7900 canonical packet: tuning plus nine workloads, 210/210 correctness-accounted rows, bounded overload, 120/120 soak, final drain"),
+        AuditRequirement("C2-6.external", "roadmap", "matched prior/llama/vLLM/SGLang comparisons", "unavailable", (long_blocked, canonical), "availability recorded", "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility"),
+        AuditRequirement("C2-6.default", "roadmap", "full production default promotion", "passed", (short, c4c8, canonical), "global/native and physical c4/c8 defaults exact; canonical token-budget/256 packet passes correctness, SLO, overload, memory, and ownership gates"),
         AuditRequirement("C2-7.metadata", "roadmap", "DMS checkpoint metadata gate", "passed", ("hipengine/kvcache/dms.py", "scripts/dms_backend_gate.py", dms), "strict loader and current-model fail-close"),
         AuditRequirement("C2-7.extents", "roadmap", "compact extent/resource backend", "passed", ("hipengine/kvcache/dms.py", "tests/test_kvcache_dms.py"), "atomic fragmentation/rollback/conservation"),
         AuditRequirement("C2-7.hip", "roadmap", "registered HIP no-shadow pack and compact attention", "blocked", (dms, "hipengine/kernels/cpu_reference/dms.py"), "CPU oracle and host pack/decode implemented", "no retrofit checkpoint and unstable GPU prevent required correctness/rocprof gate"),
@@ -65,9 +66,9 @@ def _requirements() -> tuple[AuditRequirement, ...]:
         AuditRequirement("DoD.global_pool", "definition_of_done", "compatible requests share global pool", "passed", (short,), "W7900 c1-c32 global_generation2"),
         AuditRequirement("DoD.prefix", "definition_of_done", "prefix refs/COW/quota/eviction", "passed", ("tests/test_kvcache_backend_prefix.py",), "host conformance; DMS intentionally off"),
         AuditRequirement("DoD.logical_physical", "definition_of_done", "logical concurrency independent of physical width", "passed", (short, c4c8), "logical c32 over registered physical (1,2,4,8); c4/c8 lower to one bucket"),
-        AuditRequirement("DoD.load", "definition_of_done", "width/load/overload matrices through c32", "blocked", (short, long_blocked), "width and focused load pass", "canonical full-load matrix blocked by ROCm fault"),
+        AuditRequirement("DoD.load", "definition_of_done", "width/load/overload matrices through c32", "passed", (short, c4c8, canonical), "c1-c32 exact plus canonical fixed/ragged/Poisson/cancel/overload/recovery/soak packet"),
         AuditRequirement("DoD.performance", "definition_of_done", "c1 direct and cN beats honest serial under SLO", "passed", (short, c4c8), "matched c8 +60.25% after c4/c8 promotion (was +29.68% at c2 cap), exact/SLO; c1 direct retained"),
-        AuditRequirement("DoD.drain", "definition_of_done", "graph/pool/state/collector ownership drains", "passed", (short, long_blocked), "short and focused long/pressure final drain"),
+        AuditRequirement("DoD.drain", "definition_of_done", "graph/pool/state/collector ownership drains", "passed", (short, long_blocked, canonical), "short, long/pressure, and canonical 271-admit/271-reclaim final drain"),
         AuditRequirement("DoD.compact", "definition_of_done", "format-distinct compact backend conformance", "blocked", (dms,), "host DMS conformance passes", "model checkpoint and HIP device conformance remain open"),
         AuditRequirement("DoD.swap", "definition_of_done", "topology/codec/tier swap needs no concurrency fork", "passed", ("hipengine/kvcache/dms.py", "hipengine/kvcache/tiering.py"), "common protocols/adapters"),
         AuditRequirement("DoD.docs", "definition_of_done", "docs/artifacts/telemetry disclose routes/memory", "passed", ("docs/CONCURRENCY2.md", "docs/KVCACHE.md", "benchmarks/README.md", "benchmarks/CHANGELOG.md"), "Worklog2 and compact artifacts"),

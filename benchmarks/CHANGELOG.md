@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-18
+
+- [accepted Concurrency2 C2-6 canonical W7900 production load] Qwen3.6-35B-A3B / UD-Q4_K_M / BF16 KV / tuning + static c1/c8 + ragged/fixed/Poisson/cancel/disconnect/40-request overload/recovery/60-second soak moves **seven pre-tuning GPU page faults -> clean accepted packet** (% delta n/a): all six tuning candidates pass and select token-budget/256; all nine workloads pass with **210/210 correctness-accounted rows**, fixed **12/12 at 53.196 SLO-goodput tok/s**, bounded overload **16 completed / 24 engine_busy**, soak **120/120 at 43.652**, 271 admissions/reclaims, all 24 pages free, zero refs/pins and zero tracked-memory delta. Root cause was replayable decode graphs surviving a prefill overwrite of their shared private state; `ff440cd01` invalidates graphs then flushes on the prefill stream. `benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`.
+
 ## 2026-08-17
 
 - [Concurrency2 C2-8 c4/c8 promotion re-qualified on-tree] The original c4/c8 promotion (4baed0f33) was reverted (0855899d5) after discovering its state-oracle gates accidentally measured a redline-branch checkout (oracle sys.path fix 46466a86e) and that 59fd48631's conv_out arena page-sharing broke packed-vs-c1 bit-exactness (fixed in 422209168). Re-applied the flip and re-qualified honestly: all 8 byte-exact gates (steady/shrink-sparse/graph/p512 x c4/c8, provenance recorded) pass; p128/d8 F1 c1-c32 all exact (27.443/34.394/43.337/46.158/45.797/44.320); matched c8 native **44.031 vs serial 27.634 tok/s (+59.27%)**, both 24/24 exact. Same artifact path, rewritten with the honest evidence chain.
