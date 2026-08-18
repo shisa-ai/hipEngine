@@ -1,11 +1,12 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-17.
+Last updated: 2026-08-18.
 
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
-short/long serving is retained, while complete product closure remains blocked.
-The executable audit reports 28 passed, 6 blocked, and 1 unavailable rows. This
-document remains the source of truth for the server scheduler, request
+short/long serving and the canonical W7900 production load are retained, while
+cross-backend/external and DMS product closure remain open. The executable audit
+reports 31 passed, 3 blocked, and 1 unavailable rows. This document remains the
+source of truth for the server scheduler, request
 lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
 
@@ -32,12 +33,12 @@ Related source-of-truth documents:
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, byte-exact physical-c4/c8 decomposition (registered `(1,2,4,8)`), same-round prefill/decode fairness. | Closed for retained gfx1100 short route; c4/c8 promoted byte-exact (steady/shrink-sparse/graph/p512) with c1-c32 end-to-end exact. |
-| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, and changed-page graphs. | Canonical tuning/ragged/fixed/Poisson/cancel/disconnect/40-request-overload/soak packet faults before tuning across seven attempts; full default stays open. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
 
 Executable source-to-evidence audit:
-[`2026-08-17-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).
+[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
 
 ## Performance snapshot and old-design comparison
 
@@ -97,11 +98,11 @@ streaming-primary, 20 ms generation batch window, 256 prefill chunk, ctx 1024,
   **~154-156 tok/s ≈ 0.973x the old design**, closing the c2-cap gap. All c8
   burst/streaming rows are byte-exact.
 
-An open issue remains in the c8 live-admission sub-gate (the new harness's
-join-after-N-decode protocol, which differs from the old live test): it hit a
-server-side request-cancellation (HTTP 499) pre-flip and a GPU page fault
-post-flip — the same ROCm page-fault instability that blocks the canonical
-C2-6 full-load packet; tracked under that blocker.
+The separate c8 live-admission sub-gate (the new harness's join-after-N-decode
+protocol, which differs from the old live test) hit a server-side request
+cancellation (HTTP 499) pre-flip and a GPU page fault post-flip. The canonical
+fault mechanism is now fixed and the full production packet passes, but this
+specific p512/d128 join-after-N protocol still needs a focused post-fix rerun.
 
 Evidence:
 [`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
@@ -1234,22 +1235,21 @@ new round planner from silently violating an old model-state lifecycle.
 - [x] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
 - [x] Qualify 4K/16K/32K and model-supported long-context mixed membership under
       real resource accounting.
-- [ ] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
+- [x] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
       sustained c1-c32 soaks.
 - [ ] Compare matched same-model/quant/hardware serving against prior hipEngine,
       llama.cpp where applicable, vLLM, and SGLang; qualify unsupported backends
       honestly.
-- [ ] Promote defaults only after correctness, SLO, memory, and throughput gates.
+- [x] Promote defaults only after correctness, SLO, memory, and throughput gates.
 
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
 
-Current overall gate status remains **blocked**, so the C2-6 checkboxes are not
-closed. The generation-checked graph/page/slot host gates, resource-accounted
-4K/16K/32K mixed membership,
-fixed/ragged/burst/Poisson/overload/disconnect loads, and c1-c32
-planner/conservation suites pass. The W7900 exact-file Qwen3.6-35B-A3B
-`UD-Q4_K_M` BF16-KV short-request package is now promoted within that scope:
+The W7900 load/default scope is now **closed**; matched external serving and
+second-device qualification remain unavailable. The generation-checked
+graph/page/slot gates, resource-accounted long/mixed contexts, canonical load,
+and c1-c32 planner/conservation suites pass for exact-file Qwen3.6-35B-A3B
+`UD-Q4_K_M` BF16 KV:
 
 - one batch-shaped target scratch owns execution workspaces while lightweight
   views preserve slot-local recurrent/KV/cursor state;
@@ -1258,26 +1258,21 @@ planner/conservation suites pass. The W7900 exact-file Qwen3.6-35B-A3B
   `global-arbitrary-pages:g1`, arbitrary free-page leases, and zero final
   active/refcounted/pinned ownership;
 - the Q8_1 direct-top1 shortcut is c1-only; registered gfx1100 shared-slot
-  physical widths are `(1, 2)`, and wider logical batches decompose into exact
-  c2 groups plus an honest c1 edge;
+  physical widths are `(1, 2, 4, 8)`, and wider logical batches decompose into
+  exact registered buckets plus an honest c1 edge;
 - owner state is scattered whenever another physical group reuses the packed
   workspace.
 
-Same-loaded-server p128/d8 is exact for c1/c2/c4/c8/c17/c32, c17 live refill is
-17/17 exact with admission before the first completion, and startup stays
-78.12-79.87 seconds across widths. A matched c8 one-warmup/three-measurement
-comparison improves aggregate HTTP wall **27.586 -> 35.773 tok/s (+29.68%)**
-versus the exact serial-c1 fallback; live improves **27.458 -> 34.072 tok/s
-(+24.08%)**. The earlier physical c4/c8 sentinel candidates remain unregistered,
-not mislabeled as native.
-
-C2-6 remains open for 4K/16K/32K model execution and SLO/soak evidence, graph
-replay across live page/prefix changes, gfx1151 hardware, and available matched
-external comparisons. vLLM/SGLang and gfx1151 are unavailable on this host.
-Evidence: original failure
-[`2026-08-16-concurrency2-c2-6-w7900-production-blocked.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-production-blocked.json),
-accepted serial fallback
-[`2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-slot-fallback-accepted.json),
+Same-loaded-server p128/d8 is exact for c1/c2/c4/c8/c17/c32; c17 live refill
+admits before the first completion. The current matched c8 packet measures
+**44.031 tok/s** native physical-c8 versus **27.634 tok/s** exact serial
+(**+59.27%**), while the clean canonical production run passes tuning and all
+nine load modes. gfx1151 and matched vLLM/SGLang/llama.cpp serving remain
+unavailable on this host.
+Evidence: accepted canonical packet
+[`2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`](../benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json),
+physical c4/c8 promotion
+[`2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json),
 and promoted global/native packet
 [`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
 
@@ -1289,14 +1284,20 @@ rejection; regrow changes its table from pages `0..128` to `5..133`, records
 at **0.803 s**, and drains all 134 pages with zero refs/pins. Static production
 c1/c8 also pass exactness, SLO, route, memory, and ownership gates.
 
-The canonical tuning + ragged/fixed/Poisson/cancel/disconnect/40-request
-overload/soak packet remains **blocked**: repeated high-count oracle campaigns
-trigger a ROCm GPU page fault before tuning, despite successful static focused
-runs and process/owner isolation. Host versions of every load mode pass, but no
-complete product-load/default claim is made. gfx1151 and vLLM/SGLang remain
-unavailable; llama.cpp HIP is also unavailable because the default binary
-requires a higher CPU ISA and the alternate build targets missing ROCm 6
-sonames. Evidence:
+The clean canonical packet is **accepted** at `ff440cd01`: all six tuning
+candidates pass and token-budget/256 is selected; static c1/c8, ragged, fixed,
+Poisson, cancellation/disconnect, bounded 40-request overload, idle recovery,
+and a 60-second 120-request soak all pass. The packet records **210/210
+correctness-accounted rows**, fixed **12/12 at 53.196 SLO-goodput tok/s**,
+overload **16 completed / 24 bounded `engine_busy` rejections**, and soak
+**120/120 at 43.652**. It drains 271 admissions/reclaims, all 24 pages are free,
+refs/pins are zero, and tracked-memory delta is zero. The prior fault was a
+replayable decode graph surviving a prefill overwrite of its shared private
+state; prefill now invalidates binding graphs and flushes synchronized state
+before reuse. gfx1151 and matched external comparisons remain unavailable.
+Evidence:
+[`2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`](../benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json)
+and superseded blocker
 [`2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 
 ### C2-7 — FastDMS topology and codec composition
@@ -1522,7 +1523,7 @@ when:
 - [x] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
       evictable;
 - [x] logical resident concurrency is independent of physical kernel width;
-- [ ] the width/load/overload/lifecycle matrices pass through c32;
+- [x] the width/load/overload/lifecycle matrices pass through c32;
 - [x] c1 retains its direct route and c=N beats honest old/serial baselines under
       declared SLOs;
 - [x] graph, pool, state, collectors, and completion ownership drain cleanly;
@@ -1538,8 +1539,8 @@ dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
 
-The executable completion audit currently records **28 passed, 6 blocked, and 1
-unavailable** rows with no missing evidence. The thread implementation spans
-C2-0 through C2-8, but the product goal is not complete: canonical C2-6 load,
-external/default closure and DMS HIP/checkpoint conformance remain open. See
-[`2026-08-17-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-17-concurrency2-completion-audit.json).
+The executable completion audit now records **31 passed, 3 blocked, and 1
+unavailable** rows with no missing evidence. The W7900 canonical C2-6
+load/default scope is closed; the product goal remains open for unavailable
+matched external serving plus DMS HIP/checkpoint conformance. See
+[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).

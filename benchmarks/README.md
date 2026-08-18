@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-18**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -148,17 +148,37 @@ physical-c8 versus **27.634 tok/s** serial (**+59.27%**, was +29.68% at c2), 24/
 exact on both routes. Under the exact old p512/d128 protocol, c8 reaches
 **~154-156 tok/s ≈ 0.973x the old design** (was 0.298x at the c2 cap), closing
 the c8 gap. C17 live refill is 17/17 exact with admission before the first
-completion. This qualifies the named short-request gfx1100 package. The canonical
-full-load campaign (tuning/ragged/fixed/Poisson/cancel/disconnect/overload/soak)
-and p512 c8 live-admission remain blocked by a repeated ROCm page fault; no
-complete-load or gfx1151 claim is made.
-Evidence: [`c4/c8 promotion packet`](results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json),
+completion. This qualifies the named short-request gfx1100 package.
+
+The clean canonical W7900 production packet is now accepted. All six tuning
+candidates passed and selected token-budget scheduling with 256-token prefill
+chunks. Every workload passed its correctness, SLO, route, memory, and ownership
+gates:
+
+| Workload | Outcomes | Exact/accounted rows | SLO-goodput tok/s |
+| --- | --- | ---: | ---: |
+| Static c1 / c8 | 1/1 + 8/8 completed | 9/9 | 49.068 / 95.909 |
+| Ragged burst | 8/8 completed | 8/8 | 80.319 |
+| Continuous fixed / Poisson | 12/12 + 12/12 completed | 24/24 | 53.196 / 43.296 |
+| Cancel/disconnect | 6 completed, 1 disconnect, 1 timeout | 8/8 | 60.525 |
+| 40-request overload | 16 completed, 24 bounded `engine_busy` rejections | 40/40 accounted | 51.304 |
+| Idle recovery | 1/1 completed | 1/1 | 30.775 |
+| 60-second soak | 120/120 completed | 120/120 | 43.652 |
+
+The run drains 271 admissions with 271 reclaims, all 24 global pages free, zero
+refs/pins, and zero tracked-memory delta. This closes the canonical C2-6 load
+scope on W7900; gfx1151 qualification and matched vLLM/SGLang/llama.cpp serving
+remain unavailable, so no cross-backend product-completion claim is made. The
+separate p512/d128 c8 join-after-N live-admission protocol still needs a focused
+post-fix rerun.
+Evidence: [`canonical production packet`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json),
+[`c4/c8 promotion packet`](results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json),
 [`prior global/native (c2-cap) packet`](results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
 [`old-protocol apples-to-apples diagnostic`](results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json),
-and [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
-The executable Generation-2 audit currently reports **28 passed / 6 blocked /
-1 unavailable** requirements with no missing evidence; full product completion
-is not claimed. [`Audit artifact`](results/2026-08-17-concurrency2-completion-audit.json).
+and the superseded [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
+The executable Generation-2 audit now reports **31 passed / 3 blocked /
+1 unavailable** requirements with no missing evidence; full DMS/cross-backend
+product completion is not claimed. [`Audit artifact`](results/2026-08-18-concurrency2-completion-audit.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch
