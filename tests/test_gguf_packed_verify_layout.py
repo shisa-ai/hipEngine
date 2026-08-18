@@ -1481,10 +1481,30 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
     )
     packed_key = DeviceBuffer(0x10000, layout.total_physical_positions * 16)
     packed_value = DeviceBuffer(0x20000, layout.total_physical_positions * 16)
-    packed_state = SimpleNamespace(
-        blocks_per_slot=layout.blocks_per_slot,
+    packed_state = _GGUFPackedTargetState(
+        slot_count=2,
+        max_sequence_length=layout.blocks_per_slot * layout.block_size,
         block_size=layout.block_size,
-        full_cache=lambda layer_id: (packed_key, packed_value),
+        blocks_per_slot=layout.blocks_per_slot,
+        total_positions=layout.total_physical_positions,
+        kv_layout=gguf_runner.Qwen35GGUFKVChunkLayout(
+            storage_dtype=DType.BF16,
+            storage_layout="uniform",
+            scale_dtype=DType.FP16,
+            scale_granularity="per_token_head",
+            int8_kv_value_bf16=False,
+            layer_storage_dtypes=(DType.BF16,),
+        ),
+        layer_conv_states=(None,),
+        layer_recurrent_states=(None,),
+        full_key_caches=(packed_key,),
+        full_value_caches=(packed_value,),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+        full_kv_scale_metadata=(None,),
+        buffers=(),
     )
 
     def slot(slot_id: int):
@@ -1539,17 +1559,29 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
     row_nbytes = 16
     slot_physical_rows = layout.blocks_per_slot * layout.block_size
     assert runtime.copies == [
-        (0x30000, 0x10000, 6 * row_nbytes),
-        (0x40000, 0x20000, 6 * row_nbytes),
+        (0x30000, 0x10000, 4 * row_nbytes),
+        (0x40000, 0x20000, 4 * row_nbytes),
+        (0x30000 + 4 * row_nbytes, 0x10000 + 4 * row_nbytes, 2 * row_nbytes),
+        (0x40000 + 4 * row_nbytes, 0x20000 + 4 * row_nbytes, 2 * row_nbytes),
         (
             0x31000,
             0x10000 + slot_physical_rows * row_nbytes,
-            8 * row_nbytes,
+            4 * row_nbytes,
         ),
         (
             0x41000,
             0x20000 + slot_physical_rows * row_nbytes,
-            8 * row_nbytes,
+            4 * row_nbytes,
+        ),
+        (
+            0x31000 + 4 * row_nbytes,
+            0x10000 + (slot_physical_rows + 4) * row_nbytes,
+            4 * row_nbytes,
+        ),
+        (
+            0x41000 + 4 * row_nbytes,
+            0x20000 + (slot_physical_rows + 4) * row_nbytes,
+            4 * row_nbytes,
         ),
     ]
     assert positions == [6, 8]
@@ -1642,10 +1674,30 @@ def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
     row_nbytes = 16
     packed_key = DeviceBuffer(0x10000, layout.total_physical_positions * row_nbytes)
     packed_value = DeviceBuffer(0x20000, layout.total_physical_positions * row_nbytes)
-    packed_state = SimpleNamespace(
-        blocks_per_slot=layout.blocks_per_slot,
+    packed_state = _GGUFPackedTargetState(
+        slot_count=1,
+        max_sequence_length=layout.blocks_per_slot * layout.block_size,
         block_size=layout.block_size,
-        full_cache=lambda layer_id: (packed_key, packed_value),
+        blocks_per_slot=layout.blocks_per_slot,
+        total_positions=layout.total_physical_positions,
+        kv_layout=gguf_runner.Qwen35GGUFKVChunkLayout(
+            storage_dtype=DType.BF16,
+            storage_layout="uniform",
+            scale_dtype=DType.FP16,
+            scale_granularity="per_token_head",
+            int8_kv_value_bf16=False,
+            layer_storage_dtypes=(DType.BF16,),
+        ),
+        layer_conv_states=(None,),
+        layer_recurrent_states=(None,),
+        full_key_caches=(packed_key,),
+        full_value_caches=(packed_value,),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+        full_kv_scale_metadata=(None,),
+        buffers=(),
     )
     key = DeviceBuffer(0x30000, 3 * 256 * row_nbytes)
     value = DeviceBuffer(0x40000, 3 * 256 * row_nbytes)
@@ -1785,3 +1837,148 @@ def test_wall_clock_stage_recorder_converts_ticks_and_closes(
     assert launches == [(0x1000, 0, 9), (0x1000, 1, 9), (0x1000, 2, 9)]
     assert timings == {"first": 6.0, "total": 6.0, "second": 19.0}
     assert freed == [buffer]
+
+
+def _segment_test_layout() -> gguf_runner.Qwen35GGUFKVChunkLayout:
+    return gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.BF16,),
+    )
+
+
+def _segment_test_state(page_ids: tuple[int, ...] = ()) -> _GGUFPackedTargetState:
+    return _GGUFPackedTargetState(
+        slot_count=2,
+        max_sequence_length=512,
+        block_size=256,
+        blocks_per_slot=2,
+        total_positions=1024,
+        kv_layout=_segment_test_layout(),
+        layer_conv_states=(None,),
+        layer_recurrent_states=(None,),
+        full_key_caches=(DeviceBuffer(ptr=0x100000, nbytes=1 << 20),),
+        full_value_caches=(DeviceBuffer(ptr=0x180000, nbytes=1 << 20),),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+        full_kv_scale_metadata=(None,),
+        buffers=(),
+        page_ids=page_ids,
+    )
+
+
+def test_gguf_packed_target_state_copy_segments_identity_matches_dense_mapping() -> None:
+    state = _segment_test_state()
+
+    assert state.page_ids == (0, 1, 2, 3)
+    segments = state.copy_segments(1, start_position=100, rows=400)
+
+    # Legacy dense mapping: physical_base = slot * blocks_per_slot * block_size.
+    physical_base = 1 * 2 * 256
+    assert segments == (
+        (100, physical_base + 100, 156),
+        (256, physical_base + 256, 244),
+    )
+
+
+def test_gguf_packed_target_state_copy_segments_arbitrary_pages() -> None:
+    state = _segment_test_state(page_ids=(10, 11, 20, 21))
+
+    assert state.copy_segments(0, start_position=0, rows=300) == (
+        (0, 10 * 256, 256),
+        (256, 11 * 256, 44),
+    )
+    assert state.copy_segments(1, start_position=100, rows=400) == (
+        (100, 20 * 256 + 100, 156),
+        (256, 21 * 256, 244),
+    )
+
+    with pytest.raises(ValueError, match="outside slot_count"):
+        state.copy_segments(2, start_position=0, rows=1)
+    with pytest.raises(ValueError, match="non-negative"):
+        state.copy_segments(0, start_position=-1, rows=1)
+    with pytest.raises(ValueError, match="exceeds the slot page reservation"):
+        state.copy_segments(0, start_position=300, rows=300)
+    with pytest.raises(ValueError, match="page_ids length"):
+        _segment_test_state(page_ids=(1, 2, 3))
+
+
+def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
+    class _RecordingRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    layout = _segment_test_layout()
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                head_count_kv=2,
+                key_length=4,
+                layer_types=(FULL_ATTENTION,),
+            )
+        )
+    )
+    session._device_kv_layout = layout
+    session._device_kv_allocation = SimpleNamespace(
+        block_ids=(7, 3),
+        chunk_start_block_id=0,
+    )
+    session.scratch = SimpleNamespace(
+        full_key_caches=(DeviceBuffer(ptr=0x200000, nbytes=1 << 20),),
+        full_value_caches=(DeviceBuffer(ptr=0x300000, nbytes=1 << 20),),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+    )
+    packed_state = _segment_test_state(page_ids=(10, 11, 20, 21))
+    row_nbytes = 2 * 4 * DType.BF16.itemsize
+    runtime = _RecordingRuntime()
+
+    session._copy_session_packed_kv_segments(
+        session,
+        packed_state,
+        1,
+        0,
+        start_position=100,
+        rows=400,
+        packed_to_session=False,
+        runtime=runtime,
+        stream=3,
+    )
+
+    assert runtime.copies == [
+        (0x100000 + (20 * 256 + 100) * row_nbytes, 0x200000 + (7 * 256 + 100) * row_nbytes, 156 * row_nbytes, 3),
+        (0x180000 + (20 * 256 + 100) * row_nbytes, 0x300000 + (7 * 256 + 100) * row_nbytes, 156 * row_nbytes, 3),
+        (0x100000 + (21 * 256) * row_nbytes, 0x200000 + (3 * 256) * row_nbytes, 244 * row_nbytes, 3),
+        (0x180000 + (21 * 256) * row_nbytes, 0x300000 + (3 * 256) * row_nbytes, 244 * row_nbytes, 3),
+    ]
+
+    runtime.copies.clear()
+    session._copy_session_packed_kv_segments(
+        session,
+        packed_state,
+        0,
+        0,
+        start_position=0,
+        rows=300,
+        packed_to_session=True,
+        runtime=runtime,
+        stream=5,
+    )
+
+    assert runtime.copies == [
+        (0x200000 + (7 * 256) * row_nbytes, 0x100000 + (10 * 256) * row_nbytes, 256 * row_nbytes, 5),
+        (0x300000 + (7 * 256) * row_nbytes, 0x180000 + (10 * 256) * row_nbytes, 256 * row_nbytes, 5),
+        (0x200000 + (3 * 256) * row_nbytes, 0x100000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
+        (0x300000 + (3 * 256) * row_nbytes, 0x180000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
+    ]
