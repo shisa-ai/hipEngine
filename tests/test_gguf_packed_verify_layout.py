@@ -1982,3 +1982,150 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
         (0x200000 + (3 * 256) * row_nbytes, 0x100000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
         (0x300000 + (3 * 256) * row_nbytes, 0x180000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
     ]
+
+
+def _rebind_test_state(
+    *,
+    slot_count: int = 3,
+    blocks_per_slot: int = 3,
+    page_ids: tuple[int, ...] = (),
+) -> _GGUFPackedTargetState:
+    return _GGUFPackedTargetState(
+        slot_count=slot_count,
+        max_sequence_length=blocks_per_slot * 4,
+        block_size=4,
+        blocks_per_slot=blocks_per_slot,
+        total_positions=slot_count * blocks_per_slot * 4,
+        kv_layout=_segment_test_layout(),
+        layer_conv_states=(None,),
+        layer_recurrent_states=(None,),
+        full_key_caches=(DeviceBuffer(ptr=0x100000, nbytes=1 << 20),),
+        full_value_caches=(DeviceBuffer(ptr=0x180000, nbytes=1 << 20),),
+        full_bf16_mirror_key_caches=(None,),
+        full_bf16_mirror_value_caches=(None,),
+        full_k_scale_caches=(None,),
+        full_v_scale_caches=(None,),
+        full_kv_scale_metadata=(None,),
+        buffers=(),
+        page_ids=page_ids,
+    )
+
+
+def test_rebind_packed_verify_layout_pages_identity_keeps_layout() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21,), start_position=8),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(31, 32), start_position=1),
+        ),
+        block_size=4,
+        slot_capacity=12,
+    )
+
+    rebound = gguf_runner._rebind_packed_verify_layout_pages(layout, _rebind_test_state())
+
+    assert rebound is layout
+
+
+def test_rebind_packed_verify_layout_pages_maps_arena_pages() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(0,), start_position=-1, active=False),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(31, 32), start_position=1),
+        ),
+        block_size=4,
+        slot_capacity=12,
+    )
+    # Slot-major arena pages: slot0 -> (40,41,42), slot1 -> (50,51,52), slot2 -> (60,61,62).
+    state = _rebind_test_state(page_ids=(40, 41, 42, 50, 51, 52, 60, 61, 62))
+
+    rebound = gguf_runner._rebind_packed_verify_layout_pages(layout, state)
+
+    assert rebound is not layout
+    np.testing.assert_array_equal(rebound.block_table[0], np.asarray([40, 41, 42], dtype=np.int32))
+    np.testing.assert_array_equal(rebound.block_table[2], np.asarray([40, 41, 42], dtype=np.int32))
+    np.testing.assert_array_equal(rebound.block_table[3], np.full((3,), -1, dtype=np.int32))
+    np.testing.assert_array_equal(rebound.block_table[4], np.asarray([60, 61, 62], dtype=np.int32))
+    np.testing.assert_array_equal(rebound.block_table[5], np.asarray([60, 61, 62], dtype=np.int32))
+    np.testing.assert_array_equal(rebound.row_positions, layout.row_positions)
+    np.testing.assert_array_equal(rebound.cu_seqlens, layout.cu_seqlens)
+    np.testing.assert_array_equal(rebound.active_mask, layout.active_mask)
+    assert rebound.blocks_per_slot == layout.blocks_per_slot
+    # The block table must agree with the page-aware copy segment mapping.
+    segments = state.copy_segments(0, start_position=0, rows=12)
+    assert tuple(physical // 4 for _, physical, _ in segments) == (40, 41, 42)
+
+
+def test_rebind_packed_verify_layout_pages_uses_state_slot_stride() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(7,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(9,), start_position=6),
+        ),
+        block_size=4,
+        slot_capacity=8,
+    )
+    # Grown workspace: 4 pages per slot while the layout only spans 2.
+    state = _rebind_test_state(
+        slot_count=2,
+        blocks_per_slot=4,
+        page_ids=(10, 11, 12, 13, 20, 21, 22, 23),
+    )
+
+    rebound = gguf_runner._rebind_packed_verify_layout_pages(layout, state)
+
+    np.testing.assert_array_equal(rebound.block_table[0], np.asarray([10, 11], dtype=np.int32))
+    np.testing.assert_array_equal(rebound.block_table[1], np.asarray([20, 21], dtype=np.int32))
+
+    # Even an identity page list must follow the state's wider slot stride.
+    identity_wide = _rebind_test_state(slot_count=2, blocks_per_slot=4)
+    rebound_wide = gguf_runner._rebind_packed_verify_layout_pages(layout, identity_wide)
+    assert rebound_wide is not layout
+    np.testing.assert_array_equal(rebound_wide.block_table[0], np.asarray([0, 1], dtype=np.int32))
+    np.testing.assert_array_equal(rebound_wide.block_table[1], np.asarray([4, 5], dtype=np.int32))
+
+
+def test_rebind_packed_verify_layout_pages_rejects_narrow_state() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (_GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=4),),
+        block_size=4,
+        slot_capacity=12,
+    )
+    narrow_pages = _rebind_test_state(slot_count=1, blocks_per_slot=2)
+    with pytest.raises(ValueError, match="blocks_per_slot"):
+        gguf_runner._rebind_packed_verify_layout_pages(layout, narrow_pages)
+
+    two_slot_layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(7,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(9,), start_position=6),
+        ),
+        block_size=4,
+        slot_capacity=8,
+    )
+    narrow_slots = _rebind_test_state(slot_count=1, blocks_per_slot=2)
+    with pytest.raises(ValueError, match="slot_count"):
+        gguf_runner._rebind_packed_verify_layout_pages(two_slot_layout, narrow_slots)
+
+
+def test_packed_decode_metadata_gate_rejects_nonidentity_rebound_layout() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(7,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(9,), start_position=6),
+        ),
+        block_size=4,
+        slot_capacity=8,
+    )
+
+    identity = gguf_runner._rebind_packed_verify_layout_pages(
+        layout, _rebind_test_state(slot_count=2, blocks_per_slot=2)
+    )
+    assert _packed_decode_metadata_device_eligible(identity)
+
+    arena = gguf_runner._rebind_packed_verify_layout_pages(
+        layout,
+        _rebind_test_state(slot_count=2, blocks_per_slot=2, page_ids=(4, 5, 8, 9)),
+    )
+    assert not _packed_decode_metadata_device_eligible(arena)

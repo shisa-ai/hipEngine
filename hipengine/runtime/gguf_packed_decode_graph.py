@@ -353,6 +353,10 @@ def capture_qwen35_gguf_packed_decode_graph(
 ) -> "Qwen35GGUFPackedDecodeGraph":
     """Capture one fixed-width packed GGUF decode bucket with device feedback."""
 
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _rebind_packed_verify_layout_pages,
+    )
+
     token_tuple = tuple(int(token) for token in token_ids)
     session_tuple = tuple(sessions)
     active_rows = len(session_tuple)
@@ -438,6 +442,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         max_sequence_length=slot_capacity,
         runtime=runtime,
     )
+    layout = _rebind_packed_verify_layout_pages(layout, packed_state)
     graph = 0
     graph_exec = 0
     submission: GraphSubmission | None = None
