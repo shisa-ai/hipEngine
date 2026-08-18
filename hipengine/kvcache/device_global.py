@@ -66,6 +66,7 @@ class GlobalDeviceKVPool:
         self._close_storage = close_storage
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
+        self._workspace_leases: dict[str, tuple[int, ...]] = {}
         self._pin_counts: dict[int, int] = {}
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
@@ -131,6 +132,70 @@ class GlobalDeviceKVPool:
 
     def pin_count(self, block_id: int) -> int:
         return int(self.global_pool.page(int(block_id)).session_pins)
+
+    def lease_workspace(
+        self,
+        key: str,
+        pages: int,
+        *,
+        now_seconds: float = 0.0,
+    ) -> tuple[int, ...]:
+        """Lease pinned non-request pages for a persistent execution workspace.
+
+        Workspace pages are ledger-owned exactly like request pages: they are
+        not free, they count as pinned, they are visible in stats, and they
+        must be released before ``close()``. Unlike request leases they are
+        keyed by a stable workspace name so load-time execution state (for
+        example the packed-AR KV backing) can live inside the same global
+        arena and ledger instead of a private hidden allocation.
+        """
+
+        name = str(key)
+        if not name:
+            raise ValueError("workspace key must be non-empty")
+        count = int(pages)
+        if count <= 0:
+            raise ValueError("workspace pages must be positive")
+        lease_id = self._workspace_lease_id(name)
+        with self._lock:
+            self._require_open()
+            if lease_id in self._workspace_leases:
+                raise ValueError(f"workspace lease {name!r} already exists")
+            try:
+                lease = self.global_pool.allocate(
+                    lease_id,
+                    private_pages=count,
+                    growth_credit_pages=0,
+                )
+            except MemoryError:
+                self._allocation_failures += 1
+                raise
+            page_ids = tuple(int(page_id) for page_id in lease.private_page_ids)
+            self.global_pool.pin_session(lease_id, page_ids)
+            self._workspace_leases[lease_id] = page_ids
+            self._last_active_seconds = float(now_seconds)
+            self._observe_high_water()
+            return page_ids
+
+    def release_workspace(self, key: str) -> tuple[int, ...]:
+        """Release a workspace lease previously created by ``lease_workspace``."""
+
+        name = str(key)
+        lease_id = self._workspace_lease_id(name)
+        with self._lock:
+            try:
+                page_ids = self._workspace_leases.pop(lease_id)
+            except KeyError:
+                raise KeyError(f"workspace lease {name!r} does not exist") from None
+            self.global_pool.unpin_session(page_ids)
+            self.global_pool.release(lease_id)
+            return page_ids
+
+    def workspace_pages(self, key: str) -> tuple[int, ...] | None:
+        """Return the leased page IDs for a workspace, or None when absent."""
+
+        with self._lock:
+            return self._workspace_leases.get(self._workspace_lease_id(str(key)))
 
     def allocate(
         self,
@@ -298,6 +363,10 @@ class GlobalDeviceKVPool:
             self.global_pool.assert_conserved()
             self._close_storage()
             self._closed = True
+
+    @staticmethod
+    def _workspace_lease_id(key: str) -> str:
+        return f"workspace:{key}"
 
     @staticmethod
     def _lease_id(request_id: int) -> str:

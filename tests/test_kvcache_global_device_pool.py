@@ -92,3 +92,45 @@ def test_global_device_pool_rejects_capacity_and_live_close() -> None:
         pool.close()
     pool.release(1)
     pool.close()
+
+
+def test_global_device_pool_workspace_lease_is_pinned_accounted_and_close_guarded() -> None:
+    pool, _closed = _pool(pages=6)
+
+    pages = pool.lease_workspace("packed-ar", 2)
+    assert len(pages) == 2
+    assert len(set(pages)) == 2
+    assert pool.workspace_pages("packed-ar") == pages
+    stats = pool.stats
+    assert stats.free_pages == 4
+    assert stats.pinned_pages == 2
+    assert stats.refcounted_pages == 2
+
+    # Request leases cannot claim workspace pages.
+    allocation = pool.allocate(1, 4)
+    assert set(allocation.block_ids).isdisjoint(pages)
+    pool.release(1)
+
+    with pytest.raises(ValueError, match="already exists"):
+        pool.lease_workspace("packed-ar", 1)
+    with pytest.raises(RuntimeError, match="retained or pinned"):
+        pool.close()
+
+    released = pool.release_workspace("packed-ar")
+    assert released == pages
+    assert pool.workspace_pages("packed-ar") is None
+    assert pool.stats.free_pages == 6
+    assert pool.stats.pinned_pages == 0
+    pool.close()
+
+
+def test_global_device_pool_workspace_lease_exhaustion_and_missing_release() -> None:
+    pool, _closed = _pool(pages=3)
+    pool.lease_workspace("packed-ar", 2)
+    with pytest.raises(MemoryError):
+        pool.lease_workspace("second-workspace", 2)
+    assert pool.stats.grow_failures == 1
+    with pytest.raises(KeyError, match="second-workspace"):
+        pool.release_workspace("second-workspace")
+    pool.release_workspace("packed-ar")
+    pool.close()
