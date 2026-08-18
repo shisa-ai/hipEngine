@@ -1318,6 +1318,59 @@ class _GGUFPackedTargetState:
     full_v_scale_caches: tuple[object | None, ...]
     full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
     buffers: tuple[object, ...]
+    # Slot-major physical page IDs backing the packed KV planes. The private
+    # chunk uses the identity mapping; a GlobalDeviceKVPool workspace lease
+    # supplies arbitrary arena pages (task #5 contract unification).
+    page_ids: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.page_ids:
+            object.__setattr__(
+                self,
+                "page_ids",
+                tuple(range(int(self.slot_count) * int(self.blocks_per_slot))),
+            )
+        expected = int(self.slot_count) * int(self.blocks_per_slot)
+        if len(self.page_ids) != expected:
+            raise ValueError(
+                f"packed KV page_ids length {len(self.page_ids)} != slots*blocks {expected}"
+            )
+
+    def copy_segments(
+        self,
+        slot_index: int,
+        *,
+        start_position: int,
+        rows: int,
+    ) -> tuple[tuple[int, int, int], ...]:
+        """Map packed slot-logical rows to physical backing rows for D2D copies.
+
+        Mirrors ``_gguf_device_kv_copy_segments`` on the packed side so copies
+        stay correct when the backing pages are arbitrary arena pages rather
+        than one dense private chunk.
+        """
+
+        slot = int(slot_index)
+        if slot < 0 or slot >= int(self.slot_count):
+            raise ValueError("packed KV slot index outside slot_count")
+        start = int(start_position)
+        remaining = int(rows)
+        page_tokens = int(self.block_size)
+        if start < 0 or remaining < 0:
+            raise ValueError("packed KV copy range must be non-negative")
+        base = slot * int(self.blocks_per_slot)
+        segments: list[tuple[int, int, int]] = []
+        logical = start
+        while remaining:
+            page, in_page = divmod(logical, page_tokens)
+            if page >= int(self.blocks_per_slot):
+                raise ValueError("packed KV copy range exceeds the slot page reservation")
+            page_id = int(self.page_ids[base + page])
+            take = min(remaining, page_tokens - in_page)
+            segments.append((logical, page_id * page_tokens + in_page, take))
+            logical += take
+            remaining -= take
+        return tuple(segments)
 
     @classmethod
     def allocate(
@@ -21422,6 +21475,63 @@ class Qwen35GGUFResidentSession:
                 int(stream),
             )
 
+    def _copy_session_packed_kv_segments(
+        self,
+        session: "Qwen35GGUFResidentSession",
+        packed_state: _GGUFPackedTargetState,
+        slot_index: int,
+        layer_id: int,
+        *,
+        start_position: int,
+        rows: int,
+        packed_to_session: bool,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        """Copy KV rows between a session lease and one packed slot.
+
+        Both sides walk page-aligned segments: the session side through its
+        ``DeviceKVPoolAllocation`` block IDs, the packed side through the
+        packed state's leased ``page_ids``. This keeps copies exact when
+        either backing is a set of arbitrary arena pages.
+        """
+
+        for logical_start, session_physical, segment_rows in _gguf_device_kv_copy_segments(
+            session,
+            start_position=start_position,
+            rows=rows,
+        ):
+            for packed_logical, packed_physical, take in packed_state.copy_segments(
+                slot_index,
+                start_position=logical_start,
+                rows=segment_rows,
+            ):
+                session_start = int(session_physical) + (
+                    int(packed_logical) - int(logical_start)
+                )
+                if packed_to_session:
+                    self._copy_packed_kv_rows(
+                        packed_state,
+                        session.scratch,
+                        layer_id,
+                        source_start=int(packed_physical),
+                        destination_start=session_start,
+                        rows=int(take),
+                        runtime=runtime,
+                        stream=stream,
+                    )
+                else:
+                    self._copy_packed_kv_rows(
+                        session.scratch,
+                        packed_state,
+                        layer_id,
+                        source_start=session_start,
+                        destination_start=int(packed_physical),
+                        rows=int(take),
+                        runtime=runtime,
+                        stream=stream,
+                    )
+
     def _sync_packed_verify_initial_state(
         self,
         jobs: list[dict[str, object]],
@@ -21474,22 +21584,17 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= int(written_positions[slot_index]):
                         continue
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=0,
                         rows=start_position,
-                    ):
-                        self._copy_packed_kv_rows(
-                            session.scratch,
-                            packed_state,
-                            layer_id,
-                            source_start=physical_start,
-                            destination_start=physical_base + logical_start,
-                            rows=copy_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=False,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             written_positions[slot_index] = max(int(written_positions[slot_index]), start_position)
@@ -21560,22 +21665,17 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= 0:
                         continue
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=0,
                         rows=start_position,
-                    ):
-                        self._copy_packed_kv_rows(
-                            session.scratch,
-                            packed_state,
-                            layer_id,
-                            source_start=physical_start,
-                            destination_start=physical_base + logical_start,
-                            rows=copy_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=False,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
         return tuple(imported_slot_indices)
@@ -21820,24 +21920,19 @@ class Qwen35GGUFResidentSession:
                         stream,
                     )
                 elif layer_type == FULL_ATTENTION and copy_kv:
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     copy_start = 0 if copy_full_kv else start_position
                     copy_rows = end_position if copy_full_kv else slot_rows
-                    for logical_start, physical_start, segment_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=copy_start,
                         rows=copy_rows,
-                    ):
-                        self._copy_packed_kv_rows(
-                            packed_state,
-                            session.scratch,
-                            layer_id,
-                            source_start=physical_base + logical_start,
-                            destination_start=physical_start,
-                            rows=segment_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=True,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 elif layer_type == FULL_ATTENTION:
                     continue
                 else:
@@ -21947,7 +22042,6 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         cfg = self.runner.weights.config
-        row_nbytes = self._packed_full_kv_row_nbytes()
         hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
         written_positions = list(self._packed_verify_max_written_positions)
         results: list[Qwen35GGUFBlockVerifyResult] = []
@@ -22035,23 +22129,16 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if defer_state_scatter:
                         continue
-                    src_key, src_value = packed_state.full_cache(layer_id)
-                    dst_key, dst_value = session.scratch.full_cache(layer_id)
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    nbytes = slot_rows * row_nbytes
-                    runtime.memcpy_async(
-                        dst_key.ptr + start_position * row_nbytes,
-                        src_key.ptr + (physical_base + start_position) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        dst_value.ptr + start_position * row_nbytes,
-                        src_value.ptr + (physical_base + start_position) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
+                    self._copy_session_packed_kv_segments(
+                        session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
+                        start_position=start_position,
+                        rows=slot_rows,
+                        packed_to_session=True,
+                        runtime=runtime,
+                        stream=stream,
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -22158,7 +22245,6 @@ class Qwen35GGUFResidentSession:
             stream,
         )
 
-        full_row_nbytes = self._packed_full_kv_row_nbytes()
         for layer_id, layer_type in enumerate(cfg.layer_types):
             if layer_type == LINEAR_ATTENTION:
                 src_pair = self._verify_linear_state_row_pair(layer_id)
@@ -22184,23 +22270,16 @@ class Qwen35GGUFResidentSession:
                     stream,
                 )
             elif layer_type == FULL_ATTENTION:
-                src_key, src_value = packed_state.full_cache(layer_id)
-                dst_key, dst_value = destination_session.scratch.full_cache(layer_id)
-                physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                nbytes = consumed_rows * full_row_nbytes
-                runtime.memcpy_async(
-                    dst_key.ptr + start_position * full_row_nbytes,
-                    src_key.ptr + (physical_base + start_position) * full_row_nbytes,
-                    nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-                runtime.memcpy_async(
-                    dst_value.ptr + start_position * full_row_nbytes,
-                    src_value.ptr + (physical_base + start_position) * full_row_nbytes,
-                    nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
+                self._copy_session_packed_kv_segments(
+                    destination_session,
+                    packed_state,
+                    slot_index,
+                    layer_id,
+                    start_position=start_position,
+                    rows=consumed_rows,
+                    packed_to_session=True,
+                    runtime=runtime,
+                    stream=stream,
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
