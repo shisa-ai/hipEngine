@@ -921,9 +921,11 @@ GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
                 "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
             )
             # rowtile8 instantiates ROW_TILE 2..8 in one launch; c>8 chunks
-            # into <=8-row groups at the dispatch site. c>=512 routes to the
-            # existing WMMA prefill owner before this policy is consulted.
-            for rows in range(2, 65)
+            # into <=8-row groups at the dispatch site. The decode regime goes
+            # to rows 511 so no gate/up concurrency silently falls to WMMA;
+            # c>=512 routes to the existing WMMA prefill owner before this
+            # policy is consulted.
+            for rows in range(2, 512)
         },
     },
 }
@@ -1075,8 +1077,9 @@ GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
         },
     },
 }
-# Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
-GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
+# Physical-C8 Q6T16 lm-head now has a native rows-8 rowtile owner, so c8 runs
+# as one launch instead of the previous 5+3 partition. rows > 8 still chunk.
+GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
 # +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
 # measured Q4_K_M generator registry entry; other quants/backends retain their

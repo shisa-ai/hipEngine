@@ -38,7 +38,7 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
     ]
 
 
-def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk5_and_env_rollback(
+def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
@@ -56,12 +56,22 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk5_and_env_rollback(
         fake_rowtile,
     )
 
+    # c8 now has a native rows-8 owner: single direct launch, no partition.
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [5, 3]
+    assert calls == [8]
     calls.clear()
+    # rows > 8 chunk at the default 8.
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12)
+    assert calls == [8, 4]
+    calls.clear()
+    # env override rolls the chunk size back to 6.
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "6")
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12)
+    assert calls == [6, 6]
+    calls.clear()
+    # rows <= 8 stay direct even with a smaller env cap.
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [6, 2]
+    assert calls == [8]
 
 
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(

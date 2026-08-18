@@ -2600,6 +2600,116 @@ def test_gfx1151_q5_t16_27b_shapes_use_rowtile_through_c8() -> None:
     ]
 
 
+def test_gfx1151_q4_t16_single_c_n_chunks_to_rowtile8_in_native_session() -> None:
+    """Native c=N: Q4 single projections chunk rows 9..511 into rowtile8 groups.
+
+    Q5 keeps its native direct grid.y=rows leaf, and rows >= 512 stay on WMMA
+    prefill (bulk regime), so no decode concurrency silently falls to WMMA.
+    """
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    q4 = _fake_weight(layout=LAYOUT_GGUF_Q4_K_T16, quant_key="gguf_q4_k_t16_v1")
+    q5 = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    keys = {
+        "q4_rowtile": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_bf16_bf16_out",
+        ),
+        "q4_wmma": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+        "q5_direct": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        label: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for label, key in keys.items()
+    }
+    calls: list[tuple[str, int, int, int]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **_kwargs):
+            # (x_ptr, tiles, out_ptr, rows, in_features, out_features)
+            calls.append((label, args[0], args[3], args[5]))
+
+        return fake_kernel
+
+    for label, key in keys.items():
+        register(key, capture(label), replace=True)
+    try:
+        with native_batch_decode_session(True):
+            # c=9 -> (7,0),(2,7); c=16 -> (8,0),(8,8); c=33 -> 8,8,8,7,2.
+            for rows, inf, outf in ((9, 5_120, 10_240), (16, 17_408, 5_120)):
+                launch_gguf_linear(
+                    q4,
+                    0,
+                    0,
+                    rows=rows,
+                    in_features=inf,
+                    out_features=outf,
+                    backend="hip_gfx1151",
+                    runtime="runtime-sentinel",
+                    use_wmma_prefill=False,
+                )
+            # c=512 stays on WMMA prefill (bulk regime), not chunked.
+            launch_gguf_linear(
+                q4,
+                0,
+                0,
+                rows=512,
+                in_features=5_120,
+                out_features=10_240,
+                backend="hip_gfx1151",
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+            # Q5 keeps its native direct leaf (single launch, no chunking).
+            launch_gguf_linear(
+                q5,
+                0,
+                0,
+                rows=16,
+                in_features=6_144,
+                out_features=5_120,
+                backend="hip_gfx1151",
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        for label, key in keys.items():
+            register(key, originals[label], replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        # c=9 Q4: (7 rows @ row 0), (2 rows @ row 7).
+        ("q4_rowtile", 0, 7, 10_240),
+        ("q4_rowtile", 7 * 5_120 * 2, 2, 10_240),
+        # c=16 Q4 ffn_down: (8 @ 0), (8 @ 8).
+        ("q4_rowtile", 0, 8, 5_120),
+        ("q4_rowtile", 8 * 17_408 * 2, 8, 5_120),
+        # c=512 stays WMMA prefill.
+        ("q4_wmma", 0, 512, 10_240),
+        # Q5 direct leaf: one launch, rows=16, out 5120.
+        ("q5_direct", 0, 16, 5_120),
+    ]
+
+
 def test_gfx1151_q4_t16_full_kv_c1_uses_exact_col4_shape_owner() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -4892,6 +5002,90 @@ def test_gfx1151_qmicro_q8x2_rowbatch_quantizes_once(
         )
     ]
     assert rowtile_calls == []
+
+
+def test_gfx1151_q4_t16_gate_up_rowtile8_chunks_rows_65_plus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gate/up dual rowtile8 covers the full decode regime (rows 65..511).
+
+    The policy admits rows up to 511, so c=70 decomposes into eight 8-row
+    groups plus a 6-row tail via ``_rowtile8_row_chunks``; each group shares
+    one q8_1 quantization and one fused gate/up+SiLU launch. No gate/up
+    concurrency below 512 silently falls to WMMA.
+    """
+
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_QMICRO_T16,
+        quant_key="gguf_q4_k_qmicro_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_QMICRO_T16,
+        quant_key="gguf_q4_k_qmicro_t16_v1",
+    )
+    fused_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_qmicro_t16_v1",
+        "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    quantize_calls: list[tuple[tuple, dict]] = []
+    fused_calls: list[tuple[tuple, dict]] = []
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1x2",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    register(
+        fused_key,
+        lambda *args, **kwargs: fused_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with native_batch_decode_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=70,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_gemv_decode=True,
+                registered_decode_variant=fused_key.variant,
+                q8_1_workspace_ptr=900,
+            )
+    finally:
+        register(fused_key, original, replace=True)
+
+    groups = [(8, 0), (8, 8), (8, 16), (8, 24), (8, 32), (8, 40), (8, 48), (8, 56), (6, 64)]
+    assert quantize_calls == [
+        (
+            (100 + row_base * 5_120 * 2, 900, chunk_rows, 5_120),
+            {"stream": 7, "library": None, "runtime": "runtime-sentinel"},
+        )
+        for chunk_rows, row_base in groups
+    ]
+    assert fused_calls == [
+        (
+            (900, 14, 14, 400 + row_base * 17_408 * 2, chunk_rows, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+        for chunk_rows, row_base in groups
+    ]
 
 
 def test_gfx1151_q4_t16_split_weight_keeps_native_b1_on_control(

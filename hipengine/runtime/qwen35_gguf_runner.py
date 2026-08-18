@@ -17258,12 +17258,12 @@ class Qwen35GGUFResidentSession:
                     (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
                 )
             else:
-                # rows 2-6: default to the batched lm-head path so the Q6_K t16
+                # rows 2-8: default to the batched lm-head path so the Q6_K t16
                 # rowtile GEMV reads the 417MB head once across all block rows
                 # (vs the per-row loop re-reading it per row). Bit-exact; the env
                 # flag can still force it for other row counts.
                 t_sample0 = time.perf_counter() if stage_timings is not None else 0.0
-                row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 6)
+                row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 8)
                 direct_top1 = False
                 if row_lm_head:
                     direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
@@ -22014,7 +22014,7 @@ class Qwen35GGUFResidentSession:
     def _verify_lm_head_rowtile(
         self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
     ) -> bool:
-        """Weight-amortized small-B (rows 2-6) verify lm-head GEMV.
+        """Weight-amortized small-B (rows 2-8) verify lm-head GEMV.
 
         Reads the Q6_K t16 lm-head tiles ONCE across all block rows instead of
         re-reading the full head per row (the per-row decode kernel's small-B
@@ -22023,7 +22023,7 @@ class Qwen35GGUFResidentSession:
         GEMV; False means the caller should fall back to launch_gguf_linear.
         """
 
-        if rows < 2 or rows > 6 or self.runner is None or self.runner.weights is None:
+        if rows < 2 or rows > 8 or self.runner is None or self.runner.weights is None:
             return False
         from hipengine.runtime.gguf_linear import (
             GGUF_ACTIVATION_BF16,
@@ -22076,7 +22076,7 @@ class Qwen35GGUFResidentSession:
         rows = int(rows)
         if rows <= 0:
             raise ValueError("rows must be positive")
-        if rows <= 6:
+        if rows <= 8:
             return self._verify_lm_head_rowtile(
                 hidden_ptr,
                 out_ptr,
@@ -22097,12 +22097,12 @@ class Qwen35GGUFResidentSession:
                 backend_package_capability(
                     self.runner.backend,
                     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
-                    6,
+                    8,
                 )
             )
         )
-        if max_chunk < 2 or max_chunk > 6:
-            raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 6]")
+        if max_chunk < 2 or max_chunk > 8:
+            raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 8]")
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False

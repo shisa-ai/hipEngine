@@ -1123,6 +1123,105 @@ def test_q4_t16_dense_c1_down_residual_is_bit_exact(
     np.testing.assert_array_equal(candidate, expected)
 
 
+def _run_dense_single_chunked(
+    fn,
+    x_dev,
+    tiles,
+    out_features,
+    out_dtype,
+    library,
+    groups,
+) -> np.ndarray:
+    """Launch ``fn`` once per ``(chunk_rows, row_base)`` group into shared buffers.
+
+    Mirrors the native c=N rowtile8 chunking in ``launch_gguf_linear``: each
+    group writes its own row slice of a shared output buffer, so the composed
+    result must match the serial c1 owner row-for-row bit-exactly.
+    """
+
+    rows, in_features = x_dev.shape
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    tiles_buf = malloc(tiles.nbytes)
+    copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    element_nbytes = np.dtype(out_dtype).itemsize
+    try:
+        for chunk_rows, row_base in groups:
+            fn(
+                x_buf.ptr + row_base * in_features * np.dtype(
+                    x_dev.dtype
+                ).itemsize,
+                tiles_buf.ptr,
+                out_buf.ptr + row_base * out_features * element_nbytes,
+                chunk_rows,
+                in_features,
+                out_features,
+                library=library,
+            )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (x_buf, tiles_buf, out_buf):
+            free(buf)
+
+
+@pytest.mark.parametrize(
+    "rows,groups",
+    [
+        (9, [(7, 0), (2, 7)]),
+        (10, [(8, 0), (2, 8)]),
+        (16, [(8, 0), (8, 8)]),
+        (17, [(8, 0), (7, 8), (2, 15)]),
+    ],
+)
+def test_q4_t16_dense_c_n_chunked_rowtile_composes_bit_exact_vs_c1(
+    rows: int,
+    groups: list[tuple[int, int]],
+    t16_selected_library,
+) -> None:
+    """Chunked rowtile8 decomposition is row-for-row bit-exact to serial c1.
+
+    The native c=N path decomposes rows 9..511 into ``_rowtile8_row_chunks``
+    groups; each group is an independent rowtile8 launch with row offsets. This
+    RED asserts the composed output matches the serial c1 owner exactly.
+    """
+
+    rng = np.random.default_rng(20260818 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    expected = np.concatenate(
+        [
+            _run_dense_single(
+                gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+                x_bf16[row : row + 1],
+                tiles,
+                out_features,
+                np.uint16,
+                t16_selected_library,
+            )
+            for row in range(rows)
+        ],
+        axis=0,
+    )
+    candidate = _run_dense_single_chunked(
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        groups,
+    )
+    np.testing.assert_array_equal(candidate, expected)
+
+
 @pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 6, 7, 8])
 def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
     rows: int,

@@ -2,8 +2,8 @@
 
 The rowtile kernel (reads each weight tile once, accumulates ROW_TILE rows) must
 be BIT-IDENTICAL to the per-row t16 decode kernel. The direct rowtile kernel
-handles rows 2-6; packed serving verifies larger row counts by chunking into
-2-6-row launches. The per-row decode kernel is the exact reference. Skips
+handles rows 2-8; packed serving verifies larger row counts by chunking into
+2-8-row launches. The per-row decode kernel is the exact reference. Skips
 without HIP or the local 35B GGUF fixture.
 """
 from __future__ import annotations
@@ -53,7 +53,7 @@ def test_q6_k_t16_rowtile_matches_per_row_decode(
             for r in range(rows):
                 decode(x.ptr + r * H * 2, w.ptr, ref.ptr + r * V * 4, 1, H, V, runtime=rt)
             row_offset = 0
-            for chunk_rows in _small_b_rowtile_chunks(rows):
+            for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=8):
                 rowtile(
                     x.ptr + row_offset * H * 2,
                     w.ptr,
