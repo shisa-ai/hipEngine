@@ -89,60 +89,85 @@ __global__ void dms_streaming_pack_kernel(
   const int32_t tokens = row_tokens[r];
 
   __shared__ int32_t s_token_base;
-  __shared__ int32_t s_count[kDmsPackThreads];
-  __shared__ int32_t s_prefix[kDmsPackThreads];
+  __shared__ int32_t s_flag[kDmsPackThreads];
+  __shared__ int32_t s_chunk_total;
 
   if (tid == 0) {
-    int32_t base = 0;
+    int32_t tbase = 0;
     for (int32_t i = 0; i < r; i++) {
-      base += row_tokens[i];
+      tbase += row_tokens[i];
     }
-    s_token_base = base;
+    s_token_base = tbase;
   }
   __syncthreads();
   const int32_t token_base = s_token_base;
   const int32_t current = tokens - 1;
   const int64_t ev_row = static_cast<int64_t>(token_base) * heads + h;
-
-  int32_t my_count = 0;
-  if (tokens > 0) {
-    for (int32_t t = tid; t < tokens; t += kDmsPackThreads) {
-      const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
-      if (e == 0 || current - t <= window_size) {
-        my_count++;
-      }
-    }
-  }
-  s_count[tid] = my_count;
-  __syncthreads();
-  if (tid == 0) {
-    int32_t acc = 0;
-    for (int32_t i = 0; i < kDmsPackThreads; i++) {
-      s_prefix[i] = acc;
-      acc += s_count[i];
-    }
-    live_counts[static_cast<int64_t>(r) * heads + h] = acc;
-  }
-  __syncthreads();
-
-  int32_t rank = s_prefix[tid];
   const int32_t base = base_offsets[static_cast<int64_t>(r) * heads + h];
   const int32_t capacity = range_capacity[static_cast<int64_t>(r) * heads + h];
   const uint16_t* k_src =
       k + (static_cast<int64_t>(token_base) * heads + h) * dim;
   const uint16_t* v_src =
       v + (static_cast<int64_t>(token_base) * heads + h) * dim;
-  if (tokens > 0) {
-    for (int32_t t = tid; t < tokens; t += kDmsPackThreads) {
+
+  // Pass 1: count keepers in 256-token chunks (read-only). A lane-prefix
+  // of per-thread counts is only a true global rank while the row fits one
+  // tile, so the count is chunked the same way the writes are: the
+  // inclusive prefix within a chunk plus a running cross-chunk rank is the
+  // global output rank for any prompt length. Counting before any write
+  // lets an over-capacity row fail closed without mutating the extent.
+  int32_t total = 0;
+  for (int32_t chunk0 = 0; chunk0 < tokens; chunk0 += kDmsPackThreads) {
+    const int32_t in_chunk = tid < (tokens - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int32_t t = chunk0 + tid;
       const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
-      if (e != 0 && current - t > window_size) {
-        continue;
+      if (e == 0 || current - t <= window_size) {
+        s_flag[tid] = 1;
       }
-      const int32_t dest = base + rank;
-      if (dest - base >= capacity) {
-        return;  // admission invariant violated; fail closed, no OOB write
+    }
+    __syncthreads();
+    for (int32_t off = 1; off < kDmsPackThreads; off <<= 1) {
+      const int32_t delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    s_chunk_total = s_flag[kDmsPackThreads - 1];
+    __syncthreads();
+    total += s_chunk_total;
+  }
+  if (total > capacity) {
+    // Admission invariant violated; fail closed, no extent mutation.
+    return;
+  }
+
+  // Pass 2: scatter keepers in token order (input K/V and the slot extent
+  // are disjoint, so the chunk-wise scan+write is race-free).
+  int32_t chunk_rank = 0;
+  for (int32_t chunk0 = 0; chunk0 < tokens; chunk0 += kDmsPackThreads) {
+    const int32_t in_chunk = tid < (tokens - chunk0);
+    s_flag[tid] = 0;
+    if (in_chunk) {
+      const int32_t t = chunk0 + tid;
+      const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
+      if (e == 0 || current - t <= window_size) {
+        s_flag[tid] = 1;
       }
-      rank++;
+    }
+    __syncthreads();
+    for (int32_t off = 1; off < kDmsPackThreads; off <<= 1) {
+      const int32_t delta = (tid >= off) ? s_flag[tid - off] : 0;
+      __syncthreads();
+      s_flag[tid] += delta;
+      __syncthreads();
+    }
+    if (in_chunk && s_flag[tid] > (tid > 0 ? s_flag[tid - 1] : 0)) {
+      // This token is kept: exclusive rank = chunk_rank + inclusive - 1.
+      const int32_t t = chunk0 + tid;
+      const int32_t dest = base + chunk_rank + s_flag[tid] - 1;
+      const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
       const uint16_t* ks = k_src + static_cast<int64_t>(t) * heads * dim;
       const uint16_t* vs = v_src + static_cast<int64_t>(t) * heads * dim;
       uint16_t* kd = k_slot + static_cast<int64_t>(dest) * dim;
@@ -154,7 +179,12 @@ __global__ void dms_streaming_pack_kernel(
       token_positions[dest] = row_starts[r] + t;
       slot_evict[dest] = static_cast<uint8_t>(e);
     }
+    s_chunk_total = s_flag[kDmsPackThreads - 1];
+    __syncthreads();
+    chunk_rank += s_chunk_total;
+    __syncthreads();
   }
+  live_counts[static_cast<int64_t>(r) * heads + h] = total;
 }
 
 // U3: append/decode. Strict parent walk of
