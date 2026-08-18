@@ -17,6 +17,20 @@ exact A/B: 30.78 -> 29.83 ms/tok, **+957 us/tok (+3.2%)**, tokens byte-identical
 pattern exists at ~609 kernel sites; a targeted audit of the largest families is
 a cheap follow-up.
 
+PN6 (new unit, 2026-08-18): the `launch_gguf_linear` T16 GEMV slice is
+**host-dispatch-bound**, not GPU-bound — 141 launches/step each re-ran
+`build_X(load=True)` (~19-29 us/call of build_hip fast-path overhead even on a
+loaded-library cache hit). Hoisted the q8_0_t16 / q6_k_t16 / dense-gemv library
+handles into module caches; counter-rotated exact A/B: 29.42 -> 26.83 ms/tok,
+**+2.59 ms/tok (+8.8%)**, tokens byte-identical (memo returns the identical CDLL
+handle); real-hoist validation wall 25.69 ms/tok (per-call 43.2 -> 23.2 us).
+This is the largest single-item win of the campaign (see worklog
+`pn6-gemv-lib-hoist`). Also: an explicit session compiler version is now the
+process default in `_resolve_compiler_version` so per-call loads hit the
+loaded-library cache on machines where pinned != installed. MoE active-expert
+per-call build sites (`group_scatter`/`laguna_router`/`maple_moe`) remain a
+separate follow-up.
+
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
 Model lane: Qwen3.6-35B-A3B GGUF `UD-Q4_K_M`, BF16 KV, greedy autoregressive

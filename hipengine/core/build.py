@@ -409,7 +409,16 @@ def _resolve_compiler_version(
     dry_run: bool,
 ) -> str:
     if compiler_version is not None:
-        return compiler_version.strip()
+        version = compiler_version.strip()
+        # An explicit version becomes the process default so every later
+        # per-call ``build_X(load=True)`` (which passes compiler_version=None)
+        # resolves to the same version and hits the loaded-library cache. Without
+        # this, a pinned session version misses the cache (the launch path
+        # resolves a probed version), re-running the full build/load machinery on
+        # every launch (~20-30 us/call; see worklog pn5-router-lib-hoist).
+        if not dry_run:
+            _COMPILER_VERSION_CACHE[compiler] = version
+        return version
     env_version = _compiler_version_from_environment(compiler)
     if env_version is not None:
         return env_version
