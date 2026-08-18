@@ -116,6 +116,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 from hipengine.kernels.hip_gfx1100.attention.dms_compact import (
     build_dms_compact,
     dms_extract_decision_bf16,
+    dms_streaming_pack_bf16,
     plan_dms_compact_build,
     register_dms_compact_kernels,
 )
@@ -133,6 +134,7 @@ __all__ = [
     "build_dms_compact",
     "build_qwen35_paged_kv_write",
     "dms_extract_decision_bf16",
+    "dms_streaming_pack_bf16",
     "laguna_global_attention_decode_bf16_spans",
     "laguna_global_attention_decode_single_page_bf16_spans",
     "laguna_global_attention_decode_single_page_softplus_gate_bf16_spans",

@@ -5,13 +5,11 @@
 // DMS convention stores one scalar eviction decision in the last channel of
 // the first query head of each GQA group; extraction runs on pre-RoPE Q and
 // zeroes the channel before attention. K/V pack (U2) runs on post-RoPE K/V.
-//
-// U1: decision extraction. The CPU reference compares the BF16 decision value
-// against NumPy float64 scalars (float32 array upcast), so the device side
-// also compares in double for bit-exact parity.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
+
+constexpr int kDmsPackThreads = 256;
 
 namespace {
 
@@ -23,6 +21,10 @@ __device__ inline float dms_bf16_bits_to_float(uint16_t value) {
   out.u32 = static_cast<uint32_t>(value) << 16;
   return out.f32;
 }
+
+// U1: decision extraction. The CPU reference compares the BF16 decision value
+// against NumPy float64 scalars (float32 array upcast), so the device side
+// also compares in double for bit-exact parity.
 
 __global__ void dms_extract_decision_kernel(
     uint16_t* __restrict__ q,
@@ -55,6 +57,104 @@ __global__ void dms_extract_decision_kernel(
   }
   evict[idx] = keep_evict;
   q[channel] = 0;
+}
+
+// U2: streaming pack. Per (row, head) the surviving prompt tokens
+// (~evict | inside the retention window) are scattered in token order into
+// the reserved extent; inputs are never retained (no dense shadow). The
+// extent capacity must cover the worst case (row token count) — admission
+// reserves it (see DMSCompactBackend.estimate).
+
+__global__ void dms_streaming_pack_kernel(
+    const uint16_t* __restrict__ k,
+    const uint16_t* __restrict__ v,
+    const uint8_t* __restrict__ evict,
+    const int32_t* __restrict__ base_offsets,
+    const int32_t* __restrict__ range_capacity,
+    int32_t* __restrict__ live_counts,
+    const int32_t* __restrict__ row_starts,
+    const int32_t* __restrict__ row_tokens,
+    uint16_t* __restrict__ k_slot,
+    uint16_t* __restrict__ v_slot,
+    int32_t* __restrict__ token_positions,
+    uint8_t* __restrict__ slot_evict,
+    const int32_t rows,
+    const int32_t heads,
+    const int32_t dim,
+    const int32_t window_size) {
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t r = gid / heads;
+  const int32_t h = gid - r * heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t tokens = row_tokens[r];
+
+  __shared__ int32_t s_token_base;
+  __shared__ int32_t s_count[kDmsPackThreads];
+  __shared__ int32_t s_prefix[kDmsPackThreads];
+
+  if (tid == 0) {
+    int32_t base = 0;
+    for (int32_t i = 0; i < r; i++) {
+      base += row_tokens[i];
+    }
+    s_token_base = base;
+  }
+  __syncthreads();
+  const int32_t token_base = s_token_base;
+  const int32_t current = tokens - 1;
+  const int64_t ev_row = static_cast<int64_t>(token_base) * heads + h;
+
+  int32_t my_count = 0;
+  if (tokens > 0) {
+    for (int32_t t = tid; t < tokens; t += kDmsPackThreads) {
+      const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
+      if (e == 0 || current - t <= window_size) {
+        my_count++;
+      }
+    }
+  }
+  s_count[tid] = my_count;
+  __syncthreads();
+  if (tid == 0) {
+    int32_t acc = 0;
+    for (int32_t i = 0; i < kDmsPackThreads; i++) {
+      s_prefix[i] = acc;
+      acc += s_count[i];
+    }
+    live_counts[static_cast<int64_t>(r) * heads + h] = acc;
+  }
+  __syncthreads();
+
+  int32_t rank = s_prefix[tid];
+  const int32_t base = base_offsets[static_cast<int64_t>(r) * heads + h];
+  const int32_t capacity = range_capacity[static_cast<int64_t>(r) * heads + h];
+  const uint16_t* k_src =
+      k + (static_cast<int64_t>(token_base) * heads + h) * dim;
+  const uint16_t* v_src =
+      v + (static_cast<int64_t>(token_base) * heads + h) * dim;
+  if (tokens > 0) {
+    for (int32_t t = tid; t < tokens; t += kDmsPackThreads) {
+      const int32_t e = evict[ev_row + static_cast<int64_t>(t) * heads];
+      if (e != 0 && current - t > window_size) {
+        continue;
+      }
+      const int32_t dest = base + rank;
+      if (dest - base >= capacity) {
+        return;  // admission invariant violated; fail closed, no OOB write
+      }
+      rank++;
+      const uint16_t* ks = k_src + static_cast<int64_t>(t) * heads * dim;
+      const uint16_t* vs = v_src + static_cast<int64_t>(t) * heads * dim;
+      uint16_t* kd = k_slot + static_cast<int64_t>(dest) * dim;
+      uint16_t* vd = v_slot + static_cast<int64_t>(dest) * dim;
+      for (int32_t d = 0; d < dim; d++) {
+        kd[d] = ks[d];
+        vd[d] = vs[d];
+      }
+      token_positions[dest] = row_starts[r] + t;
+      slot_evict[dest] = static_cast<uint8_t>(e);
+    }
+  }
 }
 
 }  // namespace
@@ -95,5 +195,48 @@ extern "C" int hipengine_dms_extract_decision_bf16(
       kv_heads,
       head_dim,
       positive_scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dms_streaming_pack_bf16(
+    const uint16_t* k,
+    const uint16_t* v,
+    const uint8_t* evict,
+    const int32_t* base_offsets,
+    const int32_t* range_capacity,
+    int32_t* live_counts,
+    const int32_t* row_starts,
+    const int32_t* row_tokens,
+    uint16_t* k_slot,
+    uint16_t* v_slot,
+    int32_t* token_positions,
+    uint8_t* slot_evict,
+    int32_t rows,
+    int32_t heads,
+    int32_t dim,
+    int32_t window_size,
+    hipStream_t stream) {
+  if (rows <= 0 || heads <= 0 || dim <= 0 || window_size < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int blocks = rows * heads;
+  hipLaunchKernelGGL(
+      dms_streaming_pack_kernel, dim3(blocks), dim3(kDmsPackThreads), 0, stream,
+      k,
+      v,
+      evict,
+      base_offsets,
+      range_capacity,
+      live_counts,
+      row_starts,
+      row_tokens,
+      k_slot,
+      v_slot,
+      token_positions,
+      slot_evict,
+      rows,
+      heads,
+      dim,
+      window_size);
   return static_cast<int>(hipGetLastError());
 }
