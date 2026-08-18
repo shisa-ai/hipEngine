@@ -1434,6 +1434,26 @@ schedule determinism, and register an FP32 strict fallback. Also decide fp16 vs
 bf16 for our accumulators explicitly. If it clears, it applies to both gfx1151
 and gfx1100 decode.
 
+**Measured 2026-08-18 (host-side emulation, real Qwen3.8 layer-0 arrays).** The
+state is `float*` in every GDN device kernel (the `fp16_lowp` variants change
+only output dtype), so a full change spans the ~40-kernel GDN family. A
+faithful host-side replay (`replay_gdn` math, real `ssm_norm`/`ssm_dt_bias`/
+`ssm_a`, eps=1e-6) on 64 captured gfx1151 positions shows fp16-state
+recurrent-output drift rms **4.72e-6** = **0.05x** the device's own
+already-accepted bf16 output rounding (1.02e-4), while bf16-state drift is
+**539x** (rms 5.50e-2) — validating the external's explicit fp16-not-bf16
+choice. Decode-traffic framing: the GDN recurrent gate is **1.43% of decode
+wall** (1.12/78.5 ms per token), so fp16 state bounds c=1 decode gain near
+0.5-0.7% on gfx1151; the external's material win (concurrency via 150 MB/
+request state) is outside our c=1 scope. Evidence:
+[`2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json).
+
+**Decision:** do not invest in the full multi-kernel fp16-state device change
+for the c=1 campaign; the quality tradeoff is favorable but the decode gain is
+small and the real value is concurrency. Revisit (with a device fp16-state GDN
+variant + full natural-suite KL/top-1 profile gate) only if a multi-request /
+concurrency target is adopted. FP32 state remains the strict default.
+
 ### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
 
 Qwen3.8 has untied embeddings; the external repo requantizes the two ~2.5 GB

@@ -1,0 +1,39 @@
+{
+ "schema": 2,
+ "kind": "qwen38-gfx1151-r2-fp16-recurrent-state-quality",
+ "status": "checkpoint",
+ "date": "2026-08-18",
+ "publishable": false,
+ "performance_claim": false,
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s"
+ },
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "rocm": "HIP 7.15.0",
+  "compiler": "AMD clang 23.0.0git"
+ },
+ "method": "host-side GDN recurrence replay (replay_gdn math, real layer-0 ssm_norm/ssm_dt_bias/ssm_a, eps=1e-6) on captured gfx1151 boundary arrays; state stored fp32/fp16/bf16 with fp32 accumulation",
+ "capture": "/tmp/qwen38-r1/r2-qwen38-gdn-layer0-pos0-63.json (64 positions, positions 0-63)",
+ "results": {
+  "fp16_state_recurrent_out_drift_vs_fp32": {
+   "max_abs": 0.00046855,
+   "rms": 4.7182e-06
+  },
+  "bf16_state_recurrent_out_drift_vs_fp32": {
+   "max_abs": 2.5101,
+   "rms": 0.054974
+  },
+  "device_bf16_output_rounding": {
+   "max_abs": 0.0077555,
+   "rms": 0.00010198
+  },
+  "fp16_drift_ratio_vs_device_rounding_rms": 0.046,
+  "bf16_drift_ratio_vs_device_rounding_rms": 539.0
+ },
+ "decode_traffic_framing": "GDN recurrent gate = 1.43% of selected kernel wall in post-qmicro decode profile; fp16 state bounds c=1 decode gain near 0.5-0.7% on gfx1151",
+ "decision": "fp16 recurrent state quality-neutral at layer-0 recurrence (0.05x accepted bf16 output rounding); bf16 state rejected (539x). Full multi-kernel device change deferred for c=1 campaign; revisit only if concurrency/multi-request becomes a target, still gated on full natural-suite KL/top-1.",
+ "worklog": "worklog/entries/20260818T092624.046425Z-pi-qwen38-gfx1151-r2-fp16-recurrent-state-dd26e5.md"
+}
