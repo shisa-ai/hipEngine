@@ -580,7 +580,7 @@ def gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Small-B (rows 2-6) weight-amortized Q6T16 GEMV, BF16 in / FP32 out.
+    """Small-B (rows 2-8) weight-amortized Q6T16 GEMV, BF16 in / FP32 out.
 
     Reads each weight tile once and reuses it across all rows; bit-identical to
     the per-row decode kernel. For the small-B verifier lm-head path.
@@ -962,8 +962,8 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
 ) -> None:
     """Exact planar-qmicro FP32 rowtile with a 16-column rows=2 owner."""
 
-    if rows < 2 or rows > 4:
-        raise ValueError("qmicro planar rowtile requires rows in [2, 4]")
+    if rows < 2 or rows > 8:
+        raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
     _launch(
         _Q6_T16_QMICRO_PLANAR_ROWTILE_BF16_F32,
         x_ptr,

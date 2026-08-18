@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-18",
+  "kind": "qwen38_gfx1151_q4ks_cn_combination_map",
+  "status": "retained",
+  "publishable": true,
+  "performance_claim": true,
+  "purpose": "Close the c=N decode gaps so no Qwen3.8-27B Q4_K_S gfx1151 decode concurrency below 512 falls to WMMA prefill: (1) general native rowtile8 chunking for single Q4/Q5 projections at rows 9..511, (2) gate/up dual rowtile8 policy extended to rows 2..511, (3) Q6 lm_head rowtile (standard + qmicro planar) extended to rows 8 so c8 lm_head is one launch instead of 4+4.",
+  "links": {
+    "unit1_gateup_rowtile8": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-c8-native-gateup-rowtile8.json",
+    "unit2_single_rowtile8": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-c8-single-projection-rowtile8.json",
+    "r2_roofline": "benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git"
+  },
+  "software": {
+    "hipengine_commit": "02c363c586945175958b41e96f0ec81dc3d1afcd (worktree)", 
+    "env": "none needed for lm_head (GGUF_Q6_LM_HEAD_MAX_CHUNK default now 8; the prior HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 workaround is obsolete)"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv": "bf16"
+  },
+  "combination_map": {
+    "note": "gfx1151 Qwen3.8 Q4_K_S native decode session; rows >= 512 stays WMMA prefill (bulk).",
+    "rows_1": "serial c1 owners (dense_single_local32 / dense_dual_local32 / t16_gemv_decode direct)",
+    "rows_2_8": "native rowtile: Q4 single dense_rowtile/_col4, Q4 gate/up dual q8_1x2 rowtile8, Q5 t16_gemv_rowtile (per-shape cap), Q6 lm_head t16_gemv_rowtile",
+    "rows_9_511": "Q4 single -> _rowtile8_row_chunks groups (8+2, 8+8, ...); Q4 gate/up -> dual rowtile8 chunked; Q5 single -> direct grid.y=rows leaf; Q6 lm_head -> chunked max 8",
+    "rows_512_plus": "WMMA prefill",
+    "mechanism": "_native_rowtile_chunk_groups gates on (native session, 9<=rows<512, resolved variant startswith t16_wmma_prefill, registered rowtile owner)"
+  },
+  "benchmark": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/gguf_packed_ar_bench.py --backend hip_gfx1151 --model Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --prompt-length 512 --decode-steps 64 --measured-runs 3 --configurations c1,c4,native_c8",
+    "c1_tok_s": 12.88,
+    "c4_tok_s_aggregate": 42.48,
+    "c4_tok_s_per_request": 10.62,
+    "c4_aggregate_vs_c1": 3.3,
+    "native_c8_tok_s_aggregate": 57.41,
+    "native_c8_tok_s_per_request": 7.18,
+    "native_c8_aggregate_vs_c1": 4.46,
+    "unit2_native_c8_aggregate": 56.64,
+    "lm_head_rows8_gain": "+1.36%",
+    "correctness": {
+      "c1_c4_prefix_exact": true,
+      "native_c8_rows_match_c4": true,
+      "all_measured_runs_repeatable": true
+    }
+  },
+  "rocprofv3": {
+    "method": "gguf_packed_ar_rocprof.py c8 eager, token 9707 exact, compiler-version-file prebuilt",
+    "correctness": {
+      "c1_all_tokens_exact": true,
+      "c8_all_tokens_exact": true,
+      "physical_shape_exact": true
+    },
+    "c8_decode_step_kernel_families": {
+      "q4_gate_up_dual_rowtile8_dp4a_silu": {"count": 128, "ms_total": 129.6},
+      "q4_single_dense_rowtile8": {"count": 424, "ms_total": 71.0},
+      "q6_lm_head_qmicro_planar_rowtile_col8_ROW_TILE_8": {"count": 8, "ms_total": 62.5},
+      "q5_single_dense_rowtile_col4_8": {"count": 120, "ms_total": 31.6}
+    },
+    "wmma_prefill_in_decode": "eliminated",
+    "lm_head_note": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float,8> runs once per decode token (8 launches for 8 rows) - single rows-8 lm_head launch replaces the prior 4+4 chunk (would have been 16 launches)."
+  },
+  "red_tests": [
+    "test_q4_t16_dense_c_n_chunked_rowtile_composes_bit_exact_vs_c1 (rows 9/10/16/17, 4/4 bit-exact vs serial c1)",
+    "test_q6_t16_qmicro_planar_rowtile_f32_matches_generic_legacy_tree (rows 2..8, the 27B lm_head path)",
+    "test_gguf_q6_k_t16_rowtile_gemv rows 2..8 direct on the 35B fixture (standard Q6)"
+  ],
+  "remaining_headroom": [
+    "fp16 recurrent state (R2) ~6% decode gain, now harvestable after the dense path is fully native at c8",
+    "c9+ chunked rowtile8 groups carry a per-group weight-traversal; a single ROW_TILE>8 kernel could amortize further, but no measured decode concurrency above 8 is currently exercised"
+  ],
+  "worklog": "worklog/entries/20260818T153527.553308Z-lhl-qwen38-gfx1151-cn-combination-map-675f46.md"
+}

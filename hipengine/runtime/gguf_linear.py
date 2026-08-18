@@ -141,6 +141,11 @@ _Q4K_ROWTILE_ENV = "HIPENGINE_GGUF_Q4K_ROWTILE"
 _q4k_rowtile_session_enabled: bool | None = None
 _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
+# Decode-regime upper bound for native rowtile chunking: any native-session
+# concurrency below this is decomposed into <=8-row rowtile8 groups so no
+# single Q4/Q5 projection silently falls back to WMMA prefill. rows >= 512 is
+# the bulk-prefill regime and stays on WMMA.
+_NATIVE_ROWTILE_CHUNK_MAX_ROWS = 512
 _DENSE_BF16_ROWTILE_MIN_ROWS = 2
 _DENSE_BF16_ROWTILE_MAX_ROWS = 4
 # The exact local128 virtual-partition schedule wins through K=10,240 on
@@ -2154,6 +2159,54 @@ def _native_split_row_chunk(
     return chunk
 
 
+def _native_rowtile_chunk_groups(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> list[tuple[int, int]] | None:
+    """General c=N decode chunking: rows 9..511 -> <=8-row rowtile8 groups.
+
+    In a native batch-decode session the single Q4/Q5 projections currently
+    fall to WMMA prefill for every concurrency above 8 (the Q4T16
+    ``rows > 1 -> t16_wmma_prefill`` rewrite in ``resolve_gguf_linear_dispatch``
+    and the ``_native_batch_decode_dispatch`` early return for rows > 8). This
+    returns ``_rowtile8_row_chunks`` groups (all groups 2..8 rows, tail-1 folded
+    into the prior group) so each group lands on the native rowtile owner, and
+    ``None`` otherwise. rows >= 512 stays on WMMA (bulk prefill).
+
+    The gate only fires for quants that would resolve to a ``t16_wmma_prefill``
+    leaf at these rows AND have a registered native rowtile owner; quants that
+    already keep a native per-row decode leaf at rows 9+ (e.g. Q5's direct
+    grid.y=rows kernel) are left on their measured path.
+    """
+
+    if not _native_batch_decode_session_enabled:
+        return None
+    rows = int(rows)
+    if not _ROWTILE_MAX_ROWS < rows < _NATIVE_ROWTILE_CHUNK_MAX_ROWS:
+        return None
+    resolved = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
+    if not resolved.key.variant.startswith("t16_wmma_prefill"):
+        return None
+    candidates = (
+        "dense_rowtile_bf16_bf16_out",
+        "dense_rowtile_col4_bf16_bf16_out",
+        "t16_gemv_rowtile_bf16_bf16_out",
+    )
+    quant = weight.spec.quant_key
+    if not any(
+        is_registered(
+            KernelKey(backend, "linear", quant, variant)
+        )
+        for variant in candidates
+    ):
+        return None
+    return _rowtile8_row_chunks(rows)
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -2218,6 +2271,41 @@ def launch_gguf_linear(
                 x_ptr + row_start * in_features * element_nbytes,
                 out_ptr + row_start * out_features * element_nbytes,
                 split_row_chunk,
+                in_features,
+                out_features,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=resolved_backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+            )
+        return
+    native_rowtile_groups = (
+        _native_rowtile_chunk_groups(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
+    if native_rowtile_groups is not None:
+        element_nbytes = DType.BF16.itemsize
+        for chunk_rows, row_base in native_rowtile_groups:
+            launch_gguf_linear(
+                weight,
+                x_ptr + row_base * in_features * element_nbytes,
+                out_ptr + row_base * out_features * element_nbytes,
+                chunk_rows,
                 in_features,
                 out_features,
                 activation_dtype=activation_dtype,

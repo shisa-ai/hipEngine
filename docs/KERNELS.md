@@ -272,9 +272,31 @@ sidecar_decode_variants` cover rows 2..8, and gfx1151's
 `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT` for Q5 is 8. c8 WMMA prefill is
 eliminated: packed-AR c8 step 312.4 -> 139.8 ms, native_c8 aggregate
 25.2 -> 56.6 tok/s (4.40x c1, 7.1/stream), c4 unchanged (42.5 tok/s agg),
-RED rows 2..8 bit-exact vs c1. Remaining: Q6 lm_head rowtile still rows [2,4]
-(c8 chunked 4+4, ~9.6 ms) and fp16 recurrent state (R2). c>8 chunks into
-<=8-row rowtile8 groups; c>=512 stays on WMMA. Evidence:
+RED rows 2..8 bit-exact vs c1. The Q6 lm_head rowtile was also extended to
+rows 2..8 (`launch_q6_t16_rowtile`/`_col8` ROW_TILE 5..8), so c8 lm_head is
+one launch instead of the prior 4+4 chunk; `GGUF_Q6_LM_HEAD_MAX_CHUNK` is now
+8 (was 5/4).
+
+### c=N decode combination map (gfx1151 Qwen3.8 Q4_K_S)
+
+No decode concurrency below 512 silently falls to WMMA prefill:
+
+| rows | Q4 single proj | Q4 gate/up | Q5 single | Q6 lm_head |
+| --- | --- | --- | --- | --- |
+| 1 | `dense_single_local32` | `dense_dual_local32` | `t16_gemv_decode` (direct) | `t16_gemv_decode` (direct) |
+| 2-8 | `dense_rowtile`/`_col4` | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap) | `t16_gemv_rowtile` |
+| 9-511 | rowtile8 chunked (8+2, 8+8, ...) | dual rowtile8 chunked | `t16_gemv_decode` (direct grid.y=rows) | chunked (max 8) |
+| >=512 | WMMA prefill (bulk) | WMMA prefill | WMMA prefill | WMMA prefill |
+
+Mechanism: in a `native_batch_decode_session` the single Q4/Q5 projections at
+rows 9..511 are decomposed by `_native_rowtile_chunk_groups` into
+`_rowtile8_row_chunks` groups (all groups 2..8 rows, tail-1 folded), so each
+group lands on the native rowtile owner; the gate only fires for quants that
+would resolve to a `t16_wmma_prefill` leaf (Q4) and that have a registered
+rowtile owner. Q5 keeps its native direct grid.y=rows leaf (it never hits
+WMMA), and rows >= 512 stay on WMMA prefill. The gate/up dual rowtile8 policy
+(`GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES`) admits rows 2..511. c>8 chunks
+into <=8-row rowtile8 groups; c>=512 stays on WMMA. Evidence:
 [`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
 [`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),
 [`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json), and
