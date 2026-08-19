@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-18**
+Last updated: **2026-08-19**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -179,6 +179,13 @@ and the superseded [`long/load blocker`](results/2026-08-17-concurrency2-c2-6-w7
 The executable Generation-2 audit now reports **31 passed / 3 blocked /
 1 unavailable** requirements with no missing evidence; full DMS/cross-backend
 product completion is not claimed. [`Audit artifact`](results/2026-08-18-concurrency2-completion-audit.json).
+
+Engine-level W7900 Qwen3.8-27B `Q4_K_M` packed-decode result (separate
+`gguf_packed_ar_bench` model-step protocol, not the production HTTP topline above):
+packed c2/c4 now run the exact dense-row-tile decode and scale near-linearly —
+**c1/c2/c4 = 29.69 / 52.41 / 91.00 tok/s** (c2 **1.77x**, c4 **3.07x** c1),
+c2 step **174 ms -> 36.7 ms**, with c2/c4 trajectories prefix-exact to the c1
+oracle (batch-composition invariant). [`Packed-decode rowtile artifact`](results/2026-08-19-concurrency2-qwen38-27b-packed-decode-rowtile-accepted.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch

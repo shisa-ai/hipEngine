@@ -19757,6 +19757,7 @@ class Qwen35GGUFResidentSession:
             )
         )
         with (
+            native_batch_decode_session(2 <= rows <= 4),
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
             _gguf_t16_selected_pairreuse_min_rows_scope(selected_pairreuse_min_rows),
