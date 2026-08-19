@@ -220,6 +220,133 @@ __global__ void dflash2_selector_walk_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sliding-window (optionally causal) attention over rotated key rows.
+//   q: (batch, query_len, q_heads, head_dim) f32
+//   k: (batch, kv_len, kv_heads, head_dim) f32
+//   v: (batch, kv_len, kv_heads, head_dim) bf16
+// The mask keeps key rows within ``sliding_window`` of each query row's
+// absolute position (bidirectional when ``is_causal`` is false, else causal).
+// ---------------------------------------------------------------------------
+__global__ void dflash2_sliding_attention_f32_bf16_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const uint16_t* __restrict__ value,
+    const int32_t* __restrict__ query_positions,
+    const int32_t* __restrict__ key_positions,
+    uint16_t* __restrict__ out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int32_t sliding_window,
+    int32_t is_causal,
+    float scale) {
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t q_row = static_cast<int64_t>(blockIdx.y);
+  const int64_t batch = static_cast<int64_t>(blockIdx.z);
+  if (batch >= batch_size || q_row >= query_len || q_head >= num_q_heads) {
+    return;
+  }
+  extern __shared__ float shared[];
+  float* partial = shared;
+  float* scores = shared + blockDim.x;
+  const int64_t group_size = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t q_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+  const int32_t qpos = query_positions[batch * query_len + q_row];
+
+  for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+    float dot = 0.0f;
+    const int32_t kpos = key_positions[batch * kv_len + kv_row];
+    const int32_t dist = qpos > kpos ? qpos - kpos : kpos - qpos;
+    const bool masked =
+        (sliding_window > 0 && dist >= sliding_window) ||
+        (is_causal && kpos > qpos);
+    const int64_t k_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      dot += query[q_base + dim] * key[k_base + dim];
+    }
+    partial[threadIdx.x] = dot;
+    __syncthreads();
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        partial[threadIdx.x] += partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      scores[kv_row] = masked ? -3.4028234663852886e+38F : partial[0] * scale;
+    }
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+    float max_score = -3.4028234663852886e+38F;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      max_score = fmaxf(max_score, scores[kv_row]);
+    }
+    float denom = 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      const float prob = expf(scores[kv_row] - max_score);
+      scores[kv_row] = prob;
+      denom += prob;
+    }
+    const float inv_denom = denom > 0.0f ? 1.0f / denom : 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      scores[kv_row] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  const int64_t out_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      const int64_t v_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+      acc += scores[kv_row] * bf16_bits_to_float(value[v_base + dim]);
+    }
+    out[out_base + dim] = float_to_bf16_bits(acc);
+  }
+}
+
+extern "C" int hipengine_dflash2_sliding_attention_f32_bf16(
+    const float* query,
+    const float* key,
+    const uint16_t* value,
+    const int32_t* query_positions,
+    const int32_t* key_positions,
+    uint16_t* out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int32_t sliding_window,
+    int32_t is_causal,
+    float scale,
+    int64_t threads,
+    hipStream_t stream) {
+  if (num_q_heads <= 0 || num_kv_heads <= 0 || (num_q_heads % num_kv_heads) != 0) {
+    return -1;
+  }
+  const size_t shared = static_cast<size_t>(threads) * sizeof(float) +
+                        static_cast<size_t>(kv_len) * sizeof(float);
+  hipLaunchKernelGGL(dflash2_sliding_attention_f32_bf16_kernel,
+                     dim3(static_cast<unsigned int>(num_q_heads),
+                          static_cast<unsigned int>(query_len),
+                          static_cast<unsigned int>(batch_size)),
+                     dim3(static_cast<unsigned int>(threads)),
+                     shared, stream,
+                     query, key, value, query_positions, key_positions, out,
+                     batch_size, query_len, kv_len, num_q_heads, num_kv_heads,
+                     head_dim, sliding_window, is_causal, scale);
+  return 0;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
