@@ -4,6 +4,16 @@ Importing this package self-registers the first NumPy reference kernels. Tests t
 kernel registry can call ``register_cpu_reference_kernels()`` to restore them.
 """
 
+from hipengine.kernels.cpu_reference.dflash2 import (
+    DFlash2SelectorResult,
+    candidate_selector_greedy_path,
+    candidate_selector_select,
+    dflash2_topk,
+    grouped_dynamic_convolve,
+    grouped_dynamic_conv_finish,
+    grouped_dynamic_conv_prepare,
+    register_dflash2_cpu_reference_kernels,
+)
 from hipengine.kernels.cpu_reference.fixtures import (
     LayerCheckResult,
     LayerFixture,
@@ -132,11 +142,13 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     _register_base_cpu_reference_kernels(replace=replace)
     register_laguna_cpu_reference_kernels(replace=replace)
     register_moonshine_cpu_reference_kernels(replace=replace)
+    register_dflash2_cpu_reference_kernels(replace=replace)
 
 
 register_cpu_reference_kernels()
 
 __all__ = [
+    "DFlash2SelectorResult",
     "LayerCheckResult",
     "LayerFixture",
     "LagunaAttentionConfig",
@@ -153,6 +165,13 @@ __all__ = [
     "LagunaSparseFFNWeights",
     "LagunaSparseMoEResult",
     "Tolerances",
+    "candidate_selector_greedy_path",
+    "candidate_selector_select",
+    "dflash2_topk",
+    "grouped_dynamic_convolve",
+    "grouped_dynamic_conv_finish",
+    "grouped_dynamic_conv_prepare",
+    "register_dflash2_cpu_reference_kernels",
     "attention_decode",
     "awq_pack8_dequant_transposed",
     "awq_pack8_gemv_transposed",
