@@ -66,6 +66,8 @@ class DFlashDraftConfig:
     conv_group_size: int = 0
     selector_rank: int = 0
     selector_top_k: int = 0
+    output_multiplier: float = 1.0
+    final_logit_softcapping: float = 0.0
 
     @property
     def q_features(self) -> int:
@@ -130,6 +132,8 @@ class DFlashDraftConfig:
             "conv_group_size": self.conv_group_size,
             "selector_rank": self.selector_rank,
             "selector_top_k": self.selector_top_k,
+            "output_multiplier": self.output_multiplier,
+            "final_logit_softcapping": self.final_logit_softcapping,
         }
 
 
@@ -326,7 +330,7 @@ def _parse_qwen_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
         num_attention_heads=num_attention_heads,
         num_key_value_heads=int(config.get("num_key_value_heads", num_attention_heads)),
         head_dim=int(config.get("head_dim", hidden_size // num_attention_heads)),
-        rope_theta=float(config.get("rope_theta", 10000.0)),
+        rope_theta=_qwen_rope_theta(config),
         rms_norm_eps=float(config.get("rms_norm_eps", 1.0e-6)),
         max_position_embeddings=int(config.get("max_position_embeddings", 0) or 0),
         sliding_windows=_normalized_sliding_windows(config, num_layers),
@@ -353,6 +357,8 @@ def _parse_qwen_dflash2_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
         conv_group_size=int(dflash_config.get("conv_group_size", 0) or 0),
         selector_rank=int(dflash_config.get("selector_rank", 0) or 0),
         selector_top_k=int(dflash_config.get("selector_top_k", 0) or 0),
+        output_multiplier=float(dflash_config.get("output_multiplier", 1.0)),
+        final_logit_softcapping=float(dflash_config.get("final_logit_softcapping", 0.0) or 0.0),
     )
 
 
@@ -405,6 +411,17 @@ def _dflash_int(dflash_config: Mapping[str, Any], config: Mapping[str, Any], key
         if value is not None:
             return int(value)
     return 0
+
+
+def _qwen_rope_theta(config: Mapping[str, Any]) -> float:
+    """Read rope_theta from rope_parameters, then top-level, then 10k default."""
+
+    rope_params = config.get("rope_parameters")
+    if isinstance(rope_params, Mapping):
+        value = rope_params.get("rope_theta")
+        if value is not None:
+            return float(value)
+    return float(config.get("rope_theta", 10000.0))
 
 
 def _dflash_config_mapping(config: Mapping[str, Any]) -> Mapping[str, Any]:
