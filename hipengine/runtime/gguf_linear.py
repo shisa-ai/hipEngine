@@ -2235,7 +2235,7 @@ def launch_gguf_linear(
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     if (
         _native_batch_decode_session_enabled
-        and 2 <= rows <= 4
+        and (2 <= rows <= 4 or rows == 8)
         and not use_wmma
         and not use_q4_pack8_wmma
         and registered_variant is None
@@ -2605,6 +2605,31 @@ def launch_gguf_q4_t16_sidecar_decode(
         "gguf_q4_k_t16_v1",
     }:
         return False
+    if rows == 8:
+        # rows=8: run as two exact rows=4 groups. The t16 rowtile owner is rows
+        # 2-4; the weight-tiles sidecar is rows-independent and reused by both
+        # halves. Each half preserves the rows=4 exactness contract and the two
+        # output halves are disjoint, so the combined [8, out_features] write is
+        # exact (no cross-row reassociation).
+        half = 4
+        x_row_bytes = in_features * 2  # BF16 activation
+        out_row_bytes = out_features * 2  # BF16 output
+        for base in (0, half):
+            if not launch_gguf_q4_t16_sidecar_decode(
+                weight,
+                x_ptr + base * x_row_bytes,
+                out_ptr + base * out_row_bytes,
+                half,
+                in_features,
+                out_features,
+                backend=backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                enabled=enabled,
+            ):
+                return False
+        return True
     variants = _q4_t16_sidecar_decode_variants(
         rows=rows,
         in_features=in_features,
