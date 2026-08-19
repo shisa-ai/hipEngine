@@ -31,7 +31,13 @@ loaded-library cache on machines where pinned != installed. Follow-up census:
 **0 build_hip calls over 2 decode steps** — the other `library or build_X` sites
 (group_scatter/laguna_router/maple_moe) are not on this model's decode path, so
 the per-call-build host-dispatch problem is closed for eager decode (see worklog
-`pn6-hotpath-build-closure`).
+`pn6-hotpath-build-closure`). Dense-model extension (Qwen3.6-27B, `qwen35`
+arch): its decode path is dominated by the t16_selected family, so the q8_0_t16
+memo did not cover it; hoisted `gguf_t16_selected_gemv` (25 sites, worklog
+`pn6-t16-selected-dense-hoist`). Per-call host 48.7 -> 23.9 us, but the dense
+slice is **GPU-bound** — counter-rotated A/B recovers ~0 wall. The dense model
+gets a CPU-load/host-dispatch win, not a single-request wall win; the MoE
+remains the wall headline.
 
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
