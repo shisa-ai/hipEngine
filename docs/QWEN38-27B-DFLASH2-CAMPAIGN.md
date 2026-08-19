@@ -1,9 +1,12 @@
 # Qwen3.8-27B DFlash2 GGUF Campaign (gfx1151 first, gfx1100 functional)
 
 Status: **in progress** — D0 complete (metadata/validation/lineage/CPU oracles);
-D1 drafter-exactness core complete (torch-free NumPy drafter reproduces the
-reference model's greedy chain exactly). Remaining: D1 GGUF-target tap
-integration, D2 native kernels, D3 chain verify, D4 measurement, D5 gfx1100.
+D1 complete: NumPy drafter reproduces the reference greedy chain exactly (D0
+RED pin) **and** the GGUF-target tap capture + cycle driver runs end-to-end
+(`scripts/dflash2_gguf_cycle.py`: full-prompt 5-layer tap capture at prefill,
+mask-noise block proposal, sequential greedy commit-only verify, projected-context
+cache; DFlash2 greedy == pure-AR greedy 20/20 on the smoke prompt). Remaining:
+D2 native kernels, D3 chain verify, D4 measurement, D5 gfx1100.
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
@@ -178,6 +181,22 @@ native kernels arrive in D2. **Gate:** single-prompt greedy smoke reproduces
 the reference `dflash` (transformers backend) greedy chain selection on
 identical inputs (draft-top-K tables and selected path identical), finite
 logits.
+
+**D1 status (2026-08-19):** GGUF-target tap capture added to the resident
+session (`DFlash2HiddenCaptureTargets`, `DFLASH2_TAP_DEPTHS=(6,20,34,48,62)`
+= tap layer ids + 1, threaded through `prefill(dflash2_capture=...)` in both
+bulk-prefill layer loops). `scripts/dflash2_gguf_cycle.py` drives the cycle:
+prefill taps → drafter forward (mask-token noise, positions spanning context +
+block, per-row projected-context cache) → top-16 selector → sequential greedy
+verify via `session.step(capture_layer_output_hidden=tap_ids)` committing only
+accepted rows (rejected rows are never run, so no KV rollback is needed) →
+accepted-row taps extend the projected context. Smoke result: 20/20 greedy
+tokens identical to pure-AR on the same session; drafts are sensible (e.g.
+`' French'` for a translation prompt). Acceptance on the smoke prompt is low
+(mean 1.67, ~0.095 accepted/draft) — a short-context prompt property, not a
+mechanism failure; D4 measures acceptance on the full suite. Throughput is
+CPU-bound by the NumPy drafter (2.44 vs 10.91 tok/s AR) — D2 native kernels
+are the speed path.
 
 ### D2 — Native kernels: conv + selector + 8-row output head
 
