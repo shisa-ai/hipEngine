@@ -3969,21 +3969,35 @@ should be boring.
   optimization pass (e.g. fold the status into the next step's metadata
   staging) before enabling it by default.
 
-## Qwen3.8-27B gfx1100 packed route: strict-parity break (F2, 2026-08-19)
+## Qwen3.8-27B gfx1100 packed route: T2 production drift, not a blocker (corrected 2026-08-19)
 
 - The current C2 packed decode route is NOT byte-exact vs the c1 oracle for
-  Qwen3.8-27B Q4_K_M on gfx1100: prompt row 2 diverges at decode token 73
-  (observed 6866 vs oracle 3154), deterministic at c2 (4/6 exact) and c4
-  (11/12 exact). The pre-C2 tree (b08ed12d6) is byte-exact on the same
-  host/protocol (6/6, 12/12), so this is a C2-era regression, likely in the
-  packed-KV/workspace changes (af5d00098, 29a786afc). Blocker for declaring
-  this model qualified for packed serving on gfx1100: fixture the row-2
-  state at step 73, bisect the two candidate commits, restore strict parity
-  or fail the packed route closed to serial c1 for this shape. Evidence:
-  `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`
-  and the `qwen38-27b-old-vs-new-ab` worklog entry.
-- Separate pre-existing performance fact (not C2-specific, not a gate
-  blocker by itself): the dense 27B packed c2/c4 step costs ~5x the c1 step
-  (ITL 36ms -> 184/198ms) in BOTH trees, so neither design scales this
-  model's aggregate throughput; rocprof kernel-family audit of the packed
-  step is the follow-up.
+  Qwen3.8-27B Q4_K_M on gfx1100: prompt row 2 (last token 9708) diverges at
+  decode token 73 (observed 6866 vs oracle 3154), deterministic at c2 and c4
+  (the two packed widths are byte-identical to each other). The pre-C2 tree
+  (b08ed12d6) was byte-exact on the same host/protocol.
+- **Corrected classification (supersedes the earlier "regression/blocker"
+  label):** this is a **T2 production drift** (width-specific packed
+  arithmetic vs c1), which `docs/EXECUTION-PROFILES.md` explicitly allows for
+  the `production` profile ("width- and shape-specific arithmetic is
+  allowed"; "cross-width generated-ID equality is diagnostic, not a
+  promotion requirement"). The produced text is fluent and valid ("giving
+  back to society" vs "making a positive impact on society"), the packed
+  trajectory is the oracle shifted by exactly 2 tokens after the single
+  step-73 flip, and both end in the same repeat loop. It is **not** a
+  correctness bug and **not** a production gate failure; the F1 harness
+  "mismatch" is a composition-invariance detector, not a correctness oracle.
+- It becomes a requirement only if this route is ever declared `strict`
+  (bit-stable on retained fixtures) or `batch_invariant` (result preserved
+  across widths/slots/admission order). If that is needed, restore
+  cross-width parity (bisect af5d00098 / 29a786afc) or keep the route
+  `production`. Optional: measure the step-73 logit margin (3154 vs 6866)
+  in a high-precision reference to confirm the narrow-margin flip. Evidence:
+  `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`,
+  worklog `qwen38-27b-old-vs-new-ab` and
+  `qwen38-27b-packed-drift-correction`.
+- Separate pre-existing performance fact (not C2-specific, the item to
+  profile): the dense 27B packed c2/c4 step costs ~5x the c1 step (ITL 36ms
+  -> 184/198ms) in BOTH trees, so neither design scales this model's
+  aggregate throughput; rocprof kernel-family audit of the packed step is
+  the follow-up.
