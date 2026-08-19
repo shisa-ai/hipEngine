@@ -231,14 +231,21 @@ class DFlash2NativeDrafter:
 
     def _staged_h2d(self, dst_ptr: int, arr: np.ndarray) -> None:
         """Upload ``arr`` to ``dst_ptr`` through the persistent host staging
-        buffer (avoids the post-hipMalloc H2D segfault quirk)."""
+        buffer (avoids the post-hipMalloc H2D segfault quirk).  Arrays larger
+        than the staging buffer are uploaded in contiguous chunks."""
         arr_c = np.ascontiguousarray(arr)
         nbytes = arr_c.nbytes
-        if nbytes > self._staging_nbytes:
-            raise ValueError(f"H2D upload of {nbytes} bytes exceeds host staging buffer")
-        staging_view = self._staging_np.view(np.uint8)[:nbytes]
-        staging_view[:] = arr_c.view(np.uint8).ravel()
-        self.runtime.memcpy(dst_ptr, self._staging_ptr, nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        if nbytes <= self._staging_nbytes:
+            staging_view = self._staging_np.view(np.uint8)[:nbytes]
+            staging_view[:] = arr_c.view(np.uint8).ravel()
+            self.runtime.memcpy(dst_ptr, self._staging_ptr, nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            return
+        chunk = self._staging_nbytes
+        for offset in range(0, nbytes, chunk):
+            size = min(chunk, nbytes - offset)
+            staging_view = self._staging_np.view(np.uint8)[:size]
+            staging_view[:] = arr_c.view(np.uint8).ravel()[offset : offset + size]
+            self.runtime.memcpy(dst_ptr + offset, self._staging_ptr, size, HipMemcpyKind.HOST_TO_DEVICE)
 
     def _d2h(self, buf, shape: tuple[int, ...], dtype) -> np.ndarray:
         arr = np.empty(shape, dtype=dtype)
@@ -515,3 +522,17 @@ class DFlash2NativeDrafter:
         path = self._d2h(self.selector_path, (rows,), np.int32)
         scores = self._d2h(self.selector_scores, (rows, self.selector_top_k), np.float32)
         return path, scores
+
+    def last_candidates(self) -> np.ndarray:
+        """Top-K candidate token ids from the most recent ``select`` call
+        (rows, top_k), for diagnostics like per-position recall@K."""
+        rows = self.block_size - 1
+        return self._d2h(self.topk_ids, (rows, self.selector_top_k), np.int32)
+
+    def last_logits_argmax(self) -> np.ndarray:
+        """Argmax of the raw draft logits (unary, output head applied to the
+        draft hidden) from the most recent ``select`` call — a diagnostic for
+        whether the bilinear selector ranking beats the plain unary argmax."""
+        rows = self.block_size - 1
+        lg = self._d2h(self.logits, (rows, self.vocab_size), np.float32)
+        return lg.argmax(axis=1).astype(np.int32)
