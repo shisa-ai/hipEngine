@@ -3968,3 +3968,22 @@ should be boring.
   correctness gate. Revisit the per-layer-per-step D2H readback in the
   optimization pass (e.g. fold the status into the next step's metadata
   staging) before enabling it by default.
+
+## Qwen3.8-27B gfx1100 packed route: strict-parity break (F2, 2026-08-19)
+
+- The current C2 packed decode route is NOT byte-exact vs the c1 oracle for
+  Qwen3.8-27B Q4_K_M on gfx1100: prompt row 2 diverges at decode token 73
+  (observed 6866 vs oracle 3154), deterministic at c2 (4/6 exact) and c4
+  (11/12 exact). The pre-C2 tree (b08ed12d6) is byte-exact on the same
+  host/protocol (6/6, 12/12), so this is a C2-era regression, likely in the
+  packed-KV/workspace changes (af5d00098, 29a786afc). Blocker for declaring
+  this model qualified for packed serving on gfx1100: fixture the row-2
+  state at step 73, bisect the two candidate commits, restore strict parity
+  or fail the packed route closed to serial c1 for this shape. Evidence:
+  `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`
+  and the `qwen38-27b-old-vs-new-ab` worklog entry.
+- Separate pre-existing performance fact (not C2-specific, not a gate
+  blocker by itself): the dense 27B packed c2/c4 step costs ~5x the c1 step
+  (ITL 36ms -> 184/198ms) in BOTH trees, so neither design scales this
+  model's aggregate throughput; rocprof kernel-family audit of the packed
+  step is the follow-up.
