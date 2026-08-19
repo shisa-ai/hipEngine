@@ -336,7 +336,7 @@ def _run_dflash2_cycle_batch(
                 draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
             )
             cands = drafter.last_candidates()
-            unary = drafter.last_logits_argmax()
+            unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
             # --- batched chain verify (B+1 rows in one bulk pass) --------
             start_pos = int(session.position)
@@ -503,7 +503,7 @@ def _run_dflash2_cycle_native(
                 draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
             )
             cands = drafter.last_candidates()  # (n_drafts, top_k)
-            unary = drafter.last_logits_argmax()  # (n_drafts,) unary argmax
+            unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
             # --- sequential greedy verify (commit-only-accepted) ----------
             accept: list[int] = []
