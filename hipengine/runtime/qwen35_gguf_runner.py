@@ -5541,7 +5541,12 @@ class Qwen35GGUFFullStackRunner:
         )
         if not k_sidecar_launched:
             k_batch_fn = self._full_attn_k_grid_y_batch_fn()
-            if k_batch_fn is not None:
+            if (
+                k_batch_fn is not None
+                and k_weight.has_allocation("qweight")
+                and k_weight.has_allocation("scales")
+                and k_weight.has_allocation("mins")
+            ):
                 k_batch_fn(
                     scratch.norm.ptr,
                     k_weight.allocation("qweight").tensor.ptr,
@@ -8168,7 +8173,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
         rounded_next_rms_fn = (
             self._rounded_add_rmsnorm_fn()
-            if next_norm_weight_ptr is not None and rows in (2, 3, 4)
+            if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
         dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
@@ -16884,8 +16889,8 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     "enqueue-only target verification requires exactly one int32/int64 target-top1 destination"
                 )
-            if rows not in {2, 3, 4}:
-                raise ValueError("enqueue-only native target verification supports B1-B3 rows=2-4")
+            if rows not in {2, 3, 4, 5, 6, 7, 8}:
+                raise ValueError("enqueue-only native target verification supports B1-B7 rows=2-8")
             if advance_state_only or capture_lm_head_logits:
                 raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
             if capture_pre_output_norm_hidden and _graph_pre_output_norm_hidden_buf is None:
@@ -17074,7 +17079,7 @@ class Qwen35GGUFResidentSession:
                 and not block_wmma_prefill
                 and not self.runner.weights.config.is_moe
                 and not use_f32_residual
-                and rows in (2, 3, 4)
+                and rows <= 8
                 and not capture_layer_boundary_ids
                 and full_attention_prefused_ready
                 and self.runner._rounded_add_rmsnorm_fn() is not None

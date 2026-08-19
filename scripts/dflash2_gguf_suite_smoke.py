@@ -35,6 +35,7 @@ from hipengine.speculative.dflash2_native import DFlash2NativeDrafter, _to_bf16_
 from dflash2_gguf_cycle import (
     _capture_taps_host,
     _load_target_arrays,
+    _run_dflash2_cycle_batch,
     _run_dflash2_cycle_native,
     _run_ar,
     DFLASH2_TAP_DEPTHS,
@@ -59,17 +60,31 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=40)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--limit", type=int, default=4, help="prompts to run (default all 4 categories)")
+    parser.add_argument("--batch-verify", action="store_true", help="use the B7 batched chain verifier")
     args = parser.parse_args()
 
     rows = [json.loads(l) for l in open(args.prompts_file, encoding="utf-8")]
     cats = ["code", "general_en", "general_ja", "mixed_ja_en"]
+    FULL = [
+        "code_merge_intervals", "code_topological_sort", "code_lru_cache",
+        "code_markdown_table", "general_en_plan", "general_en_explain",
+        "general_ja_plan", "general_ja_explain", "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+    ]
     chosen = []
-    for c in cats:
-        for r in rows:
-            if r.get("category") == c and r not in chosen:
-                chosen.append(r)
-                break
-    chosen = chosen[: args.limit]
+    if args.limit is not None and args.limit == 10:
+        for pid in FULL:
+            for r in rows:
+                if r.get("id") == pid:
+                    chosen.append(r)
+                    break
+    else:
+        for c in cats:
+            for r in rows:
+                if r.get("category") == c and r not in chosen:
+                    chosen.append(r)
+                    break
+        chosen = chosen[: args.limit]
 
     tokenizer, token_embd, head = _load_target_arrays(args.model)
     drafter, numpy_weights = load_and_build_drafter(args.drafter)
@@ -90,11 +105,18 @@ def main() -> int:
             native = DFlash2NativeDrafter(drafter.config, numpy_weights, max_context_len=seq)
             try:
                 ar_out, ar_s = _run_ar(session, prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens, runtime=runtime)
-                df2 = _run_dflash2_cycle_native(
-                    session, native, numpy_weights, token_embd, head,
-                    prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens,
-                    block_size=block_size, runtime=runtime,
-                )
+                if args.batch_verify:
+                    df2 = _run_dflash2_cycle_batch(
+                        session, native, numpy_weights, token_embd, head,
+                        prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens,
+                        block_size=block_size, runtime=runtime,
+                    )
+                else:
+                    df2 = _run_dflash2_cycle_native(
+                        session, native, numpy_weights, token_embd, head,
+                        prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens,
+                        block_size=block_size, runtime=runtime,
+                    )
             finally:
                 native.close()
             ids = df2["output_ids"]

@@ -98,8 +98,8 @@ class Qwen35GGUFNativeCompleteCycleResult:
 
     def __post_init__(self) -> None:
         drafts = len(self.draft_token_ids)
-        if drafts not in {1, 2}:
-            raise ValueError("native complete cycle requires a B1/B2 draft chain")
+        if drafts not in {1, 2, 3, 4, 5, 6, 7}:
+            raise ValueError("native complete cycle requires a B1-B7 draft chain")
         if self.accepted_draft_tokens < 0 or self.accepted_draft_tokens > drafts:
             raise ValueError("accepted_draft_tokens is outside the draft chain")
         if len(self.output_token_ids) != self.accepted_draft_tokens + 1:
@@ -156,8 +156,8 @@ class Qwen35GGUFNativeAcceptCommitResult:
 
     def __post_init__(self) -> None:
         rows = len(self.input_token_ids)
-        if rows not in {2, 3, 4}:
-            raise ValueError("native accept/commit result requires B1/B2/B3 input rows")
+        if rows not in {2, 3, 4, 5, 6, 7, 8}:
+            raise ValueError("native accept/commit result requires B1-B7 input rows")
         if self.accepted_draft_tokens < 0 or self.accepted_draft_tokens >= rows:
             raise ValueError("accepted_draft_tokens is outside the target bucket")
         if len(self.token_ids) != self.accepted_draft_tokens + 1:
@@ -205,14 +205,14 @@ def build_native_b2_target_batch(
     start_position: int,
     request_id: int = 0,
 ) -> TargetVerifyBatch:
-    """Build provider-neutral root+candidate metadata for a B1-B2/B3 chain."""
+    """Build provider-neutral root+candidate metadata for a B1-B7 chain."""
 
     tokens = tuple(int(token) for token in input_token_ids)
     start = int(start_position)
     request = int(request_id)
-    if len(tokens) not in {2, 3, 4}:
+    if len(tokens) not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph requires two to four rows (one root plus B1-B3)"
+            "native target graph requires two to eight rows (one root plus B1-B7)"
         )
     if start < 0:
         raise ValueError("start_position must be non-negative")
@@ -600,9 +600,9 @@ def _validate_capture_admission(
     )
 
     rows = len(input_token_ids)
-    if rows not in {2, 3, 4}:
+    if rows not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph requires two to four rows (one root plus B1-B3)"
+            "native target graph requires two to eight rows (one root plus B1-B7)"
         )
     if bulk_attention_mode not in {"bulk", "native"}:
         raise NativeSpecTargetGraphUnsupportedError(
@@ -1941,8 +1941,8 @@ def verify_qwen35_gguf_native_b2_target(
     if sync_stage_timings:
         eager_kwargs["sync_stage_timings"] = True
     rows = len(tuple(input_token_ids))
-    if rows not in {2, 3, 4}:
-        reason = "native target graph requires two to four rows (one root plus B1-B3)"
+    if rows not in {2, 3, 4, 5, 6, 7, 8}:
+        reason = "native target graph requires two to eight rows (one root plus B1-B7)"
         session.last_native_spec_target_fallback_reason = reason
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
@@ -2041,9 +2041,9 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
             "device proposal handoff does not support diagnostic logits"
         )
     rows = int(getattr(device_proposal, "budget", -1)) + 1
-    if rows not in {2, 3, 4}:
+    if rows not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "device proposal requires one cached B1-B3 target bucket"
+            "device proposal requires one cached B1-B7 target bucket"
         )
     cache_name = f"_native_spec_b{rows - 1}_target_graph_n2"
     graph = getattr(session, cache_name, None)

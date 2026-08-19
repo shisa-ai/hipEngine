@@ -255,6 +255,173 @@ def _run_dflash2_cycle(
             runtime.free(buf.ptr)
 
 
+def _run_dflash2_cycle_batch(
+    session: Qwen35GGUFResidentSession,
+    drafter: DFlash2NativeDrafter,
+    numpy_weights: dict[str, np.ndarray],
+    token_embd: np.ndarray,
+    head: np.ndarray,
+    *,
+    prompt_ids: list[int],
+    max_new_tokens: int,
+    block_size: int,
+    runtime,
+    verify_mode: str = "native",
+) -> dict[str, Any]:
+    """End-to-end DFlash2 cycle with a B7 batched chain verifier.
+
+    Replaces the per-draft sequential ``session.step`` verify with one
+    ``verify_target_block`` bulk pass over ``[bonus] + drafts`` (B+1 rows).  The
+    bulk pass returns the target greedy row per block row, and direct linear-
+    state commit (``_commit_verify_linear_state_row``) makes the partial-accept
+    target state exact (validated: bulk target rows and post-commit next
+    prediction match the token-serial path).  Accepted rows' per-layer taps come
+    from the bulk ``capture_layer_output_hidden`` and extend the drafter's
+    projected context exactly like the sequential cycle.
+    """
+    cfg = drafter.config
+    mask = int(cfg.mask_token_id)
+    hidden_size = int(cfg.hidden_size)
+    n_drafts = block_size - 1
+
+    hidden_size_sess = int(session.runner.hidden_size)
+    row_nbytes = hidden_size_sess * DType.BF16.itemsize
+    prompt_len = len(prompt_ids)
+    buffers = {
+        depth: DeviceBuffer(ptr=runtime.malloc(prompt_len * row_nbytes), nbytes=prompt_len * row_nbytes)
+        for depth in DFLASH2_TAP_DEPTHS
+    }
+    try:
+        targets = DFlash2HiddenCaptureTargets(hidden_size=hidden_size_sess, rows=prompt_len, buffers=buffers)
+        t_prefill = time.perf_counter()
+        probe = session.prefill(
+            prompt_ids,
+            use_bulk=True,
+            dflash2_capture=targets,
+            return_logits=False,
+        )
+        runtime.device_synchronize()
+        prefill_s = time.perf_counter() - t_prefill
+        tap_rows = _capture_taps_host(session, targets, runtime=runtime)
+        if not np.isfinite(tap_rows).all():
+            raise FloatingPointError("prefill tap capture contains NaN/Inf")
+        print(f"[prefill] {prompt_len} tokens in {prefill_s:.2f}s first_token={probe.token_id}")
+
+        npd = DFlash2NumpyDrafter(cfg, numpy_weights)
+        projected = npd.project_target_hidden(tap_rows[None])[0]
+        drafter.reset_projected_context(_to_bf16_bits(projected))
+        head_ptr = drafter.upload_weight("output_head.weight", head)
+
+        output_ids: list[int] = []
+        bonus = int(probe.token_id)
+        produced_total = 0
+        acceptance_lengths: list[int] = []
+        cycle_times: list[float] = []
+        recall_at1: list[int] = []
+        recall_at16: list[int] = []
+        recall_unary: list[int] = []
+        t_decode = time.perf_counter()
+        while produced_total < max_new_tokens:
+            t_cycle = time.perf_counter()
+            ctx_len = int(drafter.ctx_len)
+            # --- draft proposal (native kernels) -------------------------
+            block_input = np.asarray([bonus] + [mask] * n_drafts, dtype=np.int64)
+            noise = token_embd[block_input].astype(np.float32)  # (block_size, hidden)
+            positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
+            draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
+            drafter.runtime.device_synchronize()
+            path, _ = drafter.select(
+                draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
+            )
+            cands = drafter.last_candidates()
+            unary = drafter.last_logits_argmax()
+            drafts = [int(token) for token in path]
+            # --- batched chain verify (B+1 rows in one bulk pass) --------
+            start_pos = int(session.position)
+            block_inputs = [bonus] + drafts
+            bres = session.verify_target_block(
+                block_inputs,
+                bulk_attention_mode=verify_mode,
+                capture_layer_output_hidden=list(DFLASH2_TAP_LAYER_IDS),
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+            )
+            target_rows = [int(t) for t in bres.token_ids]
+            # acceptance: draft j accepted iff draft_j == target_rows[j]
+            max_accept = max_new_tokens - produced_total  # total rows this cycle
+            k = 0
+            for j in range(n_drafts):
+                if k + 1 >= max_accept:
+                    break
+                recall_at1.append(1 if target_rows[j] == drafts[j] else 0)
+                recall_at16.append(1 if int(target_rows[j]) in {int(c) for c in cands[j]} else 0)
+                recall_unary.append(1 if int(target_rows[j]) == int(unary[j]) else 0)
+                if target_rows[j] != drafts[j]:
+                    break
+                k += 1
+            # commit accepted rows (0..k) via the last accepted row's state
+            session._commit_verify_linear_state_row(k, position=start_pos + k + 1)
+            bonus = int(target_rows[k])
+            produced = k + 1
+            # accepted token list: bonus + accepted drafts
+            accept = [block_inputs[0]] + drafts[:k]
+            # --- extend projected context with accepted rows' bulk taps ---
+            lay_hidden = bres.layer_output_hidden
+            if produced:
+                # lay_hidden[layer] is (B+1, hidden); accepted rows are 0..k
+                new_tap_rows = np.stack(
+                    [lay_hidden[int(layer_id)][: produced] for layer_id in DFLASH2_TAP_LAYER_IDS],
+                    axis=0,
+                )  # (n_taps, produced, hidden)
+                new_concat = new_tap_rows.transpose(1, 0, 2).reshape(
+                    produced, len(DFLASH2_TAP_DEPTHS) * hidden_size
+                )
+                proj_new = npd.project_target_hidden(new_concat)
+                append_pos = np.arange(ctx_len, ctx_len + produced, dtype=np.int32)
+                drafter.append_projected_rows(_to_bf16_bits(proj_new), append_pos)
+            output_ids.extend(accept)
+            produced_total += produced
+            acceptance_lengths.append(produced)
+            cycle_times.append(time.perf_counter() - t_cycle)
+        decode_s = time.perf_counter() - t_decode
+
+        n_cycles = len(acceptance_lengths)
+        accepted_draft = sum(max(0, length - 1) for length in acceptance_lengths)
+        n_drafts_total = n_cycles * n_drafts
+        acc_per_draft = accepted_draft / n_drafts_total if n_drafts_total else 0.0
+        acc_per_output = accepted_draft / produced_total if produced_total else 0.0
+        mean_acc = float(np.mean(acceptance_lengths)) if acceptance_lengths else 0.0
+        print(f"[dflash2-batch] cycles={n_cycles} produced={produced_total} "
+              f"mean_acceptance={mean_acc:.2f} accepted/draft={acc_per_draft:.3f} "
+              f"tokens/s={produced_total/decode_s:.2f}")
+        if recall_at1:
+            r1 = sum(recall_at1) / len(recall_at1)
+            r16 = sum(recall_at16) / len(recall_at16)
+            ru = sum(recall_unary) / len(recall_unary)
+            print(f"[dflash2-batch] recall@1={r1:.3f} recall@16={r16:.3f} unary-argmax={ru:.3f} "
+                  f"(n={len(recall_at1)} draft positions)")
+        return {
+            "output_ids": output_ids,
+            "acceptance_lengths": acceptance_lengths,
+            "cycles": n_cycles,
+            "accepted_drafts": accepted_draft,
+            "drafts_total": n_drafts_total,
+            "accepted_per_draft": acc_per_draft,
+            "accepted_per_output": acc_per_output,
+            "mean_acceptance": mean_acc,
+            "recall_at1": float(sum(recall_at1) / len(recall_at1)) if recall_at1 else None,
+            "recall_at16": float(sum(recall_at16) / len(recall_at16)) if recall_at16 else None,
+            "recall_unary_argmax": float(sum(recall_unary) / len(recall_unary)) if recall_unary else None,
+            "prefill_s": prefill_s,
+            "decode_s": decode_s,
+            "tokens_per_s": produced_total / decode_s if decode_s else 0.0,
+            "mean_cycle_s": float(np.mean(cycle_times)) if cycle_times else 0.0,
+        }
+    finally:
+        for buf in buffers.values():
+            runtime.free(buf.ptr)
+
+
 def _run_dflash2_cycle_native(
     session: Qwen35GGUFResidentSession,
     drafter: DFlash2NativeDrafter,
@@ -429,6 +596,7 @@ def main() -> int:
     parser.add_argument("--block-size", type=int, default=8)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--native", action="store_true", help="use the native GPU drafter forward+selector instead of the numpy drafter")
+    parser.add_argument("--batch-verify", action="store_true", help="verify the B7 draft chain with one bulk verify_target_block pass instead of sequential session.step calls")
     parser.add_argument("--compare-ar", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
@@ -463,7 +631,25 @@ def main() -> int:
         args.model, backend=args.backend, compiler_version=None,
         require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
     ) as session:
-        if args.native:
+        if args.native and args.batch_verify:
+            native_drafter = DFlash2NativeDrafter(
+                drafter.config, numpy_weights, max_context_len=max_seq,
+            )
+            try:
+                df2 = _run_dflash2_cycle_batch(
+                    session,
+                    native_drafter,
+                    numpy_weights,
+                    token_embd,
+                    head,
+                    prompt_ids=prompt_ids,
+                    max_new_tokens=args.max_new_tokens,
+                    block_size=block_size,
+                    runtime=runtime,
+                )
+            finally:
+                native_drafter.close()
+        elif args.native:
             native_drafter = DFlash2NativeDrafter(
                 drafter.config, numpy_weights, max_context_len=max_seq,
             )
