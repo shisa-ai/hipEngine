@@ -5,6 +5,16 @@
 > exploration stay in `~/amd-gpu-tuning`; the production path belongs here as a
 > torch-free, native C++/HIP hot loop.
 
+> **DFlash2 status (2026-08-19):** the Qwen3.8-27B DFlash2 GGUF campaign
+> (`docs/QWEN38-27B-DFLASH2-CAMPAIGN.md`) closed as **diagnostic, not
+> promoted**. Full 10-prompt mtpbench B-sweep (gfx1151): B3 (optimum) 7.70
+> tok/s = 0.575x AR, B5 4.26, B7 3.58 — all AR-exact, but the best point is
+> ~3.1x below exact MTP B3 (23.85 tok/s = 1.78x AR). Even zeroing the whole
+> 5-layer drafter + selector (~130 ms/cycle), B3 caps at ~1.26x AR; per-draft
+> acceptance 0.38 vs MTP 0.95 is model-bound. DFlash2 stays a diagnostic with
+> a recorded blocker; D5 gfx1100 kernels are registered (shared source), the
+> W7900 smoke is hardware-blocked on this gfx1151-only host.
+
 ## Thesis
 
 The Python/PyTorch DFlash harness in `~/amd-gpu-tuning` has reached diminishing
