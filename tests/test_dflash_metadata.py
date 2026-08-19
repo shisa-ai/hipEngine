@@ -259,6 +259,7 @@ def test_local_cached_qwen38_dflash2_artifact_metadata_offline() -> None:
     assert drafter.config.selector_rank == 256
     assert drafter.config.selector_top_k == 16
     assert drafter.config.vocab_size == 248320
+    assert drafter.config.rope_theta == 10_000_000.0
     assert len(drafter.present) == 81
 
 

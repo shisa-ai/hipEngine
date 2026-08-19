@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from hipengine.kernels.cpu_reference.ops import linear
+from hipengine.kernels.cpu_reference.ops import linear, rmsnorm
 from hipengine.kernels.registry import KernelKey, register
 
 ArrayLike = np.ndarray | list[float] | tuple[float, ...]
@@ -181,8 +181,10 @@ def candidate_selector_select(
             f"codebooks must be equal 2-D (vocab, rank), got {codebook_a.shape} vs {codebook_b.shape}"
         )
     vocab, rank = codebook_a.shape
-    if logits_arr.shape[-1] != vocab:
-        raise ValueError(f"logits vocab {logits_arr.shape[-1]} != codebook vocab {vocab}")
+    # Logits may cover a subset of the codebook vocab (the selector only gathers
+    # codebook rows at candidate ids, which are < logits vocab).
+    if logits_arr.shape[-1] > vocab:
+        raise ValueError(f"logits vocab {logits_arr.shape[-1]} exceeds codebook vocab {vocab}")
     if anchor_arr.shape != (batch,):
         raise ValueError(f"anchor_ids must be (batch,), got {anchor_arr.shape}")
     if not (0 < top_k <= vocab):
@@ -237,6 +239,149 @@ def candidate_selector_greedy_path(
     ).path
 
 
+def dflash2_rope_tables(
+    positions: ArrayLike,
+    *,
+    rope_theta: float,
+    head_dim: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Qwen3-style rotary tables: cos/sin of shape (length, head_dim).
+
+    ``inv_freq = 1 / theta**(arange(0, head_dim, 2) / head_dim)``, then each
+    frequency is repeated twice to fill ``head_dim``, matching the reference
+    ``Qwen3RotaryEmbedding`` (``emb = cat([freqs, freqs], -1)``).
+    """
+
+    pos = np.asarray(positions, dtype=np.float32)
+    if pos.ndim != 1:
+        raise ValueError(f"positions must be rank-1, got {pos.shape}")
+    if head_dim <= 0 or head_dim % 2:
+        raise ValueError(f"head_dim must be positive and even, got {head_dim}")
+    dims = np.arange(0, head_dim, 2, dtype=np.float32)
+    inv_freq = np.float32(1.0) / (np.float32(rope_theta) ** (dims / np.float32(head_dim)))
+    freqs = pos[:, None] * inv_freq[None, :]  # (length, head_dim/2)
+    # Block-repeat: emb = cat([freqs, freqs], -1); the rope pairs channel c with
+    # channel c + head_dim/2 (rotate_half splits at head_dim/2).
+    emb = np.concatenate((freqs, freqs), axis=-1)  # (length, head_dim)
+    return np.cos(emb).astype(np.float32), np.sin(emb).astype(np.float32)
+
+
+def _rotate_half(x: np.ndarray) -> np.ndarray:
+    """Reference ``transformers.rotate_half``: cat([-x2, x1]) over the last dim."""
+
+    half = x.shape[-1] // 2
+    return np.concatenate((-x[..., half:], x[..., :half]), axis=-1)
+
+
+def dflash2_attention_forward(
+    hidden: ArrayLike,
+    target_hidden: ArrayLike,
+    positions: ArrayLike,
+    q_proj: ArrayLike,
+    k_proj: ArrayLike,
+    v_proj: ArrayLike,
+    o_proj: ArrayLike,
+    q_norm: ArrayLike,
+    k_norm: ArrayLike,
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rope_theta: float,
+    sliding_window: int,
+    is_causal: bool,
+    eps: float = 1.0e-6,
+) -> np.ndarray:
+    """DFlash2 attention: projected-context K/V plus draft hidden queries.
+
+    Context rows are the projected target hidden (always visible predecessors);
+    draft rows follow. q/k are per-head RMSNormed and rotary-embedded; the mask
+    is a sliding window (bidirectional when ``is_causal`` is false), exactly the
+    reference ``Qwen3DFlashAttention``.
+
+    Returns the attention output (draft rows only) of shape
+    ``(batch, draft_length, hidden_size)``.
+    """
+
+    hidden_arr = np.asarray(hidden, dtype=np.float32)
+    target_arr = np.asarray(target_hidden, dtype=np.float32)
+    pos_arr = np.asarray(positions, dtype=np.int64)
+    if hidden_arr.ndim != 3:
+        raise ValueError(f"hidden must be (batch, length, hidden), got {hidden_arr.shape}")
+    batch, draft_len, hidden_size = hidden_arr.shape
+    ctx_len = target_arr.shape[1]
+    if target_arr.shape != (batch, ctx_len, hidden_size):
+        raise ValueError(f"target_hidden {target_arr.shape} must be (batch, ctx_len, hidden)")
+    if pos_arr.shape != (batch, ctx_len + draft_len):
+        raise ValueError(
+            f"positions {pos_arr.shape} must be (batch, ctx_len+draft_len) "
+            f"= ({batch}, {ctx_len + draft_len})"
+        )
+    if num_heads % num_kv_heads != 0:
+        raise ValueError(f"num_heads {num_heads} must divide by num_kv_heads {num_kv_heads}")
+
+    q = linear(hidden_arr, q_proj)  # (B, L_d, nH*Hd)
+    q = q.reshape(batch, draft_len, num_heads, head_dim)
+    q = _head_rmsnorm(q, q_norm, eps)
+    k_ctx = linear(target_arr, k_proj)
+    k_noise = linear(hidden_arr, k_proj)
+    k_cat = np.concatenate((k_ctx, k_noise), axis=1)  # (B, L_ctx+L_d, nKV*Hd)
+    k_len = k_cat.shape[1]
+    k_cat = k_cat.reshape(batch, k_len, num_kv_heads, head_dim)
+    k_cat = _head_rmsnorm(k_cat, k_norm, eps)
+    v_cat = np.concatenate(
+        (linear(target_arr, v_proj), linear(hidden_arr, v_proj)), axis=1
+    ).reshape(batch, k_len, num_kv_heads, head_dim)
+
+    cos, sin = dflash2_rope_tables(
+        pos_arr.reshape(-1), rope_theta=rope_theta, head_dim=head_dim
+    )
+    cos_k = cos[:k_len][None, None, :, :]
+    sin_k = sin[:k_len][None, None, :, :]
+    cos_q = cos_k[..., -draft_len:, :]
+    sin_q = sin_k[..., -draft_len:, :]
+    q = np.swapaxes(q, 1, 2)  # (B, nH, L_d, Hd)
+    q = q * cos_q + _rotate_half(q) * sin_q
+    k_cat = np.swapaxes(k_cat, 1, 2)  # (B, nKV, k_len, Hd)
+    k_cat = k_cat * cos_k + _rotate_half(k_cat) * sin_k
+    v_cat = np.swapaxes(v_cat, 1, 2)
+
+    # Bidirectional (or causal) sliding-window visibility mask, matching the
+    # reference _attention_mask over the concatenated key sequence.
+    query_position = k_len - draft_len + np.arange(draft_len)[:, None]  # (L_d, 1)
+    key_position = np.arange(k_len)[None, :]  # (1, k_len)
+    visible = np.ones((draft_len, k_len), dtype=bool)
+    if is_causal:
+        visible &= key_position <= query_position
+    if sliding_window and sliding_window > 0:
+        visible &= query_position - key_position < sliding_window
+        if not is_causal:
+            visible &= key_position - query_position < sliding_window
+    mask = np.where(visible, np.float32(0.0), np.float32(-np.inf))
+
+    scale = np.float32(head_dim) ** np.float32(-0.5)
+    groups = num_heads // num_kv_heads
+    out = np.zeros((batch, num_heads, draft_len, head_dim), dtype=np.float32)
+    for b in range(batch):
+        for h in range(num_heads):
+            kv = h // groups
+            scores = (q[b, h] @ k_cat[b, kv].T) * scale + mask
+            scores = np.exp(scores - scores.max(axis=-1, keepdims=True))
+            scores = scores / scores.sum(axis=-1, keepdims=True)
+            out[b, h] = scores @ v_cat[b, kv]
+    out = out.transpose(0, 2, 1, 3).reshape(batch, draft_len, num_heads * head_dim)
+    return linear(out, o_proj)
+
+
+def _head_rmsnorm(x: np.ndarray, weight: np.ndarray, eps: float) -> np.ndarray:
+    """Per-head RMSNorm over the last axis (head_dim), matching q/k norms."""
+
+    w = np.asarray(weight, dtype=np.float32)
+    if w.shape[-1] != x.shape[-1]:
+        raise ValueError(f"head norm weight {w.shape} does not match head dim {x.shape[-1]}")
+    return rmsnorm(x, w, eps=eps).astype(np.float32)
+
+
 def register_dflash2_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "dflash2_grouped_conv", "fp32"),
@@ -262,6 +407,8 @@ __all__ = [
     "candidate_selector_greedy_path",
     "candidate_selector_select",
     "dflash2_topk",
+    "dflash2_rope_tables",
+    "dflash2_attention_forward",
     "grouped_dynamic_convolve",
     "grouped_dynamic_conv_finish",
     "grouped_dynamic_conv_prepare",
