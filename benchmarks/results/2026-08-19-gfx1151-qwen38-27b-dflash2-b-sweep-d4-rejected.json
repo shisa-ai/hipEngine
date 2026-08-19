@@ -1,0 +1,65 @@
+{
+ "schema_version": 1,
+ "created_at": "2026-08-19T16:20:00Z",
+ "kind": "hipengine_qwen38_27b_dflash2_b_sweep_d4",
+ "status": "rejected_promotion",
+ "pass": false,
+ "performance_claim": false,
+ "repo": {
+  "revision": "HEAD",
+  "tracked_clean": true,
+  "production_default_changed": false
+ },
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900-compute-lane (gfx1151 resident)",
+  "arch": "gfx1151"
+ },
+ "model": {
+  "name": "Qwen3.8-27B",
+  "quant": "Q4_K_M GGUF",
+  "resident": "gfx1151"
+ },
+ "drafter": {
+  "name": "Qwen3.8-27B-DFlash2",
+  "snapshot": "50307d4c",
+  "config_block_size": 8,
+  "selector_top_k": 16,
+  "selector_rank": 256
+ },
+ "protocol": {
+  "comparison": "DFlash2 B in {3,5,7} batched chain verify vs same-session AR (13.4 tok/s) and exact native MTP B3 (23.85 tok/s, 1.7845x AR)",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompts": 10,
+  "max_new_tokens_per_prompt": 40,
+  "command": "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT=1 HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 uv run python scripts/dflash2_gguf_suite_smoke.py --batch-verify --max-new-tokens 40 --limit 10 --block-size {4,6,8}",
+  "note": "Root-cause fix: --block-size was previously force-clamped to drafter config block_size 8, so every claimed B run verified the full 8-row chain. The cycle now forwards at config block size but truncates the verify chain to block_size-1 drafts."
+ },
+ "results": {
+  "ar_tokens_per_s": 13.4,
+  "mtp_b3_tokens_per_s": 23.85263,
+  "mtp_b3_ratio_ar": 1.7845,
+  "b3": {
+   "verify_rows": 4,
+   "mean_acceptance": 2.799,
+   "mean_tokens_per_s": 7.704,
+   "ratio_ar": 0.5749,
+   "ar_agreement": 1.0
+  },
+  "b5": {
+   "verify_rows": 6,
+   "mean_acceptance": 3.298,
+   "mean_tokens_per_s": 4.255,
+   "ratio_ar": 0.3175,
+   "ar_agreement": 1.0
+  },
+  "b7": {
+   "verify_rows": 8,
+   "mean_acceptance": 3.49,
+   "mean_tokens_per_s": 3.58,
+   "ratio_ar": 0.267,
+   "ar_agreement": 1.0
+  }
+ },
+ "blocker": "DFlash2 per-draft acceptance ~0.38 vs MTP ~0.95; drafter forward+selector ~130ms/cycle vs MTP draft ~few ms; verify cost scales with rows (170ms@4 to 620ms@8). Even the best operating point B3 (7.70 tok/s = 0.575x AR) is ~3.1x below exact MTP B3 (23.85 tok/s = 1.78x AR). B3 is the DFlash2 optimum (2.6x faster than B7 due to the 4-row vs 8-row verify), but no B reaches MTP B3.",
+ "evidence": "worklog/entries/20260819T160908.881689Z-lhl-dflash2-d4-b-sweep-block-size-truncated-verify-c-934ef8.md"
+}

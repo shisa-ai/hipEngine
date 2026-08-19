@@ -3856,3 +3856,11 @@ should be boring.
   within noise while prefill throughput is non-regressive. Remove this env
   branch after one non-regressive release window when no campaign bisection
   needs the two-launch control; keep the registered primitive fallback.
+
+## DFlash2 B-sweep debug hook
+
+- `DF2_CYCLE_DEBUG=1` (default off) prints per-cycle verify rows + wall for
+  `scripts/dflash2_gguf_cycle.py --batch-verify`. Added 2026-08-19 while
+  root-causing the verify-row count during the D4 B-sweep (the CLI block size
+  was being clamped to the drafter config). Remove the env-gated print once the
+  B-sweep closeout is merged and no further cycle-timing debugging needs it.

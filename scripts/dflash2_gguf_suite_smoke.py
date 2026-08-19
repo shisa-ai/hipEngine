@@ -60,6 +60,7 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=40)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--limit", type=int, default=4, help="prompts to run (default all 4 categories)")
+    parser.add_argument("--block-size", type=int, default=None, help="verify chain block size (B+1 rows; default drafter config block size)")
     parser.add_argument("--batch-verify", action="store_true", help="use the B7 batched chain verifier")
     args = parser.parse_args()
 
@@ -88,7 +89,9 @@ def main() -> int:
 
     tokenizer, token_embd, head = _load_target_arrays(args.model)
     drafter, numpy_weights = load_and_build_drafter(args.drafter)
-    block_size = int(drafter.config.block_size)
+    block_size = args.block_size or int(drafter.config.block_size)
+    if block_size < 2 or block_size > int(drafter.config.block_size):
+        block_size = min(max(2, block_size), int(drafter.config.block_size))
     runtime = get_hip_runtime()
     max_seq = 4096
 

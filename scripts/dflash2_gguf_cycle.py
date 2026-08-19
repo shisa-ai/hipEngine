@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -282,7 +283,8 @@ def _run_dflash2_cycle_batch(
     cfg = drafter.config
     mask = int(cfg.mask_token_id)
     hidden_size = int(cfg.hidden_size)
-    n_drafts = block_size - 1
+    fwd_bs = int(drafter.block_size)  # drafter forward always runs at config block size
+    n_drafts = block_size - 1          # verify chain length (CLI block size)
 
     hidden_size_sess = int(session.runner.hidden_size)
     row_nbytes = hidden_size_sess * DType.BF16.itemsize
@@ -324,10 +326,10 @@ def _run_dflash2_cycle_batch(
         while produced_total < max_new_tokens:
             t_cycle = time.perf_counter()
             ctx_len = int(drafter.ctx_len)
-            # --- draft proposal (native kernels) -------------------------
-            block_input = np.asarray([bonus] + [mask] * n_drafts, dtype=np.int64)
-            noise = token_embd[block_input].astype(np.float32)  # (block_size, hidden)
-            positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
+            # --- draft proposal (native kernels, fixed config block size) -
+            block_input = np.asarray([bonus] + [mask] * (fwd_bs - 1), dtype=np.int64)
+            noise = token_embd[block_input].astype(np.float32)  # (fwd_bs, hidden)
+            positions = np.arange(0, ctx_len + fwd_bs, dtype=np.int64)
             draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
             drafter.runtime.device_synchronize()
             path, _ = drafter.select(
@@ -335,10 +337,12 @@ def _run_dflash2_cycle_batch(
             )
             cands = drafter.last_candidates()
             unary = drafter.last_logits_argmax()
-            drafts = [int(token) for token in path]
+            drafts = [int(token) for token in path[:n_drafts]]
             # --- batched chain verify (B+1 rows in one bulk pass) --------
             start_pos = int(session.position)
             block_inputs = [bonus] + drafts
+            if os.environ.get("DF2_CYCLE_DEBUG"):
+                t_v0 = time.perf_counter()
             bres = session.verify_target_block(
                 block_inputs,
                 bulk_attention_mode=verify_mode,
@@ -347,6 +351,8 @@ def _run_dflash2_cycle_batch(
                 defer_linear_state_commit=True,
             )
             target_rows = [int(t) for t in bres.token_ids]
+            if os.environ.get("DF2_CYCLE_DEBUG"):
+                print(f"  [dbg] block_inputs={len(block_inputs)} rows target={len(target_rows)} verify_wall={(time.perf_counter()-t_v0)*1000:.0f}ms", flush=True)
             # acceptance: draft j accepted iff draft_j == target_rows[j]
             max_accept = max_new_tokens - produced_total  # total rows this cycle
             k = 0
@@ -498,7 +504,7 @@ def _run_dflash2_cycle_native(
             )
             cands = drafter.last_candidates()  # (n_drafts, top_k)
             unary = drafter.last_logits_argmax()  # (n_drafts,) unary argmax
-            drafts = [int(token) for token in path]
+            drafts = [int(token) for token in path[:n_drafts]]
             # --- sequential greedy verify (commit-only-accepted) ----------
             accept: list[int] = []
             new_taps: list[np.ndarray] = []
@@ -604,9 +610,9 @@ def main() -> int:
     tokenizer, token_embd, head = _load_target_arrays(args.model)
     drafter, numpy_weights = load_and_build_drafter(args.drafter)
     block_size = args.block_size
-    if block_size != int(drafter.config.block_size):
-        print(f"warning: requested block_size {block_size} != drafter block_size {drafter.config.block_size}")
-        block_size = int(drafter.config.block_size)
+    if block_size < 2 or block_size > int(drafter.config.block_size):
+        print(f"warning: requested block_size {block_size} outside [2, {drafter.config.block_size}]; clamping")
+        block_size = min(max(2, block_size), int(drafter.config.block_size))
     prompt_ids = tokenizer.encode(args.prompt)
     print(f"[prompt] tokens={len(prompt_ids)} decoded={tokenizer.decode(prompt_ids)!r}")
 
