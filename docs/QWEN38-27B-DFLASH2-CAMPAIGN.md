@@ -1,6 +1,6 @@
 # Qwen3.8-27B DFlash2 GGUF Campaign (gfx1151 first, gfx1100 functional)
 
-Status: **in progress** — D0 complete (metadata/validation/lineage/CPU oracles);
+Status: **decision — not promoted (D3/D4 complete, measured blocker)** — D0 complete (metadata/validation/lineage/CPU oracles);
 D1 complete: NumPy drafter reproduces the reference greedy chain exactly (D0
 RED pin) **and** the GGUF-target tap capture + cycle driver runs end-to-end
 (`scripts/dflash2_gguf_cycle.py`: full-prompt 5-layer tap capture at prefill,
@@ -14,11 +14,17 @@ top-16 selector reproduce the numpy oracle to BF16 tolerance and are
 deterministic; the native select path equals numpy propose; sliding-attention
 kernel RED-pinned; `rocprofv3 --kernel-trace` smoke shows all expected kernels
 under expected names (10 GPU tests: 7 kernel RED + 3 forward wiring).
-D3 wiring partial: native drafter wired into `scripts/dflash2_gguf_cycle.py`
+D3 complete: native drafter wired into `scripts/dflash2_gguf_cycle.py`
 (`--native`) with end-to-end correctness (native greedy == AR 40/40 on the
-smoke) and recall diagnostics; see the worklog for the selector finding
-(recall@16 0.87, but bilinear-selector recall@1 0.46 < unary-argmax 0.51).
-Remaining: D3 chain verify, D4 measurement, D5 gfx1100.
+smoke) and the B7 chain-batched verifier (`_run_dflash2_cycle_batch`) is
+AR-exact on all 10 mtpbench prompts.
+D4 complete (2026-08-19): full 10-prompt mtpbench suite measured — DFlash2 B7
+mean acceptance 3.49, 3.58 tok/s = **0.27x AR**, vs exact MTP B3 23.85 tok/s
+(1.7845x AR). **Promotion rule NOT met**; DFlash2 B7 stays a diagnostic with a
+recorded blocker (per-draft acceptance ~0.38 vs MTP ~0.95; 8-row verify
+~620ms for LOWER acceptance than MTP B3's 4-row ~160ms). The rowtile-8 verify
+speedup (620->310ms) diverged from AR on `code_lru_cache` and was reverted.
+Remaining: D5 gfx1100 functional (optional given non-promotion).
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
