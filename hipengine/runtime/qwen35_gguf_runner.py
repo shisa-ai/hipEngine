@@ -19757,7 +19757,7 @@ class Qwen35GGUFResidentSession:
             )
         )
         with (
-            native_batch_decode_session(2 <= rows <= 4),
+            native_batch_decode_session(2 <= rows <= 4 or rows == 8),
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
             _gguf_t16_selected_pairreuse_min_rows_scope(selected_pairreuse_min_rows),
@@ -22777,7 +22777,7 @@ class Qwen35GGUFResidentSession:
         rows = int(rows)
         if rows <= 0:
             raise ValueError("rows must be positive")
-        if rows <= 6:
+        if rows <= 4:
             return self._verify_lm_head_rowtile(
                 hidden_ptr,
                 out_ptr,
@@ -22804,6 +22804,9 @@ class Qwen35GGUFResidentSession:
         )
         if max_chunk < 2 or max_chunk > 6:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 6]")
+        # The t16_gemv_rowtile_bf16_f32_out owner accepts rows in [2, 4]; cap any
+        # larger configured chunk so rows 5-8 chunk into valid 4-row groups.
+        max_chunk = min(max_chunk, 4)
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False

@@ -187,6 +187,13 @@ packed c2/c4 now run the exact dense-row-tile decode and scale near-linearly —
 c2 step **174 ms -> 36.7 ms**, with c2/c4 trajectories prefix-exact to the c1
 oracle (batch-composition invariant). [`Packed-decode rowtile artifact`](results/2026-08-19-concurrency2-qwen38-27b-packed-decode-rowtile-accepted.json).
 
+The physical 8-row (`native_c8`) packed route is now enabled and prefix-exact
+(previously it crashed at the Q6_K lm_head rowtile's rows [2,4] limit): c8 runs
+at **125 ms/step / 63.6 tok/s**. It is correct but **not yet close-to-linear**
+(c8 per-row 15.7 ms vs c4 per-row 10.7 ms, because the c8 FFN rowtile is a 2x4
+split that reads each weight twice); a fused 8-row rowtile is the follow-up.
+[`native_c8 artifact`](results/2026-08-19-concurrency2-qwen38-27b-native-c8-enabled.json).
+
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch
 window, 256 prefill chunk, 1 warmup + 3 measured, W7900 device 0) measures
