@@ -5,8 +5,11 @@ D1 complete: NumPy drafter reproduces the reference greedy chain exactly (D0
 RED pin) **and** the GGUF-target tap capture + cycle driver runs end-to-end
 (`scripts/dflash2_gguf_cycle.py`: full-prompt 5-layer tap capture at prefill,
 mask-noise block proposal, sequential greedy commit-only verify, projected-context
-cache; DFlash2 greedy == pure-AR greedy 20/20 on the smoke prompt). Remaining:
-D2 native kernels, D3 chain verify, D4 measurement, D5 gfx1100.
+cache; DFlash2 greedy == pure-AR greedy 20/20 on the smoke prompt). D2a
+complete: native grouped dynamic conv + top-16 + candidate-selector kernels
+RED-pinned vs the CPU oracles (6 GPU tests) and registered for gfx1100 +
+gfx1151. Remaining: D2b native drafter forward wiring (attention + forward),
+D3 chain verify, D4 measurement, D5 gfx1100.
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
