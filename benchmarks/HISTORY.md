@@ -9,7 +9,7 @@ the promotion rules in [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
 The operational scoreboard, platform freshness index, reproduction commands,
 and root README export blocks are in [`benchmarks/README.md`](README.md).
 
-Last updated: 2026-07-10 (gfx1151 HIP/Vulkan timing-contract v2 bounded matrix).
+Last updated: 2026-08-19 (adds Qwen3.8-27B DFlash2 GGUF campaign diagnostic row).
 
 The clean `ca241dae` rerun on Radeon 8060S, ROCm `7.13.0a20260411`, and
 RADV/Mesa `26.1.2` retains 22 comparisons: 11 families in both
@@ -803,6 +803,12 @@ Artifacts:
 - llama.cpp Vulkan: [`2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json`](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-llamacpp-vulkan-q4km-f16kv.json)
 
 ## MTP / DFlash Speculative Decode
+
+### Qwen3.8-27B DFlash2 GGUF campaign (2026-08-19) — diagnostic / not promoted
+
+| Lane | Verdict | Context | AR tok/s | Speed tok/s | Ratio | Validation | Artifact | Notes |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3.8-27B GGUF + z-lab DFlash2 B3 (optimum) | **diagnostic / not promoted, 3.1x below exact MTP B3** | gfx1151/Radeon 8060S, `Qwen3.8-27B-Q4_K_M.gguf`, native 5-layer drafter + top-16 selector, batched chain verify, full 10-prompt `mtpbench-code-general-ja.jsonl`, `max_new_tokens=40`, `--batch-verify --block-size 4` | 13.4 | 7.70 | **0.575x AR / 0.32x MTP B3** | AR-exact `10/10` rows (all outputs are greedy target predictions); recall@1 0.54-0.87, r@16 0.78-0.97 | [`2026-08-19-gfx1151-qwen38-27b-dflash2-b-sweep-d4-rejected.json`](results/2026-08-19-gfx1151-qwen38-27b-dflash2-b-sweep-d4-rejected.json) | B3 = 4-row verify 7.70 tok/s (0.575x AR) is the B-sweep optimum; B5 = 4.26 (0.32x), B7 = 3.58 (0.27x). Drafter forward+select ~130ms/cycle vs MTP draft ~ms; per-draft acceptance 0.38 vs MTP 0.95. Even zeroing the whole drafter, B3 caps at ~1.26x AR < MTP B3 1.78x AR — acceptance gap is model-bound, no operating point reaches exact MTP B3 (23.85 tok/s). Rowtile-8 verify speedup reverted as AR-divergent. Drafter BF16 residency 3.584 GiB (+~3.6 GiB GTT over closed B3 15.899 GiB, within APU budget). Campaign: `docs/QWEN38-27B-DFLASH2-CAMPAIGN.md`. |
 
 ### Natural24 MTP vs AR concurrency diagnostic
 

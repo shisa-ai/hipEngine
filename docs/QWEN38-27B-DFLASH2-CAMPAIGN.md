@@ -312,6 +312,26 @@ promoted (D4), D5 remains optional per the campaign decision.
   the GGUF-quantized drafter becomes a scoped follow-up, not silent scope
   creep.
 
+**D6 status (2026-08-19): closeout complete (memory accounting + history).**
+Memory accounting: DFlash2 drafter BF16 residency measured **3.584 GiB**
+(layers 3.18 GiB incl. conv/MLP codebooks + `fc` 250 MiB + `candidate_selector`
+245 MiB), plus ~0.15 GiB projected-context taps + drafter KV + scratch at
+4K context. Against the closed campaign's B3 process GTT of **15.899 GiB**,
+the full DFlash2 B3 pipeline is **~19.5 GiB (+3.6 GiB / +23%)** — inside the
+Radeon 8060S unified-memory GTT capacity (the closed campaign's whole-device
+4K peak was ~20 GiB with headroom), so the BF16 drafter does NOT exceed the
+APU budget and the GGUF-quantized drafter is NOT a required follow-up.
+Rollup: DFlash2 is a rejected/diagnostic lane (not promoted), so per
+`AGENTS.md` it gets no `benchmarks/README.md` scoreboard row and no
+`CHANGELOG.md` retained-row one-liner; it is recorded as a diagnostic in
+`benchmarks/HISTORY.md` and as artifacts under `benchmarks/results/`, with
+the campaign status in this doc and `docs/DFLASH.md`. Root `README.md` is
+a product page and is not touched (no retained claim). The D4 "three runs"
+statistical repeat is deliberately not repeated: the result is decisively
+negative (~3.1x below MTP B3 at the optimum B3) and every row is AR-exact,
+so additional full-suite runs would be a wasteful rerun per `AGENTS.md`;
+B7 has multiple session runs, B3/B5 one clean full-suite run each.
+
 ## 5. Backend ownership note
 
 All DFlash speculative kernels currently live in
