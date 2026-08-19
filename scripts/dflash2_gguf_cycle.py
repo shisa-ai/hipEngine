@@ -56,7 +56,67 @@ from hipengine.speculative.dflash2_native import (
     DFlash2NativeDrafter,
     _to_bf16_bits,
 )
+from hipengine.runtime.gguf_linear import (
+    GGUF_ACTIVATION_BF16,
+    GGUF_OUTPUT_F32,
+    launch_gguf_linear,
+)
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
+
+
+def _draft_logits_q6_head(
+    session,
+    drafter,
+    draft_ptr: int,
+    rows: int,
+    *,
+    runtime,
+) -> bool:
+    """Compute the drafter's draft logits through the session's quantized Q6_K
+    lm-head instead of the dequantized BF16 output head.
+
+    The drafter's ``select`` normally computes ``draft_hidden @ head^T`` with the
+    2.54 GiB dequantized BF16 output head every cycle. The resident session
+    already holds a Q6_K t16 lm-head (``HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR``)
+    that is ~4x smaller; ``launch_gguf_linear`` reads it through the registry.
+    Returns True on success (logits in ``drafter.logits.ptr``), False if the
+    quantized path is unavailable and the caller should fall back to the BF16
+    head.
+    """
+    if session.runner is None or session.runner.weights is None:
+        return False
+    try:
+        head = session.runner.weights.root("lm_head")
+    except Exception:
+        return False
+    # Amortized Q6_K t16 rowtile reads the quantized head once across the block
+    # rows instead of the per-row decode over-read. Handles rows 2-6 directly
+    # and chunks 7 -> [5,2] so 7 draft rows work too.
+    try:
+        if getattr(session, "_verify_lm_head_rowtile_chunked", None) is not None:
+            if session._verify_lm_head_rowtile_chunked(
+                draft_ptr, drafter.logits.ptr, int(rows), runtime=runtime
+            ):
+                runtime.device_synchronize()
+                return True
+    except Exception:
+        pass
+    try:
+        launch_gguf_linear(
+            head,
+            draft_ptr,
+            drafter.logits.ptr,
+            rows=int(rows),
+            in_features=int(session.runner.hidden_size),
+            out_features=int(session.runner.vocab_size),
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        return True
+    except Exception:
+        return False
 
 
 def _load_target_arrays(model: str) -> tuple[Qwen35GGUFTokenizer, np.ndarray, np.ndarray]:
@@ -332,9 +392,14 @@ def _run_dflash2_cycle_batch(
             positions = np.arange(0, ctx_len + fwd_bs, dtype=np.int64)
             draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
             drafter.runtime.device_synchronize()
-            path, _ = drafter.select(
-                draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
-            )
+            if _draft_logits_q6_head(session, drafter, draft_ptr, int(drafter.block_size) - 1, runtime=runtime):
+                path, _ = drafter.select(
+                    draft_ptr, None, drafter.logits.ptr, np.asarray([bonus], dtype=np.int64)
+                )
+            else:
+                path, _ = drafter.select(
+                    draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
+                )
             cands = drafter.last_candidates()
             unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
@@ -499,9 +564,14 @@ def _run_dflash2_cycle_native(
             positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
             draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
             drafter.runtime.device_synchronize()
-            path, _ = drafter.select(
-                draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
-            )
+            if _draft_logits_q6_head(session, drafter, draft_ptr, int(drafter.block_size) - 1, runtime=runtime):
+                path, _ = drafter.select(
+                    draft_ptr, None, drafter.logits.ptr, np.asarray([bonus], dtype=np.int64)
+                )
+            else:
+                path, _ = drafter.select(
+                    draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64)
+                )
             cands = drafter.last_candidates()  # (n_drafts, top_k)
             unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
