@@ -263,6 +263,75 @@ def test_dflash2_top16_rows_red(_dflash2_lib, _runtime):
 
 
 # ---------------------------------------------------------------------------
+# Sliding-window attention
+# ---------------------------------------------------------------------------
+
+def _cpu_sliding_attention(q, k, v, qpos, kpos, *, window, is_causal):
+    """Masked GQA attention mirroring dflash2_sliding_attention kernel."""
+    b, ql, qh, hd = q.shape
+    kv = k.shape[2]
+    scale = hd ** -0.5
+    groups = qh // kv
+    out = np.zeros((b, ql, qh, hd), dtype=np.float32)
+    for bi in range(b):
+        for qi in range(ql):
+            for h in range(qh):
+                kvh = h // groups
+                scores = np.empty((k.shape[1],), dtype=np.float32)
+                for ki in range(k.shape[1]):
+                    dist = abs(int(qpos[bi * ql + qi]) - int(kpos[bi * k.shape[1] + ki]))
+                    masked = (window > 0 and dist >= window) or (is_causal and int(kpos[bi * k.shape[1] + ki]) > int(qpos[bi * ql + qi]))
+                    if masked:
+                        scores[ki] = -np.inf
+                    else:
+                        scores[ki] = float(np.dot(q[bi, qi, h], k[bi, ki, kvh])) * scale
+                m = scores.max()
+                p = np.exp(scores - m)
+                p /= p.sum()
+                out[bi, qi, h] = np.sum(p[:, None] * v[bi, :, kvh, :].astype(np.float32), axis=0)
+    return out
+
+
+def test_dflash2_sliding_attention_red(_dflash2_lib, _runtime):
+    from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
+        dflash2_sliding_attention_f32_bf16,
+    )
+
+    rng = np.random.default_rng(0xDF2A5)
+    b, ql, kv_len, qh, kvh, hd = 1, 7, 40, 32, 8, 128
+    window = 16
+    q = (rng.standard_normal((b, ql, qh, hd), dtype=np.float32) * 0.5)
+    k = (rng.standard_normal((b, kv_len, kvh, hd), dtype=np.float32) * 0.5)
+    v_f32 = rng.standard_normal((b, kv_len, kvh, hd), dtype=np.float32) * 0.5
+    v_bf = _to_bf16_bits(v_f32)
+    qpos = np.asarray([20 + i for i in range(ql)], dtype=np.int32)
+    kpos = np.arange(kv_len, dtype=np.int32)
+
+    oracle = _cpu_sliding_attention(q, k, v_f32, qpos, kpos, window=window, is_causal=False)
+    oracle_round = _from_bf16_bits(_to_bf16_bits(oracle))
+
+    bufs = []
+    try:
+        q_dev = _upload(_runtime, bufs, np.ascontiguousarray(q, dtype=np.float32))
+        k_dev = _upload(_runtime, bufs, np.ascontiguousarray(k, dtype=np.float32))
+        v_dev = _upload(_runtime, bufs, v_bf)
+        qp_dev = _upload(_runtime, bufs, qpos)
+        kp_dev = _upload(_runtime, bufs, kpos)
+        out_dev = _upload(_runtime, bufs, np.zeros((b, ql, qh, hd), np.uint16))
+        dflash2_sliding_attention_f32_bf16(
+            q_dev.ptr, k_dev.ptr, v_dev.ptr, qp_dev.ptr, kp_dev.ptr, out_dev.ptr,
+            b, ql, kv_len, qh, kvh, hd,
+            sliding_window=window, is_causal=False, library=_dflash2_lib, runtime=_runtime,
+        )
+        _runtime.device_synchronize()
+        got = _from_bf16_bits(_download(_runtime, out_dev, (b, ql, qh, hd), np.uint16))
+        scale = max(float(np.max(np.abs(oracle_round))), 1.0)
+        np.testing.assert_allclose(got, oracle_round, atol=2e-3 * scale, rtol=2e-3)
+    finally:
+        _free_all(_runtime, bufs)
+
+
+# ---------------------------------------------------------------------------
 # Candidate selector
 # ---------------------------------------------------------------------------
 

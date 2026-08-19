@@ -21,6 +21,7 @@ _OUTPUT_NAME = "dflash2.so"
 _SYMBOL_GROUPED_CONV = "hipengine_dflash2_grouped_conv"
 _SYMBOL_TOP16_ROWS = "hipengine_dflash2_top16_rows"
 _SYMBOL_SELECTOR = "hipengine_dflash2_selector"
+_SYMBOL_SLIDING_ATTENTION = "hipengine_dflash2_sliding_attention_f32_bf16"
 
 DFLASH2_SELECTOR_MAX_TOP_K = 16
 DFLASH2_SELECTOR_MAX_RANK = 256
@@ -251,6 +252,90 @@ def dflash2_selector(
         ctypes.c_int32(top_k),
         ctypes.c_int64(vocab_size),
         ctypes.c_int64(1),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash2_sliding_attention_f32_bf16(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    value_bf16_ptr: int,
+    query_positions_i32_ptr: int,
+    key_positions_i32_ptr: int,
+    out_bf16_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    sliding_window: int = 0,
+    is_causal: bool = False,
+    scale: float | None = None,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Sliding-window (bidirectional unless causal) GQA attention.
+
+    ``query`` is f32 ``(batch, query_len, q_heads, head_dim)``; ``key`` is f32
+    ``(batch, kv_len, kv_heads, head_dim)``; ``value`` is bf16 with the same
+    key layout.  Positions are absolute i32 arrays; rows outside the window are
+    masked (-inf).  Output is bf16.
+    """
+    if batch_size <= 0 or query_len <= 0 or kv_len <= 0:
+        raise ValueError("sliding attention requires positive batch/query/kv lengths")
+    if num_q_heads <= 0 or num_kv_heads <= 0 or num_q_heads % num_kv_heads != 0:
+        raise ValueError("sliding attention requires q_heads divisible by kv_heads")
+    if head_dim <= 0:
+        raise ValueError("sliding attention head_dim must be positive")
+    if sliding_window < 0:
+        raise ValueError("sliding attention window must be non-negative")
+    scale_value = float(head_dim ** -0.5 if scale is None else scale)
+    library = library or build_dflash2(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SLIDING_ATTENTION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_f32_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_bf16_ptr),
+        ctypes.c_void_p(query_positions_i32_ptr),
+        ctypes.c_void_p(key_positions_i32_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int32(sliding_window),
+        ctypes.c_int32(1 if is_causal else 0),
+        ctypes.c_float(scale_value),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
