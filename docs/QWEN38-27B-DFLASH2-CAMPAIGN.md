@@ -14,6 +14,10 @@ top-16 selector reproduce the numpy oracle to BF16 tolerance and are
 deterministic; the native select path equals numpy propose; sliding-attention
 kernel RED-pinned; `rocprofv3 --kernel-trace` smoke shows all expected kernels
 under expected names (10 GPU tests: 7 kernel RED + 3 forward wiring).
+D3 wiring partial: native drafter wired into `scripts/dflash2_gguf_cycle.py`
+(`--native`) with end-to-end correctness (native greedy == AR 40/40 on the
+smoke) and recall diagnostics; see the worklog for the selector finding
+(recall@16 0.87, but bilinear-selector recall@1 0.46 < unary-argmax 0.51).
 Remaining: D3 chain verify, D4 measurement, D5 gfx1100.
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
