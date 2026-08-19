@@ -282,6 +282,18 @@ weights; exact same-session AR equality on a 2-prompt smoke at B=1..7.
 
 ### D5 — gfx1100 functional support
 
+**D5 status (2026-08-19): registration complete, smoke hardware-blocked.**
+The DFlash2 kernels live in `hipengine/kernels/hip_gfx1100/speculative/dflash2.{hip,py}`
+and the native drafter (`hipengine/speculative/dflash2_native.py`) imports
+them from the gfx1100 package — the gfx1100 peer registration and shared
+source are in place. The remaining D5 deliverable is a correctness-gated
+smoke on a real W7900/gfx1100 host (CPU-oracle gates, KL/top-1 floor, one
+exact 2-prompt AR-equality smoke, one `rocprofv3 --kernel-trace` entry).
+The measurement host in this campaign has only a gfx1151 Radeon 8060S (no
+W7900), so the D5 hardware smoke is **blocked on hardware availability**, not
+on code; it is a recorded, un-tuned pending row. Given DFlash2 is not
+promoted (D4), D5 remains optional per the campaign decision.
+
 - Register the DFlash2 kernels for gfx1100 (peer keys, shared source; the
   existing DFlash kernels already live in the gfx1100 package — reconcile the
   module layout per §5).
