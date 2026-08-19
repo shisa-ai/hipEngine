@@ -31,6 +31,14 @@ size, B3 (4-row verify) is the DFlash2 optimum at 7.70 tok/s = **0.575x AR**
 (100% AR-exact all 10 prompts), still ~3.1x below exact MTP B3; B5 = 4.26
 (0.32x), B7 = 3.58 (0.27x). Drafter forward+selector (~130ms/cycle) is the
 structural DFlash2 disadvantage vs MTP's ~ms draft; no B is competitive.
+B3 cycle split (profiler, fox prompt): draft 74ms + select 70ms + verify
+166ms + commit 2ms ≈ 312ms/cycle. **Even if the drafter forward+select were
+zeroed**, B3 = 2.8 tok/0.166s ≈ 16.9 tok/s = 1.26x AR < MTP B3's 1.78x AR;
+reaching MTP B3 at the 166ms verify would need acceptance 3.96/cycle, above
+the B3 cap of 4.0 and the model's 0.38/draft rate. No operating point can
+reach MTP B3; the per-draft acceptance gap (0.38 vs 0.95) is the
+insurmountable ceiling. Single clean run per B (all 10 prompts AR-exact),
+artifacts under `benchmarks/results/`.
 Remaining: D5 gfx1100 functional (optional given non-promotion).
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
