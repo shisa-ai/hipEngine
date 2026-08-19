@@ -1,10 +1,14 @@
 # Qwen3.8-27B DFlash2 GGUF Campaign (gfx1151 first, gfx1100 functional)
 
-Status: **planned (campaign doc, not started)**. This document defines the
-campaign to bring `z-lab/Qwen3.8-27B-DFlash2` drafting to the closed
-Qwen3.8-27B GGUF production path on Radeon 8060S / `gfx1151`, with
-**functional (correctness-gated, untuned) support on gfx1100/W7900** as an
-explicit deliverable.
+Status: **in progress** — D0 complete (metadata/validation/lineage/CPU oracles);
+D1 drafter-exactness core complete (torch-free NumPy drafter reproduces the
+reference model's greedy chain exactly). Remaining: D1 GGUF-target tap
+integration, D2 native kernels, D3 chain verify, D4 measurement, D5 gfx1100.
+This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
+drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
+`gfx1151`, with **functional (correctness-gated, untuned) support on
+gfx1100/W7900** as an explicit deliverable. Milestone status lives in the
+worklog.
 
 References:
 
