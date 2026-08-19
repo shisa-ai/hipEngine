@@ -24,6 +24,13 @@ mean acceptance 3.49, 3.58 tok/s = **0.27x AR**, vs exact MTP B3 23.85 tok/s
 recorded blocker (per-draft acceptance ~0.38 vs MTP ~0.95; 8-row verify
 ~620ms for LOWER acceptance than MTP B3's 4-row ~160ms). The rowtile-8 verify
 speedup (620->310ms) diverged from AR on `code_lru_cache` and was reverted.
+A follow-up B-sweep (2026-08-19) root-caused why the earlier "B-sweep" was
+flat: `--block-size` was force-clamped to the drafter config 8, so every B
+ran the full 8-row verify. After truncating the verify chain to the CLI block
+size, B3 (4-row verify) is the DFlash2 optimum at 7.70 tok/s = **0.575x AR**
+(100% AR-exact all 10 prompts), still ~3.1x below exact MTP B3; B5 = 4.26
+(0.32x), B7 = 3.58 (0.27x). Drafter forward+selector (~130ms/cycle) is the
+structural DFlash2 disadvantage vs MTP's ~ms draft; no B is competitive.
 Remaining: D5 gfx1100 functional (optional given non-promotion).
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
