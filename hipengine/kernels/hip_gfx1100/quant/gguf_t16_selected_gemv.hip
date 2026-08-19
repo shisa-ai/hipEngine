@@ -3022,7 +3022,7 @@ void q4_k_t16_dense_dual_rowtile_silu_gemv_kernel(
     }
   }
 
-  __shared__ uint16_t projected[2][4][kTileCols];
+  __shared__ uint16_t projected[2][ROW_TILE][kTileCols];
   if (lane == 0) {
 #pragma unroll
     for (int row = 0; row < ROW_TILE; ++row) {
@@ -6312,7 +6312,7 @@ int launch_q4_dense_dual_rowtile_silu(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles_a || !tiles_b || !out || rows < 2 || rows > 4 ||
+  if (!x || !tiles_a || !tiles_b || !out || rows < 2 || rows > 8 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -6333,6 +6333,7 @@ int launch_q4_dense_dual_rowtile_silu(
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(2);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(3);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(4);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(8);
     default:
       return hipErrorInvalidValue;
   }

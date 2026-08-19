@@ -1800,7 +1800,7 @@ def _q4_t16_dual_rowtile_silu_dispatch(
     if (
         not native_batch
         or rows < _PACK8_ROWTILE_MIN_ROWS
-        or rows > _PACK8_ROWTILE_MAX_ROWS
+        or (rows > _PACK8_ROWTILE_MAX_ROWS and not (sole_t16 and rows == 8))
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or not (sole_t16 or pack8_sidecars)

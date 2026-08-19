@@ -189,10 +189,11 @@ oracle (batch-composition invariant). [`Packed-decode rowtile artifact`](results
 
 The physical 8-row (`native_c8`) packed route is now enabled and prefix-exact
 (previously it crashed at the Q6_K lm_head rowtile's rows [2,4] limit): c8 runs
-at **125 ms/step / 63.6 tok/s**. It is correct but **not yet close-to-linear**
-(c8 per-row 15.7 ms vs c4 per-row 10.7 ms, because the c8 FFN rowtile is a 2x4
-split that reads each weight twice); a fused 8-row rowtile is the follow-up.
-[`native_c8 artifact`](results/2026-08-19-concurrency2-qwen38-27b-native-c8-enabled.json).
+at **117 ms/step / 68.6 tok/s**. Its FFN gate/up uses a native 8-row rowtile
+(weight read once). It is correct but **not yet close-to-linear** (c8 per-row
+14.6 ms vs c4 per-row 10.7 ms; the FFN is ~2x c4, so the remaining excess is
+the GDN/attention stage scaling super-linearly at 8 rows) — that is the
+follow-up. [`native_c8 artifact`](results/2026-08-19-concurrency2-qwen38-27b-native-c8-gate-up-rowtile8.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch
