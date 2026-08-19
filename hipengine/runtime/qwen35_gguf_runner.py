@@ -335,6 +335,64 @@ from hipengine.runtime.prefill_flight_recorder import (
     PrefillFlightRecorder,
 )
 
+# ---------------------------------------------------------------------------
+# DFlash2 target-tap capture
+# ---------------------------------------------------------------------------
+# The DFlash2 drafter attends over the target model's hidden states sampled at
+# a sparse set of layers. The reference drafter concatenates post-layer hidden
+# at ``target_layer_ids`` (0-based), i.e. depths ``layer_id + 1``. These must
+# match ``DFlash2DraftConfig.target_layer_ids`` for the Qwen3.8-27B pair.
+DFLASH2_TAP_LAYER_IDS: tuple[int, ...] = (5, 19, 33, 47, 61)
+DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_LAYER_IDS)
+
+
+@dataclass(frozen=True)
+class DFlash2HiddenCaptureTargets:
+    """Caller-owned BF16 destinations for DFlash2 prefill tap rows.
+
+    ``buffers`` maps post-layer depth -> a DeviceBuffer holding
+    ``(rows, hidden_size)`` BF16 (contiguous). Depth must be a DFlash2 tap
+    depth (layer_id + 1). Used so the drafter can project the full prompt
+    context's taps once at prefill instead of re-running target layers.
+    """
+
+    hidden_size: int
+    rows: int
+    buffers: Mapping[int, DeviceBuffer]
+
+    def __post_init__(self) -> None:
+        hidden_size = int(self.hidden_size)
+        rows = int(self.rows)
+        if hidden_size <= 0:
+            raise ValueError("DFlash2 capture hidden_size must be positive")
+        if rows <= 0:
+            raise ValueError("DFlash2 capture rows must be positive")
+        row_nbytes = hidden_size * DType.BF16.itemsize
+        normalized: dict[int, DeviceBuffer] = {}
+        for raw_depth, buffer in self.buffers.items():
+            depth = int(raw_depth)
+            if depth not in DFLASH2_TAP_DEPTHS:
+                raise ValueError(
+                    "DFlash2 hidden captures are limited to the configured tap depths "
+                    f"{DFLASH2_TAP_DEPTHS}; got {depth}"
+                )
+            if not isinstance(buffer, DeviceBuffer):
+                raise TypeError("DFlash2 hidden capture destinations must be DeviceBuffer views")
+            expected_nbytes = rows * row_nbytes
+            if buffer.nbytes != expected_nbytes:
+                raise ValueError(
+                    f"each DFlash2 capture target must hold exactly {expected_nbytes} bytes "
+                    f"(rows={rows}, hidden_size={hidden_size} BF16); "
+                    f"depth={depth} actual={buffer.nbytes}"
+                )
+            normalized[depth] = buffer
+        object.__setattr__(self, "hidden_size", hidden_size)
+        object.__setattr__(self, "rows", rows)
+        object.__setattr__(self, "buffers", MappingProxyType(normalized))
+
+
+# ---
+
 
 def _add_sync_stage_timing(
     timings: dict[str, float] | None,
@@ -14297,6 +14355,35 @@ class Qwen35GGUFResidentSession:
             normalized.add(value)
         return normalized
 
+    def _capture_dflash2_prefill_taps(
+        self,
+        *,
+        layer_id: int,
+        src_ptr: int,
+        chunk_start: int,
+        chunk_rows: int,
+        targets: DFlash2HiddenCaptureTargets | None,
+        runtime: HipRuntime,
+        stream: int = 0,
+    ) -> None:
+        """Copy the post-layer hidden rows of one bulk-prefill chunk into the
+        DFlash2 tap buffers (depth = layer_id + 1) at the chunk row offset."""
+
+        if targets is None:
+            return
+        depth = int(layer_id) + 1
+        tap = targets.buffers.get(depth)
+        if tap is None:
+            return
+        row_nbytes = int(targets.hidden_size) * DType.BF16.itemsize
+        runtime.memcpy_async(
+            int(tap.ptr) + int(chunk_start) * row_nbytes,
+            int(src_ptr),
+            int(chunk_rows) * row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+
     def _capture_verify_layer_boundary_rows(
         self,
         layer_id: int,
@@ -15628,6 +15715,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
@@ -15696,6 +15784,8 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
                 if capture_target_hidden_rows is not None:
                     bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
+                if dflash2_capture is not None:
+                    bulk_kwargs["dflash2_capture"] = dflash2_capture
                 if record_gpu_stage_timings:
                     bulk_kwargs["record_gpu_stage_timings"] = True
                 return self._run_bulk_prefill_and_sample(
@@ -15707,6 +15797,11 @@ class Qwen35GGUFResidentSession:
 
         if record_gpu_stage_timings:
             raise ValueError("GPU stage timing currently requires bulk GGUF prefill")
+        if dflash2_capture is not None:
+            raise ValueError(
+                "DFlash2 prefill tap capture requires the bulk prefill path "
+                "(prompt length >= ssm_conv_kernel)"
+            )
         target_hidden_row_nbytes = 0
         if capture_target_hidden_rows is not None:
             target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
@@ -15827,6 +15922,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         enqueue_sample_only: bool = False,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
@@ -15847,6 +15943,16 @@ class Qwen35GGUFResidentSession:
             if int(capture_target_hidden_rows.nbytes) < required_nbytes:
                 raise ValueError(
                     "capture_target_hidden_rows is smaller than the prompt hidden rows"
+                )
+        if dflash2_capture is not None:
+            if int(dflash2_capture.rows) < rows:
+                raise ValueError(
+                    "DFlash2 capture targets are smaller than the prompt rows "
+                    f"(target rows={dflash2_capture.rows}, prompt rows={rows})"
+                )
+            if int(dflash2_capture.hidden_size) != int(self.runner.hidden_size):
+                raise ValueError(
+                    "DFlash2 capture hidden_size does not match the session hidden_size"
                 )
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
@@ -16034,6 +16140,15 @@ class Qwen35GGUFResidentSession:
                             stream=stream,
                         )
                         src, dst = dst, src
+                        self._capture_dflash2_prefill_taps(
+                            layer_id=layer_id,
+                            src_ptr=src.ptr,
+                            chunk_start=chunk_start,
+                            chunk_rows=chunk_rows,
+                            targets=dflash2_capture,
+                            runtime=runtime,
+                            stream=stream,
+                        )
                         if layer_id in capture_layer_ids and chunk_end == rows:
                             final_row_ptr = (
                                 src.ptr
@@ -16210,6 +16325,15 @@ class Qwen35GGUFResidentSession:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
                     src, dst = dst, src
+                    self._capture_dflash2_prefill_taps(
+                        layer_id=layer_id,
+                        src_ptr=src.ptr,
+                        chunk_start=0,
+                        chunk_rows=rows,
+                        targets=dflash2_capture,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                     if layer_id in capture_layer_ids:
                         final_row_ptr = (
                             src.ptr
