@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-19**
+Last updated: **2026-08-20**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -181,19 +181,19 @@ The executable Generation-2 audit now reports **31 passed / 3 blocked /
 product completion is not claimed. [`Audit artifact`](results/2026-08-18-concurrency2-completion-audit.json).
 
 Engine-level W7900 Qwen3.8-27B `Q4_K_M` packed-decode result (separate
-`gguf_packed_ar_bench` model-step protocol, not the production HTTP topline above):
-packed c2/c4 now run the exact dense-row-tile decode and scale near-linearly —
-**c1/c2/c4 = 29.69 / 52.41 / 91.00 tok/s** (c2 **1.77x**, c4 **3.07x** c1),
-c2 step **174 ms -> 36.7 ms**, with c2/c4 trajectories prefix-exact to the c1
-oracle (batch-composition invariant). [`Packed-decode rowtile artifact`](results/2026-08-19-concurrency2-qwen38-27b-packed-decode-rowtile-accepted.json).
+`gguf_packed_ar_bench` graph model-step protocol, not the production HTTP
+topline above): the clean direct c1-c8 curve is **30.22 / 53.67 / 75.49 / 93.60 /
+67.17 / 74.00 / 63.48 / 69.75 tok/s**. Every direct width is exact against the
+repeating independent fixture and repeatable. c4 is the current peak; Q5T16
+falls from true rowtile to padded WMMA at c5, and planar-Q6T16 falls from a
+true rowtile to direct-per-row at c5/c6 and padded WMMA at c7/c8.
 
-The physical 8-row (`native_c8`) packed route is now enabled and prefix-exact
-(previously it crashed at the Q6_K lm_head rowtile's rows [2,4] limit): c8 runs
-at **117 ms/step / 68.6 tok/s**. Its FFN gate/up uses a native 8-row rowtile
-(weight read once). It is correct but **not yet close-to-linear** (c8 per-row
-14.6 ms vs c4 per-row 10.7 ms; the FFN is ~2x c4, so the remaining excess is
-the GDN/attention stage scaling super-linearly at 8 rows) — that is the
-follow-up. [`native_c8 artifact`](results/2026-08-19-concurrency2-qwen38-27b-native-c8-gate-up-rowtile8.json).
+Native c8 is **114.72 ms / 69.75 tok/s**, while honest two-c4 composition is
+**88.74 ms / 91.06 tok/s (1.306× native c8)**. The continuous owner still
+advertises only physical `(1,2,4,8)` and maps c3 to masked c4 and c5-c7 to
+masked c8; direct c3/c5/c6/c7 are diagnostic until dynamic lifecycle gates
+promote them. Next: true Q5/planar-Q6 rowtiles through 8 plus an artifact-backed
+cost-aware group planner. [`Current width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch
