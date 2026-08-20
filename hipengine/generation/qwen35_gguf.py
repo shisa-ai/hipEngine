@@ -26,6 +26,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_physical_batch_groups,
 )
+from hipengine.dispatch.d2_resolver import d2_partition
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -188,6 +189,17 @@ _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
+_GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
+_GGUF_AR_D2_LABEL_BY_WIDTH = {
+    1: "c1",
+    2: "c2",
+    3: "c3",
+    4: "c4",
+    5: "c5",
+    6: "c6",
+    7: "c7",
+    8: "native_c8",
+}
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -227,6 +239,32 @@ def _target_arch_scoped_stream(method):
 
 def _gguf_ar_packed_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+_GGUF_AR_D2_COST_CACHE: dict[str, object] = {}
+
+
+def _gguf_ar_resolve_cost_table(backend: str) -> object | None:
+    """Resolve the artifact-backed D2 cost table for the AR owner.
+
+    Reads ``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` (a benchmark artifact path).
+    Loads and caches the per-width model-step medians; returns ``None`` when
+    unset so the owner fails closed to the ceiling planner.
+    """
+    path = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+    if not path:
+        return None
+    if path in _GGUF_AR_D2_COST_CACHE:
+        return _GGUF_AR_D2_COST_CACHE[path]
+    from hipengine.dispatch.d2_resolver import cost_table_from_artifact
+
+    cost_table = cost_table_from_artifact(
+        path,
+        label_by_width=_GGUF_AR_D2_LABEL_BY_WIDTH,
+        source=path,
+    )
+    _GGUF_AR_D2_COST_CACHE[path] = cost_table
+    return cost_table
 
 
 def _gguf_ar_packed_prefill_enabled() -> bool:
@@ -7129,10 +7167,21 @@ class Qwen35GGUFResidentModelRunner:
             str(getattr(shared_runner, "backend", "hip_gfx1100")),
             use_capability=getattr(self, "_resident_batch_owner", None) is not None,
         )
+        width_sequence = None
+        cost_table = getattr(self, "_gguf_ar_cost_table", None)
+        if cost_table is None and getattr(self, "_resident_batch_owner", None) is not None:
+            cost_table = _gguf_ar_resolve_cost_table(
+                str(getattr(shared_runner, "backend", "hip_gfx1100"))
+            )
+        if cost_table is not None and getattr(self, "_resident_batch_owner", None) is not None:
+            # Artifact-backed D2 composition of the active rows into certified
+            # widths (ceiling remains the fail-closed fallback when no cost table).
+            width_sequence = d2_partition(len(work.request_ids), cost_table)
         groups = plan_physical_batch_groups(
             work,
             physical_bucket_widths=physical_bucket_widths,
             compact_active_rows=True,
+            width_sequence=width_sequence,
         )
         row_by_request = {int(row.request_id): row for row in row_list}
         group_payloads: list[dict[str, Any]] = []
