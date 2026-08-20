@@ -363,7 +363,17 @@ def _quality_gate(weight: WeightCase, x: np.ndarray, candidate: np.ndarray) -> d
 
 def _validate_smoke(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text())
-    run = [r for r in payload["runs_by_workload"]["512/8"] if r["measured"]][0]
+    raw_runs = (
+        payload.get("runs_by_workload", {}).get("512/8")
+        if isinstance(payload.get("runs_by_workload"), dict)
+        else None
+    )
+    if raw_runs is None:
+        raw_runs = payload.get("runs", [])
+    measured = [run for run in raw_runs if run["measured"]]
+    if len(measured) != 1:
+        raise ValueError(f"expected one measured smoke run, got {len(measured)}")
+    run = measured[0]
     weights = run["memory_snapshots"]["after_load"]["owned_session_breakdown"]["families"]["weights"]
     result = {
         "path": str(path.resolve()),
