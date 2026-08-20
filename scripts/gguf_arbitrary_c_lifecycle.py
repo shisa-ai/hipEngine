@@ -231,6 +231,7 @@ def _load_quality_gate(
     resolved = path.expanduser().resolve()
     payload = json.loads(resolved.read_text(encoding="utf-8"))
     summary = payload.get("quality", {}).get("summary", {})
+    protocol = payload.get("protocol", {})
     provenance = payload.get("provenance", {})
     if not (
         payload.get("kind")
@@ -239,6 +240,10 @@ def _load_quality_gate(
         and payload.get("quality", {}).get("hard_gates_passed") is True
         and float(summary.get("kl_max", float("inf"))) <= 0.05
         and float(summary.get("top1_agreement", 0.0)) >= 0.90
+        and protocol.get("route_profile") == "current_package_direct"
+        and {3, 5, 6, 7}.issubset(
+            {int(width) for width in protocol.get("static_widths", ())}
+        )
         and provenance.get("dirty") is False
         and str(provenance.get("resolved_backend")) == str(backend)
         and Path(str(provenance.get("model_path", ""))).resolve() == model
@@ -252,6 +257,8 @@ def _load_quality_gate(
         "kl_max": float(summary["kl_max"]),
         "top1_agreement": float(summary["top1_agreement"]),
         "rows": int(summary["rows"]),
+        "route_profile": str(protocol["route_profile"]),
+        "static_widths": [int(width) for width in protocol["static_widths"]],
     }
 
 
@@ -814,6 +821,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "HIPENGINE_GGUF_GDN_PREFILL_MODE": os.environ.get(
                         "HIPENGINE_GGUF_GDN_PREFILL_MODE"
                     ),
+                    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": os.environ.get(
+                        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"
+                    ),
                     "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
                         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
                     ),
@@ -937,7 +947,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         if args.compact_after_middle_hole
                         else "The gate preserves scheduler slot identity; no physical compaction is performed."
                     ),
-                    "Every decode group must use only declared c1/c2/c4/c8 physical widths.",
+                    "Every decode group must use only the active declared physical widths "
+                    f"{list(_resolve_widths())}.",
                     "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints; arithmetic drift remains reported even when an external numerical gate makes byte identity non-binding.",
                     "Same-run state/KV preservation across compaction, ownership, routes, masks, and graph invalidation remain hard requirements.",
                 ],
@@ -991,6 +1002,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "HIPENGINE_HIP_ARCH",
             "HIP_VISIBLE_DEVICES",
             "HIPENGINE_COMPILER_VERSION_FILE",
+            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
         )
     }
     text = json.dumps(payload, indent=2, allow_nan=False)

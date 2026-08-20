@@ -136,8 +136,12 @@ def test_gguf_arbitrary_c_lifecycle_requires_explicit_arithmetic_drift_policy(
                     "summary": {
                         "kl_max": 0.0,
                         "top1_agreement": 1.0,
-                        "rows": 1050,
+                        "rows": 1950,
                     },
+                },
+                "protocol": {
+                    "route_profile": "current_package_direct",
+                    "static_widths": [3, 5, 6, 7],
                 },
                 "provenance": {
                     "dirty": False,
@@ -151,8 +155,14 @@ def test_gguf_arbitrary_c_lifecycle_requires_explicit_arithmetic_drift_policy(
         encoding="utf-8",
     )
     gate = _load_quality_gate(artifact, model=model, backend="hip_gfx1151")
-    assert gate["rows"] == 1050
+    assert gate["rows"] == 1950
     assert gate["hard_gate_passed"] is True
+
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["protocol"] = {"route_profile": "q8t16_candidate", "static_widths": [4, 8]}
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="valid matching hard gate"):
+        _load_quality_gate(artifact, model=model, backend="hip_gfx1151")
 
 
 def test_gguf_arbitrary_c_lifecycle_rejects_too_small_shape_before_model_io() -> None:
