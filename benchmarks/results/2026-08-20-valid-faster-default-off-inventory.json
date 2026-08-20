@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_valid_faster_default_off_inventory",
+  "created_at": "2026-08-20T16:45:00Z",
+  "status": "review_complete",
+  "performance_claim": false,
+  "policy": "Every correctness-qualified, same-scope non-regressive improvement is promoted without a minimum percentage. Leaf-only wins, stale/superseded rows, accuracy-traded routes, prompt-conditioned policies, and candidates with any binding full-path regression are not automatically promotable.",
+  "promoted_in_this_review": [
+    {
+      "candidate": "Qwen3.8 Q4_K_S FP16 recurrent state",
+      "scope": "gfx1151, mostly_q4_k_s, plain AR prefill/decode",
+      "performance": "engine decode +0.93%/+2.98%/+3.00% at c1/c4/c8; prefill +0.47%/+1.65%/+3.31%; focused serving +0.38% c1 and +1.33% exact c8",
+      "correctness": "1170-row packed numerical/determinism/isolation/transition/ownership gate passed; real no-env/rollback/forced-on model tests passed",
+      "default": "backend/file-type capability; HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 restores FP32",
+      "commit": "4cf30f6d8"
+    }
+  ],
+  "stale_default_off_labels_already_promoted": [
+    {
+      "candidate": "Moonshine exact wave8 stable top-1",
+      "evidence": "-12.003% HIP event / -12.005% synchronized leaf wall, exact logits/token",
+      "current_state": "already runtime default: MOONSHINE_DEFAULT_LM_HEAD_ROUTE=wave8_top1"
+    },
+    {
+      "candidate": "Laguna exact WPF H5/H6 and attention micro-optimizations",
+      "evidence": "multiple complete-state/category/lifecycle and selector-unset publications, including sub-1% wins",
+      "current_state": "already promoted through backend capabilities; historical changelog entries say integrated default-off because they record the pre-promotion stage"
+    },
+    {
+      "candidate": "gfx1151 GGUF stream-ordered prefill metadata through 4K",
+      "evidence": "+1.47%/+0.65% at 512/4K, 83/83 exact parts",
+      "current_state": "already scoped default via GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS=4096; 128K remains excluded by lifecycle evidence"
+    },
+    {
+      "candidate": "GGUF state-bound decode graphs",
+      "evidence": "exact current gfx11 gates; +1% class c1 and +10.66% physical-c8 blocking in retained scopes",
+      "current_state": "already backend-scoped default with eager rollback"
+    }
+  ],
+  "faster_valid_but_not_yet_general_default": [
+    {
+      "candidate": "Laguna DFlash IQ3 selected-down tile4",
+      "scope": "gfx1100 Laguna Q2 XL explicit DFlash verifier only",
+      "performance": "45-call family -33.66%; h32/h128 DFlash decode +4.725%/+4.536%; every category/heldout decode and E2E row positive",
+      "correctness": "complete category/heldout and lifecycle checks pass",
+      "blocker": "public Laguna DFlash provider is registered on gfx1151, where tile4 is unregistered/unmeasured; ordinary target rows are outside the measured verifier scope",
+      "recommendation": "highest-priority transfer/default candidate: port/register and run the same complete gfx1151 provider gate, or expose a maintained gfx1100 provider; then default tile4 inside explicit DFlash only"
+    },
+    {
+      "candidate": "gfx1151 GGUF active-current Radix prefix reuse",
+      "scope": "greedy p256+s1 continuation from an active exact-current source",
+      "performance": "TTFT 249.269 -> 21.188 ms (11.765x); live pages 4 -> 3",
+      "correctness": "tokens, Conv/GDN/live-KV state, and fallback ownership exact",
+      "blocker": "paired HIP-current median savings were zero and broader historical/LRU plus frozen agentic-suite timing regressed; sampled reuse remains unsupported",
+      "recommendation": "retain automatic use only when prefix_cache=radix and the exact-current predicate holds; do not make radix globally default until a mixed-workload non-regression gate passes"
+    },
+    {
+      "candidate": "GGUF NativeSpecCycle target graph",
+      "scope": "explicit accuracy-traded llama-compat MTP plus separately admitted dense exact extension",
+      "performance": "gfx1151 public N3 70.020 -> 80.099 tok/s; dense natural25 B1/B2/B3 20.846/22.102/21.840 -> 23.225/24.820/25.193",
+      "correctness": "240-ID/cycle/state/KV gates and dense natural25 category/heldout exactness pass",
+      "blocker": "complete-cycle N3 remains below target-only N1 on gfx1100; the compat policy is accuracy-traded and cannot replace exact/default MTP; gfx1151 proposal graph is unregistered",
+      "recommendation": "default the fastest admitted target graph inside the explicit llama-compat mode only after resolving N1-vs-N3 ownership; do not route it into exact/default MTP"
+    },
+    {
+      "candidate": "Laguna/Qwen DFlash verifier multi-row and graph-aware stack",
+      "scope": "gfx1100 27B or GPU1 DFlash benchmark routes",
+      "performance": "individual exact increments range +0.9% to +6.3%; the prompt-history terminal-tail stack reaches 43.76 tok/s / 1.350x AR; GPU1 all-chain multi-row improves +4.2% on four prompts",
+      "correctness": "named benchmark suites are exact",
+      "blocker": "the strongest route is selected from prior prompt identities/history and fixed per-prompt terminal policy, violating anti-gaming/generalization requirements; GPU1 coverage is only four prompts and its all-chain path remains below AR",
+      "recommendation": "do not promote the history manifest; extract prompt-independent kernel/scheduler pieces and rerun the complete category plus heldout suite under one online policy"
+    },
+    {
+      "candidate": "PARO AOTriton one-step decode graph diagnostic",
+      "scope": "historical c1 512/4K diagnostic",
+      "performance": "+7.5%/+7.9% decode",
+      "correctness": "one-step graph replay validated",
+      "blocker": "artifact predates full LLM.generate and state-bound multi-token graph contracts; current graph policies supersede the experiment",
+      "recommendation": "treat as superseded, not a live opt-out; use current backend state-bound graph defaults"
+    },
+    {
+      "candidate": "GGUF MTP resident draft device chain",
+      "scope": "isolated resident NextN proposal",
+      "performance": "propose_chain -2.1% wall",
+      "correctness": "draft/top-k and E2E acceptance exact in the measured packet",
+      "blocker": "complete E2E was flat (63.48 -> 63.50 ms/cycle, 39.81 -> 39.79 tok/s) and adds a 268 MB resident FP32 embedding table",
+      "recommendation": "not a faster full feature; keep off unless a later full-suite row turns the isolated saving into positive E2E wall"
+    }
+  ],
+  "exact_leaf_wins_rejected_by_binding_full_path": [
+    {
+      "candidate": "gfx1151 physical-c8 grouped-query paged attention",
+      "leaf_or_direct_win": "leaf -6.94%; direct +0.414%",
+      "binding_failure": "same-checkout server blocking/delayed -0.57%/-0.94% (SSE +0.40%)",
+      "artifact": "2026-07-20-gfx1151-gguf-paged-attn-qhead-groups-c8-rejected.json"
+    },
+    {
+      "candidate": "gfx1151 physical-c8 paired-head GDN",
+      "leaf_or_direct_win": "leaf -1.01%; direct +0.086%",
+      "binding_failure": "server blocking/SSE/delayed -0.12%/-0.66%/-0.16%",
+      "artifact": "2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json"
+    },
+    {
+      "candidate": "gfx1151 Q8T16 rowtile2 scheduling",
+      "leaf_or_direct_win": "leaf -3.13%; direct +0.69%",
+      "binding_failure": "delayed-admission server -1.05%",
+      "artifact": "2026-07-20-gfx1151-gguf-q8t16-pair-rowtile-scheduling-rejected.json"
+    },
+    {
+      "candidate": "gfx1151 indexed Conv + paired-GDN fusion",
+      "leaf_or_direct_win": "combined leaf -2.43%",
+      "binding_failure": "direct p512/d128 -0.308%",
+      "artifact": "2026-07-20-gfx1151-gguf-gdn-state-residency-fusion-c8-rejected.json"
+    },
+    {
+      "candidate": "gfx1151 exact parallel paged-attention exp/normalization",
+      "leaf_or_direct_win": "leaf -4.71%",
+      "binding_failure": "direct only +0.09% within variance; exact SSE/delayed -0.86%/-0.13%",
+      "artifact": "2026-07-20-gfx1151-gguf-paged-attn-softmax-value-schedules-c8-rejected.json"
+    },
+    {
+      "candidate": "gfx1151 Q8T16 short-K col8",
+      "leaf_or_direct_win": "short-K BF16 single leaf -5.68%; direct +0.093%",
+      "binding_failure": "long-K/F32/triple leaves regress and delayed server -0.53%",
+      "artifact": "2026-07-20-gfx1151-gguf-q8t16-single-dual-triple-col8-rejected.json"
+    },
+    {
+      "candidate": "GPU1 exact hierarchical top-k",
+      "leaf_or_direct_win": "fused leaf -17.02%",
+      "binding_failure": "graph decode -1.15% and prefill -1.21%",
+      "artifact": "2026-07-20-gpu1-q3-hierarchical-topk-rejected.json"
+    },
+    {
+      "candidate": "PARO full-attention K/V dual-pack8",
+      "leaf_or_direct_win": "512 decode +0.11%",
+      "binding_failure": "4K decode -0.21% and slight memory increase",
+      "artifact": "2026-05-17-hipengine-qwen35-d16-kv-pack8-fusion-rejected.json"
+    },
+    {
+      "candidate": "PARO/GGUF prefill fusion diagnostics",
+      "leaf_or_direct_win": "router-sigmoid up to +0.66% and GDN rotate up to +0.53% on selected short rows",
+      "binding_failure": "other model/context rows regress up to -0.40% and -0.30%; no memory saving",
+      "artifact": "2026-05-17-hipengine-qwen35-qwen36-p32-router-sigmoid-rejected.json and 2026-05-17-hipengine-qwen35-qwen36-p31-gdn-rotate-rejected.json"
+    }
+  ],
+  "excluded_as_not_valid_faster_defaults": [
+    "Candidates with any correctness/top-1/KL/state/ownership failure",
+    "Candidates whose complete wall regresses or is flat despite a leaf win",
+    "Accuracy-traded llama-compat layout/dp4a/X8 routes outside their named explicit mode",
+    "Memory-capacity trades with decode/prefill regression, such as host token embedding and mixed INT8 KV",
+    "Prompt-conditioned/offline-oracle policies that violate anti-gaming requirements",
+    "Hardware/backend transfers without measurements on the target backend"
+  ],
+  "sources": [
+    "docs/REFACTOR.md",
+    "docs/ENVS.md",
+    "benchmarks/CHANGELOG.md",
+    "benchmarks/results/*.json",
+    "hipengine/runtime and backend capability defaults"
+  ]
+}
