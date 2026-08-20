@@ -197,7 +197,8 @@ dynamic lifecycle gates promote them. Next: an artifact-backed cost-aware
 group planner (D2) plus product-reachability lifecycle gates.
 [`Width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json),
 [`Q5 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion-summary.json),
-[`Q6 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion-summary.json).
+[`Q6 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion-summary.json),
+[`actual Q5/Q6 rows5-8 correctness gate`](results/2026-08-20-concurrency2-qwen38-q5-q6-rowtile8-actual-operation-gate.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch

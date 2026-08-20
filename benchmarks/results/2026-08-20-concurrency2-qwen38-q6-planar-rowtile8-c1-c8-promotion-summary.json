@@ -68,7 +68,13 @@
     "native_c8_rows_match_c4": true,
     "chunked_c8_groups_match_c4": true,
     "all_measured_runs_repeatable": true,
-    "primitive_rows_2_8_strict_bit_parity_vs_per_row_planar_decode": true
+    "primitive_rows_2_8_strict_bit_parity_vs_per_row_planar_decode": true,
+    "actual_qwen38_q5_q6_rows5_8_gate": {
+      "passed": true,
+      "artifact": "benchmarks/results/2026-08-20-concurrency2-qwen38-q5-q6-rowtile8-actual-operation-gate.json",
+      "q5_operation_verdicts": 52,
+      "q6_operation_verdicts": 55
+    }
   },
   "sources": {
     "graph_packet": {
