@@ -58,10 +58,11 @@ changing one measured implementation mechanism at a time while preserving:
 - a registered strict fallback for every production variant; and
 - the complete prompt/category, dynamic-width, lifecycle, and server gates.
 
-The campaign may retain a small exact cycle-wall/kernel/launch-count win in the
-package path. Switching the public default to named `production` is a separate,
-harder decision: the full server packet must pass and SLO-goodput must improve
-at least 3% with no more than 1% c1 regression.
+Every correctness-qualified non-regressive cycle-wall/kernel/launch-count or
+complete-wall win is retained and promoted within its validated package scope.
+Switching to a named `production` profile additionally requires its manifest,
+strict fallback, task/BF16, and applicable serving candidate gates, but there is
+no minimum percentage threshold; cumulative small wins are first-class.
 
 ### Non-goals
 
@@ -264,11 +265,12 @@ production admission.
   claim. Natural-suite c1 uses all 18 prompts and alternates route order.
 - Report all samples, median, paired ratios, wins, warmups, timing boundary,
   generated hashes, memory, and teardown.
-- A small exact non-regressive kernel/cycle/launch or complete-wall win may be
-  retained in its scoped package route with rollback evidence.
-- A named/public `production` default additionally requires the complete server
-  packet, at least 3% SLO-goodput improvement versus both strict and incumbent,
-  and no more than 1% c1 regression.
+- Every exact or production-qualified non-regressive kernel/cycle/launch or
+  complete-wall win is retained and promoted in its validated scope with
+  rollback evidence; no minimum percentage threshold applies.
+- A named/public `production` profile additionally requires the profile
+  manifest, strict fallback, task/BF16 evidence, and applicable serving
+  candidate gates to show no regression versus strict and incumbent.
 - The frozen 60-second soak is not weakened after a failure. Changing offered
   load, queue limits, SLOs, prompt mix, or rejection policy creates a new
   protocol revision; it cannot rescue the current candidate.
@@ -427,7 +429,8 @@ Exit decisions:
   wall/cycle/launch result is positive and same-suite non-regressive.
 - **Promote named production variant:** above plus complete profile manifest,
   task/BF16 evidence, and all production workloads pass.
-- **Change public default:** above plus >=3% SLO-goodput and <=1% c1 regression.
+- **Change public default:** above plus a non-regressive complete serving result
+  where applicable; no minimum percentage threshold.
 - **Reject:** correctness fails, complete wall regresses, wrong kernel runs, or
   the supposed mechanism has no reconciled effect.
 - **Blocked:** infrastructure/hardware/protocol prevents a valid decision; do

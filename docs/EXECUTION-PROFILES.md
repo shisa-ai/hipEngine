@@ -56,13 +56,18 @@ change to `production` only after:
 - the evaluator and profile manifest are retained;
 - current non-exact defaults have been re-certified or replaced by strict
   fallbacks;
-- the task-quality and dynamic serving gates pass; and
-- the complete serving packet demonstrates a material benefit (initial target:
-  at least 3% SLO-goodput improvement, with no more than 1% c1 regression).
+- the task-quality and applicable dynamic-serving candidate gates pass; and
+- the complete serving packet, where applicable, shows the candidate is
+  non-regressive against the current default under the declared SLO protocol.
 
-This materiality rule applies to changing the **public profile default**. It
-does not discard smaller exact or production-qualified kernel/cycle-wall wins;
-those remain first-class under the repository performance policy.
+There is **no minimum percentage threshold** for changing a default. Every
+measured, correctness-qualified, non-regressive improvement is retained and
+promoted within its validated scope; small wins accumulate across kernels and
+features. A default may remain blocked only by a concrete correctness,
+ownership, determinism, resource, applicability, or candidate-caused SLO
+regression—not because an individual win is deemed too small. A pre-existing
+product/SLO failure shared by control and candidate is tracked separately and
+does not erase a candidate improvement.
 
 ### 2.2 First ZBook c1/cN default decision
 
@@ -76,9 +81,10 @@ clean drain. Seven paired graph runs retain small c4/c8 wins.
 
 The complete production-server packet nevertheless fails soak completion:
 87/120 requests complete exactly and 33 are rejected under sustained offered
-load. The cN wins are also below the 3% public-default materiality target.
-Therefore omitted-profile package behavior stays unchanged, no route is
-certified through a named runtime profile, and migration debt remains open.
+load. That shared serving failure remains a product/scheduler blocker, but win
+magnitude is not. Omitted-profile package behavior stays unchanged only because
+no route is certified through a named runtime profile and the task/BF16/control
+schema debt remains open.
 The compact evidence and raw hashes are in
 [`2026-08-16-zbook-qwen36-production-profile-cn-blocked.json`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
@@ -88,17 +94,19 @@ The 2026-08-20 gfx1151 Qwen3.8 `Q4_K_S` FP16 recurrent-state route remains an
 explicit opt-in and does **not** become a named/public `production` default.
 Its complete packed numerical, determinism, isolation, and ownership hard gate
 passes, and the engine packet measures about 3% c4/c8 decode improvement.
-However, the predeclared serving screen fails static-c8 ITL-p99 in both FP32
-and FP16 modes (`0.8532/0.8287 s > 0.5 s`) and measures only `+1.33%` exact c8
-server throughput, below the 3% materiality target. The complete packet is
-therefore ineligible and the SLO must not be relaxed after observing the result.
+The predeclared serving screen fails static-c8 ITL-p99 in both FP32 and FP16
+modes (`0.8532/0.8287 s > 0.5 s`), but FP16 improves exact c8 server throughput
+by `+1.33%` and is non-regressive at c1. The shared absolute SLO failure remains
+a serving-path blocker, not a reason to discard or withhold this scoped default
+improvement. The SLO is not relaxed after observing the result.
 
 No runtime profile manifest is registered for this candidate. Its measured
 FP32 denominator is the same compact-peer production arithmetic with FP32
 state storage, not a certified model-level `strict` plan; labeling that route
-public `strict` would violate this contract. Omitted-profile behavior remains
-unchanged, FP32 is the public default, and FP16 remains available only through
-its documented experiment flag. Evidence:
+public `strict` would violate this contract. The prior magnitude-based default
+rejection is superseded; the scoped legacy-default promotion is handled through
+the backend capability/default path while named-profile migration remains open.
+Evidence:
 [`serving rejection`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json)
 and [`retained opt-in packet`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json).
 

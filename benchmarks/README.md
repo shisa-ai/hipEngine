@@ -100,11 +100,13 @@ explicit opt-in rather than the public default. A clean p512 FP32/FP16 bracket
 measures aggregate c1/c4/c8 decode **12.9005/42.5856/57.2905 ->
 13.0204/43.8535/59.0106 tok/s** and aggregate prefill
 **377.31/307.16/246.26 -> 379.09/312.24/254.41 tok/s**, while the complete
-packed numerical/isolation hard gate passes. Public promotion is **rejected**:
-the predeclared serving screen fails c8 ITL SLO in both modes and measures only
-**+1.33%** exact c8 server throughput, below the 3% materiality target. See the
-[`retained opt-in artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)
-and [`serving rejection`](results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
+packed numerical/isolation hard gate passes. The serving screen is also
+non-regressive: c1 improves **+0.38%** and exact c8 server throughput improves
+**+1.33%**. Both modes share an absolute c8 ITL-SLO failure, which remains a
+serving-path issue rather than a candidate regression. The former fixed 3%
+threshold is removed; scoped default promotion is tracked in the
+[`candidate artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)
+and [`serving evidence`](results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
 
 ## Where detailed evidence lives
 

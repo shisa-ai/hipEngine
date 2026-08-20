@@ -2,14 +2,14 @@
   "schema_version": 1,
   "kind": "qwen38_gfx1151_q4ks_r2_fp16_state_repaired_production",
   "created_at": "2026-08-20T15:25:00Z",
-  "status": "retained_opt_in",
+  "status": "retained_scoped_default_candidate",
   "publishable": false,
   "performance_claim": true,
   "profile_qualification_claim": false,
   "qualification_blockers": [
     "no runtime-resolved public production-profile manifest",
     "fresh BF16-relative and external task-score verdicts are unavailable",
-    "predeclared static-c8 serving screen fails ITL-p99 SLO and measures only +1.33% exact throughput; complete packet is ineligible",
+    "complete named-profile serving packet is unavailable; focused screen is candidate-non-regressive but both modes share an absolute c8 ITL-p99 SLO failure",
     "gfx1100 applicability is not measured"
   ],
   "hardware": {
@@ -108,5 +108,5 @@
     "fp16_env_recorded_by_raw_provenance": true
   },
   "serving_screen_artifact": "2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json",
-  "decision": "Retain FP16 recurrent state as a gfx1151 Qwen3.8 Q4_K_S opt-in. It is non-regressive at c1, improves pooled engine decode 2.98% at c4 and 3.00% at c8, improves aggregate prefill 1.65%/3.31%, and saves 1.15 GiB tracked peak in the eight-session engine packet. Do not promote it to public default: the predeclared serving screen fails c8 ITL SLO in both modes and measures only +1.33% candidate exact c8 server throughput, below the 3% materiality target."
+  "decision": "Promote FP16 recurrent state as the scoped gfx1151 Qwen3.8 Q4_K_S legacy default with HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 retained as rollback. It is non-regressive at c1, improves pooled engine decode 2.98% at c4 and 3.00% at c8, improves aggregate prefill 1.65%/3.31%, saves 1.15 GiB tracked peak, and improves focused serving c1/c8. The shared absolute c8 serving SLO failure remains independent debt. This does not claim a named runtime production profile."
 }

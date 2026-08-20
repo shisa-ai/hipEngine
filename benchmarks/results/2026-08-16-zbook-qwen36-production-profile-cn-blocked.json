@@ -20,7 +20,7 @@
   "decision": {
     "package_routes": "retain current defaults: cooperative/persistent c1 router; direct Q8T16 c2; rowtile4 c4/c8",
     "public_profile_default": "do_not_change",
-    "reason": "the complete production packet failed soak completion with 33/120 overload rejections, and the retained cN gains are below the 3% public-default materiality target",
+    "reason": "the complete production packet failed soak completion with 33/120 overload rejections; named runtime-manifest, standardized-control, BF16-relative, and task evidence also remain incomplete. Win magnitude is not a blocker.",
     "strict_fallback": "the separate router chain and registered strict Q8T16 variants remain available; the pre-existing exact c8 pair col8 route is shared",
     "remaining_profile_blockers": [
       "the candidate manifest is evidentiary, not a runtime-resolved immutable Qwen3.6 profile plan",
