@@ -39,9 +39,11 @@ def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
 
 
 def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
-    names = _parse_configurations("c1,c2,c4,native_c8,chunked_c8,serial_c4")
+    canonical = tuple(CONFIGURATIONS)
+    names = _parse_configurations(",".join(canonical))
 
-    assert names == ("c1", "c2", "c4", "native_c8", "chunked_c8", "serial_c4")
+    assert names == canonical
+    assert build_parser().parse_args([]).configurations == ",".join(canonical)
     assert CONFIGURATIONS["c4"].native_group_width == 4
     assert CONFIGURATIONS["c4"].native_group_count == 1
     assert CONFIGURATIONS["native_c8"].logical_rows == 8
@@ -58,13 +60,17 @@ def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
     with pytest.raises(ValueError, match="unique"):
         _parse_configurations("c1,c1")
     with pytest.raises(ValueError, match="canonical"):
-        _parse_configurations("c4,c1,c2,native_c8,chunked_c8,serial_c4")
+        _parse_configurations(",".join(reversed(canonical)))
 
 
 def test_packed_ar_bench_builds_declared_group_boundaries() -> None:
     assert _configuration_groups(CONFIGURATIONS["c1"]) == ((0,),)
     assert _configuration_groups(CONFIGURATIONS["c2"]) == ((0, 1),)
+    assert _configuration_groups(CONFIGURATIONS["c3"]) == ((0, 1, 2),)
     assert _configuration_groups(CONFIGURATIONS["c4"]) == ((0, 1, 2, 3),)
+    assert _configuration_groups(CONFIGURATIONS["c5"]) == ((0, 1, 2, 3, 4),)
+    assert _configuration_groups(CONFIGURATIONS["c6"]) == ((0, 1, 2, 3, 4, 5),)
+    assert _configuration_groups(CONFIGURATIONS["c7"]) == ((0, 1, 2, 3, 4, 5, 6),)
     assert _configuration_groups(CONFIGURATIONS["native_c8"]) == (
         (0, 1, 2, 3, 4, 5, 6, 7),
     )
@@ -221,6 +227,10 @@ def test_packed_ar_bench_native_c8_scaling_gate_uses_honest_controls() -> None:
     )
 
     assert scaling["native_c8_scaling_gate_passed"] is True
+    assert scaling["direct_c1_c8_decode_tok_s_aggregate"]["1"] == 80.0
+    assert scaling["direct_c1_c8_decode_tok_s_aggregate"]["4"] == 180.0
+    assert scaling["direct_c1_c8_decode_tok_s_aggregate"]["8"] == 250.0
+    assert scaling["direct_c1_c8_scaling_vs_c1"]["8"] == pytest.approx(3.125)
     assert scaling["native_c8_decode_tok_s_aggregate"] == 250.0
     assert scaling["ratios"]["native_c8_aggregate_vs_c1"] == pytest.approx(3.125)
     assert scaling["ratios"]["native_c8_aggregate_vs_chunked_c8"] == pytest.approx(
@@ -235,7 +245,11 @@ def test_packed_ar_bench_cross_configuration_gate_uses_serial_and_chunked_contro
     summaries = {
         "c1": _summary("a"),
         "c2": _summary("a", "b"),
+        "c3": _summary("a", "b", "c"),
         "c4": _summary("a", "b", "c", "d"),
+        "c5": _summary("a", "b", "c", "d", "a"),
+        "c6": _summary("a", "b", "c", "d", "a", "b"),
+        "c7": _summary("a", "b", "c", "d", "a", "b", "c"),
         "native_c8": _summary("a", "b", "c", "d", "a", "b", "c", "d"),
         "chunked_c8": _summary("a", "b", "c", "d", "a", "b", "c", "d"),
         "serial_c4": _summary("a", "b", "c", "d"),
@@ -244,7 +258,9 @@ def test_packed_ar_bench_cross_configuration_gate_uses_serial_and_chunked_contro
     result = _cross_configuration_correctness(summaries)
 
     assert result["passed"] is True
-    assert result["c1_c2_c4_prefix_exact"] is True
+    assert result["all_direct_c1_c8_exact"] is True
+    assert result["c1_c2_c3_c4_prefix_exact"] is True
+    assert all(result["direct_c1_c8_match_c4_repeating_fixture"].values())
     assert result["c4_matches_serial_c4"] is True
     assert result["native_c8_rows_match_c4"] is True
     assert result["chunked_c8_groups_match_c4"] is True

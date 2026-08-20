@@ -1227,9 +1227,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--packed-concurrency",
         type=int,
-        choices=(2, 4, 8),
+        choices=tuple(range(2, 9)),
         default=4,
-        help="Physical packed lane to compare against c1 (default: c4).",
+        help="Physical packed lane c2-c8 to compare against c1 (default: c4).",
     )
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--prompt-token-id", type=int, default=9707)
@@ -1256,8 +1256,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         raise ValueError("direct AQL profiling requires hip_gfx1100 graph decode")
     if args.child_mode is not None:
-        if args.concurrency not in {1, 2, 4, 8} or args.child_json is None:
-            raise ValueError("child mode requires --concurrency 1|2|4|8 and --child-json")
+        if args.concurrency not in set(range(1, 9)) or args.child_json is None:
+            raise ValueError(
+                "child mode requires --concurrency in 1..8 and --child-json"
+            )
         return _run_child(args)
     payload = _run_parent(args)
     if args.out is not None:
