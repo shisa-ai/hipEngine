@@ -107,7 +107,6 @@ documentation review:
 
 | Scope | Why it is ready | What to remove / what to keep |
 | --- | --- | --- |
-| Unrouted kernel bodies | `pack8_wmma64_prefill` is registered but explicitly never routed after losing its leaf screen; Laguna's `...split_exact_gated_mixed32_vstage64_reduce_kernel` has no wrapper or registry key. | Delete body/wrapper/export/key/dedicated test for WMMA64 and delete the unwrapped Laguna body. Keep their compact rejection evidence; reopen only from a materially different design. |
 | Rejected MTP/llama-compat flag zoo | Multiple Q6 top-1 shapes, shared-Q8, selected X8/raw gate-up, fused rotate, accept-position, and overlap routes are explicitly rejected but still runtime-selectable. | After the final named llama-compat transaction policy is chosen, retain one named compat composition plus the strict control; remove loose env/CLI combinations and demote useful leaf oracles to tests. Do not remove an option still consumed by that named composition before the decision. |
 | Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. “No textual owner” is a review queue, not sufficient deletion proof. |
 
@@ -3688,19 +3687,6 @@ should be boring.
   and diagnostic leaf/quality selectors until a later exact path matches or
   exceeds the candidate.
 
-## Laguna gfx1151 long-global mixed32 reducer prototype
-
-- Added 2026-08-01 while constructing LC-D3. The internal-only
-  `laguna_global_attention_split_exact_gated_mixed32_vstage64_reduce_kernel`
-  established exact exp32 probability caching, local512 idle-wave V64
-  prefetch, and paired-query V reuse, but it was superseded before runtime
-  integration by the faster GQA6 score + normalization + D32 PV route.
-- It has no C wrapper, Python export, registry key, runtime selector, or
-  production dispatch and therefore cannot run. Remove the unused body after
-  the clean GQA6 production confirmation, when LC-D3's next score-plane
-  rewrite reopens this source file. Do not retain it as a rollback; the
-  registered generic exact split path is the rollback.
-
 ## Laguna gfx1151 LC-D3 long-global geometry and context-split prototypes
 
 - Added 2026-08-02 while screening the second through fifth LC-D3 milestones.
@@ -3886,17 +3872,6 @@ should be boring.
   decode and Q8 guards. Remove the env branch after one non-regressive release
   window when no A/B bisection needs it. Do not broaden the model/quant/rows/
   K/N policy without separate complete-model evidence.
-
-## gfx1151 pack8 wmma64 diagnostic kernel
-
-- `pack8_wmma64_prefill_bf16_bf16_out` (LDS-staged 128x64 large-tile pack8
-  WMMA GEMM, D08-X2-K1) is registered but deliberately unrouted: the retained
-  screen measured parity-or-worse versus the routed small-tile
-  `pack8_wmma_prefill` leaf on gfx1151 wave32 (best LDS configs 64x64/64x128
-  tie; 128x64 is ~1.4x slower; all outputs bit-exact). Remove the kernel,
-  wrapper, export, and `tests/test_gguf_q4_k_pack8_wmma64_prefill.py` if no
-  wave64/coopmat follow-up consumes it, or wire it in if a future variant
-  beats the small-tile leaf.
 
 ## gfx1151 Q8_0 GDN cluster8 route
 
