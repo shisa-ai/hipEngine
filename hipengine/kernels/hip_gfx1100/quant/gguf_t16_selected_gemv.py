@@ -1207,7 +1207,7 @@ def gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact compact-T16 row-reuse owner for rows 2-4."""
+    """Launch the exact compact-T16 row-reuse owner for rows 2-8."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
@@ -1253,7 +1253,7 @@ def gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
 ) -> None:
     """Launch the exact sole-qmicro rows2-4 primitive."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_ROWTILE_BF16)
@@ -1298,7 +1298,7 @@ def gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out(
 ) -> None:
     """Launch exact compact-Q4 FFN-down plus rounded-BF16 residual."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_RESIDUAL_BF16)
@@ -1343,7 +1343,7 @@ def gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact two-wave compact-T16 FFN rowtile for rows 2-4."""
+    """Launch the exact two-wave compact-T16 FFN rowtile for rows 2-8."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
@@ -1441,7 +1441,7 @@ def gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out(
 ) -> None:
     """Launch the exact qmicro FFN rowtile for rows 2-4."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_ROWTILE_SILU_BF16)
@@ -1487,7 +1487,7 @@ def gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out(
 ) -> None:
     """Launch the exact four-column compact-T16 row-reuse control."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or build_gguf_t16_selected_gemv()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_COL4_BF16)
@@ -1524,6 +1524,23 @@ def _check_dense_q4_t16_rowtile_shape(
 ) -> None:
     if not (2 <= rows <= 8):
         raise ValueError("dense Q4T16 rowtile requires rows in 2..8")
+    _check_dense_q4_t16_rowtile_geometry(in_features, out_features)
+
+
+def _check_dense_q4_t16_rowtile4_shape(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> None:
+    if not (2 <= rows <= 4):
+        raise ValueError("dense Q4T16 rowtile requires rows in 2..4")
+    _check_dense_q4_t16_rowtile_geometry(in_features, out_features)
+
+
+def _check_dense_q4_t16_rowtile_geometry(
+    in_features: int,
+    out_features: int,
+) -> None:
     if in_features <= 0 or in_features % _QK_K:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
