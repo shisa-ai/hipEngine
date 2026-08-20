@@ -44,6 +44,7 @@ from hipengine.server.api import (
     _AGENTIC_REPLAY_FAILURE_REASONS,
     _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
     _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
+    _THINKING_CLOSE_MARKER,
     _await_with_request_control,
     _backend_scheduler_token_chunks,
     _chat_session_message_copy,
@@ -213,9 +214,10 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
+    supports_default_mtp = True
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
+        super().__init__(token_map=token_map)
         self.mtp_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
 
     def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
@@ -1556,6 +1558,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
         },
+        "thinking_policy": "hint",
         "processed_target_verification": False,
     }
     assert body["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
@@ -1649,6 +1652,7 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "allowed_execution_modes": ["greedy_fast"],
         "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "thinking_policy": "hint",
         "processed_target_verification": False,
         "policy": "opt_in",
         "request_field": "speculative_mtp",
@@ -1683,6 +1687,47 @@ def test_capabilities_endpoint_reports_auto_exact_fallback() -> None:
         "compatibility_mtp_explicit_only": True,
         "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
     }
+
+
+def test_capabilities_endpoint_reports_enabled_default_mtp_when_dense() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="enabled",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+
+    assert payload["policy"] == "enabled"
+    assert payload["default_enabled"] is True
+    assert "auto_route" not in payload
+
+
+def test_capabilities_endpoint_enabled_default_mtp_falls_back_for_non_dense() -> None:
+    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+        supports_default_mtp = False
+
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="enabled",
+        ),
+        llm=MoESpeculativeMTPFakeLLM(),
+    )
+    client = TestClient(app)
+
+    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+
+    assert payload["policy"] == "enabled"
+    assert payload["default_enabled"] is False
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -6112,6 +6157,108 @@ def test_completions_auto_keeps_compatibility_mtp_explicit_only() -> None:
     assert fake.mtp_calls[0][0] == ("three",)
 
 
+def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    # A greedy non-streaming request without speculative_mtp uses MTP by default.
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == ["mtp:one", "mtp:two"]
+    assert fake.calls == []
+    assert len(fake.mtp_calls) == 1
+    assert fake.mtp_calls[0][0] == ("one", "two")
+    assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+
+    # Explicit speculative_mtp=false forces plain AR.
+    ar_response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "three",
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": False,
+        },
+    )
+    assert ar_response.status_code == 200
+    assert ar_response.json()["choices"][0]["text"] == "generated:three"
+    assert len(fake.mtp_calls) == 1
+    assert fake.calls and fake.calls[-1][0] == ("three",)
+
+
+def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default() -> None:
+    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+        supports_default_mtp = False
+
+    fake = MoESpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == [
+        "generated:one",
+        "generated:two",
+    ]
+    assert fake.mtp_calls == []
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+
+    # Explicit speculative_mtp=true still opts into MTP on the same engine.
+    explicit_response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "three",
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+    assert explicit_response.status_code == 200
+    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
+    assert len(fake.mtp_calls) == 1
+
+
 def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
@@ -6142,6 +6289,145 @@ def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampli
     assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["temperature"]
     assert fake.calls == []
     assert fake.mtp_calls == []
+
+
+def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sampling() -> None:
+    fake = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            speculative_mtp_thinking="hint",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think then answer"}],
+            "reasoning_effort": "medium",
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert len(fake.mtp_calls) == 1
+    # The MTP route relaxes host-sampler thinking enforcement while keeping the
+    # thinking hints in the rendered prompt.
+    sampling = fake.mtp_calls[0][1]
+    assert sampling.thinking_close_token_ids == ()
+    assert sampling.thinking_hard_token_cap is None
+    assert sampling.thinking_soft_close_window == 0
+    assert "hidden reasoning tokens" in str(fake.mtp_calls[0][0][0])
+
+
+def test_chat_completion_hard_thinking_policy_falls_back_to_ar_and_keeps_enforcement() -> None:
+    fake = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            speculative_mtp_thinking="hard",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think then answer"}],
+            "reasoning_effort": "medium",
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "top_p": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
+    # Hard policy keeps full host-sampler thinking enforcement on the AR path.
+    sampling = fake.calls[-1][1]
+    assert sampling.thinking_close_token_ids == (42, 43)
+    assert sampling.thinking_hard_token_cap == 50
+    assert sampling.thinking_soft_close_window == 50
+
+
+def test_chat_completion_thinking_policy_request_override_selects_policy() -> None:
+    # Config is hard but the request opts in to hint -> MTP route.
+    fake = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            speculative_mtp_thinking="hard",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think then answer"}],
+            "reasoning_effort": "medium",
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": {"enabled": True, "thinking": "hint"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert len(fake.mtp_calls) == 1
+
+    # Config is hint but the request opts in to hard -> thinking stays a hard
+    # blocker and an explicit MTP request is rejected.
+    fake2 = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
+    app2 = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+            speculative_mtp_thinking="hint",
+        ),
+        llm=fake2,
+    )
+    client2 = TestClient(app2)
+
+    response = client2.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "think then answer"}],
+            "reasoning_effort": "medium",
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": {"enabled": True, "thinking": "hard"},
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["thinking_budget"]
 
 
 def test_completions_preserve_structured_finish_details() -> None:
@@ -18724,6 +19010,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
             "logprobs": "logprobs requested",
             "top_logprobs": "top_logprobs > 0",
         },
+        "thinking_policy": "hint",
         "processed_target_verification": False,
     }
     assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_fields"] == list(

@@ -418,6 +418,36 @@ def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatc
     assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is False
 
 
+def test_gguf_mtp_server_target_verify_mode_defaults_to_native(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "native"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "serial-exact")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "serial_exact"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "serial_exact")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "serial_exact"
+
+    # Unknown modes fall back to the native default.
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "bogus")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "native"
+
+
+def test_gguf_mtp_server_candidate_budget_defaults_to_three(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "2")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
+
+    # Out-of-range / non-numeric values fall back to the default.
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "9")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "abc")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+
+
+
 def test_gguf_decode_graph_default_on_with_opt_out(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
     assert qwen35_gguf._gguf_decode_graph_enabled() is True

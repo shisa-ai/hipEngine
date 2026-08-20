@@ -1201,6 +1201,8 @@ class Qwen35GGUFMTPDecodeSession:
         return_cycle_logits: bool = False,
         use_bulk_prefill: bool | None = None,
         prefill_draft: bool = True,
+        eos_token_id: int | None = None,
+        stop_token_ids: Sequence[int] = (),
     ) -> Qwen35GGUFMTPGenerationResult:
         prompt = tuple(int(token) for token in prompt_tokens)
         if not prompt:
@@ -1229,6 +1231,12 @@ class Qwen35GGUFMTPDecodeSession:
             )
         prefill_seconds = time.perf_counter() - prefill_started
         scheduler.record_generated(((rid, int(first.token_id)),))
+        if eos_token_id is not None or stop_token_ids:
+            scheduler.finish_request_at_stop(
+                rid,
+                eos_token_id=eos_token_id,
+                stop_token_ids=stop_token_ids,
+            )
         if rid in scheduler.completed:
             return Qwen35GGUFMTPGenerationResult(
                 request_id=rid,
@@ -1407,6 +1415,16 @@ class Qwen35GGUFMTPDecodeSession:
                     scheduler.rollback_speculative_kv_transaction(policy, plan)
                 raise
 
+            # Retire early at the model EOS or a request stop token: the whole
+            # speculative cycle was already recorded, so trim generated tokens
+            # to end exactly at the stop and complete through the reclaim path.
+            if eos_token_id is not None or stop_token_ids:
+                scheduler.finish_request_at_stop(
+                    rid,
+                    eos_token_id=eos_token_id,
+                    stop_token_ids=stop_token_ids,
+                )
+
             summary = commit.summary
             accepted = int(summary.accepted_counts[0])
             if rid not in scheduler.completed:
@@ -1459,6 +1477,8 @@ class Qwen35GGUFMTPDecodeSession:
                 record["candidate_logits_recorded"] = True
                 record["target_logits_shape"] = list(prepared_logits.shape)
             records.append(record)
+            if rid in scheduler.completed:
+                break
             if next_token is None:
                 break
             root = int(next_token)

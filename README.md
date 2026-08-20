@@ -271,8 +271,20 @@ Important limits:
 - Maple currently uses greedy generation only.
 - Advertised model context lengths are not a promise that hipEngine supports the
   same length. Use the model guide and set a conservative server context limit.
-- Speculative generation is optional and off by default when it changes output
-  or does not provide a reliable speed benefit.
+- Speculative generation is enabled by default in the server for dense Qwen
+  models through the fast llama.cpp-style **native** MTP verify path
+  (`HIPENGINE_GGUF_MTP_VERIFY_MODE`, default `native`) with a candidate budget
+  of 3 (`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`), giving roughly 1.5-1.7x decode
+  speedup over AR with rare sub-token-level differences; the token-exact
+  `serial_exact` rollback control is available by setting
+  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` (it re-runs exact c=1 AR per
+  candidate row and cannot beat AR speed). MTP stays opt-in elsewhere (MoE MTP
+  and the generic speculative provider) when it can change output or lacks a
+  reliable speed benefit. By default the server's **hint** thinking policy
+  relaxes host-sampler thinking-budget enforcement to prompt hints so
+  `reasoning_effort` requests also use MTP; set
+  `HIPENGINE_SPECULATIVE_MTP_THINKING=hard` (or
+  `--speculative-mtp-thinking hard`) to keep full enforcement with AR fallback.
 - APIs and supported combinations can still change before 1.0.
 
 ## Hardware detection

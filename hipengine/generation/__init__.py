@@ -81,6 +81,7 @@ from hipengine.generation.sampling import (
     SamplingMode,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
+    MTP_THINKING_RELAXABLE_BLOCKERS,
     active_processor_names,
     clone_thinking_budget_state,
     derive_row_seed,
@@ -94,6 +95,8 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
     supports_native_gpu_sampling,
     supports_speculative_mtp_sampling,
+    mtp_thinking_blockers_only,
+    relax_thinking_budget_for_mtp,
     validate_sampling_params,
 )
 
@@ -130,6 +133,7 @@ __all__ = [
     "CompletedRequest",
     "DecodePhase",
     "DecodeState",
+    "MTP_THINKING_RELAXABLE_BLOCKERS",
     "DuplicateGeneratorError",
     "EngineLoopConfig",
     "EngineLoopEvent",
@@ -207,6 +211,8 @@ __all__ = [
     "supports_speculative_mtp_sampling",
     "thinking_budget_active",
     "thinking_budget_state_from_params",
+    "mtp_thinking_blockers_only",
+    "relax_thinking_budget_for_mtp",
     "token_sequence_state_for_tokens",
     "validate_sampling_params",
 ]
