@@ -1716,7 +1716,7 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
             0, 0, 0, 5, 256, 16
         )
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
     with pytest.raises(ValueError, match="compact_rows must be positive"):
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 0, 256, 16, 16, 1)
