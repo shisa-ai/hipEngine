@@ -212,8 +212,14 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
    (`HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS=256` / env restores it). See
    `worklog/entries/20260820T105005.889308Z-lhl-pn3-fullattn-threads-1024-f5c77a.md`
    and `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads.json`.
-   Remaining levers: split-K3 / split-policy or WMMA-tile variants on the c1
-   exact spine, only with a fresh route/profile check + the same gate.
+
+   **Candidates 1c/1d closed 2026-08-20:** split-K is a measured no-win for
+   the c1 window (20-45% slower at contexts 513-768; the apparent ~1023
+   crossover is run noise) and WMMA-tile is closed on analysis (M=1 per block,
+   latency-bound leaf, no in-tree 16Q/2KV WMMA decode kernel). The c1 attention
+   leaf is at its practical gfx1151 optimum; remaining full-attention headroom
+   is the QKV/output projection family (separate owner). See
+   `worklog/entries/20260820T124504.891610Z-lhl-pn3-fullattn-splitk-wmma-close-c418f6.md`.
 2. **P3-EXPGEMV — selected-expert W4 GEMV shape tuning** (thread/tiling/dequant
    for 40 CU + 32 MiB MALL). Kernel-side; gated on the do-not-repeat ledger
    (DP4A/Q8_1, row-compact GEMV, one-plane Q8_1 already rejected). The host
@@ -235,7 +241,12 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
 - prompt/token/candidate-specific routing (prohibited benchmark gaming).
 - fused fixed256 context-batch+gate leaf (bit-exact but no-win: gate_mul is
   ~1 µs of a ~95 µs attention call; GPU-bound decode hides the launch);
-- launch-count reductions in c1 decode as a wall-time lever (host is overlapped).
+- launch-count reductions in c1 decode as a wall-time lever (host is overlapped);
+- split-K (online-softmax + fused gate) for the c1 short-batch window
+  (<1024): 20-45% slower at contexts 513-768, no reliable crossover;
+  keep split-K only at >=1024 where it already runs;
+- WMMA-tile for the single-row c1 decode leaf (M=1 per block, latency-bound;
+  WMMA tiles waste 15/16 lanes).
 
 ## Venue caveat
 
