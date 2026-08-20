@@ -194,12 +194,16 @@ is 127.32 tok/s and beats honest two-c4 chunked c8 (91.13 tok/s) by 39.7%**
 The complete current-package numerical gate is bit-exact over **1,950/1,950**
 teacher-forced rows: static c3/c5/c6/c7, c7→c6→c5→c3 retirement, and sparse
 physical-c8 all have KL 0, top-1 100%, max absolute logit delta 0, and three-run
-determinism across the full 18-prompt category+heldout suite. The continuous
-owner still advertises only physical `(1,2,4,8)` and maps c3 to masked c4 and
-c5-c7 to masked c8; direct c3/c5/c6/c7 remain diagnostic until their dynamic
-compaction/refill/cancellation lifecycle matrix passes. Next: lifecycle closure,
-then the artifact-backed cost-aware group planner (D2).
-[`Direct-width numerical gate`](results/2026-08-20-concurrency2-qwen38-direct-width-quality.json),
+determinism across the full 18-prompt category+heldout suite. The clean dynamic
+lifecycle matrix also passes c3/c5/c6/c7: direct and neighbor routes, compaction
+row moves, state/live-KV and resource hashes, graph invalidation, cancellation,
+session reuse, tracked-memory recovery, and final drain all pass with zero
+fallbacks or leaks. These widths are now lifecycle-qualified for product
+integration. The continuous owner still advertises only physical `(1,2,4,8)`
+and maps c3 to masked c4 and c5-c7 to masked c8; package promotion waits for the
+artifact-backed D2 resolver and actual-server c1-c32 integration gate.
+[`Direct-width lifecycle gate`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json),
+[`direct-width numerical gate`](results/2026-08-20-concurrency2-qwen38-direct-width-quality.json),
 [`width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json),
 [`Q5 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion-summary.json),
 [`Q6 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion-summary.json),
