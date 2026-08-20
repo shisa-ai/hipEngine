@@ -1663,8 +1663,8 @@ def _check_dense_q5_t16_shape(
     rowtile: bool,
 ) -> None:
     if rowtile:
-        if rows not in (2, 3, 4):
-            raise ValueError("dense Q5T16 rowtile requires rows in 2..4")
+        if rows not in (2, 3, 4, 5, 6, 7, 8):
+            raise ValueError("dense Q5T16 rowtile requires rows in 2..8")
     elif rows <= 0:
         raise ValueError("dense Q5T16 decode requires rows to be positive")
     if in_features <= 0 or in_features % _QK_K:
