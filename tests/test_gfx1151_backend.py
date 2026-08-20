@@ -745,7 +745,11 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
         "hip_gfx1100",
         "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
         {},
-    ) == {}
+    ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+            (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+        },
+    }
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES",

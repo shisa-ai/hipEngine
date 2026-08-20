@@ -8,6 +8,37 @@ sync'd eager. Next dominant owner: the `launch_gguf_linear` T16 GEMV path
 (~8.9 ms/token, ~29% of wall); only a non-T0 (production-envelope) mechanism or a
 launch restructure has real headroom. PN7 (MTP) is a separate deferred lane.
 
+PN5 (new unit, 2026-08-18): the MoE router slice is **host-dispatch-bound**, not
+GPU-bound — 40 cooperative router launches/step each re-ran
+`build_qwen35_router(load=True)` (~34 us/call with a pinned session compiler
+version). Hoisted the router library handle into a module cache; counter-rotated
+exact A/B: 30.78 -> 29.83 ms/tok, **+957 us/tok (+3.2%)**, tokens byte-identical
+(see worklog `pn5-router-lib-hoist`). The same `library or build_X(load=True)`
+pattern exists at ~609 kernel sites; a targeted audit of the largest families is
+a cheap follow-up.
+
+PN6 (new unit, 2026-08-18): the `launch_gguf_linear` T16 GEMV slice is
+**host-dispatch-bound**, not GPU-bound — 141 launches/step each re-ran
+`build_X(load=True)` (~19-29 us/call of build_hip fast-path overhead even on a
+loaded-library cache hit). Hoisted the q8_0_t16 / q6_k_t16 / dense-gemv library
+handles into module caches; counter-rotated exact A/B: 29.42 -> 26.83 ms/tok,
+**+2.59 ms/tok (+8.8%)**, tokens byte-identical (memo returns the identical CDLL
+handle); real-hoist validation wall 25.69 ms/tok (per-call 43.2 -> 23.2 us).
+This is the largest single-item win of the campaign (see worklog
+`pn6-gemv-lib-hoist`). Also: an explicit session compiler version is now the
+process default in `_resolve_compiler_version` so per-call loads hit the
+loaded-library cache on machines where pinned != installed. Follow-up census:
+**0 build_hip calls over 2 decode steps** — the other `library or build_X` sites
+(group_scatter/laguna_router/maple_moe) are not on this model's decode path, so
+the per-call-build host-dispatch problem is closed for eager decode (see worklog
+`pn6-hotpath-build-closure`). Dense-model extension (Qwen3.6-27B, `qwen35`
+arch): its decode path is dominated by the t16_selected family, so the q8_0_t16
+memo did not cover it; hoisted `gguf_t16_selected_gemv` (25 sites, worklog
+`pn6-t16-selected-dense-hoist`). Per-call host 48.7 -> 23.9 us, but the dense
+slice is **GPU-bound** — counter-rotated A/B recovers ~0 wall. The dense model
+gets a CPU-load/host-dispatch win, not a single-request wall win; the MoE
+remains the wall headline.
+
 Owner lane: physical host `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 
 Model lane: Qwen3.6-35B-A3B GGUF `UD-Q4_K_M`, BF16 KV, greedy autoregressive
