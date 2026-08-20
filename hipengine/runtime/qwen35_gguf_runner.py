@@ -22804,6 +22804,11 @@ class Qwen35GGUFResidentSession:
         )
         if max_chunk < 2 or max_chunk > 6:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 6]")
+        # The resolved t16_gemv_rowtile_bf16_f32_out owner for the planar-qmicro
+        # lm_head only accepts rows in [2, 4]; cap any larger configured chunk so
+        # rows 5-8 chunk into valid 4-row groups. The backend-qualified 6/5 value
+        # stays reachable only once a rowtile owner supports rows 5-6.
+        max_chunk = min(max_chunk, 4)
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False
