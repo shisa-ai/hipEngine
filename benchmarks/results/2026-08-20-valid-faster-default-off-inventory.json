@@ -42,9 +42,9 @@
       "candidate": "Laguna DFlash IQ3 selected-down tile4",
       "scope": "gfx1100 Laguna Q2 XL explicit DFlash verifier only",
       "performance": "45-call family -33.66%; h32/h128 DFlash decode +4.725%/+4.536%; every category/heldout decode and E2E row positive",
-      "correctness": "complete category/heldout and lifecycle checks pass",
-      "blocker": "public Laguna DFlash provider is registered on gfx1151, where tile4 is unregistered/unmeasured; ordinary target rows are outside the measured verifier scope",
-      "recommendation": "highest-priority transfer/default candidate: port/register and run the same complete gfx1151 provider gate, or expose a maintained gfx1100 provider; then default tile4 inside explicit DFlash only"
+      "correctness": "gfx1100 complete category/heldout and lifecycle checks pass; the attempted gfx1151 transfer is trajectory-identical to tile1 but both routes fail the current full-suite true-AR equality gate on 12/36 rows",
+      "blocker": "rejected on gfx1151: tile4 complete decode is noise-flat +0.014%, E2E regresses 0.035%, category rows regress, and the shared DFlash route passes only 24/36 true-AR equality rows",
+      "recommendation": "retain only the measured gfx1100 explicit-DFlash route; keep gfx1151/public DFlash on tile1 and revisit only after the shared true-AR mismatch is repaired with a materially different mechanism"
     },
     {
       "candidate": "gfx1151 GGUF active-current Radix prefix reuse",
