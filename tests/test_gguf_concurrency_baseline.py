@@ -32,13 +32,11 @@ def test_serial_execution_environment_disables_every_multirow_route() -> None:
     assert baseline._execution_environment("serial") == {
         "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
         "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
-        "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
         "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
     }
     assert baseline._execution_environment("package") == {
         "HIPENGINE_GGUF_AR_PACKED_PREFILL": "1",
         "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
-        "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
         "HIPENGINE_GGUF_AR_STREAM_DECODE": "1",
     }
 
