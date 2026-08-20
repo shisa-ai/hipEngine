@@ -74,6 +74,8 @@ _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
     "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_EXECUTION_PROFILE",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
     "HIPENGINE_PREFIX_CACHE",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
@@ -1645,6 +1647,25 @@ def _memory_recovery_gate(
     }
 
 
+def _llm_construction_kwargs(
+    args: argparse.Namespace,
+    model: Path,
+) -> dict[str, Any]:
+    """Return the public LLM identity used by the serving gate.
+
+    The quant key is part of generator/profile resolution, not provenance-only
+    metadata. Keep this helper independently testable so a Q4_K_S packet cannot
+    silently construct the plugin's Q4_K_M default route.
+    """
+
+    return {
+        "model": model,
+        "backend": str(args.backend),
+        "quant": str(args.quant),
+        "max_active_requests": int(args.max_active_requests),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
@@ -1746,11 +1767,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     workload_results: dict[str, dict[str, Any]] = {}
     selection_error: str | None = None
     with _temporary_environment(env):
-        llm = LLM(
-            model,
-            backend=str(args.backend),
-            max_active_requests=int(args.max_active_requests),
-        )
+        llm = LLM(**_llm_construction_kwargs(args, model))
         try:
             adapter = llm._get_text_generator()
             llm.prepare(
@@ -2192,7 +2209,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": shlex.join(command),
         "elapsed_seconds": time.perf_counter() - started_at,
         "limitations": [
-            "Greedy exact Q4_K_M/BF16-KV is the retained production path; sampled serving is an F5 gate.",
+            f"Greedy exact {args.quant}/BF16-KV is the measured path; sampled serving is an F5 gate.",
             "The policy sweep is bounded to the declared mixed workload and does not imply universal optimality.",
             "SSE network timing is localhost Uvicorn; scheduler-owned queue/TTFT/ITL and client end-to-end are reported separately.",
             "The soak duration is explicit and configurable; this artifact does not claim multi-day reliability.",
