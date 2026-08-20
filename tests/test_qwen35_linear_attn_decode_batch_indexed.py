@@ -549,3 +549,43 @@ def test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference() -> N
     rounded_gdn = _bf16_bits_to_f32(_f32_to_bf16_bits(batch_gdn_out))
     assert np.any(rounded_gdn != batch_gdn_out)
     assert np.any((rounded_gdn @ probe) != batch_logits)
+
+
+def test_indexed_decode_plan_switches_to_fp16_kernels_under_flag(monkeypatch) -> None:
+    """Under the fp16-state flag the indexed decode keeps its fast singleton path.
+
+    The fp16-state route must not run the FP32-state indexed-singleton kernels
+    against the half-sized state buffer.  The batch plan must resolve the
+    fp16-state siblings (indexed singleton + segments) under the flag, and
+    keep the strict gfx1151 singleton path unchanged without it.
+    """
+    from hipengine.kernels.hip_gfx1100.linear_attn import (
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
+    )
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _resolve_gguf_linear_attention_decode_batch_plan,
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    strict_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
+    assert strict_plan.gdn_decode_path == "indexed_singleton"
+    assert (
+        strict_plan.gdn_indexed_singleton
+        is qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16
+    )
+    assert strict_plan.gdn_segments is qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
+
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    fp16_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
+    assert fp16_plan.gdn_decode_path == "indexed_singleton"
+    assert (
+        fp16_plan.gdn_indexed_singleton
+        is qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state
+    )
+    assert (
+        fp16_plan.gdn_segments
+        is qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
+    )

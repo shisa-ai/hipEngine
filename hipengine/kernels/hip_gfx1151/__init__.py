@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
@@ -1981,6 +1982,13 @@ _GFX1151_OVERRIDES = {
         "gguf_qwen35",
         "bf16_indexed_singleton",
     ): qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
+    # fp16-state sibling for the production route (half-sized per-slot state);
+    # rows < 8 delegate to the plain fp16 indexed wrapper inside the wrapper.
+    (
+        "gdn_recurrent_rmsnorm_gate",
+        "gguf_qwen35",
+        "bf16_indexed_singleton_fp16state",
+    ): qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
     # The scalar-tree c1-exact kernel retained for gfx1100/PARO diverges from
     # gfx1151's established paged-c1 arithmetic at model scale. Keep gfx1151 on
     # the generic reduction, but pin its geometry to the c4/c8-proven 256-thread

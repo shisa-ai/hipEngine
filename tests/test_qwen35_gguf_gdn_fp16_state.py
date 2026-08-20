@@ -1065,3 +1065,139 @@ def test_fp16_state_decode_order_segments_inplace_matches_host_replay() -> None:
     np.testing.assert_allclose(
         dev_state, final_slots_f32, rtol=2.0e-3, atol=2.0e-3
     )
+
+
+def test_fp16_state_indexed_singleton_matches_host_replay() -> None:
+    """fp16-state indexed one-token-per-row decode kernel vs host replay.
+
+    The packed AR decode advances one token per active row; each row owns a
+    per-slot state (``state_indices``) that the kernel reads and mutates in
+    place with fp16 storage.  The host replays the same fp16 round-trip
+    recurrence per row.
+    """
+    if not HIP_AVAILABLE:
+        pytest.skip("ROCm/HIP not available")
+    rng = np.random.default_rng(20260821)
+    num_k_heads = 4
+    num_v_heads = 8
+    head_k_dim = 64
+    head_v_dim = 32
+    key_dim = num_k_heads * head_k_dim
+    qkv_width = 2 * key_dim + num_v_heads * head_v_dim
+    rows = 4
+    state_indices = np.asarray([4, 1, 5, 0], dtype=np.int64)
+    num_slots = 6
+    eps = 1.0e-6
+
+    conv = rng.normal(0.0, 0.35, size=(rows, qkv_width)).astype(np.float32)
+    gate = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.4, size=(rows, num_v_heads * head_v_dim)).astype(np.float32)
+    )
+    a = _f32_to_bf16_bits(
+        rng.normal(-0.1, 0.25, size=(rows, num_v_heads)).astype(np.float32)
+    )
+    b = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.3, size=(rows, num_v_heads)).astype(np.float32)
+    )
+    dt_bias = rng.normal(0.0, 0.2, size=(num_v_heads,)).astype(np.float32)
+    a_log = rng.normal(-0.75, 0.2, size=(num_v_heads,)).astype(np.float32)
+    norm_weight = rng.normal(1.0, 0.1, size=(head_v_dim,)).astype(np.float32)
+    init_slots_f32 = rng.normal(
+        0.0, 0.1, size=(num_slots, num_v_heads, head_k_dim, head_v_dim)
+    ).astype(np.float32)
+
+    expected_out = np.empty((rows, num_v_heads * head_v_dim), dtype=np.float32)
+    # Untouched slots keep their fp16-rounded initial state on device.
+    final_slots_f32 = np.float16(init_slots_f32).astype(np.float32).copy()
+    for row, slot in enumerate(state_indices):
+        slot = int(slot)
+        seg_init = np.float16(init_slots_f32[slot]).astype(np.float32)
+        seg_out, seg_final = _host_fp16_state_recurrence(
+            conv[row : row + 1],
+            gate[row : row + 1],
+            a[row : row + 1],
+            b[row : row + 1],
+            dt_bias,
+            a_log,
+            norm_weight,
+            seg_init,
+            eps=eps,
+            num_k_heads=num_k_heads,
+        )
+        expected_out[row] = seg_out[0]
+        final_slots_f32[slot] = seg_final
+
+    state_elem = num_v_heads * head_k_dim * head_v_dim
+    out_elem = num_v_heads * head_v_dim
+    state_bytes = num_slots * state_elem * np.dtype(np.float16).itemsize
+
+    library = build_qwen35_linear_attn_gdn(load=True)
+    bufs = _Buffers()
+    try:
+        conv_dev = bufs.from_host(conv)
+        gate_dev = bufs.from_host(gate)
+        a_dev = bufs.from_host(a)
+        b_dev = bufs.from_host(b)
+        dt_dev = bufs.from_host(dt_bias)
+        al_dev = bufs.from_host(a_log)
+        nw_dev = bufs.from_host(norm_weight)
+        state_dev = bufs.empty(state_bytes)
+        state_h = np.float16(init_slots_f32)
+        copy_host_to_device(state_dev, host_array_ptr(state_h), state_h.nbytes)
+        out_dev = bufs.empty(rows * out_elem * np.dtype(np.float32).itemsize)
+        si_dev = bufs.from_host(state_indices)
+
+        from hipengine.kernels.hip_gfx1100.linear_attn import (
+            qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state,
+        )
+
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state(
+            conv_dev.ptr,
+            gate_dev.ptr,
+            a_dev.ptr,
+            b_dev.ptr,
+            dt_dev.ptr,
+            al_dev.ptr,
+            nw_dev.ptr,
+            state_dev.ptr,
+            out_dev.ptr,
+            si_dev.ptr,
+            rows,
+            eps,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+        )
+        from hipengine.core.hip import get_hip_runtime
+        from hipengine.core.memory import MemcpyKind
+
+        _runtime = get_hip_runtime()
+        dev_out = np.empty((rows * out_elem,), dtype=np.float32)
+        _runtime.memcpy(
+            host_array_ptr(dev_out),
+            out_dev.ptr,
+            dev_out.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        dev_state_raw = np.empty((num_slots * state_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_state_raw),
+            state_dev.ptr,
+            dev_state_raw.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+    finally:
+        bufs.close()
+
+    dev_out_f32 = dev_out.reshape(rows, num_v_heads * head_v_dim)
+    dev_state = dev_state_raw.view(np.float16).astype(np.float32).reshape(
+        num_slots, num_v_heads, head_k_dim, head_v_dim
+    )
+    np.testing.assert_allclose(
+        dev_out_f32, expected_out, rtol=5.0e-2, atol=5.0e-3
+    )
+    np.testing.assert_allclose(
+        dev_state, final_slots_f32, rtol=2.0e-3, atol=2.0e-3
+    )
