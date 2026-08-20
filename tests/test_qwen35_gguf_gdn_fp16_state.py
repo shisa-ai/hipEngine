@@ -585,3 +585,340 @@ def test_fp16_state_fused_f32_bf16_out_decode_matches_host_replay() -> None:
     np.testing.assert_array_equal(dev_out_bf16, expected_bf16)
     np.testing.assert_allclose(dev_state, host_state, rtol=2.0e-3, atol=2.0e-3)
 
+
+
+def _host_fp16_state_recurrence_rows(
+    conv_out: np.ndarray,
+    gate_bits: np.ndarray,
+    a_bits: np.ndarray,
+    b_bits: np.ndarray,
+    dt_bias: np.ndarray,
+    a_log: np.ndarray,
+    norm_weight: np.ndarray,
+    state_f32: np.ndarray,
+    *,
+    eps: float,
+    num_k_heads: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """decode-order fp16-state recurrence with per-token row capture.
+
+    Mirrors ``_host_fp16_state_recurrence`` but additionally captures the
+    fp16-rounded per-token new-state rows written by the decode-order
+    state-rows writer.  Returns (per-token outputs, rows_f32).
+    """
+    tokens = conv_out.shape[0]
+    num_v_heads, head_k_dim, head_v_dim = state_f32.shape
+    key_dim = num_k_heads * head_k_dim
+    gate = _bf16_bits_to_f32(gate_bits).reshape(tokens, num_v_heads, head_v_dim)
+    a = _bf16_bits_to_f32(a_bits).reshape(tokens, num_v_heads)
+    b = _bf16_bits_to_f32(b_bits).reshape(tokens, num_v_heads)
+    value = conv_out[:, 2 * key_dim:].reshape(tokens, num_v_heads, head_v_dim)
+    beta = np.asarray(
+        np.float32(1.0) / (np.float32(1.0) + np.exp(-b)), dtype=np.float32
+    )
+    decay = np.asarray(
+        np.exp(-np.exp(a_log[None, :]) * _softplus(a + dt_bias[None, :])),
+        dtype=np.float32,
+    )
+    state = np.float16(state_f32).astype(np.float32)
+    outputs = np.empty((tokens, num_v_heads * head_v_dim), dtype=np.float32)
+    rows = np.empty((tokens, num_v_heads, head_k_dim, head_v_dim), dtype=np.float32)
+    for t in range(tokens):
+        sv = state.copy()
+        for v_head in range(num_v_heads):
+            k_head = v_head % num_k_heads
+            q_raw = conv_out[t, k_head * head_k_dim:(k_head + 1) * head_k_dim]
+            k_raw = conv_out[
+                t, key_dim + k_head * head_k_dim:key_dim + (k_head + 1) * head_k_dim
+            ]
+            q_norm = max(float(np.sqrt(np.sum(q_raw * q_raw, dtype=np.float32))), 1.0e-6)
+            k_norm = max(float(np.sqrt(np.sum(k_raw * k_raw, dtype=np.float32))), 1.0e-6)
+            q_normed = np.asarray(
+                q_raw * np.float32(1.0 / q_norm) * np.float32(1.0 / np.sqrt(head_k_dim)),
+                dtype=np.float32,
+            )
+            k_normed = np.asarray(k_raw * np.float32(1.0 / k_norm), dtype=np.float32)
+            kv_mem = k_normed @ (sv[v_head] * decay[t, v_head])
+            delta = (value[t, v_head] - kv_mem) * beta[t, v_head]
+            new_state = sv[v_head] * decay[t, v_head] + np.outer(
+                k_normed, delta
+            ).astype(np.float32)
+            state[v_head] = np.float16(new_state).astype(np.float32)
+            rows[t, v_head] = np.float16(new_state).astype(np.float32)
+            out_acc = (q_normed @ new_state).astype(np.float32)
+            inv_rms = np.float32(1.0) / np.sqrt(
+                np.sum(out_acc * out_acc, dtype=np.float32) / np.float32(head_v_dim)
+                + np.float32(eps)
+            )
+            outputs[t, v_head * head_v_dim:(v_head + 1) * head_v_dim] = (
+                out_acc * inv_rms * norm_weight * _silu(gate[t, v_head])
+            )
+    return outputs.reshape(tokens, num_v_heads * head_v_dim), rows
+
+
+def test_fp16_state_decode_order_state_rows_no_copy_matches_host_replay() -> None:
+    """fp16-state decode-order state-rows prefill writer vs host replay.
+
+    The production packed-prefill route's decode-order row-state capture is
+    fp16-incompatible in the strict gate; this fp16-state no-copy writer stores
+    the initial and per-token captured state as fp16 (fp32 accumulate).
+    """
+    if not HIP_AVAILABLE:
+        pytest.skip("ROCm/HIP not available")
+    rng = np.random.default_rng(20260819)
+    num_k_heads = 4
+    num_v_heads = 8
+    head_k_dim = 64
+    head_v_dim = 32
+    key_dim = num_k_heads * head_k_dim
+    qkv_width = 2 * key_dim + num_v_heads * head_v_dim
+    tokens = 6
+    eps = 1.0e-6
+
+    conv = rng.normal(0.0, 0.35, size=(tokens, qkv_width)).astype(np.float32)
+    gate = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.4, size=(tokens, num_v_heads * head_v_dim)).astype(np.float32)
+    )
+    a = _f32_to_bf16_bits(
+        rng.normal(-0.1, 0.25, size=(tokens, num_v_heads)).astype(np.float32)
+    )
+    b = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.3, size=(tokens, num_v_heads)).astype(np.float32)
+    )
+    dt_bias = rng.normal(0.0, 0.2, size=(num_v_heads,)).astype(np.float32)
+    a_log = rng.normal(-0.75, 0.2, size=(num_v_heads,)).astype(np.float32)
+    norm_weight = rng.normal(1.0, 0.1, size=(head_v_dim,)).astype(np.float32)
+    state_f32 = rng.normal(0.0, 0.1, size=(num_v_heads, head_k_dim, head_v_dim)).astype(np.float32)
+
+    host_out, host_rows = _host_fp16_state_recurrence_rows(
+        conv, gate, a, b, dt_bias, a_log, norm_weight, state_f32,
+        eps=eps, num_k_heads=num_k_heads,
+    )
+
+    state_elem = num_v_heads * head_k_dim * head_v_dim
+    out_elem = num_v_heads * head_v_dim
+    state_bytes = state_elem * np.dtype(np.float16).itemsize
+
+    library = build_qwen35_linear_attn_gdn(load=True)
+    bufs = _Buffers()
+    try:
+        conv_dev = bufs.from_host(conv)
+        gate_dev = bufs.from_host(gate)
+        a_dev = bufs.from_host(a)
+        b_dev = bufs.from_host(b)
+        dt_dev = bufs.from_host(dt_bias)
+        al_dev = bufs.from_host(a_log)
+        nw_dev = bufs.from_host(norm_weight)
+        init_dev = bufs.empty(state_bytes)
+        state_h = np.float16(state_f32)
+        copy_host_to_device(init_dev, host_array_ptr(state_h), state_h.nbytes)
+        rows_dev = bufs.empty(tokens * state_elem * np.dtype(np.float16).itemsize)
+        out_dev = bufs.empty(tokens * out_elem * np.dtype(np.uint16).itemsize)
+
+        from hipengine.kernels.hip_gfx1100.linear_attn import (
+            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
+        )
+
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state(
+            conv_dev.ptr,
+            gate_dev.ptr,
+            a_dev.ptr,
+            b_dev.ptr,
+            dt_dev.ptr,
+            al_dev.ptr,
+            nw_dev.ptr,
+            init_dev.ptr,
+            rows_dev.ptr,
+            out_dev.ptr,
+            eps,
+            tokens,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+        )
+        from hipengine.core.hip import get_hip_runtime
+        from hipengine.core.memory import MemcpyKind
+
+        _runtime = get_hip_runtime()
+        dev_out = np.empty((tokens * out_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_out),
+            out_dev.ptr,
+            dev_out.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        dev_rows_raw = np.empty((tokens * state_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_rows_raw),
+            rows_dev.ptr,
+            dev_rows_raw.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+    finally:
+        bufs.close()
+
+    dev_out_f32 = _bf16_bits_to_f32(dev_out).reshape(tokens, num_v_heads * head_v_dim)
+    dev_rows = dev_rows_raw.view(np.float16).astype(np.float32).reshape(
+        tokens, num_v_heads, head_k_dim, head_v_dim
+    )
+    np.testing.assert_allclose(
+        dev_out_f32, host_out, rtol=5.0e-2, atol=5.0e-3
+    )
+    np.testing.assert_allclose(dev_rows, host_rows, rtol=2.0e-3, atol=2.0e-3)
+
+
+def test_fp16_state_decode_order_segments_state_rows_no_copy_matches_host_replay() -> None:
+    """fp16-state segment-aware decode-order state-rows writer vs host replay.
+
+    Packed rows with per-segment initial-state slots; each segment's first
+    token reads its own fp16 initial slot and every token captures an fp16
+    row-state.  The initial slots must not be mutated (no-copy).
+    """
+    if not HIP_AVAILABLE:
+        pytest.skip("ROCm/HIP not available")
+    rng = np.random.default_rng(20260819)
+    num_k_heads = 4
+    num_v_heads = 8
+    head_k_dim = 64
+    head_v_dim = 32
+    key_dim = num_k_heads * head_k_dim
+    qkv_width = 2 * key_dim + num_v_heads * head_v_dim
+    tokens = 7
+    eps = 1.0e-6
+    cu_seqlens = np.asarray([0, 4, 7], dtype=np.int32)
+    state_indices = np.asarray([0, 1], dtype=np.int64)
+    num_slots = 2
+
+    conv = rng.normal(0.0, 0.35, size=(tokens, qkv_width)).astype(np.float32)
+    gate = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.4, size=(tokens, num_v_heads * head_v_dim)).astype(np.float32)
+    )
+    a = _f32_to_bf16_bits(
+        rng.normal(-0.1, 0.25, size=(tokens, num_v_heads)).astype(np.float32)
+    )
+    b = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.3, size=(tokens, num_v_heads)).astype(np.float32)
+    )
+    dt_bias = rng.normal(0.0, 0.2, size=(num_v_heads,)).astype(np.float32)
+    a_log = rng.normal(-0.75, 0.2, size=(num_v_heads,)).astype(np.float32)
+    norm_weight = rng.normal(1.0, 0.1, size=(head_v_dim,)).astype(np.float32)
+    init_slots_f32 = rng.normal(
+        0.0, 0.1, size=(num_slots, num_v_heads, head_k_dim, head_v_dim)
+    ).astype(np.float32)
+
+    # Host per-segment replay stitched into global token/row layout.
+    expected_out = np.empty((tokens, num_v_heads * head_v_dim), dtype=np.float32)
+    expected_rows = np.empty(
+        (tokens, num_v_heads, head_k_dim, head_v_dim), dtype=np.float32
+    )
+    for segment, (start, end) in enumerate(
+        zip(cu_seqlens[:-1], cu_seqlens[1:], strict=True)
+    ):
+        seg_out, seg_rows = _host_fp16_state_recurrence_rows(
+            np.ascontiguousarray(conv[int(start):int(end)]),
+            np.ascontiguousarray(gate[int(start):int(end)]),
+            np.ascontiguousarray(a[int(start):int(end)]),
+            np.ascontiguousarray(b[int(start):int(end)]),
+            dt_bias,
+            a_log,
+            norm_weight,
+            init_slots_f32[segment],
+            eps=eps,
+            num_k_heads=num_k_heads,
+        )
+        expected_out[int(start):int(end)] = seg_out
+        expected_rows[int(start):int(end)] = seg_rows
+
+    state_elem = num_v_heads * head_k_dim * head_v_dim
+    out_elem = num_v_heads * head_v_dim
+    state_bytes = num_slots * state_elem * np.dtype(np.float16).itemsize
+
+    library = build_qwen35_linear_attn_gdn(load=True)
+    bufs = _Buffers()
+    try:
+        conv_dev = bufs.from_host(conv)
+        gate_dev = bufs.from_host(gate)
+        a_dev = bufs.from_host(a)
+        b_dev = bufs.from_host(b)
+        dt_dev = bufs.from_host(dt_bias)
+        al_dev = bufs.from_host(a_log)
+        nw_dev = bufs.from_host(norm_weight)
+        init_dev = bufs.empty(state_bytes)
+        state_h = np.float16(init_slots_f32)
+        copy_host_to_device(init_dev, host_array_ptr(state_h), state_h.nbytes)
+        rows_dev = bufs.empty(tokens * state_elem * np.dtype(np.float16).itemsize)
+        out_dev = bufs.empty(tokens * out_elem * np.dtype(np.uint16).itemsize)
+        cu_dev = bufs.from_host(cu_seqlens)
+        si_dev = bufs.from_host(state_indices)
+
+        from hipengine.kernels.hip_gfx1100.linear_attn import (
+            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
+        )
+
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state(
+            conv_dev.ptr,
+            gate_dev.ptr,
+            a_dev.ptr,
+            b_dev.ptr,
+            dt_dev.ptr,
+            al_dev.ptr,
+            nw_dev.ptr,
+            init_dev.ptr,
+            rows_dev.ptr,
+            out_dev.ptr,
+            cu_dev.ptr,
+            si_dev.ptr,
+            eps,
+            tokens,
+            int(len(cu_seqlens) - 1),
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+        )
+        from hipengine.core.hip import get_hip_runtime
+        from hipengine.core.memory import MemcpyKind
+
+        _runtime = get_hip_runtime()
+        dev_out = np.empty((tokens * out_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_out),
+            out_dev.ptr,
+            dev_out.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        dev_rows_raw = np.empty((tokens * state_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_rows_raw),
+            rows_dev.ptr,
+            dev_rows_raw.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        dev_init_raw = np.empty((num_slots * state_elem,), dtype=np.uint16)
+        _runtime.memcpy(
+            host_array_ptr(dev_init_raw),
+            init_dev.ptr,
+            dev_init_raw.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+    finally:
+        bufs.close()
+
+    dev_out_f32 = _bf16_bits_to_f32(dev_out).reshape(tokens, num_v_heads * head_v_dim)
+    dev_rows = dev_rows_raw.view(np.float16).astype(np.float32).reshape(
+        tokens, num_v_heads, head_k_dim, head_v_dim
+    )
+    dev_init = dev_init_raw.view(np.float16).astype(np.float32).reshape(
+        num_slots, num_v_heads, head_k_dim, head_v_dim
+    )
+    np.testing.assert_allclose(
+        dev_out_f32, expected_out, rtol=5.0e-2, atol=5.0e-3
+    )
+    np.testing.assert_allclose(dev_rows, expected_rows, rtol=2.0e-3, atol=2.0e-3)
+    # no-copy: the fp16 initial slots must be untouched.
+    np.testing.assert_array_equal(
+        dev_init, np.float16(init_slots_f32).astype(np.float32)
+    )
