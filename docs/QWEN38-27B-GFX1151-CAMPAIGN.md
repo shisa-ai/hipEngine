@@ -1546,6 +1546,19 @@ above. Evidence:
 [`fair c=N artifact`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json)
 is superseded.
 
+**Public-default serving decision (2026-08-20): rejected.** The tracked-clean,
+predeclared localhost-Uvicorn static c1/c8 screen uses Q4_K_S identity and the
+same compact-peer route. FP16 c1 exact/SLO-goodput is non-regressive
+(**8.2121 -> 8.2434 tok/s, +0.38%**), but both modes fail the c8 ITL-p99 SLO
+(**0.8532/0.8287 s > 0.5 s**) and exact c8 server throughput improves only
+**13.0999 -> 13.2738 tok/s (+1.33%)**, below the 3% public-default target.
+Completed responses remain exact, native routing/ownership/memory recovery
+pass, and FP16 saves 1.08 GiB tracked peak. The complete canonical packet was
+not run because neither binding screen can pass; relaxing the SLO afterward
+would be benchmark gaming. FP16 remains opt-in and FP32 stays public default.
+Evidence:
+[`serving rejection`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
+
 ### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
 
 Qwen3.8 has untied embeddings; the external repo requantizes the two ~2.5 GB

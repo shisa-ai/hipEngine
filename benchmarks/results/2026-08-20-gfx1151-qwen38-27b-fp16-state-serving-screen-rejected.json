@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_q4ks_fp16_state_serving_screen",
+  "created_at": "2026-08-20T15:55:00Z",
+  "status": "rejected_for_public_default",
+  "publishable": false,
+  "performance_claim": false,
+  "complete_packet": false,
+  "decision": "Keep FP16 recurrent state opt-in. Do not run or claim the complete public-default serving packet: both controls fail the predeclared static-c8 ITL SLO and the candidate's exact c8 server throughput gain is only 1.33%, below the 3% public-default materiality target.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI Max+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0"
+  },
+  "software": {
+    "hipengine_commit": "a913b2bb5548af7c531acf5f61352198d46fa689",
+    "tracked_source_clean": true,
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "gguf_q4_k_s",
+    "kv": "bf16"
+  },
+  "protocol": {
+    "command_template": ".venv/bin/python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_s --gdn-mode chain_compact_peer_wave32 --workloads static_c1,static_c8 --skip-tuning --initial-policy fair --initial-prefill-chunk-tokens 128 --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "common_environment": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2",
+    "candidate_environment_addition": "HIPENGINE_GGUF_FP16_RECURRENT_STATE=1",
+    "slo_seconds": {
+      "queue_p99": 10.0,
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "timing": "real localhost Uvicorn SSE; independent same-route c1 generated-ID oracle; static c1 and simultaneous c8 only",
+    "scope": "Fail-fast focused screen. The canonical tuning/ragged/continuous/cancellation/overload/recovery/soak packet was intentionally not run after the binding static-c8 SLO and materiality screen failed."
+  },
+  "results": {
+    "fp32": {
+      "status": "failed",
+      "static_c1": {
+        "passed": true,
+        "exact_generated_tok_s": 8.212056325409872,
+        "slo_goodput_tok_s": 8.212056325409872,
+        "ttft_p95_s": 1.3509173470083624,
+        "itl_p99_s": 0.07871656701900065,
+        "end_to_end_p95_s": 3.8966411580331624
+      },
+      "static_c8": {
+        "passed": false,
+        "failure_reasons": ["slo_itl_p99_failed"],
+        "exact_generated_tok_s": 13.099880073066894,
+        "slo_goodput_tok_s": 1.6374850091333617,
+        "qualifying_generated_tokens": 32,
+        "exact_generated_tokens": 256,
+        "ttft_p95_s": 5.441841738007497,
+        "itl_p99_s": 0.8532441090210341,
+        "end_to_end_p95_s": 19.54063160199439
+      },
+      "tracked_peak_allocated_bytes": 23024440260
+    },
+    "fp16": {
+      "status": "failed",
+      "static_c1": {
+        "passed": true,
+        "exact_generated_tok_s": 8.243373429238613,
+        "slo_goodput_tok_s": 8.243373429238613,
+        "delta_pct": 0.3813552000591969,
+        "ttft_p95_s": 1.3324901150190271,
+        "itl_p99_s": 0.07810264499858022,
+        "end_to_end_p95_s": 3.8818421270116232
+      },
+      "static_c8": {
+        "passed": false,
+        "failure_reasons": ["slo_itl_p99_failed"],
+        "exact_generated_tok_s": 13.27380778166317,
+        "exact_generated_tok_s_delta_pct": 1.3277045868066217,
+        "slo_goodput_tok_s": 1.6592259727078962,
+        "slo_goodput_delta_pct": 1.3277045868066217,
+        "qualifying_generated_tokens": 32,
+        "exact_generated_tokens": 256,
+        "ttft_p95_s": 5.352499047003221,
+        "itl_p99_s": 0.8287350799655542,
+        "end_to_end_p95_s": 19.285318657988682
+      },
+      "tracked_peak_allocated_bytes": 21863506508,
+      "tracked_peak_saved_bytes": 1160933752
+    }
+  },
+  "correctness_and_ownership": {
+    "fp32_completed_rows_exact": true,
+    "fp16_completed_rows_exact": true,
+    "native_route_checks_passed": true,
+    "final_ownership_passed": true,
+    "memory_recovery_passed": true,
+    "tracked_teardown_zero": true,
+    "fp16_environment_recorded": true,
+    "runtime_manifest": "unavailable; this is an omitted-profile opt-in environment A/B, not public-profile qualification"
+  },
+  "gates": {
+    "candidate_c1_regression_within_1pct": true,
+    "candidate_c8_materiality_at_least_3pct": false,
+    "fp32_static_c8_slo_passed": false,
+    "fp16_static_c8_slo_passed": false,
+    "eligible_for_complete_public_default_packet": false
+  },
+  "raw_sources": {
+    "fp32": {
+      "path": "/tmp/qwen38_fp32_serving_screen.json",
+      "sha256": "eb97c4a22f06f99912ffdd5b587e8e3896cdda0c47a60f0b13c85a9300363f36"
+    },
+    "fp16": {
+      "path": "/tmp/qwen38_fp16_serving_screen.json",
+      "sha256": "8eda910baa8707fadcbfc32441b05294960f98826af21687ca0d2b2c40aaea46"
+    }
+  },
+  "anti_gaming": "The 0.5-second ITL SLO and 3% materiality target were declared before this run. They were not relaxed after observing the failure. Prompt IDs and routing contain no candidate-specific branches."
+}

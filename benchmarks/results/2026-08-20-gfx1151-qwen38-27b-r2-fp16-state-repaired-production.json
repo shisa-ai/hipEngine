@@ -9,7 +9,7 @@
   "qualification_blockers": [
     "no runtime-resolved public production-profile manifest",
     "fresh BF16-relative and external task-score verdicts are unavailable",
-    "complete dynamic serving/SLO-goodput packet has not run",
+    "predeclared static-c8 serving screen fails ITL-p99 SLO and measures only +1.33% exact throughput; complete packet is ineligible",
     "gfx1100 applicability is not measured"
   ],
   "hardware": {
@@ -107,5 +107,6 @@
     "variance_guards_passed": true,
     "fp16_env_recorded_by_raw_provenance": true
   },
-  "decision": "Retain FP16 recurrent state as a gfx1151 Qwen3.8 Q4_K_S opt-in. It is non-regressive at c1, improves pooled aggregate decode 2.98% at c4 and 3.00% at c8, improves aggregate prefill 1.65%/3.31%, and saves 1.15 GiB tracked peak in this eight-session packet. FP32 remains the strict/public default pending the named qualification blockers."
+  "serving_screen_artifact": "2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json",
+  "decision": "Retain FP16 recurrent state as a gfx1151 Qwen3.8 Q4_K_S opt-in. It is non-regressive at c1, improves pooled engine decode 2.98% at c4 and 3.00% at c8, improves aggregate prefill 1.65%/3.31%, and saves 1.15 GiB tracked peak in the eight-session engine packet. Do not promote it to public default: the predeclared serving screen fails c8 ITL SLO in both modes and measures only +1.33% candidate exact c8 server throughput, below the 3% materiality target."
 }
