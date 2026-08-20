@@ -3,9 +3,9 @@
   "kind": "qwen38_gfx1151_q4ks_r2_fp16_fair_cn_production",
   "date": "2026-08-20",
   "created_at": "2026-08-20T10:35:00.000Z",
-  "status": "retained",
+  "status": "superseded",
   "publishable": false,
-  "purpose": "Measure the production-route decode throughput of fp16 recurrent state (HIPENGINE_GGUF_FP16_RECURRENT_STATE=1) against the FP32 state baseline at c1/c4/native_c8 on gfx1151, with the decode kernel path held identical between the two routes (fp16-state indexed-singleton decode sibling, committed b4f6e135c). This is the evidence for R2's deferred concurrency value now that the native c8 GEMV owner exists.",
+  "purpose": "Historical first fair decode A/B after the indexed-singleton FP16 sibling landed. Superseded by 2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json, which repairs packed prefill arithmetic, uses a clean FP32-FP16-FP32 bracket, reports aggregate and per-request rates separately, and carries the binding c4/c8 numerical gate.",
   "hardware": {
     "gpu": "AMD Radeon 8060S Graphics",
     "arch": "gfx1151",
@@ -50,14 +50,20 @@
     "production_gate": {
       "artifact": "2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json",
       "status": "passed",
-      "quality": {"kl_mean": 3.68e-5, "kl_p95": 1.62e-4, "kl_p99": 6.65e-4, "kl_max": 1.28e-3, "top1_agreement": 1.0},
-      "state_repeat_gate": "passed (deterministic same-schedule state SHA)"
+      "scope": "c1-only numerical capture; not the later packed c4/c8 route",
+      "quality": {"kl_mean": 5.2754977877435544e-5, "kl_p95": 2.799148457136532e-4, "kl_p99": 5.814061601323852e-4, "kl_max": 1.4297531745220895e-3, "top1_agreement": 0.9977777777777778},
+      "state_repeat_gate": "passed (deterministic same-schedule state SHA)",
+      "correction": "The former values were the code-category slice, not the global 450-row summary."
+    },
+    "packed_c4_c8_gate": {
+      "artifact": "2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-packed-production-gate.json",
+      "status": "hard gates passed after segmented compact-peer repair; one reviewed long-c8 row retained"
     },
     "cross_configuration": {"native_c8_rows_match_c4": true, "partial_packet": true}
   },
   "implications": {
-    "retention": "Retained as the fp16-state production-route measurement: c4 +3.14%, native_c8 +3.07%, c1 +0.73% (non-regressive). Consistent with the 2026-08-18 c=N roofline direction (c4 3.1%, c8 5.9% bandwidth-bound upper bounds); the c8 measured 3.1% sits below the roofline because MLP/attention GEMM work also scales with concurrency.",
-    "default_promotion": "fp16-state remains behind HIPENGINE_GGUF_FP16_RECURRENT_STATE=1; FP32 remains the strict default. Promotion to the public production-profile default additionally requires the complete serving-packet SLO-goodput gate (>=3% goodput, <=1% c1 regression per EXECUTION-PROFILES section 2.1), which has not been run.",
+    "retention": "Superseded. The decode direction was real, but the packet used inverse median model-step latency as an ambiguously labeled per-request rate, was not counterbalanced, and attached a c1-only numerical gate to c>N. Use the repaired production artifact for current values and qualification scope.",
+    "default_promotion": "Unchanged: fp16-state remains behind HIPENGINE_GGUF_FP16_RECURRENT_STATE=1 and FP32 remains the strict/public default pending runtime-manifest, BF16-relative/task, serving SLO-goodput, and gfx1100 gates.",
     "prior_confounded_run": "The 2026-08-20 18:42 fp16 run used the segments decode fallback (c4 10.582, native_c8 7.031 tok/s) because the fp16 indexed-singleton decode kernel did not yet exist; it is superseded by this fair run (c4 10.995, native_c8 7.410)."
   },
   "raw_packets": [

@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_q4ks_r2_fp16_state_repaired_production",
+  "created_at": "2026-08-20T15:25:00Z",
+  "status": "retained_opt_in",
+  "publishable": false,
+  "performance_claim": true,
+  "profile_qualification_claim": false,
+  "qualification_blockers": [
+    "no runtime-resolved public production-profile manifest",
+    "fresh BF16-relative and external task-score verdicts are unavailable",
+    "complete dynamic serving/SLO-goodput packet has not run",
+    "gfx1100 applicability is not measured"
+  ],
+  "hardware": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI Max+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git"
+  },
+  "software": {
+    "hipengine_commit": "d73c08a0eab8912a633f56c0a53a5331b2aa4f10",
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt",
+    "require_cached_build": true,
+    "state_flag": "HIPENGINE_GGUF_FP16_RECURRENT_STATE=1",
+    "strict_fallback": "FP32 recurrent-state storage on the same compact-peer production route"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sampled_sha256": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+    "quant": "Q4_K_S",
+    "kv": "bf16"
+  },
+  "protocol": {
+    "command_template": "python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_s --route production --configurations c1,c4,native_c8 --prompt-token-id 9707 --prompt-length 512 --decode-steps 64 --measured-runs 3 --warmup-runs 1 --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "environment_common": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2",
+    "order": ["FP32 control A", "FP16 candidate", "FP32 control B"],
+    "fp16_environment_addition": "HIPENGINE_GGUF_FP16_RECURRENT_STATE=1",
+    "timing": "one synchronized graph replay per logical decode transition; prefill, graph capture, token readback, and final flush excluded from decode; prefill rate timed independently",
+    "summary_rule": "FP32 baseline is the pooled median of six measured samples from the A/B controls; FP16 is the median of three candidate samples",
+    "packet_scope": "partial c1/c4/native_c8 A/B; c2/chunked_c8/serial_c4 controls were not requested because this is a same-configuration state-dtype comparison"
+  },
+  "results": {
+    "c1": {
+      "prefill_tok_s_aggregate": {"fp32": 377.30974603157983, "fp16": 379.0852271258329, "delta_pct": 0.47056327405452514},
+      "decode_tok_s_aggregate": {"fp32": 12.900498701001503, "fp16": 13.020420098185106, "delta_pct": 0.9295872970731978},
+      "decode_tok_s_per_request": {"fp32": 12.900498701001503, "fp16": 13.020420098185106, "delta_pct": 0.9295872970731978}
+    },
+    "c4": {
+      "prefill_tok_s_aggregate": {"fp32": 307.15986894953573, "fp16": 312.2374109398715, "delta_pct": 1.6530616475715298},
+      "decode_tok_s_aggregate": {"fp32": 42.58563230844033, "fp16": 43.85348506684041, "delta_pct": 2.9771842982563745},
+      "decode_tok_s_per_request": {"fp32": 10.646408077110083, "fp16": 10.963371266710103, "delta_pct": 2.9771842982563745}
+    },
+    "native_c8": {
+      "prefill_tok_s_aggregate": {"fp32": 246.26134979710858, "fp16": 254.40911323944468, "delta_pct": 3.308583928841835},
+      "decode_tok_s_aggregate": {"fp32": 57.290506802273136, "fp16": 59.010573621473505, "delta_pct": 3.002359230538554},
+      "decode_tok_s_per_request": {"fp32": 7.161313350284142, "fp16": 7.376321702684188, "delta_pct": 3.002359230538554}
+    }
+  },
+  "sample_rates": {
+    "fp32_a_decode_aggregate": {
+      "c1": [12.900548367825579, 12.900449034177425, 12.90986591276263],
+      "c4": [42.619788806077736, 42.58974121793039, 42.581523398950274],
+      "native_c8": [57.33610734724283, 57.34575301589915, 57.30210693759071]
+    },
+    "fp16_decode_aggregate": {
+      "c1": [13.0267796215187, 13.020420098185106, 13.00613704941771],
+      "c4": [43.80955647364971, 43.863444346069464, 43.85348506684041],
+      "native_c8": [59.01502718797347, 58.99354955340913, 59.010573621473505]
+    },
+    "fp32_b_decode_aggregate": {
+      "c1": [12.896253540529152, 12.901565200817545, 12.89536400214387],
+      "c4": [42.59020396233907, 42.50531431157345, 42.5051562188039],
+      "native_c8": [57.229677201044666, 57.278906666955564, 57.17733099571887]
+    }
+  },
+  "correctness": {
+    "packed_gate_artifact": "2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-packed-production-gate.json",
+    "packed_gate_status": "hard gates passed; manual review passed",
+    "packed_gate_rows": 1170,
+    "quality": {"kl_mean": 0.00010249953022477523, "kl_p95": 0.0003192126281601045, "kl_p99": 0.0010501767207584248, "kl_max": 0.03286571255372825, "top1_agreement": 0.9982905982905983},
+    "repeat_deterministic": true,
+    "neighbor_and_permutation_isolation": true,
+    "indexed_decode_manifest_gate": true,
+    "manual_review": {
+      "passed": true,
+      "rows_over_review_boundary": 1,
+      "row": "long_c8_p512/general_en_plan/teacher_step2",
+      "kl": 0.03286571255372825,
+      "evidence": "same top-1 token 14542, strict top-1 remains candidate rank 1, strict margin 2.9768, teacher NLL improves 0.05100 -> 0.01253, deterministic and finite"
+    },
+    "free_running_diagnostic": "All modes repeat exactly and candidate native_c8 rows match candidate c4. FP16 and FP32 free-running IDs diverge for the synthetic repeated-token row ending in token 9708; production-profile generated-ID equality is non-binding, and the complete teacher-forced distribution/isolation gates are binding."
+  },
+  "memory": {
+    "tracked_peak_allocated_bytes": {"fp32": 24729534256, "fp16": 23494836016, "saved": 1234698240},
+    "sampled_hip_used_peak_bytes": {"fp32": 25632788480, "fp16": 24215113728, "saved": 1417674752}
+  },
+  "provenance": {
+    "fp32_a_raw_sha256": "7129d539660f8a5a8f14fa0382a7b68c54ab0117b5c60dd32c52526b83471ce3",
+    "fp16_raw_sha256": "b21d48efc6b366f579760106cb45e37b214b183e4bbce62ccec7da1d1007bbeb",
+    "fp32_b_raw_sha256": "730e5740d7b1811ff3d24627826b63d4df96e59a887d2cbfebae49a8cf8dc1a5",
+    "packed_gate_sha256": "c0e7dc95a38bfdf75c1044aa0ad38f82684a2217b9f33487121e3c608f1d609a",
+    "tracked_clean": true,
+    "variance_guards_passed": true,
+    "fp16_env_recorded_by_raw_provenance": true
+  },
+  "decision": "Retain FP16 recurrent state as a gfx1151 Qwen3.8 Q4_K_S opt-in. It is non-regressive at c1, improves pooled aggregate decode 2.98% at c4 and 3.00% at c8, improves aggregate prefill 1.65%/3.31%, and saves 1.15 GiB tracked peak in this eight-session packet. FP32 remains the strict/public default pending the named qualification blockers."
+}

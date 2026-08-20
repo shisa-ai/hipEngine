@@ -143,8 +143,9 @@ sibling: one wave32 keeps four state rows per lane in FP32 registers for each
 indexed slot and performs only the declared state-store conversion at a packed
 chunk boundary. The FP32 compact sibling is the registered strict-storage
 fallback; the older decode-order segmented writer remains a generic diagnostic
-fallback, not the Q4_K_S compact-peer production owner. The
-FP16 route remains opt-in pending its complete c>N dynamic and serving packet.
+fallback, not the Q4_K_S compact-peer production owner. The complete c>N
+numerical/dynamic/isolation hard gate passes; FP16 remains opt-in pending the
+runtime-manifest, BF16-relative/task, serving, and gfx1100 packets.
 Prepare and RMSNorm still cover the complete prefill once. This chunk is
 required because unchunked 4K loses 8.26% to direct LDS32, while the
 repaired route is peer-bit-exact and wins the production complete chain
