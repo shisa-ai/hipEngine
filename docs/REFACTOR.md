@@ -18,6 +18,157 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-21 codebase simplification review
+
+This review covers the tracked tree at `a9419949d`. The main conclusion is that
+strict fallbacks are not the primary complexity problem. Complexity is coming
+from experiment ownership living beside production ownership, policy being
+re-resolved throughout runtime code, importable benchmark programs being shipped
+as a product package, and historical evidence remaining in active source and
+this active ledger.
+
+### Measured inventory
+
+- `hipengine/` contains **304,814 Python lines**. The original PLAN statement
+  that the host is roughly 700 lines is historical and must not be used as a
+  current architecture budget.
+- `qwen35_gguf_runner.py` is **29,324 lines**; its two main classes are about
+  **7,739** and **10,109** lines. `qwen35_paro_runner.py` is **14,260 lines**
+  with a **12,304-line** resident-session class, and `qwen35_paro.py` is
+  **11,892 lines** with a **10,516-line** decode-state class.
+- `server/api.py` is **16,733 lines** and `create_app()` alone spans about
+  **4,410 lines**. Protocol translation, generation orchestration, tools,
+  structured-output validation, streaming, metrics, and route construction are
+  currently coupled in one module.
+- Product Python contains **225 direct environment-read expressions across 38
+  modules**, **308** `backend_package_capability(...)` call sites, and **144**
+  registry `resolve(...)` call sites. `hip_gfx1151/__init__.py` is **2,411
+  lines** with 256 top-level capability/policy assignments. This is selection
+  work that should largely resolve once into an immutable session plan.
+- `scripts/` contains **577 tracked Python programs / 289,396 lines** and is
+  included in the wheel by `pyproject.toml`. A conservative textual scan found
+  **405** with no reference from live `hipengine`, tests, current docs, README,
+  or package metadata. That does not prove they are unused command-line tools,
+  but it proves they are not an acceptable implicit product API. One product
+  module also imports `scripts.quant_quality.metrics`, preventing a clean
+  package boundary.
+- `benchmarks/results/` contains **5,158 tracked files / 225.7 MiB**, including
+  multi-megabyte tensor/capture JSON. New policy requires compact artifacts, but
+  the tree still mixes compact decisions with raw historical captures.
+- Before this review, this file was **3,951 lines / 398,544 bytes**, with 176
+  top-level entries. Its cleanup table contained 154 rows under only 120 area
+  labels, including stale duplicate rows, while closed and already-removed
+  history remained mixed with actionable work. This review removes three stale
+  duplicate rows; RF-4 owns the larger active/history split.
+
+These counts are triage signals, not line-count targets to game. A pure move that
+creates more files but one clear owner is a win; a generic abstraction that
+hides kernel ABI, numerical boundaries, or fallback ownership is not.
+
+### Non-negotiable keep set
+
+Do not delete these merely to reduce counts:
+
+1. registered strict fused/unfused fallback chains;
+2. complete-`KVLiveSpans` generic attention/KV-write routes and unsupported-
+   shape/backend fallbacks;
+3. scalar c1, segmented arbitrary-length, and transactional verifier oracles
+   while optimized routes are compared against them;
+4. `kernels/cpu_reference/`, strict fixtures, lifecycle/isolation gates, and
+   compact negative-decision evidence;
+5. explicit fallbacks still named by an open production-profile or hardware
+   qualification gap.
+
+The simplification rule is: remove **selection and production reachability**
+for a rejected experiment first; retain a low-level primitive only when a named
+fallback, active test oracle, or current research campaign consumes it.
+
+### Priority architecture work
+
+| ID | Priority | Problem | Target design / completion gate |
+| --- | --- | --- | --- |
+| RF-1 | P0 | Environment variables, backend capabilities, and registry variants are repeatedly resolved inside runtime methods. | Add a typed immutable `ResolvedRuntimePlan` assembled by model/backend/quant/profile plugins at model or session construction. Environment parsing stays in CLI/API/benchmark adapters. Hot runner methods consume the plan and do not reread environment or package maps. Keep registry-key misses mapped to strict fallback. |
+| RF-2 | P0 | `scripts` is both a 289K-line research workspace and a shipped/importable package. | Move reusable metrics, schemas, fixtures, and artifact validators to `hipengine.benchmark` or `tests/support`; remove the `hipengine -> scripts` import; package only `hipengine` plus explicitly supported tool entry points. Keep source-only experiments outside the wheel. Do not delete a script referenced by an active benchmark protocol until its replacement command exists. |
+| RF-3 | P0 | Rejected/default-off runtime experiments remain intertwined with production methods. | Execute the verified deletion queue below as small behavior-preserving units. A removed runtime selector may leave a focused kernel parity test; a production module must not retain an unrouted experiment solely because historical evidence exists. |
+| RF-4 | P0 | This active ledger is itself an unbounded historical journal. | Keep `REFACTOR.md` as a compact active index with stable IDs, owner/scope, state (`ready`, `blocked`, `keep-fallback`), exact removal gate, and affected paths. Move closed narrative to `REFACTOR-HISTORY.md` or immutable worklogs. Add a check that rejects duplicate active IDs and closed entries in the active table. |
+| RF-5 | P0 | Compact benchmark decisions and raw captures share one 225.7-MiB directory. | Define a size-bounded decision-artifact schema (default ceiling 256 KiB); keep only current/linked compact decisions in `benchmarks/results/`. Raw tensor traces/logs go to ignored local storage or external/LFS storage with SHA-256 plus retrieval metadata. Inventory references before deleting any existing evidence. |
+| RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session façade modules. Preserve public imports through thin compatibility façades during migration. No numerical or dispatch change may share a move-only commit. |
+| RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |
+| RF-8 | P1 | Backend package `__init__.py` files are capability databases, alias registrars, and implementation code. | Split backend policy by model/quant/subsystem into immutable manifest modules, with one package aggregator and validation. Keep the four-axis registry; do not replace it with backend conditionals. Generate or declaratively register repetitive aliases only when source-lineage and exact-key tests remain readable. |
+| RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |
+| RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
+| RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
+| RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_generation_batch_scheduler.py` is 28K lines; `test_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
+
+### Verified deletion queue
+
+These are code removals to execute separately, not deletions performed by this
+documentation review:
+
+| Scope | Why it is ready | What to remove / what to keep |
+| --- | --- | --- |
+| DFlash2 reduced-block/debug plumbing | D4/B-sweep is closed; `DF2_CYCLE_DEBUG` was a one-script print hook and `DF2_FWD_BS` is a measured quality/economics loss. | Remove both env branches plus reduced `forward(bs=...)`, `select(rows=...)`, and `last_candidates(rows=...)` plumbing after a fixed-config DFlash2 smoke. Keep the fixed trained block-size path and artifacts. |
+| GGUF MTP rolling slots | The default-off route is rejected at c8 and only one 129-line generator method consumes it. | Remove `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`, `_generate_rolling_mtp_serving_slots`, telemetry, and focused tests. Keep the four-slot packed verifier cap until a true wider verifier qualifies. |
+| GGUF MTP final-state fastpath | The default-off path regresses c4 because rejected/partial cycles replay state; captured-row/deferred-scatter is retained. | Remove the env resolver and `final_state_fastpath` branches from serial and packed verification. Keep captured-row commit and the transactional exact fallback. |
+| GGUF AR stream prefill | The only runtime consumer is the rejected default-off per-slot stream prefill; packed prefill is retained. | Remove the env, `_try_prefill_ar_serving_slots_streams`, its dedicated `prefill_async_top1` surface if no remaining caller exists, and focused tests. Keep stream decode as the unsupported-shape oracle until its separate rollback window closes. |
+| PARO suffix row-chunk diagnostics | The three env controls are generated-token red and add branches/telemetry across the two largest PARO runtime methods. | Remove suffix-size/layer/include-gate controls, execution branches, metadata, benchmark modes, and focused tests. Keep the independently retained full-layer/context plans and lower-level hidden/KV diagnostics. |
+| Unrouted kernel bodies | `pack8_wmma64_prefill` is registered but explicitly never routed after losing its leaf screen; Laguna's `...split_exact_gated_mixed32_vstage64_reduce_kernel` has no wrapper or registry key. | Delete body/wrapper/export/key/dedicated test for WMMA64 and delete the unwrapped Laguna body. Keep their compact rejection evidence; reopen only from a materially different design. |
+| Rejected MTP/llama-compat flag zoo | Multiple Q6 top-1 shapes, shared-Q8, selected X8/raw gate-up, fused rotate, accept-position, and overlap routes are explicitly rejected but still runtime-selectable. | After the final named llama-compat transaction policy is chosen, retain one named compat composition plus the strict control; remove loose env/CLI combinations and demote useful leaf oracles to tests. Do not remove an option still consumed by that named composition before the decision. |
+| Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. “No textual owner” is a review queue, not sufficient deletion proof. |
+
+### Target organization
+
+The intended direction is a collection of stable façades over cohesive modules,
+not a new framework:
+
+```text
+hipengine/runtime/qwen35_gguf/
+  policy.py        # immutable model/backend/quant/profile plan
+  scratch.py       # byte plans, owners, views, lifecycle
+  full_attention.py
+  linear_attention.py
+  moe.py
+  verify.py        # journal/commit/rollback; no server policy
+  session.py       # thin public façade
+hipengine/server/
+  routes.py        # HTTP translation only
+  streaming.py     # SSE and token accounting
+  structured.py    # JSON schema/guided output
+  tools.py
+  metrics.py
+hipengine/kernels/hip_gfx1151/policy/
+  qwen35.py
+  qwen38.py
+  laguna.py
+```
+
+Apply the same split to PARO only after the GGUF extraction pattern proves it
+avoids import cycles. Keep primitive launch wrappers near their kernel family;
+do not centralize raw pointers into an untyped universal launcher.
+
+### Refactor execution rules
+
+1. Remove ready rejected branches before moving production code; otherwise a
+   mechanical split preserves the very complexity we want to eliminate.
+2. One logical unit is either deletion, policy extraction, or file movement —
+   never combine it with tuning, arithmetic, or default changes.
+3. Before deleting a path, prove current default and strict fallback ownership,
+   search runtime/tests/docs/benchmark protocols, and name the focused gate.
+4. Preserve import compatibility during module splits, then remove re-exports
+   after one compatibility window rather than creating permanent duplicate APIs.
+5. Update PLAN only when a proposed target boundary becomes implemented
+   architecture. This review is the cleanup queue, not permission for a big-bang
+   rewrite.
+
+### Completion signals
+
+The refactor campaign is materially complete when production runtime modules no
+longer read experiment env flags directly, backend/model/profile policy resolves
+once, `scripts` is not part of the default wheel, rejected experiments are not
+runtime-reachable, active refactor debt is a bounded indexed document, and the
+server/model runners have one scheduler plus one state/KV commit owner. Strict
+fallback count is not a success metric.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`
@@ -1515,9 +1666,6 @@ shorter-horizon audit establishes a lower break-even.
 | Laguna SWA qrow2 online-prefill rollback | Explicit context-qualified exact qrow2 and wave32 routes coexist beneath gfx1151's promoted `swa_context_rows_qrow2_online_spans` default. | One wave replaces exact qrow2's two ring scans with online max/denominator/output state. M128/full-window and start508 wrap improve **3.093x/2.904x**; repeated 512/1K/4K improves **6.828%/9.364%/10.766%**. The complete category gate improves weighted prefill **1.086%** and h16/h32 E2E **0.616%/0.420%** with max KL `0.042924`, top-1 316/320, every category positive, and Poolside/repeats/lifecycle passing. gfx1100/unmeasured backends retain prior defaults. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`. | After one release window and a defaults-only 512/1K/4K plus category refresh, remove redundant positive explicit-online selection if no bisection needs it; keep exact context-qualified qrow2 and wave32 as rollback/fallback. Never enable on another backend without independent quality/performance evidence. |
 | Laguna prompt prefill fallback | `LagunaGGUFResidentSession.prefill(..., use_bulk=False)` keeps the original token-serial prompt path beside default chunked rows. | Multi-length state/target-AR gates are complete. LPF-4 established exact bounded 128-row bulk chunks; AR-O3 defaults gfx1151 to its independently retained capacity. WPF-2 now defaults gfx1100 to matrix512/attention128/grouped-exact after all 48 boundaries/KV/spans/routing/lifecycle pass and clean publication reaches **99.230/91.559 tok/s**. Explicit overrides retain M128/M256 and paired direct routing. Token-serial remains only as the independent state oracle and rollback through the post-prefill DFlash refresh; `forward_token()` decode is unchanged. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json` and `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json`. | Move token-serial prefill to a correctness-only helper (or remove the public selector) after bulk passes the full prompt-length/context matrix, retained target-AR performance is non-regressive, and verifier accept/rollback gates no longer need prefill bisection. |
 | Laguna source-F16 tiled prefill selector | `HIPENGINE_LAGUNA_F16_PREFILL=auto|gemv|tiled` exposes explicit selection around the separately registered LPF-1 row/column tile. | Promoted gfx1151 default from two rows. Clean same-session rows 2..128 are exact and all faster (2.0538x weighted); the two-repeat category gate moves prefill 23.333->48.560 tok/s, TTFT 3.481->1.692 s, and h32 E2E 5.719->8.717 with neutral decode and all correctness/lifecycle gates. The reassociated WMMA control remains removed after changing three trajectories. `gemv` is the release rollback; rows=1/unsupported backends always retain registry-driven GEMV. | After one release window and a defaults-only gfx1151 refresh, remove the positive `tiled`/`auto` experiment semantics and keep at most one clear `gemv` rollback until release confidence permits removing the env selector entirely. Never remove the registered rows=1/unsupported-backend GEMV fallback. |
-| Laguna SWA token4-exact decode rollback | `LagunaGGUFResidentSession(..., swa_decode_variant=...)` and `allocate_laguna_kv_cache(..., swa_decode_variant=...)` retain baseline `swa_context_spans` beside gfx1100's backend-qualified `swa_context_token4_exact_spans` default. | Promoted on gfx1100. The exact 4-wave/4-slot schedule passes all focused wrap/eviction/KV/runner gates; clean SWA improves 49.60% short and 52.80-53.03% at 512/1K/near-4K. The full category gate moves h32 decode 38.840->43.081 tok/s and E2E 11.448->11.760 with prefill within -0.223%; gfx1151 and unmeasured backends remain baseline. D10 token8 was exact and improved clean profiles, but failed the aggregate/every-category h16 gate and was removed with no rollback debt. | After one release window and a defaults-only gfx1100 refresh, remove public positive token4 selection and keep at most explicit baseline rollback. Never remove the registered baseline or change unmeasured backend defaults without independent evidence. |
-| Laguna SWA wave32-exact prefill rollback | `LagunaGGUFResidentSession(..., swa_prefill_variant=...)` and `allocate_laguna_kv_cache(..., swa_prefill_variant=...)` retain explicit baseline selection beside the gfx1151 backend-qualified LPF-5 default. | Promoted on gfx1151. It reconstructs the original stride-64/32/16..1 FP32 tree, passes the 508..515 fixture byte-exactly, improves the leaf 20.434->9.229 ms (2.214x), and moves exact full-model 512/1K/4K prefill +8.31%/+12.85%/+14.06%. Unmeasured backends default to baseline. | After one release window plus the post-prefill DFlash refresh, remove public positive candidate selection and keep at most one explicit baseline rollback if needed. Never remove the registered baseline from unmeasured backends without independent evidence. |
-| Laguna prompt prefill fallback | `LagunaGGUFResidentSession.prefill(..., use_bulk=False)` keeps the original token-serial prompt path beside default chunked rows. | Multi-length state/target-AR gates are complete. LPF-4 now defaults public sessions to bounded 128-row bulk chunks: the clean canonical gate is exact and moves paired prefill 48.541->49.641 tok/s with every category non-regressive. The 512/1K/4K matrix is now complete and exact with wave32 SWA; token-serial remains only as the independent state oracle and rollback through the post-prefill DFlash refresh. `forward_token()` decode is unchanged. | Move token-serial prefill to a correctness-only helper (or remove the public selector) after bulk passes the full prompt-length/context matrix, retained target-AR performance is non-regressive, and verifier accept/rollback gates no longer need prefill bisection. |
 | Laguna grouped-down diagnostic selector | `LagunaGGUFResidentSession.set_selected_down_mode(direct|grouped_smallm|adaptive_grouped_smallm|grouped_smallm_fused|adaptive_grouped_smallm_fused)` retains explicit A/B selection beside the backend-qualified exact grouped-combine Q4/Q6 down default. | Exact grouped combine is promoted on gfx1151 from 32 rows after a bit-exact 1.249-1.313x sub-window screen, 0.99972x five-repeat complete-model screen, and exact/non-regressive category gate. The quality-rejected M16/M32 runtime route, scratch, selectors, and harnesses are removed; its registered leaf oracle remains. gfx1100 and rows below 32 retain direct. | Keep `adaptive_grouped_smallm` as the explicit unfused grouped rollback through one release window. Then remove redundant positive `grouped_smallm*` experiment modes and keep at most the adaptive unfused rollback plus clear `direct` for unsupported backends/short rows. Never remove direct fallback without independent evidence. |
 | Laguna D9 MoE-tail next-RMS rollback | `LagunaGGUFResidentSession(..., use_moe_tail_next_rmsnorm=False)` restores the exact registered BF16 add/add/F32-weight-RMS chain around the gfx1100/gfx1151 c=1 composite; rows>1 and unsupported backends keep that chain. | Promoted on gfx1100 c=1. Synthetic and all-47-boundary actual Q2 XL state are exact; clean short/512/1K/near-4K kernel sum, span, and profiled child rows improve, and the complete category gate moves h32 decode 46.409->47.132 tok/s with every decode/E2E row positive. Independently promoted on gfx1151: native hidden17/3072 is byte-exact, cached resources are local256/VGPR16/LDS1024/scratch0, and counterbalanced p512/d128 moves rollback 14.529573/14.525706 to 14.555265 tok/s while removing 94 launches/token. | Keep for one release/bisection window and the current DFlash/MTP refresh, then remove the constructor selector while retaining the architecturally required unfused chain. |
 | Laguna D12 raw-Q5 wave32x2 selectors | `LagunaGGUFResidentSession(..., use_q5_wave32x2_output=..., use_q5_wave32x2_query_gate=...)` independently rolls the gfx1100 defaults back to the exact pack8 siblings for c=1 attention output and unequal query/gate. | Promoted together on gfx1100. Formal 50-warmup/15x200 actual-weight leaves improve 13.63-24.80% in HIP events; clean short/512/1K/near-4K kernel sum/span/child all improve; and the counterbalanced canonical gate moves h32 decode 47.046->48.987 tok/s with every category positive and prefill neutral. Synthetic/production leaves and full shared-weight state are exact; cached trace is local32/VGPR96/LDS0/scratch0. gfx1151, rows>1, shape/registry misses, and explicit disable retain pack8. | After one release/bisection window and the current DFlash/MTP refresh, remove positive constructor-selection semantics and keep at most a clear pack8 rollback. Never remove pack8 as the required fallback. |

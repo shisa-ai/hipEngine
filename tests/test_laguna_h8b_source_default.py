@@ -54,9 +54,6 @@ _SOURCE_SHA256 = {
     "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
         "c8c7c949f9ca314aa3048e90f4d34481e486d5bc0f0cf307fb7fcf54200398e8"
     ),
-    "docs/REFACTOR.md": (
-        "06a81ed76dbc7835a068f4023106fac89c619b863d2ad9c362e2b2b9dbcf0d3e"
-    ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile policies do not alter H8B's owner.
@@ -68,9 +65,6 @@ _POST_MERGE_SOURCE_SHA256 = {
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
-    ),
-    "docs/REFACTOR.md": (
-        "aa8bea614829a990cf4e4df4b3cc0c4649ce771119c04964864a5957288ae849"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -217,6 +211,12 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert _SOURCE_CAPABILITY in resolver_source
     session_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert "self.use_activation_pack_reuse" in session_source
+    # Preserve the immutable artifact's historical documentation provenance,
+    # but do not bind the live kernel/source RED to the entire mutable refactor
+    # ledger. Current ownership is asserted semantically above.
+    assert artifact["source_sha256"]["docs/REFACTOR.md"] == (
+        _RUNTIME_ARTIFACT_REFACTOR_SHA256
+    )
     for relative, expected in _SOURCE_SHA256.items():
         assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
             relative, expected
@@ -228,7 +228,6 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
             "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
                 _RUNTIME_ARTIFACT_H8B_TEST_SHA256
             ),
-            "docs/REFACTOR.md": _RUNTIME_ARTIFACT_REFACTOR_SHA256,
         }.get(relative, expected)
         assert artifact["source_sha256"].get(relative, artifact_expected) == (
             artifact_expected
