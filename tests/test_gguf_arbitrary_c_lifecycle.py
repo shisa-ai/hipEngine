@@ -15,6 +15,7 @@ from scripts.gguf_arbitrary_c_lifecycle import (
     _load_quality_gate,
     _resolve_widths,
     _state_kv_accepted,
+    _tracked_memory_recovery,
     build_parser,
     run,
 )
@@ -213,6 +214,29 @@ def test_gguf_arbitrary_c_lifecycle_resolves_active_width_set(monkeypatch) -> No
     monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
     with pytest.raises(ValueError, match="sorted unique widths starting at c1"):
         _resolve_widths()
+
+
+def test_gguf_arbitrary_c_lifecycle_requires_tracked_memory_recovery() -> None:
+    before = {
+        "current_allocated_bytes": 100,
+        "peak_allocated_bytes": 150,
+        "active_allocations": 2,
+    }
+    after = {
+        "current_allocated_bytes": 100,
+        "peak_allocated_bytes": 300,
+        "active_allocations": 2,
+    }
+
+    recovered = _tracked_memory_recovery(before, after)
+
+    assert recovered["passed"] is True
+    assert recovered["current_allocated_delta_bytes"] == 0
+    assert recovered["active_allocation_delta"] == 0
+    assert recovered["peak_allocated_bytes"] == 300
+
+    after["active_allocations"] = 3
+    assert _tracked_memory_recovery(before, after)["passed"] is False
 
 
 def test_gguf_arbitrary_c_lifecycle_requires_explicit_arithmetic_drift_policy(
