@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1100/W7900] Qwen3.8-27B GGUF Q4_K_M D2-vs-ceiling composed serial model-step sweep across c1-c32: measured actual owner decode wall shows D2 (artifact-backed cost map) is never slower than ceiling on any row (0/18 differentiated losses), with D2 wins at c9 96.6 vs 100.6 ms, c10 101.1 vs 105.7, c17 162.1 vs 166.3, c18 166.2 vs 171.1, c25 219.3 vs 227.1, c26 224.6 vs 230.9; remaining differentiated rows tie within a 2%/0.5 ms noise floor; c1-c8 identical. Gate passes -> D2 eligible for production default; artifact results/2026-08-20-concurrency2-qwen38-d2-vs-ceiling-composed-wall-sweep.json.
+
 - [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 29.42 -> 26.83 ms/tok (+2.59 ms/tok, +8.8%) on a counter-rotated A/B, real-hoist validation 25.69 ms/tok, by hoisting the q8_0_t16 / q6_k_t16 / dense-gemv .so handles into module caches (141 launch_gguf_linear launches/step stopped re-running build_X(load=True), per-call host 43.2 -> 23.2 us); overturns PN4 GPU-bound reading for this slice; tokens byte-identical (identical CDLL handles); artifact results/2026-08-18-zbook-qwen36-pn6-gemv-lib-hoist.json.
 - [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 30.78 -> 29.83 ms/tok (+957 us/tok, +3.2%) by hoisting the router .so into a module cache (per-launch host dispatch dropped ~45 -> ~15 us); tokens byte-identical; artifact results/2026-08-18-zbook-qwen36-pn5-router-lib-hoist.json.
 
