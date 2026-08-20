@@ -635,10 +635,13 @@ measured model-step wall over certified widths), ``ceiling_partition``
 (fail-closed fallback), and ``plan_d2_groups`` (lowers a dense work item into
 ``PhysicalBatchGroup``s preserving slot identity). Against the real
 post-promotion packet it recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6, c13=7+6,
-c14=7+7, c16=8+8, beating ceiling by up to 5.4 ms/step (c9). Wiring it into the
-continuous owner's per-round physical-group lowering (and proving the server
-follows it across c1–c32) is the #29 integration step; the ceiling planner
-remains the default until then.
+c14=7+7, c16=8+8, beating ceiling by up to 5.4 ms/step (c9). Wiring:
+``plan_physical_batch_groups`` accepts an explicit ``width_sequence`` (compact
+mode), and the resident owner resolves an artifact-backed cost table
+(``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT``, cached; absent → fail-closed ceiling)
+and passes ``d2_partition`` for the composition. The actual owner is proven to
+follow D2 across logical c1–c32 when a cost table is configured, and fails
+closed to ceiling otherwise.
 
 The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
