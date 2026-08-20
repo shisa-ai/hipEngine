@@ -45,6 +45,14 @@ _EXACT_ENV = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
 }
+# Production route: no forced exact-capture env; the backend auto GDN prefill
+# policy resolves (gfx1151 Q4_K_S -> chain_compact_peer_wave32). Used to measure
+# production-profile variants (e.g. fp16 recurrent state) that are incompatible
+# with the strict verify-capture/exact state-rows prefill writers.
+_PRODUCTION_ENV: dict[str, str | None] = {
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": None,
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": None,
+}
 _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -195,9 +203,13 @@ def _occupancy_event(
 
 
 @contextmanager
-def _temporary_environment(updates: Mapping[str, str]) -> Iterator[None]:
+def _temporary_environment(updates: Mapping[str, str | None]) -> Iterator[None]:
     prior = {key: os.environ.get(key) for key in updates}
-    os.environ.update({str(key): str(value) for key, value in updates.items()})
+    for key, value in updates.items():
+        if value is None:
+            os.environ.pop(str(key), None)
+        else:
+            os.environ[str(key)] = str(value)
     try:
         yield
     finally:
@@ -708,8 +720,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     target_arch = resolved_backend.removeprefix("hip_")
 
     stack = ExitStack()
+    route_env = _EXACT_ENV if args.route == "exact" else _PRODUCTION_ENV
     try:
-        with _temporary_environment(_EXACT_ENV):
+        with _temporary_environment(route_env):
             owner = stack.enter_context(
                 Qwen35GGUFResidentSession(
                     model,
@@ -807,7 +820,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         command=command,
         environment={
             **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
-            **_EXACT_ENV,
+            **route_env,
         },
         build_profile=f"{target_arch}_gguf_packed_graph_c1_c2_c4_native_c8_controls",
         timing_protocol=(
@@ -890,6 +903,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--decode-steps", type=int, default=128)
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
+    parser.add_argument(
+        "--route",
+        choices={"exact", "production"},
+        default="exact",
+        help="exact = strict verify-capture state-rows prefill (retained packet); "
+        "production = backend auto GDN prefill route (no forced capture env).",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path)
