@@ -446,6 +446,7 @@ def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
 
 def test_gfx1151_short_context_uses_exact_fixed256_batch_leaf(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    monkeypatch.setenv("HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS", "256")
     runner = _runner(is_moe=True, backend="hip_gfx1151")
     scratch = _scratch(position=511, max_positions=768)
     calls = _patch_full_attention_primitives(monkeypatch)

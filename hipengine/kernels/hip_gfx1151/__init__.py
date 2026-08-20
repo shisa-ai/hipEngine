@@ -841,6 +841,23 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # real-Uvicorn serving A/B admit FP16 recurrent-state storage for dense Q4_K_S.
 # The environment remains an explicit rollback: =0 restores FP32 storage.
 GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
+# Measured 2026-08-20 (35B-A3B, 8060S): the native causal_gqa_gate_bf16 prefill
+# kernel beats AOTriton v3 at every prefill length (64/128/256/512/1024/2048),
+# ~2-5% faster on the serialized full-attention slice, never slower, with no
+# crossover. AOTriton is tuned for larger GPUs (gfx1100's 96 CU / 48 MiB MALL);
+# on the 40-CU 8060S the simpler native scan wins and drops the aotriton
+# wrapper overhead (bf16 conversion, head-major KV copy, stream bridge).
+# Native is the exact same kernel already validated below the 512 threshold.
+GGUF_AOTRITON_PREFILL = False
+# Measured 2026-08-20 (35B-A3B @ 2048/4096, 8060S): 512-row linear/MoE prefill
+# chunks are ~1.2% (2048 tok) / ~2.3% (4096 tok) faster than the 1024 default,
+# and chunk-boundary-correct (KL 0.00013 at 2048, far below the 0.034 run-noise
+# floor). The 27B dense (H5120) is inconclusive within 60W-lane variance, so the
+# override is keyed to the H2048-MoE geometry only. Smaller chunks reduce
+# transient scratch and improve pipelining on the 40-CU APU.
+GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY = {
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): (512, 512),  # (linear, moe)
+}
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -1171,6 +1188,14 @@ GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS = {
 # F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
 # keeps the established direct/split routes.
 GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
+# The c1 short-batch leaf block width. 256 is the exact fixed256 default.
+# 1024 runs the same body at a wider block width (split value reduction +
+# different warp reduction tree -> T2 non-exact production probe). The 1024
+# variant passed the calibrated execution-profile c1 threads gate (full
+# mtp-bench category suite, teacher-forced KL/top-1 envelope, 3 repeats) and is
+# retained as the gfx1151 default; the exact 256-thread leaf stays registered
+# as the strict fallback. HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS overrides.
+GGUF_SHORT_C1_BATCH_ATTN_THREADS = 1024
 # D08-D4 independently qualifies the existing generic split-K3 plus fused-gate
 # chain for Qwen3.5-0.8B's private-c1 8Q/2KV/D256 graph cap. The exact model/
 # attention shape and measured 514-641 window preserve fixed256 at the 513 warm
@@ -2154,6 +2179,8 @@ register_backend_kernels = register_gfx1151_kernels
 __all__ = [
     "BACKEND",
     "GGUF_AOTRITON_HEAD_MAJOR_KV",
+    "GGUF_AOTRITON_PREFILL",
+    "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
@@ -2177,6 +2204,7 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+    "GGUF_SHORT_C1_BATCH_ATTN_THREADS",
     "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",

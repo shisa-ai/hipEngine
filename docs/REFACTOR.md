@@ -3916,3 +3916,36 @@ should be boring.
   that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
   Runtime-manifest, BF16-relative/task, and gfx1100 named-profile evidence
   remain unavailable, while chain-journal/MTP guards remain.
+
+## DFlash2 B-sweep debug hook
+
+- `DF2_CYCLE_DEBUG=1` (default off) prints per-cycle verify rows + wall for
+  `scripts/dflash2_gguf_cycle.py --batch-verify`. Added 2026-08-19 while
+  root-causing the verify-row count during the D4 B-sweep (the CLI block size
+  was being clamped to the drafter config). Remove the env-gated print once the
+  B-sweep closeout is merged and no further cycle-timing debugging needs it.
+
+## DFlash2 variable-block forward (DF2_FWD_BS)
+
+- `DF2_FWD_BS` (default unset = config block size 8) runs the native drafter
+  forward/select at a smaller block (e.g. 4 for B3). Measured net loss: on
+  `code_merge_intervals` acceptance drops 3.08 -> 2.86 (-7%, recall@16
+  0.970 -> 0.909) because the drafter's within-block attention is non-causal
+  and needs its full trained block context, while throughput is flat (the
+  forward is launch-bound, not compute-bound: 74ms -> 67ms only). Remove the
+  `DF2_FWD_BS` env branch and the `forward(bs=...)` / `select(rows=...)`
+  plumbing when the B-sweep closeout merges and no smaller-block drafter
+  experiment needs it.
+
+## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
+
+- Added 2026-08-20. The fixed256 context-batch body gained a runtime block-width
+  entrypoint (`...fixed256_threads_spans`); gfx1151 promotes `threads=1024`
+  (T2 non-exact, execution-profile gate-passed) via the capability, with the
+  exact 256-thread leaf kept as the registered strict fallback.
+  `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` forces any width for A/B/bisection.
+- Removal trigger: after split-K3 / split-policy or WMMA-tile variants on the c1
+  exact spine replace this geometry (or a fresh gfx1151 route/profile check
+  overturns the 1024 win), collapse the runtime-threads entrypoint back to a
+  fixed constexpr and drop the capability/env unless a named validation gap
+  still needs the override.

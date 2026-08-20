@@ -97,6 +97,8 @@ def test_qwen36_dense_blk64_inventory_advertises_public_mtp() -> None:
 def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     monkeypatch,
 ) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     calls: list[tuple] = []
     config = SimpleNamespace(
         ignored_block_ids=(64,),
@@ -160,7 +162,13 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     assert outputs[0].generated_token_ids == (1, 2, 3)
     assert any(
         call[0] == "generate"
-        and call[2] == {"max_new_tokens": 3, "request_id": 0}
+        and call[2]
+        == {
+            "max_new_tokens": 3,
+            "request_id": 0,
+            "eos_token_id": 99,
+            "stop_token_ids": (),
+        }
         for call in calls
     )
     assert ("provider_acquire", {"max_positions": 256, "pool_enabled": True}) in calls
@@ -168,11 +176,12 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     assert calls[-1] == ("release", (7, "dense_nextn", 256), provider)
     assert generator.last_batch_generation["speculative_mtp"]["nextn_block_id"] == 64
     decoder_init = next(call for call in calls if call[0] == "decoder_init")
-    assert decoder_init[3]["target_verify_mode"] == "serial_exact"
-    assert (
-        generator.last_batch_generation["speculative_mtp"]["target_verify"]
-        == "transactional_serial_exact"
-    )
+    assert decoder_init[3]["candidate_budget"] == 3
+    assert decoder_init[3]["target_verify_mode"] == "native"
+    mtp = generator.last_batch_generation["speculative_mtp"]
+    assert mtp["draft_n_max"] == 3
+    assert mtp["target_verify"] == "transactional_native"
+    assert mtp["target_verify_batching"] == "single_slot_transactional_native"
 
 
 def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -> None:
@@ -416,6 +425,36 @@ def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatc
 
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", "0")
     assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is False
+
+
+def test_gguf_mtp_server_target_verify_mode_defaults_to_native(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "native"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "serial-exact")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "serial_exact"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "serial_exact")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "serial_exact"
+
+    # Unknown modes fall back to the native default.
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", "bogus")
+    assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "native"
+
+
+def test_gguf_mtp_server_candidate_budget_defaults_to_three(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "2")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
+
+    # Out-of-range / non-numeric values fall back to the default.
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "9")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "abc")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+
 
 
 def test_gguf_decode_graph_default_on_with_opt_out(monkeypatch) -> None:

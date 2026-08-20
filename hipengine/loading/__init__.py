@@ -15,6 +15,7 @@ from hipengine.loading.dflash import (
     load_dflash_drafter_bf16_weights,
     register_dflash_draft_config_parser,
     validate_dflash_artifact_pair,
+    validate_dflash_drafter_against_gguf_target,
     validate_dflash_drafter_metadata,
     validate_dflash_target_metadata,
 )
@@ -370,6 +371,7 @@ __all__ = [
     "runtime_linear_attention_dense_c1_tensor_names",
     "runtime_linear_attention_moe_c1_tensor_names",
     "validate_dflash_artifact_pair",
+    "validate_dflash_drafter_against_gguf_target",
     "validate_dflash_drafter_metadata",
     "validate_dflash_target_metadata",
     "validate_qwen35_mtp_metadata",

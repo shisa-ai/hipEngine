@@ -4,6 +4,9 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 29.42 -> 26.83 ms/tok (+2.59 ms/tok, +8.8%) on a counter-rotated A/B, real-hoist validation 25.69 ms/tok, by hoisting the q8_0_t16 / q6_k_t16 / dense-gemv .so handles into module caches (141 launch_gguf_linear launches/step stopped re-running build_X(load=True), per-call host 43.2 -> 23.2 us); overturns PN4 GPU-bound reading for this slice; tokens byte-identical (identical CDLL handles); artifact results/2026-08-18-zbook-qwen36-pn6-gemv-lib-hoist.json.
+- [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 30.78 -> 29.83 ms/tok (+957 us/tok, +3.2%) by hoisting the router .so into a module cache (per-launch host dispatch dropped ~45 -> ~15 us); tokens byte-identical; artifact results/2026-08-18-zbook-qwen36-pn5-router-lib-hoist.json.
+
 Entry format:
 
 ```text

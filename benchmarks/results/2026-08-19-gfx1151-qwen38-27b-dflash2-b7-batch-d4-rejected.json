@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-19T15:40:00Z",
+  "kind": "hipengine_qwen38_27b_dflash2_b7_batch_verify_d4",
+  "status": "rejected_promotion",
+  "pass": false,
+  "performance_claim": false,
+  "repo": {
+    "revision": "edba4219153fa024289d44501b2605449d2a1298",
+    "tracked_clean": true,
+    "production_default_changed": false
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900-compute-lane (gfx1151 resident)",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "name": "Qwen3.8-27B",
+    "quant": "Q4_K_M GGUF",
+    "resident": "gfx1151"
+  },
+  "drafter": {
+    "name": "Qwen3.8-27B-DFlash2",
+    "snapshot": "50307d4c",
+    "block_size": 8,
+    "selector_top_k": 16,
+    "selector_rank": 256
+  },
+  "protocol": {
+    "comparison": "DFlash2 B7 (8-row batched chain verify) vs same-session AR and exact native MTP B3 (23.85 tok/s, 1.7845x AR)",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "max_new_tokens_per_prompt": 40,
+    "command": "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT=1 HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 uv run python scripts/dflash2_gguf_suite_smoke.py --batch-verify --max-new-tokens 40 --limit 10"
+  },
+  "results": {
+    "ar_tokens_per_s": 13.4,
+    "mtp_b3_tokens_per_s": 23.85263,
+    "mtp_b3_ratio_ar": 1.7845,
+    "dflash2_b7_tokens_per_s_mean": 3.58,
+    "dflash2_b7_ratio_ar_mean": 0.27,
+    "dflash2_b7_mean_acceptance": 3.49,
+    "dflash2_b7_ar_agreement": 1.0,
+    "per_prompt": {
+      "code_merge_intervals": {
+        "acc": 3.64,
+        "tok_s": 3.38
+      },
+      "code_topological_sort": {
+        "acc": 4.44,
+        "tok_s": 4.44
+      },
+      "code_lru_cache": {
+        "acc": 3.33,
+        "tok_s": 3.34
+      },
+      "code_markdown_table": {
+        "acc": 3.33,
+        "tok_s": 3.18
+      },
+      "general_en_plan": {
+        "acc": 3.64,
+        "tok_s": 3.35
+      },
+      "general_en_explain": {
+        "acc": 3.64,
+        "tok_s": 2.59
+      },
+      "general_ja_plan": {
+        "acc": 2.11,
+        "tok_s": 2.55
+      },
+      "general_ja_explain": {
+        "acc": 3.08,
+        "tok_s": 3.74
+      },
+      "mixed_ja_en_translate": {
+        "acc": 4.0,
+        "tok_s": 4.84
+      },
+      "mixed_ja_en_review": {
+        "acc": 3.64,
+        "tok_s": 4.4
+      }
+    }
+  },
+  "blocker": "DFlash2 per-draft acceptance ~0.38 vs MTP ~0.95; 8-row verify ~620ms vs MTP B3 4-row ~160ms for LOWER acceptance (3.49 vs 3.85); DFlash2 B7 = 0.27x AR, far below MTP B3 1.78x AR. Rowtile-8 verify speedup (620->310ms) diverged from AR on code_lru_cache and was reverted (kernels exact in isolation; verify-path interaction unroot-caused).",
+  "evidence": "worklog/entries/20260819T152835.922012Z-lhl-dflash2-d4-batch-verify-b7-measurement-6b86ff.md"
+}

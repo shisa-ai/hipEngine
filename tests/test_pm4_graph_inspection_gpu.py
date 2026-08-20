@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import ctypes
-import os
 
 import pytest
+
+from hipengine.kernels.backends import detect_hip_target_arches
 
 
 def _hip_available() -> bool:
@@ -20,9 +21,8 @@ pytestmark = pytest.mark.skipif(not _hip_available(), reason="requires ROCm/liba
 
 
 def test_smoke_add_graph_reconciles_exact_dso_hsaco_geometry_and_kernargs() -> None:
-    configured_arch = os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100")
-    if configured_arch != "gfx1100":
-        pytest.skip("initial PM4 inspection gate is gfx1100-only")
+    if "gfx1100" not in detect_hip_target_arches():
+        pytest.skip("initial PM4 inspection gate requires physical gfx1100")
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import free, malloc

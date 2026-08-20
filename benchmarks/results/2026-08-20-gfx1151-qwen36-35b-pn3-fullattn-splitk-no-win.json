@@ -1,0 +1,41 @@
+{
+    "id": "2026-08-20-gfx1151-qwen36-35b-pn3-fullattn-splitk-no-win",
+    "benchmark": "Qwen3.6-35B-A3B-UD-Q4_K_M c1 short-batch attention: split-K (online-softmax + fused gate) vs promoted fixed256-1024 leaf closeout",
+    "status": "rejected-promotion",
+    "verdict": "measured no-win",
+    "hardware": "HP ZBook Ultra G1a, Radeon 8060S / gfx1151, ROCm 7.15.0 pinned, 32 GiB MALL",
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (arch qwen36, 16Q/2KV/D256, rows=1, bs=256)",
+    "date": "2026-08-20",
+    "command": "uv run python scripts/pn3_fullattn_splitk_vs_leaf.py (+ focused 768-1023 crossover pass)",
+    "protocol": {
+        "session": "kernel-level micro: median of hundreds of sync'd reps per (context, variant) on gfx1151; fixed256-1024+gate chain vs qwen35_paged_full_attn_decode_split_k_gate_bf16_spans at splits 2/3/4",
+        "correctness": "split-K output sanity-checked finite; not bit-exact vs the exact leaf (online-softmax) so not promoted",
+        "do_not_repeat": [
+            "split-K (online-softmax + fused gate) for the c1 short-batch window <1024 (20-45% slower at 513-768, no reliable crossover)",
+            "WMMA-tile for the single-row c1 decode leaf (M=1 per block, latency-bound; 16x16 tiles waste 15/16 lanes)"
+        ]
+    },
+    "baseline": {
+        "leaf_fixed1024_plus_gate_us_ctx513": 74,
+        "leaf_fixed1024_plus_gate_us_ctx1023": 104
+    },
+    "mechanism_ab": {
+        "ctx513_fixed_us": [75, 74],
+        "ctx513_splitK2_us": [95, 94],
+        "ctx513_splitK3_us": [103, 110],
+        "ctx640_fixed_us": [84, 86],
+        "ctx640_splitK2_us": [104, 106],
+        "ctx640_splitK3_us": [116, 120],
+        "ctx768_fixed_us": [94, 86],
+        "ctx768_splitK2_us": [96, 103],
+        "ctx1023_fixed_us": [122, 104],
+        "ctx1023_splitK2_us": [101, 109],
+        "conclusion": "split-K is 20-45% slower at contexts 513-768; the splitK2 'win' at 1023 flips between runs (fixed 104-123 vs splitK2 101-109), within ~15-20% run variance at the top of the window. Not a reliable crossover; keep the fixed256-1024 leaf for <1024 and split-K for >=1024 (already routed)."
+    },
+    "cross_refs": {
+        "threads_1024_promotion": "2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads.json",
+        "worklog": "worklog/entries/20260820T124504.891610Z-lhl-pn3-fullattn-splitk-wmma-close-c418f6.md"
+    },
+    "reason": "The c1 short-batch leaf is already at 1024 threads (the fastest measured block geometry) and the gate is negligible. split-K adds online-softmax merge overhead that loses to the leaf at the bulk of the c1 window; WMMA is structurally mismatched to the M=1, memory-latency-bound leaf. The c1 attention leaf is at its practical gfx1151 optimum; remaining full-attention headroom is the QKV/output projection family (separate owner).",
+    "next_owner": "QKV/output projections (launch_gguf_linear), a separately owned family; then 27B chunk resolution"
+}

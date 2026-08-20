@@ -1,0 +1,62 @@
+{
+ "schema_version": 1,
+ "created_at": "2026-08-20T00:20:00Z",
+ "kind": "hipengine_qwen38_27b_dflash2_b3_q6_select_optimized",
+ "status": "rejected_promotion",
+ "pass": false,
+ "performance_claim": false,
+ "repo": {
+  "revision": "HEAD",
+  "tracked_clean": true,
+  "production_default_changed": false
+ },
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900-compute-lane (gfx1151 resident)",
+  "arch": "gfx1151"
+ },
+ "model": {
+  "name": "Qwen3.8-27B",
+  "quant": "Q4_K_M GGUF",
+  "resident": "gfx1151"
+ },
+ "drafter": {
+  "name": "Qwen3.8-27B-DFlash2",
+  "snapshot": "50307d4c",
+  "config_block_size": 8,
+  "selector_top_k": 16,
+  "selector_rank": 256
+ },
+ "protocol": {
+  "comparison": "DFlash2 B3 (4-row verify) with Q6-head select vs same-session AR (13.4 tok/s) and exact native MTP B3 (23.85 tok/s, 1.7845x AR)",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompts": 10,
+  "max_new_tokens_per_prompt": 40,
+  "command": "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT=1 HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 uv run python scripts/dflash2_gguf_suite_smoke.py --batch-verify --max-new-tokens 40 --limit 10 --block-size 4",
+  "note": "Select-path fix: draft logits now computed through the session's amortized Q6_K t16 head (reads the 0.6 GiB quantized head once across rows) instead of the 2.54 GiB dequantized BF16 head. Select 70ms -> 22ms (logits 43ms -> 12ms). Acceptance unchanged (2.80); AR-exact all rows."
+ },
+ "results": {
+  "ar_tokens_per_s": 13.4,
+  "mtp_b3_tokens_per_s": 23.85263,
+  "mtp_b3_ratio_ar": 1.7845,
+  "b3_select_before_ms": 70,
+  "b3_select_after_ms": 22,
+  "mean_acceptance": 2.799,
+  "mean_tokens_per_s": 8.845,
+  "ratio_ar": 0.66,
+  "ar_agreement": 1.0,
+  "per_prompt_tok_s": {
+   "code_merge_intervals": 9.46,
+   "code_topological_sort": 9.49,
+   "code_lru_cache": 7.9,
+   "code_markdown_table": 8.57,
+   "general_en_plan": 8.6,
+   "general_en_explain": 9.22,
+   "general_ja_plan": 6.67,
+   "general_ja_explain": 8.91,
+   "mixed_ja_en_translate": 9.94,
+   "mixed_ja_en_review": 9.69
+  }
+ },
+ "blocker": "Q4_K_M lane: DFlash2 acceptance (2.80 B3) is below MTP B3 (3.85); the drafter feeds on quantized target hidden so its acceptance advantage over MTP (reference 4.80 vs 4.28 is BF16/T>0) does not materialize. B3 verify (166ms) is shared with MTP; drafter forward (~75ms) + select (22ms) vs MTP's ~5ms draft. Even with the optimized select, B3 = 0.66x AR < MTP B3 1.78x AR; zeroing the whole drafter leaves 1.26x AR < 1.78x. No operating point reaches MTP B3 on the Q4/8060S lane.",
+ "evidence": "worklog/entries/20260819T235720.374366Z-lhl-dflash2-select-via-amortized-q6-k-head-6296a9.md"
+}

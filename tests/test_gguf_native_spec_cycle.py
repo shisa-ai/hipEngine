@@ -97,7 +97,7 @@ def test_native_b2_target_uses_exact_python_fallback_for_unsupported_shape() -> 
 
 
 def test_native_b2_target_can_make_unsupported_shape_a_hard_error() -> None:
-    with pytest.raises(NativeSpecTargetGraphUnsupportedError, match="two to four rows"):
+    with pytest.raises(NativeSpecTargetGraphUnsupportedError, match="two to eight rows"):
         verify_qwen35_gguf_native_b2_target(
             _FallbackSession(),
             [1],
@@ -694,6 +694,9 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             if name is None:
                 return SimpleNamespace(tensor=SimpleNamespace(ptr=self.ptr))
             return self.allocations[name]
+
+        def has_allocation(self, name: str) -> bool:
+            return name in self.allocations
 
     weights = {
         name: Weight(name, 0xA000 + index * 0x100)

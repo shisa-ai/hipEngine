@@ -64,6 +64,7 @@ Each value is the total tokens per second across all active requests:
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (GEMV lib hoist) | sync'd eager, per-token | — | **38.9** |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **396.091** | **13.069** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
@@ -88,31 +89,13 @@ Each value is the total tokens per second across all active requests:
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
 Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
-llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
-hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
-draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens.
+The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
-## Current opt-in packet
+## Current default notes
 
-On Strix Halo/gfx1151, Qwen3.8-27B `Q4_K_S` uses FP16 recurrent state by
-default, with explicit FP32 rollback. A clean p512 FP32/FP16 bracket
-measures aggregate c1/c4/c8 decode **12.9005/42.5856/57.2905 ->
-13.0204/43.8535/59.0106 tok/s** and aggregate prefill
-**377.31/307.16/246.26 -> 379.09/312.24/254.41 tok/s**, while the complete
-packed numerical/isolation hard gate passes. The serving screen is also
-non-regressive: c1 improves **+0.38%** and exact c8 server throughput improves
-**+1.33%**. Both modes share an absolute c8 ITL-SLO failure, which remains a
-serving-path issue rather than a candidate regression. The former fixed 3%
-threshold is removed; the scoped default promotion is tracked in the
-[`candidate artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)
-and [`serving evidence`](results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
-
-The repository-wide audit of faster default-off and rejected candidates is in
-the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
-It distinguishes live promotion candidates from stale labels already promoted,
-accuracy-traded/prompt-conditioned routes, and leaf wins with full-path
-regressions.
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
 ## Where detailed evidence lives
 
@@ -226,179 +209,9 @@ The matched llama.cpp HIP/Vulkan comparison columns and their differing memory
 scopes remain in the linked artifacts and the archived rollup rather than being
 repeated here.
 
-### Radeon Pro W7900: Qwen3.6-27B Dense GGUF
+### Dense-Qwen detailed comparisons
 
-| Workload | Prefill | Autoregressive decode | Tracked peak | Status |
-| --- | ---: | ---: | ---: | --- |
-| 512/128 | **865.179 tok/s** | **28.368 tok/s** | 15.605 GiB | Pair-only Q6-QKV/Q4 gate + pair-produced full Q |
-| 1024/128 | **890.634 tok/s** | **28.851 tok/s** | 15.720 GiB | Pair-only Q6-QKV/Q4 gate + pair-produced full Q |
-| 4096/128 | **865.653 tok/s** | **26.332 tok/s** | 16.368 GiB | Exact pair-only/full-Q fallback + packed producers |
-
-These rows use one discarded warmup plus three measured PM4 resets, executed
-strictly serially across boards. The ordered pair-only Q6-QKV/Q4-gate route
-improves binding W7900 full prefill **+0.45%/+0.74%** at M512/M1024 (11/14
-paired wins); M4096 is an identical-owner exact fallback. Complete quality is
-330/330 top-1 at max KL 0.014671, tracked peaks are byte-identical, and
-decode/MTP ownership is unchanged. The latest absolute 1K/4K rows are
-0.33%/0.30% below the prior publication under monotonic run drift, while the
-same-session route wins both binding rows. The exact natural-octet Q5 source-F16
-producer improves binding counterbalanced W7900
-full prefill **+1.49%/+0.78%/+0.61%** at 512/1K/4K (20/21 wins), with exact
-trajectories and byte-identical tracked peaks. Independent 512/1K absolute rows
-are 0.47%/0.15% below the prior publication under run-to-run spread, while the
-binding same-session route wins every row. The selective pair-owned Q4
-source-F16 producer improves binding counterbalanced
-W7900 full prefill **+1.12%/+0.67%/+0.59%** at 512/1K/4K (20/21 wins), with
-exact trajectories and byte-identical tracked peaks. Its independent 4K absolute
-row is 0.31% below the prior publication under run-to-run spread, while the
-same-session candidate wins 6/7. The exact record-owned planar-Q6 producer
-improves counterbalanced W7900 full prefill
-**+3.31%/+1.71%/+1.30%** at 512/1K/4K (21/21 wins) with exact trajectories and
-byte-identical tracked peaks. The exact
-unequal-output Q4 pair improves counterbalanced W7900 full prefill
-**+1.39%/+1.53%/+1.17%** at 512/1K/4K; the isolated 4K confirmation wins 7/7,
-while tracked residency and decode ownership are unchanged. The Q5
-recurrent-output extension improves counterbalanced W7900 full prefill
-**+4.91%/+5.07%/+4.82%** at 512/1K/4K (21/21 wins) without changing decode
-ownership or tracked residency. Exact zero-workspace selected rocBLAS FP16 GEMMs
-also improve the earlier counterbalanced W7900 package **+0.17%/+1.32%** at
-512/4K; no selected prior-shape 1K solution exists.
-Against the same-commit diagnostic dual-layout rollback, the earlier shared
-package default improves
-prefill **152.61-184.82%**, decode **17.58-18.74%**, and whole-device peak delta
-**45.50-47.03%**, with exact outputs and clean teardown. The current exact
-natural suite is true AR **20.516 tok/s** and B3 **60.875 tok/s / 2.9672x**;
-its lower absolute rate than the historical **61.147** row is protocol/code
-drift, not a single-layout regression. Evidence:
-[`same-commit W7900 non-regression`](results/2026-08-12-qwen36-27b-w7900-single-layout-non-regression.json).
-The superseded dual-layout publication remains in the
-[`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
-
-### RX 7900 XTX: Qwen3.8-27B Dense GGUF cross-engine comparison
-
-#### Prefill
-
-| Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 512 | **959.4** | 965.0 | -0.6% | 865.7 | +10.8% |
-| 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
-| 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
-
-#### Decode / MTP
-
-| Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| AR decode 512 | **34.06** | 32.86 | +3.6% | 13.39 | 2.54x |
-| AR decode 1K | **34.91** | 32.75 | +6.6% | 13.38 | 2.61x |
-| AR decode 4K | **31.79** | 32.41 | -1.9% | 13.31 | 2.39x |
-| MTP natural | **62.44 B3** | 44.33 B2 | +40.9% | 73.33 B2 | -14.8% |
-
-Fixed-shape rows use token 9707 and 128 timed transitions. Prefill is a
-three-run hipEngine median versus llama-bench's five-sample mean. MTP uses all
-ten category prompts plus the heldout split; B1-B5 were swept independently
-for each llama.cpp backend. hipEngine B3 is exact, and llama.cpp HIP B2 matches
-its AR output ledger. llama.cpp Vulkan B2 is a labeled speed-only comparator
-because its output ledger differs from Vulkan AR. Evidence:
-[`Qwen3.8 cross-engine comparison`](results/2026-08-15-qwen38-27b-xtx-hip-vulkan-comparison.json) and
-[`clean-idle hipEngine correction`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json).
-
-The real single-request BF16 server roof is now bracketed separately. The
-operational **32K** row peaks at **21.869 GiB** with **2.115 GiB** free. A
-pre-sized contiguous KV pool reaches an observed **52K** ceiling
-(53,248 total tokens) at **23.959 GiB**, leaving only **0.025 GiB**; **53K**
-(54,272 tokens) and all larger controls through 64K abort out of resources.
-The 52K row is a physical-roof diagnostic, not a reliable serving setting, so
-32K remains recommended. Evidence: [`Qwen3.8 BF16 context roof`](results/2026-08-15-qwen38-27b-xtx-bf16-context-roof.json).
-
-The pure FP32-scale INT8 route now has a bounded exact-prefill owner. Reusing
-one BF16 K/V oracle pair instead of 16 lowers 32K-capacity tracked peak
-**18.943 -> 17.330 GiB**, which is also **0.590 GiB below BF16**. On matched
-4K/128 runs, prefill is within **-0.050%** of BF16 graph with overlapping
-sample ranges, while eager INT8 decode is **6.50% faster**. Complete 512/8 and
-4K/16 quality pass, and the bounded W7900 `mixed_v1` gate now reaches
-**129,024 prompt tokens / 16 teacher-forced steps** with mean/max KL
-**0.0000104/0.0001354**, **100% top-1**, finite logits, all 16 full-attention
-layers INT8, and zero BF16 mirror bytes. This is a bounded one-prompt long row,
-not a complete 129K category suite.
-
-Guard-free page-aligned XTX probes close the actual c1 boundary. **129,024 total
-tokens (126K, 504 pages)** completes one exact natural request at
-**23.962624 GiB** peak with **0.021751 GiB** sampled headroom and clean
-ownership. The next page, **129,280 tokens**, stalls raw warmup beyond 600
-seconds; **130,048 tokens (127K)** returns startup HIP OOM. Separately, four
-different natural **112K** requests pass at **23.322876/0.661499 GiB**
-peak/headroom, so 112K remains the strongest repeated server evidence while
-126K is the measured one-request physical ceiling. No arbitrary reserve
-reclassifies a completed row. Long pure INT8 still uses the unverified gate,
-graph capture rejects it, exact natural B3 is only **0.6423x** true AR, and BF16
-remains supported/default.
-
-Do not transfer the c1 ceiling to concurrent serving. The native-packed
-short-context INT8 route retains a BF16 mirror and is not a compact memory route;
-the later C1 compact route is serial physical-c1 only. This pre-C1 XTX table
-reports observed mirrored-route execution and actual failures:
-
-| Offered HTTP clients | Physical residency | Highest observed working row | Strongest repetition at/near frontier | First actual failure observed | Peak / headroom at highest pass |
-| ---: | ---: | ---: | --- | --- | ---: |
-| 1 | 1 | **126K/request** | 112K: 4/4 different natural requests | **126.25K:** startup stall; **127K:** startup HIP OOM | 23.963 / 0.022 GiB |
-| 2 | 2 | **6K/request** | 5.5K: 8/8 multi-turn; 4.5K: 16/16 | **8K:** 0/2, HTTP 500 HIP OOM; 8.25K also has an unsupported-route startup failure | 23.972 / 0.012 GiB |
-| 4 | 4 | **1.5K/request** | 16/16 multi-turn | **None tested** | 23.821 / 0.163 GiB |
-| 8 | queue groups capped at physical c4 | **2K/request** | 1.5K: 8/8 shape-aware; 1.25K: 32/32 multi-turn | **None tested** | 23.974 / 0.011 GiB |
-
-The c2 interval between the 6K pass and 8K OOM is untested. The offered-c8 2K
-pass covers one burst and predates authoritative response-shape capture; it is
-still an execution pass, not a failure. No exact XTX c4 or c8 failure ceiling
-was measured.
-
-The same route on W7900 reaches the model-native **256K c1** limit with one
-exact request at **29.441/15.543 GiB** peak/headroom. More VRAM removes the
-short mirrored-route OOM but not its software boundary or scheduler limitation:
-
-| Offered HTTP clients | Highest pass | Observed physical groups | Requests | First failure | Peak / headroom |
-| ---: | ---: | --- | ---: | --- | ---: |
-| 1 | **256K/request** | c1 | 1/1 | None; model context limit reached | 29.441 / 15.543 GiB |
-| 2 | **8K/request** | c2 | 2/2 | 8.25K resident-prepare `NotImplementedError` | 25.658 / 19.326 GiB |
-| 4 | **8K/request** | c2 + c2 | 4/4 | 8.25K resident-prepare `NotImplementedError` | 30.684 / 14.301 GiB |
-| 8 | **8K/request** | c1 + c3 + c4 | 8/8 | 8.25K resident-prepare `NotImplementedError` | 30.707 / 14.277 GiB |
-
-This capacity soak used non-streaming blocking requests. Its c2/c4/c8 shapes
-therefore describe the compatible-sampling HTTP coalescer, not live resident
-membership; offered width does not equal one submitted physical width. The raw
-`/ready` field also reported `continuous_decode=false` because that endpoint
-used a hardcoded default rather than the loaded engine capability.
-
-A separate W7900 controlled-SSE gate at 512 prompt + 24 decode tokens qualifies
-the short mirrored route's resident lifecycle. With c1 already observed in
-decode, three more requests joined; sampled occupancy moved
-`0 -> 1 -> 4 -> 3 -> 2 -> 1 -> 0`, all four rows exactly matched independent c1
-token oracles, admitted/reclaimed deltas were `4/4`, and final
-active/occupied/refcounted ownership was zero. Cancellation, elastic-pool and
-overload gates remain open, and this does **not** turn the mirrored <=8K route
-into compact INT8 KV.
-
-Evidence:
-[`initial INT8 frontier`](results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json),
-[`bounded INT8 serving qualification`](results/2026-08-15-qwen38-27b-bounded-int8-kv-serving-qualification.json),
-[`dedicated-XTX context soak`](results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json), and
-[`actual context, W7900 quality, and concurrency frontier`](results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json).
-
-Runtime admission now binds this explicit route to the artifact's full SHA-256,
-backend/target, weight quant, KV layout, and scale contract. The distinct gfx1151
-file retains its rejected decision, and unknown/mismatched combinations fall
-back to BF16 unless an explicit non-promotable diagnostic override is set. Server
-readiness and capability manifests expose the evidence and effective storage;
-this provenance hardening changes no benchmark metric.
-
-The RX 7900 XTX compact correctness milestone now admits logical **c2/c4** for
-the exact gfx1100 artifact with no persistent BF16 payload or mirror. Varied
-p512/d24 warmup, measured, and live rows are all exact versus fresh c1 oracles;
-a shifted request is byte-exact for full-vocabulary logits, 48 Conv/GDN state
-pairs, and 16 INT8 K/V plus FP32-scale planes. Staggered p512/d128 SSE reaches
-c4, disconnects one member, keeps all three survivors exact, records
-admitted/reclaimed/cancelled **4/4/1**, and drains ownership to zero. Every c>N
-model step still executes as serial physical c1, so this is **not** a native-c>N
-or throughput result. Evidence:
-[`compact serial c4 qualification`](results/2026-08-16-qwen38-27b-int8-kv-compact-serial-c4.json).
+Current Qwen3.6-27B and Qwen3.8 cross-engine, context-capacity, INT8-KV, and serving-frontier detail is archived in [`benchmarks/HISTORY.md`](HISTORY.md); the compact current rows above remain authoritative.
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
 

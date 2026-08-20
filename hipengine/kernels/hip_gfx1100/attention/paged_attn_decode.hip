@@ -5488,6 +5488,63 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Thread-geometry sweep entrypoint for the fixed256 context-batch leaf: same
+  // PRECOMPUTE_TOKEN_OFFSETS + VALUE_VECTOR body, block width taken at runtime.
+  // Host-side value_groups must mirror the kernel's runtime formula so shared
+  // memory covers the split-K value partials when threads >= 2*head_dim.
+  // Note: threads > 256 changes the score/denominator warp reduction tree and
+  // the value accumulation order, so the result is NOT byte-exact vs the
+  // 256-thread c1-exact leaf; this is a production-geometry probe, not a strict
+  // variant. threads must be a power of two within [32, 1024].
+  if (threads < 32 || threads > 1024 || (threads & (threads - 1)) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int max_warps = static_cast<int>(threads) / 32;
+  const int raw_value_groups = (head_dim >= 128 && max_context_len >= 128) ? static_cast<int>(threads / head_dim) : 0;
+  const int value_groups = (threads >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
+  const size_t float_bytes = static_cast<size_t>(
+      max_context_len + max_warps + head_dim + value_groups * head_dim) *
+      sizeof(float);
+  const size_t shared_bytes = float_bytes + 7u +
+      static_cast<size_t>(max_context_len) * sizeof(int64_t);
+  if ((head_dim % 2) == 0) {
+    hipLaunchKernelGGL(
+        (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2>),
+        dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+        dim3(static_cast<unsigned int>(threads)), shared_bytes, stream, query, key_cache, value_cache,
+        base_offsets, live_counts, out, rows, max_context_len, block_size,
+        block_table_len, num_q_heads, num_kv_heads, head_dim, scale);
+  } else {
+    hipLaunchKernelGGL(
+        (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 1>),
+        dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+        dim3(static_cast<unsigned int>(threads)), shared_bytes, stream, query, key_cache, value_cache,
+        base_offsets, live_counts, out, rows, max_context_len, block_size,
+        block_table_len, num_q_heads, num_kv_heads, head_dim, scale);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans(
     const float* query,
     const uint16_t* key_cache,

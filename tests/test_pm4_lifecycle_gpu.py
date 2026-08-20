@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import ctypes
-import os
 
 import pytest
 
+from hipengine.kernels.backends import detect_hip_target_arches
 from scripts.pm4_lifecycle_repro import ReproConfig, run_reproducer
 
 
@@ -25,8 +25,8 @@ pytestmark = pytest.mark.skipif(
 
 
 def _require_gfx1100() -> None:
-    if os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100") != "gfx1100":
-        pytest.skip("initial native PM4 lifecycle gate is gfx1100-only")
+    if "gfx1100" not in detect_hip_target_arches():
+        pytest.skip("initial native PM4 lifecycle gate requires physical gfx1100")
 
 
 def test_safe_hsa_interop_timestamp_reuse_is_exact() -> None:

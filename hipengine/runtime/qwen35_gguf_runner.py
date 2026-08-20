@@ -55,6 +55,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
@@ -340,6 +341,64 @@ from hipengine.runtime.prefill_flight_recorder import (
     FlightRecorderPhase,
     PrefillFlightRecorder,
 )
+
+# ---------------------------------------------------------------------------
+# DFlash2 target-tap capture
+# ---------------------------------------------------------------------------
+# The DFlash2 drafter attends over the target model's hidden states sampled at
+# a sparse set of layers. The reference drafter concatenates post-layer hidden
+# at ``target_layer_ids`` (0-based), i.e. depths ``layer_id + 1``. These must
+# match ``DFlash2DraftConfig.target_layer_ids`` for the Qwen3.8-27B pair.
+DFLASH2_TAP_LAYER_IDS: tuple[int, ...] = (5, 19, 33, 47, 61)
+DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_LAYER_IDS)
+
+
+@dataclass(frozen=True)
+class DFlash2HiddenCaptureTargets:
+    """Caller-owned BF16 destinations for DFlash2 prefill tap rows.
+
+    ``buffers`` maps post-layer depth -> a DeviceBuffer holding
+    ``(rows, hidden_size)`` BF16 (contiguous). Depth must be a DFlash2 tap
+    depth (layer_id + 1). Used so the drafter can project the full prompt
+    context's taps once at prefill instead of re-running target layers.
+    """
+
+    hidden_size: int
+    rows: int
+    buffers: Mapping[int, DeviceBuffer]
+
+    def __post_init__(self) -> None:
+        hidden_size = int(self.hidden_size)
+        rows = int(self.rows)
+        if hidden_size <= 0:
+            raise ValueError("DFlash2 capture hidden_size must be positive")
+        if rows <= 0:
+            raise ValueError("DFlash2 capture rows must be positive")
+        row_nbytes = hidden_size * DType.BF16.itemsize
+        normalized: dict[int, DeviceBuffer] = {}
+        for raw_depth, buffer in self.buffers.items():
+            depth = int(raw_depth)
+            if depth not in DFLASH2_TAP_DEPTHS:
+                raise ValueError(
+                    "DFlash2 hidden captures are limited to the configured tap depths "
+                    f"{DFLASH2_TAP_DEPTHS}; got {depth}"
+                )
+            if not isinstance(buffer, DeviceBuffer):
+                raise TypeError("DFlash2 hidden capture destinations must be DeviceBuffer views")
+            expected_nbytes = rows * row_nbytes
+            if buffer.nbytes != expected_nbytes:
+                raise ValueError(
+                    f"each DFlash2 capture target must hold exactly {expected_nbytes} bytes "
+                    f"(rows={rows}, hidden_size={hidden_size} BF16); "
+                    f"depth={depth} actual={buffer.nbytes}"
+                )
+            normalized[depth] = buffer
+        object.__setattr__(self, "hidden_size", hidden_size)
+        object.__setattr__(self, "rows", rows)
+        object.__setattr__(self, "buffers", MappingProxyType(normalized))
+
+
+# ---
 
 
 def _add_sync_stage_timing(
@@ -1348,7 +1407,7 @@ class _GGUFPackedTargetState:
             * int(runner.ssm_value_dim)
             * (
                 DType.FP16.itemsize
-                if runner.fp16_recurrent_state
+                if bool(getattr(runner, "fp16_recurrent_state", False))
                 else DType.FP32.itemsize
             )
         )
@@ -2026,6 +2085,33 @@ class Qwen35GGUFOneLayerProbe:
         self.close()
 
 
+_GGUF_SHORT_C1_ATTN_THREADS_ENV = "HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS"
+
+
+def _gguf_short_c1_attn_threads(backend: str) -> int:
+    """Resolve the short-context c1 batch-attention block width.
+
+    The exact 256-thread fixed256 leaf is the strict default. A wider block
+    width (production thread-geometry override, e.g. 1024) runs the same body
+    with a split value reduction and a different warp reduction tree, so it is
+    NOT byte-exact; it must pass the execution-profile gate before being
+    promoted via the backend capability. The env var overrides the capability.
+    """
+
+    env = _env_value(_GGUF_SHORT_C1_ATTN_THREADS_ENV)
+    if env is not None:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    default = backend_package_capability(
+        backend, "GGUF_SHORT_C1_BATCH_ATTN_THREADS", None
+    )
+    if default is None:
+        return 256
+    return int(default)
+
+
 @dataclass
 class Qwen35GGUFFullStackRunner:
     """GGUF Qwen3.5 full-stack primitive runner over resident native weights.
@@ -2527,17 +2613,30 @@ class Qwen35GGUFFullStackRunner:
         return fn
 
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
-        """Return the backend's exact short-context batch attention leaf."""
+        """Return the short-context batch attention leaf.
+
+        Defaults to the exact 256-thread fixed256 leaf. A production
+        thread-geometry override (GGUF_SHORT_C1_BATCH_ATTN_THREADS capability
+        or HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS env) selects the same body at a
+        wider block width (non-exact; execution-profile gated).
+        """
 
         missing = object()
         fn = getattr(self, "_gguf_full_attn_decode_short_batch_fn_cache", missing)
         if fn is missing:
-            fn = resolve_paged_attn_decode(
-                backend=self.backend,
-                spans=spans,
-                kind="context_batch",
-                model_quant="w4_paro",
-            )
+            threads = _gguf_short_c1_attn_threads(self.backend)
+            if threads == 256:
+                fn = resolve_paged_attn_decode(
+                    backend=self.backend,
+                    spans=spans,
+                    kind="context_batch",
+                    model_quant="w4_paro",
+                )
+            else:
+                fn = partial(
+                    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
+                    threads=threads,
+                )
             self._gguf_full_attn_decode_short_batch_fn_cache = fn
         return fn
 
@@ -3811,7 +3910,11 @@ class Qwen35GGUFFullStackRunner:
         if threshold < 0:
             raise ValueError("aotriton_min_tokens must be non-negative")
         use_aotriton = bool(
-            allow_aotriton and not direct_hadamard_int8 and threshold > 0 and rows >= threshold
+            allow_aotriton
+            and not direct_hadamard_int8
+            and threshold > 0
+            and rows >= threshold
+            and _gguf_aotriton_prefill_allowed(self.backend)
         )
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
@@ -5575,7 +5678,12 @@ class Qwen35GGUFFullStackRunner:
         )
         if not k_sidecar_launched:
             k_batch_fn = self._full_attn_k_grid_y_batch_fn()
-            if k_batch_fn is not None:
+            if (
+                k_batch_fn is not None
+                and k_weight.has_allocation("qweight")
+                and k_weight.has_allocation("scales")
+                and k_weight.has_allocation("mins")
+            ):
                 k_batch_fn(
                     scratch.norm.ptr,
                     k_weight.allocation("qweight").tensor.ptr,
@@ -8235,7 +8343,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
         rounded_next_rms_fn = (
             self._rounded_add_rmsnorm_fn()
-            if next_norm_weight_ptr is not None and rows in (2, 3, 4)
+            if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
         dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
@@ -9748,6 +9856,7 @@ class Qwen35GGUFFullStackRunner:
 
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
+_GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
     "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
@@ -10666,6 +10775,52 @@ def _gguf_aotriton_head_major_kv_enabled(backend: str) -> bool:
             False,
         )
     )
+
+
+def _gguf_aotriton_prefill_allowed(backend: str) -> bool:
+    """Whether AOTriton may serve GGUF full-attention prefill for this backend.
+
+    gfx1151 sets ``GGUF_AOTRITON_PREFILL = False`` (native
+    ``causal_gqa_gate_bf16`` measured ~2-5% faster at every prefill length
+    64-2048, no crossover, on the 8060S). gfx1100 leaves it undefined -> the
+    default ``True`` keeps the measured 512-crossover threshold policy.
+    ``HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE`` overrides either default.
+    """
+
+    if _env_value(_GGUF_AOTRITON_PREFILL_ENABLE_ENV) is not None:
+        return _env_flag(_GGUF_AOTRITON_PREFILL_ENABLE_ENV, True)
+    return bool(
+        backend_package_capability(backend, "GGUF_AOTRITON_PREFILL", True)
+    )
+
+
+def _gguf_prefill_chunk_sizes_for(
+    backend: str, weights: object
+) -> tuple[int, int] | None:
+    """Return a geometry-keyed (linear, moe) prefill chunk override, if any.
+
+    gfx1151 sets ``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY`` with 512-row
+    linear/MoE chunks for the H2048-MoE geometry (measured ~1.2-2.3% faster
+    at 2048/4096 tokens on the 8060S, chunk-boundary-correct). The H5120 dense
+    27B is left on the default because its benefit is inconclusive within the
+    60W-lane variance.
+    """
+
+    policies = backend_package_capability(
+        backend, "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY", {}
+    )
+    if not isinstance(policies, Mapping):
+        return None
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return None
+    sizes = policies.get(identity)
+    if not sizes:
+        return None
+    linear, moe = int(sizes[0]), int(sizes[1])
+    if linear <= 0 and moe <= 0:
+        return None
+    return linear, moe
 
 
 def _try_allocate_gguf_aotriton_head_major_kv_scratch(
@@ -13696,6 +13851,13 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=int(self.scratch.max_positions),
             total_memory_bytes=int(total_memory_bytes),
         )
+        chunk_override = _gguf_prefill_chunk_sizes_for(self.backend, self.runner.weights)
+        if chunk_override is not None:
+            self.prefill_config = replace(
+                self.prefill_config,
+                linear_chunk_size=int(chunk_override[0]),
+                moe_chunk_size=int(chunk_override[1]),
+            )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
@@ -14527,6 +14689,35 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(f"layer_id {value} outside resident layer range [0, {layer_count})")
             normalized.add(value)
         return normalized
+
+    def _capture_dflash2_prefill_taps(
+        self,
+        *,
+        layer_id: int,
+        src_ptr: int,
+        chunk_start: int,
+        chunk_rows: int,
+        targets: DFlash2HiddenCaptureTargets | None,
+        runtime: HipRuntime,
+        stream: int = 0,
+    ) -> None:
+        """Copy the post-layer hidden rows of one bulk-prefill chunk into the
+        DFlash2 tap buffers (depth = layer_id + 1) at the chunk row offset."""
+
+        if targets is None:
+            return
+        depth = int(layer_id) + 1
+        tap = targets.buffers.get(depth)
+        if tap is None:
+            return
+        row_nbytes = int(targets.hidden_size) * DType.BF16.itemsize
+        runtime.memcpy_async(
+            int(tap.ptr) + int(chunk_start) * row_nbytes,
+            int(src_ptr),
+            int(chunk_rows) * row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
 
     def _capture_verify_layer_boundary_rows(
         self,
@@ -15859,6 +16050,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
@@ -15927,6 +16119,8 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
                 if capture_target_hidden_rows is not None:
                     bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
+                if dflash2_capture is not None:
+                    bulk_kwargs["dflash2_capture"] = dflash2_capture
                 if record_gpu_stage_timings:
                     bulk_kwargs["record_gpu_stage_timings"] = True
                 return self._run_bulk_prefill_and_sample(
@@ -15938,6 +16132,11 @@ class Qwen35GGUFResidentSession:
 
         if record_gpu_stage_timings:
             raise ValueError("GPU stage timing currently requires bulk GGUF prefill")
+        if dflash2_capture is not None:
+            raise ValueError(
+                "DFlash2 prefill tap capture requires the bulk prefill path "
+                "(prompt length >= ssm_conv_kernel)"
+            )
         target_hidden_row_nbytes = 0
         if capture_target_hidden_rows is not None:
             target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
@@ -16058,6 +16257,7 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         enqueue_sample_only: bool = False,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
@@ -16078,6 +16278,16 @@ class Qwen35GGUFResidentSession:
             if int(capture_target_hidden_rows.nbytes) < required_nbytes:
                 raise ValueError(
                     "capture_target_hidden_rows is smaller than the prompt hidden rows"
+                )
+        if dflash2_capture is not None:
+            if int(dflash2_capture.rows) < rows:
+                raise ValueError(
+                    "DFlash2 capture targets are smaller than the prompt rows "
+                    f"(target rows={dflash2_capture.rows}, prompt rows={rows})"
+                )
+            if int(dflash2_capture.hidden_size) != int(self.runner.hidden_size):
+                raise ValueError(
+                    "DFlash2 capture hidden_size does not match the session hidden_size"
                 )
         if bulk_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_attention_mode must be 'bulk' or 'native'")
@@ -16265,6 +16475,15 @@ class Qwen35GGUFResidentSession:
                             stream=stream,
                         )
                         src, dst = dst, src
+                        self._capture_dflash2_prefill_taps(
+                            layer_id=layer_id,
+                            src_ptr=src.ptr,
+                            chunk_start=chunk_start,
+                            chunk_rows=chunk_rows,
+                            targets=dflash2_capture,
+                            runtime=runtime,
+                            stream=stream,
+                        )
                         if layer_id in capture_layer_ids and chunk_end == rows:
                             final_row_ptr = (
                                 src.ptr
@@ -16441,6 +16660,15 @@ class Qwen35GGUFResidentSession:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
                     src, dst = dst, src
+                    self._capture_dflash2_prefill_taps(
+                        layer_id=layer_id,
+                        src_ptr=src.ptr,
+                        chunk_start=0,
+                        chunk_rows=rows,
+                        targets=dflash2_capture,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                     if layer_id in capture_layer_ids:
                         final_row_ptr = (
                             src.ptr
@@ -16991,8 +17219,8 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     "enqueue-only target verification requires exactly one int32/int64 target-top1 destination"
                 )
-            if rows not in {2, 3, 4}:
-                raise ValueError("enqueue-only native target verification supports B1-B3 rows=2-4")
+            if rows not in {2, 3, 4, 5, 6, 7, 8}:
+                raise ValueError("enqueue-only native target verification supports B1-B7 rows=2-8")
             if advance_state_only or capture_lm_head_logits:
                 raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
             if capture_pre_output_norm_hidden and _graph_pre_output_norm_hidden_buf is None:
@@ -17181,7 +17409,7 @@ class Qwen35GGUFResidentSession:
                 and not block_wmma_prefill
                 and not self.runner.weights.config.is_moe
                 and not use_f32_residual
-                and rows in (2, 3, 4)
+                and rows <= 8
                 and not capture_layer_boundary_ids
                 and full_attention_prefused_ready
                 and self.runner._rounded_add_rmsnorm_fn() is not None
@@ -24265,7 +24493,7 @@ class _GGUFFullAttentionPrefillScratch:
             * runner.ssm_value_dim
             * (
                 DType.FP16.itemsize
-                if runner.fp16_recurrent_state
+                if bool(getattr(runner, "fp16_recurrent_state", False))
                 else DType.FP32.itemsize
             )
         )
@@ -25012,7 +25240,7 @@ class _FullStackScratch:
             (slot_count, cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim),
             dtype=(
                 np.float16
-                if runner.fp16_recurrent_state
+                if bool(getattr(runner, "fp16_recurrent_state", False))
                 else np.float32
             ),
         )

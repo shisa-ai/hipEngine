@@ -80,7 +80,13 @@ def _env_optional_nonnegative_float(name: str) -> float | None:
     return _nonnegative_float(raw)
 
 
-def _env_speculative_mtp_serving(name: str, default: str = "off") -> str:
+def _env_speculative_mtp_serving(name: str, default: str = "enabled") -> str:
+    raw = os.environ.get(name)
+    mode = default if raw is None or raw == "" else raw
+    return mode.strip().lower().replace("-", "_")
+
+
+def _env_speculative_mtp_thinking(name: str, default: str = "hint") -> str:
     raw = os.environ.get(name)
     mode = default if raw is None or raw == "" else raw
     return mode.strip().lower().replace("-", "_")
@@ -254,12 +260,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--speculative-mtp-serving",
-        choices=("off", "opt_in", "auto"),
+        choices=("off", "opt_in", "auto", "enabled"),
         default=_env_speculative_mtp_serving("HIPENGINE_SPECULATIVE_MTP_SERVING"),
         help=(
             "GGUF MTP serving policy: off, opt_in via request speculative_mtp=true, "
-            "or auto with exact-AR fallback until an exact/default MTP route is admitted "
-            "(env HIPENGINE_SPECULATIVE_MTP_SERVING; default: off)"
+            "auto with exact-AR fallback until an exact/default MTP route is admitted, "
+            "or enabled to route compatible requests through exact dense MTP by default "
+            "(env HIPENGINE_SPECULATIVE_MTP_SERVING; default: enabled)"
+        ),
+    )
+    parser.add_argument(
+        "--speculative-mtp-thinking",
+        choices=("hint", "hard"),
+        default=_env_speculative_mtp_thinking("HIPENGINE_SPECULATIVE_MTP_THINKING"),
+        help=(
+            "MTP thinking policy: hint keeps the thinking hints in the prompt but "
+            "relaxes host-sampler thinking-budget enforcement so thinking requests "
+            "can use the exact raw-argmax MTP route; hard keeps full enforcement and "
+            "treats the thinking budget as a hard MTP blocker (falls back to AR). "
+            "(env HIPENGINE_SPECULATIVE_MTP_THINKING; default: hint)"
         ),
     )
     parser.add_argument(
@@ -361,6 +380,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_active_requests=args.max_active_requests,
         max_chat_sessions=args.max_chat_sessions,
         speculative_mtp_serving=args.speculative_mtp_serving,
+        speculative_mtp_thinking=args.speculative_mtp_thinking,
         speculative_provider=args.speculative_provider,
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,

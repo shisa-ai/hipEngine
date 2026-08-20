@@ -14,13 +14,13 @@ gfx1151 native routes use their model-scoped full-trajectory gates instead.
 from __future__ import annotations
 
 import ctypes
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -320,8 +320,8 @@ def test_bulk_direct_commit_matches_wrong_branch(monkeypatch) -> None:
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
 @pytest.mark.skipif(
-    os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100") != "gfx1100",
-    reason="Qwen3.6 Q4_K_M scalar-bit-exact native commit gate is gfx1100-only",
+    "gfx1100" not in detect_hip_target_arches(),
+    reason="Qwen3.6 Q4_K_M scalar-bit-exact native commit gate requires physical gfx1100",
 )
 def test_native_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")

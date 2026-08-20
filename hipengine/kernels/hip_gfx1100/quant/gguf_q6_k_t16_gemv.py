@@ -122,6 +122,24 @@ def build_gguf_q6_k_t16_gemv(
     )
 
 
+_Q6_K_T16_GEMV_LIBRARY: ctypes.CDLL | None = None
+
+
+def _q6_k_t16_gemv_library() -> ctypes.CDLL:
+    """Memoized default build so per-call launches skip build_hip entirely.
+
+    The per-call launch path calls ``build_gguf_q6_k_t16_gemv(load=True)`` on
+    every launch (~19 us/call of build_hip fast-path overhead even on a cache
+    hit); at 141 launches/step that is ~2.6 ms/step of host CPU that lands on
+    the critical path. Hoist it once, mirroring the router library pattern.
+    """
+
+    global _Q6_K_T16_GEMV_LIBRARY
+    if _Q6_K_T16_GEMV_LIBRARY is None:
+        _Q6_K_T16_GEMV_LIBRARY = build_gguf_q6_k_t16_gemv(load=True)
+    return _Q6_K_T16_GEMV_LIBRARY
+
+
 def gguf_q6_k_t16_gemv_decode_bf16_f32_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -397,7 +415,7 @@ def gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a positive multiple of 16")
-    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    library = library or _q6_k_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _Q6_T16_BF16_F32_TOP1_STAGE1)
     fn.argtypes = [
@@ -440,7 +458,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a positive multiple of 16")
-    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    library = library or _q6_k_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1)
     fn.argtypes = [
@@ -752,7 +770,7 @@ def _launch_planar_q8_1(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a positive multiple of 16")
-    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    library = library or _q6_k_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     if residual_ptr is None:
@@ -1026,7 +1044,7 @@ def _launch_residual(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a positive multiple of 16")
-    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    library = library or _q6_k_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -1073,7 +1091,7 @@ def _launch(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a positive multiple of 16")
-    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    library = library or _q6_k_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [

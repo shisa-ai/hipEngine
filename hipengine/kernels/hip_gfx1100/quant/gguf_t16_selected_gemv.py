@@ -256,6 +256,25 @@ def build_gguf_t16_selected_gemv(
     )
 
 
+_T16_SELECTED_GEMV_LIBRARY: ctypes.CDLL | None = None
+
+
+def _t16_selected_gemv_library() -> ctypes.CDLL:
+    """Memoized default build so per-call launches skip build_hip entirely.
+
+    The per-call launch path calls ``build_gguf_t16_selected_gemv(load=True)``
+    on every launch (~19 us/call of build_hip fast-path overhead even on a
+    cache hit); on the Qwen3.6-27B dense decode path ~128 launches/step go
+    through this family, so this is ~2.5 ms/step of host CPU on the critical
+    path. Hoist it once, mirroring the PN5/PN6 router and GEMV patterns.
+    """
+
+    global _T16_SELECTED_GEMV_LIBRARY
+    if _T16_SELECTED_GEMV_LIBRARY is None:
+        _T16_SELECTED_GEMV_LIBRARY = build_gguf_t16_selected_gemv(load=True)
+    return _T16_SELECTED_GEMV_LIBRARY
+
+
 def gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -806,7 +825,7 @@ def gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_LOCAL32_SILU_BF16)
     fn.argtypes = [
@@ -857,7 +876,7 @@ def gguf_q4_k_t16_dense_single_local32_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_SINGLE_LOCAL32_BF16)
     fn.argtypes = [
@@ -906,7 +925,7 @@ def gguf_q4_k_qmicro_t16_dense_single_local32_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_SINGLE_LOCAL32_BF16)
     fn.argtypes = [
@@ -956,7 +975,7 @@ def gguf_q4_k_t16_dense_single_local32_bf16_residual_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_SINGLE_LOCAL32_RESIDUAL_BF16)
     fn.argtypes = [
@@ -1008,7 +1027,7 @@ def gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_Q8X2_DP4A_SILU_BF16)
     fn.argtypes = [
@@ -1060,7 +1079,7 @@ def gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_Q8X2_SPLIT_WEIGHT_DP4A_SILU_BF16)
     fn.argtypes = [
@@ -1112,7 +1131,7 @@ def gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_Q8X2_SPLIT_WEIGHT_DP4A_SILU_BF16)
     fn.argtypes = [
@@ -1164,7 +1183,7 @@ def gguf_q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_Q8X2_ROWTILE8_DP4A_SILU_BF16)
     fn.argtypes = [
@@ -1210,7 +1229,7 @@ def gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
     """Launch the exact compact-T16 row-reuse owner for rows 2-8."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_BF16)
     fn.argtypes = [
@@ -1254,7 +1273,7 @@ def gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
     """Launch the exact sole-qmicro rows2-4 primitive."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_ROWTILE_BF16)
     fn.argtypes = [
@@ -1299,7 +1318,7 @@ def gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out(
     """Launch exact compact-Q4 FFN-down plus rounded-BF16 residual."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_RESIDUAL_BF16)
     fn.argtypes = [
@@ -1346,7 +1365,7 @@ def gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
     """Launch the exact two-wave compact-T16 FFN rowtile for rows 2-4."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_ROWTILE_SILU_BF16)
     fn.argtypes = [
@@ -1397,7 +1416,7 @@ def gguf_q4_k_t16_dense_single_col4_bf16_bf16_out(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_COL4_BF16)
     fn.argtypes = [
@@ -1442,7 +1461,7 @@ def gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out(
     """Launch the exact qmicro FFN rowtile for rows 2-4."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_ROWTILE_SILU_BF16)
     fn.argtypes = [
@@ -1488,7 +1507,7 @@ def gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out(
     """Launch the exact four-column compact-T16 row-reuse control (rows 1-8)."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_COL4_BF16)
     fn.argtypes = [
@@ -1652,7 +1671,7 @@ def _launch_dense_q5_t16(
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
 ) -> None:
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, symbol)
     fn.argtypes = [
@@ -1727,7 +1746,7 @@ def _launch_dense_dual_interleaved_local32_silu(
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
         raise ValueError("out_features must be a positive multiple of 16")
-    lib = library or build_gguf_t16_selected_gemv()
+    lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, symbol)
     fn.argtypes = [
@@ -3232,7 +3251,7 @@ def _launch_grouped_dual(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3296,7 +3315,7 @@ def _launch_dual(
         raise ValueError("out_features_a must be a multiple of 16 (T16 tile)")
     if out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_b must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3352,7 +3371,7 @@ def _launch_grouped_single(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3406,7 +3425,7 @@ def _launch_single(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3459,7 +3478,7 @@ def _launch_dual_direct(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3517,7 +3536,7 @@ def _launch_dual_silu_direct(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3572,7 +3591,7 @@ def _launch_single_direct(
         raise ValueError("out_features must be positive")
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -3635,7 +3654,7 @@ def _launch_single_direct_weighted(
             "routing weights, routed output, and completion counter "
             "pointers must be nonzero"
         )
-    library = library or build_gguf_t16_selected_gemv(load=True)
+    library = library or _t16_selected_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
