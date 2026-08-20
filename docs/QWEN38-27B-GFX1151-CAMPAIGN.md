@@ -1501,6 +1501,8 @@ and
 [`2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json) +
 [`2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json).
 
+**Measured production result (2026-08-20 — the c8 GEMV gap is closed and fp16 state is harvestable).** The 2026-08-18 units added native c8 GEMV owners (single projection rowtile8, gate/up rowtile8, combination map), so a fair production-route A/B is now possible. Same-session gfx1151 Qwen3.8-27B Q4_K_S packed-AR (`gguf_packed_ar_bench.py --route production`, p512/tok 9707/64 steps/3 runs, `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1` vs FP32, fp16 indexed-singleton decode sibling keeps the kernel path identical): c1 12.958 -> 13.053 (+0.73%), c4 10.660 -> 10.995 (+3.14%), native_c8 7.190 -> 7.410 (+3.07%). Correctness: the fp16-state production gate passed on the full suite (kl_mean 3.68e-5, kl_max 1.28e-3, top-1 100%, deterministic state SHA). fp16-state remains behind the env flag (FP32 stays the strict default); promotion to the public production-profile default additionally requires the complete serving-packet SLO-goodput gate (EXECUTION-PROFILES §2.1: >=3% goodput, <=1% c1 regression). Evidence: [`2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json).
+
 ### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
 
 Qwen3.8 has untied embeddings; the external repo requantizes the two ~2.5 GB

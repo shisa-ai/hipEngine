@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_gfx1151_q4ks_r2_fp16_fair_cn_production",
+  "date": "2026-08-20",
+  "created_at": "2026-08-20T10:35:00.000Z",
+  "status": "retained",
+  "publishable": false,
+  "purpose": "Measure the production-route decode throughput of fp16 recurrent state (HIPENGINE_GGUF_FP16_RECURRENT_STATE=1) against the FP32 state baseline at c1/c4/native_c8 on gfx1151, with the decode kernel path held identical between the two routes (fp16-state indexed-singleton decode sibling, committed b4f6e135c). This is the evidence for R2's deferred concurrency value now that the native c8 GEMV owner exists.",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "128 GiB unified GTT",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git"
+  },
+  "software": {
+    "hipengine_commit": "b4f6e135c6c8bf7706f270a5776783a97b0d7179",
+    "host": "gfx1151",
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv": "bf16"
+  },
+  "protocol": {
+    "command": "python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_s --route production --configurations c1,c4,native_c8 --prompt-token-id 9707 --prompt-length 512 --decode-steps 64 --measured-runs 3 --warmup-runs 1 --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build",
+    "fp32_env": "HIPENGINE_HIP_ARCH=gfx1151 (no fp16 flag)",
+    "fp16_env": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_FP16_RECURRENT_STATE=1",
+    "session": "both runs back-to-back on host gfx1151, same warm GPU, same cached builds; fp16 at 2026-08-20T10:25Z then fp32 at 10:30Z",
+    "notes": "Raw production-route measurement packet; the packed-AR bench reports partial_measurement_complete (c2/chunked_c8/serial_c4 not requested), native_c8_rows_match_c4=True in both."
+  },
+  "results": {
+    "inter_token_model_step_median_seconds": {
+      "fp32": {"c1": 0.077170, "c4": 0.093806, "native_c8": 0.139080},
+      "fp16": {"c1": 0.076614, "c4": 0.090948, "native_c8": 0.134944}
+    },
+    "tokens_per_second": {
+      "fp32": {"c1": 12.958, "c4": 10.660, "native_c8": 7.190},
+      "fp16": {"c1": 13.053, "c4": 10.995, "native_c8": 7.410}
+    },
+    "delta_fp16_vs_fp32_pct": {
+      "c1": 0.73,
+      "c4": 3.14,
+      "native_c8": 3.07
+    }
+  },
+  "correctness": {
+    "production_gate": {
+      "artifact": "2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json",
+      "status": "passed",
+      "quality": {"kl_mean": 3.68e-5, "kl_p95": 1.62e-4, "kl_p99": 6.65e-4, "kl_max": 1.28e-3, "top1_agreement": 1.0},
+      "state_repeat_gate": "passed (deterministic same-schedule state SHA)"
+    },
+    "cross_configuration": {"native_c8_rows_match_c4": true, "partial_packet": true}
+  },
+  "implications": {
+    "retention": "Retained as the fp16-state production-route measurement: c4 +3.14%, native_c8 +3.07%, c1 +0.73% (non-regressive). Consistent with the 2026-08-18 c=N roofline direction (c4 3.1%, c8 5.9% bandwidth-bound upper bounds); the c8 measured 3.1% sits below the roofline because MLP/attention GEMM work also scales with concurrency.",
+    "default_promotion": "fp16-state remains behind HIPENGINE_GGUF_FP16_RECURRENT_STATE=1; FP32 remains the strict default. Promotion to the public production-profile default additionally requires the complete serving-packet SLO-goodput gate (>=3% goodput, <=1% c1 regression per EXECUTION-PROFILES section 2.1), which has not been run.",
+    "prior_confounded_run": "The 2026-08-20 18:42 fp16 run used the segments decode fallback (c4 10.582, native_c8 7.031 tok/s) because the fp16 indexed-singleton decode kernel did not yet exist; it is superseded by this fair run (c4 10.995, native_c8 7.410)."
+  },
+  "raw_packets": [
+    "/tmp/ar_bench_fp32_samesession.json",
+    "/tmp/ar_bench_fp16_fair.json"
+  ]
+}

@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-20
+
+- [kernel gfx1151 Qwen3.8 R2 fp16 recurrent state (production)] Qwen3.8-27B / Q4_K_S / c1,c4,native_c8 `--route production`: FP16-state decode (half-sized per-slot recurrent state) is **non-regressive and faster at c>1** — same-session gfx1151 packed-AR A/B (p512/tok 9707/64 steps/3 runs, fp16 indexed-singleton decode sibling keeps the kernel path identical): c1 12.958 -> 13.053 tok/s (+0.73%), c4 10.660 -> 10.995 (+3.14%), native_c8 7.190 -> 7.410 (+3.07%). Correctness: production gate passed (kl_mean 3.68e-5, kl_max 1.28e-3, top-1 100%, deterministic state SHA) on the full suite. fp16-state stays behind `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1`; promotion to the public production-profile default additionally needs the serving-packet SLO-goodput gate (EXECUTION-PROFILES 2.1). Supersedes the confounded 18:42 fp16 run (segments decode fallback: c4 10.582, c8 7.031). `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json`.
+
 ## 2026-08-18
 
 - [kernel gfx1151 Qwen3.8 c=N combination map] Qwen3.8-27B / Q4_K_S / gfx1151: no decode concurrency below 512 falls to WMMA anymore. (1) `_native_rowtile_chunk_groups` decomposes single Q4/Q5 rows 9..511 into `_rowtile8_row_chunks` groups (Q4 was falling to WMMA prefill there); (2) gate/up dual rowtile8 policy admits rows 2..511 (was 2..64); (3) Q6 lm_head rowtile (standard + qmicro planar col8) extended to rows 8, so c8 lm_head is one launch instead of the prior 4+4 chunk and `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` workaround is obsolete. native_c8 56.64 -> 57.41 tok/s (+1.36%, 4.46x c1), c1/c4 unchanged (12.88 / 42.5), rocprofv3 c8 step shows `q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float,8>` once per token with no WMMA prefill; RED: chunked 9/10/16/17 bit-exact vs serial c1 + qmicro planar f32 rowtile rows 2..8; `benchmarks/results/2026-08-18-gfx1151-qwen38-27b-cn-combination-map.json`.
