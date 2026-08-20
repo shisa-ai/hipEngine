@@ -1800,7 +1800,7 @@ def _q4_t16_dual_rowtile_silu_dispatch(
     if (
         not native_batch
         or rows < _PACK8_ROWTILE_MIN_ROWS
-        or (rows > _PACK8_ROWTILE_MAX_ROWS and not (sole_t16 and rows == 8))
+        or (rows > _PACK8_ROWTILE_MAX_ROWS and not (sole_t16 and 2 <= rows <= 8))
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or not (sole_t16 or pack8_sidecars)
@@ -2235,7 +2235,7 @@ def launch_gguf_linear(
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     if (
         _native_batch_decode_session_enabled
-        and (2 <= rows <= 4 or rows == 8)
+        and (2 <= rows <= 8)
         and not use_wmma
         and not use_q4_pack8_wmma
         and registered_variant is None
@@ -2540,10 +2540,10 @@ def _q4_t16_sidecar_decode_variants(
 
     if rows == 1:
         return ("dense_single_local32_bf16_bf16_out",)
-    if not 2 <= rows <= 4:
+    if not 2 <= rows <= 7:
         return ()
     shape = (in_features, out_features)
-    if shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
+    if rows <= 4 and shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
         return (
             "dense_rowtile_col4_bf16_bf16_out",
             "dense_rowtile_bf16_bf16_out",
@@ -2564,7 +2564,7 @@ def _q4_t16_dense_native_dispatch(
         not _native_batch_decode_session_enabled
         or dispatch.abi != "t16"
         or dispatch.key.quant not in _Q4_T16_DENSE_QUANTS
-        or not 2 <= rows <= 4
+        or not 2 <= rows <= 7
     ):
         return dispatch
     for variant in _q4_t16_sidecar_decode_variants(

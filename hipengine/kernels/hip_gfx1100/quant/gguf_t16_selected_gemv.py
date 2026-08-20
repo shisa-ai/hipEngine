@@ -1522,8 +1522,8 @@ def _check_dense_q4_t16_rowtile_shape(
     in_features: int,
     out_features: int,
 ) -> None:
-    if rows not in (2, 3, 4, 8):
-        raise ValueError("dense Q4T16 rowtile requires rows in 2..4 or 8")
+    if not (2 <= rows <= 8):
+        raise ValueError("dense Q4T16 rowtile requires rows in 2..8")
     if in_features <= 0 or in_features % _QK_K:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
