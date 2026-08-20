@@ -248,12 +248,28 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
 - WMMA-tile for the single-row c1 decode leaf (M=1 per block, latency-bound;
   WMMA tiles waste 15/16 lanes).
 
-## Venue caveat
+## Venue caveat and lane handoff (updated 2026-08-20)
 
-The ZBook is 60 W power-limited. Its absolute rates must never be reused as a
-different-power (120 W Radeon 8060S) old→new comparison. The tuning *mechanisms*
-(kernels, dispatch, shapes) are the same gfx1151 surfaces and transfer; the
-speed rows belong on the same-power lane they were measured on.
+The ZBook is 60 W power-limited and, measured this session, **cannot be clock-pinned**:
+sysfs `pp_dpm_sclk` level pinning and `pp_od_clk_voltage` overrides are rejected,
+and `power_dpm_force_performance_level` writes are accepted but ignored. Under
+sustained load the sclk settles to a thermal-equilibrium band of ~1180-1415 MHz
+(±~10% swing, `scripts/pn3_clock_probe.py`) and recovers to 2900 MHz at every
+load gap. Consequences:
+
+- ZBook absolute rates must never be reused as a different-power (120 W
+  Radeon 8060S / 140 W desktop) old→new comparison.
+- Wall-time A/B verdicts smaller than the clock-band swing (~10%) are
+  structurally unreliable on this lane. The best-effort protocol (sustained
+  thermal pre-warmup + interleaved counter-rotated legs + per-leg sclk
+  sampling, `scripts/pn3_27b_chunk_pinned.py`) can only resolve effects well
+  beyond that swing; everything else defers.
+- **Lane policy going forward:** the ZBook remains the venue for correctness
+gates, RED tests, KL/top-1 suites, kernel bring-up, and structural/launch
+  verification. All wall-time retention claims, old→new comparisons, and
+  benchmark rollup rows move to the non-power-limited gfx1151 system (140 W
+  PL). The interleaved/warmup protocol itself transfers and stays required
+  there; on the ZBook it is necessary but often not sufficient.
 
 ## 27B dense (QWEN38-27B, closed campaign)
 
