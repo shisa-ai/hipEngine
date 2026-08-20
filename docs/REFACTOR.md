@@ -107,7 +107,6 @@ documentation review:
 
 | Scope | Why it is ready | What to remove / what to keep |
 | --- | --- | --- |
-| GGUF MTP final-state fastpath | The default-off path regresses c4 because rejected/partial cycles replay state; captured-row/deferred-scatter is retained. | Remove the env resolver and `final_state_fastpath` branches from serial and packed verification. Keep captured-row commit and the transactional exact fallback. |
 | GGUF AR stream prefill | The only runtime consumer is the rejected default-off per-slot stream prefill; packed prefill is retained. | Remove the env, `_try_prefill_ar_serving_slots_streams`, its dedicated `prefill_async_top1` surface if no remaining caller exists, and focused tests. Keep stream decode as the unsupported-shape oracle until its separate rollback window closes. |
 | PARO suffix row-chunk diagnostics | The three env controls are generated-token red and add branches/telemetry across the two largest PARO runtime methods. | Remove suffix-size/layer/include-gate controls, execution branches, metadata, benchmark modes, and focused tests. Keep the independently retained full-layer/context plans and lower-level hidden/KV diagnostics. |
 | Unrouted kernel bodies | `pack8_wmma64_prefill` is registered but explicitly never routed after losing its leaf screen; Laguna's `...split_exact_gated_mixed32_vstage64_reduce_kernel` has no wrapper or registry key. | Delete body/wrapper/export/key/dedicated test for WMMA64 and delete the unwrapped Laguna body. Keep their compact rejection evidence; reopen only from a materially different design. |
@@ -2445,28 +2444,6 @@ should be boring.
   and live c8→c13 admission.
 - Remove when: the one-release rollback window ends on both gfx11 targets. Keep
   fallback for total prompt slabs beyond the current packed hidden-row guard.
-
-## `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH`
-- Added 2026-07-06 as a default-off MTP serving diagnostic after the first
-  no-capture packed-verifier probe changed MTP economy. The corrected version
-  keeps packed slot segments through Conv/GDN prefill, mutates per-slot packed
-  final linear state directly, and falls back to accepted-prefix replay for
-  partial/reject cycles.
-- Purpose: test whether skipping per-row linear-state capture can beat the
-  retained captured-row verifier once the no-capture path is semantically
-  equivalent for packed c>N serving.
-- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
-  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
-  window. c=4 measured **66.75 tok/s** in
-  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-finalstate-fastpath2.json`
-  versus retained **76.83 tok/s** for
-  `benchmarks/results/2026-07-06-hipengine-server-mtp-natural24-c4-bw5-rowtilechunk-verify.json`.
-  Acceptance stayed identical (**0.8545**, draft **165**, accepted **141**), but
-  `target_state_commit_ms` rose **10.443 -> 405.559 ms** because
-  partial/reject cycles must replay the consumed prefix without captured rows.
-- Remove when: a compact selected-row capture path exists, or if no follow-up
-  uses the segment-aware no-capture kernel. The flag must stay default-off and
-  must not be used for retained timing claims.
 
 ## `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_*`
 - Added 2026-07-09 as a default-off PARO c>N diagnostic:

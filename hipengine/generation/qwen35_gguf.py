@@ -144,9 +144,6 @@ _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
-_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
-    "HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH"
-)
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
@@ -239,15 +236,6 @@ def _gguf_mtp_server_stream_draft_enabled() -> bool:
 
 def _gguf_mtp_server_stream_verify_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_STREAM_VERIFY_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _gguf_mtp_server_verify_final_state_fastpath_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV, "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 def _gguf_mtp_server_defer_verify_scatter_enabled() -> bool:
@@ -3382,13 +3370,12 @@ class Qwen35GGUFBringupGenerator:
         _ = request
         if not drafted_cycles:
             return []
-        final_state_fastpath = _gguf_mtp_server_verify_final_state_fastpath_enabled()
         for drafted in drafted_cycles:
             slot = drafted.slot
             snapshot_start = time.perf_counter()
             snapshot = (
                 slot.session._linear_state_snapshot()
-                if final_state_fastpath or not drafted.direct_commit_exact
+                if not drafted.direct_commit_exact
                 else None
             )
             drafted.snapshot = snapshot
@@ -3408,8 +3395,8 @@ class Qwen35GGUFBringupGenerator:
                         drafted.block_inputs,
                         bulk_attention_mode="bulk",
                         use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
-                        capture_linear_state_rows=not final_state_fastpath,
-                        defer_linear_state_commit=not final_state_fastpath,
+                        capture_linear_state_rows=True,
+                        defer_linear_state_commit=True,
                     )
                     _timing_add(slot.timing, "target_verify_ms", verify_start)
                     block_results.append(block_result)
@@ -3531,19 +3518,15 @@ class Qwen35GGUFBringupGenerator:
         verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
             return None
-        final_state_fastpath = _gguf_mtp_server_verify_final_state_fastpath_enabled()
-        defer_state_scatter = (
-            _gguf_mtp_server_defer_verify_scatter_enabled()
-            and not final_state_fastpath
-        )
+        defer_state_scatter = _gguf_mtp_server_defer_verify_scatter_enabled()
         jobs = [
             {
                 "session": drafted.slot.session,
                 "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
                 "bulk_attention_mode": "bulk",
                 "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
-                "capture_linear_state_rows": not final_state_fastpath,
-                "defer_linear_state_commit": not final_state_fastpath,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
                 "defer_state_scatter": defer_state_scatter,
             }
             for drafted in chunk
@@ -3586,81 +3569,63 @@ class Qwen35GGUFBringupGenerator:
         consumed_rows = accepted_draft_tokens + 1
         try:
             state_commit_start = time.perf_counter()
-            captured_rows = bool(getattr(verified.block_result, "linear_state_rows_captured", False))
-            final_state_committed = bool(getattr(verified.block_result, "final_linear_state_committed", False))
-            deferred_packed_state = getattr(verified.block_result, "deferred_packed_state", None)
+            captured_rows = bool(
+                getattr(verified.block_result, "linear_state_rows_captured", False)
+            )
+            deferred_packed_state = getattr(
+                verified.block_result,
+                "deferred_packed_state",
+                None,
+            )
             seed_row_count = (
                 consumed_rows
                 if deferred_packed_state is not None
                 else len(block_target_tokens)
             )
-            if consumed_rows < len(block_inputs):
-                if captured_rows:
-                    if deferred_packed_state is not None:
-                        owner = getattr(deferred_packed_state, "owner", None)
-                        commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
-                        if not callable(commit_deferred):
-                            raise RuntimeError("deferred packed verifier state owner cannot commit rows")
-                        commit_deferred(
-                            deferred_packed_state,
-                            slot.session,
-                            commit_row_index=consumed_rows - 1,
-                            position=block_start + consumed_rows,
-                            hidden_rows=seed_row_count,
+            if consumed_rows < len(block_inputs) or drafted.direct_commit_exact:
+                if not captured_rows:
+                    raise RuntimeError(
+                        "direct MTP commit requested without captured linear-state rows"
+                    )
+                if deferred_packed_state is not None:
+                    owner = getattr(deferred_packed_state, "owner", None)
+                    commit_deferred = getattr(
+                        owner,
+                        "_commit_deferred_packed_verify_state",
+                        None,
+                    )
+                    if not callable(commit_deferred):
+                        raise RuntimeError(
+                            "deferred packed verifier state owner cannot commit rows"
                         )
-                    else:
-                        slot.session._commit_verify_linear_state_row(
-                            consumed_rows - 1,
-                            position=block_start + consumed_rows,
-                        )
-                elif final_state_committed:
-                    if snapshot is None:
-                        raise RuntimeError("MTP partial fastpath replay requested without a linear-state snapshot")
-                    slot.session._restore_linear_state_snapshot(snapshot, position=block_start)
-                    slot.session.verify_target_block(
-                        block_inputs[:consumed_rows],
-                        bulk_attention_mode="bulk",
-                        use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
-                        advance_state_only=True,
+                    commit_deferred(
+                        deferred_packed_state,
+                        slot.session,
+                        commit_row_index=consumed_rows - 1,
+                        position=block_start + consumed_rows,
+                        hidden_rows=seed_row_count,
                     )
                 else:
-                    raise RuntimeError("direct MTP partial commit requested without captured or final state")
-            elif drafted.direct_commit_exact:
-                if captured_rows:
-                    if deferred_packed_state is not None:
-                        owner = getattr(deferred_packed_state, "owner", None)
-                        commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
-                        if not callable(commit_deferred):
-                            raise RuntimeError("deferred packed verifier state owner cannot commit rows")
-                        commit_deferred(
-                            deferred_packed_state,
-                            slot.session,
-                            commit_row_index=len(block_inputs) - 1,
-                            position=block_start + len(block_inputs),
-                            hidden_rows=seed_row_count,
-                        )
-                    else:
-                        slot.session._commit_verify_linear_state_row(
-                            len(block_inputs) - 1,
-                            position=block_start + len(block_inputs),
-                        )
-                elif not final_state_committed:
-                    raise RuntimeError("direct MTP full commit requested without captured or final state")
+                    slot.session._commit_verify_linear_state_row(
+                        consumed_rows - 1,
+                        position=block_start + consumed_rows,
+                    )
             else:
                 if snapshot is None:
-                    raise RuntimeError("MTP full-block replay requested without a linear-state snapshot")
-                slot.session._restore_linear_state_snapshot(snapshot, position=block_start)
+                    raise RuntimeError(
+                        "MTP full-block replay requested without a linear-state snapshot"
+                    )
+                slot.session._restore_linear_state_snapshot(
+                    snapshot,
+                    position=block_start,
+                )
                 replay_result = slot.session.verify_target_block_serial_exact(block_inputs)
                 replay_tokens = [int(token) for token in replay_result.token_ids]
                 if replay_tokens != block_target_tokens:
-                    raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+                    raise RuntimeError(
+                        "MTP serial-exact replay diverged from block verifier rows"
+                    )
             _timing_add(slot.timing, "target_state_commit_ms", state_commit_start)
-            if (
-                consumed_rows < len(block_inputs)
-                and final_state_committed
-                and not captured_rows
-            ):
-                seed_row_count = consumed_rows
             target_verify_seed_rows = [
                 _new_mtp_seed_row(
                     token_id=block_target_tokens[row],
@@ -3977,9 +3942,6 @@ class Qwen35GGUFBringupGenerator:
                 direct_commit_exact = block_start + len(block_inputs) < 1024
                 snapshot_start = time.perf_counter()
                 snapshot = None if direct_commit_exact else session._linear_state_snapshot()
-                final_state_fastpath = _gguf_mtp_server_verify_final_state_fastpath_enabled()
-                if final_state_fastpath and snapshot is None:
-                    snapshot = session._linear_state_snapshot()
                 if snapshot is not None:
                     _timing_add(timing, "linear_state_snapshot_ms", snapshot_start)
                 try:
@@ -3988,8 +3950,8 @@ class Qwen35GGUFBringupGenerator:
                         block_inputs,
                         bulk_attention_mode="bulk",
                         use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
-                        capture_linear_state_rows=not final_state_fastpath,
-                        defer_linear_state_commit=not final_state_fastpath,
+                        capture_linear_state_rows=True,
+                        defer_linear_state_commit=True,
                     )
                     _timing_add(timing, "target_verify_ms", verify_start)
                     block_target_tokens = [int(token) for token in block_result.token_ids]
@@ -4000,50 +3962,35 @@ class Qwen35GGUFBringupGenerator:
                     accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
                     consumed_rows = accepted_draft_tokens + 1
                     state_commit_start = time.perf_counter()
-                    captured_rows = bool(getattr(block_result, "linear_state_rows_captured", False))
-                    final_state_committed = bool(getattr(block_result, "final_linear_state_committed", False))
-                    if consumed_rows < len(block_inputs):
-                        if captured_rows:
-                            session._commit_verify_linear_state_row(
-                                consumed_rows - 1,
-                                position=block_start + consumed_rows,
+                    captured_rows = bool(
+                        getattr(block_result, "linear_state_rows_captured", False)
+                    )
+                    if consumed_rows < len(block_inputs) or direct_commit_exact:
+                        if not captured_rows:
+                            raise RuntimeError(
+                                "direct MTP commit requested without captured linear-state rows"
                             )
-                        elif final_state_committed:
-                            if snapshot is None:
-                                raise RuntimeError("MTP partial fastpath replay requested without a linear-state snapshot")
-                            session._restore_linear_state_snapshot(snapshot, position=block_start)
-                            session.verify_target_block(
-                                block_inputs[:consumed_rows],
-                                bulk_attention_mode="bulk",
-                                use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
-                                advance_state_only=True,
-                            )
-                        else:
-                            raise RuntimeError("direct MTP partial commit requested without captured or final state")
-                    elif direct_commit_exact:
-                        if captured_rows:
-                            session._commit_verify_linear_state_row(
-                                len(block_inputs) - 1,
-                                position=block_start + len(block_inputs),
-                            )
-                        elif not final_state_committed:
-                            raise RuntimeError("direct MTP full commit requested without captured or final state")
+                        session._commit_verify_linear_state_row(
+                            consumed_rows - 1,
+                            position=block_start + consumed_rows,
+                        )
                     else:
                         if snapshot is None:
-                            raise RuntimeError("MTP full-block replay requested without a linear-state snapshot")
-                        session._restore_linear_state_snapshot(snapshot, position=block_start)
+                            raise RuntimeError(
+                                "MTP full-block replay requested without a linear-state snapshot"
+                            )
+                        session._restore_linear_state_snapshot(
+                            snapshot,
+                            position=block_start,
+                        )
                         replay_result = session.verify_target_block_serial_exact(block_inputs)
                         replay_tokens = [int(token) for token in replay_result.token_ids]
                         if replay_tokens != block_target_tokens:
-                            raise RuntimeError("MTP serial-exact replay diverged from block verifier rows")
+                            raise RuntimeError(
+                                "MTP serial-exact replay diverged from block verifier rows"
+                            )
                     _timing_add(timing, "target_state_commit_ms", state_commit_start)
                     seed_row_count = len(block_target_tokens)
-                    if (
-                        consumed_rows < len(block_inputs)
-                        and final_state_committed
-                        and not captured_rows
-                    ):
-                        seed_row_count = consumed_rows
                     target_verify_seed_rows = [
                         _new_mtp_seed_row(
                             token_id=block_target_tokens[row],
