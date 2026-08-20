@@ -182,18 +182,24 @@ product completion is not claimed. [`Audit artifact`](results/2026-08-18-concurr
 
 Engine-level W7900 Qwen3.8-27B `Q4_K_M` packed-decode result (separate
 `gguf_packed_ar_bench` graph model-step protocol, not the production HTTP
-topline above): the clean direct c1-c8 curve is **30.22 / 53.67 / 75.49 / 93.60 /
-67.17 / 74.00 / 63.48 / 69.75 tok/s**. Every direct width is exact against the
-repeating independent fixture and repeatable. c4 is the current peak; Q5T16
-falls from true rowtile to padded WMMA at c5, and planar-Q6T16 falls from a
-true rowtile to direct-per-row at c5/c6 and padded WMMA at c7/c8.
+topline above): after the Q5T16 true-rowtile promotion to rows 5-8, the clean
+direct c1-c8 curve is **30.26 / 53.74 / 75.59 / 93.92 / 83.88 / 89.75 /
+73.29 / 80.11 tok/s**. Every direct width is exact against the repeating
+independent fixture and repeatable. c4 is still the peak; Q5T16 now keeps its
+true rowtile through 8 (48 true-rowtile calls / 4.01 ms at c8, zero Q5 WMMA;
+previously padded WMMA ~20 ms), and the remaining c7/c8 cliff is now dominated
+by planar-Q6T16, which still falls from a true rowtile to direct-per-row at
+c5/c6 and padded WMMA at c7/c8 (64 calls / 52.24 ms at c8).
 
-Native c8 is **114.72 ms / 69.75 tok/s**, while honest two-c4 composition is
-**88.74 ms / 91.06 tok/s (1.306× native c8)**. The continuous owner still
-advertises only physical `(1,2,4,8)` and maps c3 to masked c4 and c5-c7 to
-masked c8; direct c3/c5/c6/c7 are diagnostic until dynamic lifecycle gates
-promote them. Next: true Q5/planar-Q6 rowtiles through 8 plus an artifact-backed
-cost-aware group planner. [`Current width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json).
+Native c8 is **80.11 tok/s**, while honest two-c4 composition is
+**91.73 tok/s**; native c8 still loses to two c4 groups (0.873×) until the
+planar-qmicro Q6T16 rows 5-8 rowtile closes the Q6 WMMA cliff. The continuous
+owner still advertises only physical `(1,2,4,8)` and maps c3 to masked c4 and
+c5-c7 to masked c8; direct c3/c5/c6/c7 are diagnostic until dynamic lifecycle
+gates promote them. Next: planar-qmicro Q6T16 true col8 rowtile through 8
+plus an artifact-backed cost-aware group planner.
+[`Width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json),
+[`Q5 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion-summary.json).
 
 Old-design apples-to-apples diagnostic (not a retained topline): the current
 engine re-run under the exact retained old protocol (p512/d128, SSE, 20 ms batch

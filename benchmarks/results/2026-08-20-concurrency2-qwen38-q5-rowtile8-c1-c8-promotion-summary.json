@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_q5_rowtile8_c1_c8_promotion",
+  "created_at": "2026-08-20T10:30:00+00:00",
+  "status": "accepted_primitive_dispatch_promotion",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "same-load direct packed graph model-step c1-c8 plus Q5 kernel census; not production HTTP serving",
+  "commit": "c22e46630",
+  "provenance": {
+    "host_name": "epyc",
+    "device_name": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "rocm_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "workload": {
+    "prompt_length": 128,
+    "decode_steps": 8,
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "configurations": "c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4"
+  },
+  "change": {
+    "primitive": "q5_k_t16_dense_rowtile_col4_gemv_kernel ROW_TILE extended 2-4 -> 2-8 (strict bit-parity)",
+    "dispatch": "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1] 4 -> 8 (gfx1100)"
+  },
+  "direct_scaling_aggregate_tok_s": {
+    "before": {"1": 30.22, "2": 53.67, "3": 75.49, "4": 93.60, "5": 67.17, "6": 74.00, "7": 63.48, "8": 69.75},
+    "after": {"1": 30.26, "2": 53.74, "3": 75.59, "4": 93.92, "5": 83.88, "6": 89.75, "7": 73.29, "8": 80.11},
+    "delta_pct": {"5": 24.87, "6": 21.29, "7": 15.45, "8": 14.85}
+  },
+  "composition_controls_after": {
+    "native_c8_aggregate_tok_s": 80.11,
+    "chunked_c8_two_c4_aggregate_tok_s": 91.73,
+    "native_vs_chunked_ratio": 0.873,
+    "note": "native c8 still loses to two c4 groups; the c7/c8 cliff is now dominated by planar-qmicro Q6 padded WMMA (task 2)"
+  },
+  "q5_kernel_census_at_c8": {
+    "true_rowtile_kernel": "q5_k_t16_dense_rowtile_col4_gemv_kernel",
+    "dispatches": 48,
+    "duration_ms": 4.01,
+    "padded_wmma_dispatches": 0,
+    "baseline_padded_wmma_duration_ms_approx": 20.0,
+    "q6_planar_wmma_kernel": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+    "q6_planar_dispatches": 64,
+    "q6_planar_duration_ms": 52.24
+  },
+  "correctness": {
+    "all_direct_c1_c8_exact": true,
+    "direct_c1_c8_match_c4_repeating_fixture": true,
+    "c4_matches_serial_c4": true,
+    "native_c8_rows_match_c4": true,
+    "chunked_c8_groups_match_c4": true,
+    "all_measured_runs_repeatable": true,
+    "primitive_rows_2_8_strict_bit_parity_vs_direct_producer": true
+  },
+  "sources": {
+    "graph_packet": "/tmp/q5_rowtile8_bench.json",
+    "rocprof_census": "benchmarks/results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion.json"
+  },
+  "limitations": [
+    "Direct model-step graph packet and kernel census, not HTTP/SSE serving goodput.",
+    "Q5 rowtile promotion applies to gfx1100 only; gfx1151 requires independent measurement.",
+    "native c8 is still slower than two-c4 chunked c8; product promotion of native c8 awaits the planar-qmicro Q6T16 rows 5-8 unit."
+  ]
+}
