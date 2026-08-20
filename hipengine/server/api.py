@@ -60,6 +60,7 @@ from hipengine.generation import (
     ThinkingBudgetState,
     TokenLogprob,
     derive_row_seed,
+    relax_thinking_budget_for_mtp,
     speculative_mtp_sampling_blockers,
     supports_speculative_mtp_sampling,
 )
@@ -238,7 +239,8 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
 _CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
-_SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto")
+_SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto", "enabled")
+_SPECULATIVE_MTP_THINKING_MODES = ("hint", "hard")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
@@ -316,7 +318,8 @@ class ServerConfig:
     max_active_requests: int | None = None
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
-    speculative_mtp_serving: str = "off"
+    speculative_mtp_serving: str = "enabled"
+    speculative_mtp_thinking: str = "hint"
     speculative_provider: str | None = None
     draft_model: str | None = None
     speculative_candidate_budget: int = 4
@@ -339,6 +342,13 @@ class ServerConfig:
                 + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
             )
         object.__setattr__(self, "speculative_mtp_serving", mode)
+        thinking = str(self.speculative_mtp_thinking).strip().lower().replace("-", "_")
+        if thinking not in _SPECULATIVE_MTP_THINKING_MODES:
+            raise ValueError(
+                "speculative_mtp_thinking must be one of: "
+                + ", ".join(_SPECULATIVE_MTP_THINKING_MODES)
+            )
+        object.__setattr__(self, "speculative_mtp_thinking", thinking)
         provider = (
             None
             if self.speculative_provider is None
@@ -1324,20 +1334,25 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "allowed_execution_modes": ["greedy_fast"],
         "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
+        "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
     }
     if not serving_route:
         return payload
+    configured_mode = str(config.speculative_mtp_serving)
+    default_enabled = bool(
+        configured_mode == "enabled" and _engine_supports_default_mtp(engine)
+    )
     payload.update(
         {
-            "policy": str(config.speculative_mtp_serving),
+            "policy": configured_mode,
             "request_field": "speculative_mtp",
-            "default_enabled": False,
+            "default_enabled": default_enabled,
             "streaming_compatible": False,
             "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
         }
     )
-    if str(config.speculative_mtp_serving) == "auto":
+    if configured_mode == "auto":
         payload["auto_route"] = {
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
@@ -2592,7 +2607,16 @@ class _GenerationBatcher:
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
-            raw_outputs = await _generate_speculative_mtp_detailed(engine, prompts, sampling)
+            # The raw-argmax MTP verifier is exact only for the greedy fast
+            # path.  Under the hint thinking policy, host-sampler thinking
+            # enforcement is relaxed (prompt hints stay) so thinking requests
+            # can still use the MTP route.
+            mtp_sampling = relax_thinking_budget_for_mtp(sampling)
+            raw_outputs = await _generate_speculative_mtp_detailed(
+                engine,
+                prompts,
+                mtp_sampling,
+            )
         elif str(route) == _SPECULATIVE_PROVIDER_ROUTE:
             raw_outputs = await _generate_speculative_detailed(engine, prompts, sampling)
         else:
@@ -9483,6 +9507,18 @@ def _engine_supports_speculative_mtp(engine: Any | None) -> bool:
     return _engine_speculative_mtp_callable(engine) is not None
 
 
+def _engine_supports_default_mtp(engine: Any | None) -> bool:
+    """Whether default-on MTP serving is safe for this engine.
+
+    The engine reports ``supports_default_mtp`` only for dense Qwen models
+    whose MTP route is validated for serving (native verify by default, or
+    the token-exact serial_exact rollback control). MoE and other models keep
+    MTP request-opt-in.
+    """
+
+    return bool(getattr(engine, "supports_default_mtp", False))
+
+
 def _chat_live_many_streaming_allowed(request: ChatCompletionRequest) -> bool:
     return (
         _request_n(request) > 1
@@ -11033,6 +11069,35 @@ def _request_speculative_mtp_enabled(request: CompletionRequest | ChatCompletion
     )
 
 
+def _request_speculative_mtp_thinking(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+) -> str:
+    """Return the per-request MTP thinking policy ("hint" or "hard").
+
+    ``hint`` keeps the thinking hints in the rendered prompt but relaxes the
+    host-sampler thinking-budget enforcement (soft-close bias, EOS
+    suppression, hard-close forcing) so the request can use the exact
+    raw-argmax MTP route.  ``hard`` keeps full host-sampler enforcement and
+    treats the thinking budget as a hard MTP blocker.
+    """
+
+    raw = getattr(request, "speculative_mtp", None)
+    if isinstance(raw, Mapping):
+        thinking = raw.get("thinking")
+        if thinking is not None:
+            mode = str(thinking).strip().lower().replace("-", "_")
+            if mode not in _SPECULATIVE_MTP_THINKING_MODES:
+                raise OpenAIHTTPError(
+                    400,
+                    "speculative_mtp.thinking must be 'hint' or 'hard'",
+                    code="unsupported_parameter",
+                    param="speculative_mtp",
+                )
+            return mode
+    return str(config.speculative_mtp_thinking)
+
+
 def _speculative_mtp_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
@@ -11044,7 +11109,7 @@ def _speculative_mtp_route_for_request(
     configured_mode = str(config.speculative_mtp_serving)
     if explicit is False:
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
-    if explicit is None and configured_mode != "auto":
+    if explicit is None and configured_mode not in {"auto", "enabled"}:
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     explicit_requested = explicit is True
     if configured_mode == "off":
@@ -11075,6 +11140,22 @@ def _speculative_mtp_route_for_request(
                 param="speculative_mtp",
             )
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    if (
+        configured_mode == "enabled"
+        and not explicit_requested
+        and not _engine_supports_default_mtp(engine)
+    ):
+        # Default-on MTP is admitted only for exact dense routes; MoE and other
+        # models stay on plain AR unless a request explicitly opts in.
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+    thinking_policy = _request_speculative_mtp_thinking(config, request)
+    if thinking_policy == "hint":
+        # The host-sampler thinking budget is relaxed to prompt-hint-only for
+        # the raw-argmax MTP route: the rendered prompt keeps its thinking
+        # hints, but the sampler-level enforcement fields are cleared so the
+        # request is raw-greedy-exact again.  Under the hard policy the
+        # thinking budget stays a hard blocker and MTP falls back to AR.
+        sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = speculative_mtp_sampling_blockers(sampling)
     if blockers:
         if explicit_requested:
@@ -11096,6 +11177,8 @@ def _speculative_mtp_route_for_request(
     if not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:
+        return _SPECULATIVE_MTP_BATCH_ROUTE
+    if configured_mode == "enabled":
         return _SPECULATIVE_MTP_BATCH_ROUTE
     return _SPECULATIVE_MTP_AUTO_ROUTE
 

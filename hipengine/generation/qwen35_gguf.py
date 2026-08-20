@@ -149,6 +149,10 @@ _GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
 )
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_ROLLING_SLOTS_ENV = "HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS"
+_GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
+_GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+_GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
+_GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
 _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 _MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
@@ -263,6 +267,38 @@ def _gguf_mtp_server_rolling_slots_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _gguf_mtp_server_target_verify_mode() -> str:
+    """Return the dense MTP target verify mode for server serving.
+
+    Defaults to ``native``: the fast llama.cpp-style native row-attention / GPU
+    accept path validated on the dense MTP suites (``all_gpu_accept_match_cpu``
+    with rare sub-token-level argmax differences vs AR).  ``serial_exact`` is
+    the conservative rollback control that re-runs exact c=1 AR per candidate
+    row; it is token-exact against AR but cannot beat AR decode speed.
+    """
+
+    raw = os.environ.get(_GGUF_MTP_SERVER_VERIFY_MODE_ENV, _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE)
+    mode = str(raw).strip().lower().replace("-", "_")
+    if mode not in {"serial_exact", "native"}:
+        return _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE
+    return mode
+
+
+def _gguf_mtp_server_candidate_budget() -> int:
+    """Return the dense MTP candidate budget for server serving (default 3)."""
+
+    raw = os.environ.get(_GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV, "")
+    if raw is None or str(raw).strip() == "":
+        return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
+    try:
+        budget = int(str(raw).strip())
+    except ValueError:
+        return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
+    if budget not in (1, 2, 3, 4):
+        return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
+    return budget
 
 
 @dataclass(frozen=True)
@@ -1427,6 +1463,28 @@ class Qwen35GGUFBringupGenerator:
 
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
+    @property
+    def supports_default_mtp(self) -> bool:
+        """Whether default-on MTP serving is safe for this model.
+
+        Dense Qwen models can be served through the fast ``native`` verify path
+        (llama.cpp-style; validated ``all_gpu_accept_match_cpu`` with rare
+        sub-token-level argmax differences vs AR) and the token-exact
+        ``serial_exact`` rollback control, so MTP may be enabled by default.
+        MoE MTP can differ from plain AR, so it stays request-opt-in.  The
+        dense serving verify mode/budget are selected by
+        ``HIPENGINE_GGUF_MTP_VERIFY_MODE`` (default ``native``) and
+        ``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`` (default ``3``).
+        """
+
+        if not self.supports_speculative_mtp:
+            return False
+        try:
+            config = qwen35_gguf_config_from_metadata(self.weight_index)
+        except Exception:
+            return False
+        return not bool(config.is_moe)
+
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
         return [output.text for output in outputs]
@@ -2260,6 +2318,9 @@ class Qwen35GGUFBringupGenerator:
             + int(request.max_tokens)
             + 4,
         )
+        stop_request = _request_with_tokenizer_eos(request, self.tokenizer)
+        eos_token_id = getattr(stop_request, "eos_token_id", None)
+        stop_token_ids = tuple(getattr(stop_request, "stop_token_ids", ()) or ())
         with self._resident_session_scope(
             shared_runner=shared_runner,
             pool_name="mtp_target_dense",
@@ -2285,15 +2346,17 @@ class Qwen35GGUFBringupGenerator:
                     decoder = Qwen35GGUFMTPDecodeSession(
                         target,
                         provider,
-                        candidate_budget=2,
+                        candidate_budget=_gguf_mtp_server_candidate_budget(),
                         quant="gguf_q4_k_m",
-                        target_verify_mode="serial_exact",
+                        target_verify_mode=_gguf_mtp_server_target_verify_mode(),
                     )
                     try:
                         result = decoder.generate(
                             prompt_ids,
                             max_new_tokens=int(request.max_tokens),
                             request_id=row_index,
+                            eos_token_id=eos_token_id,
+                            stop_token_ids=stop_token_ids,
                         )
                     finally:
                         decoder.close()
