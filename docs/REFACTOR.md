@@ -3864,3 +3864,15 @@ should be boring.
   root-causing the verify-row count during the D4 B-sweep (the CLI block size
   was being clamped to the drafter config). Remove the env-gated print once the
   B-sweep closeout is merged and no further cycle-timing debugging needs it.
+
+## DFlash2 variable-block forward (DF2_FWD_BS)
+
+- `DF2_FWD_BS` (default unset = config block size 8) runs the native drafter
+  forward/select at a smaller block (e.g. 4 for B3). Measured net loss: on
+  `code_merge_intervals` acceptance drops 3.08 -> 2.86 (-7%, recall@16
+  0.970 -> 0.909) because the drafter's within-block attention is non-causal
+  and needs its full trained block context, while throughput is flat (the
+  forward is launch-bound, not compute-bound: 74ms -> 67ms only). Remove the
+  `DF2_FWD_BS` env branch and the `forward(bs=...)` / `select(rows=...)`
+  plumbing when the B-sweep closeout merges and no smaller-block drafter
+  experiment needs it.
