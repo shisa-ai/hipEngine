@@ -26,6 +26,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from hipengine import LLM, SamplingParams  # noqa: E402
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from hipengine.core.memory import memory_stats  # noqa: E402
 from hipengine.generation import GenerationRequest  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     Qwen35GGUFResidentSession,
@@ -227,6 +228,32 @@ def _expected_hole_group_masks(
 
 def _state_kv_accepted(*, bit_exact: bool, allow_c1_arithmetic_drift: bool) -> bool:
     return bool(bit_exact or allow_c1_arithmetic_drift)
+
+
+def _tracked_memory_recovery(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    before_current = int(before.get("current_allocated_bytes", 0))
+    after_current = int(after.get("current_allocated_bytes", 0))
+    before_active = int(before.get("active_allocations", 0))
+    after_active = int(after.get("active_allocations", 0))
+    return {
+        "scope": "hipengine_tracked_process",
+        "passed": bool(
+            after_current == before_current
+            and after_active == before_active
+        ),
+        "current_allocated_bytes_before": before_current,
+        "current_allocated_bytes_after": after_current,
+        "current_allocated_delta_bytes": after_current - before_current,
+        "active_allocations_before": before_active,
+        "active_allocations_after": after_active,
+        "active_allocation_delta": after_active - before_active,
+        "peak_allocated_bytes": int(after.get("peak_allocated_bytes", 0)),
+        "total_allocated_bytes": int(after.get("total_allocated_bytes", 0)),
+        "total_freed_bytes": int(after.get("total_freed_bytes", 0)),
+    }
 
 
 def _load_quality_gate(
@@ -984,6 +1011,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     f"{list(_resolve_widths())}.",
                     "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints; arithmetic drift remains reported even when an external numerical gate makes byte identity non-binding.",
                     "Same-run state/KV preservation across compaction, ownership, routes, masks, and graph invalidation remain hard requirements.",
+                    "The CLI additionally binds tracked allocator recovery after model teardown.",
                 ],
             }
         finally:
@@ -1024,7 +1052,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    tracked_before = dict(memory_stats())
     payload = run(args)
+    tracked_after = dict(memory_stats())
+    memory = _tracked_memory_recovery(tracked_before, tracked_after)
+    payload["memory"] = memory
+    payload["passed"] = bool(payload["passed"] and memory["passed"])
+    payload["status"] = "passed" if payload["passed"] else "failed"
     command_args = list(sys.argv[1:] if argv is None else argv)
     payload["command"] = shlex.join(
         [sys.executable, "scripts/gguf_arbitrary_c_lifecycle.py", *command_args]
