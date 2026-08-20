@@ -23,6 +23,9 @@ _SYMBOL_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_context_bf16_ba
 _SYMBOL_CONTEXT_BATCH_FIXED256 = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans"
 )
+_SYMBOL_CONTEXT_BATCH_FIXED256_THREADS = (
+    "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans"
+)
 _SYMBOL_CONTEXT_BATCH_C1_EXACT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans"
 _SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans"
@@ -422,6 +425,84 @@ def qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans(
         ctypes.c_int64(num_kv_heads),
         ctypes.c_int64(head_dim),
         ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the fixed256 context-batch body with a runtime block width.
+
+    Production-geometry probe, not a strict variant: ``threads != 256`` changes
+    the warp reduction tree and value accumulation order, so output is not
+    byte-exact versus the 256-thread c1-exact leaf.
+    """
+
+    block_table_len = _check_decode_batch_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_CONTEXT_BATCH_FIXED256_THREADS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_int64(threads),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)

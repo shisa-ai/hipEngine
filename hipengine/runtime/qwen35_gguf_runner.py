@@ -55,6 +55,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
@@ -2074,6 +2075,33 @@ class Qwen35GGUFOneLayerProbe:
         self.close()
 
 
+_GGUF_SHORT_C1_ATTN_THREADS_ENV = "HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS"
+
+
+def _gguf_short_c1_attn_threads(backend: str) -> int:
+    """Resolve the short-context c1 batch-attention block width.
+
+    The exact 256-thread fixed256 leaf is the strict default. A wider block
+    width (production thread-geometry override, e.g. 1024) runs the same body
+    with a split value reduction and a different warp reduction tree, so it is
+    NOT byte-exact; it must pass the execution-profile gate before being
+    promoted via the backend capability. The env var overrides the capability.
+    """
+
+    env = _env_value(_GGUF_SHORT_C1_ATTN_THREADS_ENV)
+    if env is not None:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    default = backend_package_capability(
+        backend, "GGUF_SHORT_C1_BATCH_ATTN_THREADS", None
+    )
+    if default is None:
+        return 256
+    return int(default)
+
+
 @dataclass
 class Qwen35GGUFFullStackRunner:
     """GGUF Qwen3.5 full-stack primitive runner over resident native weights.
@@ -2528,17 +2556,30 @@ class Qwen35GGUFFullStackRunner:
         return fn
 
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
-        """Return the backend's exact short-context batch attention leaf."""
+        """Return the short-context batch attention leaf.
+
+        Defaults to the exact 256-thread fixed256 leaf. A production
+        thread-geometry override (GGUF_SHORT_C1_BATCH_ATTN_THREADS capability
+        or HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS env) selects the same body at a
+        wider block width (non-exact; execution-profile gated).
+        """
 
         missing = object()
         fn = getattr(self, "_gguf_full_attn_decode_short_batch_fn_cache", missing)
         if fn is missing:
-            fn = resolve_paged_attn_decode(
-                backend=self.backend,
-                spans=spans,
-                kind="context_batch",
-                model_quant="w4_paro",
-            )
+            threads = _gguf_short_c1_attn_threads(self.backend)
+            if threads == 256:
+                fn = resolve_paged_attn_decode(
+                    backend=self.backend,
+                    spans=spans,
+                    kind="context_batch",
+                    model_quant="w4_paro",
+                )
+            else:
+                fn = partial(
+                    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
+                    threads=threads,
+                )
             self._gguf_full_attn_decode_short_batch_fn_cache = fn
         return fn
 
