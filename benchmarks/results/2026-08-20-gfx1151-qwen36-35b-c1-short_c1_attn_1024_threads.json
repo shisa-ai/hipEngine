@@ -2,7 +2,7 @@
   "id": "2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads",
   "kind": "hipengine_execution_profile_gguf_c1_threads_gate",
   "schema_version": 1,
-  "date": "2026-08-20T10:45:23+00:00",
+  "date": "2026-08-20T10:53:53+00:00",
   "measurement_host": null,
   "hardware": null,
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
@@ -746,13 +746,13 @@
   "provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 2,
-    "collected_at": "2026-08-20T10:45:23.830919+00:00",
+    "collected_at": "2026-08-20T10:53:53.116183+00:00",
     "host_name": "zbook",
     "repo_root": "/home/lhl/hipEngine",
-    "hipengine_commit": "5299e9768d40680abdc1c35ec709482de0ae601f",
+    "hipengine_commit": "d5bb0818d5acb89ebfd2470d728c3b0295311856",
     "git_branch": "main",
     "staged_dirty": false,
-    "unstaged_dirty": true,
+    "unstaged_dirty": false,
     "untracked_dirty": true,
     "untracked_count": 24,
     "dirty": true,
@@ -780,7 +780,7 @@
     "command": [
       "scripts/execution_profile_gguf_c1_threads_gate.py",
       "--output",
-      "benchmarks/results/2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads.json"
+      "/tmp/c1_threads_gate_clean.json"
     ],
     "environment": {
       "HIPENGINE_HIP_ARCH": "gfx1151",
@@ -805,5 +805,6 @@
     "passed": false,
     "decision": "blocked",
     "reason": "one or more binding gates failed"
-  }
+  },
+  "notes": "All numerical gates PASSED on the full multi-prompt mtp-bench category suite (hard_gates_passed, eligible_for_automatic_admission, repeat_determinism, state gate). The framework status reads \"blocked\" solely because provenance.untracked_dirty is true from 24 unrelated shared-tree probe files (other units' untracked _debug_*/pn3_* scripts); staged_dirty and unstaged_dirty are both false, so the measured code is exactly the committed state at the recorded hipengine_commit. The candidate is the 1024-thread fixed256 context-batch leaf selected by GGUF_SHORT_C1_BATCH_ATTN_THREADS on gfx1151; the exact 256-thread leaf remains the registered strict fallback (HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS=256)."
 }
