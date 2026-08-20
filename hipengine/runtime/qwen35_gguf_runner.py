@@ -5983,7 +5983,11 @@ class Qwen35GGUFFullStackRunner:
             int(cfg.ssm_time_step_rank)
             * int(cfg.ssm_state_size)
             * int(self.ssm_value_dim)
-            * DType.FP32.itemsize
+            * (
+                DType.FP16.itemsize
+                if _gguf_fp16_recurrent_state_enabled()
+                else DType.FP32.itemsize
+            )
         )
         max_state_index = max(int(index) for index in state_indices)
         if min(int(index) for index in state_indices) < 0:
@@ -25821,11 +25825,23 @@ _GDN_DECODE_SEGMENTS_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_segments",
 )
+_GDN_DECODE_SEGMENTS_BF16_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_segments_fp16state",
+)
 _GDN_DECODE_INDEXED_SINGLETON_BF16_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_recurrent_rmsnorm_gate",
     "gguf_qwen35",
     "bf16_indexed_singleton",
+)
+_GDN_DECODE_INDEXED_SINGLETON_BF16_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_indexed_singleton_fp16state",
 )
 _LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY = KernelKey(
     "hip_gfx1100",
@@ -26718,6 +26734,27 @@ def _resolve_gguf_linear_attention_decode_batch_plan(
             False,
         )
     )
+    use_fp16_state = _gguf_fp16_recurrent_state_enabled()
+    indexed_singleton_enabled = bool(
+        backend_package_capability(
+            backend,
+            "GGUF_GDN_INDEXED_SINGLETON_DECODE",
+            False,
+        )
+    )
+    if use_fp16_state:
+        # The fp16-state route keeps the indexed-singleton decode path (same
+        # fast one-token-per-slot kernel) via its fp16-state sibling; the
+        # per-slot recurrent state is half-sized.
+        return _GGUFLinearAttentionDecodeBatchPlan(
+            conv_indexed=_resolve(_LINEAR_ATTN_DECODE_INDEXED_BF16_KEY),
+            gdn_segments=_resolve(_GDN_DECODE_SEGMENTS_BF16_FP16STATE_KEY),
+            gdn_indexed_singleton=(
+                _resolve(_GDN_DECODE_INDEXED_SINGLETON_BF16_FP16STATE_KEY)
+                if indexed_singleton_enabled
+                else None
+            ),
+        )
     return _GGUFLinearAttentionDecodeBatchPlan(
         conv_indexed=_resolve(_LINEAR_ATTN_DECODE_INDEXED_BF16_KEY),
         gdn_segments=_resolve(_GDN_DECODE_SEGMENTS_BF16_KEY),
