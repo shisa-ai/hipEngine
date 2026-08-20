@@ -232,18 +232,27 @@ def test_gguf_ar_physical_widths_default_capability_and_override(
     monkeypatch.delenv(
         "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False
     )
-    # Non-resident default is the advertised (1,2,4,8) set, not the superset.
-    assert qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100") == (1, 2, 4, 8)
-    assert qwen35_gguf._gguf_ar_physical_widths(
-        "hip_gfx1100", use_capability=True
-    ) == (1, 2, 4, 8)
-    # The superset admits direct widths for certification via env override.
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3,4,5,6,7,8"
+    # Promoted default (2026-08-20): direct c3/c5/c6/c7 are advertised.
+    assert qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100") == (
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
     )
     assert qwen35_gguf._gguf_ar_physical_widths(
         "hip_gfx1100", use_capability=True
     ) == (1, 2, 3, 4, 5, 6, 7, 8)
+    # The env override can still narrow/widen for diagnostics.
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,4,8"
+    )
+    assert qwen35_gguf._gguf_ar_physical_widths(
+        "hip_gfx1100", use_capability=True
+    ) == (1, 2, 4, 8)
     # Invalid overrides fail closed.
     monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
     with pytest.raises(RuntimeError, match="sorted registered AR widths"):
@@ -3075,7 +3084,11 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["physical_width_decode_steps"] == {
         "1": 2,
         "2": 2,
+        "3": 0,
         "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
         "8": 0,
     }
     physical_group = {
@@ -3117,7 +3130,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "schema": 1,
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 1,
-        "physical_bucket_widths": [1, 2, 4, 8],
+        "physical_bucket_widths": [1, 2, 3, 4, 5, 6, 7, 8],
         "policy": "occupancy_adaptive_dense_execution",
         "group_count": 1,
         "groups": [{**physical_group, "execution_path": "native_c1_eager"}],
@@ -3270,13 +3283,13 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
 
     assert calls == [
         (tuple(range(100, 108)), 8, tuple(range(8))),
-        (tuple(range(108, 113)), 8, tuple(range(5))),
+        (tuple(range(108, 113)), 5, tuple(range(5))),
     ]
     assert runner._last_physical_group_plan == {
         "schema": 1,
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 13,
-        "physical_bucket_widths": [1, 2, 4, 8],
+        "physical_bucket_widths": [1, 2, 3, 4, 5, 6, 7, 8],
         "policy": "occupancy_adaptive_dense_execution",
         "group_count": 2,
         "groups": [
@@ -3301,12 +3314,12 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
                 "group_count": 2,
                 "physical_slot_base": 8,
                 "physical_slot_extent": 5,
-                "physical_rows": 8,
+                "physical_rows": 5,
                 "active_rows": 5,
                 "request_ids": list(range(108, 113)),
                 "global_slot_indices": list(range(8, 13)),
                 "active_slot_indices": list(range(5)),
-                "active_mask": [True, True, True, True, True, False, False, False],
+                "active_mask": [True, True, True, True, True],
                 "execution_row_mapping": "dense_active_rows",
                 "execution_path": "packed_native",
             },
@@ -3314,7 +3327,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     }
     assert runner._last_execution_manifest["logical_c"] == 13
     assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
-    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
+    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 5
 
 
 def test_gguf_compact_serial_capability_is_artifact_scoped_and_bounded() -> None:
@@ -7128,18 +7141,26 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
 
 
 def test_gfx1100_registers_shared_slot_ar_physical_widths_through_c8() -> None:
-    """Host gate for the c4/c8 shared-slot promotion.
+    """Host gate for the promoted direct-width shared-slot promotion.
 
-    RED until the packed lm-head/state paths at physical c4/c8 pass the
-    byte-exact C2-6 hardware gate on the current source; GREEN once the
-    kernel package registers ``(1, 2, 4, 8)``.
+    GREEN once the kernel package registers ``(1, 2, 3, 4, 5, 6, 7, 8)``
+    (direct c3/c5/c6/c7 promoted after #36 lifecycle certification).
     """
     from hipengine.kernels.backends import backend_package_capability
 
     registered = backend_package_capability(
         "hip_gfx1100", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
     )
-    assert tuple(int(width) for width in registered) == (1, 2, 4, 8)
+    assert tuple(int(width) for width in registered) == (
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    )
 
 
 def test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups(

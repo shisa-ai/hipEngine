@@ -380,7 +380,8 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # steady, masked-lane shrink-sparse, fixed-width graph, and p128/p512
 # state-oracle gates all exact on tokens, Conv/GDN state, live KV, and every
 # layer hidden versus independent c1, with resolution provenance recorded.
-GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 4, 8)
+# Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
+GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
