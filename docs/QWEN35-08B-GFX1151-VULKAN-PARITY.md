@@ -1449,11 +1449,11 @@ the accumulator register budget. Vulkan's same-session reference is
 0.328/0.317 ms, so the routed leaf is within **~14%/10% per mat** after X2a's
 routing repair; the big dense-FFN gap was the tile8x8 route, already fixed.
 
-The kernel stays registered as `pack8_wmma64_prefill_bf16_bf16_out` with its
-correctness fixtures (`tests/test_gguf_q4_k_pack8_wmma64_prefill.py`), but no
-production dispatch selects it (see `docs/REFACTOR.md`). The untested residual
-lever is a wave64 WMMA variant (llama runs subgroup 64); X2 priority moves to
-GDN (X2-K2), the largest remaining matched gap.
+The unrouted wave32 kernel, wrapper, registry key, and dedicated fixture were
+removed in the post-campaign cleanup; this section and its compact artifact
+retain the negative evidence. A future wave64 WMMA design must start as a new
+variant and beat the routed small-tile leaf. X2 priority moved to GDN (X2-K2),
+the largest remaining matched gap.
 
 Artifact:
 [`2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-wmma64-diagnostic.json).

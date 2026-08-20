@@ -190,6 +190,34 @@ from hipengine.kernels.hip_gfx1151 import (
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 
+def test_rejected_unrouted_kernel_bodies_are_absent() -> None:
+    root = Path(__file__).resolve().parents[1]
+    q4_source = (
+        root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip"
+    ).read_text()
+    q4_wrapper = (
+        root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py"
+    ).read_text()
+    laguna_source = (
+        root / "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
+    ).read_text()
+
+    assert "pack8_wmma64_prefill" not in q4_source
+    assert "pack8_wmma64_prefill" not in q4_wrapper
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k",
+            "pack8_wmma64_prefill_bf16_bf16_out",
+        )
+    )
+    assert (
+        "laguna_global_attention_split_exact_gated_mixed32_vstage64_reduce_kernel"
+        not in laguna_source
+    )
+
+
 def test_auto_backend_selects_supported_hip_arches() -> None:
     assert select_backend("auto", detected_arches=["gfx1100"]).backend == "hip_gfx1100"
     assert (

@@ -6035,10 +6035,6 @@ def _q4_pack8_wmma_dispatch(
             "pack8_exact_prefill_tile8x8_bf16_bf16_out",
         )
     ):
-        # D08-X2-K1 note: the LDS-staged 128x64 large-tile consumer
-        # (pack8_wmma64_prefill_bf16_bf16_out) measured at parity-or-worse
-        # versus the small-tile leaf on gfx1151 wave32 (see the retained
-        # screen); it stays registered as a diagnostic and is not routed.
         key = KernelKey(
             dispatch.key.backend,
             dispatch.key.layer,
