@@ -23,6 +23,7 @@ from scripts.gguf_production_load_gate import (
     _poisson_arrival_offsets,
     _rotated_tuning_plan,
     _select_tuning_candidate,
+    _tracked_source_dirty,
 )
 
 
@@ -77,6 +78,27 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
         == "chain_lds32_direct_nonvolatile"
     )
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
+
+
+def test_load_gate_ignores_untracked_files_for_source_cleanliness(
+    tmp_path,
+) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+
+    (repo / "untracked.txt").write_text("shared artifact\n", encoding="utf-8")
+    assert _tracked_source_dirty(repo) is False
+    tracked.write_text("dirty\n", encoding="utf-8")
+    assert _tracked_source_dirty(repo) is True
 
 
 def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:

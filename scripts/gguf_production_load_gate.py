@@ -1666,6 +1666,32 @@ def _llm_construction_kwargs(
     }
 
 
+def _tracked_source_dirty(repo_root: Path) -> bool:
+    """Return tracked staged/unstaged dirtiness without counting shared artifacts."""
+
+    commands = (
+        ("git", "diff", "--quiet", "--ignore-submodules", "--"),
+        ("git", "diff", "--cached", "--quiet", "--ignore-submodules", "--"),
+    )
+    for command in commands:
+        result = subprocess.run(
+            command,
+            cwd=repo_root,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 1:
+            return True
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"source cleanliness check failed ({' '.join(command)}): "
+                f"{result.stderr.strip()}"
+            )
+    return False
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
@@ -1755,11 +1781,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     source_commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True
     ).strip()
-    source_dirty = bool(
-        subprocess.check_output(
-            ["git", "status", "--porcelain"], cwd=REPO_ROOT, text=True
-        ).strip()
-    )
+    source_dirty = _tracked_source_dirty(REPO_ROOT)
     started_at = time.perf_counter()
     tuning_runs: list[dict[str, Any]] = []
     tuning_aggregates: list[dict[str, Any]] = []
