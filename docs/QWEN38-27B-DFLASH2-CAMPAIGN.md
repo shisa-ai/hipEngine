@@ -41,18 +41,23 @@ B3 cycle split (profiler, fox prompt, post-fix): draft 74ms + select 22ms +
 verify 166ms + commit 2ms ≈ 264ms/cycle. **Even if the drafter forward+select
 were zeroed**, B3 = 2.8 tok/0.166s ≈ 16.9 tok/s = 1.26x AR < MTP B3's 1.78x AR;
 reaching MTP B3 at the 166ms verify would need acceptance 3.96/cycle, above
-the B3 cap of 4.0 and the model's per-draft rate on Q4. No operating point can
-reach MTP B3; the Q4-lane acceptance gap is the insurmountable ceiling
-(re-audit 2026-08-19 proved the drafter is not broken: batch == sequential
-acceptance 3.64, recall inside the reference range; the reference 4.80 is the
-BF16/T>0 target). Single clean run per B (all 10 prompts AR-exact),
-artifacts under `benchmarks/results/`.
+the B3 cap of 4.0 and the model's per-draft rate on Q4. No operating point on
+the Q4_K_M/8060S lane can reach MTP B3. **The blocker is this lane's
+verify/draft economics + hipEngine's near-cap MTP, not DFlash2 acceptance**
+(2026-08-19): the re-audit proved the drafter is not broken (batch ==
+sequential acceptance 3.64, recall inside the reference range), and the
+cross-lane comparison shows DFlash2 accept length is roughly lane-stable
+(3.49 Q4 vs 3.88 FP8-BLOCK vs 4.80 BF16 ref) — on FP8-BLOCK / PRO 6000 / vLLM
+DFlash2 **beats MTP3** at c<=16 (see the Economics cross-lane table and
+`~/sm120-tuning/QWEN38-27B.md`). Single clean run per B (all 10 prompts
+AR-exact), artifacts under `benchmarks/results/`.
 Remaining: D5 gfx1100 functional (optional given non-promotion).
 
-The complete quantitative record (acceptance model, per-cycle cost, B-sweep
-optimum, airtight ceiling, lane-bound proof, retained cost reductions) is
-consolidated in the **Economics** section below — the single source for the
-why-DFlash2-cannot-beat-MTP analysis.
+The complete quantitative record (acceptance model incl. the cross-lane
+table, per-cycle cost, B-sweep optimum, lane-specific airtight ceiling,
+hardware-economics proof, retained cost reductions) is consolidated in the
+**Economics** section below — the single source for the why-DFlash2-cannot-
+beat-MTP-on-gfx1151 analysis.
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
@@ -68,6 +73,13 @@ References:
   `dflash/model_mlx.py` is the quantized-target variant.
 - llama.cpp DFlash2 GGUF path: `ggml-org/llama.cpp` PR #27342 and the
   `incoai/Qwen3.8-27B-DFlash2-GGUF:Q4_K_M` drafter weights (comparator lane).
+- **Production cross-lane datapoint (2026-08-19):** `~/sm120-tuning/QWEN38-27B.md`
+  "Correct benchmark" — matched FP8-BLOCK MTP3 vs FP8-BLOCK DFlash2 on PRO 6000
+  (vLLM PR #52816, 262144 ctx, greedy). DFlash2 wins decode/E2E at c<=16
+  (accept length 3.88 vs 3.04; c=1 total 216.6 vs 167.1 tok/s; MTP-Bench decode
+  +36%, E2E -46%); MTP3 wins only at queue-saturated c>=24. This is the
+  evidence that the 8060S Q4 loss is hardware economics, not a drafter defect
+  (see the Economics cross-lane acceptance table).
 - Our DFlash history and verifier/accept/commit infrastructure:
   [`DFLASH.md`](DFLASH.md). Closed Qwen3.8-27B target campaign:
   [`QWEN38-27B-GFX1151-CAMPAIGN.md`](QWEN38-27B-GFX1151-CAMPAIGN.md) (AR
@@ -107,12 +119,35 @@ it.
 
 DFlash2's marginal per-row acceptance **decays with block size** (0.70 @ B3 ->
 0.44 @ B7): larger blocks buy fewer accepted tokens per extra verify row. MTP
-B3 sustains ~0.96/row. The reference's advantage (blog: DFlash2 **4.80** vs
-MTP **4.28**, +12%) is the **BF16 target at T>0**; on the Q4_K_M greedy lane
-DFlash2 is **below** MTP (2.80-3.49 vs 3.85). DFlash2 feeds on the target's
-hidden states (5-tap fc projection), so target quantization degrades it
-disproportionately; MTP only consumes token embeddings. The reference itself
-qualifies this: "for quantized targets use block_size <= 5".
+B3 sustains ~0.96/row.
+
+**Cross-lane acceptance (the key sanity check).** DFlash2's own acceptance is
+**roughly lane-stable** — the Q4 target degrades it only modestly, it does
+*not* erase it. The DFlash2-vs-MTP outcome on a lane is decided more by the
+MTP's strength and the verify/draft economics than by DFlash2's acceptance:
+
+| lane (engine) | DFlash2 accept length (7-deep) | MTP accept length | DFlash2 vs MTP |
+| --- | --- | --- | --- |
+| Q4_K_M / 8060S (hipEngine, greedy) | 3.49 (B7) | 3.85 (MTP B3, near the 4.0 cap) | DFlash2 loses |
+| FP8-BLOCK / PRO 6000 (vLLM, greedy) | **3.88** | 3.04 (MTP3) | **DFlash2 wins** (c<=16) |
+| BF16 ref (blog, T>0) | 4.80 | 4.28 | DFlash2 wins (+12%) |
+
+Sources: hipEngine B-sweep (this campaign); `~/sm120-tuning/QWEN38-27B.md`
+"Correct benchmark" 2026-08-19 (matched vLLM lanes, latency-valid c<=16;
+accept-*length* is the comparison because depth is heterogeneous — DFlash2
+drafts 7-deep vs MTP3 3-deep, so accept *rate* 41% vs 68% is
+apples-to-oranges); blog (BF16 T>0). Cross-engine/protocol caveat: the Q4 and
+FP8 columns are different engines, targets and suites, so exact values are
+not strictly comparable — the ordering and the mechanism are.
+
+Why the ordering flips: on Q4/8060S, hipEngine's MTP B3 sustains ~0.96
+per-row acceptance (near the B3 cap) — a very high bar from the closed
+campaign's extensive MTP tuning — while the APU's O(N^2) verify forces
+DFlash2 to a shallow B3 chain where its acceptance is capped at 2.80. On
+FP8-BLOCK / PRO 6000 the full GPU affords the 7-deep verify, DFlash2's longer
+accept length (3.88) exceeds MTP3's (3.04), and DFlash2 wins decode/E2E. The
+reference's "for quantized targets use block_size <= 5" reflects the mild Q4
+penalty (3.49 vs 4.80), not a collapse.
 
 ### Per-cycle cost model (B3, fox prompt, post-Q6 select)
 
@@ -150,18 +185,27 @@ there is a single interior optimum and it is **B3**:
 2. **Required-acceptance bound:** at the 166ms verify, beating MTP B3
    (23.85 tok/s) would need 23.85 x 0.166 = **3.96 accepted tokens/cycle** —
    above the B3 cap (4.0) and far above the model's per-draft rate on Q4.
-3. **Conclusion:** no operating point on the Q4_K_M/8060S lane can reach MTP
-   B3, regardless of drafter or select cost. The Q4-lane acceptance gap is
-   the insurmountable ceiling, not a kernel-tuning target.
+3. **Conclusion (lane-specific):** no operating point on the Q4_K_M/8060S
+   lane can reach MTP B3, regardless of drafter or select cost. The binding
+   constraint on *this* lane is the APU verify/draft economics forcing a
+   shallow chain, combined with hipEngine's near-cap MTP (3.85) — it is not
+   DFlash2's acceptance being destroyed (see the cross-lane table above).
+   This ceiling does **not** transfer: on FP8-BLOCK / PRO 6000 DFlash2
+   beats MTP3 (3.88 vs 3.04 accept length).
 
-### Why the gap is lane-bound, not a drafter bug
+### Why the 8060S outcome is a hardware-economics result, not a drafter bug
 
 The re-audit proved the drafter is faithful: batch chain-verify == sequential
 per-token verify (acceptance 3.64 == 3.64) and recall@1/@16 sit inside the
 reference's own per-position range (r1 0.763 vs 0.729-0.854, r16 0.947 vs
-0.878-0.995). AR-exact on every run. The gap is the Q4 target erasing the
-acceptance advantage, plus the shared O(N^2) verify and the 5-layer draft
-(~15x MTP's ~5ms head).
+0.878-0.995). AR-exact on every run. On the 8060S lane the disadvantage is
+(a) the O(N^2) verify at APU bandwidth (~166ms @4 rows, ~620ms @8), which
+caps the economical chain at B3, and (b) hipEngine's MTP B3 sitting near the
+acceptance cap — a high bar from the closed campaign's MTP tuning. On a full
+GPU with an affordable deep verify (PRO 6000, FP8-BLOCK) DFlash2's longer
+accept length beats MTP3 (3.88 vs 3.04) and wins decode/E2E at c<=16
+(`~/sm120-tuning/QWEN38-27B.md`, 2026-08-19) — the 8060S loss is a hardware
+economics result, not a drafter defect.
 
 ### Retained cost reductions (honest accounting)
 
@@ -176,13 +220,18 @@ Net effect: DFlash2 B3 0.575x -> 0.66x AR, still ~2.7x below MTP B3. The
 select is no longer a meaningful DFlash2-specific cost (22ms); draft (~74ms)
 + shared verify (166ms) dominate.
 
-### The only path to DFlash2 > MTP
+### Where DFlash2's advantage materializes (and where it cannot)
 
-A **BF16 (non-Q4) target**, where DFlash2's acceptance advantage (4.80 vs
-4.28) actually materializes and per-row acceptance can exceed MTP's — outside
-the closed Q4 lane. On Q4, the requirement is simultaneously (a) acceptance
->= MTP's ~3.85 and (b) drafter cost <= ~5ms; neither is achievable with a
-5-layer parallel-block drafter on quantized hidden states.
+DFlash2's acceptance advantage shows when (a) the target is high-fidelity
+(FP8-BLOCK or BF16 — the 5-tap feed survives) **and** (b) the GPU can afford
+the deep verify that expresses the longer accept length. Both hold on the
+production lane: **FP8-BLOCK / PRO 6000 / vLLM DFlash2 beats MTP3 at c<=16**
+(decode +36%, E2E -46%, accept length 3.88 vs 3.04;
+`~/sm120-tuning/QWEN38-27B.md`). On the Q4_K_M/8060S lane neither holds: the
+APU verify caps the chain at B3 and MTP B3 is near its cap, so DFlash2 loses
+regardless of compute. hipEngine's Q4 lane is therefore not the venue where
+DFlash2's advantage shows; even a cheaper deep verify on this hardware (e.g.
+the reverted rowtile-8) would only reach ~0.5x AR at B7, still below MTP B3.
 
 ### Memory economics (D6)
 
@@ -456,10 +505,13 @@ Rollup: DFlash2 is a rejected/diagnostic lane (not promoted), so per
 `benchmarks/HISTORY.md` and as artifacts under `benchmarks/results/`, with
 the campaign status in this doc and `docs/DFLASH.md`. Root `README.md` is
 a product page and is not touched (no retained claim). The D4 "three runs"
-statistical repeat is deliberately not repeated: the result is decisively
-negative (~3.1x below MTP B3 at the optimum B3) and every row is AR-exact,
-so additional full-suite runs would be a wasteful rerun per `AGENTS.md`;
-B7 has multiple session runs, B3/B5 one clean full-suite run each.
+statistical repeat is deliberately not repeated: on this lane the result is
+decisively negative (~2.7x below MTP B3 at the optimum B3, post-Q6 select)
+and every row is AR-exact, so additional full-suite runs would be a wasteful
+rerun per `AGENTS.md`; B7 has multiple session runs, B3/B5 one clean
+full-suite run each. Lane-scope note: the negative is specific to Q4_K_M /
+8060S economics — see the Economics cross-lane table for the FP8-BLOCK / PRO
+6000 result where DFlash2 beats MTP3.
 
 ## 5. Backend ownership note
 
