@@ -1,0 +1,41 @@
+{
+  "id": "2026-08-20-gfx1151-qwen36-35b-aotriton-prefill-native-retained",
+  "benchmark": "Qwen3.6-35B-A3B-UD-Q4_K_M gfx1151 full-attention prefill: native vs AOTriton crossover + native routing retained",
+  "status": "accepted",
+  "verdict": "retained: gfx1151 routes all full-attention prefill to native (no aotriton crossover; native 2-5% faster on attention slice at every length)",
+  "hardware": "HP ZBook Ultra G1a, Radeon 8060S / gfx1151, ROCm 7.15.0 pinned, 32 GiB MALL, 40 CU",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (40 layers = 30 GDN linear_attention + 10 full_attention; full_attn_query_chunk 4096)",
+  "date": "2026-08-20",
+  "command": "uv run python scripts/pn3_crossover_gfx1151.py; uv run python scripts/pn3_aotriton_ab512.py",
+  "protocol": {
+    "session": "Qwen35GGUFResidentSession(..., prefill_config=PrefillConfig(attn_aotriton_min_tokens=1 [aotriton-forced] | 2**30 [native-forced]), prefill 64-2048 bulk)",
+    "measure": "in-situ device_sync before/after _run_full_attention_prefill_layer_aotriton => serialized full-attn wall (upper bound), 10 full-attention layers",
+    "correctness": "AR-equivalence native vs aotriton at 1024 tok: top1 agree (220=220), KL(aot||nat)=0.040; run-noise floor KL(nat||nat)=0.034, KL(nat||aot)=0.046 both < 0.05 gate",
+    "tests": "test_qwen35_gguf_chunked_prefill.py (4), test_aotriton_discovery.py (11), test_qwen35_gguf_aotriton_stream.py + test_gguf_sh_m1_screen.py (9) all pass; test_qwen35_gguf_full_attention_gpu.py 2 failures PRE-EXISTING (validation-helper scratch cos_table=None, confirmed by stash at ea88129cc)"
+  },
+  "crossover_serialized_per_layer_ms": {
+    "64": {"aotriton": 15.10, "native": 14.30, "native_pct": -5.3},
+    "128": {"aotriton": 28.64, "native": 28.00, "native_pct": -2.2},
+    "256": {"aotriton": 55.84, "native": 53.88, "native_pct": -3.5},
+    "512": {"aotriton": 108.95, "native": 103.98, "native_pct": -4.6},
+    "1024": {"aotriton": 213.50, "native": 206.63, "native_pct": -3.2},
+    "2048": {"aotriton": 431.48, "native": 416.96, "native_pct": -3.4}
+  },
+  "whole_prefill_512_ab": {
+    "aotriton_ms": [4570, 4458, 4406],
+    "native_ms": [4424, 4440, 4385],
+    "median_aotriton_ms": 4458,
+    "median_native_ms": 4424,
+    "delta_ms": -34,
+    "delta_pct": -0.8,
+    "note": "whole-prefill delta small/noisy (run spread ~2.5%); the isolated attention-slice signal is consistent (native 2-5% faster at every length, never slower)"
+  },
+  "change": {
+    "file": "hipengine/kernels/hip_gfx1151/__init__.py",
+    "capability": "GGUF_AOTRITON_PREFILL = False (gfx1100 undefined -> default True, unchanged)",
+    "policy": "_gguf_aotriton_prefill_allowed(backend) consulted in the use_aotriton gate of _run_full_attention_prefill_layer_aotriton; HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE overrides",
+    "exactness": "same native causal_gqa_gate_bf16 kernel already validated below the 512 threshold; gfx1151 now uses it at all lengths"
+  },
+  "reason": "Measured on the 8060S: the native causal_gqa_gate_bf16 prefill kernel is ~2-5% faster on the serialized full-attention slice at every prefill length 64-2048 with no crossover, and drops the aotriton wrapper overhead (bf16 query conversion, head-major KV copy, stream bridge). AOTriton's tiled flash is tuned for larger GPUs (gfx1100 96 CU / 48 MiB MALL); on the 40-CU 8060S native wins. Routing is exact (same validated kernel), correctness-neutral (KL 0.046 vs 0.034 noise floor), and never slower. gfx1100 keeps the measured 512-crossover policy.",
+  "next": "P3-FULLATTN: the native causal_gqa_gate_bf16 scan kernel itself (non-tiled) is the remaining prefill-attention lever; laguna_flash_attention_prefill (tiled WMMA) is registered but not wired into the GGUF path."
+}

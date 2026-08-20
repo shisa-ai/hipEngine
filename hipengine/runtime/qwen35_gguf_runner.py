@@ -3777,7 +3777,11 @@ class Qwen35GGUFFullStackRunner:
         if threshold < 0:
             raise ValueError("aotriton_min_tokens must be non-negative")
         use_aotriton = bool(
-            allow_aotriton and not direct_hadamard_int8 and threshold > 0 and rows >= threshold
+            allow_aotriton
+            and not direct_hadamard_int8
+            and threshold > 0
+            and rows >= threshold
+            and _gguf_aotriton_prefill_allowed(self.backend)
         )
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
@@ -9686,6 +9690,7 @@ class Qwen35GGUFFullStackRunner:
 
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
+_GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
     "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
@@ -10603,6 +10608,23 @@ def _gguf_aotriton_head_major_kv_enabled(backend: str) -> bool:
             "GGUF_AOTRITON_HEAD_MAJOR_KV",
             False,
         )
+    )
+
+
+def _gguf_aotriton_prefill_allowed(backend: str) -> bool:
+    """Whether AOTriton may serve GGUF full-attention prefill for this backend.
+
+    gfx1151 sets ``GGUF_AOTRITON_PREFILL = False`` (native
+    ``causal_gqa_gate_bf16`` measured ~2-5% faster at every prefill length
+    64-2048, no crossover, on the 8060S). gfx1100 leaves it undefined -> the
+    default ``True`` keeps the measured 512-crossover threshold policy.
+    ``HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE`` overrides either default.
+    """
+
+    if _env_value(_GGUF_AOTRITON_PREFILL_ENABLE_ENV) is not None:
+        return _env_flag(_GGUF_AOTRITON_PREFILL_ENABLE_ENV, True)
+    return bool(
+        backend_package_capability(backend, "GGUF_AOTRITON_PREFILL", True)
     )
 
 

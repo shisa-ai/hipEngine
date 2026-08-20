@@ -836,6 +836,14 @@ GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
 # AOTriton. Runtime capacity remains capped at the validated 64K allocation
 # class, and env=0 or any allocation denial restores strided AOTriton exactly.
 GGUF_AOTRITON_HEAD_MAJOR_KV = True
+# Measured 2026-08-20 (35B-A3B, 8060S): the native causal_gqa_gate_bf16 prefill
+# kernel beats AOTriton v3 at every prefill length (64/128/256/512/1024/2048),
+# ~2-5% faster on the serialized full-attention slice, never slower, with no
+# crossover. AOTriton is tuned for larger GPUs (gfx1100's 96 CU / 48 MiB MALL);
+# on the 40-CU 8060S the simpler native scan wins and drops the aotriton
+# wrapper overhead (bf16 conversion, head-major KV copy, stream bridge).
+# Native is the exact same kernel already validated below the 512 threshold.
+GGUF_AOTRITON_PREFILL = False
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -2124,6 +2132,7 @@ register_backend_kernels = register_gfx1151_kernels
 __all__ = [
     "BACKEND",
     "GGUF_AOTRITON_HEAD_MAJOR_KV",
+    "GGUF_AOTRITON_PREFILL",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",

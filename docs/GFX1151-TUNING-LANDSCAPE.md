@@ -103,10 +103,23 @@ full-attention layers (v3 flash-attn via `aotriton_wrap`); below the
   saves ~0.5 s of a 4.4 s prefill, and prefill is ~25% of an end-to-end
   512+512 run.
 
-So "beating aotriton" is a bounded prefill lever; the larger attention lever on
-gfx1151 is the **native decode** path (P3-FULLATTN, full-attention
-paged_attn_decode ~2.4 ms/tok of the 26 ms decode wall), where there is no
-aotriton to beat.
+**Measured crossover on gfx1151 (2026-08-20, retained): NO aotriton crossover —
+native wins at every prefill length 64-2048 (~2-5% faster on the serialized
+full-attention slice, never slower).** AOTriton's tiled flash is tuned for
+larger GPUs (gfx1100's 96 CU / 48 MiB MALL); on the 40-CU 8060S the native
+`causal_gqa_gate_bf16` scan wins and drops the aotriton wrapper overhead (bf16
+query conversion, head-major KV copy, stream bridge). Retained: gfx1151 routes
+all full-attention prefill to native via `GGUF_AOTRITON_PREFILL = False`
+(backend capability, env `HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE` override);
+gfx1100 keeps the measured 512-crossover policy unchanged. Correctness-neutral
+(KL 0.046 native-vs-aotriton vs 0.034 run-noise floor at 1024 tok, top-1
+agree). Benchmark suites (56-214 tok) ran native before and after. Artifact:
+`benchmarks/results/2026-08-20-gfx1151-qwen36-35b-aotriton-prefill-native-retained.json`.
+
+So "beating aotriton" is settled for gfx1151 (native routed; bounded ~3-4%
+whole-prefill at >=512, exact) and the remaining attention lever is the native
+kernel itself (P3-FULLATTN, prefill scan + decode paged_attn_decode
+~2.4 ms/tok), not aotriton-vs-native.
 
 ## Ranked non-overlapping candidates
 
