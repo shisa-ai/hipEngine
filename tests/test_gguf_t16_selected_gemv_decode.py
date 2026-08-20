@@ -872,7 +872,16 @@ def _run_pack8_dual_rowtile_silu(
             free(buffer)
 
 
-@pytest.mark.parametrize("rows", [2, 3, 4])
+def _pack8_rowtile_chunks(rows: int) -> tuple[int, ...]:
+    """Compose the retained 2-4-row pack8 oracle without a one-row tail."""
+
+    if rows <= 4:
+        return (rows,)
+    first = 3 if rows == 5 else 4
+    return (first, rows - first)
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     rows: int,
     t16_selected_library,
@@ -891,11 +900,18 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
     tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
 
-    single_control = _run_pack8_single(
-        x_bf16,
-        packed_a,
-        out_features,
-        q4_library,
+    chunks = _pack8_rowtile_chunks(rows)
+    single_control = np.concatenate(
+        [
+            _run_pack8_single(
+                chunk,
+                packed_a,
+                out_features,
+                q4_library,
+            )
+            for chunk in np.split(x_bf16, np.cumsum(chunks)[:-1])
+        ],
+        axis=0,
     )
     single_actual = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
@@ -905,12 +921,18 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         np.uint16,
         t16_selected_library,
     )
-    dual_control = _run_pack8_dual_rowtile_silu(
-        x_bf16,
-        packed_a,
-        packed_b,
-        out_features,
-        q4_library,
+    dual_control = np.concatenate(
+        [
+            _run_pack8_dual_rowtile_silu(
+                chunk,
+                packed_a,
+                packed_b,
+                out_features,
+                q4_library,
+            )
+            for chunk in np.split(x_bf16, np.cumsum(chunks)[:-1])
+        ],
+        axis=0,
     )
     dual_actual = _run_dense_dual_silu(
         x_bf16,
@@ -921,17 +943,22 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         t16_selected_library,
         fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     )
-    single_col4 = _run_dense_single(
-        gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
-        x_bf16,
-        tiles_a,
-        out_features,
-        np.uint16,
-        t16_selected_library,
+    single_col4 = (
+        _run_dense_single(
+            gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
+            x_bf16,
+            tiles_a,
+            out_features,
+            np.uint16,
+            t16_selected_library,
+        )
+        if rows <= 4
+        else None
     )
     np.testing.assert_array_equal(single_actual, single_control)
     np.testing.assert_array_equal(dual_actual, dual_control)
-    np.testing.assert_array_equal(single_col4, single_control)
+    if single_col4 is not None:
+        np.testing.assert_array_equal(single_col4, single_control)
     expected_single = gguf_quant_gemv(
         _bf16_u16_to_f32(x_bf16),
         raw_a,
@@ -1679,11 +1706,15 @@ def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
 
 
 def test_p9_h3d_wrappers_validate_args() -> None:
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
-            0, 0, 0, 0, 5, 256, 16
+            0, 0, 0, 0, 9, 256, 16
+        )
+    with pytest.raises(ValueError, match="rows in 2..4"):
+        gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
+            0, 0, 0, 5, 256, 16
         )
     with pytest.raises(ValueError, match="rows in 2..4"):
         gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
