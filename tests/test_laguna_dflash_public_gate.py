@@ -8,6 +8,7 @@ import pytest
 
 from scripts.laguna_dflash_public_gate import (
     _blocking_result,
+    _capability_checks,
     _load_ar_oracle,
     _prompt_checks,
     _public_ids_until_stop,
@@ -77,7 +78,10 @@ def test_public_response_parsers_require_exact_cumulative_ids() -> None:
                             "decode_state": {
                                 "execution_path": "laguna_dflash_b4_c1"
                             },
-                            "diagnostics": {"provider": "dflash"},
+                            "diagnostics": {
+                                "provider": "dflash",
+                                "target_iq3_selected_down_tile": 4,
+                            },
                         },
                     }
                 ],
@@ -96,7 +100,7 @@ def test_public_response_parsers_require_exact_cumulative_ids() -> None:
                 '"finish_details":{"reason":"length"},"hipengine":{'
                 '"generated_token_ids":[10,11],"decode_state":{'
                 '"execution_path":"laguna_dflash_b4_c1"},"diagnostics":{'
-                '"provider":"dflash"}}}]}\n\ndata: [DONE]\n\n'
+                '"provider":"dflash","target_iq3_selected_down_tile":4}}}]}\n\ndata: [DONE]\n\n'
             ),
         )
     )
@@ -106,6 +110,43 @@ def test_public_response_parsers_require_exact_cumulative_ids() -> None:
     assert stream["text"] == "AB"
     assert stream["generated_ids"] == (10, 11)
     assert stream["done"] is True
+
+
+def test_capability_gate_requires_dflash_iq3_tile4() -> None:
+    payload = {
+        "sampling": {
+            "speculative": {
+                "serving_route": True,
+                "configured": True,
+                "provider": "dflash",
+                "configured_provider": "dflash",
+                "request_field": "speculative",
+                "policy": "explicit_only",
+                "default_enabled": False,
+                "streaming_compatible": True,
+                "candidate_budget": 4,
+                "exactness_mode": "target_corrected_greedy",
+                "processed_target_verification": False,
+                "target": {
+                    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+                    "iq3_selected_down_tile": 4,
+                },
+                "drafter": {
+                    "sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4",
+                    "revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+                },
+                "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+                "economics_evidence": "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json",
+                "performance_claim": False,
+            }
+        }
+    }
+
+    checks = _capability_checks(payload)
+
+    assert all(checks.values())
+    payload["sampling"]["speculative"]["target"]["iq3_selected_down_tile"] = 1
+    assert not _capability_checks(payload)["target_iq3_selected_down_tile"]
 
 
 def _reset_state(owner_id: int = 1) -> dict:
@@ -134,11 +175,13 @@ def test_prompt_gate_requires_ar_block_stream_state_and_route_equality() -> None
             "text": "AB",
             "generation_shape": {"route": "speculative"},
             "execution_path": "laguna_dflash_b4_c1",
+            "diagnostics": {"target_iq3_selected_down_tile": 4},
         },
         streaming={
             "generated_ids": (10, 11),
             "text": "AB",
             "execution_path": "laguna_dflash_b4_c1",
+            "diagnostics": {"target_iq3_selected_down_tile": 4},
             "done": True,
         },
         state_after_blocking=state,
