@@ -43,6 +43,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_segments_wave32_f32,
     qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32,
     qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
+    qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32,
+    qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state,
     qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile32_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_tile64_f32,
@@ -255,6 +258,18 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert (
         plan.recurrent_compact_peer_wave32
         is qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32
+    )
+    assert (
+        plan.recurrent_compact_peer_wave32_fp16state
+        is qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state
+    )
+    assert (
+        plan.recurrent_compact_segments_peer_wave32
+        is qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32
+    )
+    assert (
+        plan.recurrent_compact_segments_peer_wave32_fp16state
+        is qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state
     )
     assert plan.has_chain_compact_peer_wave32
     assert plan.auto_mode == "chain_compact_peer_wave32"
@@ -797,6 +812,57 @@ def test_run_gdn_prefill_explicit_compact_peer_route_uses_compact_abi(
     recurrent_args = calls[1][1]
     assert prepare_args[5:10] == (0xD0, 0xD1, 0xD2, 0xD3, 0xD4)
     assert recurrent_args[7:12] == (64, 4, 32, 128, 128)
+
+
+def test_run_gdn_prefill_compact_peer_segments_use_indexed_state_abi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_compact_peer_wave32"
+    )
+    runner = _new_runner()
+    calls: list[tuple[str, object]] = []
+    runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
+        prepare=_recorder(calls, "prepare"),
+        recurrent=_recorder(calls, "recurrent_k2"),
+        recurrent_segments=_recorder(calls, "recurrent_segments_k2"),
+        rmsnorm_gate=_recorder(calls, "rmsnorm_gate"),
+        fused_decode_order=_recorder(calls, "fused_decode_order"),
+        prepare_compact_peer_normalized=_recorder(calls, "compact_peer_prepare"),
+        recurrent_compact_peer_wave32=_recorder(calls, "compact_peer_wave32"),
+        recurrent_compact_segments_peer_wave32=_recorder(
+            calls, "compact_peer_segments"
+        ),
+    )
+    scratch = _make_scratch()
+    scratch.gdn_active_segments = 2
+
+    runner._run_gdn_prefill(
+        layer=_make_layer(),
+        scratch=scratch,
+        cfg=_make_cfg(),
+        rows=7,
+        recurrent_state=SimpleNamespace(ptr=0xDEAD0001),
+        stream=7,
+        runtime="runtime-sentinel",
+    )
+
+    assert [name for name, _ in calls] == [
+        "compact_peer_prepare",
+        "compact_peer_segments",
+        "rmsnorm_gate",
+    ]
+    recurrent_args = calls[1][1]
+    assert recurrent_args[7:15] == (
+        0xF0,
+        0xF1,
+        7,
+        2,
+        4,
+        32,
+        128,
+        128,
+    )
 
 
 def test_run_gdn_prefill_chunks_compact_peer_recurrence_with_state_carry(

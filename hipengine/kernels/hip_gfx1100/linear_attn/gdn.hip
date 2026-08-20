@@ -3212,6 +3212,100 @@ __global__ void qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kerne
 }
 
 template <typename state_t = float>
+__global__ void qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    state_t* recurrent_state,
+    float* __restrict__ out,
+    const int32_t* __restrict__ cu_seqlens,
+    const int64_t* __restrict__ state_indices,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  constexpr int kWaveWidth = 32;
+  constexpr int kHeadKDim = 128;
+  constexpr int kRowsPerLane = kHeadKDim / kWaveWidth;
+  const int wave = static_cast<int>(threadIdx.x) / kWaveWidth;
+  const int lane = static_cast<int>(threadIdx.x) & (kWaveWidth - 1);
+  const int waves_per_block = static_cast<int>(blockDim.x) / kWaveWidth;
+  const int64_t segment = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.z) * waves_per_block + wave;
+  if (segment >= segments || v_head >= num_v_heads || value_idx >= head_v_dim) {
+    return;
+  }
+  const int64_t start = static_cast<int64_t>(cu_seqlens[segment]);
+  const int64_t end = static_cast<int64_t>(cu_seqlens[segment + 1]);
+  if (end <= start) {
+    return;
+  }
+  const int64_t state_slot = state_indices[segment];
+  const int64_t k_head =
+      qwen35_gdn_k_head_from_v_head(v_head, num_k_heads, num_v_heads);
+  const int64_t state_stride = num_v_heads * kHeadKDim * head_v_dim;
+  const int64_t state_col =
+      state_slot * state_stride + v_head * kHeadKDim * head_v_dim + value_idx;
+  float state_shard[kRowsPerLane];
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    state_shard[row] = gdn_state_read_qwen35(
+        recurrent_state, state_col + static_cast<int64_t>(idx) * head_v_dim);
+  }
+
+  for (int64_t token = start; token < end; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t qk_base = (token * num_k_heads + k_head) * kHeadKDim;
+    const float decay_value = decay[head_offset];
+    float q_reg[kRowsPerLane];
+    float k_reg[kRowsPerLane];
+    float kv_shard = 0.0f;
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      const int idx = row * kWaveWidth + lane;
+      k_reg[row] = key[qk_base + idx];
+      q_reg[row] = query[qk_base + idx];
+      kv_shard += state_shard[row] * k_reg[row];
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      kv_shard += __shfl_xor(kv_shard, offset, kWaveWidth);
+    }
+    const float delta =
+        (value[head_offset * head_v_dim + value_idx] - decay_value * kv_shard) *
+        beta[head_offset];
+    float attn_partial = 0.0f;
+#pragma unroll
+    for (int row = 0; row < kRowsPerLane; ++row) {
+      state_shard[row] =
+          decay_value * state_shard[row] + k_reg[row] * delta;
+      attn_partial += state_shard[row] * q_reg[row];
+    }
+#pragma unroll
+    for (int offset = kWaveWidth / 2; offset > 0; offset >>= 1) {
+      attn_partial += __shfl_xor(attn_partial, offset, kWaveWidth);
+    }
+    if (lane == 0) {
+      constexpr float kOutputScale = 0.08838834764831845f;
+      out[head_offset * head_v_dim + value_idx] = attn_partial * kOutputScale;
+    }
+  }
+
+#pragma unroll
+  for (int row = 0; row < kRowsPerLane; ++row) {
+    const int idx = row * kWaveWidth + lane;
+    gdn_state_write_qwen35(
+        recurrent_state, state_col + static_cast<int64_t>(idx) * head_v_dim,
+        state_shard[row]);
+  }
+}
+
+template <typename state_t = float>
 __global__ void qwen35_gdn_prefill_recurrent_normalized_wave32_xor_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -7086,6 +7180,110 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_
       recurrent_state,
       out,
       tokens,
+      num_k_heads,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_k_heads <= 0 ||
+      num_v_heads <= 0 || (num_v_heads % num_k_heads) != 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128 ||
+      cu_seqlens == nullptr || state_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 128;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<
+          float>),
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
+      num_k_heads,
+      num_v_heads,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    half_t* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || num_k_heads <= 0 ||
+      num_v_heads <= 0 || (num_v_heads % num_k_heads) != 0 ||
+      head_k_dim != 128 || head_v_dim <= 0 || head_v_dim > 128 ||
+      cu_seqlens == nullptr || state_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int kThreads = 128;
+  constexpr int kWavesPerBlock = kThreads / 32;
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<
+          half_t>),
+      dim3(
+          static_cast<unsigned int>(segments),
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(
+              (head_v_dim + kWavesPerBlock - 1) / kWavesPerBlock)),
+      dim3(kThreads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
       num_k_heads,
       num_v_heads,
       head_v_dim);

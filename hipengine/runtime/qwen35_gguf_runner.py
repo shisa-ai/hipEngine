@@ -167,7 +167,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
-    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
@@ -2804,11 +2803,25 @@ class Qwen35GGUFFullStackRunner:
         elif mode == "chain_compact_peer_wave32":
             normalized_prepare = plan.prepare_compact_peer_normalized
             normalized_recurrent = (
-                _gdn_prefill_recurrent_kernel(self.fp16_recurrent_state)
+                plan.recurrent_compact_peer_wave32_fp16state
                 if self.fp16_recurrent_state
                 else plan.recurrent_compact_peer_wave32
             )
-            normalized_recurrent_segments = None
+            normalized_recurrent_segments = (
+                plan.recurrent_compact_segments_peer_wave32_fp16state
+                if self.fp16_recurrent_state
+                else plan.recurrent_compact_segments_peer_wave32
+            )
+            needs_segmented = int(getattr(scratch, "gdn_active_segments", 1)) > 1
+            if normalized_recurrent is None or (
+                needs_segmented and normalized_recurrent_segments is None
+            ):
+                state_name = "FP16" if self.fp16_recurrent_state else "FP32"
+                required = "single/segmented" if needs_segmented else "single"
+                raise RuntimeError(
+                    "compact-peer GDN prefill is missing its registered "
+                    f"{state_name} {required} recurrence"
+                )
         elif mode == "chain_peer_cluster8":
             normalized_prepare = plan.prepare_peer_normalized
             normalized_recurrent = plan.recurrent_peer_cluster8
@@ -3176,13 +3189,19 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
             segment_threshold = _gguf_gdn_prefill_segment_threshold()
+            active_segments = int(getattr(scratch, "gdn_active_segments", 1))
             use_segments = (
                 normalized_recurrent_segments is not None
-                and rows >= segment_threshold
+                and (active_segments > 1 or rows >= segment_threshold)
                 and getattr(scratch, "gdn_cu_seqlens", None) is not None
                 and getattr(scratch, "gdn_state_indices", None) is not None
             )
             if use_segments:
+                recurrent_segment_shape = (
+                    (cfg.ssm_group_count, cfg.ssm_time_step_rank)
+                    if mode == "chain_compact_peer_wave32"
+                    else (cfg.ssm_time_step_rank,)
+                )
                 normalized_recurrent_segments(
                     scratch.prefill_query.ptr,
                     scratch.prefill_key.ptr,
@@ -3194,8 +3213,8 @@ class Qwen35GGUFFullStackRunner:
                     scratch.gdn_cu_seqlens.ptr,
                     scratch.gdn_state_indices.ptr,
                     rows,
-                    1,
-                    cfg.ssm_time_step_rank,
+                    active_segments,
+                    *recurrent_segment_shape,
                     cfg.ssm_state_size,
                     self.ssm_value_dim,
                     stream=stream,
@@ -7421,7 +7440,11 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder.mark(
                 f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv"
             )
-        if active_segments > 1:
+        compact_segmented = (
+            getattr(scratch, "gdn_effective_mode", None)
+            == "chain_compact_peer_wave32"
+        )
+        if active_segments > 1 and not compact_segmented:
             _gdn_decode_order_segments_inplace_kernel(
                 self.fp16_recurrent_state
             )(
@@ -11450,23 +11473,6 @@ def _gdn_decode_segments_kernel(use_fp16_state: bool | None = None):
         qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
         if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
-    )
-
-
-def _gdn_prefill_recurrent_kernel(use_fp16_state: bool | None = None):
-    """Return the compact peer-wave32 recurrence with fp16-state storage.
-
-    This is the prefill writer for the gfx1100/gfx1151 Q4_K_S production route
-    (``chain_compact_peer_wave32``).  Under ``HIPENGINE_GGUF_FP16_RECURRENT_STATE``
-    the recurrent-state buffer is half-sized, so the FP32-state ``xor_f32``
-    writer would overflow it; the fp16-state variant is required instead.  The
-    FP32-state wrapper remains the registered strict fallback.
-    """
-
-    return (
-        qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else None
     )
 
 
@@ -26061,6 +26067,24 @@ _GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY = KernelKey(
     "gguf_qwen35",
     "f32_compact_normalized_wave32_xor",
 )
+_GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_compact_normalized_wave32_xor_fp16state",
+)
+_GDN_PREFILL_RECURRENT_COMPACT_SEGMENTS_PEER_WAVE32_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_compact_normalized_segments_wave32_xor",
+)
+_GDN_PREFILL_RECURRENT_COMPACT_SEGMENTS_PEER_WAVE32_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_prefill_recurrent",
+    "gguf_qwen35",
+    "f32_compact_normalized_segments_wave32_xor_fp16state",
+)
 _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY = KernelKey(
     "hip_gfx1100",
     "gdn_prefill_recurrent",
@@ -26234,6 +26258,9 @@ class _GGUFGDNPrefillPlan:
     recurrent_segments_wave32_tree: object | None = None
     recurrent_peer_wave32: object | None = None
     recurrent_compact_peer_wave32: object | None = None
+    recurrent_compact_peer_wave32_fp16state: object | None = None
+    recurrent_compact_segments_peer_wave32: object | None = None
+    recurrent_compact_segments_peer_wave32_fp16state: object | None = None
     recurrent_segments_peer_wave32: object | None = None
     recurrent_peer_cluster8: object | None = None
     recurrent_segments_peer_cluster8: object | None = None
@@ -26865,6 +26892,15 @@ def _resolve_gguf_gdn_prefill_plan(
         recurrent_peer_wave32=_resolve(_GDN_PREFILL_RECURRENT_PEER_WAVE32_KEY),
         recurrent_compact_peer_wave32=_resolve(
             _GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_KEY
+        ),
+        recurrent_compact_peer_wave32_fp16state=_resolve(
+            _GDN_PREFILL_RECURRENT_COMPACT_PEER_WAVE32_FP16STATE_KEY
+        ),
+        recurrent_compact_segments_peer_wave32=_resolve(
+            _GDN_PREFILL_RECURRENT_COMPACT_SEGMENTS_PEER_WAVE32_KEY
+        ),
+        recurrent_compact_segments_peer_wave32_fp16state=_resolve(
+            _GDN_PREFILL_RECURRENT_COMPACT_SEGMENTS_PEER_WAVE32_FP16STATE_KEY
         ),
         recurrent_segments_peer_wave32=_resolve(
             _GDN_PREFILL_RECURRENT_SEGMENTS_PEER_WAVE32_KEY

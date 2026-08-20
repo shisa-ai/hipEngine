@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_fp16_state_packed_prefill_audit",
+  "created_at": "2026-08-20T15:05:00Z",
+  "status": "repair_screen_passed_full_gate_pending",
+  "performance_claim": false,
+  "hardware": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI Max+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv": "bf16"
+  },
+  "pre_repair_gate": {
+    "commit": "b211201a1912ae2b2d5341d2f8983ac873b2f22f",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 python3 scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --decode-steps 24 --repeat-runs 3 --long-prompt-tokens 512 --long-decode-steps 8 --isolation-decode-steps 8 --compiler-version-file /tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt --require-cached-build --json /tmp/fp16_state_batch_gate_full.json",
+    "measurement_valid": true,
+    "rows": 1170,
+    "global": {
+      "kl_mean": 0.00012301206086068987,
+      "kl_p95": 0.0005240078382044893,
+      "kl_p99": 0.0015951489801984567,
+      "kl_max": 0.012155905089599548,
+      "top1_agreement": 0.9957264957264957
+    },
+    "repeat_deterministic": true,
+    "neighbor_and_permutation_isolation": true,
+    "indexed_decode_manifest_gate": true,
+    "hard_gate_passed": false,
+    "binding_scope_failures": [
+      "shape:c4_prefill top1=0.909091",
+      "shape:c8_prefill top1=0.961538",
+      "transition:prefill_to_c4 top1=0.944444",
+      "transition:prefill_to_c8 top1=0.961538",
+      "transition:prefill_to_sparse_c8 top1=0.75"
+    ],
+    "root_cause": "Packed c>N bypassed chain_compact_peer_wave32 and used the decode-order segmented fallback. FP16 state was loaded/stored globally and rounded every prompt token, unlike the c1 production recurrence that keeps FP32 state in registers and converts only at chunk boundaries.",
+    "raw_json_sha256": "b512fc2cce1764e823a395af1794f331f015b431a2443704e241ce7c445d70fb"
+  },
+  "repair": {
+    "mechanism": "Registered compact normalized-segments wave32-XOR siblings for FP32 and FP16 state; one wave32 owns each indexed value column, holds four state rows/lane in FP32 registers across the segment, and stores to the declared state dtype only at the packed chunk boundary.",
+    "strict_fallback": "f32_compact_normalized_segments_wave32_xor",
+    "production_variant": "f32_compact_normalized_segments_wave32_xor_fp16state",
+    "red": "FP32 and FP16-state two-segment indexed fixtures match independent host compact-peer replay at rtol/atol=1e-3; focused GDN/routing bundle 71 passed; real Qwen3.8 c2 packed-vs-scalar prefill+decode passes with and without FP16 state.",
+    "kernel_trace": {
+      "kernel_name": "qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<_Float16>",
+      "duration_ns": 32341,
+      "grid": [256, 8, 8],
+      "workgroup": [128, 1, 1],
+      "vgpr_count": 40,
+      "sgpr_count": 128,
+      "scratch_size": 0,
+      "raw_csv_sha256": "cb8d3ab432a95061d46fcfb917c157e5294440286966099d574b050256e48298"
+    }
+  },
+  "dirty_screen": {
+    "protocol": "Actual p512 production route, configurations c4/native_c8, one prefill and one decode step per state dtype; cached builds. Directional screen only because the repair was uncommitted.",
+    "old_same_session_prefill_tok_s_aggregate": {
+      "fp32": {"c4": 193.83749940331336, "native_c8": 165.1946100555628},
+      "fp16": {"c4": 232.55581022770104, "native_c8": 204.95699614705532}
+    },
+    "repaired_prefill_tok_s_aggregate": {
+      "fp32": {"c4": 302.0756964071831, "native_c8": 245.72048186049832},
+      "fp16": {"c4": 307.9830646195784, "native_c8": 254.44322340791769}
+    },
+    "repair_delta_pct": {
+      "fp32": {"c4": 55.84, "native_c8": 48.75},
+      "fp16": {"c4": 32.43, "native_c8": 24.14}
+    },
+    "fp16_vs_fp32_after_repair_pct": {"c4": 1.96, "native_c8": 3.55},
+    "fp32_raw_sha256": "adc211a9194232d0d8b7f1118294dd5dff44",
+    "fp16_raw_sha256": "3e62d514a7050fc7a0139d5475b1c8e3e57ced05454a48256e933b41f4a09d85",
+    "note": "Directional only. Retained performance evidence requires a clean repeated rerun."
+  },
+  "decision": "Keep the repair through the clean full packed quality gate and repeated A/B. The pre-repair c>N route is numerically rejected despite a passing global average; decode/isolation were sound, but binding prefill scopes failed."
+}

@@ -138,9 +138,15 @@ exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
 head and carries one recurrent state across at most 1,024 rows per launch. The
 strict route stores that state as FP32; the Q4_K_S R2 production experiment may
 store it as FP16 while retaining FP32 register accumulation and an FP32 strict
-fallback. The FP16 route remains opt-in pending its complete c>N dynamic and
-serving packet. Prepare and RMSNorm still cover the complete prefill once. This
-chunk is required because unchunked 4K loses 8.26% to direct LDS32, while the
+fallback. Packed c>N prefill uses the registered compact normalized-segments
+sibling: one wave32 keeps four state rows per lane in FP32 registers for each
+indexed slot and performs only the declared state-store conversion at a packed
+chunk boundary. The FP32 compact sibling is the registered strict-storage
+fallback; the older decode-order segmented writer remains a generic diagnostic
+fallback, not the Q4_K_S compact-peer production owner. The
+FP16 route remains opt-in pending its complete c>N dynamic and serving packet.
+Prepare and RMSNorm still cover the complete prefill once. This chunk is
+required because unchunked 4K loses 8.26% to direct LDS32, while the
 repaired route is peer-bit-exact and wins the production complete chain
 1.517x/1.479x/1.422x at 512/1K/4K. Scalar-exact output/state deltas are bounded
 at 0.001953125/2.24e-8. Integrated pp512 improves 316.258 to 330.069

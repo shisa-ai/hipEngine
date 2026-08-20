@@ -64,6 +64,12 @@ _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR = (
 _SYMBOL_PREFILL_COMPACT_NORMALIZED_WAVE32_XOR_FP16STATE = (
     "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state"
 )
+_SYMBOL_PREFILL_COMPACT_NORMALIZED_SEGMENTS_WAVE32_XOR = (
+    "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32"
+)
+_SYMBOL_PREFILL_COMPACT_NORMALIZED_SEGMENTS_WAVE32_XOR_FP16STATE = (
+    "hipengine_qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state"
+)
 _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_wave32_xor_f32"
 )
@@ -1382,6 +1388,159 @@ def qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _launch_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor(
+    symbol: str,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_prefill_shape(
+        total_tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+    )
+    if segments <= 0:
+        raise ValueError("segments must be positive")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = (
+        [ctypes.c_void_p] * 9
+        + [ctypes.c_int64] * 6
+        + [ctypes.c_void_p]
+    )
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(beta_ptr),
+        ctypes.c_void_p(decay_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(cu_seqlens_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(total_tokens),
+        ctypes.c_int64(segments),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch indexed compact peer-wave32 prefill with FP32 state."""
+
+    _launch_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor(
+        _SYMBOL_PREFILL_COMPACT_NORMALIZED_SEGMENTS_WAVE32_XOR,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    cu_seqlens_ptr: int,
+    state_indices_ptr: int,
+    total_tokens: int,
+    segments: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch indexed compact peer-wave32 prefill with FP16 state storage."""
+
+    _launch_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor(
+        _SYMBOL_PREFILL_COMPACT_NORMALIZED_SEGMENTS_WAVE32_XOR_FP16STATE,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        cu_seqlens_ptr,
+        state_indices_ptr,
+        total_tokens,
+        segments,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def qwen35_gdn_prefill_recurrent_normalized_cluster8_f32(
@@ -4658,6 +4817,26 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_compact_normalized_wave32_xor_fp16state",
         ),
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_compact_normalized_segments_wave32_xor",
+        ),
+        qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_compact_normalized_segments_wave32_xor_fp16state",
+        ),
+        qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state,
         replace=replace,
     )
     register(

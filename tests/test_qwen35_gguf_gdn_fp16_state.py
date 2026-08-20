@@ -340,17 +340,13 @@ def _host_compact_wave32_xor_fp16_state(
     state_f32: np.ndarray,
     *,
     num_k_heads: int,
+    state_storage_dtype: np.dtype = np.dtype(np.float16),
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Host replay of the compact wave32-xor recurrence with fp16 state.
+    """Host replay of compact wave32-xor with configurable state storage."""
 
-    The device kernel reads the fp16 state once into fp32 registers, runs the
-    whole token loop in fp32, then writes the fp16 state back once.  Query/key
-    are already normalized by the prepare kernel; output carries the wave32
-    kOutputScale (1/sqrt(128)).  Returns (per-token outputs, final fp32 state).
-    """
     tokens = query.shape[0] // num_k_heads
     num_v_heads, head_k_dim, head_v_dim = state_f32.shape
-    state = np.float16(state_f32).astype(np.float32)
+    state = np.asarray(state_f32, dtype=state_storage_dtype).astype(np.float32)
     outputs = np.empty((tokens * num_v_heads, head_v_dim), dtype=np.float32)
     for v_head in range(num_v_heads):
         k_head = v_head % num_k_heads
@@ -369,7 +365,7 @@ def _host_compact_wave32_xor_fp16_state(
                 0.08838834764831845
             )
         state[v_head] = sv
-    final_state = np.float16(state).astype(np.float32)
+    final_state = np.asarray(state, dtype=state_storage_dtype).astype(np.float32)
     return outputs, final_state
 
 
@@ -458,6 +454,187 @@ def test_fp16_state_compact_wave32_xor_prefill_writer_matches_host_replay() -> N
     dev_out = dev_out.reshape(tokens, num_v_heads, head_v_dim)
     host_out_r = host_out.reshape(tokens, num_v_heads, head_v_dim)
     np.testing.assert_allclose(dev_out, host_out_r, rtol=1.0e-3, atol=1.0e-3)
+    np.testing.assert_allclose(dev_state, host_state, rtol=1.0e-3, atol=1.0e-3)
+
+
+def _host_compact_wave32_xor_segments_fp16_state(
+    query: np.ndarray,
+    key: np.ndarray,
+    value: np.ndarray,
+    beta: np.ndarray,
+    decay: np.ndarray,
+    state_slots_f32: np.ndarray,
+    cu_seqlens: np.ndarray,
+    state_indices: np.ndarray,
+    *,
+    num_k_heads: int,
+    state_storage_dtype: np.dtype = np.dtype(np.float16),
+) -> tuple[np.ndarray, np.ndarray]:
+    """Independent per-segment compact-peer replay over indexed FP16 slots."""
+
+    num_slots, num_v_heads, head_k_dim, head_v_dim = state_slots_f32.shape
+    del num_slots, head_k_dim
+    total_tokens = int(cu_seqlens[-1])
+    outputs = np.empty(
+        (total_tokens, num_v_heads, head_v_dim),
+        dtype=np.float32,
+    )
+    final_slots = np.asarray(
+        state_slots_f32,
+        dtype=state_storage_dtype,
+    ).astype(np.float32).copy()
+    for segment, state_slot in enumerate(state_indices.tolist()):
+        start = int(cu_seqlens[segment])
+        end = int(cu_seqlens[segment + 1])
+        segment_out, segment_state = _host_compact_wave32_xor_fp16_state(
+            query[start * num_k_heads : end * num_k_heads],
+            key[start * num_k_heads : end * num_k_heads],
+            value[start * num_v_heads : end * num_v_heads],
+            beta[start * num_v_heads : end * num_v_heads],
+            decay[start * num_v_heads : end * num_v_heads],
+            final_slots[int(state_slot)],
+            num_k_heads=num_k_heads,
+            state_storage_dtype=state_storage_dtype,
+        )
+        outputs[start:end] = segment_out.reshape(
+            end - start,
+            num_v_heads,
+            head_v_dim,
+        )
+        final_slots[int(state_slot)] = segment_state
+    return outputs, final_slots
+
+
+@pytest.mark.parametrize(
+    ("state_variant", "state_dtype"),
+    (("f32", np.dtype(np.float32)), ("fp16state", np.dtype(np.float16))),
+)
+def test_compact_wave32_xor_segmented_prefill_matches_host_replay(
+    state_variant: str,
+    state_dtype: np.dtype,
+) -> None:
+    """Packed c>N prefill keeps each indexed state register-resident."""
+
+    if not HIP_AVAILABLE:
+        pytest.skip("ROCm/HIP not available")
+    rng = np.random.default_rng(20260822)
+    num_k_heads = 4
+    num_v_heads = 8
+    head_k_dim = 128
+    head_v_dim = 32
+    total_tokens = 7
+    cu_seqlens = np.asarray([0, 3, 7], dtype=np.int32)
+    state_indices = np.asarray([2, 0], dtype=np.int64)
+    segments = len(state_indices)
+    num_slots = 3
+
+    query = rng.normal(
+        0.0, 0.3, size=(total_tokens * num_k_heads, head_k_dim)
+    ).astype(np.float32)
+    key = rng.normal(
+        0.0, 0.3, size=(total_tokens * num_k_heads, head_k_dim)
+    ).astype(np.float32)
+    value = rng.normal(
+        0.0, 0.3, size=(total_tokens * num_v_heads, head_v_dim)
+    ).astype(np.float32)
+    beta = rng.uniform(0.1, 1.0, size=(total_tokens * num_v_heads,)).astype(
+        np.float32
+    )
+    decay = rng.uniform(0.5, 0.99, size=(total_tokens * num_v_heads,)).astype(
+        np.float32
+    )
+    state_f32 = rng.normal(
+        0.0,
+        0.1,
+        size=(num_slots, num_v_heads, head_k_dim, head_v_dim),
+    ).astype(np.float32)
+    host_out, host_state = _host_compact_wave32_xor_segments_fp16_state(
+        query,
+        key,
+        value,
+        beta,
+        decay,
+        state_f32,
+        cu_seqlens,
+        state_indices,
+        num_k_heads=num_k_heads,
+        state_storage_dtype=state_dtype,
+    )
+
+    state_elem = num_slots * num_v_heads * head_k_dim * head_v_dim
+    out_elem = total_tokens * num_v_heads * head_v_dim
+    library = build_qwen35_linear_attn_gdn(load=True)
+    bufs = _Buffers()
+    try:
+        query_dev = bufs.from_host(query)
+        key_dev = bufs.from_host(key)
+        value_dev = bufs.from_host(value)
+        beta_dev = bufs.from_host(beta)
+        decay_dev = bufs.from_host(decay)
+        state_h = np.asarray(state_f32, dtype=state_dtype)
+        state_dev = bufs.empty(state_h.nbytes)
+        copy_host_to_device(state_dev, host_array_ptr(state_h), state_h.nbytes)
+        out_dev = bufs.empty(out_elem * np.dtype(np.float32).itemsize)
+        cu_dev = bufs.from_host(cu_seqlens)
+        indices_dev = bufs.from_host(state_indices)
+
+        from hipengine.kernels.hip_gfx1100.linear_attn import (
+            qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32,
+            qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state,
+        )
+
+        kernel = (
+            qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_f32
+            if state_variant == "f32"
+            else qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_fp16state
+        )
+        kernel(
+            query_dev.ptr,
+            key_dev.ptr,
+            value_dev.ptr,
+            beta_dev.ptr,
+            decay_dev.ptr,
+            state_dev.ptr,
+            out_dev.ptr,
+            cu_dev.ptr,
+            indices_dev.ptr,
+            total_tokens,
+            segments,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=library,
+        )
+        from hipengine.core.hip import get_hip_runtime
+        from hipengine.core.memory import MemcpyKind
+
+        runtime = get_hip_runtime()
+        dev_out = np.empty((out_elem,), dtype=np.float32)
+        runtime.memcpy(
+            host_array_ptr(dev_out),
+            out_dev.ptr,
+            dev_out.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        dev_state_raw = np.empty((state_elem,), dtype=state_dtype)
+        runtime.memcpy(
+            host_array_ptr(dev_state_raw),
+            state_dev.ptr,
+            dev_state_raw.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+    finally:
+        bufs.close()
+
+    dev_out = dev_out.reshape(total_tokens, num_v_heads, head_v_dim)
+    dev_state = dev_state_raw.astype(np.float32).reshape(
+        num_slots,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+    )
+    np.testing.assert_allclose(dev_out, host_out, rtol=1.0e-3, atol=1.0e-3)
     np.testing.assert_allclose(dev_state, host_state, rtol=1.0e-3, atol=1.0e-3)
 
 
