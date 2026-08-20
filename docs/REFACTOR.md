@@ -3883,3 +3883,10 @@ should be boring.
   the MTP verifier (or permanently gate them off) and delete the remaining
   fail-closed guards; (3) drop `gdn_effective_mode`/frozen-mode assumptions if
   the flag is later allowed beyond the compact-peer-wave32 route.
+- Checkpoint 2026-08-20: the strict-teacher production-profile gate PASSED for
+  the fp16-state route (450 teacher-forced rows, kl_max 1.43e-3, top-1 99.78%,
+  three bit-stable repeats; see
+  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`).
+  The remaining decision input for collapsing the flag is the c1/c4/c8
+  fp16-vs-fp32 decode benchmark (task #16) and the gfx1100 decode-side
+  applicability; the chain-journal/MTP guards stay until fp16 variants land.

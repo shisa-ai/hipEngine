@@ -1,0 +1,68 @@
+{
+  "created_at": "2026-08-20T07:54:30.073139+00:00",
+  "fp16_state_kernels": {
+    "decode_gate_fused_bf16": {
+      "dispatches": 96,
+      "duration_ns_max": 51297,
+      "duration_ns_median": 17192,
+      "duration_ns_min": 16030,
+      "duration_ns_sum": 1686404,
+      "grid": [
+        6144,
+        1,
+        1
+      ],
+      "kernel_name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, _Float16>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16*, float*, unsigned short*, float, long, long, long, long)",
+      "sgpr_count": 128,
+      "vgpr_count": 64,
+      "workgroup": [
+        128,
+        1,
+        1
+      ]
+    },
+    "prefill_writer": {
+      "dispatches": 48,
+      "duration_ns_max": 393017,
+      "duration_ns_median": 85641,
+      "duration_ns_min": 82956,
+      "duration_ns_sum": 4425227,
+      "grid": [
+        6144,
+        32,
+        1
+      ],
+      "kernel_name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<_Float16>(float const*, float const*, float const*, float const*, float const*, _Float16*, float*, long, long, long, long)",
+      "sgpr_count": 128,
+      "vgpr_count": 40,
+      "workgroup": [
+        128,
+        1,
+        1
+      ]
+    }
+  },
+  "kind": "hipengine_fp16_state_kernel_trace",
+  "note": "rocprofv3 names the __global__ kernels; the fp16-state instantiations carry the _Float16 state_t template parameter (fp16 state storage, fp32 accumulate). prefill_writer = compact peer-wave32 fp16-state prefill; decode_gate_fused_bf16 = Q4_K_S dense ssm_out fused gate+BF16-cast owner (gguf_q5_k_t16_v1) with fp16 state.",
+  "protocol": {
+    "backend": "hip_gfx1151",
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt",
+    "decode_steps": 2,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "prefill_tokens": 8,
+    "production_route": "chain_compact_peer_wave32",
+    "require_cached_build": true,
+    "rocprofv3": "rocprofv3 --kernel-trace --output-format csv",
+    "route_environment": {
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "1"
+    },
+    "target_arch": "gfx1151"
+  },
+  "raw_trace": {
+    "kernel_csv": "/tmp/fp16_trace/gfx1151/1864894_kernel_trace.csv",
+    "kernel_csv_sha256": "89e6c836aaa34c9188bd7fb8358a73ce83b9bd60f334a14f6c0c1cd26544ee86",
+    "total_dispatches": 2899
+  },
+  "schema_version": 1,
+  "status": "passed"
+}
