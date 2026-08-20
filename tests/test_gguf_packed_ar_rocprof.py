@@ -2,11 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.gguf_packed_ar_rocprof import _child_command, build_arg_parser
+from scripts.gguf_packed_ar_rocprof import (
+    _child_command,
+    _profiler_concurrency_supported,
+    build_arg_parser,
+)
 
 
 def test_packed_rocprof_accepts_every_direct_width_c2_c8() -> None:
     parser = build_arg_parser()
+
+    assert _profiler_concurrency_supported(None) is False
+    assert _profiler_concurrency_supported(0) is False
+    for width in range(1, 9):
+        assert _profiler_concurrency_supported(width) is True
+    assert _profiler_concurrency_supported(9) is False
 
     for width in range(2, 9):
         assert parser.parse_args(
