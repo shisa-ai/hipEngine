@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from scripts.gguf_arbitrary_c_lifecycle import (
     _all_native,
+    _capture_compaction_group_graph,
     _expected_dense_group_masks,
     _expected_hole_group_masks,
     _group_masks,
@@ -73,6 +75,86 @@ def test_gguf_arbitrary_c_lifecycle_summarizes_declared_packed_masks() -> None:
 
     plan["groups"][1]["execution_path"] = "serial_fallback"
     assert not _all_native(plan)
+
+
+def test_gguf_arbitrary_c_lifecycle_pins_actual_graph_kind_for_compaction() -> None:
+    calls: list[tuple[str, object]] = []
+    c1_graph = object()
+    c3_graph = object()
+
+    class FakeSession:
+        def capture_decode_graph(self, **kwargs):
+            calls.append(("c1", kwargs))
+            return c1_graph
+
+        def capture_packed_decode_graph(self, token_ids, **kwargs):
+            calls.append(("packed", (tuple(token_ids), kwargs)))
+            return c3_graph
+
+    sessions = [FakeSession() for _ in range(3)]
+    rows = {
+        request_id: SimpleNamespace(
+            lease=SimpleNamespace(session=sessions[request_id]),
+            slot=SimpleNamespace(
+                session=sessions[request_id],
+                prev_token=100 + request_id,
+                seq_position=20 + request_id,
+                c1_decode_graph=None,
+            ),
+        )
+        for request_id in range(3)
+    }
+    runner = SimpleNamespace(_rows=rows)
+
+    result = _capture_compaction_group_graph(
+        runner,
+        {
+            "request_ids": [2],
+            "physical_rows": 1,
+            "active_slot_indices": [0],
+        },
+    )
+    assert result is c1_graph
+    assert rows[2].slot.c1_decode_graph is c1_graph
+    assert calls == [
+        (
+            "c1",
+            {
+                "position": 22,
+                "steps_per_replay": 1,
+                "max_replay_steps": 1,
+                "attention_max_context_len": 23,
+                "input_token_id": 102,
+            },
+        )
+    ]
+
+    calls.clear()
+    result = _capture_compaction_group_graph(
+        runner,
+        {
+            "request_ids": [0, 1, 2],
+            "physical_rows": 3,
+            "active_slot_indices": [0, 1, 2],
+        },
+    )
+    assert result is c3_graph
+    assert calls == [
+        (
+            "packed",
+            (
+                (100, 101, 102),
+                {
+                    "sessions": tuple(sessions),
+                    "physical_rows": 3,
+                    "active_slot_indices": (0, 1, 2),
+                    "steps_per_replay": 1,
+                    "max_replay_steps": 1,
+                    "record_steps": 1,
+                },
+            ),
+        )
+    ]
 
 
 def test_gguf_arbitrary_c_lifecycle_accepts_single_physical_group_shape() -> None:
