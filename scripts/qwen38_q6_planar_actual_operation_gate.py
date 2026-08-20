@@ -387,8 +387,11 @@ def _validate_smoke(path: Path) -> dict[str, object]:
     }
     result["passed"] = (
         result["finite_final_logits"] and result["production_graph"]
-        and result["planar_q6_bytes"] == 3_416_985_600
-        and result["standard_q6_bytes"] == 1_032_192_000
+        # The current sole-layout package materializes every active dense Q6
+        # role as byte-neutral planar-qmicro; no standard-Q6 or BF16 shadow
+        # remains resident.
+        and result["planar_q6_bytes"] == 4_449_177_600
+        and result["standard_q6_bytes"] == 0
         and result["dense_bf16_bytes"] == 0
         and result["teardown_bytes"] == 0
     )
