@@ -291,8 +291,8 @@ def _row_resource_identity(row: Any) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     logical_c = int(args.rows)
-    if logical_c < 4:
-        raise ValueError("rows must be at least 4 for the arbitrary-C lifecycle gate")
+    if logical_c < 3:
+        raise ValueError("rows must be at least 3 for the arbitrary-C lifecycle gate")
     cancel_slots = tuple(int(slot) for slot in args.cancel_slots)
     if len(cancel_slots) != 2 or len(set(cancel_slots)) != 2:
         raise ValueError("cancel-slots must contain two unique slots")

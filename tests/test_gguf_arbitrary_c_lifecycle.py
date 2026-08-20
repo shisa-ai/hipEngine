@@ -156,8 +156,8 @@ def test_gguf_arbitrary_c_lifecycle_requires_explicit_arithmetic_drift_policy(
 
 
 def test_gguf_arbitrary_c_lifecycle_rejects_too_small_shape_before_model_io() -> None:
-    args = build_parser().parse_args(["--model", "/missing/model.gguf", "--rows", "3"])
-    with pytest.raises(ValueError, match="at least 4"):
+    args = build_parser().parse_args(["--model", "/missing/model.gguf", "--rows", "2"])
+    with pytest.raises(ValueError, match="at least 3"):
         run(args)
 
     args = build_parser().parse_args(
