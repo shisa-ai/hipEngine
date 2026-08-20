@@ -1167,6 +1167,14 @@ GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS = {
 # F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
 # keeps the established direct/split routes.
 GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
+# The c1 short-batch leaf block width. 256 is the exact fixed256 default.
+# 1024 runs the same body at a wider block width (split value reduction +
+# different warp reduction tree -> T2 non-exact production probe). The 1024
+# variant passed the calibrated execution-profile c1 threads gate (full
+# mtp-bench category suite, teacher-forced KL/top-1 envelope, 3 repeats) and is
+# retained as the gfx1151 default; the exact 256-thread leaf stays registered
+# as the strict fallback. HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS overrides.
+GGUF_SHORT_C1_BATCH_ATTN_THREADS = 1024
 # D08-D4 independently qualifies the existing generic split-K3 plus fused-gate
 # chain for Qwen3.5-0.8B's private-c1 8Q/2KV/D256 graph cap. The exact model/
 # attention shape and measured 514-641 window preserve fixed256 at the 513 warm
@@ -2165,6 +2173,7 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+    "GGUF_SHORT_C1_BATCH_ATTN_THREADS",
     "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
