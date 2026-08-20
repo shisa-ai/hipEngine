@@ -5784,22 +5784,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated full-attention layer ids that should use the context-only row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
     )
     parser.add_argument(
-        "--batch-decode-full-attn-suffix-row-chunk-size",
-        type=int,
-        default=0,
-        help="Diagnostic full-attention suffix native row chunk size for hidden-bisect probes; positive values below batch size keep batch QKV/append/context and split only gate/O/post/MoE suffix work.",
-    )
-    parser.add_argument(
-        "--batch-decode-full-attn-suffix-row-chunk-layers",
-        default="",
-        help="Comma-separated full-attention layer ids that should use the suffix row-chunk diagnostic; empty applies to every full-attention layer when the size is positive.",
-    )
-    parser.add_argument(
-        "--batch-decode-full-attn-suffix-row-chunk-include-gate",
-        action="store_true",
-        help="For suffix row chunks, compute batch context only and include the attention gate in each row chunk instead of using batch context+gate.",
-    )
-    parser.add_argument(
         "--batch-decode-attn-input-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5948,11 +5932,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     if full_attention_context_row_chunk_size < 0:
         raise ValueError("batch-decode-full-attn-context-row-chunk-size must be non-negative")
-    full_attention_suffix_row_chunk_size = int(
-        getattr(args, "batch_decode_full_attn_suffix_row_chunk_size", 0) or 0
-    )
-    if full_attention_suffix_row_chunk_size < 0:
-        raise ValueError("batch-decode-full-attn-suffix-row-chunk-size must be non-negative")
     force_full_attention_row_chunks = (
         args.batch_decode_full_attn_path == "native_batch"
         and args.batch_size > 1
@@ -5963,11 +5942,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         and args.batch_size > 1
         and 0 < full_attention_context_row_chunk_size < args.batch_size
     )
-    force_full_attention_suffix_row_chunks = (
-        args.batch_decode_full_attn_path == "native_batch"
-        and args.batch_size > 1
-        and 0 < full_attention_suffix_row_chunk_size < args.batch_size
-    )
     compare_full_attention_rowchunk_boundary = bool(
         getattr(args, "compare_full_attn_rowchunk_boundary", False)
     )
@@ -5977,8 +5951,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 "compare-full-attn-rowchunk-boundary requires native_batch full-attention "
                 "and 0 < --batch-decode-full-attn-row-chunk-size < --batch-size"
             )
-        if force_full_attention_context_row_chunks or force_full_attention_suffix_row_chunks:
-            raise ValueError("compare-full-attn-rowchunk-boundary cannot be combined with context/suffix rowchunk diagnostics")
+        if force_full_attention_context_row_chunks:
+            raise ValueError("compare-full-attn-rowchunk-boundary cannot be combined with context rowchunk diagnostics")
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
@@ -6038,13 +6012,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_full_attention_context_row_chunk_layers": str(
                 getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
             ).strip(),
-            "batch_decode_full_attention_suffix_row_chunk_size": int(full_attention_suffix_row_chunk_size),
-            "batch_decode_full_attention_suffix_row_chunk_layers": str(
-                getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or ""
-            ).strip(),
-            "batch_decode_full_attention_suffix_row_chunk_include_gate": bool(
-                getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False)
-            ),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
             "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_scratch_path": str(args.batch_decode_attn_scratch_path),
@@ -6073,7 +6040,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_full_attn_path == "native_batch"
                 and not force_full_attention_row_chunks
                 and not force_full_attention_context_row_chunks
-                and not force_full_attention_suffix_row_chunks
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_scratch_path == "batch"
@@ -6099,14 +6065,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 if force_full_attention_row_chunks and args.prompt_length + args.decode_tokens < 1024
                 else "native_context_row_chunks"
                 if force_full_attention_context_row_chunks and args.prompt_length + args.decode_tokens < 1024
-                else "native_suffix_row_chunks_include_gate"
-                if (
-                    force_full_attention_suffix_row_chunks
-                    and getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False)
-                    and args.prompt_length + args.decode_tokens < 1024
-                )
-                else "native_suffix_row_chunks"
-                if force_full_attention_suffix_row_chunks and args.prompt_length + args.decode_tokens < 1024
                 else "batch_context"
                 if args.prompt_length + args.decode_tokens < 1024
                 else "per_row_splitk_fallback"
@@ -6203,15 +6161,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_CONTEXT_ROW_CHUNK_LAYERS"] = str(
         getattr(args, "batch_decode_full_attn_context_row_chunk_layers", "") or ""
     ).strip()
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE"] = str(
-        full_attention_suffix_row_chunk_size
-    )
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS"] = str(
-        getattr(args, "batch_decode_full_attn_suffix_row_chunk_layers", "") or ""
-    ).strip()
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE"] = (
-        "1" if getattr(args, "batch_decode_full_attn_suffix_row_chunk_include_gate", False) else "0"
-    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if args.batch_decode_attn_input_path == "per_row" else "0"
     )

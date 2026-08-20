@@ -4830,8 +4830,6 @@ class Qwen35ParoDecodeState:
         force_batch_temp_context: bool = False,
         force_batch_compact_context: bool = False,
         context_row_chunks: Sequence[tuple[int, int, KVLiveSpans]] | None = None,
-        suffix_row_chunks: Sequence[tuple[int, int]] | None = None,
-        suffix_row_chunk_include_gate: bool = False,
         force_per_row_gate: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
@@ -5735,83 +5733,6 @@ class Qwen35ParoDecodeState:
                     runtime=self.runtime,
                 )
                 gated = attention_scratch.gated_attn
-            elif (
-                context_row_chunks is not None
-                and suffix_row_chunks is not None
-                and suffix_row_chunk_include_gate
-                and tokens > 1
-            ):
-                if decode_spans.storage_dtype != DType.BF16:
-                    raise NotImplementedError("context/suffix row-chunk full-attention diagnostic currently requires BF16 KV")
-                if decode_spans.max_live_count >= 1024:
-                    raise NotImplementedError("context/suffix row-chunk full-attention diagnostic does not cover split-K decode")
-                q_heads = self.config.num_attention_heads
-                head_dim = self.config.head_dim
-                q_width = q_heads * head_dim
-                query_row_nbytes = q_width * attention_scratch.query.dtype.itemsize
-                context_row_nbytes = q_width * DType.FP32.itemsize
-                for chunk_start, chunk_rows, chunk_decode_spans in context_row_chunks:
-                    if chunk_rows <= 0:
-                        raise ValueError("context row chunks must have positive rows")
-                    if chunk_start < 0 or chunk_start + chunk_rows > tokens:
-                        raise ValueError("context row chunk outside active decode rows")
-                    if chunk_decode_spans.storage_dtype != DType.BF16:
-                        raise NotImplementedError("context/suffix row-chunk full-attention diagnostic currently requires BF16 KV")
-                    if chunk_decode_spans.max_live_count >= 1024:
-                        raise NotImplementedError("context/suffix row-chunk full-attention diagnostic does not cover split-K decode")
-                    chunk_query = Tensor.from_handle(
-                        attention_scratch.query.ptr + int(chunk_start) * query_row_nbytes,
-                        (int(chunk_rows), q_heads, head_dim),
-                        attention_scratch.query.dtype,
-                        attention_scratch.query.device,
-                    )
-                    chunk_context = Tensor.from_handle(
-                        attention_scratch.query_raw.ptr + int(chunk_start) * context_row_nbytes,
-                        (int(chunk_rows), q_heads, head_dim),
-                        DType.FP32,
-                        attention_scratch.query_raw.device,
-                    )
-                    qwen35_paged_full_attn_decode_context_bf16_batch_spans(
-                        chunk_query.ptr,
-                        key_cache.ptr,
-                        value_cache.ptr,
-                        chunk_context.ptr,
-                        chunk_decode_spans,
-                        int(chunk_rows),
-                        chunk_decode_spans.max_live_count,
-                        block_size,
-                        q_heads,
-                        self.config.num_key_value_heads,
-                        head_dim,
-                        self.config.head_dim ** -0.5,
-                        stream=stream,
-                        library=_library_for(library, "attention"),
-                        runtime=self.runtime,
-                    )
-                gated = attention_scratch.gated_attn
-            elif suffix_row_chunks is not None and suffix_row_chunk_include_gate and tokens > 1:
-                if decode_spans.storage_dtype != DType.BF16:
-                    raise NotImplementedError("suffix row-chunk full-attention diagnostic currently requires BF16 KV")
-                if decode_spans.max_live_count >= 1024:
-                    raise NotImplementedError("suffix row-chunk full-attention diagnostic does not cover split-K decode")
-                qwen35_paged_full_attn_decode_context_bf16_batch_spans(
-                    attention_scratch.query.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    attention_scratch.query_raw.ptr,
-                    decode_spans,
-                    tokens,
-                    decode_spans.max_live_count,
-                    block_size,
-                    self.config.num_attention_heads,
-                    self.config.num_key_value_heads,
-                    self.config.head_dim,
-                    self.config.head_dim ** -0.5,
-                    stream=stream,
-                    library=_library_for(library, "attention"),
-                    runtime=self.runtime,
-                )
-                gated = attention_scratch.gated_attn
             elif context_row_chunks is not None and tokens > 1:
                 if decode_spans.storage_dtype != DType.BF16:
                     raise NotImplementedError("context row-chunk full-attention diagnostic currently requires BF16 KV")
@@ -5919,93 +5840,6 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-        if suffix_row_chunks is not None and tokens > 1:
-            if dense_mlp:
-                raise NotImplementedError("suffix row-chunk full-attention diagnostic is currently wired for MoE layers")
-            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
-                raise ValueError("suffix row-chunk full-attention diagnostic requires token-row MoE scratch")
-            q_width = self.config.num_attention_heads * self.config.head_dim
-            for chunk_start, chunk_rows in suffix_row_chunks:
-                if chunk_rows <= 0:
-                    raise ValueError("suffix row chunks must have positive rows")
-                if chunk_start < 0 or chunk_start + chunk_rows > tokens:
-                    raise ValueError("suffix row chunk outside active decode rows")
-                chunk_hidden = self._row_slice_tensor_view(hidden, chunk_start, chunk_rows)
-                chunk_attention_scratch = self._decode_suffix_full_attention_scratch(
-                    attention_scratch,
-                    chunk_start,
-                    chunk_rows,
-                )
-                chunk_moe_scratch = self._moe_c1_scratch_slice(moe_scratch, chunk_start, chunk_rows)
-                if suffix_row_chunk_include_gate:
-                    qwen35_full_attn_gate_mul_fp16(
-                        chunk_attention_scratch.query_raw.ptr,
-                        chunk_attention_scratch.gate.ptr,
-                        chunk_attention_scratch.gated_attn.ptr,
-                        int(chunk_rows) * q_width,
-                        stream=stream,
-                        library=_library_for(library, "attention"),
-                        runtime=self.runtime,
-                    )
-                    chunk_gated = chunk_attention_scratch.gated_attn
-                else:
-                    chunk_gated = self._row_slice_tensor_view(gated, chunk_start, chunk_rows)
-                if force_per_row_output and chunk_rows > 1:
-                    chunk_attn_out = self.project_full_attention_o_rows_fp16(
-                        chunk_gated,
-                        chunk_attention_scratch,
-                        tokens=chunk_rows,
-                        group_size=group_size,
-                        library=library,
-                        stream=stream,
-                    )
-                else:
-                    chunk_attn_out = self.project_full_attention_o_fp16(
-                        chunk_gated,
-                        chunk_attention_scratch,
-                        tokens=chunk_rows,
-                        group_size=group_size,
-                        force_pack8_gemv=force_batch_gemv_output,
-                        library=library,
-                        stream=stream,
-                    )
-                post_attention_fn = (
-                    self.post_attention_add_rmsnorm_fp16_per_row
-                    if force_per_row_post_attention and chunk_rows > 1
-                    else self.post_attention_add_rmsnorm_fp16
-                )
-                chunk_mlp_input, chunk_residual = post_attention_fn(
-                    chunk_hidden,
-                    chunk_attn_out,
-                    chunk_moe_scratch,
-                    tokens=chunk_rows,
-                    library=library,
-                    stream=stream,
-                )
-                if force_per_row_moe and chunk_rows > 1:
-                    self.run_moe_c1_rows_fp16(
-                        chunk_mlp_input,
-                        chunk_residual,
-                        scratch=chunk_moe_scratch,
-                        tokens=chunk_rows,
-                        group_size=group_size,
-                        library=library,
-                        stream=stream,
-                    )
-                else:
-                    self.run_moe_c1_fp16(
-                        chunk_mlp_input,
-                        chunk_residual,
-                        scratch=chunk_moe_scratch,
-                        tokens=chunk_rows,
-                        group_size=group_size,
-                        force_small_batch_shared_expert=_force_small_batch_shared_expert(
-                            force_small_batch_shared_expert
-                        ),
-                        library=library,
-                        stream=stream,
-                    )
-            return moe_scratch.moe_out
         if force_per_row_output and tokens > 1:
             attn_out = self.project_full_attention_o_rows_fp16(
                 gated,
