@@ -199,9 +199,21 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
    launch was already hidden. Reverted entirely; default path byte-identical to
    `698465c5a`. See `worklog/entries/20260820T084054.841923Z-lhl-pn3-fullattn-fused-gate-0ef26a.md`
    and `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-fullattn-fused-gate-no-win.json`.
-   The live lever is the attention-core kernel math itself: a gfx1151-specific
-   thread-geometry override of the shared `.hip` template, then split-K3 /
-   split-policy / WMMA-tile variants on the retained c1 exact spine.
+
+   **Candidate 1b resolved 2026-08-20 (promoted):** the inherited gfx1100
+   `threads=256` block geometry is suboptimal on gfx1151's 40 CUs. A
+   parameterized fixed256 body at **threads=1024** is 6-26% faster at the leaf
+   at contexts 256-1024 (flat only at ctx 128), passes the calibrated
+   execution-profile c1 threads gate (full mtp-bench category suite, KL
+   envelope + per-category top-1 >= 97%, 3 repeats), and is promoted as the
+   gfx1151 default via `GGUF_SHORT_C1_BATCH_ATTN_THREADS=1024` (T2 non-exact:
+   wider warp reduction tree + split value reduction, last-ulp drift). The exact
+   256-thread leaf stays registered as the strict fallback
+   (`HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS=256` / env restores it). See
+   `worklog/entries/20260820T105005.889308Z-lhl-pn3-fullattn-threads-1024-f5c77a.md`
+   and `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads.json`.
+   Remaining levers: split-K3 / split-policy or WMMA-tile variants on the c1
+   exact spine, only with a fresh route/profile check + the same gate.
 2. **P3-EXPGEMV — selected-expert W4 GEMV shape tuning** (thread/tiling/dequant
    for 40 CU + 32 MiB MALL). Kernel-side; gated on the do-not-repeat ledger
    (DP4A/Q8_1, row-compact GEMV, one-plane Q8_1 already rejected). The host

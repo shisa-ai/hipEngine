@@ -3876,3 +3876,16 @@ should be boring.
   `DF2_FWD_BS` env branch and the `forward(bs=...)` / `select(rows=...)`
   plumbing when the B-sweep closeout merges and no smaller-block drafter
   experiment needs it.
+
+## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
+
+- Added 2026-08-20. The fixed256 context-batch body gained a runtime block-width
+  entrypoint (`...fixed256_threads_spans`); gfx1151 promotes `threads=1024`
+  (T2 non-exact, execution-profile gate-passed) via the capability, with the
+  exact 256-thread leaf kept as the registered strict fallback.
+  `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` forces any width for A/B/bisection.
+- Removal trigger: after split-K3 / split-policy or WMMA-tile variants on the c1
+  exact spine replace this geometry (or a fresh gfx1151 route/profile check
+  overturns the 1024 win), collapse the runtime-threads entrypoint back to a
+  fixed constexpr and drop the capability/env unless a named validation gap
+  still needs the override.
