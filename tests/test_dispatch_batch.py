@@ -398,6 +398,13 @@ def test_physical_batch_group_plan_width_sequence_overrides_ceiling() -> None:
             compact_active_rows=True,
             width_sequence=(9, 4),
         )
+    with pytest.raises(ValueError, match="declared buckets"):
+        plan_physical_batch_groups(
+            work,
+            physical_bucket_widths=(1, 2, 4, 8),
+            compact_active_rows=True,
+            width_sequence=(8, 3, 2),
+        )
 
 
 def test_physical_batch_group_plan_validates_declared_widths_and_slot_metadata() -> None:

@@ -198,11 +198,15 @@ determinism across the full 18-prompt category+heldout suite. The clean dynamic
 lifecycle matrix also passes c3/c5/c6/c7: direct and neighbor routes, compaction
 row moves, state/live-KV and resource hashes, graph invalidation, cancellation,
 session reuse, tracked-memory recovery, and final drain all pass with zero
-fallbacks or leaks. These widths are now lifecycle-qualified for product
-integration. The continuous owner still advertises only physical `(1,2,4,8)`
-and maps c3 to masked c4 and c5-c7 to masked c8; package promotion waits for the
-artifact-backed D2 resolver and actual-server c1-c32 integration gate.
-[`Direct-width lifecycle gate`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json),
+fallbacks or leaks. These widths are now lifecycle-qualified and the gfx1100
+package advertises physical `(1,2,3,4,5,6,7,8)`. A retained strict D2 cost map
+recovers balanced c9-c14 compositions, and the owner has explicit artifact-
+configured D2 wiring with clean identity checks; absent the configuration it
+fails closed to the ceiling planner (for example c13→8+5). D2 is **not yet the
+production default**: the actual-server c1-c32 goodput/TTFT/ITL, dynamic route,
+memory, and drain gate remains open.
+[`D2 cost map`](results/2026-08-20-concurrency2-qwen38-d2-cost-map.json),
+[`direct-width lifecycle gate`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json),
 [`direct-width numerical gate`](results/2026-08-20-concurrency2-qwen38-direct-width-quality.json),
 [`width-review artifact`](results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json),
 [`Q5 rows 5-8 promotion`](results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion-summary.json),

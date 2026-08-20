@@ -286,9 +286,9 @@ def plan_physical_batch_groups(
         ordered_slots = tuple(sorted(request_by_slot))
         if width_sequence is not None:
             seq = tuple(int(width) for width in width_sequence)
-            if not seq or any(width <= 0 or width > max_width for width in seq):
+            if not seq or any(width not in widths for width in seq):
                 raise ValueError(
-                    "width_sequence widths must be declared buckets in (0, max_width]"
+                    "width_sequence widths must be declared buckets"
                 )
             if sum(seq) != len(ordered_slots):
                 raise ValueError(

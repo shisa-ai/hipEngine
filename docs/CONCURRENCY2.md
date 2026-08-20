@@ -620,28 +620,30 @@ Absent/uncertified records fail closed to a registered strict route. Compact
 artifacts live under `benchmarks/results/`; bulky raw autotune/profiler logs do
 not.
 
-**D2 — decomposition exists; cost-aware decomposition does not.**
-`plan_physical_batch_groups(..., compact_active_rows=True)` already lowers
-arbitrary logical concurrency. Today it chunks by the largest registered width
-and rounds each remainder **up** to the next bucket: c3→masked-c4,
-c5/c6/c7→masked-c8, c13→c8+masked-c8. This is a correct ceiling-bucket planner,
-not the measured optimizer described here.
+**D2 — cost-aware decomposition is implemented and explicit-config pending.**
+The gfx1100 package now certifies exact direct widths c1-c8. Without a D2 map,
+`plan_physical_batch_groups(..., compact_active_rows=True)` remains the
+fail-closed ceiling planner: it chunks by c8 and rounds the remainder to the
+next registered width (for example c13→c8+c5; sparse registered sets retain
+masked c3→c4 and c5-c7→c8 semantics).
 
-**Artifact-backed D2 resolver (host-first, 2026-08-20).**
-`hipengine/dispatch/d2_resolver.py` adds a measured optimizer: ``CostTable``
-(cost records loaded from a benchmark artifact via ``cost_table_from_artifact``,
-never hand-coded), ``d2_partition`` (dynamic programming minimizing serial
-measured model-step wall over certified widths), ``ceiling_partition``
-(fail-closed fallback), and ``plan_d2_groups`` (lowers a dense work item into
-``PhysicalBatchGroup``s preserving slot identity). Against the real
-post-promotion packet it recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6, c13=7+6,
-c14=7+7, c16=8+8, beating ceiling by up to 5.4 ms/step (c9). Wiring:
-``plan_physical_batch_groups`` accepts an explicit ``width_sequence`` (compact
-mode), and the resident owner resolves an artifact-backed cost table
-(``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT``, cached; absent → fail-closed ceiling)
-and passes ``d2_partition`` for the composition. The actual owner is proven to
-follow D2 across logical c1–c32 when a cost table is configured, and fails
-closed to ceiling otherwise.
+`hipengine/dispatch/d2_resolver.py` provides the measured optimizer. Its retained
+cost map is keyed to clean source SHA, physical host/device, backend/arch, exact
+model fingerprint, quant/KV/profile/graph mode, active+physical rows, mask class,
+route/correctness hashes, and workspace scope. The loader rejects dirty, failed,
+mismatched, incomplete, non-finite, or out-of-capability records. `d2_partition`
+minimizes serial measured model-step wall under optional workspace/step-SLO
+caps; `plan_physical_batch_groups` accepts the resulting explicit width sequence
+while preserving stable scheduler slots and dense execution rows.
+
+The strict W7900/Qwen3.8 map recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6,
+c13=7+6, c14=7+7, and c16=8+8, beating ceiling by up to 5.4 ms/step (c9).
+The resident owner loads it only through
+`HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`, caches by file+runtime identity, and emits
+its source/identity/estimated wall in the physical-group plan. Host owner
+lowering covers c1-c32. **Production-default D2 remains open** until the actual
+server passes matched c1-c32 route, goodput, TTFT/ITL, dynamic lifecycle, memory,
+and final-drain gates; absent configuration still uses ceiling.
 
 The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to

@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import os
+import socket
 import threading
 import time
 import uuid
@@ -18,6 +19,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 
 import numpy as np
 
+from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
 from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
     RequestState,
@@ -190,16 +192,6 @@ _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
-_GGUF_AR_D2_LABEL_BY_WIDTH = {
-    1: "c1",
-    2: "c2",
-    3: "c3",
-    4: "c4",
-    5: "c5",
-    6: "c6",
-    7: "c7",
-    8: "native_c8",
-}
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -241,29 +233,59 @@ def _gguf_ar_packed_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
-_GGUF_AR_D2_COST_CACHE: dict[str, object] = {}
+_GGUF_AR_D2_COST_CACHE: dict[tuple[object, ...], object] = {}
 
 
-def _gguf_ar_resolve_cost_table(backend: str) -> object | None:
-    """Resolve the artifact-backed D2 cost table for the AR owner.
+def _gguf_ar_resolve_cost_table(
+    backend: str,
+    *,
+    target_arch: str,
+    model_path: str | Path,
+    quant: str,
+    kv_dtype: str,
+    physical_widths: Sequence[int],
+) -> object | None:
+    """Resolve one clean, exact-identity D2 cost map from an explicit artifact."""
 
-    Reads ``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` (a benchmark artifact path).
-    Loads and caches the per-width model-step medians; returns ``None`` when
-    unset so the owner fails closed to the ceiling planner.
-    """
-    path = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
-    if not path:
+    raw_path = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+    if not raw_path:
         return None
-    if path in _GGUF_AR_D2_COST_CACHE:
-        return _GGUF_AR_D2_COST_CACHE[path]
+    path = Path(raw_path).expanduser().resolve()
+    stat = path.stat()
+    fingerprint = collect_model_identity(model_path)["fingerprint"]
+    if not isinstance(fingerprint, Mapping) or fingerprint.get("exists") is not True:
+        raise ValueError("D2 cost resolution requires a readable model fingerprint")
+    device_name = detect_device_name()
+    if not device_name:
+        raise ValueError("D2 cost resolution requires the current HIP device identity")
+    expected = {
+        "backend": str(backend),
+        "target_arch": str(target_arch),
+        "host_name": socket.gethostname(),
+        "device_name": device_name,
+        "model_fingerprint": str(fingerprint["value"]),
+        "quant": str(quant),
+        "kv_dtype": str(kv_dtype),
+        "execution_profile": "strict",
+        "graph_mode": "captured_replay",
+        "physical_widths": [int(width) for width in physical_widths],
+    }
+    cache_key = (
+        str(path),
+        int(stat.st_mtime_ns),
+        int(stat.st_size),
+        tuple(
+            (key, tuple(value) if isinstance(value, list) else value)
+            for key, value in expected.items()
+        ),
+    )
+    if cache_key in _GGUF_AR_D2_COST_CACHE:
+        return _GGUF_AR_D2_COST_CACHE[cache_key]
     from hipengine.dispatch.d2_resolver import cost_table_from_artifact
 
-    cost_table = cost_table_from_artifact(
-        path,
-        label_by_width=_GGUF_AR_D2_LABEL_BY_WIDTH,
-        source=path,
-    )
-    _GGUF_AR_D2_COST_CACHE[path] = cost_table
+    cost_table = cost_table_from_artifact(path, expected=expected)
+    _GGUF_AR_D2_COST_CACHE.clear()
+    _GGUF_AR_D2_COST_CACHE[cache_key] = cost_table
     return cost_table
 
 
@@ -7169,14 +7191,42 @@ class Qwen35GGUFResidentModelRunner:
         )
         width_sequence = None
         cost_table = getattr(self, "_gguf_ar_cost_table", None)
-        if cost_table is None and getattr(self, "_resident_batch_owner", None) is not None:
-            cost_table = _gguf_ar_resolve_cost_table(
-                str(getattr(shared_runner, "backend", "hip_gfx1100"))
+        resident_owner = getattr(self, "_resident_batch_owner", None)
+        if (
+            cost_table is None
+            and resident_owner is not None
+            and os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+        ):
+            kv_dtype = getattr(
+                getattr(resident_owner, "kv_storage_dtype", None),
+                "value",
+                "bf16",
             )
-        if cost_table is not None and getattr(self, "_resident_batch_owner", None) is not None:
-            # Artifact-backed D2 composition of the active rows into certified
-            # widths (ceiling remains the fail-closed fallback when no cost table).
+            cost_table = _gguf_ar_resolve_cost_table(
+                str(getattr(shared_runner, "backend", "hip_gfx1100")),
+                target_arch=str(getattr(shared_runner, "target_arch", "gfx1100")),
+                model_path=self.generator.model_path,
+                quant=self.generator._kv_weight_quant_key(),
+                kv_dtype=str(kv_dtype),
+                physical_widths=physical_bucket_widths,
+            )
+        d2_metadata = None
+        if cost_table is not None and resident_owner is not None:
             width_sequence = d2_partition(len(work.request_ids), cost_table)
+            identity = getattr(cost_table, "identity", None)
+            records = tuple(getattr(cost_table, "records", ()))
+            d2_metadata = {
+                "width_sequence": list(width_sequence),
+                "estimated_serial_model_step_ms": sum(
+                    float(cost_table.cost_ms(width)) for width in width_sequence
+                ),
+                "cost_source": None if not records else str(records[0].source),
+                "identity": (
+                    None
+                    if identity is None
+                    else identity.to_json_dict()
+                ),
+            }
         groups = plan_physical_batch_groups(
             work,
             physical_bucket_widths=physical_bucket_widths,
@@ -7307,10 +7357,16 @@ class Qwen35GGUFResidentModelRunner:
             "kind": "gguf_ar_physical_group_plan",
             "logical_c": len(request_ids),
             "physical_bucket_widths": list(physical_bucket_widths),
-            "policy": "occupancy_adaptive_dense_execution",
+            "policy": (
+                "artifact_backed_d2"
+                if d2_metadata is not None
+                else "occupancy_adaptive_dense_execution"
+            ),
             "group_count": len(groups),
             "groups": group_payloads,
         }
+        if d2_metadata is not None:
+            self._last_physical_group_plan["d2"] = d2_metadata
 
     def _packed_graph_capture_membership_stable(self) -> bool:
         """Require every registered native row to finish prefill before capture."""
