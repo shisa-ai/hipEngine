@@ -372,6 +372,8 @@ def _capability_checks(payload: Mapping[str, Any]) -> dict[str, bool]:
         is False,
         "target_sha256": isinstance(target, Mapping)
         and target.get("sha256") == LAGUNA_DFLASH_TARGET_SHA256,
+        "target_iq3_selected_down_tile": isinstance(target, Mapping)
+        and target.get("iq3_selected_down_tile") == 4,
         "drafter_sha256": isinstance(drafter, Mapping)
         and drafter.get("sha256") == LAGUNA_DFLASH_DRAFTER_SHA256,
         "drafter_revision": isinstance(drafter, Mapping)
@@ -411,8 +413,16 @@ def _prompt_checks(
         and blocking["generation_shape"].get("route") == "speculative",
         "blocking_execution_path": blocking.get("execution_path")
         == "laguna_dflash_b4_c1",
+        "blocking_iq3_selected_down_tile": blocking.get("diagnostics", {}).get(
+            "target_iq3_selected_down_tile"
+        )
+        == 4,
         "streaming_execution_path": streaming.get("execution_path")
         == "laguna_dflash_b4_c1",
+        "streaming_iq3_selected_down_tile": streaming.get("diagnostics", {}).get(
+            "target_iq3_selected_down_tile"
+        )
+        == 4,
         "stream_done": streaming.get("done") is True,
         "blocking_state_reset": _state_is_reset(state_after_blocking),
         "streaming_state_reset": _state_is_reset(state_after_streaming),
