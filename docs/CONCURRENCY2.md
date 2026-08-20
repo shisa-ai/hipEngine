@@ -413,31 +413,30 @@ is the normative part; the constants are not portable.** Every quantity marked
 
 ### Where the packed-decode cost actually is
 
-**Current clean direct curve (after the Q5T16 rows 5-8 promotion).** W7900 /
-gfx1100, exact-file Qwen3.8-27B-Q4_K_M, BF16 KV, one shared load, graph
-replay, p128/d8, one warmup plus two measured runs, commit `c22e46630`. Every
-direct c1-c8 trajectory matches the repeating independent c4/c1 fixture and
-both controls are exact.
+**Current clean direct curve (after the Q5T16 and planar-qmicro Q6T16 rows 5-8
+promotions).** W7900 / gfx1100, exact-file Qwen3.8-27B-Q4_K_M, BF16 KV, one
+shared load, graph replay, p128/d8, one warmup plus two measured runs, commit
+`3ea17c73`. Every direct c1-c8 trajectory matches the repeating independent
+c4/c1 fixture and both controls are exact.
 
-| direct physical c | aggregate tok/s | scale vs c1 | (was, pre-Q5) |
+| direct physical c | aggregate tok/s | scale vs c1 | (was, pre-Q5/Q6) |
 | ---: | ---: | ---: | ---: |
-| 1 | 30.263 | 1.000× | 30.220 |
-| 2 | 53.743 | 1.776× | 53.672 |
-| 3 | 75.587 | 2.498× | 75.493 |
-| 4 | **93.919** | **3.103×** | 93.603 |
-| 5 | 83.879 | 2.772× | 67.173 |
-| 6 | 89.754 | 2.966× | 74.000 |
-| 7 | 73.293 | 2.422× | 63.483 |
-| 8 | 80.108 | 2.647× | 69.747 |
+| 1 | 30.303 | 1.000× | 30.220 |
+| 2 | 53.788 | 1.775× | 53.672 |
+| 3 | 75.474 | 2.491× | 75.493 |
+| 4 | 93.490 | 3.085× | 93.603 |
+| 5 | 105.673 | 3.487× | 67.173 |
+| 6 | 115.295 | 3.805× | 74.000 |
+| 7 | 122.364 | 4.038× | 63.483 |
+| 8 | 127.323 | 4.202× | 69.747 |
 
-Q5T16's true rowtile now covers rows 5-8 (c8 kernel census: 48 true-rowtile
-calls / 4.01 ms, zero Q5 WMMA, vs ~20 ms padded WMMA before). c4 remains the
-peak; the residual c7/c8 cliff is now dominated by planar-qmicro Q6. Honest
-two-c4 c8 is **91.73 tok/s** while native c8 is **80.11 tok/s (0.873×)**, so
-native c8 is still ~13% slower in step wall than 2×c4 until the Q6 rowtile
-closes. These are model-step results, not production-server rows: the
-continuous owner still advertises only physical `(1,2,4,8)` and rounds c3 to
-masked c4 and c5-c7 to masked c8. Direct c3/c5/c6/c7 are not yet
+Both the Q5T16 (48 calls / 4.30 ms at c8) and planar-qmicro Q6T16 (64 calls /
+10.76 ms at c8) now keep their true rowtiles through rows 8, closing the
+c5/c7 cliffs. **Native c8 is now 127.32 tok/s and beats honest two-c4 chunked
+c8 (91.13 tok/s) by 39.7%**; `native_c8_scaling_gate_passed = True`. c1-c4 are
+unchanged (within noise). These are model-step results, not production-server
+rows: the continuous owner still advertises only physical `(1,2,4,8)` and
+rounds c3 to masked c4 and c5-c7 to masked c8. Direct c3/c5/c6/c7 are not yet
 product-reachable.
 
 **Clean threshold traces (one profiler-instrumented decode transition; durations
@@ -447,15 +446,13 @@ kernels instead of dropping them into `other`:
 | width | total kernel sum | dense projection | Q5T16 route (48 calls) | planar-Q6T16 BF16 route (64 calls) |
 | ---: | ---: | ---: | --- | --- |
 | c4 | 39.1 ms | 28.1 ms | true col4 rowtile, 3.34 ms | true col8 rowtile, 6.79 ms |
-| c5 | 69.0 ms | 60.9 ms | **true rowtile (post-promotion), ~4 ms** | misleading `rowtile` wrapper → direct per-row GEMV, 17.35 ms |
-| c7 | 104.6 ms | 95.0 ms | true rowtile (post-promotion) | **padded WMMA, 51.39 ms** |
+| c5 | 69.0 ms | 60.9 ms | true rowtile (post-promotion) | true col8 rowtile (post-promotion) |
+| c7 | 104.6 ms | 95.0 ms | true rowtile (post-promotion) | **true col8 rowtile (post-promotion, 10.76 ms @ c8)** |
 
-This proves two distinct D3 thresholds: Q5's old true-rowtile cut at 4→5 is
-now closed (it keeps its true rowtile through 8); planar-qmicro Q6 leaves its
-true rowtile at 4→5 (direct per-row at 5/6) and then falls to padded WMMA at
-6→7. The numerical similarities c5≈c4+c1 and c7≈c6+c1 do **not** imply
-decomposition—the benchmark manifest and trace both show one physical c5/c7
-group.
+Both Q5T16 and planar-qmicro Q6T16 now keep their true rowtiles through rows 8
+(2026-08-20); the two D3 thresholds at 4→5 are closed. The numerical
+similarities c5≈c4+c1 and c7≈c6+c1 do **not** imply decomposition—the benchmark
+manifest and trace both show one physical c5/c7 group.
 
 **Exact decode-path tensor census.** The active model has 64 decode layers, not
 all 65 GGUF blocks:
@@ -656,13 +653,12 @@ logical c1-c32 through the actual scheduler.
 
 **The quant/layout axis explains the current cliffs but does not globally clamp
 physical width.** On this exact Qwen3.8 artifact, standard Q4T16 has true
-rowtiles through 8; Q5T16 now has a true rowtile through 8 (promoted 2026-08-20);
-planar-qmicro Q6T16 has a true rowtile through 4, a misleading same-variant
-direct-per-row fallback at 5/6, and padded WMMA at 7/8. The full model may mix
-those variants in one physical group, so there is no correct rule saying
-"clamp the engine to the minimum family width." D1 prices each operation and
-D2 prices the complete mixed route. The top kernel fix remaining is clear:
-provide the true planar-Q6 rowtile through 8, then remeasure the full map.
+rowtiles through 8; Q5T16 has a true rowtile through 8 (promoted 2026-08-20);
+planar-qmicro Q6T16 now also has a true col8 rowtile through 8 (promoted
+2026-08-20), replacing its disguised direct-per-row rows5/6 fallback and its
+padded-WMMA rows7/8. The full model may mix those variants in one physical
+group, so there is no correct rule saying "clamp the engine to the minimum
+family width." D1 prices each operation and D2 prices the complete mixed route.
 
 **Promotion gate.** A primitive or group record becomes default only when its
 declared strict/production contract passes, its route and resource provenance
@@ -714,17 +710,17 @@ Any probe whose numbers enter the width map must:
    **91.06 tok/s / 88.74 ms** versus native c8 **69.75 / 114.72 ms**. Clean c5/c7
    traces bind the two cliffs to Q5 and planar-qmicro Q6 projection routes.
 2. **Remove the measured quant/layout cliffs (highest current kernel leverage).**
-   ~~Extend Q5T16's true rowtile from 4→8~~ **DONE (2026-08-20)**: primitive
-   `q5_k_t16_dense_rowtile_col4_gemv_kernel` rows 2-8 strict bit-parity +
-   dispatch `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8`
-   (gfx1100); c1-c8 **30.26/53.74/75.59/93.92/83.88/89.75/73.29/80.11 tok/s**
-   (c5 +24.9%, c6 +21.3%, c7 +15.5%, c8 +14.9%), all exact; c8 kernel census 48
-   true-rowtile calls / 4.01 ms, zero Q5 WMMA. Next in this step: extend
-   planar-qmicro Q6T16's true col8 rowtile from 4→8 and delete its disguised
-   direct-per-row rows5/6 fallback. Each unit needs rows2-8 strict primitive
-   parity, production-shape actual-weight coverage, full direct c1-c8 graph A/B,
-   and a kernel trace proving the expected name/count. Do not modify standard Q6
-   or Q4 paths that already retain their own measured policies.
+   ~~Extend Q5T16's true rowtile from 4→8~~ and ~~planar-qmicro Q6T16's true
+   col8 rowtile from 4→8~~ **DONE (2026-08-20)**: both primitives now cover
+   rows 2-8 (strict bit-parity vs their per-row producers) and the dispatch
+   routes rows 5-8 to the true rowtiles
+   (`GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
+   `[gguf_q6_k_t16_qmicro_planar_v1]=8`). The planar Q6 export no longer routes
+   rows 5+ to the per-row fallback. Result c1-c8
+   **30.30/53.79/75.47/93.49/105.67/115.30/122.36/127.32 tok/s** (c5 +57%,
+   c6 +56%, c7 +93%, c8 +82%), all exact; native c8 kernel census:
+   Q5 true rowtile 48/4.30 ms + planar-Q6 true rowtile 64/10.76 ms, zero
+   Q6 WMMA. Native c8 now beats two-c4 chunked c8 by 39.7%.
 3. **Implement the artifact-backed D2 resolver (host-first; may proceed in
    parallel with step 2).** Preserve the current ceiling planner as strict
    fallback, add dynamic programming over certified `(active,physical,mask)`
