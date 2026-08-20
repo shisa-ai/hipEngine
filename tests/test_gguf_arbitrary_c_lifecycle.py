@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.gguf_arbitrary_c_lifecycle import (
-    _all_packed,
+    _all_native,
     _expected_dense_group_masks,
     _expected_hole_group_masks,
     _group_masks,
@@ -52,10 +52,27 @@ def test_gguf_arbitrary_c_lifecycle_summarizes_declared_packed_masks() -> None:
         ],
     }
 
-    assert _all_packed(plan)
+    assert _all_native(plan)
     assert _group_masks(plan) == ["11011111", "11011000"]
+
+    c1_plan = {
+        "group_count": 1,
+        "groups": [
+            {
+                "physical_rows": 1,
+                "active_mask": [True],
+                "execution_path": "native_c1_eager",
+            }
+        ],
+    }
+    assert _all_native(c1_plan)
+    c1_plan["groups"][0]["execution_path"] = "native_c1_graph"
+    assert _all_native(c1_plan)
+    c1_plan["groups"][0]["physical_rows"] = 2
+    assert not _all_native(c1_plan)
+
     plan["groups"][1]["execution_path"] = "serial_fallback"
-    assert not _all_packed(plan)
+    assert not _all_native(plan)
 
 
 def test_gguf_arbitrary_c_lifecycle_accepts_single_physical_group_shape() -> None:

@@ -18,7 +18,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import MethodType
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -164,14 +164,21 @@ def _poll_one(
     return events
 
 
-def _all_packed(plan: dict[str, Any] | None) -> bool:
+def _all_native(plan: dict[str, Any] | None) -> bool:
+    def group_is_native(group: Mapping[str, Any]) -> bool:
+        execution_path = group.get("execution_path")
+        if execution_path == "packed_native":
+            return True
+        return bool(
+            execution_path in {"native_c1_eager", "native_c1_graph"}
+            and int(group.get("physical_rows", 0)) == 1
+            and tuple(bool(value) for value in group.get("active_mask", ())) == (True,)
+        )
+
     return bool(
         plan
         and int(plan.get("group_count", 0)) > 0
-        and all(
-            group.get("execution_path") == "packed_native"
-            for group in plan.get("groups", ())
-        )
+        and all(group_is_native(group) for group in plan.get("groups", ()))
     )
 
 
@@ -762,7 +769,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for plan in all_plans
                 for group in plan["groups"]
             )
-            no_serial_fallback = all(_all_packed(plan) for plan in all_plans)
+            no_serial_fallback = all(_all_native(plan) for plan in all_plans)
             expected_initial_masks = _expected_dense_group_masks(logical_c, _resolve_widths())
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
