@@ -1483,3 +1483,28 @@ def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch)
     assert _gdn_decode_order_segments_state_rows_kernel() is (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
     )
+
+
+def test_gdn_decode_order_segments_inplace_kernel_selects_fp16_under_flag(monkeypatch) -> None:
+    """In-place segmented decode-order prefill writer routes to fp16 under the flag.
+
+    The packed AR multi-slot prefill uses ``_gdn_decode_order_segments_inplace_kernel``
+    (per-slot packed state mutated in place).  Under the fp16 flag it must select
+    the fp16-state writer (half-sized per-slot state); with the flag off the
+    strict FP32 wrapper is the identity fallback.
+    """
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gdn_decode_order_segments_inplace_kernel,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state,
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    assert _gdn_decode_order_segments_inplace_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    assert _gdn_decode_order_segments_inplace_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state
+    )

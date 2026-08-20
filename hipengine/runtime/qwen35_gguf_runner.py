@@ -162,6 +162,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
@@ -7392,13 +7393,7 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv"
             )
         if active_segments > 1:
-            if _gguf_fp16_recurrent_state_enabled():
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the segmented "
-                    "decode_order prefill path (FP32-state writer); only the "
-                    "compact-peer-wave32 recurrence supports fp16 state"
-                )
-            qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments(
+            _gdn_decode_order_segments_inplace_kernel()(
                 scratch.conv_out.ptr,
                 scratch.linear_z.ptr,
                 scratch.linear_alpha.ptr,
@@ -11467,6 +11462,23 @@ def _gdn_decode_order_segments_state_rows_kernel():
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
         if _gguf_fp16_recurrent_state_enabled()
         else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
+    )
+
+
+def _gdn_decode_order_segments_inplace_kernel():
+    """In-place segmented decode-order prefill writer (fp16-state under the flag).
+
+    Used by the packed AR prefill for multi-slot slabs (``gdn_active_segments``
+    = slot count, per-slot packed state mutated in place).  Under
+    ``HIPENGINE_GGUF_FP16_RECURRENT_STATE`` the packed per-slot recurrent state
+    is half-sized, so the fp16-state writer is required; the FP32-state wrapper
+    remains the strict identity fallback (byte-identical).
+    """
+
+    return (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments
     )
 
 
@@ -18836,8 +18848,12 @@ class Qwen35GGUFResidentSession:
             raise NotImplementedError("packed AR prefill does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
             self._device_token_embedding_weight(reason="packed_ar_prefill")
-        if not _gguf_verify_capture_prefill_gdn_enabled():
-            raise NotImplementedError("packed AR prefill requires segmented prefill-GDN state rows")
+        # No verify-capture prefill-GDN requirement: the packed AR prefill uses
+        # the segmented in-place per-slot state path (``gdn_active_segments`` =
+        # slot count, no per-token state-rows capture), so it runs under the
+        # production route too. The packed target verifier still requires
+        # verify-capture (it captures per-token state rows); see
+        # ``_verify_target_blocks_batch``.
 
         for prompt in prompt_tuple:
             if not prompt:
@@ -19520,8 +19536,9 @@ class Qwen35GGUFResidentSession:
             raise NotImplementedError("packed AR decode does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
             self._device_token_embedding_weight(reason="packed_ar_decode")
-        if not _gguf_verify_capture_prefill_gdn_enabled():
-            raise NotImplementedError("packed AR decode requires segmented prefill-GDN state rows")
+        # Same as prefill: packed AR decode is c1-exact per slot via the packed
+        # per-slot Conv/GDN state (``_run_linear_attention_attn_only``), so the
+        # production route (no verify-capture) is supported.
 
         position_tuple = tuple(int(session.position) for session in session_tuple)
         if positions is not None:

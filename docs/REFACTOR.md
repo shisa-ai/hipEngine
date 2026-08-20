@@ -3872,7 +3872,13 @@ should be boring.
   20260820T065950 worklog entry and `kernel: fp16-state decode_order state-rows
   prefill writers`), so their fail-closed guard in
   `_run_linear_attention_prefill_layer_rows` was removed and the dispatch
-  selects the fp16-state variant under the flag. Remaining fail-closed guards:
+  selects the fp16-state variant under the flag. The in-place segmented
+  decode_order prefill writer (the packed AR multi-slot path) is also
+  fp16-capable as of 2026-08-20 (`kernel: fp16-state in-place segmented
+  decode_order prefill`), and the packed AR prefill/decode guards that required
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` were removed (the packed path is
+  self-contained: segmented in-place per-slot state, c1-exact per-slot decode,
+  so it runs under the production route). Remaining fail-closed guards:
   chain-journal output and snapshot fusion, the MTP tree/chain verifier, and
   any `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the auto
   `chain_compact_peer_wave32` Q4_K_S route.
