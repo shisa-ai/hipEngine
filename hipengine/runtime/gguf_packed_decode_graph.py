@@ -336,6 +336,29 @@ def _final_transition_layout(graph: "Qwen35GGUFPackedDecodeGraph"):
     )
 
 
+def _bind_packed_decode_graph_capture_state(
+    owner: Any,
+    *,
+    sessions: tuple[Any | None, ...],
+    layout: Any,
+    positions: tuple[int, ...],
+    state_was_dirty: bool,
+) -> None:
+    """Bind an import-only capture without claiming that it executed a step."""
+
+    owner._packed_decode_sessions = sessions
+    owner._packed_decode_last_layout = layout
+    # Capture imports the current session state but executes no transition.
+    # Preserve pre-capture ownership so invalidating an unreplayed graph cannot
+    # scatter a singleton transition layout and advance every session cursor.
+    owner._packed_decode_state_dirty = bool(state_was_dirty)
+    owner._packed_decode_session_ids = tuple(
+        0 if session is None else id(session)
+        for session in sessions
+    )
+    owner._packed_decode_positions = positions
+
+
 def capture_qwen35_gguf_packed_decode_graph(
     owner: Any,
     *,
@@ -428,6 +451,7 @@ def capture_qwen35_gguf_packed_decode_graph(
     if layer_ids and record_capacity <= 0:
         raise ValueError("layer-hidden recording requires record_steps")
 
+    state_was_dirty = bool(owner._packed_decode_state_dirty)
     runtime: HipRuntime = owner.runtime or get_hip_runtime()
     slot_capacity = max(1024, max_active_position + replay_span + 1)
     layout = _singleton_layout(
@@ -761,14 +785,13 @@ def capture_qwen35_gguf_packed_decode_graph(
         },
     }
     owner.last_packed_execution_manifest = manifest
-    owner._packed_decode_sessions = physical_session_tuple
-    owner._packed_decode_last_layout = layout
-    owner._packed_decode_state_dirty = True
-    owner._packed_decode_session_ids = tuple(
-        0 if session is None else id(session)
-        for session in physical_session_tuple
+    _bind_packed_decode_graph_capture_state(
+        owner,
+        sessions=physical_session_tuple,
+        layout=layout,
+        positions=positions,
+        state_was_dirty=state_was_dirty,
     )
-    owner._packed_decode_positions = positions
     handle = Qwen35GGUFPackedDecodeGraph(
         owner=owner,
         sessions=physical_session_tuple,

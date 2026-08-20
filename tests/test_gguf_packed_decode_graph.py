@@ -146,6 +146,44 @@ def test_packed_decode_graph_final_layout_keeps_inactive_lanes_inert() -> None:
     assert layout.block_table[6].tolist() == [-1, -1, -1, -1]
 
 
+def test_packed_graph_capture_preserves_pre_capture_state_ownership() -> None:
+    sessions = (object(), None, object())
+    positions = (18, -1, 22)
+    layout = object()
+    owner = SimpleNamespace(
+        _packed_decode_sessions=(),
+        _packed_decode_last_layout=None,
+        _packed_decode_state_dirty=True,
+        _packed_decode_session_ids=(),
+        _packed_decode_positions=(),
+    )
+
+    packed_graph._bind_packed_decode_graph_capture_state(
+        owner,
+        sessions=sessions,
+        layout=layout,
+        positions=positions,
+        state_was_dirty=False,
+    )
+
+    assert owner._packed_decode_sessions == sessions
+    assert owner._packed_decode_last_layout is layout
+    # Importing state for capture does not execute a token transition.  A graph
+    # invalidated before its first replay therefore has nothing to scatter.
+    assert owner._packed_decode_state_dirty is False
+    assert owner._packed_decode_session_ids == (id(sessions[0]), 0, id(sessions[2]))
+    assert owner._packed_decode_positions == positions
+
+    packed_graph._bind_packed_decode_graph_capture_state(
+        owner,
+        sessions=sessions,
+        layout=layout,
+        positions=positions,
+        state_was_dirty=True,
+    )
+    assert owner._packed_decode_state_dirty is True
+
+
 def test_packed_graph_kernel_resolution_tracks_native_width(monkeypatch) -> None:
     resolved: list[tuple[str, str]] = []
 
