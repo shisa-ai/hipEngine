@@ -1457,11 +1457,24 @@ wall** (1.12/78.5 ms per token), so fp16 state bounds c=1 decode gain near
 request state) is outside our c=1 scope. Evidence:
 [`2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-fp16-recurrent-state-quality.json).
 
-**Decision:** do not invest in the full multi-kernel fp16-state device change
+**Decision (c=1 lane):** do not invest in the full multi-kernel fp16-state device change
 for the c=1 campaign; the quality tradeoff is favorable but the decode gain is
 small and the real value is concurrency. Revisit (with a device fp16-state GDN
 variant + full natural-suite KL/top-1 profile gate) only if a multi-request /
 concurrency target is adopted. FP32 state remains the strict default.
+
+**Built 2026-08-20 (the c=N lane adopted the concurrency target, so the
+revisit condition is met).** The fp16-state device change was implemented
+end-to-end under `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1` (commits
+`497dab0be`..`b4f6e135c`): GDN decode recurrent kernels templated on `state_t`
+with half_t (fp16, RNE round-trip) instantiations for the plain, chain,
+segments, and indexed-singleton paths (incl. the gfx1151 shared-statecache24
+indexed decode); packed-AR `decode_order` prefill writers (state-rows,
+verify-capture, and in-place segmented) are now fp16-capable; the strict FP32
+fallback stays registered for every variant. Full production-profile gate on
+the complete prompt+heldout suite passed: kl_mean 3.68e-5 / p95 1.62e-4 /
+p99 6.65e-4 / max 1.28e-3, top-1 100%, deterministic same-schedule state
+SHA (evidence: [`2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json)).
 
 **c=N roofline (2026-08-18 follow-up — the concurrency value is quantified, not
 just "outside scope").** We do target c=N, so the multi-stream gain matters and
