@@ -65,6 +65,7 @@
       "local_path": "/tmp/q5_rowtile8_bench.json",
       "sha256": "70a6133351ab1e3e40b7c064862ca8bd84d8e5349da3d99191ac46f518ff9d4c",
       "bytes": 985733,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --configurations c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4 --prompt-length 128 --decode-steps 8 --warmup-runs 1 --measured-runs 2 --compiler-version-file /tmp/compiler-version.txt --require-cached-build --json /tmp/q5_rowtile8_bench.json",
       "hipengine_commit": "c9be7885629a94417914365c60ef7b7acb6ce1dc",
       "git_dirty": true,
       "staged_dirty": false,
