@@ -1925,12 +1925,23 @@ class _ServerMetrics:
     request_cancelled_total: int = 0
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
+    mtp_requests_total: int = 0
+    mtp_draft_tokens_accepted_total: int = 0
+    mtp_draft_tokens_rejected_total: int = 0
 
     def record_success(self, usage: Mapping[str, int]) -> None:
         self.request_total += 1
         self.request_completed_total += 1
         self.prompt_tokens_total += int(usage.get("prompt_tokens", 0))
         self.completion_tokens_total += int(usage.get("completion_tokens", 0))
+        completion_details = usage.get("completion_tokens_details")
+        if isinstance(completion_details, Mapping):
+            accepted = int(completion_details.get("accepted_prediction_tokens", 0) or 0)
+            rejected = int(completion_details.get("rejected_prediction_tokens", 0) or 0)
+            if accepted or rejected:
+                self.mtp_requests_total += 1
+                self.mtp_draft_tokens_accepted_total += accepted
+                self.mtp_draft_tokens_rejected_total += rejected
 
     def record_failure(self) -> None:
         self.request_total += 1
@@ -3826,6 +3837,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "startup_total_s": round(startup_total_s, 6),
             }
             _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", startup_total_s)
+            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
             _LOGGER.info("hipEngine is ready (lazy load).")
             return
         sampling = SamplingParams(
@@ -4090,6 +4102,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
             startup_total_s,
         )
+        _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         _LOGGER.info("hipEngine is ready.")
 
     async def shutdown_model() -> None:
@@ -5227,6 +5240,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     chat_sessions=chat_sessions,
                     pending_chat_sessions=chat_session_pending,
                     max_chat_sessions=config.max_chat_sessions,
+                    config=config,
                 ),
                 media_type="text/plain; version=0.0.4; charset=utf-8",
             )
@@ -5874,6 +5888,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response["hipengine"]["prompt_token_accounting"] = prompt_token_accounting
         if batch.generation_shape is not None:
             response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
+        response["hipengine"]["speculative_mtp"] = _mtp_response_summary(
+            None if batch.generation_shape is None else batch.generation_shape.get("route"),
+            batch.details,
+        )
         await _maybe_write_agentic_result_replay_artifact(
             config,
             raw_request,
@@ -6193,6 +6211,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 response["hipengine"]["token_accounting"] = token_accounting
             if batch.generation_shape is not None:
                 response["hipengine"]["generation_shape"] = deepcopy(batch.generation_shape)
+            response["hipengine"]["speculative_mtp"] = _mtp_response_summary(
+                None if batch.generation_shape is None else batch.generation_shape.get("route"),
+                batch.details,
+            )
             await _maybe_write_agentic_result_replay_artifact(
                 config,
                 raw_request,
@@ -7530,6 +7552,23 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
     }
 
 
+def _mtp_acceptance_rate_metric(metrics: _ServerMetrics) -> float:
+    """Cumulative MTP draft acceptance rate across recorded requests."""
+
+    total = metrics.mtp_draft_tokens_accepted_total + metrics.mtp_draft_tokens_rejected_total
+    if total <= 0:
+        return 0.0
+    return metrics.mtp_draft_tokens_accepted_total / total
+
+
+def _mtp_serving_metric(config: ServerConfig | None, engine: Any | None) -> float:
+    """Effective MTP serving state for the prometheus gauge (1 enabled / 0 off)."""
+
+    if config is None:
+        return 0.0
+    return 1.0 if _speculative_mtp_capability(config, engine=engine)["serving_route"] else 0.0
+
+
 def _render_prometheus_metrics(
     metrics: _ServerMetrics,
     *,
@@ -7538,6 +7577,7 @@ def _render_prometheus_metrics(
     chat_sessions: Mapping[str, Any] | None = None,
     pending_chat_sessions: set[str] | None = None,
     max_chat_sessions: int | None = None,
+    config: ServerConfig | None = None,
 ) -> str:
     live_snapshot = _live_loop_snapshot(engine)
     resident = _resident_loop_metric_values(live_snapshot)
@@ -7605,6 +7645,11 @@ def _render_prometheus_metrics(
         "hipengine_chat_sessions_max_active": (
             0.0 if max_chat_sessions is None else float(max_chat_sessions)
         ),
+        "hipengine_mtp_requests_total": metrics.mtp_requests_total,
+        "hipengine_mtp_draft_tokens_accepted_total": metrics.mtp_draft_tokens_accepted_total,
+        "hipengine_mtp_draft_tokens_rejected_total": metrics.mtp_draft_tokens_rejected_total,
+        "hipengine_mtp_draft_acceptance_rate": _mtp_acceptance_rate_metric(metrics),
+        "hipengine_mtp_serving": _mtp_serving_metric(config, engine),
     }
     help_text = {
         "hipengine_requests_total": "Total generation requests observed by the server.",
@@ -7663,6 +7708,11 @@ def _render_prometheus_metrics(
         "hipengine_chat_sessions_active": "Current app-local chat transcript session count.",
         "hipengine_chat_sessions_pending": "Current app-local chat session creations in flight.",
         "hipengine_chat_sessions_max_active": "Configured app-local chat session cap, or 0 when unset.",
+        "hipengine_mtp_requests_total": "Completed requests that served through the speculative MTP route.",
+        "hipengine_mtp_draft_tokens_accepted_total": "Draft tokens proposed by MTP that the target accepted.",
+        "hipengine_mtp_draft_tokens_rejected_total": "Draft tokens proposed by MTP that the target rejected.",
+        "hipengine_mtp_draft_acceptance_rate": "Cumulative MTP draft acceptance rate (accepted/(accepted+rejected)).",
+        "hipengine_mtp_serving": "Whether the server's effective MTP serving route is enabled (1) or off (0).",
     }
     counter_names = {
         "hipengine_requests_total",
@@ -9303,6 +9353,25 @@ def _startup_memory_summary(
         "min_free_bytes": int(min_free_snapshot.get("free_bytes", 0) or 0),
         "total_bytes": total_bytes,
     }
+
+
+def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> None:
+    """Log the server's effective MTP serving state at startup.
+
+    Mirrors the visible spec-decode configuration logging vLLM emits so an
+    operator can tell whether default-on MTP serving is active, what policy it
+    uses, and whether the loaded engine actually supports the route.
+    """
+
+    capability = _speculative_mtp_capability(config, engine=engine)
+    _LOGGER.info(
+        "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s",
+        "enabled" if capability["serving_route"] else "off",
+        _engine_supports_speculative_mtp(engine),
+        capability.get("default_enabled", False),
+        capability.get("policy", str(config.speculative_mtp_serving)),
+        capability.get("thinking_policy", str(config.speculative_mtp_thinking)),
+    )
 
 
 def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, Any]) -> None:
@@ -13455,10 +13524,101 @@ def _usage(
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+    completion_details: dict[str, int] = {}
     if reasoning_tokens:
         usage["reasoning_tokens"] = reasoning_tokens
-        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning_tokens}
+        completion_details["reasoning_tokens"] = reasoning_tokens
+    mtp_counts = _mtp_accepted_rejected_counts(details)
+    if mtp_counts is not None:
+        accepted, rejected = mtp_counts
+        completion_details["accepted_prediction_tokens"] = accepted
+        completion_details["rejected_prediction_tokens"] = rejected
+    if completion_details:
+        usage["completion_tokens_details"] = completion_details
     return usage
+
+
+def _mtp_accepted_rejected_counts(
+    details: Sequence[GenerationOutput] | None,
+) -> tuple[int, int] | None:
+    """Sum per-row MTP draft acceptance from generation telemetry.
+
+    Mirrors vLLM's ``usage.completion_tokens_details.accepted_prediction_tokens``
+    and ``rejected_prediction_tokens`` fields: the draft tokens the speculator
+    proposed that the target accepted / rejected. Returns ``None`` when no row
+    carries MTP telemetry.
+    """
+
+    accepted = 0
+    generated = 0
+    found = False
+    for detail in (details or ()):
+        telemetry = getattr(detail, "telemetry", None)
+        if isinstance(telemetry, Mapping):
+            timing = telemetry.get("timing")
+        else:
+            timing = None if telemetry is None else getattr(telemetry, "timing", None)
+        if not isinstance(timing, Mapping):
+            continue
+        row_accepted = timing.get("mtp_accepted_draft_tokens")
+        row_generated = timing.get("mtp_generated_draft_tokens")
+        if row_accepted is None and row_generated is None:
+            continue
+        found = True
+        accepted += max(0, int(row_accepted or 0))
+        generated += max(0, int(row_generated or 0))
+    if not found:
+        return None
+    return accepted, max(0, generated - accepted)
+
+
+def _mtp_response_summary(
+    route: str | None,
+    details: Sequence[GenerationOutput] | None,
+) -> dict[str, Any]:
+    """Compact per-request effective MTP state for the hipengine extension.
+
+    ``route`` is the realized generation route from the batch's generation
+    shape (``default`` / ``speculative_mtp`` / ``speculative``); MTP usage and
+    draft counts are derived from each row's backend telemetry.
+    """
+
+    accepted = 0
+    generated = 0
+    cycles = 0
+    used = False
+    for detail in (details or ()):
+        telemetry = getattr(detail, "telemetry", None)
+        if isinstance(telemetry, Mapping):
+            timing = telemetry.get("timing")
+            decode_state = telemetry.get("decode_state")
+        else:
+            timing = None if telemetry is None else getattr(telemetry, "timing", None)
+            decode_state = None if telemetry is None else getattr(telemetry, "decode_state", None)
+        if not isinstance(timing, Mapping):
+            continue
+        execution_path = None if decode_state is None else getattr(decode_state, "execution_path", None)
+        if execution_path and "mtp" in str(execution_path).lower():
+            used = True
+        row_accepted = timing.get("mtp_accepted_draft_tokens")
+        row_generated = timing.get("mtp_generated_draft_tokens")
+        row_cycles = timing.get("mtp_cycles_count")
+        if row_accepted is not None:
+            accepted += max(0, int(row_accepted))
+        if row_generated is not None:
+            generated += max(0, int(row_generated))
+        if row_cycles is not None:
+            cycles += max(0, int(row_cycles))
+    used = used or generated > 0
+    return {
+        "effective_route": "unknown" if route is None else str(route),
+        "used": bool(used),
+        "draft_tokens": generated,
+        "accepted_draft_tokens": accepted,
+        "rejected_draft_tokens": max(0, generated - accepted),
+        "acceptance_rate": (float(accepted) / float(generated)) if generated else None,
+        "draft_cycles": cycles,
+    }
 
 
 def _finish_reasoning_token_total(details: Sequence[GenerationOutput] | None) -> int:
