@@ -1,0 +1,35 @@
+{
+  "id": "zbook-qwen36-pn6-gemv-lib-hoist",
+  "date": "2026-08-18",
+  "hardware": "AMD Radeon 8060S (ZBook Ultra G1a, gfx1151, 40 CU / 80 SIMD)",
+  "status": "retained",
+  "mechanism": "Hoist the q8_0_t16 / q6_k_t16 / dense-gemv shared-object handles into module-level caches (_q8_0_t16_gemv_library / _q6_k_t16_gemv_library / _dense_gemv_library) so the 141 launch_gguf_linear launches/step stop re-running build_X(load=True) per call (~19-29 us/call of build_hip fast-path overhead even on a loaded-library cache hit). Also: _resolve_compiler_version now caches an explicit pinned version as the process default so per-call (compiler_version=None) loads hit _LOADED_LIB_CACHE on machines where pinned != installed.",
+  "family": "launch_gguf_linear T16 GEMV slice (attn q/k/v projections, c1 qkv pair, full-attn triple, lm_head, dense GEMV output projection)",
+  "source_plan": "docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md (PN6 new unit; overturns PN4 GPU-bound reading for this slice)",
+  "measurements_ms_per_token": {
+    "old_per_call_build_off1": 29.61,
+    "old_per_call_build_off2": 29.42,
+    "old_per_call_build_off3": 29.26,
+    "new_cached_ab1": 26.76,
+    "new_cached_ab2": 26.83,
+    "new_cached_ab3": 27.15,
+    "median_old": 29.42,
+    "median_new": 26.83,
+    "delta_us_per_token": 2589,
+    "delta_pct": 8.8,
+    "real_hoist_validation": [25.63, 25.69, 26.07]
+  },
+  "exactness": "memo returns the identical CDLL handle as build_X(load=True) (is-identity True for all three families) -> byte-identical launches by construction; 110 kernel tests pass",
+  "protocol": "sync'd eager decode, 512-token prefill + decode steps of token 9707, HIPENGINE_HIP_ARCH=gfx1151, require_cached_build, compiler version pinned from 20260817T024001Z hipcc-version.txt; counter-rotated A/B (ON/OFF/OFF/ON/ON/OFF) via libraries= injection; real-hoist validation via scripts/pn6_gemv_dispatch_audit_probe.py + /tmp probes",
+  "supporting_probes": {
+    "per_call_host_us_old_median": 43.2,
+    "per_call_host_us_new_median": 23.2,
+    "per_call_host_total_ms_per_step_old": 6.72,
+    "per_call_host_total_ms_per_step_new": 3.13,
+    "build_hip_fast_path_us_per_call": 19.4,
+    "slice_noop_ab_ms_per_tok": 9.36,
+    "launch_gguf_linear_calls_per_step": 141
+  },
+  "red_state": "tests/test_build.py (resolve_compiler_version cache), test_gguf_q8_0_t16_gemv_decode.py, test_gguf_q6_k_t16_gemv_decode.py, test_dense_gemv_plan.py, test_dense_gemv_wmma.py all pass (115 tests)",
+  "disposition": "retained on the default path (module caches are the default). Pure host-side change; kernel code and math untouched. Overturns PN4 GPU-bound conclusion for this slice: removing per-call build_hip recovers ~96% of removed host CPU as wall. MoE active-expert per-call build sites (group_scatter/laguna_router/maple_moe) remain a separate follow-up unit."
+}

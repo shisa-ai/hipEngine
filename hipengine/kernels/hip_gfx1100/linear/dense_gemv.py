@@ -115,6 +115,24 @@ def build_dense_gemv(
     )
 
 
+_DENSE_GEMV_LIBRARY: ctypes.CDLL | None = None
+
+
+def _dense_gemv_library() -> ctypes.CDLL:
+    """Memoized default build so per-call launches skip build_hip entirely.
+
+    The per-call launch path calls ``build_dense_gemv(load=True)`` on every
+    launch (~19 us/call of build_hip fast-path overhead even on a cache hit);
+    at 141 launches/step that is ~2.6 ms/step of host CPU that lands on the
+    critical path. Hoist it once, mirroring the router library pattern.
+    """
+
+    global _DENSE_GEMV_LIBRARY
+    if _DENSE_GEMV_LIBRARY is None:
+        _DENSE_GEMV_LIBRARY = build_dense_gemv(load=True)
+    return _DENSE_GEMV_LIBRARY
+
+
 def dense_gemv_out_bf16(
     x_ptr: int,
     weight_ptr: int,
@@ -129,7 +147,7 @@ def dense_gemv_out_bf16(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
@@ -154,7 +172,7 @@ def dense_gemv_out_bf16_residual_bf16_out(
     """Run dense BF16 GEMV plus an exact rounded-BF16 residual boundary."""
 
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -200,7 +218,7 @@ def dense_gemv_virtual256_out_bf16(
         raise ValueError("out_features must be positive")
     if threads != 128:
         raise ValueError("threads must equal 128 for dense BF16 virtual256 GEMV")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -245,7 +263,7 @@ def dense_gemv_virtual256_rowtile_out_bf16(
         raise ValueError("out_features must be positive")
     if threads != 128:
         raise ValueError("threads must equal 128 for dense BF16 virtual256 rowtile")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
@@ -283,7 +301,7 @@ def dense_gemv_rowtile_out_bf16(
     if rows < 2 or rows > 4:
         raise ValueError("rows must be between 2 and 4 for dense BF16 rowtile")
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_ROWTILE_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
@@ -305,7 +323,7 @@ def dense_gemv_bf16_f32w_bf16_out(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_F32W_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
@@ -338,7 +356,7 @@ def dense_pair_gemv_bf16_f32w_bf16_out(
         raise ValueError("out_features must be positive")
     if threads != 256:
         raise ValueError("threads must equal 256 for dense F32 pair")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     symbol = (
         _SYMBOL_BF16_F32W_PAIR_ROWTILE2_BF16_OUT
@@ -381,7 +399,7 @@ def dense_prefill_gemm_out_bf16(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DENSE_PREFILL_BF16_OUT)
     fn.argtypes = [
@@ -423,7 +441,7 @@ def dense_gemv_out_fp16(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_FP16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
@@ -445,7 +463,7 @@ def dense_gemv_out_f32(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_shape(rows, in_features, out_features, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_F32_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
@@ -466,7 +484,7 @@ def dense_gemv_out_bf16_wmma(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_wmma_shape(rows, in_features, out_features)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_OUT_WMMA, _ARGTYPES_DENSE_GEMV_SINGLE_WMMA, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, stream)
@@ -487,7 +505,7 @@ def dense_gemv_out_fp16_wmma(
     runtime: HipRuntime | None = None,
 ) -> None:
     _check_wmma_shape(rows, in_features, out_features)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_FP16_OUT_WMMA, _ARGTYPES_DENSE_GEMV_SINGLE_WMMA, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, stream)
@@ -512,7 +530,7 @@ def dense_dual_gemv_out_bf16(
 ) -> None:
     _check_shape(rows, in_features, out_features_a, threads)
     _check_shape(rows, in_features, out_features_b, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_BF16_OUT, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
@@ -538,7 +556,7 @@ def dense_dual_gemv_out_fp16(
 ) -> None:
     _check_shape(rows, in_features, out_features_a, threads)
     _check_shape(rows, in_features, out_features_b, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_FP16_OUT, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
@@ -565,7 +583,7 @@ def dense_dual_gemv_separate_out_bf16(
 ) -> None:
     _check_shape(rows, in_features, out_features_a, threads)
     _check_shape(rows, in_features, out_features_b, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_SEPARATE_BF16_OUT, _ARGTYPES_DENSE_GEMV_DUAL_SEPARATE, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_a_ptr, out_b_ptr,
@@ -592,7 +610,7 @@ def dense_dual_gemv_separate_out_fp16(
 ) -> None:
     _check_shape(rows, in_features, out_features_a, threads)
     _check_shape(rows, in_features, out_features_b, threads)
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_SEPARATE_FP16_OUT, _ARGTYPES_DENSE_GEMV_DUAL_SEPARATE, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_a_ptr, out_b_ptr,
@@ -618,7 +636,7 @@ def dense_dual_gemv_out_bf16_wmma(
     _check_wmma_shape(rows, in_features, out_features_a)
     if out_features_b <= 0:
         raise ValueError("out_features_b must be positive")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_BF16_OUT_WMMA, _ARGTYPES_DENSE_GEMV_DUAL_WMMA, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr, rows, in_features, out_features_a, out_features_b, stream)
@@ -643,7 +661,7 @@ def dense_dual_gemv_out_fp16_wmma(
     _check_wmma_shape(rows, in_features, out_features_a)
     if out_features_b <= 0:
         raise ValueError("out_features_b must be positive")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_FP16_OUT_WMMA, _ARGTYPES_DENSE_GEMV_DUAL_WMMA, ctypes.c_int)
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr, rows, in_features, out_features_a, out_features_b, stream)
@@ -671,7 +689,7 @@ def dense_prefill_wmma_out_bf16(
         raise ValueError("dense WMMA prefill requires in_features % 32 == 0")
     if out_features % 128:
         raise ValueError("dense WMMA prefill requires out_features % 128 == 0")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16)
     fn.argtypes = [
@@ -718,7 +736,7 @@ def dense_prefill_wmma_out_bf16_residual_bf16_out(
         raise ValueError("dense WMMA prefill requires in_features % 32 == 0")
     if out_features % 128:
         raise ValueError("dense WMMA prefill requires out_features % 128 == 0")
-    library = library or build_dense_gemv(load=True)
+    library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_RESIDUAL_OUT_BF16)
     fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
