@@ -192,9 +192,20 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
 
 
 def _expected_dense_group_masks(
-    rows: int, buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS
+    rows: int,
+    buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
+    *,
+    composition: Sequence[int] | None = None,
 ) -> list[str]:
+    """Expected dense active masks for one round.
+
+    When an explicit ``composition`` (e.g. the artifact-backed D2 partition) is
+    supplied, each group is exactly that width and fully dense. Otherwise the
+    ceiling (max-bucket) chunking with masked remainder is assumed.
+    """
     buckets = tuple(int(bucket) for bucket in buckets)
+    if composition is not None:
+        return ["1" * int(width) for width in composition]
     remaining = int(rows)
     masks: list[str] = []
     while remaining > 0:
@@ -211,18 +222,47 @@ def _expected_hole_group_masks(
     *,
     compact: bool,
     buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
+    composition: Sequence[int] | None = None,
 ) -> list[str]:
     buckets = tuple(int(bucket) for bucket in buckets)
     if compact:
+        compact_rows = int(rows) - len(cancel_slots)
+        compact_composition = _d2_composition(compact_rows)
         return _expected_dense_group_masks(
-            int(rows) - len(cancel_slots), buckets
+            compact_rows, buckets, composition=compact_composition
         )
+    if composition is not None:
+        masks = [list("1" * int(width)) for width in composition]
+        offsets: list[int] = []
+        cursor = 0
+        for width in composition:
+            offsets.append(cursor)
+            cursor += int(width)
+        for slot in cancel_slots:
+            slot_i = int(slot)
+            for width, base in zip(composition, offsets, strict=True):
+                if base <= slot_i < base + int(width):
+                    masks[offsets.index(base)][slot_i - base] = "0"
+                    break
+        return ["".join(mask) for mask in masks]
     masks = [list(mask) for mask in _expected_dense_group_masks(rows, buckets)]
     max_bucket = buckets[-1]
     for slot in cancel_slots:
         group_index, local_index = divmod(int(slot), max_bucket)
         masks[group_index][local_index] = "0"
     return ["".join(mask) for mask in masks]
+
+
+def _d2_composition(rows: int) -> tuple[int, ...] | None:
+    """Return the artifact-backed D2 composition for ``rows`` when D2 is active
+    (``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` set), else ``None`` (ceiling)."""
+    path = os.environ.get("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", "").strip()
+    if not path:
+        return None
+    from hipengine.dispatch.d2_resolver import cost_table_from_artifact, d2_partition
+
+    cost_table = cost_table_from_artifact(path)
+    return tuple(int(width) for width in d2_partition(int(rows), cost_table))
 
 
 def _state_kv_accepted(*, bit_exact: bool, allow_c1_arithmetic_drift: bool) -> bool:
@@ -826,12 +866,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for group in plan["groups"]
             )
             no_serial_fallback = all(_all_native(plan) for plan in all_plans)
-            expected_initial_masks = _expected_dense_group_masks(logical_c, _resolve_widths())
+            expected_initial_masks = _expected_dense_group_masks(
+                logical_c, _resolve_widths(), composition=_d2_composition(logical_c)
+            )
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
                 cancel_slots,
                 compact=bool(args.compact_after_middle_hole),
                 buckets=_resolve_widths(),
+                composition=_d2_composition(logical_c),
             )
             expected_refill_masks = expected_initial_masks
             expected_newcomer_slots = (
