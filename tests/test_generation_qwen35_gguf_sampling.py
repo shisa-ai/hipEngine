@@ -7273,7 +7273,16 @@ def test_resident_runner_follows_d2_composition_across_c1_to_c32(
     }
     cost_table = CostTable(
         tuple(
-            PhysicalWidthCost(w, ms, "post-promotion-fixture")
+            PhysicalWidthCost(
+                active_rows=w,
+                physical_width=w,
+                mask_class="dense_all_active",
+                model_step_ms=ms,
+                workspace_bytes=0,
+                route_manifest_sha256="a" * 64,
+                correctness_sha256="b" * 64,
+                source="post-promotion-fixture",
+            )
             for w, ms in step_ms.items()
         )
     )
@@ -7317,6 +7326,8 @@ def test_resident_runner_follows_d2_composition_across_c1_to_c32(
         )
         expected = list(d2_partition(c, cost_table))
         assert got == expected, f"c{c}: plan {got} != D2 {expected}"
+        assert plan["policy"] == "artifact_backed_d2"
+        assert plan["d2"]["width_sequence"] == expected
         # Composition must cover every active row exactly.
         assert sum(got) == c
 
@@ -7347,37 +7358,85 @@ def test_resident_runner_follows_d2_composition_across_c1_to_c32(
         reverse=True,
     )
     assert got == [8, 5]  # ceiling fallback, not D2 (7,6)
+    assert plan["policy"] == "occupancy_adaptive_dense_execution"
+    assert "d2" not in plan
 
 
-def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch, tmp_path) -> None:
-    import json
-
-    # Build a minimal canonical artifact with measured medians.
-    artifact = {
-        "summaries": {
-            label: {
-                "latency": {"inter_token_model_step_seconds": {"median": seconds}}
-            }
-            for label, seconds in [
-                ("c1", 0.0331), ("c2", 0.0375), ("c3", 0.0400), ("c4", 0.0433),
-                ("c5", 0.0480), ("c6", 0.0527), ("c7", 0.0578), ("native_c8", 0.0635),
-            ]
-        }
-    }
-    path = tmp_path / "d2_artifact.json"
-    path.write_text(json.dumps(artifact), encoding="utf-8")
+def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch) -> None:
+    path = Path(
+        "benchmarks/results/2026-08-20-concurrency2-qwen38-d2-cost-map.json"
+    ).resolve()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", str(path))
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "collect_model_identity",
+        lambda _path: {
+            "fingerprint": {
+                "exists": True,
+                "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+            }
+        },
+    )
+    monkeypatch.setattr(qwen35_gguf.socket, "gethostname", lambda: "epyc")
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "detect_device_name",
+        lambda: "AMD Radeon Pro W7900",
+    )
     qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
     try:
-        ct = qwen35_gguf._gguf_ar_resolve_cost_table("hip_gfx1100")
+        ct = qwen35_gguf._gguf_ar_resolve_cost_table(
+            "hip_gfx1100",
+            target_arch="gfx1100",
+            model_path="/models/fixture.gguf",
+            quant="gguf_q4_k_m",
+            kv_dtype="bf16",
+            physical_widths=tuple(range(1, 9)),
+        )
         assert ct is not None
         assert ct.widths == (1, 2, 3, 4, 5, 6, 7, 8)
+        monkeypatch.setattr(
+            qwen35_gguf,
+            "detect_device_name",
+            lambda: "AMD Radeon RX 7900 XTX",
+        )
+        with pytest.raises(ValueError, match="identity mismatch"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/models/fixture.gguf",
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
+        monkeypatch.setattr(
+            qwen35_gguf,
+            "detect_device_name",
+            lambda: "AMD Radeon Pro W7900",
+        )
+        with pytest.raises(ValueError, match="identity mismatch"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/models/fixture.gguf",
+                quant="gguf_q4_k_s",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
 
         runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
             qwen35_gguf.Qwen35GGUFResidentModelRunner
         )
-        runner._resident_batch_owner = object()
-        runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+        runner._resident_batch_owner = SimpleNamespace(
+            kv_storage_dtype=SimpleNamespace(value="bf16")
+        )
+        runner._shared_runner = SimpleNamespace(
+            backend="hip_gfx1100", target_arch="gfx1100"
+        )
+        runner.generator = SimpleNamespace(
+            model_path="/models/fixture.gguf",
+            _kv_weight_quant_key=lambda: "gguf_q4_k_m",
+        )
         runner._last_execution_manifest = {}
         runner._last_physical_group_plan = {}
         runner._step_native_chunk = lambda rows, **kwargs: True
@@ -7407,6 +7466,8 @@ def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch, tmp_path)
             for group in runner._last_physical_group_plan["groups"]
         )
         assert got == [6, 7]  # D2 composition loaded from the artifact
+        assert runner._last_physical_group_plan["policy"] == "artifact_backed_d2"
+        assert runner._last_physical_group_plan["d2"]["identity"]["backend"] == "hip_gfx1100"
     finally:
         qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
 
@@ -7415,6 +7476,13 @@ def test_resident_runner_d2_artifact_env_absent_fails_closed(monkeypatch) -> Non
     monkeypatch.delenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", raising=False)
     qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
     try:
-        assert qwen35_gguf._gguf_ar_resolve_cost_table("hip_gfx1100") is None
+        assert qwen35_gguf._gguf_ar_resolve_cost_table(
+            "hip_gfx1100",
+            target_arch="gfx1100",
+            model_path="/missing/model.gguf",
+            quant="gguf_q4_k_m",
+            kv_dtype="bf16",
+            physical_widths=tuple(range(1, 9)),
+        ) is None
     finally:
         qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()

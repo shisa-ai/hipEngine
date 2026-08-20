@@ -38,11 +38,11 @@ should be removed or collapsed.
 ## Generation-2 GGUF width-selection hardcoding
 
 - Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
-  `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification; the
-  ceiling-bucket planner remains for c>8 but is now superseded by the
-  artifact-backed D2 resolver (`hipengine/dispatch/d2_resolver.py`), wired into
-  the resident owner via `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` and proven across
-  logical c1-c32.
+  `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification. The
+  artifact-backed D2 resolver is wired into the resident owner through
+  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` and host-lowering-tested across logical
+  c1-c32, but it is explicit-config only. The ceiling planner remains the
+  production default until the actual-server D2 performance/SLO gate passes.
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,
@@ -53,16 +53,14 @@ should be removed or collapsed.
   intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
   generic fallback ladders still demonstrate why one model-wide max-row value
   or variant name is not honest coverage.
-- Removal trigger: land compact primitive and complete-model group-cost artifact
-  schemas (done: `CostTable` + `cost_table_from_artifact`); add cold package
-  resolution to ordinary four-axis registry keys; replace ceiling selection with
-  dynamic programming over certified records (done: `d2_partition`, wired and
-  proven c1-c32); pass direct/masked/composed c1-c32 plus dynamic
-  lifecycle/graph/state/KV gates (done via #36); then remove duplicate sidecar
-  special cases, generic default row caps, and manual width ladders that the
-  artifact supersedes. Keep registered strict kernels and the ceiling planner as
-  fail-closed fallback until D2 is adopted as the production default after the
-  post-promotion performance gate (#37).
+- Removal trigger: compact D1/D2 schemas and the strict retained group-cost map
+  are present; direct c3/c5/c6/c7 lifecycle is closed. Still required: cold
+  package resolution to ordinary registry/plugin evidence, actual-server
+  direct/masked/composed c1-c32 route plus goodput/TTFT/ITL/memory/drain gates,
+  and a same-protocol D2-vs-ceiling performance decision. Only then make D2 the
+  production default and remove duplicate sidecar cases, generic row caps, and
+  manual ladders. Keep registered strict kernels and the ceiling planner as the
+  fail-closed fallback throughout promotion.
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
