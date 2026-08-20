@@ -37,11 +37,12 @@ should be removed or collapsed.
 
 ## Generation-2 GGUF width-selection hardcoding
 
-- Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS=(1,2,4,8)` and
-  `plan_physical_batch_groups(..., compact_active_rows=True)` are the retained
-  exact product policy, but the planner chunks by the largest width and rounds
-  each remainder up: c3→masked-c4, c5-c7→masked-c8, c13→c8+masked-c8. Direct
-  c3/c5/c6/c7 graph kernels exist only in the diagnostic runner today.
+- Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
+  `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification; the
+  ceiling-bucket planner remains for c>8 but is now superseded by the
+  artifact-backed D2 resolver (`hipengine/dispatch/d2_resolver.py`), wired into
+  the resident owner via `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` and proven across
+  logical c1-c32.
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,
@@ -53,13 +54,15 @@ should be removed or collapsed.
   generic fallback ladders still demonstrate why one model-wide max-row value
   or variant name is not honest coverage.
 - Removal trigger: land compact primitive and complete-model group-cost artifact
-  schemas; add cold package resolution to ordinary four-axis registry keys;
-  replace ceiling selection with dynamic programming over certified
-  `(active_rows, physical_rows, mask_class, variant_manifest)` records; pass
-  direct/masked/composed c1-c32 plus dynamic lifecycle/graph/state/KV gates; then
-  remove duplicate sidecar special cases, generic default row caps, and manual
-  width ladders that the artifact supersedes. Keep registered strict kernels and
-  the current ceiling planner as fail-closed fallback until promotion.
+  schemas (done: `CostTable` + `cost_table_from_artifact`); add cold package
+  resolution to ordinary four-axis registry keys; replace ceiling selection with
+  dynamic programming over certified records (done: `d2_partition`, wired and
+  proven c1-c32); pass direct/masked/composed c1-c32 plus dynamic
+  lifecycle/graph/state/KV gates (done via #36); then remove duplicate sidecar
+  special cases, generic default row caps, and manual width ladders that the
+  artifact supersedes. Keep registered strict kernels and the ceiling planner as
+  fail-closed fallback until D2 is adopted as the production default after the
+  post-promotion performance gate (#37).
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
