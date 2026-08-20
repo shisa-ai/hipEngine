@@ -39,10 +39,11 @@ should be removed or collapsed.
 
 - Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
   `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification. The
-  artifact-backed D2 resolver is wired into the resident owner through
-  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` and host-lowering-tested across logical
-  c1-c32, but it is explicit-config only. The ceiling planner remains the
-  production default until the actual-server D2 performance/SLO gate passes.
+  artifact-backed D2 resolver is the production default on the exact
+  W7900/epyc/Qwen3.8-27B-Q4_K_M identity (identity-gated, fail-closed ceiling
+  elsewhere), after the matched actual-server c1-c32 D2-vs-ceiling gate passed.
+  The ceiling planner remains the fail-closed fallback for non-matching
+  identity/hosts (gfx1151 and the XTX require their own maps).
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,
@@ -54,13 +55,15 @@ should be removed or collapsed.
   generic fallback ladders still demonstrate why one model-wide max-row value
   or variant name is not honest coverage.
 - Removal trigger: compact D1/D2 schemas and the strict retained group-cost map
-  are present; direct c3/c5/c6/c7 lifecycle is closed. Still required: cold
-  package resolution to ordinary registry/plugin evidence, actual-server
-  direct/masked/composed c1-c32 route plus goodput/TTFT/ITL/memory/drain gates,
-  and a same-protocol D2-vs-ceiling performance decision. Only then make D2 the
-  production default and remove duplicate sidecar cases, generic row caps, and
-  manual ladders. Keep registered strict kernels and the ceiling planner as the
-  fail-closed fallback throughout promotion.
+  are present; direct c3/c5/c6/c7 lifecycle is closed; the actual-server
+  direct/masked/composed c1-c32 route plus goodput/TTFT/ITL and the
+  same-protocol D2-vs-ceiling performance gate passed (composed-wall sweep
+  + composed-c13 lifecycle), so D2 is now the production default on the exact
+  W7900/epyc identity. Still required: cold package resolution to ordinary
+  registry/plugin evidence. Keep registered strict kernels and the ceiling
+  planner as the fail-closed fallback for non-matching identity throughout
+  promotion; remove duplicate sidecar cases, generic row caps, and manual
+  ladders.
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
