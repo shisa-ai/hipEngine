@@ -108,6 +108,12 @@ threshold is removed; the scoped default promotion is tracked in the
 [`candidate artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)
 and [`serving evidence`](results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
 
+The repository-wide audit of faster default-off and rejected candidates is in
+the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
+It distinguishes live promotion candidates from stale labels already promoted,
+accuracy-traded/prompt-conditioned routes, and leaf wins with full-path
+regressions.
+
 ## Where detailed evidence lives
 
 | Need | Source |
