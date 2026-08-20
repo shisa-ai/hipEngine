@@ -48,6 +48,11 @@ acceptance 3.64, recall inside the reference range; the reference 4.80 is the
 BF16/T>0 target). Single clean run per B (all 10 prompts AR-exact),
 artifacts under `benchmarks/results/`.
 Remaining: D5 gfx1100 functional (optional given non-promotion).
+
+The complete quantitative record (acceptance model, per-cycle cost, B-sweep
+optimum, airtight ceiling, lane-bound proof, retained cost reductions) is
+consolidated in the **Economics** section below — the single source for the
+why-DFlash2-cannot-beat-MTP analysis.
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
@@ -69,8 +74,124 @@ References:
   13.10/12.92/13.10 tok/s at 512/1K/4K; exact native MTP B3 23.85 tok/s =
   1.7845x own AR).
 
-## 1. What DFlash2 is, relative to what we already have
+## Economics — complete record of why DFlash2 cannot beat MTP on this lane
 
+This section is the single self-contained record of the DFlash2-vs-MTP
+analysis (worklog evidence: `20260819T165514` root-cause re-audit,
+`20260819T160908` B-sweep, `20260819T235720` Q6-select, `20260820T001302`
+variable-block net loss; artifacts under `benchmarks/results/`). All numbers
+are the closed Qwen3.8-27B Q4_K_M GGUF target, gfx1151 resident session,
+greedy, full 10-prompt mtpbench suite, AR-exact on every row.
+
+### Baselines (same session, same hardware)
+
+| Lane | tok/s | ratio AR |
+| --- | --- | --- |
+| Pure autoregressive | 13.4 | 1.00x |
+| Exact native MTP B3 | 23.85 | **1.7845x** |
+| DFlash2 B3 (post-Q6 select) | 8.85 | 0.66x |
+| DFlash2 B5 (pre-Q6 select) | 4.26 | 0.32x |
+| DFlash2 B7 (pre-Q6 select) | 3.58 | 0.27x |
+
+The binding comparison is DFlash2 vs **our own exact MTP B3**, not external
+headlines. MTP B3 is the target to beat; DFlash2's best point is ~2.7x below
+it.
+
+### Acceptance model (measured)
+
+| B | verify rows | DFlash2 acceptance | per-row rate | MTP B3 | per-row |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 4 | 2.80 | 0.70 | 3.85 | 0.96 |
+| 5 | 6 | 3.30 | 0.55 | - | - |
+| 7 | 8 | 3.49 | 0.44 | - | - |
+
+DFlash2's marginal per-row acceptance **decays with block size** (0.70 @ B3 ->
+0.44 @ B7): larger blocks buy fewer accepted tokens per extra verify row. MTP
+B3 sustains ~0.96/row. The reference's advantage (blog: DFlash2 **4.80** vs
+MTP **4.28**, +12%) is the **BF16 target at T>0**; on the Q4_K_M greedy lane
+DFlash2 is **below** MTP (2.80-3.49 vs 3.85). DFlash2 feeds on the target's
+hidden states (5-tap fc projection), so target quantization degrades it
+disproportionately; MTP only consumes token embeddings. The reference itself
+qualifies this: "for quantized targets use block_size <= 5".
+
+### Per-cycle cost model (B3, fox prompt, post-Q6 select)
+
+| Cost | ms | DFlash2-specific? |
+| --- | --- | --- |
+| Draft forward (5-layer, config bs 8) | ~74 | yes (MTP ~5ms) |
+| Select (top-16 + selector, Q6 amortized) | ~22 | yes |
+| Verify (4-row chain) | ~166 | no (shared with MTP) |
+| Commit | ~2 | no |
+| **Total** | **~264** | |
+
+The verify is **O(N^2)** in block rows (causal block attention): ~166ms @4
+rows, ~620ms @8 rows (3.6x for 2x rows). The draft forward is launch-bound
+(~75 kernels/cycle), not compute-bound — so smaller forward blocks save
+almost nothing (see variable-block net loss below).
+
+### Why B3 is the optimum (the B-sweep)
+
+Throughput = acceptance(B) / (draft + select + verify(B) + commit).
+Acceptance(B) saturates (suffix decay) while verify(B) grows O(B^2), so
+there is a single interior optimum and it is **B3**:
+
+| B | cycle~cost | outcome |
+| --- | --- | --- |
+| 3 | 264ms | **8.85 tok/s (0.66x AR)** — optimum |
+| 5 | ~0.5-0.8s | 4.26 (0.32x) |
+| 7 | ~0.75-0.97s | 3.58 (0.27x) |
+
+### The airtight ceiling (not an optimization problem)
+
+1. **Free-drafter bound:** even if the entire 5-layer drafter + select were
+   zero-cost, B3 = 2.80 tok / 0.166s verify = **16.9 tok/s = 1.26x AR** —
+   still below MTP B3's 1.7845x AR, because DFlash2's acceptance (2.80) is
+   below MTP's (3.85).
+2. **Required-acceptance bound:** at the 166ms verify, beating MTP B3
+   (23.85 tok/s) would need 23.85 x 0.166 = **3.96 accepted tokens/cycle** —
+   above the B3 cap (4.0) and far above the model's per-draft rate on Q4.
+3. **Conclusion:** no operating point on the Q4_K_M/8060S lane can reach MTP
+   B3, regardless of drafter or select cost. The Q4-lane acceptance gap is
+   the insurmountable ceiling, not a kernel-tuning target.
+
+### Why the gap is lane-bound, not a drafter bug
+
+The re-audit proved the drafter is faithful: batch chain-verify == sequential
+per-token verify (acceptance 3.64 == 3.64) and recall@1/@16 sit inside the
+reference's own per-position range (r1 0.763 vs 0.729-0.854, r16 0.947 vs
+0.878-0.995). AR-exact on every run. The gap is the Q4 target erasing the
+acceptance advantage, plus the shared O(N^2) verify and the 5-layer draft
+(~15x MTP's ~5ms head).
+
+### Retained cost reductions (honest accounting)
+
+| Fix | Effect |
+| --- | --- |
+| Drop redundant full-vocab logit host copy (top-1 of top-16 == argmax) | select 70 -> 56ms |
+| **Q6 amortized select** (draft logits via the session's Q6_K head, read once across rows, vs the 2.54 GiB dequantized BF16 head) | **select 70 -> 22ms**; B3 suite 7.70 -> 8.85 (+15%), acceptance unchanged |
+| Variable-block forward (smaller drafter block) | **net loss**: acceptance -7%, recall@16 drops, launch-bound throughput flat — default-off, REFACTOR-noted |
+| rowtile-8 verify (620 -> 310ms) | reverted as AR-divergent on `code_lru_cache` |
+
+Net effect: DFlash2 B3 0.575x -> 0.66x AR, still ~2.7x below MTP B3. The
+select is no longer a meaningful DFlash2-specific cost (22ms); draft (~74ms)
++ shared verify (166ms) dominate.
+
+### The only path to DFlash2 > MTP
+
+A **BF16 (non-Q4) target**, where DFlash2's acceptance advantage (4.80 vs
+4.28) actually materializes and per-row acceptance can exceed MTP's — outside
+the closed Q4 lane. On Q4, the requirement is simultaneously (a) acceptance
+>= MTP's ~3.85 and (b) drafter cost <= ~5ms; neither is achievable with a
+5-layer parallel-block drafter on quantized hidden states.
+
+### Memory economics (D6)
+
+DFlash2 B3 pipeline ~19.5 GiB GTT (+3.6 GiB over the closed campaign's
+15.899 GiB B3 budget) — inside the 8060S unified-memory capacity, so the
+BF16 drafter does not exceed the APU budget; the GGUF-quantized drafter is
+not a required follow-up.
+
+## 1. What DFlash2 is, relative to what we already have
 Our existing native DFlash path (chain/tree verifier, native-bulk
 `TargetVerifyBatch`, `dflash_accept_chain_i32` / `dflash_commit_chain_i32`,
 whole-cycle confidence gate) was built against DFlash **1** drafters
