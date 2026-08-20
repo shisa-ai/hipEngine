@@ -522,6 +522,25 @@ efficiency at M=16/32" is not a coherent target for a rowtile-shaped kernel;
 tile caps this family near M≈8–12 regardless. The unexploited lever here is
 VOPD dual-issue (56% → potentially ~112% of the scalar roof).
 
+**Standing prediction for a larger rowtile `ROW_TILE`** (recorded before the
+measurement, so the probe is decisive either way). Extrapolating the measured
+slopes — gate/up 0.0103 ms/row over a 0.052 ms intercept, down 0.0081 ms/row
+over 0.087 — a direct `ROW_TILE=16` saves one weight-read pass against `2×8`:
+
+| shape | `2×8` | direct 16 | predicted |
+|---|---:|---:|---:|
+| gate/up 5120×17408 | 0.268 ms | ~0.217 ms | 1.24× |
+| down 17408×5120 | 0.304 ms | ~0.217 ms | 1.40× |
+
+So `ROW_TILE=16` is expected to be a **real but small** win — the same shape of
+win as the `ROW_TILE=8` down change (1.45×), and worth ~7% of a c16 step once
+the FFN is only ~24–30% of it. `ROW_TILE=32` is predicted to **regress**:
+`acc[32][8]` is 256 accumulator VGPRs before operands, against a 256-VGPR
+wave32 architectural limit, so it should spill to scratch. Both halves are
+cheap to falsify — the register half statically (protocol item 7), the timing
+half with one probe run. Neither changes the priority order below: there is no
+c>8 execution path to plug a 16-row kernel into until D2 exists.
+
 `t16_wmma_prefill` (matrix class, gate/up, per call): 0.338 / 0.402 / 0.397 /
 0.411 / 0.418 / 0.465 ms at M = 1 / 2 / 4 / 8 / 16 / 32.
 
@@ -585,6 +604,9 @@ costs. On today's W7900 numbers this immediately says `4×4` (171.6 ms for 16
 rows, 93 tok/s) beats `2×8` (222.8 ms, 72 tok/s), and it says the same about
 `2×4` versus native `c8`. **This is the piece that makes throughput scale with
 arbitrary c today, before any new kernel exists**, and it is measurable now.
+The additive form of `step_ms(D)` assumes groups execute **serially**; if groups
+are ever overlapped or pipelined the cost model must be re-derived rather than
+reused.
 
 **D3 — coverage is an invariant, not an optimization.** For every width in
 `1..W_max` and every layer role, dispatch must resolve to a variant whose
@@ -593,6 +615,16 @@ neighbouring width. A width that falls off a fast path is a regression even if
 it is "exact" — `c5` at 25 tok/s while `c4` ran at 94, and the `rows>7` rowtile
 cap, were both this failure. Add a test that walks every width and asserts the
 resolved variant is not the generic fallback.
+
+A width may satisfy D3 **either** by having its own instantiation **or** by a
+declared D2 decomposition into registered widths (`9 = 8+1`) whose composed cost
+meets the bound. What is not allowed is a **sparse ladder**: a launcher that
+accepts `{2..8, 16, 32}` and returns `hipErrorInvalidValue` for 9–15 and 17–31
+has reopened the cliff, because dispatch above it must then silently fall back
+to the generic path for two thirds of the range. Widening a launcher cap is
+therefore not complete until the shape check, the dispatch gate, the
+decomposition rule for the interior widths, and the coverage test all move with
+it.
 
 **Promotion gate.** A width-map entry may become the default when it is exact
 (or passes the production-profile gate in `EXECUTION-PROFILES.md`), is
@@ -606,7 +638,10 @@ the composed route still loses to `2×c4`.
 Any probe whose numbers enter the width map must:
 
 1. **Rotate weight tiles across layers** so the working set exceeds L3 (96 MB
-   on W7900). A single hot tile measures cache, not the serving path.
+   on W7900). A single hot tile measures cache, not the serving path. A
+   single-tile probe may still A/B two kernels at one shape — per-row ms stays
+   comparable — but its absolute bandwidth figures must never be quoted or
+   entered in the width map.
 2. **Read `bpw` from the allocation size** and fail loudly if unavailable; no
    silent 0.5 fallback.
 3. **Time inside a captured graph**, not per-call `perf_counter` +
@@ -621,7 +656,13 @@ Any probe whose numbers enter the width map must:
    decoded B in LDS and reuses it across row tiles, which is the structure the
    large-M path needs; it has never been benchmarked and is currently tiled at
    256 rows/block.
-7. **Emit the artifact and the rollup rows** per the evidence policy.
+7. **Check register and scratch usage statically** before spending a device
+   run on a wider register tile: build with `-Rpass-analysis=kernel-resource-usage`
+   (or read the generated `.s`) and reject any variant with non-zero
+   `ScratchSize`, or whose VGPR count drops occupancy below the level its
+   latency hiding needs. This is seconds of compile against minutes of model
+   load, and it answers the `ROW_TILE=32` question on its own.
+8. **Emit the artifact and the rollup rows** per the evidence policy.
 
 ### Next steps, in priority order
 
