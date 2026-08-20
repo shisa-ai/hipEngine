@@ -306,7 +306,7 @@ def test_explicit_gfx1100_backend_hint_applies_when_arch_detection_is_empty() ->
     assert applied == {"HSA_SCRATCH_SINGLE_LIMIT": "8388608"}
 
 
-def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
+def test_gfx1151_backend_aliases_admitted_dflash_tile4_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.kernels.hip_gfx1151 as backend
@@ -381,6 +381,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
     assert registered == [
         KernelKey(
             "hip_gfx1151",
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_gemv_decode_tile4_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
             "linear_pair",
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
@@ -410,6 +416,25 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
         ),
     ]
+
+
+def test_gfx1151_dflash_defaults_to_iq3_tile4() -> None:
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE",
+            1,
+        )
+        == 4
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE",
+            1,
+        )
+        == 1
+    )
 
 
 def test_gfx1151_backend_admits_only_q5_source_f16_prefill() -> None:

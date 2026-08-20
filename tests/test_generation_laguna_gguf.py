@@ -93,11 +93,12 @@ class _FakeWeights:
 class _FakeSession:
     sequences: list[tuple[int, ...]] = []
     events: list[tuple] = []
+    open_options: list[dict[str, object]] = []
     prefill_hook = None
     resident_nbytes = 1_234
 
     def __init__(self, *, resident_weights, context_length, backend, runtime, **kwargs) -> None:
-        del kwargs
+        self.open_options.append(dict(kwargs))
         self.weights = resident_weights
         self.context_length = int(context_length)
         self.backend = str(backend)
@@ -187,6 +188,7 @@ def generator(monkeypatch, tmp_path):
     )
     _FakeSession.sequences = []
     _FakeSession.events = []
+    _FakeSession.open_options = []
     _FakeSession.prefill_hook = None
     instance = laguna_gguf.LagunaGGUFGenerator(
         model_path=model,
@@ -211,6 +213,15 @@ def test_laguna_generator_registers_concrete_gfx1151_key() -> None:
     assert GenerationKey("laguna_gguf", "hip_gfx1151", "gguf_q4_k_m") in set(
         registered_text_generators()
     )
+
+
+def test_laguna_ordinary_ar_keeps_iq3_selected_down_tile1(generator) -> None:
+    _FakeSession.sequences = [(10,)]
+
+    output = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+
+    assert output.generated_token_ids == (10,)
+    assert _FakeSession.open_options == [{"iq3_selected_down_tile": 1}]
 
 
 def test_laguna_native_runner_admits_later_prefill_between_decode_ticks(generator) -> None:

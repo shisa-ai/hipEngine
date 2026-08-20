@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.generation.laguna_gguf import (
     LagunaGGUFGenerator,
     _IncrementalLagunaDecoder,
@@ -52,11 +54,37 @@ LAGUNA_DFLASH_DRAFTER_SHA256 = (
 LAGUNA_DFLASH_DRAFTER_REVISION = "b0486d1586daa0d56435c508108171fc1c8daff9"
 LAGUNA_DFLASH_CANDIDATE_BUDGET = 4
 LAGUNA_DFLASH_EXECUTION_PATH = "laguna_dflash_b4_c1"
+LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV = (
+    "HIPENGINE_LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE"
+)
 LAGUNA_DFLASH_ECONOMICS_EVIDENCE = (
     "benchmarks/results/2026-07-23-gfx1151-"
     "laguna-dflash-category-economics-post-prefill.json"
 )
 LAGUNA_DFLASH_FALLBACK_REASON = "d4_full_suite_speedup_0p9469x_below_1p10"
+
+
+def _laguna_dflash_iq3_selected_down_tile(backend: str) -> int:
+    raw = os.environ.get(LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV)
+    if raw is None or not raw.strip():
+        value = backend_package_capability(
+            backend,
+            "LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE",
+            1,
+        )
+    else:
+        value = raw
+    try:
+        tile = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV} must be 1 or 4"
+        ) from exc
+    if tile not in {1, 4}:
+        raise ValueError(
+            f"{LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV} must be 1 or 4"
+        )
+    return tile
 
 
 @dataclass(frozen=True)
@@ -120,6 +148,9 @@ class LagunaDFlashTextProvider:
             raise ValueError("Laguna public DFlash admits only candidate budget B4")
         self.target = target_generator
         self.config = config
+        self.target_iq3_selected_down_tile = (
+            _laguna_dflash_iq3_selected_down_tile(self.target.backend)
+        )
         self.drafter_model = Path(config.draft_model).expanduser().resolve()
         self._target_session: Any | None = None
         self._drafter: LagunaDFlashResidentDrafter | None = None
@@ -144,6 +175,7 @@ class LagunaDFlashTextProvider:
                 "model": "poolside/Laguna-S-2.1-GGUF",
                 "sha256": LAGUNA_DFLASH_TARGET_SHA256,
                 "quant": "Q4_K_M",
+                "iq3_selected_down_tile": self.target_iq3_selected_down_tile,
             },
             "drafter": {
                 "model": "poolside/Laguna-S-2.1-DFlash",
@@ -302,6 +334,7 @@ class LagunaDFlashTextProvider:
             "speculative": {
                 "provider": self.provider_name,
                 "candidate_budget": LAGUNA_DFLASH_CANDIDATE_BUDGET,
+                "target_iq3_selected_down_tile": self.target_iq3_selected_down_tile,
                 "cycles": int(diagnostics.get("cycles", 0)),
                 "accepted_draft_tokens": int(
                     diagnostics.get("accepted_draft_tokens", 0)
@@ -466,6 +499,7 @@ class LagunaDFlashTextProvider:
             "quant": "gguf_q4_k_m",
             "provider": self.provider_name,
             "candidate_budget": LAGUNA_DFLASH_CANDIDATE_BUDGET,
+            "target_iq3_selected_down_tile": self.target_iq3_selected_down_tile,
             "exactness_mode": "target_corrected_greedy",
             "performance_claim": False,
             "fallback_reason": LAGUNA_DFLASH_FALLBACK_REASON,
@@ -513,7 +547,9 @@ class LagunaDFlashTextProvider:
             return
         started = time.perf_counter()
         self.target._prepare_locked()
-        target_session = self.target._open_session_locked()
+        target_session = self.target._open_session_locked(
+            iq3_selected_down_tile=self.target_iq3_selected_down_tile,
+        )
         drafter: LagunaDFlashResidentDrafter | None = None
         cycle: LagunaDFlashResidentCycle | None = None
         try:
@@ -659,6 +695,7 @@ __all__ = [
     "LAGUNA_DFLASH_ECONOMICS_EVIDENCE",
     "LAGUNA_DFLASH_EXECUTION_PATH",
     "LAGUNA_DFLASH_FALLBACK_REASON",
+    "LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV",
     "LAGUNA_DFLASH_TARGET_SHA256",
     "LagunaDFlashTextProvider",
     "make_laguna_dflash_text_provider",
