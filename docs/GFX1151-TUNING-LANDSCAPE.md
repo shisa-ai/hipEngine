@@ -10,7 +10,9 @@ remaining non-overlapping GPU-side ceiling (2.386 ms/token, ~8.9% of the
 post-PN6 26.83-ms wall), while selected-expert kernel math is smaller (~1.8 ms)
 and already near its practical bandwidth ceiling. P3-FULLATTN must begin with a
 fresh route/profile confirmation and target the active gfx1151 BF16 fixed256
-context-batch kernel plus its separate gate launch. It is **not** a direct
+context-batch kernel's own math (the separate gate launch was screened: fusing
+it into the leaf is a measured no-win — see candidate 1a below). It is **not**
+a direct
 Laguna-WMMA wiring task and **not** a generic inherited-256-thread task; the
 current route facts and candidate boundary are recorded below.
 
@@ -188,6 +190,18 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
    128/512-thread or split-policy variants. QKV/output projections remain the
    separately owned `launch_gguf_linear` family and are not bundled into this
    candidate. **Next target.**
+
+   **Candidate 1a closed 2026-08-20 (measured no-win):** the fused fixed256
+   context-batch+gate leaf was implemented, RED-tested bit-exact, and measured.
+   It removes 10 gate_mul launches/token + the F32 round trip but is flat to
+   +0.7% at kernel level (gate_mul is ~1 µs of a ~95 µs attention call at
+   context 513) and within-noise whole-decode — the decode is GPU-bound and the
+   launch was already hidden. Reverted entirely; default path byte-identical to
+   `698465c5a`. See `worklog/entries/20260820T084054.841923Z-lhl-pn3-fullattn-fused-gate-0ef26a.md`
+   and `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-fullattn-fused-gate-no-win.json`.
+   The live lever is the attention-core kernel math itself: a gfx1151-specific
+   thread-geometry override of the shared `.hip` template, then split-K3 /
+   split-policy / WMMA-tile variants on the retained c1 exact spine.
 2. **P3-EXPGEMV — selected-expert W4 GEMV shape tuning** (thread/tiling/dequant
    for 40 CU + 32 MiB MALL). Kernel-side; gated on the do-not-repeat ledger
    (DP4A/Q8_1, row-compact GEMV, one-plane Q8_1 already rejected). The host
@@ -207,6 +221,9 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
 - selective unsafe math (7.67% slower at the actual leaf);
 - c1 MoE graph (exact but ~0.84% complete-wall regression);
 - prompt/token/candidate-specific routing (prohibited benchmark gaming).
+- fused fixed256 context-batch+gate leaf (bit-exact but no-win: gate_mul is
+  ~1 µs of a ~95 µs attention call; GPU-bound decode hides the launch);
+- launch-count reductions in c1 decode as a wall-time lever (host is overlapped).
 
 ## Venue caveat
 
