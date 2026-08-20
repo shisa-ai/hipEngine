@@ -844,6 +844,15 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # wrapper overhead (bf16 conversion, head-major KV copy, stream bridge).
 # Native is the exact same kernel already validated below the 512 threshold.
 GGUF_AOTRITON_PREFILL = False
+# Measured 2026-08-20 (35B-A3B @ 2048/4096, 8060S): 512-row linear/MoE prefill
+# chunks are ~1.2% (2048 tok) / ~2.3% (4096 tok) faster than the 1024 default,
+# and chunk-boundary-correct (KL 0.00013 at 2048, far below the 0.034 run-noise
+# floor). The 27B dense (H5120) is inconclusive within 60W-lane variance, so the
+# override is keyed to the H2048-MoE geometry only. Smaller chunks reduce
+# transient scratch and improve pipelining on the 40-CU APU.
+GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY = {
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): (512, 512),  # (linear, moe)
+}
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -2133,6 +2142,7 @@ __all__ = [
     "BACKEND",
     "GGUF_AOTRITON_HEAD_MAJOR_KV",
     "GGUF_AOTRITON_PREFILL",
+    "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",

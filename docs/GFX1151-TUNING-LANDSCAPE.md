@@ -121,6 +121,29 @@ whole-prefill at >=512, exact) and the remaining attention lever is the native
 kernel itself (P3-FULLATTN, prefill scan + decode paged_attn_decode
 ~2.4 ms/tok), not aotriton-vs-native.
 
+## gfx1100 hard-coded numbers review + gfx1151 overrides (2026-08-20)
+
+Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
+
+- **gfx1151 already overrides 47/56 GGUF-path capability knobs** (GDN prefill
+  auto-modes, parallel-reduce, rowtile policies, aotriton). 5 tables inherit
+  gfx1100 defaults (`GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`,
+  `GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES`, `GGUF_T16_F16_ROCBLAS_*`) --
+  mostly 27B H5120 memory/prefill-variant policies, low value, unchanged.
+- **Found + retained: the GGUF prefill chunk policy.** The gfx1151
+  `_ARCH_CHUNK_PROFILES` (linear/moe 256) is PARO-only; the GGUF runner never
+  passes `target_arch`, so GGUF prefill used generic 1024/4096 chunks. Sweep on
+  the 8060S: **512-row linear/MoE chunks are optimal for the H2048-MoE 35B-A3B**
+  (~1.2% @2048, ~2.3% @4096 whole-prefill win, chunk-boundary exact KL 0.00013).
+  Implemented as geometry-keyed `GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY = (512,512)`
+  for `(H2048-MoE, MOSTLY_Q4_K_M)`; the 27B H5120 is left on 1024 (inconclusive
+  within 60W-lane variance). Artifact:
+  `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-prefill-chunk-512-retained.json`.
+- **Deferred to P3-FULLATTN**: hard-coded `threads=256` launch geometry in the
+  shared .hip (paged_attn_decode, cast, gather, conv, group_scatter) is shared
+  with gfx1100 (gfx1151 has no .hip files) and needs per-backend build
+  parameterization to become a gfx1151 override.
+
 ## Ranked non-overlapping candidates
 
 1. **P3-FULLATTN — full-attention core/gate + QKV math tuning** (arithmetic /
