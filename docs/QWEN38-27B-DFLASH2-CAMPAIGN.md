@@ -32,10 +32,11 @@ size, B3 (4-row verify) is the DFlash2 optimum; a retained select-path fix
 head instead of the 2.54 GiB dequantized BF16 head (select 70ms -> 22ms), so
 the B3 suite is **8.85 tok/s = 0.66x AR** (100% AR-exact all 10 prompts),
 still ~2.7x below exact MTP B3; B5 = 4.26, B7 = 3.58 at the pre-fix select
-(select saving ~48ms/cycle applies uniformly). A variable-block forward
-(`DF2_FWD_BS`, smaller drafter block) is a measured net loss (acceptance
--7%, recall@16 drops, launch-bound throughput) and stays default-off.
-Drafter forward (~75ms) + select (22ms) remain the structural DFlash2
+(select saving ~48ms/cycle applies uniformly). A smaller-block forward is a
+measured net loss (acceptance -7%, recall@16 drops, launch-bound throughput),
+so its experiment switch and reduced-geometry native API were removed; the
+drafter always runs its trained block geometry. Drafter forward (~75ms) +
+select (22ms) remain the structural DFlash2
 disadvantage vs MTP's ~5ms draft; no B is competitive.
 B3 cycle split (profiler, fox prompt, post-fix): draft 74ms + select 22ms +
 verify 166ms + commit 2ms ≈ 264ms/cycle. **Even if the drafter forward+select

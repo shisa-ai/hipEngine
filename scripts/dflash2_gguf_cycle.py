@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -343,8 +342,8 @@ def _run_dflash2_cycle_batch(
     cfg = drafter.config
     mask = int(cfg.mask_token_id)
     hidden_size = int(cfg.hidden_size)
-    fwd_bs = int(os.environ.get("DF2_FWD_BS", drafter.block_size))  # drafter forward block size (default = config; smaller blocks lower recall@16 -> net loss)
-    n_drafts = block_size - 1          # verify chain length (CLI block size)
+    draft_rows = drafter.block_size - 1
+    n_drafts = block_size - 1  # verify chain length (CLI block size)
 
     hidden_size_sess = int(session.runner.hidden_size)
     row_nbytes = hidden_size_sess * DType.BF16.itemsize
@@ -386,29 +385,35 @@ def _run_dflash2_cycle_batch(
         while produced_total < max_new_tokens:
             t_cycle = time.perf_counter()
             ctx_len = int(drafter.ctx_len)
-            # --- draft proposal (native kernels, fwd_bs positions) ---------
-            block_input = np.asarray([bonus] + [mask] * (fwd_bs - 1), dtype=np.int64)
-            noise = token_embd[block_input].astype(np.float32)  # (fwd_bs, hidden)
-            positions = np.arange(0, ctx_len + fwd_bs, dtype=np.int64)
-            draft_ptr = drafter.forward(_to_bf16_bits(noise), positions, bs=fwd_bs)
+            # Run the drafter at its fixed trained block geometry; the CLI
+            # block size truncates only the verified candidate prefix.
+            block_input = np.asarray([bonus] + [mask] * draft_rows, dtype=np.int64)
+            noise = token_embd[block_input].astype(np.float32)
+            positions = np.arange(0, ctx_len + drafter.block_size, dtype=np.int64)
+            draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
             drafter.runtime.device_synchronize()
-            n_dr = fwd_bs - 1
-            if _draft_logits_q6_head(session, drafter, draft_ptr, n_dr, runtime=runtime):
+            if _draft_logits_q6_head(
+                session, drafter, draft_ptr, draft_rows, runtime=runtime
+            ):
                 path, _ = drafter.select(
-                    draft_ptr, None, drafter.logits.ptr, np.asarray([bonus], dtype=np.int64), rows=n_dr
+                    draft_ptr,
+                    None,
+                    drafter.logits.ptr,
+                    np.asarray([bonus], dtype=np.int64),
                 )
             else:
                 path, _ = drafter.select(
-                    draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64), rows=n_dr
+                    draft_ptr,
+                    head_ptr,
+                    None,
+                    np.asarray([bonus], dtype=np.int64),
                 )
-            cands = drafter.last_candidates(rows=n_dr)
+            cands = drafter.last_candidates()
             unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
             # --- batched chain verify (B+1 rows in one bulk pass) --------
             start_pos = int(session.position)
             block_inputs = [bonus] + drafts
-            if os.environ.get("DF2_CYCLE_DEBUG"):
-                t_v0 = time.perf_counter()
             bres = session.verify_target_block(
                 block_inputs,
                 bulk_attention_mode=verify_mode,
@@ -417,8 +422,6 @@ def _run_dflash2_cycle_batch(
                 defer_linear_state_commit=True,
             )
             target_rows = [int(t) for t in bres.token_ids]
-            if os.environ.get("DF2_CYCLE_DEBUG"):
-                print(f"  [dbg] block_inputs={len(block_inputs)} rows target={len(target_rows)} verify_wall={(time.perf_counter()-t_v0)*1000:.0f}ms", flush=True)
             # acceptance: draft j accepted iff draft_j == target_rows[j]
             max_accept = max_new_tokens - produced_total  # total rows this cycle
             k = 0
@@ -559,23 +562,31 @@ def _run_dflash2_cycle_native(
         while produced_total < max_new_tokens:
             t_cycle = time.perf_counter()
             ctx_len = int(drafter.ctx_len)
-            # --- draft proposal (native kernels, fwd_bs positions) ---------
-            fwd_bs = int(os.environ.get("DF2_FWD_BS", drafter.block_size))  # default config; smaller blocks are a net loss (recall@16)
-            block_input = np.asarray([bonus] + [mask] * (fwd_bs - 1), dtype=np.int64)
-            noise = token_embd[block_input].astype(np.float32)  # (fwd_bs, hidden)
-            positions = np.arange(0, ctx_len + fwd_bs, dtype=np.int64)
-            draft_ptr = drafter.forward(_to_bf16_bits(noise), positions, bs=fwd_bs)
+            # Run the drafter at its fixed trained block geometry; the CLI
+            # block size truncates only the sequentially verified prefix.
+            draft_rows = drafter.block_size - 1
+            block_input = np.asarray([bonus] + [mask] * draft_rows, dtype=np.int64)
+            noise = token_embd[block_input].astype(np.float32)
+            positions = np.arange(0, ctx_len + drafter.block_size, dtype=np.int64)
+            draft_ptr = drafter.forward(_to_bf16_bits(noise), positions)
             drafter.runtime.device_synchronize()
-            n_dr = fwd_bs - 1
-            if _draft_logits_q6_head(session, drafter, draft_ptr, n_dr, runtime=runtime):
+            if _draft_logits_q6_head(
+                session, drafter, draft_ptr, draft_rows, runtime=runtime
+            ):
                 path, _ = drafter.select(
-                    draft_ptr, None, drafter.logits.ptr, np.asarray([bonus], dtype=np.int64), rows=n_dr
+                    draft_ptr,
+                    None,
+                    drafter.logits.ptr,
+                    np.asarray([bonus], dtype=np.int64),
                 )
             else:
                 path, _ = drafter.select(
-                    draft_ptr, head_ptr, None, np.asarray([bonus], dtype=np.int64), rows=n_dr
+                    draft_ptr,
+                    head_ptr,
+                    None,
+                    np.asarray([bonus], dtype=np.int64),
                 )
-            cands = drafter.last_candidates(rows=n_dr)  # (n_drafts, top_k)
+            cands = drafter.last_candidates()
             unary = cands[:, 0]  # top-1 of on-device top-16 == global argmax (no full-logit host copy)
             drafts = [int(token) for token in path[:n_drafts]]
             # --- sequential greedy verify (commit-only-accepted) ----------
