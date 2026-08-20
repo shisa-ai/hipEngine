@@ -389,6 +389,111 @@ contract so the research formats are replaceable rather than scheduler forks.
 Keep hipEngine's smaller torch-free host, backend-neutral registry,
 `KVLiveSpans`, exact c-aware kernels, and explicit KV transactions.
 
+## GEMM roofline and width-based dispatch model
+
+The FFN linear layers are the dominant packed-decode cost, and the correct
+kernel depends on the physical batch width M (concurrent resident requests).
+This section derives the roofline model and the width-based dispatch switch
+points that the packed-decode kernel selection must follow. It is written so
+the **model and the crux are architecture-independent**; only the measured
+peaks and the per-architecture kernel-efficiency tables change when porting
+(e.g. to gfx1151). Measure the marked `MEASURE` quantities on each new
+backend and recompute — do not copy the W7900 numbers.
+
+### Roofline model (parameterized)
+
+For a quantized GEMM with M rows (the batch), K input features, N output
+features, and `bpw` bytes per weight:
+
+- arithmetic intensity `AI = 2·M·K·N / (K·N·bpw) = 2·M / bpw` FLOP/byte —
+  **linear in M, independent of the layer shape**;
+- ridge arithmetic intensity `AI_ridge = WMMA_peak_measured / BW_peak`;
+- **ridge batch width `M_ridge = AI_ridge · bpw / 2`**.
+
+Below `M_ridge` the GEMM is **bandwidth-bound** (effective weight BW is the
+limit; raising throughput means reading fewer bytes or at higher efficiency).
+Above `M_ridge` it is **compute-bound** (WMMA throughput is the limit).
+
+### Measured hardware points
+
+| backend | BW_peak | WMMA_peak_measured | AI_ridge | bpw (Q4) | M_ridge | status |
+|---|---|---|---|---|---|---|
+| **W7900 / gfx1100** | 864 GB/s (750–820 sustained) | **84.8 TFLOP/s** (`torch.matmul` 4096³, 69% of 123 spec) | **≈98 F/B** | ≈0.56 | **≈27** | measured 2026-08-20 |
+| gfx1151 | MEASURE | MEASURE | derived | MEASURE | derived | TODO on port |
+| (other) | MEASURE | MEASURE | derived | MEASURE | derived | TODO on port |
+
+`docs/ROOFLINE.md` gives the W7900 detail: a well-written bandwidth-bound
+kernel hits 75–85% of peak for large sequential streams, 40–60% for
+small/low-occupancy; VRAM latency ≈1045 cycles (≈418 ns) must be hidden with
+hundreds of in-flight requests.
+
+### Measured kernel behavior (W7900, Qwen3.8-27B FFN 5120×17408 / 17408×5120)
+
+`dense_rowtile` (the small-M path, M≤8; weight tile read once per 8-row group):
+
+| M | ms/call | % of 864 GB/s | note |
+|---|---|---|---|
+| 2 | 0.081 | 64% (≈72% at true Q4 bpw) | bandwidth-bound, well-written |
+| 4 | 0.093 | 56% | |
+| 8 | (down variant capped ≤7; gate/up ROW_TILE=8 works) | — | |
+
+`t16_wmma_prefill` (the current large-M path, M arbitrary; weight read once):
+
+| M | ms/call | % of 864 GB/s | % of 84.8 TFLOP/s | note |
+|---|---|---|---|---|
+| 1 | 0.338 | 15% | 0.6% | |
+| 8 | 0.411 | 12% | 4.1% | |
+| 16 | 0.418 | 12% | 8.0% | |
+| 32 | 0.465 | 11% | 14.5% | latency/occupancy-bound, not a roof |
+
+The rowtile is a **good bandwidth kernel** (64%+ of peak). The wmma prefill
+reaches only **≈11% of peak BW and ≤15% of WMMA at every M** — it is neither
+bandwidth- nor compute-saturated, i.e. it is **latency/occupancy-bound** (not
+enough in-flight requests to hide VRAM latency). Its TFLOP/s climbs with M only
+because AI climbs (4→128 F/B); it never touches a roof.
+
+### The crux: bytes read, not per-byte efficiency
+
+For M>8 there are two strategies that trade off:
+
+| strategy | weight reads for M rows | per-read efficiency | relative GEMM time |
+|---|---|---|---|
+| rowtile multi-group (M/8 × 8-row groups) | M/8 | ~64% of peak | (M/8)/0.64 |
+| wmma prefill (tile M, read once) | 1 | ~11% of peak | 1/0.11 |
+
+At the real peaks the **rowtile multi-group beats the wmma prefill at every
+M>8**: ≈2.9× at M=16 (2/0.64=3.1 vs 9.1) and ≈1.45× at M=32 (4/0.64=6.25 vs
+9.1). The 6× per-read efficiency advantage outweighs the 2×/4× re-read
+penalty. This is non-obvious: *the obvious large-M path (wmma prefill) is the
+worse one today.* But the rowtile multi-group **re-reads the weight M/8 times,
+so aggregate throughput stays flat at ≈c8** — it does not achieve
+compute-bound c=N.
+
+### Dispatch rules and implications
+
+1. **M≤8: use the rowtile** (it is optimal there — 64%+ of peak BW, weight
+   read once per group).
+2. **M>8: the current wmma prefill is not viable** (11% of peak BW). The
+   best *existing* option is rowtile multi-group, but it keeps aggregate
+   throughput flat (weight re-reads).
+3. **The real win is a new large-M GEMM** that (a) reads each weight tile
+   **once** for the whole batch and (b) hits **rowtile-grade efficiency
+   (≥60% of peak BW)** at M=16/32. That is the only path to compute-bound
+   c=N (rising aggregate throughput).
+4. **Empirical switch point:** keep the rowtile to M=8 (single-group register
+   tile exhausted); the new large-M GEMM takes over for M>8. The *theoretical*
+   bandwidth→compute ridge is `M_ridge` (≈27 on W7900); the *practical*
+   handoff is near M=8. Measure the exact crossover per backend once the new
+   GEMM exists and encode it in the dispatch (this is the "empirically
+   specified per-architecture ridge point").
+5. **Actionable target:** close the wmma-prefill gap from 11% → 64%+ of peak
+   BW. That is the single biggest efficiency lever in the c>8 path.
+
+Porting note: on each new backend, re-measure `WMMA_peak_measured` (a
+`torch.matmul` cube) and `BW_peak` (a large-sequential-copy kernel), fill the
+hardware table, recompute `M_ridge`, and re-run the two kernel tables. The
+dispatch rules and the bytes-read crux carry over unchanged.
+
 ## Target architecture
 
 ```text
