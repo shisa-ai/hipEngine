@@ -325,7 +325,9 @@ def _validate_full_model_smoke(path: Path) -> dict[str, object]:
         result["finite_final_logits"]
         and result["production_graph"]
         and result["q5_t16_bytes"] == 1_061_683_200
-        and result["dense_bf16_bytes"] == 83_886_080
+        # Planar-Q6 now owns the former narrow-V dense-BF16 payload, so the
+        # exact current sole-layout package has no dense-BF16 weight shadow.
+        and result["dense_bf16_bytes"] == 0
         and result["tracked_teardown_bytes"] == 0
     )
     return result
