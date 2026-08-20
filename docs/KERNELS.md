@@ -129,16 +129,19 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. Per-token/head INT8 includes a row-batched 24Q/4KV/D256 split-K producer plus explicitly strided BF16 gated reducer; the c1 leaf remains registered as its numerical fallback. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641. Dense H5120/L64/24Q/4KV/D256 selects the BF16 grouped-GQA split producer from context 4096; shorter contexts and unsupported shapes/backends retain the generic producer. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact and quality-gated schedules; recurrent state remains FP32. gfx1151 Q4 and Q8 `(16K,16V,128,128)` select cluster8; Q4 `(16K,48V,128,128)` selects 1K-chunked compact-peer wave32; all other gfx1151 shapes retain exact nonvolatile LDS32. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state. The gfx1151 Qwen3.8 Q4_K_S production experiment may select FP16 state (FP32 accumulation) through explicit `_fp16state` scalar, chain, segmented, indexed-singleton, compact-peer prefill, and decode-order writers; every supported leaf retains an FP32 fallback and unsupported chain-journal/MTP combinations fail closed. gfx1151 Q4 and Q8 `(16K,16V,128,128)` select cluster8; Q4 `(16K,48V,128,128)` selects 1K-chunked compact-peer wave32; all other gfx1151 shapes retain exact nonvolatile LDS32. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
 Qwen3.8-27B Q4_K_M is the independent 16K/48V/128x128 gfx1151 GDN
 exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
-head and carries one FP32 recurrent state across at most 1,024 rows per launch;
-prepare and RMSNorm still cover the complete prefill once. This chunk is
-required because unchunked 4K loses 8.26% to direct LDS32, while the repaired
-route is peer-bit-exact and wins the production complete chain
+head and carries one recurrent state across at most 1,024 rows per launch. The
+strict route stores that state as FP32; the Q4_K_S R2 production experiment may
+store it as FP16 while retaining FP32 register accumulation and an FP32 strict
+fallback. The FP16 route remains opt-in pending its complete c>N dynamic and
+serving packet. Prepare and RMSNorm still cover the complete prefill once. This
+chunk is required because unchunked 4K loses 8.26% to direct LDS32, while the
+repaired route is peer-bit-exact and wins the production complete chain
 1.517x/1.479x/1.422x at 512/1K/4K. Scalar-exact output/state deltas are bounded
 at 0.001953125/2.24e-8. Integrated pp512 improves 316.258 to 330.069
 tok/s and drops 24 MiB; 512/1K/4K peak falls 24/128/128 MiB. rocprof confirms
