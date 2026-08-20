@@ -22,6 +22,8 @@ Examples:
 
 ## 2026-08-20
 
+- [Concurrency2 Qwen3.8-27B Q5T16 true-rowtile rows 5-8; accepted primitive+dispatch promotion] W7900 / Q4_K_M / BF16 KV / graph model-step p128-d8: direct c1-c8 **30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 -> 30.26/53.74/75.59/93.92/83.88/89.75/73.29/80.11 tok/s** (c5 **+24.9%**, c6 **+21.3%**, c7 **+15.5%**, c8 **+14.9%**), every width exact/repeatable, by extending the `q5_k_t16_dense_rowtile_col4_gemv_kernel` ROW_TILE to 2-8 (strict bit-parity vs the direct producer) and routing rows 5-8 to the true rowtile via `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` (gfx1100). c8 kernel census confirms 48 true-rowtile calls / 4.01 ms with zero Q5 WMMA (was ~20 ms padded WMMA); native c8 80.11 vs chunked two-c4 91.73 (0.873×) — the residual cliff is planar-Q6 padded WMMA (64/52.24 ms), tracked separately. `benchmarks/results/2026-08-20-concurrency2-qwen38-q5-rowtile8-c1-c8-promotion-summary.json`.
+
 - [Concurrency2 Qwen3.8-27B clean direct-width review; accepted diagnostic baseline and attribution correction] W7900 / Q4_K_M / BF16 KV / graph model-step p128-d8: no complete mechanically bound c1-c8 packet -> **30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s**, all direct rows exact/repeatable; native c8 **114.72 ms / 69.75 tok/s** loses to two-c4 **88.74 ms / 91.06 tok/s (1.306x)**. Clean traces correct the prior "GDN/attention" and `c5=c4+c1` labels: Q5 true-rowtile→WMMA at c5 (**3.34→21.31 ms / 48 calls**) and planar-Q6 true-rowtile→direct-per-row at c5 then WMMA at c7 (**6.79→17.35→51.39 ms / 64 calls**). `benchmarks/results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json`.
 
 ## 2026-08-19
