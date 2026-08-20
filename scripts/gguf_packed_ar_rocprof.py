@@ -58,6 +58,11 @@ SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 _GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+_PROFILER_CONCURRENCIES = frozenset(range(1, 9))
+
+
+def _profiler_concurrency_supported(concurrency: int | None) -> bool:
+    return concurrency is not None and int(concurrency) in _PROFILER_CONCURRENCIES
 
 
 def _artifact_kind(
@@ -840,7 +845,7 @@ def _run_child(args: argparse.Namespace) -> int:
         owner = stack.enter_context(Qwen35GGUFResidentSession(args.model, **kwargs))
         if int(args.concurrency) == 1:
             payload = _run_c1_child(owner, args, marker)
-        elif int(args.concurrency) in {2, 4, 8}:
+        elif _profiler_concurrency_supported(int(args.concurrency)):
             if owner.runner is None:
                 raise RuntimeError("GGUF owner did not materialize a shared runner")
             sessions = [owner]
@@ -857,7 +862,7 @@ def _run_child(args: argparse.Namespace) -> int:
                 )
             payload = _run_packed_child(owner, sessions, args, marker)
         else:
-            raise ValueError("GGUF profiler child supports only c1, c2, c4, and c8")
+            raise ValueError("GGUF profiler child supports only c1-c8")
         payload.update(
             {
                 "schema": 1,
@@ -1256,7 +1261,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         raise ValueError("direct AQL profiling requires hip_gfx1100 graph decode")
     if args.child_mode is not None:
-        if args.concurrency not in set(range(1, 9)) or args.child_json is None:
+        if not _profiler_concurrency_supported(args.concurrency) or args.child_json is None:
             raise ValueError(
                 "child mode requires --concurrency in 1..8 and --child-json"
             )
