@@ -22771,6 +22771,51 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
+    def _verify_lm_head_rowtile_max_rows(self) -> int:
+        """Return the registered root-head rowtile's explicit width bound.
+
+        Width support belongs to the resolved four-axis primitive, not to a
+        model-wide quant branch or backend constant. Missing metadata fails
+        closed so the caller retains the ordinary linear fallback.
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            return 0
+        from hipengine.runtime.gguf_linear import (
+            GGUF_ACTIVATION_BF16,
+            resolve_gguf_linear_dispatch,
+        )
+
+        try:
+            weight = self.runner.weights.root("lm_head")
+            dispatch = resolve_gguf_linear_dispatch(
+                weight,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend=self.runner.backend,
+                rows=2,
+            )
+            if dispatch.abi != "t16":
+                return 0
+            rowtile_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "t16_gemv_rowtile_bf16_f32_out",
+            )
+            if not is_registered(rowtile_key):
+                return 0
+            rowtile = resolve(
+                backend=rowtile_key.backend,
+                layer=rowtile_key.layer,
+                quant=rowtile_key.quant,
+                variant=rowtile_key.variant,
+            )
+            max_rows = int(getattr(rowtile, "_hipengine_max_rows", 0))
+        except (KeyError, TypeError, ValueError):
+            return 0
+        return max_rows if 2 <= max_rows <= 6 else 0
+
     def _verify_lm_head_rowtile_chunked(
         self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
     ) -> bool:
@@ -22804,11 +22849,10 @@ class Qwen35GGUFResidentSession:
         )
         if max_chunk < 2 or max_chunk > 6:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 6]")
-        # The resolved t16_gemv_rowtile_bf16_f32_out owner for the planar-qmicro
-        # lm_head only accepts rows in [2, 4]; cap any larger configured chunk so
-        # rows 5-8 chunk into valid 4-row groups. The backend-qualified 6/5 value
-        # stays reachable only once a rowtile owner supports rows 5-6.
-        max_chunk = min(max_chunk, 4)
+        primitive_max_rows = self._verify_lm_head_rowtile_max_rows()
+        if primitive_max_rows < 2:
+            return False
+        max_chunk = min(max_chunk, primitive_max_rows)
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False
