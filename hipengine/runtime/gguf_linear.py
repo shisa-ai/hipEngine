@@ -2540,7 +2540,7 @@ def _q4_t16_sidecar_decode_variants(
 
     if rows == 1:
         return ("dense_single_local32_bf16_bf16_out",)
-    if not 2 <= rows <= 7:
+    if not 2 <= rows <= 8:
         return ()
     shape = (in_features, out_features)
     if rows <= 4 and shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
@@ -2605,31 +2605,6 @@ def launch_gguf_q4_t16_sidecar_decode(
         "gguf_q4_k_t16_v1",
     }:
         return False
-    if rows == 8:
-        # rows=8: run as two exact rows=4 groups. The t16 rowtile owner is rows
-        # 2-4; the weight-tiles sidecar is rows-independent and reused by both
-        # halves. Each half preserves the rows=4 exactness contract and the two
-        # output halves are disjoint, so the combined [8, out_features] write is
-        # exact (no cross-row reassociation).
-        half = 4
-        x_row_bytes = in_features * 2  # BF16 activation
-        out_row_bytes = out_features * 2  # BF16 output
-        for base in (0, half):
-            if not launch_gguf_q4_t16_sidecar_decode(
-                weight,
-                x_ptr + base * x_row_bytes,
-                out_ptr + base * out_row_bytes,
-                half,
-                in_features,
-                out_features,
-                backend=backend,
-                stream=stream,
-                libraries=libraries,
-                runtime=runtime,
-                enabled=enabled,
-            ):
-                return False
-        return True
     variants = _q4_t16_sidecar_decode_variants(
         rows=rows,
         in_features=in_features,
