@@ -10628,6 +10628,35 @@ def _gguf_aotriton_prefill_allowed(backend: str) -> bool:
     )
 
 
+def _gguf_prefill_chunk_sizes_for(
+    backend: str, weights: object
+) -> tuple[int, int] | None:
+    """Return a geometry-keyed (linear, moe) prefill chunk override, if any.
+
+    gfx1151 sets ``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY`` with 512-row
+    linear/MoE chunks for the H2048-MoE geometry (measured ~1.2-2.3% faster
+    at 2048/4096 tokens on the 8060S, chunk-boundary-correct). The H5120 dense
+    27B is left on the default because its benefit is inconclusive within the
+    60W-lane variance.
+    """
+
+    policies = backend_package_capability(
+        backend, "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY", {}
+    )
+    if not isinstance(policies, Mapping):
+        return None
+    identity = _gguf_policy_identity(weights)
+    if identity is None:
+        return None
+    sizes = policies.get(identity)
+    if not sizes:
+        return None
+    linear, moe = int(sizes[0]), int(sizes[1])
+    if linear <= 0 and moe <= 0:
+        return None
+    return linear, moe
+
+
 def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     *,
     backend: str,
@@ -13550,6 +13579,13 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=int(self.scratch.max_positions),
             total_memory_bytes=int(total_memory_bytes),
         )
+        chunk_override = _gguf_prefill_chunk_sizes_for(self.backend, self.runner.weights)
+        if chunk_override is not None:
+            self.prefill_config = replace(
+                self.prefill_config,
+                linear_chunk_size=int(chunk_override[0]),
+                moe_chunk_size=int(chunk_override[1]),
+            )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
