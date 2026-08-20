@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from scripts.gguf_packed_ar_bench import (
     CONFIGURATIONS,
     SUPPORTED_BACKENDS,
+    _PRODUCTION_ENV,
     _PROVENANCE_ENV_KEYS,
     _configuration_groups,
     _cross_configuration_correctness,
@@ -14,6 +17,7 @@ from scripts.gguf_packed_ar_bench import (
     _parse_configurations,
     _scaling_summary,
     _stats,
+    _temporary_environment,
     build_parser,
 )
 
@@ -24,6 +28,25 @@ def test_packed_ar_bench_accepts_both_gfx11_backends() -> None:
 
     assert parser.parse_args(["--backend", "hip_gfx1100"]).backend == "hip_gfx1100"
     assert parser.parse_args(["--backend", "hip_gfx1151"]).backend == "hip_gfx1151"
+    assert parser.parse_args([]).route == "exact"
+    assert parser.parse_args(["--route", "production"]).route == "production"
+
+
+def test_packed_ar_production_route_unsets_exact_overrides() -> None:
+    keys = tuple(_PRODUCTION_ENV)
+    prior = {key: os.environ.get(key) for key in keys}
+    try:
+        for key in keys:
+            os.environ[key] = "forced-exact"
+        with _temporary_environment(_PRODUCTION_ENV):
+            assert all(key not in os.environ for key in keys)
+        assert all(os.environ[key] == "forced-exact" for key in keys)
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
