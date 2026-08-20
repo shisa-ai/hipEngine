@@ -2,13 +2,23 @@
 
 Last updated: 2026-08-20
 Host: HP ZBook Ultra G1a / Radeon 8060S / `gfx1151` (60 W power-limited lane)
-Model: `Qwen/Qwen3.6-35B-A3B` GGUF Q4_K_M (MTP-bearing UD file) — c1 decode.
+Model: `Qwen/Qwen3.6-35B-A3B` GGUF Q4_K_M (MTP-bearing UD file) — c1 decode, BF16 KV unless explicitly noted.
+
+**Review verdict (2026-08-20): P3-FULLATTN remains the next optimization lane,
+but decode core+gate is first.** The durable c1 profile gives it the largest
+remaining non-overlapping GPU-side ceiling (2.386 ms/token, ~8.9% of the
+post-PN6 26.83-ms wall), while selected-expert kernel math is smaller (~1.8 ms)
+and already near its practical bandwidth ceiling. P3-FULLATTN must begin with a
+fresh route/profile confirmation and target the active gfx1151 BF16 fixed256
+context-batch kernel plus its separate gate launch. It is **not** a direct
+Laguna-WMMA wiring task and **not** a generic inherited-256-thread task; the
+current route facts and candidate boundary are recorded below.
 
 This doc records the **current gfx1151 performance-tuning surface split across
 active agents** so new work lands in the open slots and does not collide with
 concurrent ownership. It is a coordination + decision record, not a protocol
 (see `TUNING-gfx1151.md` / `ROOFLINE-gfx1151.md` for the playbook and
-`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md` for the active candidate plan).
+`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md` for the closed campaign gates).
 
 ## Ownership map
 
@@ -18,8 +28,9 @@ concurrent ownership. It is a coordination + decision record, not a protocol
 | **Agent 2 — concurrency / KV** | KV cache layout, paged/continuous batching scaling (gfx1100 first, global effects) | scheduler / KV-pool axis; not in the c1 stage ranking |
 | **OPEN — this lane** | MoE dispatch (selected + shared expert GEMV, router, combine), full-attention math, LM-head | see table below |
 
-\* Fresh GPU-exclusive ranking from `scripts/pn3_stage_ranking_from_trace.py`
-(2026-08-17, pre-PN5/PN6), ROCTX nested-exclusive GPU-visible wall.
+\* Durable pre-PN5/PN6 ranking from `scripts/pn3_stage_ranking_from_trace.py`
+(2026-08-17), ROCTX nested-exclusive GPU-visible wall. It admits candidates but
+must not be added directly to the 26.83-ms post-PN6 wall.
 
 ## The open (non-overlapping) c1 surface
 
@@ -36,10 +47,12 @@ concurrent ownership. It is a coordination + decision record, not a protocol
 | `selected_expert_other` | 0.796 | scatter/gather/elementwise |
 | `lm_head` | 0.121 | small |
 
-MoE total (router/combine + selected + shared) ≈ **23.1 ms/token** of the c1
-wall — the dominant non-recurrent, non-concurrency surface.
+MoE total (router/combine + selected + shared) was ≈ **23.1 ms/token** of the
+pre-PN6 GPU-visible c1 stage wall — the dominant non-recurrent,
+non-concurrency surface at that checkpoint. This is not a current additive
+kernel-time estimate.
 
-## The dominant mechanism: host dispatch overhead, not kernel math
+## PN5/PN6 host-build wins; remaining dispatch is a no-win
 
 PN5 + PN6 (2026-08-18, both retained on the default path) established that a
 large fraction of the c1 decode wall is **per-call host-side library-build /
@@ -85,11 +98,14 @@ PN3 closeout artifact `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-moes
 
 **Aotriton is prefill-only.** The 35B-A3B has 40 layers = 30 `linear_attention`
 (GDN recurrent, agent 1) + 10 `full_attention`. Decode attention is 100%
-native HIP: the 10 full-attention layers run `qwen35_paged_attn_decode_int8_*`
-(Q8-int8 keys + bf16 values, gqa splitk), the 30 GDN layers run the recurrent
-core. Aotriton appears only in **batched prefill (rows >= 512)** of the 10
-full-attention layers (v3 flash-attn via `aotriton_wrap`); below the
-512-token threshold prefill uses the native sequential path.
+native HIP. The authoritative 2.386-ms/token c1 ranking used **BF16 KV** and,
+at contexts 512-548, the gfx1151-registered fixed256 compact-row context-batch
+kernel (`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans`)
+followed by the separate BF16 gate-multiply kernel. Short mirrored/direct INT8
+KV lanes exist elsewhere, but they are not the source of this ranking. The 30
+GDN layers run the recurrent core. Aotriton appears only in batched prefill of
+the 10 full-attention layers when its backend/threshold gate admits it; the
+retained gfx1151 policy now disables that route at every row count.
 
 **Measured prefill economics (this session, 8060S, 512-token prefill, 4.36 s):**
 
@@ -97,11 +113,10 @@ full-attention layers (v3 flash-attn via `aotriton_wrap`); below the
   prefill wall; native layers (GDN prefill + MoE GEMM) are 76% and dominate.
 - Prior gfx1100 threshold sweep (2026-05-16 artifact): **native prefill attention
   is FASTER than aotriton below 512 tokens** (-3.5% .. -17% at 32-256), aotriton
-  wins at >=512 (+6% .. +256%). The 512 threshold is that measured crossover.
-  The gfx1151 crossover is unmeasured; if it sits above 512, native could serve
-  more prefill at benchmark lengths. Payoff is bounded: even 2x on attention
-  saves ~0.5 s of a 4.4 s prefill, and prefill is ~25% of an end-to-end
-  512+512 run.
+  wins at >=512 (+6% .. +256%). The 512 threshold is that measured gfx1100
+  crossover. The gfx1151 crossover was initially unknown; the completed local
+  measurement follows. Payoff is bounded: even 2x on attention saves ~0.5 s of
+  a 4.4 s prefill, and prefill is ~25% of an end-to-end 512+512 run.
 
 **Measured crossover on gfx1151 (2026-08-20, retained): NO aotriton crossover —
 native wins at every prefill length 64-2048 (~2-5% faster on the serialized
@@ -116,10 +131,15 @@ gfx1100 keeps the measured 512-crossover policy unchanged. Correctness-neutral
 agree). Benchmark suites (56-214 tok) ran native before and after. Artifact:
 `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-aotriton-prefill-native-retained.json`.
 
-So "beating aotriton" is settled for gfx1151 (native routed; bounded ~3-4%
-whole-prefill at >=512, exact) and the remaining attention lever is the native
-kernel itself (P3-FULLATTN, prefill scan + decode paged_attn_decode
-~2.4 ms/tok), not aotriton-vs-native.
+So "beating aotriton" is settled for gfx1151: native is routed, the isolated
+attention slice is consistently 2-5% faster, and the measured whole-prefill
+median moved -0.8% within ~2.5% run spread. The route passes the declared
+correctness gate (top-1 agrees; KL 0.046 vs a 0.034 repeat floor), but it is not
+an arithmetic-exact native-vs-AOTriton comparison. P3-FULLATTN is therefore
+**decode-first**: the active BF16 context-batch attention core plus separate
+gate own ~2.4 ms/token.
+Native prefill is secondary and receives a new tiled specialization only if a
+fresh long-prompt profile justifies that larger implementation.
 
 ## gfx1100 hard-coded numbers review + gfx1151 overrides (2026-08-20)
 
@@ -139,18 +159,35 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
   for `(H2048-MoE, MOSTLY_Q4_K_M)`; the 27B H5120 is left on 1024 (inconclusive
   within 60W-lane variance). Artifact:
   `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-prefill-chunk-512-retained.json`.
-- **Deferred to P3-FULLATTN**: hard-coded `threads=256` launch geometry in the
-  shared .hip (paged_attn_decode, cast, gather, conv, group_scatter) is shared
-  with gfx1100 (gfx1151 has no .hip files) and needs per-backend build
-  parameterization to become a gfx1151 override.
+- **Attention launch geometry is already partly gfx1151-specific.** The active
+  BF16 prefill scan chooses 32 threads through context 1K and 64 above 1K. For
+  c1 BF16 decode below context 1024, gfx1151 explicitly replaces the generic
+  short-row 1024-thread route with the fixed256 compact-row leaf; the existing
+  admission measured it 1.56-1.65x faster at contexts 513/576/640. Therefore
+  "parameterize inherited threads=256" is not a valid next mechanism. Other
+  shared helpers still contain 256-thread constants, but none is admitted
+  without a current hot-kernel trace and operation-complete ceiling.
+- **The registered Laguna WMMA prefill leaf is not shape-compatible.** It accepts
+  only 48/72 Q heads, 8 KV heads, and D128; the 35B-A3B is 16 Q heads, 2 KV
+  heads, and D256. P3-FULLATTN would need a new 16Q/2KV/D256 specialization,
+  not dispatch wiring of the existing leaf.
 
 ## Ranked non-overlapping candidates
 
-1. **P3-FULLATTN — full-attention core/gate + QKV math tuning** (arithmetic /
-   tiling, NOT KV layout — coordinate the agent-2 boundary before touching
-   dispatch). Pre-PN6 fresh profile ranked the full-attention core at
-   ~2.4 ms/token GPU; post-PN6 it is the largest remaining non-overlapping
-   GPU-side slice not yet re-ranked. **Active.**
+1. **P3-FULLATTN — BF16 c1 decode attention core+gate, then native prefill.**
+   This is arithmetic/launch ownership, **not KV layout**; coordinate the
+   agent-2 boundary before changing span dispatch. The durable pre-PN6 profile
+   ranks `full_attention_core` at **2.386 ms/token**. PN6 changed blocking
+   library-load host work, not these attention kernels, so this remains the
+   best admission estimate; nevertheless, rerun the current same-route profile
+   before device changes. First screen the active fixed256 leaf at contexts
+   128/256/512/640/1023/4K and separate attention from gate wall. The first
+   structural candidate is an exact fused fixed256 context-batch+gate output
+   (remove 10 gate launches/token and the intermediate F32 round trip), with the
+   registered unfused chain retained as strict fallback. Only then consider
+   128/512-thread or split-policy variants. QKV/output projections remain the
+   separately owned `launch_gguf_linear` family and are not bundled into this
+   candidate. **Next target.**
 2. **P3-EXPGEMV — selected-expert W4 GEMV shape tuning** (thread/tiling/dequant
    for 40 CU + 32 MiB MALL). Kernel-side; gated on the do-not-repeat ledger
    (DP4A/Q8_1, row-compact GEMV, one-plane Q8_1 already rejected). The host
@@ -191,5 +228,9 @@ coordinate with agent 2 on the KV boundary).
 
 - Stage ranking: `benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-declaration-red.json`
 - PN5/PN6: `benchmarks/results/2026-08-18-zbook-qwen36-pn{5,6}-*-hoist.json`
-- Plan: `docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md` (PN3/PN4/PN5 gates)
+- Selected-expert closeout: `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-moeselect-no-win.json`
+- Native/AOTriton crossover: `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-aotriton-prefill-native-retained.json`
+- Active decode registration/launch: `hipengine/kernels/hip_gfx1151/__init__.py`,
+  `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.{py,hip}`
+- Plan: `docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md` (closed PN3-PN8 gates)
 - Playbook/roofline: `docs/TUNING-gfx1151.md`, `docs/ROOFLINE-gfx1151.md`
