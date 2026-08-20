@@ -82,6 +82,26 @@ certified through a named runtime profile, and migration debt remains open.
 The compact evidence and raw hashes are in
 [`2026-08-16-zbook-qwen36-production-profile-cn-blocked.json`](../benchmarks/results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json).
 
+### 2.3 Qwen3.8 FP16 recurrent-state default decision
+
+The 2026-08-20 gfx1151 Qwen3.8 `Q4_K_S` FP16 recurrent-state route remains an
+explicit opt-in and does **not** become a named/public `production` default.
+Its complete packed numerical, determinism, isolation, and ownership hard gate
+passes, and the engine packet measures about 3% c4/c8 decode improvement.
+However, the predeclared serving screen fails static-c8 ITL-p99 in both FP32
+and FP16 modes (`0.8532/0.8287 s > 0.5 s`) and measures only `+1.33%` exact c8
+server throughput, below the 3% materiality target. The complete packet is
+therefore ineligible and the SLO must not be relaxed after observing the result.
+
+No runtime profile manifest is registered for this candidate. Its measured
+FP32 denominator is the same compact-peer production arithmetic with FP32
+state storage, not a certified model-level `strict` plan; labeling that route
+public `strict` would violate this contract. Omitted-profile behavior remains
+unchanged, FP32 is the public default, and FP16 remains available only through
+its documented experiment flag. Evidence:
+[`serving rejection`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json)
+and [`retained opt-in packet`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It

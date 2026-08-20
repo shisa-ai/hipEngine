@@ -144,8 +144,10 @@ indexed slot and performs only the declared state-store conversion at a packed
 chunk boundary. The FP32 compact sibling is the registered strict-storage
 fallback; the older decode-order segmented writer remains a generic diagnostic
 fallback, not the Q4_K_S compact-peer production owner. The complete c>N
-numerical/dynamic/isolation hard gate passes; FP16 remains opt-in pending the
-runtime-manifest, BF16-relative/task, serving, and gfx1100 packets.
+numerical/dynamic/isolation hard gate passes; FP16 remains opt-in. Public
+promotion is rejected by the serving screen (+1.33% exact c8 throughput and
+both modes over the ITL-p99 SLO); runtime-manifest, BF16-relative/task, and
+gfx1100 packets also remain unavailable.
 Prepare and RMSNorm still cover the complete prefill once. This chunk is
 required because unchunked 4K loses 8.26% to direct LDS32, while the
 repaired route is peer-bit-exact and wins the production complete chain
