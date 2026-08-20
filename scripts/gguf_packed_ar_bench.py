@@ -68,7 +68,11 @@ class PackedARConfiguration:
 CONFIGURATIONS: dict[str, PackedARConfiguration] = {
     "c1": PackedARConfiguration("c1", 1, 1, 1, "direct_native_group"),
     "c2": PackedARConfiguration("c2", 2, 2, 1, "direct_native_group"),
+    "c3": PackedARConfiguration("c3", 3, 3, 1, "direct_native_group"),
     "c4": PackedARConfiguration("c4", 4, 4, 1, "direct_native_group"),
+    "c5": PackedARConfiguration("c5", 5, 5, 1, "direct_native_group"),
+    "c6": PackedARConfiguration("c6", 6, 6, 1, "direct_native_group"),
+    "c7": PackedARConfiguration("c7", 7, 7, 1, "direct_native_group"),
     "native_c8": PackedARConfiguration("native_c8", 8, 8, 1, "direct_native_group"),
     "chunked_c8": PackedARConfiguration("chunked_c8", 8, 4, 2, "chunked_native_groups"),
     "serial_c4": PackedARConfiguration("serial_c4", 4, 1, 4, "serial_bridge"),
