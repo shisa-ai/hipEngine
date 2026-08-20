@@ -454,6 +454,32 @@ Three facts follow, and they reframe the whole problem:
    saved weight-read pass (~19.6 ms), so the native c8 path is ~45 ms worse than
    first principles predict. That gap is the non-FFN cliff, not the GEMM.
 
+**Correction (2026-08-20, measured — supersedes fact 2's attribution).** The
+kernel-trace census (`rocprofv3 --kernel-trace` of the packed-decode graph
+replay, W7900, p512; c8 + c4 + c1 reference) shows the c4→c8 jump is **not** a
+GDN / full-attention coverage gap:
+
+| stage (census family) | c1 (31.5 ms) | c4 (39.3 ms) | c8 (109.8 ms) |
+| --- | ---: | ---: | ---: |
+| dense_projection (Q4_K rowtile + any Q5/6 rowtile) | 23.7 (75%) | 27.4 (70%) | 26.3 (24%) |
+| **Q5_K/Q6_K padded-WMMA prefill** | 0 | **0** | **71.7 (65%)** |
+| linear_attention_state (GDN SSM core) | 0.9 | 5.2 | 8.1 |
+| full_attention_core | 2.6 | 2.0 | 1.9 |
+| norm_residual | 1.6 | 4.6 | 1.7 |
+
+Full-attention is **flat** (2.6/2.0/1.9 ms); GDN SSM core rises only to ~8 ms
+(7%). The 70.5 ms c4→c8 jump is the **Q5_K/Q6_K padded-WMMA prefill, which is
+present only at c8 (71.7 ms, 65%) and zero at c4**. That bucket is cut by
+**quant family, not stage**: it is the Q5_K/Q6_K **linear layers**, which span
+FFN (`ffn_down`, 33 of 65 Q6_K), GDN (`ssm_out`, 48 Q5_K), and attention
+(`attn_qkv` 24 Q6_K + `attn_v` 9 Q6_K); `ffn_gate`/`ffn_up` are all Q4_K and are
+not in it. So neither "the cliff is the FFN" nor "the cliff is GDN/full-attention"
+is the right label — **the cliff is the Q5_K/Q6_K linear layers, spanning all
+three stages.** The decode window holds **112** Q5/Q6 prefill launches (64
+Q6_K + 48 Q5_K = 71.67 ms) ≈ the predicted 114 (33+48+24+9; the gap is 64 decode
+layers vs `block_count` 65), confirming it is decode-only, not p512 prefill
+leakage, at ~0.64 ms/call. See "D3 — coverage" for the quant axis this implies.
+
 ### Roofline: three roofs and a parallelism floor
 
 For a quantized GEMM with `M` rows, `K` inputs, `N` outputs, `bpw` bytes per
@@ -582,6 +608,7 @@ retained bandwidth claim must come from a tile-rotating probe (below).
 | "Aggregate stays flat at ≈c8 (~68 tok/s)" | It peaks at c4 (94.5) and regresses to 71.9 at c8. |
 | "Rowtile multi-group is the best existing c>8 option" | No multi-group scheduler exists; the decomposition question (D2) is open and `4×4` currently looks better than `2×8`. |
 | "Close the 11% → 64% BW gap is the single biggest lever" | The single biggest lever is the non-FFN cliff at c>4. |
+| "The non-FFN cliff is a GDN / full-attention variant-coverage gap" (and the "non-FFN = step − Q4_K-FFN" split) | Measured false (2026-08-20 kernel-trace census): the c4→c8 jump is the **Q5_K/Q6_K padded-WMMA prefill** (71.7 ms, 65%, zero at c4), which spans `ffn_down`+`ssm_out`+`attn_qkv/v` — a *quant-family* cut, not a GDN/full-attn stage cut. Full-attn is flat (~2 ms); GDN SSM core rises only to 8 ms. The split was structurally wrong because a Q4_K `ffn_down` probe was extrapolated ×64 across a mixed-quant artifact. See the correction note above the roofline and the quant axis in D3. |
 
 ### Dispatch policy the engine must implement
 
@@ -626,6 +653,24 @@ therefore not complete until the shape check, the dispatch gate, the
 decomposition rule for the interior widths, and the coverage test all move with
 it.
 
+**D3 has a quant axis.** Coverage is per `(quant, layer-role, width)`, not per
+`(layer-role, width)`. A mixed-quant artifact (Q4_K_M) carries a *different*
+rowtile cap per quant family — on W7900 / Qwen3.8-27B-Q4_K_M: Q4_K = 8 (16/32
+uncommitted), Q6_K = 4 or 6 (`gguf_q6_k_t16_gemv.hip`), Q5_K = 4
+(`launch_q5_dense_rowtile_col4`). The engine's **effective width coverage is the
+minimum across the quant families present**, so for this artifact it is **4**
+(the Q5_K cap) even though Q4_K reaches 8. Every Q5_K/Q6_K linear layer above
+width 4 falls to the padded WMMA prefill (computes 64 rows to deliver M) — this
+is the measured c4→c8 cliff (71.7 ms, 65% of the c8 step, spanning `ffn_down`,
+`ssm_out`, and `attn_qkv`/`attn_v`). Consequence for the width map: D1/D2 must
+resolve **per quant family**, and the *binding* width for a mixed artifact is
+the **minimum over families**, not the maximum over the family that was probed
+(the earlier `bpw`/rowtile derivation extrapolated a Q4_K `ffn_down` ×64 across
+a model where a third of `ffn_down` are Q6_K and all of `ssm_out` are Q5_K —
+structurally wrong for those layers). The D3 coverage test must therefore walk
+`(quant, layer-role, width)` and assert no family's resolved variant is the
+padded-WMMA fallback above that family's own rowtile cap.
+
 **Promotion gate.** A width-map entry may become the default when it is exact
 (or passes the production-profile gate in `EXECUTION-PROFILES.md`), is
 repeatable, and improves the *composed* objective at the widths the scheduler
@@ -666,26 +711,39 @@ Any probe whose numbers enter the width map must:
 
 ### Next steps, in priority order
 
-1. **Measure the stage split at c4/c5/c8** (`scripts/tmp_c8_stage_timing.py`,
-   plus `rocprofv3 --kernel-trace`). Everything else is conditional on it. The
-   derived non-FFN cliff (~23 → ~84 ms) predicts the answer; confirm or refute.
-2. **Diagnose the c4→c5 and c6→c7 discontinuities** (+31.7 ms and +28.3 ms for
-   one row each). Expect a GDN / full-attention variant-coverage gap, i.e. a D3
-   violation, not a roofline effect.
+1. ~~**Measure the stage split at c4/c5/c8**~~ — **DONE (2026-08-20).** Kernel-trace
+   census (W7900, p512): the c4→c8 cliff is the **Q5_K/Q6_K padded-WMMA prefill**
+   (71.7 ms, 65%, **zero at c4**), spanning `ffn_down`/`ssm_out`/`attn_qkv`/`attn_v`
+   — **not** a GDN/full-attention gap (full-attn flat at ~2 ms; GDN SSM core rises
+   only to 8 ms). 112 Q5/Q6 prefill launches in the decode window ≈ the predicted
+   114, so it is decode-only. `tmp_c8_stage_timing.py` is a dead end (stage timers
+   not wired into the packed graph); the kernel trace is the instrument. See the
+   correction note above the roofline.
+2. **Diagnose the c4→c5 and c6→c7 discontinuities** (+31.7 ms and +28.3 ms for one
+   row each). **Measured: they are decomposition (D2), not a coverage cliff** —
+   c1 (31.5) + c4 (39.3) = 70.8 ms ≈ the measured c5 step (74.2 ms), so c5 runs as
+   `c4 + c1` (two weight-read passes) because no single c5 route exists. The c4→c8
+   cliff itself is the Q5_K/Q6_K linear fallback (step 1), not these one-row jumps.
 3. **Implement D2 and measure `4×4` vs `2×8` vs native `c8`** with the full
    session count resident, so KV/GDN working-set effects are included. Possible
    1.3× aggregate win at c8/c16 with no new kernel. This is the first thing that
    makes arbitrary-c throughput scale.
-4. **Then**, and only if the stage split justifies it, FFN kernel work in this
-   order: (a) template `ROW_TILES_PER_BLOCK` on M so the WMMA kernel stops
-   computing 64 rows for 16; (b) fix the down-shape grid (107 blocks) with
-   finer column tiling or split-K; (c) benchmark `shared_b` re-tiled to 64
-   rows/block; (d) VOPD dual-issue in the rowtile. A new weight-once large-M
-   GEMM is justified only if (a)–(c) leave a gap.
+4. **Linear-kernel work (the top lever, now):** extend the **Q5_K rowtile 4→8**
+   and give **Q6_K rowtile rows 5–8** — the same template treatment Q4_K already
+   received twice. This removes the 71.7 ms c8 fallback at widths that exist today
+   (c5–c8), plausibly tens of ms off the 111.4 ms c8 step. It jumps ahead of the
+   `ROW_TILE=16/32` work: bigger win, widths that exist, same proven pattern, and
+   no c>8 execution path to plug a 16-row kernel into until D2 exists. The former
+   4(a) (template `ROW_TILES_PER_BLOCK` on M in the Q4_K WMMA prefill) is
+   **deprioritized** — the Q4_K qkv/o already runs the rowtile; it is the Q5_K/Q6_K
+   qkv/down that falls back. Remaining 4(b)–(d) (down-shape grid, `shared_b`
+   re-tile, VOPD) and a new weight-once large-M GEMM are justified only if the
+   Q5_K/Q6_K rows=8 fix leaves a gap.
 5. **Port protocol.** On a new backend (gfx1151 first) run the autotune probe,
    emit the width map, and let D1/D2 resolve from it. Re-measure the four roofs
-   and the ridge table; do not copy W7900 constants. The decision procedure,
-   the coverage invariant, and the promotion gate carry over unchanged.
+   and the ridge table; do not copy W7900 constants. The decision procedure, the
+   coverage invariant (now with the quant axis), and the promotion gate carry over
+   unchanged.
 
 ## Target architecture
 
