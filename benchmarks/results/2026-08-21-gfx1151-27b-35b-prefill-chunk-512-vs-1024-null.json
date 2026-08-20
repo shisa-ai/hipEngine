@@ -1,0 +1,35 @@
+{
+  "id": "2026-08-21-gfx1151-27b-35b-prefill-chunk-512-vs-1024-null",
+  "benchmark": "gfx1151 GGUF prefill chunk 512-vs-1024 resolution on the 140W desktop lane (27B dense + 35B-A3B control)",
+  "status": "rejected",
+  "verdict": "null: 512-row linear/MoE prefill chunks do not beat 1024-row on 27B dense or 35B-A3B prefill at 2048 tok on the 140W gfx1151 desktop lane. Deferred ZBook 27B chunk question resolved as no-effect; the retained 35B 512-override ~1.2% claim (measured on the 60W ZBook below its ~10% clock-noise floor) does not reproduce here. The override is correctness-neutral (KL 0.00013) and stays.",
+  "hardware": "Desktop AMD RYZEN AI MAX+ 395 / Radeon 8060S, gfx1151 (RDNA 3.5), 40 CU, 2900 MHz max sclk, ROCm/HIP 7.15.0, 128.8 GB shared GTT. power_dpm_force_performance_level=high honored (clock-pinnable lane). Sustained-load sclk ~2680-2800 MHz, per-leg swing ~0.8-1.1%.",
+  "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (H2048 MoE, 40 layers = 30 GDN + 10 full-attn); Qwen3.6-27B-Q4_K_M (H5120 dense, 65 GDN blocks)",
+  "date": "2026-08-21",
+  "command": "uv run python scripts/pn3_27b_chunk_resolve.py --reps 6 --n-timed 2 --length 2048 --no-override",
+  "protocol": {
+    "session": "single Qwen35GGUFResidentSession per model; chunk changed in place by mutating prefill_config (linear_chunk_size=moe_chunk_size) between legs; no per-leg model reload",
+    "measure": "whole-prefill wall at 2048 tok, median of 2 timed prefills per leg, 6 interleaved counter-rotated reps (12 measurements per chunk), per-leg sclk sampling, perf level forced high before each leg, thermal pre-warmup (4 discarded prefills)",
+    "control": "35B-A3B geometry override (GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY=(512,512) for H2048-MoE) bypassed via monkeypatch so the 35B leg is a true 512-vs-1024 (the 60W pn3_27b_chunk_pinned.py sanity leg was a 512-vs-512 no-op because the override forces 512 on that geometry)",
+    "correctness": "wall-time only; chunk-boundary correctness already established as effectively exact (KL 0.00013, top-1 9707==9707) in the retained 512-override artifact"
+  },
+  "results": {
+    "27B_2048_512_ms": "45487 median (12 legs)",
+    "27B_2048_1024_ms": "45413 median (12 legs)",
+    "27B_2048_delta_pct": 0.16,
+    "27B_legs": ["45590/45551", "45613/45601", "45611/45649", "45368/45327", "45299/45350", "45251/45292"],
+    "35B_2048_512_ms": "9822 median (12 legs)",
+    "35B_2048_1024_ms": "9824 median (12 legs)",
+    "35B_2048_delta_pct": -0.03,
+    "35B_legs": ["9810/9796", "9813/9810", "9827/9832", "9815/9827", "9830/9829", "9834/9825"],
+    "clock_swing_27b_pct": 1.1,
+    "clock_swing_35b_pct": 0.8
+  },
+  "verdict_detail": {
+    "27B_resolution": "no measurable chunk-size effect (512 +0.16% vs 1024, within 1.1% clock swing) -> deferred question resolved as null on the 140W lane",
+    "35B_control": "retained ~1.2% 512-win does not reproduce (512 -0.03% vs 1024, within 0.8% swing); the claim was measured on the 60W ZBook where the ~10% clock-band swing makes sub-10% wall-time verdicts structurally unreliable (handoff lane policy). Override kept: correctness-neutral, no regression on the 140W lane.",
+    "sanity_leg_bug": "pn3_27b_chunk_pinned.py 35B leg was a 512-vs-512 no-op: _gguf_prefill_chunk_sizes_for forces (512,512) for H2048-MoE, replacing both configured chunk sizes at session init"
+  },
+  "reason": "Lane handoff (2026-08-20) deferred the 27B H5120 chunk 512-vs-1024 question to the 140W gfx1151 system after the 60W ZBook could not resolve it (clock not pinnable, ~10% swing). On the 140W desktop (clock-pinnable, ~0.8-1.1% swing) the interleaved protocol resolves it as a null for 27B dense and, as a positive control, shows the retained 35B 512-override win does not transfer across power lanes. scripts/pn3_27b_chunk_resolve.py added (single-resident-session in-place chunk mutation + interleaved counter-rotated legs + per-leg sclk sampling).",
+  "follow_up": "Optional: re-audit the retained 35B 512-override's ~1.2% claim with a fresh same-host sweep on the 140W lane at 2048/4096 tok; current evidence says neutral there, so no change is required. Keep the override (correctness-neutral)."
+}

@@ -21,7 +21,7 @@ The 35B-A3B known ~1.2% chunk-512 win is re-measured under the same protocol
 as a sensitivity sanity check.
 """
 import sys, os, time, ctypes, statistics, threading, subprocess
-sys.path.insert(0, '/home/lhl/hipEngine')
+sys.path.insert(0, '/home/lhl/hipEngine-main')
 import hipengine.runtime.qwen35_gguf_runner as rm
 from hipengine.runtime.prefill import PrefillConfig
 ctypes.CDLL('libamdhip64.so')

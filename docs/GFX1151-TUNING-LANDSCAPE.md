@@ -161,6 +161,14 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
   for `(H2048-MoE, MOSTLY_Q4_K_M)`; the 27B H5120 is left on 1024 (inconclusive
   within 60W-lane variance). Artifact:
   `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-prefill-chunk-512-retained.json`.
+  **140W-lane re-check (2026-08-21, `scripts/pn3_27b_chunk_resolve.py`):** on the
+  desktop gfx1151 the 35B ~1.2% win does **not** reproduce (512 −0.03% vs 1024
+  at 2048 tok, within 0.8% clock swing) and the 27B question resolves as a null
+  (512 +0.16%, within 1.1% swing). The override is correctness-neutral
+  (KL 0.00013) and stays; the ~1.2% claim is marked 60W-ZBook-lane / below that
+  lane's ~10% clock-noise floor and does not transfer. Note: the 60W
+  `pn3_27b_chunk_pinned.py` 35B sanity leg was a 512-vs-512 no-op because the
+  override forces (512,512) for H2048-MoE at session init.
 - **Attention launch geometry is already partly gfx1151-specific.** The active
   BF16 prefill scan chooses 32 threads through context 1K and 64 above 1K. For
   c1 BF16 decode below context 1024, gfx1151 explicitly replaces the generic

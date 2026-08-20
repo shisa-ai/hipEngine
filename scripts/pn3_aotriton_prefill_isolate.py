@@ -6,7 +6,7 @@ Time one full-attention layer through run_full_attention_prefill_layer
 (aotriton path) at 512 rows and compare against whole-prefill per-layer cost.
 """
 import sys, time, statistics, ctypes
-sys.path.insert(0, '/home/lhl/hipEngine')
+sys.path.insert(0, '/home/lhl/hipEngine-main')
 import hipengine.runtime.qwen35_gguf_runner as rm
 import numpy as np
 ctypes.CDLL('libamdhip64.so')

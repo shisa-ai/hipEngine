@@ -3,7 +3,7 @@
 under sustained 35B prefill load (with perf level forced high)?
 """
 import sys, time, ctypes, subprocess, threading
-sys.path.insert(0, '/home/lhl/hipEngine')
+sys.path.insert(0, '/home/lhl/hipEngine-main')
 import hipengine.runtime.qwen35_gguf_runner as rm
 from hipengine.runtime.prefill import PrefillConfig
 ctypes.CDLL('libamdhip64.so')

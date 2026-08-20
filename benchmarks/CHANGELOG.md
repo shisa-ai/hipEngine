@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151] 140W desktop lane: GGUF prefill chunk 512-vs-1024 resolved as NULL for both Qwen3.6-27B (512 45487 vs 1024 45413 ms @2048, +0.16%) and Qwen3.6-35B-A3B control (9822 vs 9824 ms, -0.03%), within 0.8-1.1% clock swing (clock-pinnable lane); deferred 27B question closed as no-effect, and the retained 35B 512-override ~1.2% win (measured on the 60W ZBook below its ~10% noise floor) does not transfer — override stays (correctness-neutral, KL 0.00013). Also: the 60W sanity leg was a 512-vs-512 no-op (override forces 512 on H2048-MoE). Script scripts/pn3_27b_chunk_resolve.py; artifact results/2026-08-21-gfx1151-27b-35b-prefill-chunk-512-vs-1024-null.json.
+
 - [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 29.42 -> 26.83 ms/tok (+2.59 ms/tok, +8.8%) on a counter-rotated A/B, real-hoist validation 25.69 ms/tok, by hoisting the q8_0_t16 / q6_k_t16 / dense-gemv .so handles into module caches (141 launch_gguf_linear launches/step stopped re-running build_X(load=True), per-call host 43.2 -> 23.2 us); overturns PN4 GPU-bound reading for this slice; tokens byte-identical (identical CDLL handles); artifact results/2026-08-18-zbook-qwen36-pn6-gemv-lib-hoist.json.
 - [gfx1151] Qwen3.6-35B-A3B GGUF UD-Q4_K_M eager decode: 30.78 -> 29.83 ms/tok (+957 us/tok, +3.2%) by hoisting the router .so into a module cache (per-launch host dispatch dropped ~45 -> ~15 us); tokens byte-identical; artifact results/2026-08-18-zbook-qwen36-pn5-router-lib-hoist.json.
 

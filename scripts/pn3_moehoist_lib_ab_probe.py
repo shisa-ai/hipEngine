@@ -5,7 +5,7 @@ the full-step wall A/B (per-call build vs module-cached handle) on the
 35B-A3B GGUF c1 decode. Mirrors PN5's router-lib probe.
 """
 import os, sys, time, statistics, ctypes
-sys.path.insert(0, '/home/lhl/hipEngine')
+sys.path.insert(0, '/home/lhl/hipEngine-main')
 ctypes.CDLL('libamdhip64.so')
 
 import hipengine.runtime.qwen35_gguf_runner as rm
