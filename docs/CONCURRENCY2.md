@@ -1,6 +1,6 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-18.
+Last updated: 2026-08-20.
 
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
 short/long serving and the canonical W7900 production load are retained, while
@@ -389,110 +389,262 @@ contract so the research formats are replaceable rather than scheduler forks.
 Keep hipEngine's smaller torch-free host, backend-neutral registry,
 `KVLiveSpans`, exact c-aware kernels, and explicit KV transactions.
 
-## GEMM roofline and width-based dispatch model
+## Width-adaptive GEMM selection: measured model and dispatch policy
 
-The FFN linear layers are the dominant packed-decode cost, and the correct
-kernel depends on the physical batch width M (concurrent resident requests).
-This section derives the roofline model and the width-based dispatch switch
-points that the packed-decode kernel selection must follow. It is written so
-the **model and the crux are architecture-independent**; only the measured
-peaks and the per-architecture kernel-efficiency tables change when porting
-(e.g. to gfx1151). Measure the marked `MEASURE` quantities on each new
-backend and recompute — do not copy the W7900 numbers.
+The engine must serve an **arbitrary, time-varying** number of concurrent
+requests. That means it cannot ship a hand-picked kernel per width: it has to
+*determine from measurement*, on each target backend, which kernel and which
+group decomposition are best for the widths it actually sees, and then use
+them. This section states the model, the current W7900 measurements, and the
+decision procedure the packed-decode path must implement.
 
-### Roofline model (parameterized)
+Three decisions have to be made, and they are separable:
 
-For a quantized GEMM with M rows (the batch), K input features, N output
-features, and `bpw` bytes per weight:
+- **D1 kernel choice** — for `(backend, quant, layer-shape K×N, width M)`,
+  which registered variant runs.
+- **D2 group decomposition** — for `W` admitted rows, which multiset of
+  physical widths to execute (`W=16` → `1×16`, `2×8`, `4×4`, …).
+- **D3 coverage** — every width in `1..W_max` must have a non-cliff path.
+  Missing instantiations are how `c5` once cost more than `c8`.
 
-- arithmetic intensity `AI = 2·M·K·N / (K·N·bpw) = 2·M / bpw` FLOP/byte —
-  **linear in M, independent of the layer shape**;
-- ridge arithmetic intensity `AI_ridge = WMMA_peak_measured / BW_peak`;
-- **ridge batch width `M_ridge = AI_ridge · bpw / 2`**.
+Numbers below are W7900 / gfx1100 observations on one model. **The procedure
+is the normative part; the constants are not portable.** Every quantity marked
+`MEASURE` is re-measured per backend and per layer shape.
 
-Below `M_ridge` the GEMM is **bandwidth-bound** (effective weight BW is the
-limit; raising throughput means reading fewer bytes or at higher efficiency).
-Above `M_ridge` it is **compute-bound** (WMMA throughput is the limit).
+### Where the packed-decode cost actually is
 
-### Measured hardware points
+Measured, `scripts/gguf_packed_ar_bench.py --prompt-length 128 --decode-steps 8
+--warmup-runs 1 --measured-runs 2`, Qwen3.8-27B-Q4_K_M, W7900, 64 decode-path
+FFN layers (48 GDN + 16 full-attention; GGUF `block_count=65` includes the
+nextn block):
 
-| backend | BW_peak | WMMA_peak_measured | AI_ridge | bpw (Q4) | M_ridge | status |
-|---|---|---|---|---|---|---|
-| **W7900 / gfx1100** | 864 GB/s (750–820 sustained) | **84.8 TFLOP/s** (`torch.matmul` 4096³, 69% of 123 spec) | **≈98 F/B** | ≈0.56 | **≈27** | measured 2026-08-20 |
-| gfx1151 | MEASURE | MEASURE | derived | MEASURE | derived | TODO on port |
-| (other) | MEASURE | MEASURE | derived | MEASURE | derived | TODO on port |
+| c | step ms (measured) | agg tok/s (measured) | FFN GEMM ms (measured per-call × 64) | non-FFN ms (derived) |
+|---:|---:|---:|---:|---:|
+| 1 | 33.0 | 30.4 | (GEMV path, not probed) | — |
+| 2 | 37.2 | 53.9 | ~16.8 | ~20.4 |
+| 4 | 42.9 | 94.5 | 19.6 | 23.3 |
+| 5 | 74.2 | 67.8 | ~21.2 | ~53.0 |
+| 6 | 80.6 | 75.0 | ~23.1 | ~57.5 |
+| 7 | 108.9 | 64.3 | ~25.0 | ~83.9 |
+| 8 | 111.4 | 71.9 | 26.9 | 84.5 |
 
-`docs/ROOFLINE.md` gives the W7900 detail: a well-written bandwidth-bound
-kernel hits 75–85% of peak for large sequential streams, 40–60% for
-small/low-occupancy; VRAM latency ≈1045 cycles (≈418 ns) must be hidden with
-hundreds of in-flight requests.
+The FFN column is built from directly measured per-call kernel times (rowtile
+gate/up 0.093 ms at M=4 and ~0.134 ms at M=8; rowtile down 0.1195 ms at M=4 and
+0.1520 ms at M=8); the M=5/6/7 down times are interpolated, so those two rows
+carry ±3 ms. The non-FFN column is `step − FFN` and is therefore derived, not
+measured — `scripts/tmp_c8_stage_timing.py` exists to measure it directly and
+**that measurement is the blocking prerequisite for any further FFN kernel
+work.**
 
-### Measured kernel behavior (W7900, Qwen3.8-27B FFN 5120×17408 / 17408×5120)
+Three facts follow, and they reframe the whole problem:
 
-`dense_rowtile` (the small-M path, M≤8; weight tile read once per 8-row group):
+1. **Below c4 the FFN GEMM is the marginal cost; above c4 it is not.** Marginal
+   step cost is 3.3 ms/row over c1→c4 and 17.1 ms/row over c4→c8, while the
+   marginal FFN GEMM cost is ~1.8 ms/row across the whole range (the rowtile's
+   own measured slope, 0.0103 ms/row/tile × 3 tiles × 64 layers). **~90% of the
+   c4→c8 growth is outside the FFN GEMM.**
+2. **The non-FFN cost is a cliff, not a slope**: flat at ~20–23 ms for c1–c4,
+   then ~53–57 ms at c5–c6 and ~84 ms at c7–c8. A roofline cannot produce that
+   shape. It is a path/variant-coverage effect in the GDN and full-attention
+   stages, and it is the largest single item on the c>4 ledger.
+3. **Aggregate throughput peaks at c4 (94.5 tok/s) and c8 is a 24% regression
+   (71.9 tok/s), not a plateau.** Composition makes the point sharper: two
+   sequential c4 groups deliver 8 rows in 2×42.9 = 85.8 ms, against 111.4 ms for
+   the native c8 route — and native c8 should *win* that comparison by one
+   saved weight-read pass (~19.6 ms), so the native c8 path is ~45 ms worse than
+   first principles predict. That gap is the non-FFN cliff, not the GEMM.
 
-| M | ms/call | % of 864 GB/s | note |
-|---|---|---|---|
-| 2 | 0.081 | 64% (≈72% at true Q4 bpw) | bandwidth-bound, well-written |
-| 4 | 0.093 | 56% | |
-| 8 | (down variant capped ≤7; gate/up ROW_TILE=8 works) | — | |
+### Roofline: three roofs and a parallelism floor
 
-`t16_wmma_prefill` (the current large-M path, M arbitrary; weight read once):
+For a quantized GEMM with `M` rows, `K` inputs, `N` outputs, `bpw` bytes per
+weight, arithmetic intensity is `AI = 2·M·K·N / (K·N·bpw) = 2M/bpw` FLOP/byte —
+**linear in M, independent of the layer shape**. But there is no single
+compute roof to ride against, and RDNA3 makes the distinction matter:
 
-| M | ms/call | % of 864 GB/s | % of 84.8 TFLOP/s | note |
-|---|---|---|---|---|
-| 1 | 0.338 | 15% | 0.6% | |
-| 8 | 0.411 | 12% | 4.1% | |
-| 16 | 0.418 | 12% | 8.0% | |
-| 32 | 0.465 | 11% | 14.5% | latency/occupancy-bound, not a roof |
+| roof | W7900 value | source |
+|---|---|---|
+| VRAM bandwidth | 864 GB/s theoretical; 650–735 GB/s sustained for large streams (75–85%) | `ROOFLINE.md` §1.4 |
+| L3 / Infinity Cache | 96 MB @ 2.30 TB/s | `ROOFLINE.md` §1.2 |
+| matrix (BF16 WMMA) | 123 spec / **84.8 measured** TFLOP/s | `ROOFLINE.md` §1.3 |
+| vector (FP32 FMA) | 30.7 TFLOP/s, 61.3 with VOPD dual-issue | `ROOFLINE.md` §2 |
 
-The rowtile is a **good bandwidth kernel** (64%+ of peak). The wmma prefill
-reaches only **≈11% of peak BW and ≤15% of WMMA at every M** — it is neither
-bandwidth- nor compute-saturated, i.e. it is **latency/occupancy-bound** (not
-enough in-flight requests to hide VRAM latency). Its TFLOP/s climbs with M only
-because AI climbs (4→128 F/B); it never touches a roof.
+- **Matrix is only 1.4–2.8× vector on this architecture** (84.8 measured vs
+  30.7/61.3). Unlike CDNA or NVIDIA parts, "move to matrix cores" is not
+  automatically a large win, and a well-dual-issued vector kernel is a
+  legitimate competitor at moderate M.
+- **Dequant shares the SIMD issue port.** A Q4 kernel spends ~4 VALU ops per
+  weight building operands; those cycles are not available to WMMA. For the
+  current dense WMMA kernel the B-fragment build is roughly 64 VALU ops per
+  32-cycle WMMA per row-tile, so the achievable compute roof is ~28 TFLOP/s at
+  one row-tile per block and ~56 at four — **not 84.8**. Ridge points computed
+  against 84.8 are upper bounds only.
+- **Parallelism is a fourth limiter that shape controls.** The grid must fill
+  192 SIMDs. The down projection (`K=17408, N=5120`) generates 3.4× fewer
+  output tiles than gate/up for identical weight bytes, and that alone —
+  not bandwidth — explains its behaviour under the WMMA kernel (below).
 
-### The crux: bytes read, not per-byte efficiency
+Consequently there are **two ridges, and each kernel must be judged against
+its own**: `M_ridge = AI_ridge · bpw / 2`.
 
-For M>8 there are two strategies that trade off:
+| ridge | AI_ridge | M_ridge (bpw = 0.578) | applies to |
+|---|---:|---:|---|
+| matrix, spec/theoretical | 142 F/B | 41 | upper bound only |
+| matrix, measured/sustained | 115 F/B | 33 | WMMA-class kernels |
+| matrix, dequant-derated | ~38–76 F/B | 11–22 | this Q4 WMMA family |
+| vector, no VOPD | 35.5 F/B | 10 | rowtile-class kernels |
 
-| strategy | weight reads for M rows | per-read efficiency | relative GEMM time |
-|---|---|---|---|
-| rowtile multi-group (M/8 × 8-row groups) | M/8 | ~64% of peak | (M/8)/0.64 |
-| wmma prefill (tile M, read once) | 1 | ~11% of peak | 1/0.11 |
+The single "`M_ridge ≈ 27`" figure previously in this section mixed a measured
+numerator with a theoretical denominator and applied a matrix ridge to a
+vector kernel. Quote the range and the kernel class, not the point estimate.
 
-At the real peaks the **rowtile multi-group beats the wmma prefill at every
-M>8**: ≈2.9× at M=16 (2/0.64=3.1 vs 9.1) and ≈1.45× at M=32 (4/0.64=6.25 vs
-9.1). The 6× per-read efficiency advantage outweighs the 2×/4× re-read
-penalty. This is non-obvious: *the obvious large-M path (wmma prefill) is the
-worse one today.* But the rowtile multi-group **re-reads the weight M/8 times,
-so aggregate throughput stays flat at ≈c8** — it does not achieve
-compute-bound c=N.
+### Measured kernel behaviour (corrected)
 
-### Dispatch rules and implications
+`bpw` for the Q4 T16 tile layout is **exactly 0.578125** — 2368 B per 16 cols ×
+256 k (`gguf_t16_selected_gemv.hip:27,40-45`: 32 + 32 + 128 + 128 + 2048), so a
+5120×17408 tile is 51.53 MB. The probe's 0.5 fallback undercounts by ×1.156.
 
-1. **M≤8: use the rowtile** (it is optimal there — 64%+ of peak BW, weight
-   read once per group).
-2. **M>8: the current wmma prefill is not viable** (11% of peak BW). The
-   best *existing* option is rowtile multi-group, but it keeps aggregate
-   throughput flat (weight re-reads).
-3. **The real win is a new large-M GEMM** that (a) reads each weight tile
-   **once** for the whole batch and (b) hits **rowtile-grade efficiency
-   (≥60% of peak BW)** at M=16/32. That is the only path to compute-bound
-   c=N (rising aggregate throughput).
-4. **Empirical switch point:** keep the rowtile to M=8 (single-group register
-   tile exhausted); the new large-M GEMM takes over for M>8. The *theoretical*
-   bandwidth→compute ridge is `M_ridge` (≈27 on W7900); the *practical*
-   handoff is near M=8. Measure the exact crossover per backend once the new
-   GEMM exists and encode it in the dispatch (this is the "empirically
-   specified per-architecture ridge point").
-5. **Actionable target:** close the wmma-prefill gap from 11% → 64%+ of peak
-   BW. That is the single biggest efficiency lever in the c>8 path.
+`dense_rowtile` (vector class, gate/up 5120×17408, per call):
 
-Porting note: on each new backend, re-measure `WMMA_peak_measured` (a
-`torch.matmul` cube) and `BW_peak` (a large-sequential-copy kernel), fill the
-hardware table, recompute `M_ridge`, and re-run the two kernel tables. The
-dispatch rules and the bytes-read crux carry over unchanged.
+| M | ms | marginal ms/row | note |
+|---:|---:|---:|---|
+| 2 | 0.081 | — | |
+| 3 | 0.083 | 0.002 | last width with meaningful weight amortization |
+| 4 | 0.093 | 0.010 | |
+| 7 | 0.124 | 0.010 | |
+| 8 | ~0.134 | 0.010 | extrapolated; production uses the fused dual kernel |
+
+The marginal cost is **0.0103 ms/row = 8.65e12 FMA/s = 56% of the non-VOPD
+vector roof** — i.e. above M≈3 this kernel is vector-issue bound, and each extra
+row costs full price. It is not a bandwidth kernel at M=8, and no amount of
+tuning makes it one. Two consequences: (a) "reach rowtile-grade bandwidth
+efficiency at M=16/32" is not a coherent target for a rowtile-shaped kernel;
+(b) `acc[ROW_TILE][8]` is 64 VGPRs at ROW_TILE=8 and 128 at 16, so the register
+tile caps this family near M≈8–12 regardless. The unexploited lever here is
+VOPD dual-issue (56% → potentially ~112% of the scalar roof).
+
+`t16_wmma_prefill` (matrix class, gate/up, per call): 0.338 / 0.402 / 0.397 /
+0.411 / 0.418 / 0.465 ms at M = 1 / 2 / 4 / 8 / 16 / 32.
+
+That curve is nearly flat because **the kernel executes the same MAC work at
+every M in 1..64**: `ROW_TILES_PER_BLOCK = 4` and `grid.y = ceil(rows/64)`
+(`gguf_k_t16_selected_prefill.hip:533-537, 1686-1687`), and the `valid_row`
+guard suppresses only the *load*, substituting row 0, while the WMMA issues
+unconditionally. At M=16 it therefore computes 64 rows to deliver 16. Its
+executed rate is 2×64×89.13e6 / 0.418 ms = **27.3 TFLOP/s ≈ 32% of the measured
+matrix roof** — an unremarkable number for a kernel that also dequantizes in
+registers. It is *additionally* occupancy-starved: 32-thread blocks, 363 blocks
+for gate/up (1.9 waves/SIMD) and **107 blocks for the down shape** (~1 wave per
+CU), the latter costing ≈1.0 ms/call for the same weight bytes.
+
+So the earlier diagnosis — "latency/occupancy-bound at 11% of peak bandwidth,
+and closing 11% → 64% is the biggest lever" — named the wrong mechanism and the
+wrong metric. The kernel is **row-padding bound first, parallelism bound
+second**, and a bandwidth percentage is not a meaningful score for a kernel that
+over-computes 4×. The corresponding fixes are a template parameter and a grid
+change, not a new kernel.
+
+**Measurement caveat that bounds all of the above.** The probe hot-loops a
+single 51.53 MB tile, which fits in the 96 MB Infinity Cache. After the first
+iteration the weights are L3-resident, so the "% of VRAM peak" column measured
+nothing about VRAM streaming — and against the 2.30 TB/s L3 roof both kernels
+are far from any bandwidth limit, which independently supports the compute/issue
+diagnosis. Production reads ~10 GB of FFN weights per step with zero reuse. Any
+retained bandwidth claim must come from a tile-rotating probe (below).
+
+### Corrections to the previous version of this section
+
+| retracted claim | status |
+|---|---|
+| "The FFN linear layers are the dominant packed-decode cost" | False above c4; non-FFN is ~76% of the c8 step and ~90% of the c4→c8 growth. |
+| "Rowtile multi-group beats the wmma prefill at every M>8 (2.9× at 16, 1.45× at 32)" | Priced an 8-row group at the M=2 efficiency. Measured: 2×0.134 = 0.268 vs 0.418 → **1.56×** at M=16; 4×0.134 = 0.536 vs 0.465 → **wmma wins 1.15×** at M=32. Crossover is M≈24–32. |
+| "wmma prefill is latency/occupancy-bound at 11% of peak BW" | Wrong mechanism and wrong metric; it is row-padding bound (64 rows of MAC work at every M ≤ 64), measured under L3 residency. |
+| "Rowtile is a good bandwidth kernel (64% of peak)" | True only at M≈2–3, and only against a VRAM denominator the probe could not exercise. Vector-issue bound from M≈4. |
+| "M_ridge ≈ 27" | Mixed measured/theoretical roofs and applied a matrix ridge to a vector kernel. Use the ridge table above. |
+| "Aggregate stays flat at ≈c8 (~68 tok/s)" | It peaks at c4 (94.5) and regresses to 71.9 at c8. |
+| "Rowtile multi-group is the best existing c>8 option" | No multi-group scheduler exists; the decomposition question (D2) is open and `4×4` currently looks better than `2×8`. |
+| "Close the 11% → 64% BW gap is the single biggest lever" | The single biggest lever is the non-FFN cliff at c>4. |
+
+### Dispatch policy the engine must implement
+
+**D1 — kernel choice is a measured lookup, not a constant.** An offline
+autotune pass emits, per backend, a width map keyed by
+`(backend, quant, layer-role, K, N, M)` → `variant` with the measured time and
+the fixture hash that qualified it. The dispatcher resolves through the
+four-axis registry against that artifact; there are no `if backend == …` or
+`if quant == …` branches, and an absent entry resolves to the registered strict
+fallback rather than silently changing widths. Artifact location:
+`benchmarks/results/<date>-<backend>-gemm-width-map.json`.
+
+**D2 — group decomposition is a scheduler cost model over the same artifact.**
+For `W` admitted rows the scheduler enumerates decompositions into registered
+widths and picks the one minimizing a stated objective — default
+`step_ms(decomposition)` for aggregate throughput, with a per-request
+`tok/s/user` floor as a constraint — where
+`step_ms(D) = Σ_g (FFN_ms(w_g) + non_FFN_ms(w_g))` from measured per-width step
+costs. On today's W7900 numbers this immediately says `4×4` (171.6 ms for 16
+rows, 93 tok/s) beats `2×8` (222.8 ms, 72 tok/s), and it says the same about
+`2×4` versus native `c8`. **This is the piece that makes throughput scale with
+arbitrary c today, before any new kernel exists**, and it is measurable now.
+
+**D3 — coverage is an invariant, not an optimization.** For every width in
+`1..W_max` and every layer role, dispatch must resolve to a variant whose
+measured per-row cost is within a stated factor (proposed: 1.25×) of the best
+neighbouring width. A width that falls off a fast path is a regression even if
+it is "exact" — `c5` at 25 tok/s while `c4` ran at 94, and the `rows>7` rowtile
+cap, were both this failure. Add a test that walks every width and asserts the
+resolved variant is not the generic fallback.
+
+**Promotion gate.** A width-map entry may become the default when it is exact
+(or passes the production-profile gate in `EXECUTION-PROFILES.md`), is
+repeatable, and improves the *composed* objective at the widths the scheduler
+would actually select — not just the isolated kernel time. Native `c8` is the
+cautionary case: the kernel change was a real 1.45× win on the down GEMV and
+the composed route still loses to `2×c4`.
+
+### Measurement protocol (what the autotune probe must do)
+
+Any probe whose numbers enter the width map must:
+
+1. **Rotate weight tiles across layers** so the working set exceeds L3 (96 MB
+   on W7900). A single hot tile measures cache, not the serving path.
+2. **Read `bpw` from the allocation size** and fail loudly if unavailable; no
+   silent 0.5 fallback.
+3. **Time inside a captured graph**, not per-call `perf_counter` +
+   `device_synchronize` (~5–10 µs/launch, ≈10% at 0.08 ms, and it biases the
+   comparison toward the slower kernel).
+4. **Measure both FFN shapes** — `K=5120,N=17408` and `K=17408,N=5120` — and the
+   attention projections. Per-shape parallelism, not just M, selects the winner.
+5. **Sweep M across 1..W_max**, and report executed as well as useful work, so
+   padding is visible instead of appearing as low "bandwidth".
+6. **Include every registered candidate**, notably
+   `gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel` — it already stages
+   decoded B in LDS and reuses it across row tiles, which is the structure the
+   large-M path needs; it has never been benchmarked and is currently tiled at
+   256 rows/block.
+7. **Emit the artifact and the rollup rows** per the evidence policy.
+
+### Next steps, in priority order
+
+1. **Measure the stage split at c4/c5/c8** (`scripts/tmp_c8_stage_timing.py`,
+   plus `rocprofv3 --kernel-trace`). Everything else is conditional on it. The
+   derived non-FFN cliff (~23 → ~84 ms) predicts the answer; confirm or refute.
+2. **Diagnose the c4→c5 and c6→c7 discontinuities** (+31.7 ms and +28.3 ms for
+   one row each). Expect a GDN / full-attention variant-coverage gap, i.e. a D3
+   violation, not a roofline effect.
+3. **Implement D2 and measure `4×4` vs `2×8` vs native `c8`** with the full
+   session count resident, so KV/GDN working-set effects are included. Possible
+   1.3× aggregate win at c8/c16 with no new kernel. This is the first thing that
+   makes arbitrary-c throughput scale.
+4. **Then**, and only if the stage split justifies it, FFN kernel work in this
+   order: (a) template `ROW_TILES_PER_BLOCK` on M so the WMMA kernel stops
+   computing 64 rows for 16; (b) fix the down-shape grid (107 blocks) with
+   finer column tiling or split-K; (c) benchmark `shared_b` re-tiled to 64
+   rows/block; (d) VOPD dual-issue in the rowtile. A new weight-once large-M
+   GEMM is justified only if (a)–(c) leave a gap.
+5. **Port protocol.** On a new backend (gfx1151 first) run the autotune probe,
+   emit the width map, and let D1/D2 resolve from it. Re-measure the four roofs
+   and the ridge table; do not copy W7900 constants. The decision procedure,
+   the coverage invariant, and the promotion gate carry over unchanged.
 
 ## Target architecture
 
