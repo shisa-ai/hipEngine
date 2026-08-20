@@ -39,11 +39,10 @@ should be removed or collapsed.
 
 - Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
   `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification. The
-  artifact-backed D2 resolver is the production default on the exact
-  W7900/epyc/Qwen3.8-27B-Q4_K_M identity (identity-gated, fail-closed ceiling
-  elsewhere), after the matched actual-server c1-c32 D2-vs-ceiling gate passed.
-  The ceiling planner remains the fail-closed fallback for non-matching
-  identity/hosts (gfx1151 and the XTX require their own maps).
+  artifact-backed D2 resolver remains explicit-config only through
+  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling is the production default. The
+  attempted default-promotion sweep was eager resident-session, not actual-
+  server evidence, and its composed-c13 lifecycle observation was dirty.
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,
@@ -54,16 +53,13 @@ should be removed or collapsed.
   intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
   generic fallback ladders still demonstrate why one model-wide max-row value
   or variant name is not honest coverage.
-- Removal trigger: compact D1/D2 schemas and the strict retained group-cost map
-  are present; direct c3/c5/c6/c7 lifecycle is closed; the actual-server
-  direct/masked/composed c1-c32 route plus goodput/TTFT/ITL and the
-  same-protocol D2-vs-ceiling performance gate passed (composed-wall sweep
-  + composed-c13 lifecycle), so D2 is now the production default on the exact
-  W7900/epyc identity. Still required: cold package resolution to ordinary
-  registry/plugin evidence. Keep registered strict kernels and the ceiling
-  planner as the fail-closed fallback for non-matching identity throughout
-  promotion; remove duplicate sidecar cases, generic row caps, and manual
-  ladders.
+- Removal trigger: compact D1/D2 schemas, strict group-cost map, and direct
+  c3/c5/c6/c7 lifecycle are present. Still required: clean actual-server
+  direct/masked/composed c1-c32 route telemetry; counterbalanced same-shape D2-
+  vs-ceiling goodput and TTFT/ITL; refill/cancel, memory, and drain; then cold
+  package resolution to ordinary registry/plugin evidence. Keep registered
+  strict kernels and ceiling fallback until those gates pass; only afterward
+  remove duplicate sidecar cases, generic row caps, and manual ladders.
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
