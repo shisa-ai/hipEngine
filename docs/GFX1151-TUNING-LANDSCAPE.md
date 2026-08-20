@@ -81,6 +81,33 @@ The 3.48 ms selected-expert slice that remains is therefore GPU kernel math
 bandwidth ceiling (LAQ1-B: 510-540 vs 650 GB/s, latency/occupancy-bound). See
 PN3 closeout artifact `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-moeselect-no-win.json`.
 
+## Aotriton usage and attention economics (2026-08-20, gfx1151 35B-A3B)
+
+**Aotriton is prefill-only.** The 35B-A3B has 40 layers = 30 `linear_attention`
+(GDN recurrent, agent 1) + 10 `full_attention`. Decode attention is 100%
+native HIP: the 10 full-attention layers run `qwen35_paged_attn_decode_int8_*`
+(Q8-int8 keys + bf16 values, gqa splitk), the 30 GDN layers run the recurrent
+core. Aotriton appears only in **batched prefill (rows >= 512)** of the 10
+full-attention layers (v3 flash-attn via `aotriton_wrap`); below the
+512-token threshold prefill uses the native sequential path.
+
+**Measured prefill economics (this session, 8060S, 512-token prefill, 4.36 s):**
+
+- aotriton full-attention (10 layers, serialized upper bound): ~1.06 s = 24% of
+  prefill wall; native layers (GDN prefill + MoE GEMM) are 76% and dominate.
+- Prior gfx1100 threshold sweep (2026-05-16 artifact): **native prefill attention
+  is FASTER than aotriton below 512 tokens** (-3.5% .. -17% at 32-256), aotriton
+  wins at >=512 (+6% .. +256%). The 512 threshold is that measured crossover.
+  The gfx1151 crossover is unmeasured; if it sits above 512, native could serve
+  more prefill at benchmark lengths. Payoff is bounded: even 2x on attention
+  saves ~0.5 s of a 4.4 s prefill, and prefill is ~25% of an end-to-end
+  512+512 run.
+
+So "beating aotriton" is a bounded prefill lever; the larger attention lever on
+gfx1151 is the **native decode** path (P3-FULLATTN, full-attention
+paged_attn_decode ~2.4 ms/tok of the 26 ms decode wall), where there is no
+aotriton to beat.
+
 ## Ranked non-overlapping candidates
 
 1. **P3-FULLATTN — full-attention core/gate + QKV math tuning** (arithmetic /
