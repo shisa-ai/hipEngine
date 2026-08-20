@@ -2282,7 +2282,7 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles || !out || rows < 2 || rows > 4 || in_features <= 0 ||
+  if (!x || !tiles || !out || rows < 2 || rows > 8 || in_features <= 0 ||
       out_features <= 0 || (in_features % QK_K) != 0 ||
       (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -2302,6 +2302,10 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(2)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(3)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(4)
+    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(5)
+    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(6)
+    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(7)
+    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(8)
     default:
       return hipErrorInvalidValue;
   }
@@ -2478,7 +2482,7 @@ extern "C" int
 hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
-  if (rows >= 2 && rows <= 4) {
+  if (rows >= 2 && rows <= 8) {
     return launch_q6_t16_qmicro_planar_rowtile_col8<uint16_t>(
         x, tiles, out, rows, in_features, out_features, stream);
   }
