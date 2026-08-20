@@ -113,3 +113,90 @@ def _hip_available() -> bool:
     except OSError:
         return False
     return True
+
+
+_PRODUCTION_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
+
+
+@pytest.mark.skipif(
+    not _PRODUCTION_MODEL.exists(),
+    reason=f"local GGUF fixture not found: {_PRODUCTION_MODEL}",
+)
+def test_qwen35_gguf_packed_ar_prefill_decode_runs_without_verify_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Packed AR prefill+decode works in the production route (no verify-capture).
+
+    Regression for the removed fail-closed guards that raised
+    ``NotImplementedError`` when ``HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN``
+    was unset.  The packed AR path is self-contained (segmented in-place
+    per-slot state; c1-exact per-slot decode), so the production route must be
+    supported.  Asserts the packed prefill+decode token streams match scalar
+    prefill+decode on the same session pair.
+    """
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
+    from hipengine.runtime.qwen35_gguf_runner import (
+        Qwen35GGUFResidentSession,
+        _gguf_verify_capture_prefill_gdn_enabled,
+    )
+    assert not _gguf_verify_capture_prefill_gdn_enabled()
+
+    prompt_a = [760, 4087, 369, 220, 760, 4087, 369, 220]
+    prompt_b = [760, 4087, 369, 221, 760, 4087, 369, 221]
+
+    with Qwen35GGUFResidentSession(
+        _PRODUCTION_MODEL,
+        backend="hip_gfx1151",
+        max_sequence_length=64,
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as owner:
+        assert owner.runner is not None
+        with Qwen35GGUFResidentSession(
+            _PRODUCTION_MODEL,
+            shared_runner=owner.runner,
+            backend="hip_gfx1151",
+            max_sequence_length=64,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        ) as peer:
+            packed = owner.prefill_batch_native(
+                (prompt_a, prompt_b),
+                sessions=(owner, peer),
+                return_logits=True,
+            )
+            packed_tokens = [int(res.token_id) for res in packed if res is not None]
+            packed_logits = [
+                np.ascontiguousarray(res.logits, dtype=np.float32)
+                for res in packed
+                if res is not None
+            ]
+            dec = owner.step_batch_native(
+                tuple(packed_tokens),
+                sessions=(owner, peer),
+                return_logits=True,
+            )
+            dec_tokens = [int(res.token_id) for res in dec]
+
+            owner.reset()
+            peer.reset()
+            scalar_a = owner.prefill(prompt_a, return_logits=True)
+            scalar_b = peer.prefill(prompt_b, return_logits=True)
+            scalar_tokens = [int(scalar_a.token_id), int(scalar_b.token_id)]
+            scalar_logits = [
+                np.ascontiguousarray(scalar_a.logits, dtype=np.float32),
+                np.ascontiguousarray(scalar_b.logits, dtype=np.float32),
+            ]
+            dec_a = owner.step(scalar_tokens[0], return_logits=True)
+            dec_b = peer.step(scalar_tokens[1], return_logits=True)
+            scalar_dec = [int(dec_a.token_id), int(dec_b.token_id)]
+
+    assert packed_tokens == scalar_tokens
+    assert all(
+        _kl_divergence(p.reshape(-1), s.reshape(-1)) <= 0.05
+        for p, s in zip(packed_logits, scalar_logits, strict=True)
+    )
+    assert dec_tokens == scalar_dec
