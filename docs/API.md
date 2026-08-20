@@ -170,7 +170,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/sessions/{session_id}/rollback` | Built in | Authenticated app-local transcript rollback to a requested `message_count`. Trims visible transcript messages only; no resident KV state is reused. |
 | `GET /v1/hipengine/sessions/{session_id}/snapshot` | Built in | Authenticated export of a versioned app-local transcript snapshot, including visible messages and compatibility metadata but no resident KV state. |
 | `POST /v1/hipengine/sessions/{session_id}/snapshot` | Built in | Authenticated restore of a compatible transcript snapshot into the path session id after model, tokenizer, role, content, and tool-transcript validation. |
-| `GET /metrics` | Opt in | Unauthenticated Prometheus metrics when the server starts with `--metrics prometheus` or `HIPENGINE_METRICS=prometheus`. |
+| `GET /metrics` | Opt in | Unauthenticated Prometheus metrics when the server starts with `--metrics prometheus` or `HIPENGINE_METRICS=prometheus`. Includes request/token counters, generation-queue and resident-loop state, KV pool, graph buckets, and speculative MTP serving/acceptance metrics. |
 | `POST /v1/hipengine/tokenize` | Built in | Tokenizes raw text with the served tokenizer when available. |
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
@@ -500,6 +500,62 @@ including tokens later hidden by a server-side stop-string or structured-output
 validation. A legacy generator that does not provide exact IDs retains the old
 retokenized usage fallback and omits `hipengine.token_accounting`, so benchmark
 harnesses can fail closed instead of treating that fallback as exact evidence.
+
+### Speculative MTP usage and effective-state reporting
+
+When a request is served through the speculative MTP route, the OpenAI-compatible
+`usage.completion_tokens_details` carries vLLM-compatible draft acceptance
+counts so standard spec-decode tooling works unchanged:
+
+```json
+{
+  "completion_tokens_details": {
+    "accepted_prediction_tokens": 17,
+    "rejected_prediction_tokens": 3
+  }
+}
+```
+
+`accepted_prediction_tokens` is the number of draft tokens the MTP target
+accepted and `rejected_prediction_tokens` is the number it rejected, summed
+from backend `GenerationTelemetry.timing` across the request's rows. They are
+present in non-streaming responses, in the final SSE `usage` payload when
+`stream_options.include_usage` is set, and in `hipengine.usage` when
+`stream_options.include_hipengine` is set. Non-MTP requests omit both fields.
+
+The per-request effective MTP state is also reported in the top-level
+`hipengine.speculative_mtp` extension of non-streaming completion and chat
+responses:
+
+```json
+{
+  "speculative_mtp": {
+    "effective_route": "speculative_mtp",
+    "used": true,
+    "draft_tokens": 20,
+    "accepted_draft_tokens": 17,
+    "rejected_draft_tokens": 3,
+    "acceptance_rate": 0.85,
+    "draft_cycles": 5
+  }
+}
+```
+
+`effective_route` mirrors the realized generation route from
+`hipengine.generation_shape.route` (`default`, `speculative_mtp`, or
+`speculative`); `acceptance_rate` is `null` when no drafts were proposed. When
+`stream_options.include_hipengine` is enabled, per-choice backend telemetry
+additionally exposes the raw `decode_state.execution_path` and `timing.mtp_*`
+values for the same request.
+
+The `--metrics prometheus` endpoint exports cumulative MTP observability:
+`hipengine_mtp_requests_total`, `hipengine_mtp_draft_tokens_accepted_total`,
+`hipengine_mtp_draft_tokens_rejected_total`, a cumulative
+`hipengine_mtp_draft_acceptance_rate` gauge, and a static
+`hipengine_mtp_serving` gauge (1 when the server's effective MTP route is
+enabled for the loaded engine, 0 otherwise). At startup the server logs the
+effective state on one line, e.g. `EFFECTIVE_MTP: serving=enabled
+engine_supported=True default_enabled=True policy=enabled thinking=hint`.
 
 ### Choice telemetry
 

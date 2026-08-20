@@ -262,6 +262,11 @@ class SpeculativeMTPFakeLLM(FakeLLM):
                     phase="done",
                     sampler_mode="greedy_fast",
                     execution_path="speculative_mtp_server",
+                    timing={
+                        "mtp_cycles_count": 1.0,
+                        "mtp_generated_draft_tokens": 3.0,
+                        "mtp_accepted_draft_tokens": 2.0,
+                    },
                 ),
             )
             for index, prompt in enumerate(prompt_tuple)
@@ -6094,6 +6099,62 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
         ],
         "verifier_rows": 6,
     }
+    assert body["usage"]["completion_tokens_details"] == {
+        "accepted_prediction_tokens": 4,
+        "rejected_prediction_tokens": 2,
+    }
+    assert body["hipengine"]["speculative_mtp"] == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 6,
+        "accepted_draft_tokens": 4,
+        "rejected_draft_tokens": 2,
+        "acceptance_rate": 4 / 6,
+        "draft_cycles": 2,
+    }
+
+
+def test_metrics_reports_mtp_serving_and_draft_acceptance() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+            metrics="prometheus",
+            max_active_requests=4,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    before = client.get("/metrics")
+    assert before.status_code == 200
+    # opt-in MTP with an engine that supports the route: effective serving is on.
+    assert _metric_value(before.text, "hipengine_mtp_serving") == 1
+    assert _metric_value(before.text, "hipengine_mtp_requests_total") == 0
+    assert _metric_value(before.text, "hipengine_mtp_draft_tokens_accepted_total") == 0
+    assert _metric_value(before.text, "hipengine_mtp_draft_tokens_rejected_total") == 0
+    assert _metric_value(before.text, "hipengine_mtp_draft_acceptance_rate") == 0
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": ["one", "two"],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+    assert response.status_code == 200
+
+    after = client.get("/metrics")
+    assert _metric_value(after.text, "hipengine_mtp_requests_total") == 1
+    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_accepted_total") == 4
+    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_rejected_total") == 2
+    assert _metric_value(after.text, "hipengine_mtp_draft_acceptance_rate") == 4 / 6
 
 
 def test_completions_auto_keeps_compatibility_mtp_explicit_only() -> None:
