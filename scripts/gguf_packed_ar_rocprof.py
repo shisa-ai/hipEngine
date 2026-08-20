@@ -243,7 +243,14 @@ def classify_decode_kernel_family(kernel: str) -> str:
         return "moe_selected_combine"
     if any(part in name for part in ("rmsnorm", "residual", "bf16_add")):
         return "norm_residual"
-    if "gemv" in name:
+    if any(
+        part in name
+        for part in (
+            "gemv",
+            "wmma_prefill",
+            "f32_to_bf16",
+        )
+    ):
         return "dense_projection"
     return "other"
 
