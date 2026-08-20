@@ -163,7 +163,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
@@ -6900,13 +6902,6 @@ class Qwen35GGUFFullStackRunner:
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
             use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
-            if _gguf_fp16_recurrent_state_enabled() and use_prefill_gdn_capture:
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the verify-capture "
-                    "prefill GDN path (decode_order kernels store FP32 state); "
-                    "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE or "
-                    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
-                )
             use_prefill_gdn_chain_conv = (
                 use_prefill_gdn_capture
                 and _gguf_verify_capture_prefill_gdn_chain_conv_enabled()
@@ -7013,7 +7008,8 @@ class Qwen35GGUFFullStackRunner:
                 gpu_stage_recorder.mark(chain_conv_stage_name)
             if use_prefill_gdn_capture:
                 if active_segments > 1:
-                    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy(
+                    decode_order_segments_fn = _gdn_decode_order_segments_state_rows_kernel()
+                    decode_order_segments_fn(
                         scratch.conv_out.ptr,
                         scratch.linear_z.ptr,
                         scratch.linear_alpha.ptr,
@@ -7037,7 +7033,8 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy(
+                    decode_order_fn = _gdn_decode_order_state_rows_kernel()
+                    decode_order_fn(
                         scratch.conv_out.ptr,
                         scratch.linear_z.ptr,
                         scratch.linear_alpha.ptr,
@@ -11444,6 +11441,32 @@ def _gdn_prefill_recurrent_kernel():
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state
         if _gguf_fp16_recurrent_state_enabled()
         else None
+    )
+
+
+def _gdn_decode_order_state_rows_kernel():
+    """decode-order no-copy row-state writer (fp16-state under the flag).
+
+    Used by the verify-capture prefill GDN path when ``linear_state_rows`` is
+    captured.  Under ``HIPENGINE_GGUF_FP16_RECURRENT_STATE`` the recurrent state
+    and row buffers are half-sized, so the fp16-state writer is required; the
+    FP32-state wrapper remains the strict identity fallback (byte-identical).
+    """
+
+    return (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy
+    )
+
+
+def _gdn_decode_order_segments_state_rows_kernel():
+    """Segment-aware decode-order row-state writer (fp16-state under the flag)."""
+
+    return (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
+        if _gguf_fp16_recurrent_state_enabled()
+        else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
     )
 
 

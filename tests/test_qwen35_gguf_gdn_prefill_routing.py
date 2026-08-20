@@ -1450,3 +1450,36 @@ def _recorder(sink: list[tuple[str, object]], name: str):
         sink.append((name, args))
 
     return fake
+
+
+def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch) -> None:
+    """Verify-capture decode-order row-state writers route to fp16 under the flag.
+
+    The fp16 flag must select the fp16-state writers (which operate on the
+    half-sized recurrent-state buffers); with the flag off the strict FP32
+    wrappers are the identity fallback.
+    """
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gdn_decode_order_segments_state_rows_kernel,
+        _gdn_decode_order_state_rows_kernel,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    assert _gdn_decode_order_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy
+    )
+    assert _gdn_decode_order_segments_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    assert _gdn_decode_order_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state
+    )
+    assert _gdn_decode_order_segments_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
+    )
