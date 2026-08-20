@@ -20,9 +20,13 @@ from hipengine.kernels.cpu_reference import (
 from hipengine.kernels.hip_gfx1100.linear_attn import (
     build_qwen35_linear_attn_conv,
     build_qwen35_linear_attn_gdn,
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state,
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_linear_attn_conv_decode_bf16,
     qwen35_linear_attn_conv_decode_indexed_bf16,
@@ -231,6 +235,38 @@ def test_indexed_decode_kernels_register_gguf_batch_variants() -> None:
         )
         is qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16
     )
+    fp16_variants = {
+        (
+            "gdn_recurrent_rmsnorm_gate",
+            "gguf_qwen35",
+            "bf16_fp16state",
+        ): qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
+        (
+            "gdn_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_lowp_f32_bf16_out_fp16state",
+        ): qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
+        (
+            "gdn_chain_recurrent_rmsnorm_gate",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop_fp16state",
+        ): qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state,
+        (
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_compact_normalized_wave32_xor_fp16state",
+        ): qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
+    }
+    for (layer, quant, variant), expected in fp16_variants.items():
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer=layer,
+                quant=quant,
+                variant=variant,
+            )
+            is expected
+        )
 
     gfx1100_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1100")
     gfx1151_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
@@ -571,6 +607,10 @@ def test_indexed_decode_plan_switches_to_fp16_kernels_under_flag(monkeypatch) ->
 
     monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
     strict_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
+    explicit_fp16_plan = _resolve_gguf_linear_attention_decode_batch_plan(
+        "hip_gfx1151",
+        use_fp16_state=True,
+    )
     assert strict_plan.gdn_decode_path == "indexed_singleton"
     assert (
         strict_plan.gdn_indexed_singleton
@@ -580,7 +620,13 @@ def test_indexed_decode_plan_switches_to_fp16_kernels_under_flag(monkeypatch) ->
 
     monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
     fp16_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
+    explicit_strict_plan = _resolve_gguf_linear_attention_decode_batch_plan(
+        "hip_gfx1151",
+        use_fp16_state=False,
+    )
     assert fp16_plan.gdn_decode_path == "indexed_singleton"
+    assert explicit_fp16_plan == fp16_plan
+    assert explicit_strict_plan == strict_plan
     assert (
         fp16_plan.gdn_indexed_singleton
         is qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state

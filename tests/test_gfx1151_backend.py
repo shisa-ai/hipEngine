@@ -2176,12 +2176,15 @@ def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(
         fake_materialize,
     )
 
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
     runner = qwen35_gguf_runner.Qwen35GGUFFullStackRunner(
         "/tmp/fake.gguf",
         runtime=object(),
         backend="hip_gfx1151",
     )
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE")
 
+    assert runner.fp16_recurrent_state is True
     assert runner.backend == "hip_gfx1151"
     assert runner.target_arch == "gfx1151"
     assert runner.weights is fake_weights

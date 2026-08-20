@@ -170,7 +170,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
-    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
     register_qwen35_linear_attn_gdn_kernels,
@@ -1350,7 +1349,7 @@ class _GGUFPackedTargetState:
             * int(runner.ssm_value_dim)
             * (
                 DType.FP16.itemsize
-                if _gguf_fp16_recurrent_state_enabled()
+                if runner.fp16_recurrent_state
                 else DType.FP32.itemsize
             )
         )
@@ -2066,8 +2065,14 @@ class Qwen35GGUFFullStackRunner:
     _dense_down_residual_decode_c1: bool | None = field(
         default=None, init=False, repr=False
     )
+    fp16_recurrent_state: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
+        # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
+        # Freeze it before any session/scratch buffers or kernel plans exist so
+        # a later environment mutation cannot pair FP32 writers with FP16
+        # storage (or vice versa).
+        self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled()
         self.backend = resolve_backend(self.backend)
         try:
             self.target_arch = hip_target_arch_for_backend(self.backend)
@@ -2348,17 +2353,25 @@ class Qwen35GGUFFullStackRunner:
             "_gguf_gdn_decode_output_fusion_fn_cache",
             {},
         )
-        cache_key = (str(self.backend), quant, bool(_gguf_fp16_recurrent_state_enabled()))
+        cache_key = (str(self.backend), quant, self.fp16_recurrent_state)
         if cache_key not in cache:
+            variant = (
+                "bf16_lowp_f32_bf16_out_fp16state"
+                if self.fp16_recurrent_state
+                else "bf16_lowp_f32_bf16_out"
+            )
             fn = resolve(
                 backend=self.backend,
                 layer="gdn_recurrent_rmsnorm_gate+cast",
                 quant=quant,
-                variant="bf16_lowp_f32_bf16_out",
+                variant=variant,
                 missing="none",
             )
-            if fn is not None and _gguf_fp16_recurrent_state_enabled():
-                fn = qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state
+            if self.fp16_recurrent_state and fn is None:
+                raise RuntimeError(
+                    "fp16 recurrent state requires a registered fused GDN+cast "
+                    f"owner for quant {quant!r}"
+                )
             cache[cache_key] = fn
         return cache[cache_key]
 
@@ -2383,7 +2396,7 @@ class Qwen35GGUFFullStackRunner:
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and _gguf_fp16_recurrent_state_enabled():
+            if fn is not None and self.fp16_recurrent_state:
                 raise RuntimeError(
                     "fp16 recurrent state is incompatible with the chain-journal "
                     "output fusion (FP32-state writer); the chain-journal path is "
@@ -2413,7 +2426,7 @@ class Qwen35GGUFFullStackRunner:
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and _gguf_fp16_recurrent_state_enabled():
+            if fn is not None and self.fp16_recurrent_state:
                 raise RuntimeError(
                     "fp16 recurrent state is incompatible with the chain-journal "
                     "snapshot output fusion (FP32-state writer)"
@@ -2648,7 +2661,10 @@ class Qwen35GGUFFullStackRunner:
 
         plan = getattr(self, "_gguf_linear_attention_decode_batch_plan_cache", None)
         if not isinstance(plan, _GGUFLinearAttentionDecodeBatchPlan):
-            plan = _resolve_gguf_linear_attention_decode_batch_plan(self.backend)
+            plan = _resolve_gguf_linear_attention_decode_batch_plan(
+                self.backend,
+                use_fp16_state=self.fp16_recurrent_state,
+            )
             self._gguf_linear_attention_decode_batch_plan_cache = plan
         return plan
 
@@ -2764,7 +2780,7 @@ class Qwen35GGUFFullStackRunner:
             )
         exact_recurrent = plan.exact_recurrent
         exact_recurrent_segments = plan.exact_recurrent_segments
-        if _gguf_fp16_recurrent_state_enabled() and mode != "chain_compact_peer_wave32":
+        if self.fp16_recurrent_state and mode != "chain_compact_peer_wave32":
             raise RuntimeError(
                 "fp16 recurrent state supports only the compact-peer-wave32 "
                 "prefill route (the Q4_K_S production default); resolved route "
@@ -2788,8 +2804,8 @@ class Qwen35GGUFFullStackRunner:
         elif mode == "chain_compact_peer_wave32":
             normalized_prepare = plan.prepare_compact_peer_normalized
             normalized_recurrent = (
-                _gdn_prefill_recurrent_kernel()
-                if _gguf_fp16_recurrent_state_enabled()
+                _gdn_prefill_recurrent_kernel(self.fp16_recurrent_state)
+                if self.fp16_recurrent_state
                 else plan.recurrent_compact_peer_wave32
             )
             normalized_recurrent_segments = None
@@ -4903,7 +4919,7 @@ class Qwen35GGUFFullStackRunner:
             scratch.recurrent_out.ptr,
         )
         if gdn_output_fusion is None:
-            _gdn_decode_gate_kernel()(
+            _gdn_decode_gate_kernel(self.fp16_recurrent_state)(
                 *gdn_args,
                 cfg.rms_norm_eps,
                 cfg.ssm_group_count,
@@ -5264,7 +5280,7 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
-                _gdn_decode_gate_kernel()(
+                _gdn_decode_gate_kernel(self.fp16_recurrent_state)(
                     scratch.conv_out.ptr + row * conv_row_nbytes,
                     scratch.linear_z.ptr + row * z_row_nbytes,
                     scratch.linear_alpha.ptr + row * ab_row_nbytes,
@@ -5985,7 +6001,7 @@ class Qwen35GGUFFullStackRunner:
             * int(self.ssm_value_dim)
             * (
                 DType.FP16.itemsize
-                if _gguf_fp16_recurrent_state_enabled()
+                if self.fp16_recurrent_state
                 else DType.FP32.itemsize
             )
         )
@@ -6172,7 +6188,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        _gdn_decode_segments_kernel()(
+        _gdn_decode_segments_kernel(self.fp16_recurrent_state)(
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
             scratch.linear_alpha.ptr,
@@ -6912,6 +6928,11 @@ class Qwen35GGUFFullStackRunner:
                 and _gguf_verify_capture_prefill_gdn_chain_conv_enabled()
             )
             use_prefill_score_capture = _gguf_verify_capture_score_prefill_enabled()
+            if self.fp16_recurrent_state and use_prefill_score_capture:
+                raise RuntimeError(
+                    "fp16 recurrent state is incompatible with the prefill-score "
+                    "diagnostic (its replay writer assumes FP32 state)"
+                )
             use_f32_chain_conv = (
                 _gguf_verify_capture_f32_chain_conv_enabled() or use_prefill_gdn_capture
             )
@@ -7013,7 +7034,9 @@ class Qwen35GGUFFullStackRunner:
                 gpu_stage_recorder.mark(chain_conv_stage_name)
             if use_prefill_gdn_capture:
                 if active_segments > 1:
-                    decode_order_segments_fn = _gdn_decode_order_segments_state_rows_kernel()
+                    decode_order_segments_fn = _gdn_decode_order_segments_state_rows_kernel(
+                        self.fp16_recurrent_state
+                    )
                     decode_order_segments_fn(
                         scratch.conv_out.ptr,
                         scratch.linear_z.ptr,
@@ -7038,7 +7061,9 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    decode_order_fn = _gdn_decode_order_state_rows_kernel()
+                    decode_order_fn = _gdn_decode_order_state_rows_kernel(
+                        self.fp16_recurrent_state
+                    )
                     decode_order_fn(
                         scratch.conv_out.ptr,
                         scratch.linear_z.ptr,
@@ -7069,7 +7094,7 @@ class Qwen35GGUFFullStackRunner:
                 if gpu_stage_recorder is not None:
                     gpu_stage_recorder.mark(f"{stage_prefix}_prefill_gdn_state_rows")
             else:
-                if _gguf_fp16_recurrent_state_enabled():
+                if self.fp16_recurrent_state:
                     if _gguf_verify_capture_regular_chain_gdn_enabled():
                         raise RuntimeError(
                             "fp16 recurrent state is incompatible with the regular "
@@ -7397,7 +7422,9 @@ class Qwen35GGUFFullStackRunner:
                 f"{stage_prefix}_prefill_conv_segments" if active_segments > 1 else f"{stage_prefix}_prefill_conv"
             )
         if active_segments > 1:
-            _gdn_decode_order_segments_inplace_kernel()(
+            _gdn_decode_order_segments_inplace_kernel(
+                self.fp16_recurrent_state
+            )(
                 scratch.conv_out.ptr,
                 scratch.linear_z.ptr,
                 scratch.linear_alpha.ptr,
@@ -11401,32 +11428,32 @@ def _gguf_fp16_recurrent_state_enabled() -> bool:
     return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
 
 
-def _gdn_decode_gate_kernel():
+def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:
+    return (
+        _gguf_fp16_recurrent_state_enabled()
+        if use_fp16_state is None
+        else bool(use_fp16_state)
+    )
+
+
+def _gdn_decode_gate_kernel(use_fp16_state: bool | None = None):
     fn = (
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
     )
     return fn
 
 
-def _gdn_decode_segments_kernel():
+def _gdn_decode_segments_kernel(use_fp16_state: bool | None = None):
     return (
         qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
     )
 
 
-def _gdn_prefill_chain_kernel():
-    return (
-        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
-        else qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
-    )
-
-
-def _gdn_prefill_recurrent_kernel():
+def _gdn_prefill_recurrent_kernel(use_fp16_state: bool | None = None):
     """Return the compact peer-wave32 recurrence with fp16-state storage.
 
     This is the prefill writer for the gfx1100/gfx1151 Q4_K_S production route
@@ -11438,12 +11465,12 @@ def _gdn_prefill_recurrent_kernel():
 
     return (
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else None
     )
 
 
-def _gdn_decode_order_state_rows_kernel():
+def _gdn_decode_order_state_rows_kernel(use_fp16_state: bool | None = None):
     """decode-order no-copy row-state writer (fp16-state under the flag).
 
     Used by the verify-capture prefill GDN path when ``linear_state_rows`` is
@@ -11454,22 +11481,26 @@ def _gdn_decode_order_state_rows_kernel():
 
     return (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy
     )
 
 
-def _gdn_decode_order_segments_state_rows_kernel():
+def _gdn_decode_order_segments_state_rows_kernel(
+    use_fp16_state: bool | None = None,
+):
     """Segment-aware decode-order row-state writer (fp16-state under the flag)."""
 
     return (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
     )
 
 
-def _gdn_decode_order_segments_inplace_kernel():
+def _gdn_decode_order_segments_inplace_kernel(
+    use_fp16_state: bool | None = None,
+):
     """In-place segmented decode-order prefill writer (fp16-state under the flag).
 
     Used by the packed AR prefill for multi-slot slabs (``gdn_active_segments``
@@ -11481,7 +11512,7 @@ def _gdn_decode_order_segments_inplace_kernel():
 
     return (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state
-        if _gguf_fp16_recurrent_state_enabled()
+        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
         else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments
     )
 
@@ -22825,7 +22856,7 @@ class Qwen35GGUFResidentSession:
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
-        if _gguf_fp16_recurrent_state_enabled():
+        if self.runner is not None and self.runner.fp16_recurrent_state:
             raise RuntimeError(
                 "fp16 recurrent state is incompatible with the MTP tree/chain "
                 "verifier (base-state readers assume FP32); disable "
@@ -24204,7 +24235,11 @@ class _GGUFFullAttentionPrefillScratch:
             cfg.ssm_time_step_rank
             * cfg.ssm_state_size
             * runner.ssm_value_dim
-            * DType.FP32.itemsize
+            * (
+                DType.FP16.itemsize
+                if runner.fp16_recurrent_state
+                else DType.FP32.itemsize
+            )
         )
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
@@ -24949,7 +24984,7 @@ class _FullStackScratch:
             (slot_count, cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim),
             dtype=(
                 np.float16
-                if _gguf_fp16_recurrent_state_enabled()
+                if runner.fp16_recurrent_state
                 else np.float32
             ),
         )
@@ -26715,6 +26750,8 @@ def _resolve_gguf_linear_attention_chain_journal_plan(
 
 def _resolve_gguf_linear_attention_decode_batch_plan(
     backend: str = "hip_gfx1100",
+    *,
+    use_fp16_state: bool | None = None,
 ) -> _GGUFLinearAttentionDecodeBatchPlan:
     load_backend_kernel_package(backend)
 
@@ -26727,14 +26764,8 @@ def _resolve_gguf_linear_attention_decode_batch_plan(
             missing="none",
         )
 
-    indexed_singleton_enabled = bool(
-        backend_package_capability(
-            backend,
-            "GGUF_GDN_INDEXED_SINGLETON_DECODE",
-            False,
-        )
-    )
-    use_fp16_state = _gguf_fp16_recurrent_state_enabled()
+    if use_fp16_state is None:
+        use_fp16_state = _gguf_fp16_recurrent_state_enabled()
     indexed_singleton_enabled = bool(
         backend_package_capability(
             backend,

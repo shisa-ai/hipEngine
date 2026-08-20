@@ -1067,7 +1067,10 @@ def test_fp16_state_decode_order_segments_inplace_matches_host_replay() -> None:
     )
 
 
-def test_fp16_state_indexed_singleton_matches_host_replay() -> None:
+@pytest.mark.parametrize("indexed_variant", ("plain", "shared_statecache24"))
+def test_fp16_state_indexed_singleton_matches_host_replay(
+    indexed_variant: str,
+) -> None:
     """fp16-state indexed one-token-per-row decode kernel vs host replay.
 
     The packed AR decode advances one token per active row; each row owns a
@@ -1084,9 +1087,16 @@ def test_fp16_state_indexed_singleton_matches_host_replay() -> None:
     head_v_dim = 32
     key_dim = num_k_heads * head_k_dim
     qkv_width = 2 * key_dim + num_v_heads * head_v_dim
-    rows = 4
-    state_indices = np.asarray([4, 1, 5, 0], dtype=np.int64)
-    num_slots = 6
+    if indexed_variant == "plain":
+        rows = 4
+        state_indices = np.asarray([4, 1, 5, 0], dtype=np.int64)
+        num_slots = 6
+    else:
+        # rows=8 is the first shape that executes the gfx1151
+        # shared-statecache24 body rather than delegating to the plain wrapper.
+        rows = 8
+        state_indices = np.asarray([8, 1, 9, 0, 7, 2, 6, 3], dtype=np.int64)
+        num_slots = 10
     eps = 1.0e-6
 
     conv = rng.normal(0.0, 0.35, size=(rows, qkv_width)).astype(np.float32)
@@ -1149,9 +1159,15 @@ def test_fp16_state_indexed_singleton_matches_host_replay() -> None:
 
         from hipengine.kernels.hip_gfx1100.linear_attn import (
             qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state,
+            qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
         )
 
-        qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state(
+        indexed_kernel = (
+            qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state
+            if indexed_variant == "plain"
+            else qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state
+        )
+        indexed_kernel(
             conv_dev.ptr,
             gate_dev.ptr,
             a_dev.ptr,

@@ -4321,6 +4321,26 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_lowp_f32_bf16_out_fp16state",
+        ),
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_recurrent_rmsnorm_gate",
+            "gguf_qwen35",
+            "bf16_fp16state",
+        ),
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_recurrent_rmsnorm_gate", "w4_paro", "fp16_lowp"),
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
         replace=replace,
@@ -4348,6 +4368,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "bf16_c1_exact_state_rows_tloop",
         ),
         qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_chain_recurrent_rmsnorm_gate",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop_fp16state",
+        ),
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16_fp16state,
         replace=replace,
     )
     register(
@@ -4468,6 +4498,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"),
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "decode_order_bf16_state_rows_no_copy_fp16state",
+        ),
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
         replace=replace,
     )
     register(
@@ -4608,6 +4648,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "f32_compact_normalized_wave32_xor",
         ),
         qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "f32_compact_normalized_wave32_xor_fp16state",
+        ),
+        qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state,
         replace=replace,
     )
     register(

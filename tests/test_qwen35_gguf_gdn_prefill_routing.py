@@ -56,6 +56,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
     qwen35_linear_attn_prefill_prepare_compact_peer_normalized_f32_bf16,
@@ -118,6 +119,12 @@ def test_gdn_output_boundary_is_selected_by_ssm_out_weight_plugin() -> None:
         runner._gdn_chain_output_fusion_for_weight(q5_t16)
         is qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out
     )
+    runner.fp16_recurrent_state = True
+    assert (
+        runner._gdn_decode_output_fusion_for_weight(q5_t16)
+        is qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out_fp16state
+    )
+    runner.fp16_recurrent_state = False
     assert runner._gdn_decode_output_fusion_for_weight(dense_bf16) is None
     assert runner._gdn_chain_output_fusion_for_weight(dense_bf16) is None
 

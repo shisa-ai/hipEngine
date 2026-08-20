@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_fp16_state_indexed_gdn_audit",
+  "created_at": "2026-08-20T13:32:30Z",
+  "status": "passed",
+  "performance_claim": false,
+  "purpose": "Close the missing RED/trace coverage for the gfx1151 rows=8 FP16 indexed shared-statecache24 GDN leaf and verify that its inherited FP32 dispatch choice remains locally optimal against the plain FP16 indexed sibling.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI Max+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git"
+  },
+  "software": {
+    "audit_base_commit": "b5e812c93d5bb4c491b983b9314f6e4e4dfcf372",
+    "kernel_source_commit": "b4f6e135c6c8bf7706f270a5776783a97b0d7179",
+    "gdn_hip_sha256": "a258224465f3984b19800b7fbc4bc1f80afa8ecc5e23c5ca9c92cf02ce6ae664",
+    "compiler_version_file": "/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt",
+    "require_cached_build": true,
+    "note": "The audit hardening changes do not modify gdn.hip; the measured device body is exactly the committed b4f6e135c kernel source identified by SHA-256."
+  },
+  "shape": {
+    "rows": 8,
+    "state_slots": 8,
+    "num_k_heads": 16,
+    "num_v_heads": 48,
+    "head_k_dim": 128,
+    "head_v_dim": 128,
+    "state_dtype": "fp16",
+    "accumulator_dtype": "fp32"
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_qwen35_gguf_gdn_fp16_state.py tests/test_qwen35_linear_attn_decode_batch_indexed.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_gguf_packed_ar_bench.py tests/test_gfx1151_backend.py",
+    "result": "121 passed",
+    "targeted_red": "test_fp16_state_indexed_singleton_matches_host_replay[shared_statecache24]",
+    "oracle": "independent NumPy host replay with FP32 accumulation and FP16 state round-trip",
+    "output_tolerance": {"rtol": 0.05, "atol": 0.005},
+    "state_tolerance": {"rtol": 0.002, "atol": 0.002}
+  },
+  "event_ab": {
+    "command": "PYTHONPATH=/home/lhl/hipEngine-main HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt python3 /tmp/fp16_indexed_ab.py",
+    "protocol": "20 counterbalanced pairs; 100 launches per timed HIP-event interval after 20 warmup pairs; median milliseconds per launch",
+    "plain_median_ms": 0.0566357946395874,
+    "shared_statecache24_median_ms": 0.05179111003875732,
+    "shared_vs_plain_speedup": 1.093542783639984,
+    "raw_json_sha256": "804d079a30bce0d6f84d019fefa3ee8733c21b0a3e246cd7a643d7f937de9949"
+  },
+  "kernel_trace": {
+    "command": "PYTHONPATH=/home/lhl/hipEngine-main HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-task22-q5-dense-tile8-integration/hipcc-version.txt rocprofv3 --kernel-trace --output-format csv -d /tmp/fp16-indexed-modelshape-trace -- python3 /tmp/fp16_indexed_ab.py",
+    "raw_csv_sha256": "1307bab01bc0714d17671d0c5e775aec0d75ed5ba6a9b0c0768405129bb4c429",
+    "plain": {
+      "kernel_name": "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 0, _Float16>",
+      "dispatches": 2020,
+      "duration_ns_median": 57988,
+      "duration_ns_min": 53219,
+      "duration_ns_max": 269462,
+      "grid": [1024, 48, 1],
+      "workgroup": [128, 1, 1]
+    },
+    "shared_statecache24": {
+      "kernel_name": "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short, 24, _Float16>",
+      "dispatches": 2020,
+      "duration_ns_median": 52498,
+      "duration_ns_min": 48812,
+      "duration_ns_max": 214599,
+      "grid": [1024, 48, 1],
+      "workgroup": [128, 1, 1],
+      "vgpr_count": 64,
+      "sgpr_count": 128,
+      "scratch_size": 0
+    }
+  },
+  "decision": "Keep the gfx1151 rows>=8 shared-statecache24 FP16 override. It is correct on the real Qwen3.8 GDN shape, appears under the expected _Float16/STATE_CACHE_ROWS=24 symbol, and is 1.094x faster than the plain FP16 indexed sibling in the counterbalanced leaf A/B. This validates only the leaf choice; it does not qualify the complete c>N production route."
+}
