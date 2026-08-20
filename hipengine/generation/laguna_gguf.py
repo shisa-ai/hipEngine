@@ -587,18 +587,7 @@ class LagunaGGUFGenerator:
         self._weights = weights
         self._load_seconds = time.perf_counter() - started
 
-    def _open_session_locked(
-        self,
-        *,
-        iq3_selected_down_tile: int = 1,
-    ) -> LagunaGGUFResidentSession:
-        """Open one target session with explicit feature-scoped kernel policy.
-
-        Ordinary AR callers use tile1. The public DFlash provider may pass an
-        independently qualified backend capability without changing target-only
-        generation.
-        """
-
+    def _open_session_locked(self) -> LagunaGGUFResidentSession:
         if self._weights is None or self._runtime is None:
             raise RuntimeError("Laguna resident weights are not prepared")
         return LagunaGGUFResidentSession(
@@ -606,7 +595,6 @@ class LagunaGGUFGenerator:
             context_length=self.context_length,
             backend=self.backend,
             runtime=self._runtime,
-            iq3_selected_down_tile=int(iq3_selected_down_tile),
         )
 
     def _ensure_session_locked(self) -> LagunaGGUFResidentSession:

@@ -55,7 +55,6 @@ class _TargetGenerator:
         self._closed = False
         self.prepared = 0
         self.bound_sha256 = None
-        self.opened_iq3_selected_down_tiles: list[int] = []
         self.session = _TargetSession()
         self.last_generation_outputs = ()
         self.last_batch_generation = None
@@ -67,12 +66,7 @@ class _TargetGenerator:
     def _prepare_locked(self) -> None:
         self.prepared += 1
 
-    def _open_session_locked(
-        self,
-        *,
-        iq3_selected_down_tile: int = 1,
-    ) -> _TargetSession:
-        self.opened_iq3_selected_down_tiles.append(int(iq3_selected_down_tile))
+    def _open_session_locked(self) -> _TargetSession:
         return self.session
 
     def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
@@ -226,7 +220,6 @@ def test_laguna_dflash_provider_binds_identities_and_reports_rejected_economics(
             "model": "poolside/Laguna-S-2.1-GGUF",
             "sha256": LAGUNA_DFLASH_TARGET_SHA256,
             "quant": "Q4_K_M",
-            "iq3_selected_down_tile": 4,
         },
         "drafter": {
             "model": "poolside/Laguna-S-2.1-DFlash",
@@ -238,47 +231,6 @@ def test_laguna_dflash_provider_binds_identities_and_reports_rejected_economics(
         "performance_claim": False,
         "economics_evidence": "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json",
     }
-    assert target.prepared == 0
-
-
-def test_laguna_dflash_tile1_env_rolls_back_provider_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import hipengine.generation.laguna_dflash as module
-
-    monkeypatch.setenv(module.LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV, "1")
-    model, cache, snapshot = _identity_tree(tmp_path)
-    target = _TargetGenerator(model, cache)
-    monkeypatch.setattr(module, "LagunaDFlashResidentDrafter", _Drafter)
-    monkeypatch.setattr(module, "LagunaDFlashResidentCycle", _Cycle)
-    provider = module.LagunaDFlashTextProvider(
-        target,
-        SpeculativeProviderConfig("dflash", snapshot, 4),
-    )
-
-    provider.generate_detailed(_request(max_tokens=1))
-
-    assert provider.target_iq3_selected_down_tile == 1
-    assert target.opened_iq3_selected_down_tiles == [1]
-    provider.close()
-
-
-def test_laguna_dflash_rejects_invalid_tile_before_target_load(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import hipengine.generation.laguna_dflash as module
-
-    monkeypatch.setenv(module.LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE_ENV, "2")
-    model, cache, snapshot = _identity_tree(tmp_path)
-    target = _TargetGenerator(model, cache)
-
-    with pytest.raises(ValueError, match="must be 1 or 4"):
-        module.LagunaDFlashTextProvider(
-            target,
-            SpeculativeProviderConfig("dflash", snapshot, 4),
-        )
     assert target.prepared == 0
 
 
@@ -313,21 +265,18 @@ def test_laguna_dflash_provider_blocking_streaming_stop_and_close_order(
     assert chunks[-1].finish_details is not None
     assert chunks[-1].finish_details.reason == "stop"
     assert target.prepared == 1
-    assert target.opened_iq3_selected_down_tiles == [4]
     assert events.count("target_reset") == 4
     assert events.count("drafter_reset") == 4
     assert blocked.telemetry is not None
     diagnostics = blocked.telemetry.to_json_dict()["diagnostics"]
     assert diagnostics["provider"] == "dflash"
     assert diagnostics["candidate_budget"] == 4
-    assert diagnostics["target_iq3_selected_down_tile"] == 4
     assert diagnostics["performance_claim"] is False
     assert target.last_generation_outputs[0].generated_token_ids == (10, 11, 24)
     assert target.last_batch_generation["path"] == "laguna_dflash_b4_c1"
     assert target.last_batch_generation["speculative"] == {
         "provider": "dflash",
         "candidate_budget": 4,
-        "target_iq3_selected_down_tile": 4,
         "cycles": 1,
         "accepted_draft_tokens": 1,
         "draft_tokens_proposed": 4,

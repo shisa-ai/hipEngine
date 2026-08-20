@@ -458,6 +458,11 @@ The W7900 Laguna decode campaign and rejected H7/H8 ladders are implementation
 history, not scoreboard content; follow the production artifact, changelog, and
 [`docs/LAGUNA-PARITY-STATUS.md`](../docs/LAGUNA-PARITY-STATUS.md).
 
+Explicit gfx1151 Laguna DFlash remains non-default and uses the tile1 target
+verifier. The attempted tile4 transfer was trajectory-identical to tile1 but
+failed the shared full-suite true-AR gate and did not improve complete E2E wall;
+see the [`tile4 rejection`](results/2026-08-20-gfx1151-laguna-dflash-iq3-tile4-rejected.json).
+
 ## Current concurrency scoreboards
 
 All values are aggregate generated tokens per second. Direct rows time the
