@@ -148,7 +148,6 @@ _GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH_ENV = (
     "HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH"
 )
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
-_GGUF_MTP_SERVER_ROLLING_SLOTS_ENV = "HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
@@ -253,15 +252,6 @@ def _gguf_mtp_server_verify_final_state_fastpath_enabled() -> bool:
 
 def _gguf_mtp_server_defer_verify_scatter_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV, "1").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
-def _gguf_mtp_server_rolling_slots_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_ROLLING_SLOTS_ENV, "0").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -2613,25 +2603,6 @@ class Qwen35GGUFBringupGenerator:
         pool_sessions: bool,
         outputs: list[GenerationOutput],
     ) -> tuple[int, str]:
-        if (
-            len(request.prompts) > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS
-            and _gguf_mtp_server_rolling_slots_enabled()
-        ):
-            return self._generate_rolling_mtp_serving_slots(
-                shared_runner,
-                assets,
-                encoded_prompts,
-                request,
-                base_env=base_env,
-                prompt_rows_by_request=prompt_rows_by_request,
-                generated_ids_by_request=generated_ids_by_request,
-                mtp_cycles_by_request=mtp_cycles_by_request,
-                tokenize_ms_by_request=tokenize_ms_by_request,
-                assets_load_ms=assets_load_ms,
-                pool_sessions=pool_sessions,
-                outputs=outputs,
-            )
-
         slots_open_start = time.perf_counter()
         slots = self._open_mtp_serving_slots(
             shared_runner,
@@ -2675,136 +2646,6 @@ class Qwen35GGUFBringupGenerator:
         finally:
             self._close_mtp_serving_slots(slots, reuse=release_slots_to_pool)
         return resident_slot_count, target_verify_batching
-
-    def _generate_rolling_mtp_serving_slots(
-        self,
-        shared_runner: Qwen35GGUFFullStackRunner,
-        assets: _GGUFMTPServingAssets,
-        encoded_prompts: dict[int, list[int]],
-        request: GenerationRequest,
-        *,
-        base_env: dict[str, str | None],
-        prompt_rows_by_request: dict[int, list[int]],
-        generated_ids_by_request: dict[int, list[int]],
-        mtp_cycles_by_request: dict[int, list[dict[str, Any]]],
-        tokenize_ms_by_request: dict[int, float],
-        assets_load_ms: float,
-        pool_sessions: bool,
-        outputs: list[GenerationOutput],
-    ) -> tuple[int, str]:
-        max_active_slots = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, len(request.prompts))
-        pending_request_ids = list(range(len(request.prompts)))
-        active_slots: list[_GGUFMTPServingSlot] = []
-        completed_slots: list[_GGUFMTPServingSlot] = []
-        deferred_close_slots: list[_GGUFMTPServingSlot] = []
-        verify_owner_session: Qwen35GGUFResidentSession | None = None
-        slots_open_ms = 0.0
-
-        def open_more_slots() -> None:
-            nonlocal slots_open_ms
-            if len(active_slots) >= max_active_slots or not pending_request_ids:
-                return
-            capacity = max_active_slots - len(active_slots)
-            take = min(capacity, len(pending_request_ids))
-            if take == 3:
-                take = 2
-            if take == 1 and active_slots:
-                return
-            request_ids = [pending_request_ids.pop(0) for _ in range(take)]
-            sub_request = replace(
-                request,
-                prompts=tuple(request.prompts[request_id] for request_id in request_ids),
-            )
-            sub_encoded = {
-                local_index: encoded_prompts[request_id]
-                for local_index, request_id in enumerate(request_ids)
-            }
-            open_start = time.perf_counter()
-            new_slots = self._open_mtp_serving_slots(
-                shared_runner,
-                assets,
-                sub_encoded,
-                sub_request,
-                pool_sessions=pool_sessions,
-            )
-            open_ms = _timing_ms_since(open_start)
-            slots_open_ms += open_ms
-            if len(new_slots) != len(request_ids):
-                self._close_mtp_serving_slots(new_slots, reuse=False)
-                raise RuntimeError(
-                    f"rolling MTP opened {len(new_slots)} slot(s) for {len(request_ids)} request(s)"
-                )
-            for slot, request_id in zip(new_slots, request_ids, strict=True):
-                slot.request_id = int(request_id)
-                _timing_add_ms(slot.timing, "rolling_slot_open_batch_ms", open_ms)
-            active_slots.extend(new_slots)
-
-        slots_run_start = time.perf_counter()
-        try:
-            open_more_slots()
-            if active_slots:
-                verify_owner_session = active_slots[0].session
-            while active_slots:
-                if any(not slot.done for slot in active_slots):
-                    self._run_mtp_serving_slots_cycle(
-                        active_slots,
-                        assets,
-                        request,
-                        base_env=base_env,
-                        verify_owner_session=verify_owner_session,
-                    )
-                still_active: list[_GGUFMTPServingSlot] = []
-                finished_now: list[_GGUFMTPServingSlot] = []
-                for slot in active_slots:
-                    if slot.done:
-                        finished_now.append(slot)
-                    else:
-                        still_active.append(slot)
-                active_slots = still_active
-                for slot in finished_now:
-                    completed_slots.append(slot)
-                    if verify_owner_session is not None and slot.session is verify_owner_session:
-                        deferred_close_slots.append(slot)
-                    else:
-                        self._close_mtp_serving_slots([slot], reuse=True)
-                open_more_slots()
-        except Exception:
-            self._close_mtp_serving_slots(active_slots, reuse=False)
-            self._close_mtp_serving_slots(deferred_close_slots, reuse=False)
-            raise
-        finally:
-            if deferred_close_slots:
-                self._close_mtp_serving_slots(deferred_close_slots, reuse=True)
-
-        slots_run_ms = _timing_ms_since(slots_run_start)
-        target_verify_batching = (
-            "packed_slot_batch"
-            if any("target_verify_batch_ms" in slot.timing for slot in completed_slots)
-            else "per_slot_serial"
-        )
-        for slot in sorted(completed_slots, key=lambda item: int(item.request_id)):
-            prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
-            generated_ids = list(slot.generated_ids)
-            generated_ids_by_request[slot.request_id] = generated_ids
-            mtp_cycles_by_request[slot.request_id] = list(slot.cycles)
-            timing = dict(slot.timing)
-            timing["tokenize_ms"] = tokenize_ms_by_request.get(slot.request_id, 0.0)
-            timing["assets_load_ms"] = assets_load_ms
-            timing["slots_open_ms"] = slots_open_ms
-            timing["slots_run_ms"] = slots_run_ms
-            timing["rolling_max_active_slots"] = float(max_active_slots)
-            _add_mtp_cycle_timing_metrics(timing, slot.cycles)
-            outputs.append(
-                self._mtp_generation_output(
-                    slot.prompt_ids,
-                    generated_ids,
-                    request,
-                    row_index=slot.request_id,
-                    resident_slot_count=max_active_slots,
-                    timing=timing,
-                )
-            )
-        return max_active_slots, target_verify_batching
 
     def _mtp_generation_output(
         self,

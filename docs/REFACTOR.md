@@ -107,7 +107,6 @@ documentation review:
 
 | Scope | Why it is ready | What to remove / what to keep |
 | --- | --- | --- |
-| GGUF MTP rolling slots | The default-off route is rejected at c8 and only one 129-line generator method consumes it. | Remove `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`, `_generate_rolling_mtp_serving_slots`, telemetry, and focused tests. Keep the four-slot packed verifier cap until a true wider verifier qualifies. |
 | GGUF MTP final-state fastpath | The default-off path regresses c4 because rejected/partial cycles replay state; captured-row/deferred-scatter is retained. | Remove the env resolver and `final_state_fastpath` branches from serial and packed verification. Keep captured-row commit and the transactional exact fallback. |
 | GGUF AR stream prefill | The only runtime consumer is the rejected default-off per-slot stream prefill; packed prefill is retained. | Remove the env, `_try_prefill_ar_serving_slots_streams`, its dedicated `prefill_async_top1` surface if no remaining caller exists, and focused tests. Keep stream decode as the unsupported-shape oracle until its separate rollback window closes. |
 | PARO suffix row-chunk diagnostics | The three env controls are generated-token red and add branches/telemetry across the two largest PARO runtime methods. | Remove suffix-size/layer/include-gate controls, execution branches, metadata, benchmark modes, and focused tests. Keep the independently retained full-layer/context plans and lower-level hidden/KV diagnostics. |
@@ -2468,27 +2467,6 @@ should be boring.
 - Remove when: a compact selected-row capture path exists, or if no follow-up
   uses the segment-aware no-capture kernel. The flag must stay default-off and
   must not be used for retained timing claims.
-
-## `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`
-- Added 2026-07-06 as a default-off MTP serving diagnostic while trying to lift
-  the four-request MTP route cap without using a true width-8 verifier. The
-  route keeps at most four live resident slots, opens replacements in warmed
-  widths when possible, and can hold a stable packed-verifier owner session so
-  replacement slots do not allocate owner workspaces mid-batch.
-- Purpose: test whether c=8 can avoid the fixed two-backend-group barrier while
-  preserving the retained four-slot packed verifier shape.
-- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
-  Qwen3.6-35B-A3B `UD-Q4_K_M`, natural24 `max_tokens=24`, 5 ms server batch
-  window. Naive rolling measured **11.22 tok/s** at c=8; the stable-owner /
-  warmed-width variant improved to **61.23 tok/s**, still below retained
-  **79.61 tok/s**. Economy stayed normal (`draft=165`, `accepted=141`, accept
-  rate **0.8545**), but replacement slot opening/prefill exposed
-  **14.613 s** aggregate `slots_open_ms`. The default MTP route cap remains
-  four; guarded default c=8 rerun measured **78.91 tok/s**.
-- Remove when: a true cap>4 MTP scheduler can pre-open/reuse replacement slots
-  without exposing slot-open/prefill wall, or after the next c>N MTP scheduler
-  direction supersedes it. The flag must stay default-off and must not be used
-  for retained timing claims.
 
 ## `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_*`
 - Added 2026-07-09 as a default-off PARO c>N diagnostic:
