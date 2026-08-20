@@ -261,10 +261,13 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
-# Q5T16 row reuse is measured only for native rows 2-4. Other T16 quants retain
-# the generic rows-through-6 behavior unless their backend package overrides it.
+# Q5T16 row reuse is measured for native rows 2-4; after the true rowtile
+# primitive was extended and validated to rows 5-8 (strict bit-parity vs the
+# direct producer), the native batch decode rewrites rows 2-8 to the true
+# rowtile instead of padded WMMA. Other T16 quants retain the generic
+# rows-through-6 behavior unless their backend package overrides it.
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    "gguf_q5_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 8,
 }
 # Exact c1 sibling selection is architecture/shape qualified. W7900 retains
 # the established direct owners until an independent device gate admits one.
