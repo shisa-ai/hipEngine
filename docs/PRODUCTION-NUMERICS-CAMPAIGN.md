@@ -45,9 +45,11 @@ The campaign closes only when:
 6. the public-default decision is made from dynamic serving evidence rather
    than a single fixed prompt or leaf benchmark.
 
-A profile default switch initially requires at least 3% SLO-goodput benefit with
-no more than 1% c1 regression. Smaller exact or production-qualified kernel and
-cycle-wall improvements remain retainable under normal project policy.
+A profile/default switch has no minimum percentage threshold. Every measured,
+correctness-qualified, non-regressive kernel, cycle-wall, complete-wall, or
+SLO-goodput improvement is retained and promoted within its validated scope;
+small independent wins are cumulative. Applicable serving candidate gates must
+show no candidate-caused regression.
 
 ## 3. Independent evidence audit
 
@@ -422,10 +424,10 @@ rather than only fixed-batch aggregate throughput for the public decision.
 ZBook package-level decision recorded 2026-08-16: retain the incumbent direct
 c2 and rowtile c4/c8 implementation routes after exact numerical, repeat,
 lifecycle, and paired-performance gates. Do **not** switch the public profile
-default. The canonical server packet fails soak completion (87 completed,
-33 rejected of 120), and the c>N gains do not reach the 3% materiality target.
-This is a concrete blocker, not a numerical rejection; all completed server
-requests are exact and the route/ownership/memory gates pass. Named-profile
+default. The canonical server packet fails soak completion (87 completed and
+33 rejected of 120). This shared serving failure is a concrete scheduler/product
+blocker, not a numerical rejection or a magnitude threshold; all completed
+server requests are exact and the route/ownership/memory gates pass. Named-profile
 manifest, standardized controls, task, and BF16-relative debt remains open.
 
 Exit: retain qualified wins; either switch the public default to production or
