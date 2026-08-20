@@ -930,6 +930,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": os.environ.get(
                         "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"
                     ),
+                    "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT": os.environ.get(
+                        "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
+                    ),
                     "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
                         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
                     ),
@@ -1116,6 +1119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "HIP_VISIBLE_DEVICES",
             "HIPENGINE_COMPILER_VERSION_FILE",
             "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+            "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT",
         )
     }
     text = json.dumps(payload, indent=2, allow_nan=False)

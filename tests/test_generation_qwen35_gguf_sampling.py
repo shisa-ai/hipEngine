@@ -7482,10 +7482,8 @@ def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch) -> None:
         qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
 
 
-def test_resident_runner_d2_default_map_fails_closed_on_identity_mismatch(monkeypatch) -> None:
-    """D2 is now the production default, but a non-matching runtime identity
-    (here an unreadable model) fails closed to ``None`` (ceiling planner)
-    rather than raising."""
+def test_resident_runner_d2_absent_uses_ceiling_and_invalid_explicit_fails(monkeypatch) -> None:
+    """D2 is explicit-config until the actual-server promotion gate passes."""
     monkeypatch.delenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", raising=False)
     qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
     try:

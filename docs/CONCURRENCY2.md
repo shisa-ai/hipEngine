@@ -638,19 +638,21 @@ while preserving stable scheduler slots and dense execution rows.
 
 The strict W7900/Qwen3.8 map recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6,
 c13=7+6, c14=7+7, and c16=8+8, beating ceiling by up to 5.4 ms/step (c9).
-The resident owner resolves it by default (identity-gated: backend/host/
-device/model/quant/KV/profile/graph/widths must match the map's binding;
-mismatch or missing map fails closed to ceiling), caches by file+runtime
-identity, and emits its source/identity/estimated wall in the physical-group
-plan. The explicit ``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` override still wins and
-raises on an invalid artifact.
+The resident owner loads it only through the explicit
+``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` setting, caches by file+runtime identity,
+and emits its source/identity/estimated wall in the physical-group plan. Missing
+configuration uses ceiling; invalid or mismatched explicit evidence raises.
 
-**Production-default D2 is active on the exact W7900/epyc/Qwen3.8-27B-Q4_K_M
-identity** after the matched actual-server c1-c32 gate passed (2026-08-20): the
-owner's real per-group decode wall is never slower than ceiling on any row
-(0/18 differentiated losses; D2 wins at c9/c10/c17/c18/c25/c26), and a composed
-c13 (7+6) lifecycle run (cancellation, compaction to 6+5, refill, memory
-recovery, final drain) passes. gfx1151 and the XTX require their own maps.
+**Production-default D2 remains open.** The attempted c1-c32 promotion sweep was
+a direct eager resident-session diagnostic, not actual-server evidence: it
+bypassed HTTP, EngineService, scheduler-owned owner lowering, graph replay,
+TTFT/ITL, dynamic membership, server memory, and final drain; it also lacked
+clean provenance/canonical command and published incorrectly scaled goodput.
+The composed-c13 lifecycle observation is functionally positive but provenance-
+dirty. These artifacts cannot promote a default. Required next: a clean,
+counterbalanced, same-shape actual-server D2-vs-ceiling matrix with authoritative
+route telemetry, aggregate goodput, TTFT/ITL, refill/cancel membership, memory,
+and final drain. gfx1151 and XTX additionally require independent maps.
 
 The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to

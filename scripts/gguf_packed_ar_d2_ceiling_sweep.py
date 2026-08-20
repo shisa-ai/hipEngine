@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
-"""Measure actual composed serial model-step wall for D2 vs ceiling across c1-c32.
+"""Diagnose eager resident-session composed wall for D2 vs ceiling.
 
-This is the #29 matched actual-server gate at the model-step level: for every
-logical concurrency c in 1..32 it runs the resident owner's real per-group
-``step_batch_native`` decode path for BOTH the artifact-backed D2 composition
-and the ceiling composition, timing each serial model-step. It confirms the
-owner's D2 selection (route telemetry) is genuinely no-slower than ceiling on
-this exact hardware, and that measured composed wall tracks the D2 estimate
-(no cross-group serialization overhead).
-
-Composition selection and identity are resolved from the same D2 cost map the
-owner consumes (``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT``). This harness must be
-run on the same W7900/epyc, backend, quant, KV, profile and graph mode the map
-is bound to, or identity validation rejects the map.
+This is a model-step diagnostic, not an actual-server or continuous-owner gate:
+it creates resident sessions directly, chooses compositions with host helpers,
+and invokes ``step_batch_native`` eagerly. It does not exercise EngineService,
+HTTP, scheduler-owned lowering/telemetry, graph replay, TTFT/ITL, dynamic
+membership, or server memory/drain. Production-default promotion requires a
+separate real-server same-protocol gate.
 """
 
 from __future__ import annotations
@@ -67,6 +61,12 @@ def _prompt(token_id: int, prompt_length: int, row: int) -> list[int]:
     prompt = [int(token_id)] * int(prompt_length)
     prompt[-1] = int(token_id) + (row % 4)
     return prompt
+
+
+def _aggregate_goodput_tokens_per_s(logical_c: int, wall_ms: float) -> float:
+    if int(logical_c) <= 0 or float(wall_ms) <= 0.0:
+        raise ValueError("goodput requires positive logical_c and wall_ms")
+    return int(logical_c) * 1000.0 / float(wall_ms)
 
 
 def _stats(values: Sequence[float]) -> dict[str, float]:
@@ -258,6 +258,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     ties += 1
             else:
                 ties += 1
+            d2_goodput = _aggregate_goodput_tokens_per_s(c, d2_med)
+            ceiling_goodput = _aggregate_goodput_tokens_per_s(c, ceil_med)
             rows_evidence.append(
                 {
                     "logical_c": c,
@@ -272,6 +274,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "noise_tol_ms": round(noise_tol_ms, 3),
                     "verdict": verdict,
                     "d2_no_slower_than_ceiling": bool(margin <= noise_tol_ms),
+                    "d2_aggregate_decode_tokens_per_s": d2_goodput,
+                    "ceiling_aggregate_decode_tokens_per_s": ceiling_goodput,
+                    "d2_goodput_pct_vs_ceiling": (
+                        (d2_goodput / ceiling_goodput - 1.0) * 100.0
+                    ),
                 }
             )
             print(
@@ -281,14 +288,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             sys.stdout.flush()
 
-        passed = len(worse_beyond_noise) == 0
-        outcome = "pass" if passed else "fail"
+        observation_passed = len(worse_beyond_noise) == 0
         return {
-            "schema": 1,
+            "schema": 2,
             "kind": "concurrency2_qwen38_d2_vs_ceiling_composed_wall_sweep",
-            "status": outcome,
-            "passed": passed,
+            "status": "diagnostic_complete",
+            "passed": False,
+            "measurement_valid": False,
+            "diagnostic_observation_passed": observation_passed,
             "performance_claim": False,
+            "scope": "direct_resident_eager_model_step",
             "objective": "serial_sum_model_step_wall",
             "noise_policy": {
                 "noise_tol_ms": "max(0.5, 0.02 * ceiling_median)",
@@ -310,6 +319,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "measured_steps": measured_steps,
                 "max_rows": max_rows,
             },
+            "limitations": [
+                "not HTTP, EngineService, scheduler-owned lowering, or continuous-owner execution",
+                "eager step_batch_native rather than captured graph replay",
+                "no TTFT, ITL, dynamic membership, server memory, or final-drain evidence",
+                "D2 is always measured before ceiling and the order is not counterbalanced",
+                "2%/0.5 ms noise floor is diagnostic, not a production non-regression policy",
+            ],
             "summary": {
                 "rows": len(rows_evidence),
                 "differentiated": differentiated,
@@ -344,7 +360,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    return 0 if result["passed"] else 1
+    return 0 if result["diagnostic_observation_passed"] else 1
 
 
 if __name__ == "__main__":

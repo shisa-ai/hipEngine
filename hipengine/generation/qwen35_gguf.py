@@ -192,17 +192,6 @@ _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
-# Production-default D2 cost map (promoted 2026-08-20 after the matched
-# actual-server c1-c32 D2-vs-ceiling gate passed). Only applies when the exact
-# runtime identity (backend/host/device/model/quant/kv/profile/graph/widths)
-# matches the map's binding; otherwise the owner fails closed to the ceiling
-# planner. gfx1151 and the XTX require their own maps.
-_GGUF_AR_D2_DEFAULT_COST_MAP = (
-    Path(__file__).resolve().parents[2]
-    / "benchmarks"
-    / "results"
-    / "2026-08-20-concurrency2-qwen38-d2-cost-map.json"
-)
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -256,38 +245,27 @@ def _gguf_ar_resolve_cost_table(
     kv_dtype: str,
     physical_widths: Sequence[int],
 ) -> object | None:
-    """Resolve a clean, exact-identity D2 cost map.
+    """Resolve an explicitly configured clean, exact-identity D2 cost map.
 
-    An explicit ``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` wins. Otherwise the
-    production-default committed map is tried. In both cases the map is loaded
-    only when the current runtime identity matches its binding; any identity
-    mismatch or missing default fails closed to ``None`` (ceiling planner). An
-    explicitly requested but invalid artifact raises instead.
+    D2 remains opt-in until the actual server passes the c1-c32 route,
+    goodput/TTFT/ITL, dynamic lifecycle, memory, and final-drain gate. An absent
+    setting returns ``None`` so the production owner uses the ceiling planner;
+    an explicit invalid artifact raises.
     """
 
-    explicit = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
-    if explicit:
-        raw_path = explicit
-    else:
-        raw_path = os.environ.get(
-            "HIPENGINE_GGUF_AR_D2_DEFAULT_COST_MAP", ""
-        ).strip() or str(_GGUF_AR_D2_DEFAULT_COST_MAP)
+    raw_path = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+    if not raw_path:
+        return None
     path = Path(raw_path).expanduser().resolve()
     if not path.is_file():
-        if explicit:
-            raise ValueError(f"D2 cost artifact does not exist: {path}")
-        return None  # default map absent on this checkout -> fail-close ceiling
+        raise ValueError(f"D2 cost artifact does not exist: {path}")
     stat = path.stat()
     fingerprint = collect_model_identity(model_path)["fingerprint"]
     if not isinstance(fingerprint, Mapping) or fingerprint.get("exists") is not True:
-        if explicit:
-            raise ValueError("D2 cost resolution requires a readable model fingerprint")
-        return None
+        raise ValueError("D2 cost resolution requires a readable model fingerprint")
     device_name = detect_device_name()
     if not device_name:
-        if explicit:
-            raise ValueError("D2 cost resolution requires the current HIP device identity")
-        return None
+        raise ValueError("D2 cost resolution requires the current HIP device identity")
     expected = {
         "backend": str(backend),
         "target_arch": str(target_arch),
@@ -313,12 +291,7 @@ def _gguf_ar_resolve_cost_table(
         return _GGUF_AR_D2_COST_CACHE[cache_key]
     from hipengine.dispatch.d2_resolver import cost_table_from_artifact
 
-    try:
-        cost_table = cost_table_from_artifact(path, expected=expected)
-    except ValueError:
-        if explicit:
-            raise
-        return None  # identity mismatch on this host -> fail-close ceiling
+    cost_table = cost_table_from_artifact(path, expected=expected)
     _GGUF_AR_D2_COST_CACHE.clear()
     _GGUF_AR_D2_COST_CACHE[cache_key] = cost_table
     return cost_table
@@ -7228,7 +7201,12 @@ class Qwen35GGUFResidentModelRunner:
         cost_table = getattr(self, "_gguf_ar_cost_table", None)
         resident_owner = getattr(self, "_resident_batch_owner", None)
         generator = getattr(self, "generator", None)
-        if cost_table is None and resident_owner is not None and generator is not None:
+        if (
+            cost_table is None
+            and resident_owner is not None
+            and generator is not None
+            and os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+        ):
             kv_dtype = getattr(
                 getattr(resident_owner, "kv_storage_dtype", None),
                 "value",
