@@ -226,6 +226,33 @@ def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None
     }
 
 
+def test_gguf_ar_physical_widths_default_capability_and_override(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False
+    )
+    # Non-resident default is the advertised (1,2,4,8) set, not the superset.
+    assert qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100") == (1, 2, 4, 8)
+    assert qwen35_gguf._gguf_ar_physical_widths(
+        "hip_gfx1100", use_capability=True
+    ) == (1, 2, 4, 8)
+    # The superset admits direct widths for certification via env override.
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3,4,5,6,7,8"
+    )
+    assert qwen35_gguf._gguf_ar_physical_widths(
+        "hip_gfx1100", use_capability=True
+    ) == (1, 2, 3, 4, 5, 6, 7, 8)
+    # Invalid overrides fail closed.
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
+    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
+        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 9")
+    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
+        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
+
+
 def _request(**overrides) -> GenerationRequest:
     values = {
         "prompts": ("first",),

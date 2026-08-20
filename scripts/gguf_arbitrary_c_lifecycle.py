@@ -50,6 +50,32 @@ def _temporary_env(updates: dict[str, str]) -> Iterator[None]:
                 os.environ[key] = value
 
 
+_DEFAULT_CERT_WIDTHS = (1, 2, 4, 8)
+
+
+def _resolve_widths() -> tuple[int, ...]:
+    """Resolve the active shared-slot AR physical width set for the gate.
+
+    Mirrors the owner's resolution: an explicit
+    ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override (comma/space
+    separated) selects the widths under test (e.g. ``1,2,3,4,5,6,7,8`` to
+    certify direct c3/c5/c6/c7); otherwise the production default (1,2,4,8) is
+    used. The mask/declared-width assertions below then follow the same set the
+    owner routes with.
+    """
+    override = os.environ.get(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
+    ).strip()
+    if not override:
+        return _DEFAULT_CERT_WIDTHS
+    widths = tuple(int(item) for item in override.replace(",", " ").split())
+    if not widths or widths[0] != 1 or tuple(sorted(set(widths))) != widths:
+        raise ValueError(
+            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS must be sorted unique widths starting at c1"
+        )
+    return widths
+
+
 def _request(prompts: Sequence[Sequence[int]], *, max_tokens: int) -> GenerationRequest:
     return GenerationRequest(
         prompts=tuple(tuple(int(token) for token in prompt) for prompt in prompts),
@@ -158,12 +184,15 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
     ]
 
 
-def _expected_dense_group_masks(rows: int) -> list[str]:
+def _expected_dense_group_masks(
+    rows: int, buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS
+) -> list[str]:
+    buckets = tuple(int(bucket) for bucket in buckets)
     remaining = int(rows)
     masks: list[str] = []
     while remaining > 0:
-        active = min(8, remaining)
-        width = next(bucket for bucket in (1, 2, 4, 8) if bucket >= active)
+        active = min(buckets[-1], remaining)
+        width = next(bucket for bucket in buckets if bucket >= active)
         masks.append("1" * active + "0" * (width - active))
         remaining -= active
     return masks
@@ -174,12 +203,17 @@ def _expected_hole_group_masks(
     cancel_slots: Sequence[int],
     *,
     compact: bool,
+    buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
 ) -> list[str]:
+    buckets = tuple(int(bucket) for bucket in buckets)
     if compact:
-        return _expected_dense_group_masks(int(rows) - len(cancel_slots))
-    masks = [list(mask) for mask in _expected_dense_group_masks(rows)]
+        return _expected_dense_group_masks(
+            int(rows) - len(cancel_slots), buckets
+        )
+    masks = [list(mask) for mask in _expected_dense_group_masks(rows, buckets)]
+    max_bucket = buckets[-1]
     for slot in cancel_slots:
-        group_index, local_index = divmod(int(slot), 8)
+        group_index, local_index = divmod(int(slot), max_bucket)
         masks[group_index][local_index] = "0"
     return ["".join(mask) for mask in masks]
 
@@ -717,16 +751,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if event["physical_group_plan"] is not None
             ]
             declared_widths_only = all(
-                int(group["physical_rows"]) in {1, 2, 4, 8}
+                int(group["physical_rows"]) in _resolve_widths()
                 for plan in all_plans
                 for group in plan["groups"]
             )
             no_serial_fallback = all(_all_packed(plan) for plan in all_plans)
-            expected_initial_masks = _expected_dense_group_masks(logical_c)
+            expected_initial_masks = _expected_dense_group_masks(logical_c, _resolve_widths())
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
                 cancel_slots,
                 compact=bool(args.compact_after_middle_hole),
+                buckets=_resolve_widths(),
             )
             expected_refill_masks = expected_initial_masks
             expected_newcomer_slots = (

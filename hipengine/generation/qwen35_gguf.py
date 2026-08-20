@@ -126,7 +126,53 @@ _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
-_GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 4, 8)
+# Superset of every shared-slot AR physical width a backend may register and use.
+# Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
+# explicit env override before the default advertised capability is expanded
+# (see docs/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
+_GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = (1, 2, 4, 8)
+
+
+def _gguf_ar_physical_widths(
+    backend: str | None = None,
+    *,
+    use_capability: bool = False,
+) -> tuple[int, ...]:
+    """Resolve the active shared-slot AR physical width set.
+
+    An explicit ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override
+    (comma/space separated) widens or narrows the set for diagnostics and
+    certification without changing the packaged production default. Otherwise
+    the registered backend capability is used when ``use_capability`` is set
+    (resident-batch owner), else the default advertised set. The result must be
+    a sorted, strictly-increasing subset of
+    ``_GGUF_AR_PHYSICAL_BUCKET_WIDTHS`` starting at c1.
+    """
+    override = os.environ.get(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
+    ).strip()
+    if override:
+        widths = tuple(int(item) for item in override.replace(",", " ").split())
+    elif use_capability and backend is not None:
+        widths = tuple(
+            int(width)
+            for width in backend_package_capability(
+                backend, "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+            )
+        )
+    else:
+        widths = _GGUF_AR_DEFAULT_PHYSICAL_WIDTHS
+    if (
+        not widths
+        or widths[0] != 1
+        or tuple(sorted(set(widths))) != widths
+        or any(width not in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS for width in widths)
+    ):
+        raise RuntimeError(
+            "GGUF shared-slot physical widths must be sorted registered AR widths starting at c1"
+        )
+    return widths
 _GGUFSessionPoolKey = tuple[
     str,
     bool | None,
@@ -5214,7 +5260,10 @@ class Qwen35GGUFResidentModelRunner:
                             else f"native_c{width}_decode_steps"
                         ]
                     )
-                    for width in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
+                    for width in _gguf_ar_physical_widths(
+                        str(getattr(getattr(self, "_shared_runner", None), "backend", "hip_gfx1100")),
+                        use_capability=getattr(self, "_resident_batch_owner", None) is not None,
+                    )
                 },
                 "fallback_reasons": {
                     str(key): int(value)
@@ -7072,25 +7121,11 @@ class Qwen35GGUFResidentModelRunner:
         elif set(work.request_ids) != set(request_ids):
             raise ValueError("physical-group work must contain exactly the native decode rows")
 
-        physical_bucket_widths = _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
-        if getattr(self, "_resident_batch_owner", None) is not None:
-            physical_bucket_widths = tuple(
-                int(width)
-                for width in backend_package_capability(
-                    str(getattr(self._shared_runner, "backend", "hip_gfx1100")),
-                    "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
-                    (1,),
-                )
-            )
-            if (
-                not physical_bucket_widths
-                or physical_bucket_widths[0] != 1
-                or tuple(sorted(set(physical_bucket_widths))) != physical_bucket_widths
-                or any(width not in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS for width in physical_bucket_widths)
-            ):
-                raise RuntimeError(
-                    "GGUF shared-slot physical widths must be sorted registered AR widths starting at c1"
-                )
+        shared_runner = getattr(self, "_shared_runner", None)
+        physical_bucket_widths = _gguf_ar_physical_widths(
+            str(getattr(shared_runner, "backend", "hip_gfx1100")),
+            use_capability=getattr(self, "_resident_batch_owner", None) is not None,
+        )
         groups = plan_physical_batch_groups(
             work,
             physical_bucket_widths=physical_bucket_widths,

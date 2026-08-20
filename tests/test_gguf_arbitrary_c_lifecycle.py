@@ -11,6 +11,7 @@ from scripts.gguf_arbitrary_c_lifecycle import (
     _expected_hole_group_masks,
     _group_masks,
     _load_quality_gate,
+    _resolve_widths,
     _state_kv_accepted,
     build_parser,
     run,
@@ -81,6 +82,38 @@ def test_gguf_arbitrary_c_lifecycle_derives_single_and_cross_group_masks() -> No
         "11011111",
         "11011000",
     ]
+
+
+def test_gguf_arbitrary_c_lifecycle_derives_direct_width_masks() -> None:
+    widths = (1, 2, 3, 4, 5, 6, 7, 8)
+    assert _expected_dense_group_masks(3, widths) == ["111"]
+    assert _expected_dense_group_masks(5, widths) == ["11111"]
+    assert _expected_dense_group_masks(6, widths) == ["111111"]
+    assert _expected_dense_group_masks(7, widths) == ["1111111"]
+    assert _expected_dense_group_masks(13, widths) == ["11111111", "11111"]
+    assert _expected_hole_group_masks(5, (2,), compact=False, buckets=widths) == [
+        "11011"
+    ]
+    assert _expected_hole_group_masks(13, (2, 10), compact=False, buckets=widths) == [
+        "11011111",
+        "11011",
+    ]
+    # The masked default remains unchanged from the production owner.
+    assert _expected_dense_group_masks(5, (1, 2, 4, 8)) == ["11111000"]
+
+
+def test_gguf_arbitrary_c_lifecycle_resolves_active_width_set(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False)
+    assert _resolve_widths() == (1, 2, 4, 8)
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3,4,5,6,7,8"
+    )
+    assert _resolve_widths() == (1, 2, 3, 4, 5, 6, 7, 8)
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 2 4 8")
+    assert _resolve_widths() == (1, 2, 4, 8)
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
+    with pytest.raises(ValueError, match="sorted unique widths starting at c1"):
+        _resolve_widths()
 
 
 def test_gguf_arbitrary_c_lifecycle_requires_explicit_arithmetic_drift_policy(
