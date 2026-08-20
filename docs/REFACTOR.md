@@ -3893,6 +3893,16 @@ should be boring.
   the fp16-state route (450 teacher-forced rows, kl_max 1.43e-3, top-1 99.78%,
   three bit-stable repeats; see
   `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`).
-  The remaining decision input for collapsing the flag is the c1/c4/c8
-  fp16-vs-fp32 decode benchmark (task #16) and the gfx1100 decode-side
-  applicability; the chain-journal/MTP guards stay until fp16 variants land.
+  The c1/c4/c8 fp16-vs-fp32 production benchmark (task #16/#21, same-session
+  gfx1151 packed-AR A/B) is also complete: **non-regressive and faster at c>1**
+  — c1 12.958 -> 13.053 (+0.73%), c4 10.660 -> 10.995 (+3.14%), native_c8
+  7.190 -> 7.410 (+3.07%) — see
+  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json`.
+  Decision: fp16-state remains behind `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1`;
+  it does not collapse to the default yet. Public-default promotion requires
+  the complete serving-packet SLO-goodput gate (EXECUTION-PROFILES §2.1:
+  >=3% goodput, <=1% c1 regression) plus gfx1100 decode-side applicability
+  evidence. Trigger (1) above is therefore re-scoped: collapse the flag only
+  after the serving-packet SLO-goodput gate passes; until then the flag is the
+  retained production route and FP32 stays the strict fallback. The
+  chain-journal/MTP guards stay until fp16 variants land (trigger 2 unchanged).
