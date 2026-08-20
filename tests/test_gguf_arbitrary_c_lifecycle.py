@@ -89,10 +89,16 @@ def test_gguf_arbitrary_c_lifecycle_pins_actual_graph_kind_for_compaction() -> N
             return c1_graph
 
         def capture_packed_decode_graph(self, token_ids, **kwargs):
+            calls.append(("wrong_slot_owner", (tuple(token_ids), kwargs)))
+            return object()
+
+    class FakePackedOwner:
+        def capture_packed_decode_graph(self, token_ids, **kwargs):
             calls.append(("packed", (tuple(token_ids), kwargs)))
             return c3_graph
 
     sessions = [FakeSession() for _ in range(3)]
+    packed_owner = FakePackedOwner()
     rows = {
         request_id: SimpleNamespace(
             lease=SimpleNamespace(session=sessions[request_id]),
@@ -105,7 +111,10 @@ def test_gguf_arbitrary_c_lifecycle_pins_actual_graph_kind_for_compaction() -> N
         )
         for request_id in range(3)
     }
-    runner = SimpleNamespace(_rows=rows)
+    runner = SimpleNamespace(
+        _rows=rows,
+        _packed_execution_owner=lambda _session: packed_owner,
+    )
 
     result = _capture_compaction_group_graph(
         runner,

@@ -362,9 +362,13 @@ def _capture_compaction_group_graph(runner: Any, group: Mapping[str, Any]) -> An
         slot.c1_decode_graph = graph
         return graph
 
-    capture = getattr(sessions[0], "capture_packed_decode_graph", None)
+    resolve_owner = getattr(runner, "_packed_execution_owner", None)
+    if not callable(resolve_owner):
+        raise RuntimeError("resident runner cannot resolve its packed execution owner")
+    execution_owner = resolve_owner(sessions[0])
+    capture = getattr(execution_owner, "capture_packed_decode_graph", None)
     if not callable(capture):
-        raise RuntimeError("packed session cannot capture its physical-group graph")
+        raise RuntimeError("packed owner cannot capture its physical-group graph")
     return capture(
         [int(slot.prev_token) for slot in concrete],
         sessions=sessions,
