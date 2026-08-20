@@ -107,7 +107,6 @@ documentation review:
 
 | Scope | Why it is ready | What to remove / what to keep |
 | --- | --- | --- |
-| PARO suffix row-chunk diagnostics | The three env controls are generated-token red and add branches/telemetry across the two largest PARO runtime methods. | Remove suffix-size/layer/include-gate controls, execution branches, metadata, benchmark modes, and focused tests. Keep the independently retained full-layer/context plans and lower-level hidden/KV diagnostics. |
 | Unrouted kernel bodies | `pack8_wmma64_prefill` is registered but explicitly never routed after losing its leaf screen; Laguna's `...split_exact_gated_mixed32_vstage64_reduce_kernel` has no wrapper or registry key. | Delete body/wrapper/export/key/dedicated test for WMMA64 and delete the unwrapped Laguna body. Keep their compact rejection evidence; reopen only from a materially different design. |
 | Rejected MTP/llama-compat flag zoo | Multiple Q6 top-1 shapes, shared-Q8, selected X8/raw gate-up, fused rotate, accept-position, and overlap routes are explicitly rejected but still runtime-selectable. | After the final named llama-compat transaction policy is chosen, retain one named compat composition plus the strict control; remove loose env/CLI combinations and demote useful leaf oracles to tests. Do not remove an option still consumed by that named composition before the decision. |
 | Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. “No textual owner” is a review queue, not sufficient deletion proof. |
@@ -2443,31 +2442,6 @@ should be boring.
 - Remove when: the one-release rollback window ends on both gfx11 targets. Keep
   fallback for total prompt slabs beyond the current packed hidden-row guard.
 
-## `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_*`
-- Added 2026-07-09 as a default-off PARO c>N diagnostic:
-  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_SIZE`,
-  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_LAYERS`, and
-  `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK_INCLUDE_GATE`.
-  The path keeps batch full-attention QKV/append/context, then chunks either
-  O/post/MoE or gate/O/post/MoE over row sub-batches. It is exposed through
-  `scripts/qwen35_batch_retained_bench.py` and
-  `scripts/qwen35_batch_hidden_bisect.py`, records suffix-rowchunk metadata in
-  `last_batch_decode_execution`, and blocks native-caware claims.
-- Purpose: isolate the remaining gfx1151 c6 full-attention rowchunk tax after
-  context-only rowchunking rejected. It tests whether the green selected
-  full-layer rowchunk bridge is paying for post-context suffix work.
-- Result: rejected on AMD Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`) with
-  `Qwen3.6-35B-A3B-PARO-packed`, `w4_paro`, rows=6, prompt=512,
-  decode=16, selected-c1 MoE, forced small-batch shared expert, and suffix
-  rowchunk2 on layers `3,7,11,15,19,23,27,31`. After batch context+gate:
-  **106.864 tok/s**, median **53.609 ms**, generated-token red at token 9
-  (`12` vs c1 `27`). Including gate in the suffix chunks: **107.508 tok/s**,
-  median **53.189 ms**, same token-9 failure. Compact summary:
-  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-suffix-rowchunk-rejects-summary.json`.
-- Remove when: c6 full-attention rowchunk isolation moves to lower-level
-  hidden/KV source tracing or a retained green non-rowchunk c6 path exists.
-  Keep the flags default-off and do not use them for retained timing claims.
-
 ## `scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`
 - Added 2026-07-09 as a default-off PARO c>N diagnostic mode. It compares two
   native rows=6 batch variants directly: no-rowchunk full attention versus the
@@ -2475,17 +2449,13 @@ should be boring.
   machinery but labelling the rowchunk repair as the comparison peer instead of
   an independent c1 oracle.
 - Purpose: isolate whether the remaining c6 full-attention rowchunk tax comes
-  from KV append/page placement, context-only work, suffix work, or from a
-  whole-layer numerical boundary introduced by rowchunking.
+  from KV append/page placement, context-only work, or from a whole-layer
+  numerical boundary introduced by rowchunking.
 - Result: the L8 trace showed layer 3 full-layer rowchunk output drift still
   under tolerance (`0.000122 max_abs`), layer 4 `attn_input` first over
   tolerance (`0.001953`), and layer 7 `attn_input_pre_qkv` at `0.0078125`.
-  The corrected combined context+suffix rowchunk probe records both
-  `native_context_row_chunks` and `native_suffix_row_chunks_include_gate` on
-  layers `3,7,11,15,19,23,27,31`, but remains generated-token red at token 2
-  (`220` vs c1 `17`) and slower than the current green selected full-layer
-  rowchunk bridge (`103.998 tok/s`, median `54.865 ms`). Compact summary:
-  `benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`.
+  Lower-level hidden/KV tracing remains the active diagnostic; rejected suffix
+  rowchunk composition has been removed.
 - Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
   avoids live c6 groups in retained/default operation. Do not use this
   comparison mode for throughput claims.
