@@ -26,6 +26,11 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
         return True
 
     monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 4,
+    )
 
     handled = session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12, stream=3, runtime=runtime)
 
@@ -58,15 +63,18 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk5_and_env_rollback(
         "_verify_lm_head_rowtile",
         fake_rowtile,
     )
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 6,
+    )
 
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    # The planar-qmicro lm_head f32 rowtile owner accepts rows in [2, 4], so
-    # the chunk planner caps the configured chunk (5 here) to 4: rows=8 -> 4+4.
-    assert calls == [4, 4]
+    assert calls == [5, 3]
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "6")
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [4, 4]
+    assert calls == [6, 2]
 
 
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
@@ -79,6 +87,11 @@ def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
         return False
 
     monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 6,
+    )
 
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12) is False
 
@@ -118,6 +131,7 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
         def kernel(*args, **kernel_kwargs):
             calls.append((args, kernel_kwargs))
 
+        setattr(kernel, "_hipengine_max_rows", 4)
         return kernel
 
     monkeypatch.setattr(runner_mod, "resolve", fake_resolve)
@@ -131,6 +145,7 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
     )
 
     assert handled is True
+    assert session._verify_lm_head_rowtile_max_rows() == 4
     assert calls == [
         (
             (0x1000, 0x2200, 0x2000, 4, 5120, 248320),

@@ -618,6 +618,9 @@ def gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
     )
 
 
+setattr(gguf_q6_k_t16_gemv_rowtile_bf16_f32_out, "_hipengine_max_rows", 6)
+
+
 def gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -994,6 +997,13 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
         library=library,
         runtime=runtime,
     )
+
+
+setattr(
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
+    "_hipengine_max_rows",
+    4,
+)
 
 
 def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out(
