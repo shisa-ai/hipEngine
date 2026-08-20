@@ -16171,82 +16171,6 @@ class Qwen35GGUFResidentSession:
         assert hidden_ptr is not None
         return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
-    def prefill_async_top1(
-        self,
-        token_ids: list[int] | tuple[int, ...],
-        *,
-        use_bulk: bool | None = None,
-        bulk_attention_mode: str = "bulk",
-        capture_hidden_seed_fp32: bool = False,
-        stream: int,
-    ) -> None:
-        """Launch prompt prefill and top-1 sampling on ``stream`` without host readback."""
-
-        if int(stream) == 0:
-            raise ValueError("prefill_async_top1 requires a non-default stream")
-        if not token_ids:
-            raise ValueError("token_ids must be non-empty")
-        if self.runner is None or self.runner.weights is None:
-            raise RuntimeError("GGUF resident session is closed")
-        min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
-        selected_bulk_attention_mode = bulk_attention_mode
-        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
-        if run_bulk:
-            if len(token_ids) < min_bulk_tokens:
-                raise ValueError(
-                    f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
-                )
-            with (
-                q8_t16_two_wave_prefill_session(
-                    _gguf_q8_t16_two_wave_prefill_applies(
-                        getattr(self.runner, "backend", "hip_gfx1100"),
-                        len(token_ids),
-                    )
-                ),
-                wmma_prefill_session(self.use_wmma_prefill),
-                gemv_decode_session(self.use_gemv_decode),
-                q8_t16_dual_wmma_prefill_session(
-                    _gguf_q8_t16_dual_wmma_prefill_applies(
-                        self.runner,
-                        len(token_ids),
-                    )
-                ),
-                q4_pack8_dual_wmma_silu_prefill_session(
-                    _gguf_q4_pack8_dual_wmma_silu_prefill_applies(
-                        self.runner,
-                        len(token_ids),
-                    )
-                ),
-                q4_t16_unequal_pair_prefill_session(
-                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
-                ),
-                self._q8_mmq_prefill_context(),
-                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
-            ):
-                self._run_bulk_prefill_and_sample(
-                    token_ids,
-                    stream=int(stream),
-                    bulk_attention_mode=selected_bulk_attention_mode,
-                    return_logits=False,
-                    capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
-                    enqueue_sample_only=True,
-                )
-            return
-
-        self.reset(stream=int(stream))
-        hidden_ptr = None
-        final_index = len(token_ids) - 1
-        for index, token_id in enumerate(token_ids):
-            hidden_ptr = self._run_token_to_final_hidden(
-                int(token_id),
-                position=self._position,
-                stream=int(stream),
-                capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32) and index == final_index,
-            )
-            self._position += 1
-        assert hidden_ptr is not None
-        self._sample_device_from_hidden(hidden_ptr, stream=int(stream))
-
     def _run_bulk_prefill_and_sample(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -16258,7 +16182,6 @@ class Qwen35GGUFResidentSession:
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
-        enqueue_sample_only: bool = False,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -16796,13 +16719,6 @@ class Qwen35GGUFResidentSession:
                 )
             else:
                 sample_sequence = 0
-            if enqueue_sample_only:
-                self._sample_device_from_hidden(last_hidden_ptr, stream=stream)
-                gpu_stage_recorder.mark("prefill_lm_head_sample")
-                gpu_stage_recorder.resolve_into(gpu_stage_timings)
-                if recorder is not None:
-                    recorder.complete(sample_sequence, stream=stream)
-                return None
             result = self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits, stream=stream)
             gpu_stage_recorder.mark("prefill_lm_head_sample")
             gpu_stage_recorder.resolve_into(gpu_stage_timings)

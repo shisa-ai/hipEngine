@@ -29,7 +29,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _ROUTE_ENV_KEYS = (
     "HIPENGINE_GGUF_AR_PACKED_PREFILL",
     "HIPENGINE_GGUF_AR_PACKED_DECODE",
-    "HIPENGINE_GGUF_AR_STREAM_PREFILL",
     "HIPENGINE_GGUF_AR_STREAM_DECODE",
 )
 _PROVENANCE_ENV_KEYS = (
@@ -83,14 +82,12 @@ def _execution_environment(mode: str) -> dict[str, str]:
         return {
             "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
             "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
-            "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
             "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
         }
     if mode == "package":
         return {
             "HIPENGINE_GGUF_AR_PACKED_PREFILL": "1",
             "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
-            "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
             "HIPENGINE_GGUF_AR_STREAM_DECODE": "1",
         }
     raise ValueError(f"unknown GGUF concurrency execution mode: {mode!r}")

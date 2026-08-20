@@ -134,7 +134,6 @@ _GGUFSessionPoolKey = tuple[
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
-_GGUF_AR_STREAM_PREFILL_ENV = "HIPENGINE_GGUF_AR_STREAM_PREFILL"
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -212,10 +211,6 @@ def _qualified_compact_serial_int8_max_rows(generator: object) -> int:
 
 def _gguf_ar_stream_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _gguf_ar_stream_prefill_enabled() -> bool:
-    return os.environ.get(_GGUF_AR_STREAM_PREFILL_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_decode_graph_enabled() -> bool:
@@ -1858,8 +1853,6 @@ class Qwen35GGUFBringupGenerator:
                 slots.append(slot)
             if self._try_prefill_ar_serving_slots_batch(slots, request):
                 return slots
-            if self._try_prefill_ar_serving_slots_streams(slots, request):
-                return slots
             for slot in slots:
                 prefill_start = time.perf_counter()
                 prefill_result = slot.session.prefill(slot.prompt_ids, return_logits=False)
@@ -1932,45 +1925,6 @@ class Qwen35GGUFBringupGenerator:
                 )
             slot.native_compact_prefill = True
             self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
-        return True
-
-    def _try_prefill_ar_serving_slots_streams(
-        self,
-        slots: list[_GGUFARServingSlot],
-        request: GenerationRequest,
-    ) -> bool:
-        if len(slots) <= 1 or not _gguf_ar_stream_prefill_enabled():
-            return False
-        for slot in slots:
-            if not callable(getattr(slot.session, "prefill_async_top1", None)):
-                return False
-            if not callable(getattr(slot.session, "read_top1_sample", None)):
-                return False
-            runtime = getattr(slot.session, "runtime", None)
-            if not callable(getattr(runtime, "stream_create", None)):
-                return False
-            if not callable(getattr(runtime, "stream_synchronize", None)):
-                return False
-            if not callable(getattr(runtime, "stream_destroy", None)):
-                return False
-        batch_start = time.perf_counter()
-        prefill_starts: dict[int, float] = {}
-        for slot in slots:
-            if slot.decode_stream == 0:
-                slot.decode_stream = int(slot.session.runtime.stream_create(nonblocking=True))
-            prefill_starts[int(slot.request_id)] = time.perf_counter()
-            slot.session.prefill_async_top1(
-                slot.prompt_ids,
-                stream=int(slot.decode_stream),
-            )
-        for slot in slots:
-            slot.session.runtime.stream_synchronize(int(slot.decode_stream))
-            _timing_add(slot.timing, "prefill_ms", prefill_starts[int(slot.request_id)])
-        batch_ms = _timing_ms_since(batch_start)
-        for slot in slots:
-            _timing_add_ms(slot.timing, "prefill_stream_batch_ms", batch_ms)
-            result = slot.session.read_top1_sample()
-            self._finish_ar_serving_slot_prefill(slot, int(result.token_id), request)
         return True
 
     def _finish_ar_serving_slot_prefill(
