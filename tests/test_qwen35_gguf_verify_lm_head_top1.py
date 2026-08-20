@@ -32,9 +32,12 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
     assert handled is True
     hidden_stride = 64 * runner_mod.DType.BF16.itemsize
     logits_stride = 128 * runner_mod.DType.FP32.itemsize
+    # The planar-qmicro lm_head f32 rowtile owner accepts rows in [2, 4], so
+    # the chunk planner caps configured chunks to 4 and rows=12 splits 4+4+4.
     assert calls == [
-        (0x100000, 0x200000, 6, 3, runtime),
-        (0x100000 + 6 * hidden_stride, 0x200000 + 6 * logits_stride, 6, 3, runtime),
+        (0x100000, 0x200000, 4, 3, runtime),
+        (0x100000 + 4 * hidden_stride, 0x200000 + 4 * logits_stride, 4, 3, runtime),
+        (0x100000 + 8 * hidden_stride, 0x200000 + 8 * logits_stride, 4, 3, runtime),
     ]
 
 
@@ -57,11 +60,13 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk5_and_env_rollback(
     )
 
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [5, 3]
+    # The planar-qmicro lm_head f32 rowtile owner accepts rows in [2, 4], so
+    # the chunk planner caps the configured chunk (5 here) to 4: rows=8 -> 4+4.
+    assert calls == [4, 4]
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "6")
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [6, 2]
+    assert calls == [4, 4]
 
 
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
