@@ -200,6 +200,9 @@ LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = True
 # pair. Exact p512/d128 wins 5/7 pairs at +0.1365%; explicit false retains the
 # preceding scalar-payload weighted route for rollback.
 LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE = True
+# The explicit public B4 DFlash target verifier admits the exact IQ3 output
+# tile4 sibling. Ordinary Laguna AR retains tile1; env=1 is the DFlash rollback.
+LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE = 4
 # Preserve the production Q4/Q6 shared-down grids and D9 local256 tree while
 # enqueueing both unchanged launch wrappers inside one native host call. Seven
 # exact same-resident p512/d128 pairs win 7/7; peer backends retain separate
@@ -1334,12 +1337,9 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq2_xs",
             "selected_dual_silu_gemv_decode_tile2_grid64_local64_reduce_bf16_bf16_out",
         ),
-        # IQ3 selected-down tiling is gfx1100-only pending independent gfx1151 gates.
-        (
-            "moe_linear",
-            "gguf_iq3_xxs",
-            "selected_gemv_decode_tile4_bf16_bf16_out",
-        ),
+        # Other IQ3 selected-down schedules remain gfx1100-only pending
+        # independent gfx1151 gates. Tile4 is admitted only by the explicit
+        # DFlash provider capability above; ordinary AR still requests tile1.
         (
             "moe_linear",
             "gguf_iq3_xxs",
@@ -2257,6 +2257,7 @@ __all__ = [
     "LAGUNA_Q4_SHARED_DOWN_T16_DECODE",
     "LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED",
     "LAGUNA_SELECTED_NATURAL_DECODE",
+    "LAGUNA_DFLASH_IQ3_SELECTED_DOWN_TILE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE",
     "LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE",
     "LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE",
