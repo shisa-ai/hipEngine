@@ -196,6 +196,8 @@ def _small_gate(runtime, library, weight: WeightCase, rows: int, f32: bool, seed
                 gguf_q6_k_t16_gemv_rowtile_bf16_f32_out
                 if f32
                 else gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out
+                if rows <= 6
+                else gguf_q6_k_t16_gemv_decode_bf16_bf16_out
             )
             candidate_fn = (
                 gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out
