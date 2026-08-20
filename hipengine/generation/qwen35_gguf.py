@@ -131,7 +131,10 @@ _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 # explicit env override before the default advertised capability is expanded
 # (see docs/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
 _GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
-_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = (1, 2, 4, 8)
+# Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36):
+# every width in the superset is now an advertised default. The env override
+# HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS remains for diagnostics.
+_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 
 
 def _gguf_ar_physical_widths(

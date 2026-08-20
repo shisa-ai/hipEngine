@@ -185,11 +185,11 @@ def test_gguf_arbitrary_c_lifecycle_accepts_single_physical_group_shape() -> Non
 
 def test_gguf_arbitrary_c_lifecycle_derives_single_and_cross_group_masks() -> None:
     assert _expected_dense_group_masks(8) == ["11111111"]
-    assert _expected_dense_group_masks(13) == ["11111111", "11111000"]
-    assert _expected_hole_group_masks(8, (2, 6), compact=True) == ["11111100"]
+    assert _expected_dense_group_masks(13) == ["11111111", "11111"]
+    assert _expected_hole_group_masks(8, (2, 6), compact=True) == ["111111"]
     assert _expected_hole_group_masks(13, (2, 10), compact=False) == [
         "11011111",
-        "11011000",
+        "11011",
     ]
 
 
@@ -213,11 +213,11 @@ def test_gguf_arbitrary_c_lifecycle_derives_direct_width_masks() -> None:
 
 def test_gguf_arbitrary_c_lifecycle_resolves_active_width_set(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False)
-    assert _resolve_widths() == (1, 2, 4, 8)
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3,4,5,6,7,8"
-    )
     assert _resolve_widths() == (1, 2, 3, 4, 5, 6, 7, 8)
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,4,8"
+    )
+    assert _resolve_widths() == (1, 2, 4, 8)
     monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 2 4 8")
     assert _resolve_widths() == (1, 2, 4, 8)
     monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")

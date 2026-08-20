@@ -51,7 +51,7 @@ def _temporary_env(updates: dict[str, str]) -> Iterator[None]:
                 os.environ[key] = value
 
 
-_DEFAULT_CERT_WIDTHS = (1, 2, 4, 8)
+_DEFAULT_CERT_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 
 
 def _resolve_widths() -> tuple[int, ...]:
@@ -59,10 +59,9 @@ def _resolve_widths() -> tuple[int, ...]:
 
     Mirrors the owner's resolution: an explicit
     ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override (comma/space
-    separated) selects the widths under test (e.g. ``1,2,3,4,5,6,7,8`` to
-    certify direct c3/c5/c6/c7); otherwise the production default (1,2,4,8) is
-    used. The mask/declared-width assertions below then follow the same set the
-    owner routes with.
+    separated) selects the widths under test; otherwise the production default
+    (1..8, promoted 2026-08-20) is used. The mask/declared-width assertions
+    below then follow the same set the owner routes with.
     """
     override = os.environ.get(
         "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
