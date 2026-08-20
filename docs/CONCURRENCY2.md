@@ -439,20 +439,22 @@ rows: the continuous owner still advertises only physical `(1,2,4,8)` and
 rounds c3 to masked c4 and c5-c7 to masked c8. Direct c3/c5/c6/c7 are not yet
 product-reachable.
 
-**Clean threshold traces (one profiler-instrumented decode transition; durations
-are diagnostic).** The family classifier now includes quantized WMMA projection
-kernels instead of dropping them into `other`:
+**Kernel threshold traces (one profiler-instrumented decode transition;
+durations are diagnostic).** The pre-promotion controls localized the cliffs;
+the clean combined post-promotion c8 census proves their removal:
 
-| width | total kernel sum | dense projection | Q5T16 route (48 calls) | planar-Q6T16 BF16 route (64 calls) |
-| ---: | ---: | ---: | --- | --- |
-| c4 | 39.1 ms | 28.1 ms | true col4 rowtile, 3.34 ms | true col8 rowtile, 6.79 ms |
-| c5 | 69.0 ms | 60.9 ms | true rowtile (post-promotion) | true col8 rowtile (post-promotion) |
-| c7 | 104.6 ms | 95.0 ms | true rowtile (post-promotion) | **true col8 rowtile (post-promotion, 10.76 ms @ c8)** |
+| state / width | total kernel sum | dense projection | Q5T16 route (48 calls) | planar-Q6T16 BF16 route (64 calls) |
+| --- | ---: | ---: | --- | --- |
+| baseline c4 | 39.1 ms | 28.1 ms | true col4 rowtile, 3.34 ms | true col8 rowtile, 6.79 ms |
+| baseline c5 | 69.0 ms | 60.9 ms | padded WMMA, 21.31 ms | direct per-row GEMV, 17.35 ms |
+| baseline c7 | 104.6 ms | 95.0 ms | padded WMMA, 19.84 ms | padded WMMA, 51.39 ms |
+| **post-promotion c8** | **54.1 ms** | **43.3 ms** | **true col4 rowtile, 4.30 ms** | **true col8 rowtile, 10.76 ms** |
 
-Both Q5T16 and planar-qmicro Q6T16 now keep their true rowtiles through rows 8
-(2026-08-20); the two D3 thresholds at 4→5 are closed. The numerical
-similarities c5≈c4+c1 and c7≈c6+c1 do **not** imply decomposition—the benchmark
-manifest and trace both show one physical c5/c7 group.
+The post-promotion c8 trace has zero Q5/Q6 WMMA, Q5 row8 at VGPR72/LDS512/
+scratch0, and planar-Q6 row8 at VGPR136/LDS1024/scratch0. Both true rowtiles
+now cover rows2-8. The earlier numerical similarities c5≈c4+c1 and c7≈c6+c1
+did **not** imply decomposition—the baseline manifests/traces showed one
+physical c5/c7 group.
 
 **Exact decode-path tensor census.** The active model has 64 decode layers, not
 all 65 GGUF blocks:
@@ -589,10 +591,10 @@ retained bandwidth claim must come from a tile-rotating probe (below).
 | "wmma prefill is latency/occupancy-bound at 11% of peak BW" | Wrong mechanism and wrong metric; it is row-padding bound (64 rows of MAC work at every M ≤ 64), measured under L3 residency. |
 | "Rowtile is a good bandwidth kernel (64% of peak)" | True only at M≈2–3, and only against a VRAM denominator the probe could not exercise. Vector-issue bound from M≈4. |
 | "M_ridge ≈ 27" | Mixed measured/theoretical roofs and applied a matrix ridge to a vector kernel. Use the ridge table above. |
-| "Aggregate stays flat at ≈c8 (~68 tok/s)" | Fresh clean c1-c8 is 30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s; it peaks at c4 and has cliffs at c5 and c7. |
-| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping exists and is exact, but uses largest-width chunking plus ceiling padding. The missing piece is an artifact-backed cost optimizer. Current two-c4 c8 is 91.06 tok/s versus native c8 69.75. |
+| "Aggregate stays flat at ≈c8 (~68 tok/s)" | Pre-promotion measurement exposed c5/c7 cliffs; the retained post-promotion curve is 30.30/53.79/75.47/93.49/105.67/115.30/122.36/127.32 tok/s. |
+| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping exists and is exact, but uses largest-width chunking plus ceiling padding. Before Q5/Q6, two-c4 beat native c8; post-promotion native c8 wins 127.32 versus 91.13 tok/s. The missing piece is artifact-backed optimization for c9-c14 remainders and other SLOs. |
 | "Close the 11% → 64% BW gap is the single biggest lever" | Wrong metric. The largest current kernel lever is true Q5/planar-Q6 rowtile coverage through c8; the engine lever is cost-aware group selection. |
-| "The non-FFN cliff is GDN/full-attention" | False. Clean traces show Q5 true-rowtile→WMMA at c5 (3.34→21.31 ms / 48 calls) and planar-Q6 true-rowtile→direct-per-row at c5 then WMMA at c7 (6.79→17.35→51.39 ms / 64 calls). This is a quant/layout projection cut spanning all stages. |
+| "The non-FFN cliff is GDN/full-attention" | False. Baseline traces localized Q5/Q6 quant-layout projection cliffs spanning all stages; the rows2-8 Q5/Q6 promotions close them and cut c8 kernel sum to 54.05 ms. |
 | "c5 runs as c4+c1; c4→c5 and c6→c7 are D2" | False. The direct benchmark manifest and traces show one physical c5/c7 group. Similar wall times were coincidence; the two jumps are the Q5 and Q6 thresholds above. |
 | "Mixed-quant effective width must be clamped to the minimum family cap" | Too strong. One group can mix registered variants. Price each operation and the complete group; use D2 when the mixed route loses. |
 | "Q4 direct ROW_TILE=16 should win ~1.40× and row32 might spill" | Measured down-leaf result: row16 wins only 1.115× versus 2×row8; row32 is 8.69× slower than 4×row8. Prototype discarded. |
@@ -629,10 +631,14 @@ The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
 minimize complete model-step wall subject to per-request ITL/fairness and
 workspace constraints. Serial groups use the sum of **measured full-group**
-costs; overlapped/pipelined groups require a separately measured model. The
-clean 2026-08-20 packet makes the immediate error concrete: direct c8 is
-114.72 ms, while two serial c4 groups are 88.74 ms, so the current largest-width
-heuristic selects a route 29.3% slower than an already certified composition.
+costs; overlapped/pipelined groups require a separately measured model. Before
+Q5/Q6 promotion, direct c8 was 114.72 ms versus 88.74 ms for two c4 groups,
+exposing the old heuristic error. The clean post-promotion packet reverses that
+decision: native c8 is **63.53 ms** versus **88.55 ms** for two c4 groups, so
+the current c8 choice is now correct. Cost-aware D2 remains needed for arbitrary
+remainders, masked widths, c>8 compositions, SLO objectives, and future backend
+maps; its acceptance control must use the post-promotion artifact rather than
+force the superseded two-c4 choice.
 
 **D3 — coverage is bounded regret across every relevant dimension.** Every
 logical width must resolve to either a certified native/masked group or a D2
@@ -663,8 +669,8 @@ family width." D1 prices each operation and D2 prices the complete mixed route.
 **Promotion gate.** A primitive or group record becomes default only when its
 declared strict/production contract passes, its route and resource provenance
 are repeatable, and the actual scheduler's composed objective improves. Native
-c8 is the cautionary case: Q4 rowtile leaf wins were real, but the complete c8
-route still loses to two c4 groups.
+c8 is the cautionary and recovery case: Q4-only leaf wins did not beat two c4
+groups, while the complete Q5+Q6 promotion now does.
 
 ### Measurement protocol (what the autotune probe must do)
 
@@ -721,13 +727,12 @@ Any probe whose numbers enter the width map must:
    c6 +56%, c7 +93%, c8 +82%), all exact; native c8 kernel census:
    Q5 true rowtile 48/4.30 ms + planar-Q6 true rowtile 64/10.76 ms, zero
    Q6 WMMA. Native c8 now beats two-c4 chunked c8 by 39.7%.
-3. **Implement the artifact-backed D2 resolver (host-first; may proceed in
-   parallel with step 2).** Preserve the current ceiling planner as strict
-   fallback, add dynamic programming over certified `(active,physical,mask)`
-   group records, and test every logical c1-c32. Do not default it from hand-
-   entered microbench constants; populate it from the remeasured full-step map
-   after step 2. The immediate current-map control must choose two c4 groups over
-   native c8.
+3. **Implement the artifact-backed D2 resolver (host-first).** Preserve the
+   current ceiling planner as strict fallback, add dynamic programming over
+   certified `(active,physical,mask)` group records, and test every logical
+   c1-c32. Populate it from the clean post-promotion full-step map, not hand-
+   entered microbench constants. Its current-map controls must choose native c8
+   over two c4 groups and evaluate c9/c13/c17 remainder alternatives honestly.
 4. **Certify product reachability, then promote.** Direct c3/c5/c6/c7 are
    benchmark-only today; the continuous owner still advertises `(1,2,4,8)` and
    maps c5-c7 to masked c8. Run the dynamic serving matrix (ragged neighbours,
