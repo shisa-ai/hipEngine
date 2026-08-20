@@ -627,6 +627,19 @@ and rounds each remainder **up** to the next bucket: c3→masked-c4,
 c5/c6/c7→masked-c8, c13→c8+masked-c8. This is a correct ceiling-bucket planner,
 not the measured optimizer described here.
 
+**Artifact-backed D2 resolver (host-first, 2026-08-20).**
+`hipengine/dispatch/d2_resolver.py` adds a measured optimizer: ``CostTable``
+(cost records loaded from a benchmark artifact via ``cost_table_from_artifact``,
+never hand-coded), ``d2_partition`` (dynamic programming minimizing serial
+measured model-step wall over certified widths), ``ceiling_partition``
+(fail-closed fallback), and ``plan_d2_groups`` (lowers a dense work item into
+``PhysicalBatchGroup``s preserving slot identity). Against the real
+post-promotion packet it recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6, c13=7+6,
+c14=7+7, c16=8+8, beating ceiling by up to 5.4 ms/step (c9). Wiring it into the
+continuous owner's per-round physical-group lowering (and proving the server
+follows it across c1–c32) is the #29 integration step; the ceiling planner
+remains the default until then.
+
 The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
 minimize complete model-step wall subject to per-request ITL/fairness and
