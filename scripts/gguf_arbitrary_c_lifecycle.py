@@ -303,6 +303,52 @@ def _row_resource_identity(row: Any) -> dict[str, Any]:
     }
 
 
+def _capture_compaction_group_graph(runner: Any, group: Mapping[str, Any]) -> Any:
+    """Pin the graph kind the current physical-group plan would actually use."""
+
+    request_ids = tuple(int(request_id) for request_id in group["request_ids"])
+    rows = tuple(runner._rows[request_id] for request_id in request_ids)
+    slots = tuple(row.slot for row in rows)
+    if not slots or any(slot is None for slot in slots):
+        raise RuntimeError("compaction graph group has a missing resident slot")
+    concrete = tuple(slot for slot in slots if slot is not None)
+    sessions = tuple(slot.session for slot in concrete)
+    physical_rows = int(group["physical_rows"])
+    active_slot_indices = tuple(int(index) for index in group["active_slot_indices"])
+    if physical_rows == 1:
+        if len(concrete) != 1 or active_slot_indices != (0,):
+            raise RuntimeError("physical-c1 compaction graph has invalid membership")
+        slot = concrete[0]
+        existing = slot.c1_decode_graph
+        if existing is not None and not bool(getattr(existing, "closed", False)):
+            return existing
+        capture = getattr(slot.session, "capture_decode_graph", None)
+        if not callable(capture):
+            raise RuntimeError("physical-c1 session cannot capture its native graph")
+        graph = capture(
+            position=int(slot.seq_position),
+            steps_per_replay=1,
+            max_replay_steps=1,
+            attention_max_context_len=int(slot.seq_position) + 1,
+            input_token_id=int(slot.prev_token),
+        )
+        slot.c1_decode_graph = graph
+        return graph
+
+    capture = getattr(sessions[0], "capture_packed_decode_graph", None)
+    if not callable(capture):
+        raise RuntimeError("packed session cannot capture its physical-group graph")
+    return capture(
+        [int(slot.prev_token) for slot in concrete],
+        sessions=sessions,
+        physical_rows=physical_rows,
+        active_slot_indices=active_slot_indices,
+        steps_per_replay=1,
+        max_replay_steps=1,
+        record_steps=1,
+    )
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     logical_c = int(args.rows)
     if logical_c < 3:
@@ -539,27 +585,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 # the pre/post hashes below also prove capture did not mutate
                 # request-owned state or KV.
                 for group in hole_plan["groups"]:
-                    group_request_ids = tuple(
-                        int(request_id) for request_id in group["request_ids"]
-                    )
-                    group_sessions = tuple(
-                        runner._rows[request_id].lease.session
-                        for request_id in group_request_ids
-                    )
-                    group_sessions[0].capture_packed_decode_graph(
-                        [
-                            int(runner._rows[request_id].slot.generated_ids[-1])
-                            for request_id in group_request_ids
-                        ],
-                        sessions=group_sessions,
-                        physical_rows=int(group["physical_rows"]),
-                        active_slot_indices=tuple(
-                            int(slot) for slot in group["active_slot_indices"]
-                        ),
-                        steps_per_replay=1,
-                        max_replay_steps=1,
-                        record_steps=1,
-                    )
+                    _capture_compaction_group_graph(runner, group)
                 active_graph_handles = tuple(
                     handle
                     for handle in runner._graph_handles_for_sessions(survivor_sessions)
