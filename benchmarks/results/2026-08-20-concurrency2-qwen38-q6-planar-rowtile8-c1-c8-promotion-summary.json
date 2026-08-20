@@ -6,7 +6,7 @@
   "passed": true,
   "performance_claim": true,
   "claim_scope": "same-load direct packed graph model-step c1-c8 plus Q5/Q6 kernel census; not production HTTP serving",
-  "commit": "3ea17c730",
+  "commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
   "provenance": {
     "host_name": "epyc",
     "device_name": "AMD Radeon Pro W7900",
@@ -54,7 +54,12 @@
     "baseline_q6_planar_wmma_duration_ms": 52.24,
     "q5_true_rowtile_kernel": "q5_k_t16_dense_rowtile_col4_gemv_kernel",
     "q5_dispatches": 48,
-    "q5_duration_ms": 4.30
+    "q5_duration_ms": 4.30,
+    "q5_vgpr": 72,
+    "q5_lds_bytes": 512,
+    "q5_scratch_bytes": 0,
+    "q6_planar_lds_bytes": 1024,
+    "q6_planar_workgroup_size": 128
   },
   "correctness": {
     "all_direct_c1_c8_exact": true,
@@ -66,8 +71,18 @@
     "primitive_rows_2_8_strict_bit_parity_vs_per_row_planar_decode": true
   },
   "sources": {
-    "graph_packet": "/tmp/q6_rowtile8_bench.json",
-    "rocprof_census": "benchmarks/results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion.json"
+    "graph_packet": {
+      "local_path": "/tmp/q6_rowtile8_bench.json",
+      "sha256": "147acc362faeeba69e6c27622db03ad1c5e0dbf90aa0dcc46327b0d873df3bd6",
+      "bytes": 985869,
+      "hipengine_commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
+      "git_dirty": false
+    },
+    "rocprof_census": {
+      "path": "benchmarks/results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion.json",
+      "hipengine_commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
+      "git_dirty": false
+    }
   },
   "limitations": [
     "Direct model-step graph packet and kernel census, not HTTP/SSE serving goodput.",

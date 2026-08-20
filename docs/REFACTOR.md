@@ -47,9 +47,11 @@ should be removed or collapsed.
   true rowtiles through 8 (2026-08-20,
   `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
   `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
-  to per-row for rows 5+. Remaining cap/fallback ladders (e.g. the Q6 lm-head
-  min(max_chunk,4) cap and any generic max-row value) demonstrate why one generic
-  max-row value or variant name is not honest coverage.
+  to per-row for rows 5+. The separate FP32 LM-head rowtiles publish their own
+  primitive bounds (standard Q6=6, planar-qmicro=4), which the chunk planner
+  intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
+  generic fallback ladders still demonstrate why one model-wide max-row value
+  or variant name is not honest coverage.
 - Removal trigger: land compact primitive and complete-model group-cost artifact
   schemas; add cold package resolution to ordinary four-axis registry keys;
   replace ceiling selection with dynamic programming over certified
