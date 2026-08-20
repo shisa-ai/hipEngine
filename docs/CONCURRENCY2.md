@@ -739,6 +739,11 @@ Any probe whose numbers enter the width map must:
    retirement/refill, cancellation, graph rebuild, slot permutation, state/KV
    hashes) for every proposed physical width. Only then expand package
    capabilities and compare the actual server's chosen D2 plan with the artifact.
+   **Blocker (2026-08-20):** the direct-width certification surfaced a packed-AR
+   capture/replay position off-by-one on the compaction path for non-power-of-2
+   widths (`step_batch_native` `positions` vs `session.position`; see worklog
+   `20260820T150624Z-...direct-width-c5-compaction-blocker...`). Direct widths
+   stay opt-in; `(1,2,4,8)` remains the default until that is fixed.
 5. **Re-profile the post-fix ledger before wider kernels.** Attack the new top
    complete-model family. The dirty Q4 `ROW_TILE=16/32` prototype is closed:
    direct row16 down was only 1.115× faster than 2×row8, row32 was 8.69× slower
