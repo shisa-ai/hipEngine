@@ -7291,12 +7291,22 @@ def test_resident_runner_follows_d2_composition_across_c1_to_c32(
     )
     runner._resident_batch_owner = object()
     runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner.generator = SimpleNamespace(
+        model_path="/models/fixture.gguf",
+        _kv_weight_quant_key=lambda: "gguf_q4_k_m",
+    )
     runner._last_execution_manifest = {}
     runner._last_physical_group_plan = {}
     runner._gguf_ar_cost_table = cost_table
     runner._step_native_chunk = lambda rows, **kwargs: True
     runner._step_native_serial = lambda rows, **kwargs: None
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    # Default-D2 is production-active for the configured-owner loop below; for
+    # the ceiling-fallback half, patch the resolver to fail closed to None so it
+    # never reaches the fake runner's missing generator.
+    monkeypatch.setattr(
+        qwen35_gguf, "_gguf_ar_resolve_cost_table", lambda *a, **k: None
+    )
 
     for c in range(1, 33):
         rows = [
@@ -7472,7 +7482,10 @@ def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch) -> None:
         qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
 
 
-def test_resident_runner_d2_artifact_env_absent_fails_closed(monkeypatch) -> None:
+def test_resident_runner_d2_default_map_fails_closed_on_identity_mismatch(monkeypatch) -> None:
+    """D2 is now the production default, but a non-matching runtime identity
+    (here an unreadable model) fails closed to ``None`` (ceiling planner)
+    rather than raising."""
     monkeypatch.delenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", raising=False)
     qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
     try:
@@ -7484,5 +7497,18 @@ def test_resident_runner_d2_artifact_env_absent_fails_closed(monkeypatch) -> Non
             kv_dtype="bf16",
             physical_widths=tuple(range(1, 9)),
         ) is None
+        # An explicitly requested but invalid artifact still raises.
+        monkeypatch.setenv(
+            "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", "/missing/artifact.json"
+        )
+        with pytest.raises(ValueError, match="does not exist"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/missing/model.gguf",
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
     finally:
         qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
