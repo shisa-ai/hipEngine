@@ -18,6 +18,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import numpy as np
 
@@ -47,11 +52,10 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_t16 import repack_gguf_q5_k_tile16
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_OUTPUT = Path("/tmp/qwen38-q5-t16-actual-operation-gate.json")
 DEFAULT_SMOKE = Path("/tmp/qwen38-task20-q5-smoke/smoke.json")
-_REQUIRED_ROWS = (1, 2, 3, 4, 16, 33, 512, 1024, 4096)
+_REQUIRED_ROWS = (1, 2, 3, 4, 5, 6, 7, 8, 16, 33, 512, 1024, 4096)
 _REQUIRED_LAYERS = (0, 1, 2, 4)
 
 
@@ -176,7 +180,7 @@ def _run_gate(
         control_dev = malloc(rows * weight.out_features * 2, runtime=runtime)
         candidate_dev = malloc(rows * weight.out_features * 2, runtime=runtime)
         buffers.extend((x_dev, control_dev, candidate_dev))
-        if rows <= 4:
+        if rows <= 8:
             selected = np.zeros(rows, dtype=np.int64)
             selected_dev = _upload(runtime, selected)
             buffers.append(selected_dev)
@@ -216,7 +220,7 @@ def _run_gate(
                     library=decode_library,
                     runtime=runtime,
                 )
-                route = "dense_rows2_4_rowtile_vs_selected_one_expert"
+                route = "dense_rows2_8_rowtile_vs_selected_one_expert"
         else:
             padded_rows = ((rows + 15) // 16) * 16
             start_compact = np.asarray((0, rows), dtype=np.int64)

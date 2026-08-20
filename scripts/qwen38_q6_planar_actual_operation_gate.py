@@ -16,6 +16,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import numpy as np
 
@@ -54,12 +59,12 @@ from hipengine.quant.gguf_t16 import (
     repack_gguf_q6_k_tile16_qmicro_planar,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_OUTPUT = Path("/tmp/qwen38-q6-planar-actual-operation-gate.json")
 DEFAULT_SMOKE = Path("/tmp/qwen38-task20-q6-hybrid-smoke/smoke.json")
 _PREFILL_ROWS = (16, 512, 1024, 4096)
-_SMALL_ROWS = (1, 2, 3, 4)
+_BF16_SMALL_ROWS = (1, 2, 3, 4, 5, 6, 7, 8)
+_F32_SMALL_ROWS = (1, 2, 3, 4)
 
 
 @dataclass(frozen=True)
@@ -197,7 +202,7 @@ def _small_gate(runtime, library, weight: WeightCase, rows: int, f32: bool, seed
                 if f32
                 else gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out
             )
-            route = "rows2_4_f32" if f32 else "rows2_4_bf16"
+            route = "rows2_4_f32" if f32 else "rows2_8_bf16"
         control_fn(
             x_d.ptr, weight.standard.ptr, control_d.ptr, rows,
             weight.in_features, weight.out_features, library=library, runtime=runtime,
@@ -412,10 +417,11 @@ def main() -> int:
         for role in ("wide_ffn_down", "wide_qkv", "narrow_v"):
             weight = weights[role]
             role_results: dict[str, object] = {}
-            for rows in _SMALL_ROWS:
+            for rows in _BF16_SMALL_ROWS:
                 role_results[f"bf16_m{rows}"] = _small_gate(
                     runtime, library, weight, rows, False, args.seed
                 )
+            for rows in _F32_SMALL_ROWS:
                 role_results[f"f32_m{rows}"] = _small_gate(
                     runtime, library, weight, rows, True, args.seed
                 )
