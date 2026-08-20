@@ -2067,11 +2067,6 @@ class Qwen35GGUFFullStackRunner:
     fp16_recurrent_state: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
-        # Freeze it before any session/scratch buffers or kernel plans exist so
-        # a later environment mutation cannot pair FP32 writers with FP16
-        # storage (or vice versa).
-        self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled()
         self.backend = resolve_backend(self.backend)
         try:
             self.target_arch = hip_target_arch_for_backend(self.backend)
@@ -2113,6 +2108,14 @@ class Qwen35GGUFFullStackRunner:
                 "resident GGUF weight backend does not match runner backend: "
                 f"{self.weights.backend!r} != {self.backend!r}"
             )
+        # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
+        # Freeze it after file-type discovery but before any session/scratch
+        # allocation so later environment mutation cannot mismatch storage and
+        # writers. An explicit env value remains the rollback override.
+        self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled(
+            backend=self.backend,
+            file_type_name=getattr(self.weights, "file_type_name", None),
+        )
         cfg = getattr(self.weights, "config", None)
         feed_forward_length = getattr(cfg, "feed_forward_length", None)
         hidden_size = getattr(cfg, "hidden_size", None)
@@ -11439,16 +11442,35 @@ def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
 _GGUF_FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
 
 
-def _gguf_fp16_recurrent_state_enabled() -> bool:
-    """Production fp16-state GDN route (fp32 accumulate, fp16 storage).
+def _gguf_fp16_recurrent_state_enabled(
+    *,
+    backend: str | None = None,
+    file_type_name: str | None = None,
+) -> bool:
+    """Resolve the frozen recurrent-state storage dtype.
 
-    Registered FP32-state kernels remain the strict fallback.  fp16-state is
-    currently scoped to the plain AR prefill+decode path: the verify-capture
-    prefill variants and the MTP tree/chain verifier read fp32 state and are
-    gated off under this flag (see docs/REFACTOR.md).
+    An explicit environment value always wins and remains the rollback seam.
+    Otherwise the backend package admits only model file types with complete
+    correctness and same-scope performance evidence. Registered FP32 kernels
+    remain the strict-storage fallback; incompatible chain-journal/MTP paths
+    still fail closed (see docs/REFACTOR.md).
     """
 
-    return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+    if _env_value(_GGUF_FP16_RECURRENT_STATE_ENV) is not None:
+        return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+    if backend is None or file_type_name is None:
+        return False
+    defaults = backend_package_capability(
+        backend,
+        "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
+        (),
+    )
+    normalized_defaults = {
+        str(value).strip().lower()
+        for value in defaults
+        if str(value).strip()
+    }
+    return str(file_type_name).strip().lower() in normalized_defaults
 
 
 def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:

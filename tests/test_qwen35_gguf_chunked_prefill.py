@@ -127,10 +127,14 @@ _PRODUCTION_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
     not _PRODUCTION_MODEL.exists(),
     reason=f"local GGUF fixture not found: {_PRODUCTION_MODEL}",
 )
-@pytest.mark.parametrize("fp16_state", (False, True))
+@pytest.mark.parametrize(
+    ("state_env", "expected_fp16_state"),
+    ((None, True), ("0", False), ("1", True)),
+)
 def test_qwen35_gguf_packed_ar_prefill_decode_runs_without_verify_capture(
     monkeypatch: pytest.MonkeyPatch,
-    fp16_state: bool,
+    state_env: str | None,
+    expected_fp16_state: bool,
 ) -> None:
     """Packed AR prefill+decode works in the production route (no verify-capture).
 
@@ -145,10 +149,10 @@ def test_qwen35_gguf_packed_ar_prefill_decode_runs_without_verify_capture(
         pytest.skip("HIP runtime is not available")
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
-    if fp16_state:
-        monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
-    else:
+    if state_env is None:
         monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", state_env)
     from hipengine.runtime.qwen35_gguf_runner import (
         Qwen35GGUFResidentSession,
         _gguf_verify_capture_prefill_gdn_enabled,
@@ -166,7 +170,7 @@ def test_qwen35_gguf_packed_ar_prefill_decode_runs_without_verify_capture(
         use_gemv_decode=True,
     ) as owner:
         assert owner.runner is not None
-        assert owner.runner.fp16_recurrent_state is fp16_state
+        assert owner.runner.fp16_recurrent_state is expected_fp16_state
         with Qwen35GGUFResidentSession(
             _PRODUCTION_MODEL,
             shared_runner=owner.runner,

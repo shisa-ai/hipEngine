@@ -95,8 +95,8 @@ draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suit
 
 ## Current opt-in packet
 
-On Strix Halo/gfx1151, Qwen3.8-27B `Q4_K_S` FP16 recurrent state remains an
-explicit opt-in rather than the public default. A clean p512 FP32/FP16 bracket
+On Strix Halo/gfx1151, Qwen3.8-27B `Q4_K_S` uses FP16 recurrent state by
+default, with explicit FP32 rollback. A clean p512 FP32/FP16 bracket
 measures aggregate c1/c4/c8 decode **12.9005/42.5856/57.2905 ->
 13.0204/43.8535/59.0106 tok/s** and aggregate prefill
 **377.31/307.16/246.26 -> 379.09/312.24/254.41 tok/s**, while the complete
@@ -104,7 +104,7 @@ packed numerical/isolation hard gate passes. The serving screen is also
 non-regressive: c1 improves **+0.38%** and exact c8 server throughput improves
 **+1.33%**. Both modes share an absolute c8 ITL-SLO failure, which remains a
 serving-path issue rather than a candidate regression. The former fixed 3%
-threshold is removed; scoped default promotion is tracked in the
+threshold is removed; the scoped default promotion is tracked in the
 [`candidate artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)
 and [`serving evidence`](results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
 
