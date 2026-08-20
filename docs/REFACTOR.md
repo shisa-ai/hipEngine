@@ -43,11 +43,13 @@ should be removed or collapsed.
   each remainder up: c3→masked-c4, c5-c7→masked-c8, c13→c8+masked-c8. Direct
   c3/c5/c6/c7 graph kernels exist only in the diagnostic runner today.
 - Primitive selection is spread across quant/layout capability maps and
-  per-width `CASE(N)` launchers. Q5T16 was promoted to a true rowtile through 8
-  (2026-08-20, `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8`);
-  the planar-qmicro-Q6 true-cap-4 / direct-per-row-5/6 / WMMA-7/8 ladder
-  remains and demonstrates why one generic max-row value or variant name is not
-  honest coverage.
+  per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
+  true rowtiles through 8 (2026-08-20,
+  `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
+  `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
+  to per-row for rows 5+. Remaining cap/fallback ladders (e.g. the Q6 lm-head
+  min(max_chunk,4) cap and any generic max-row value) demonstrate why one generic
+  max-row value or variant name is not honest coverage.
 - Removal trigger: land compact primitive and complete-model group-cost artifact
   schemas; add cold package resolution to ordinary four-axis registry keys;
   replace ceiling selection with dynamic programming over certified
