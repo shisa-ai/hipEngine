@@ -18,6 +18,7 @@ from scripts.gguf_production_load_gate import (
     _LocalUvicorn,
     _openai_error_fields,
     _load_tuning_protocol,
+    _llm_construction_kwargs,
     _parse_workload_names,
     _poisson_arrival_offsets,
     _rotated_tuning_plan,
@@ -76,6 +77,31 @@ def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None
         == "chain_lds32_direct_nonvolatile"
     )
     assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
+
+
+def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "--model",
+            "/tmp/Qwen3.8-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--quant",
+            "gguf_q4_k_s",
+            "--max-active-requests",
+            "8",
+        ]
+    )
+
+    assert _llm_construction_kwargs(args, args.model) == {
+        "model": args.model,
+        "backend": "hip_gfx1151",
+        "quant": "gguf_q4_k_s",
+        "max_active_requests": 8,
+    }
+    assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_EXECUTION_PROFILE" in _PROVENANCE_ENV_KEYS
 
 
 def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:
