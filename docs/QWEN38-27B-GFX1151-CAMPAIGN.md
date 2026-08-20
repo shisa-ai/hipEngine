@@ -1463,18 +1463,30 @@ small and the real value is concurrency. Revisit (with a device fp16-state GDN
 variant + full natural-suite KL/top-1 profile gate) only if a multi-request /
 concurrency target is adopted. FP32 state remains the strict default.
 
-**Built 2026-08-20 (the c=N lane adopted the concurrency target, so the
-revisit condition is met).** The fp16-state device change was implemented
-end-to-end under `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1` (commits
-`497dab0be`..`b4f6e135c`): GDN decode recurrent kernels templated on `state_t`
-with half_t (fp16, RNE round-trip) instantiations for the plain, chain,
-segments, and indexed-singleton paths (incl. the gfx1151 shared-statecache24
-indexed decode); packed-AR `decode_order` prefill writers (state-rows,
-verify-capture, and in-place segmented) are now fp16-capable; the strict FP32
-fallback stays registered for every variant. Full production-profile gate on
-the complete prompt+heldout suite passed: kl_mean 3.68e-5 / p95 1.62e-4 /
-p99 6.65e-4 / max 1.28e-3, top-1 100%, deterministic same-schedule state
-SHA (evidence: [`2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json)).
+**Built and audited 2026-08-20 (the c=N lane adopted the concurrency target).**
+The state dtype is frozen per runner and all FP16 leaves are explicit registry
+variants with FP32 strict-storage fallbacks. Decode covers scalar, segments,
+indexed-singleton, and the gfx1151 rows>=8 shared-statecache24 owner. Packed
+prefill now uses compact normalized-segments wave32-XOR: each indexed state
+stays FP32-register-resident across its segment and converts at a chunk
+boundary. The earlier per-token decode-order fallback failed c4/c8 prefill
+scopes and is retained only as a generic diagnostic fallback.
+
+The original 450-row artifact is a **c1 numerical capture**, not a complete
+production-profile gate. Its actual global mean/p95/p99/max KL is
+**5.28e-5/2.80e-4/5.81e-4/1.43e-3** with **449/450 = 99.78%** top-1; the
+previous prose accidentally quoted the code-category slice. The repaired
+packed c4/c8 gate covers **1,170** full-vocabulary rows including natural
+static widths, category-diverse p512, sparse slots, neighbor substitution, row
+permutation, and c8->c4->c2->c1 transitions. All hard scopes pass at global
+mean/p95/p99/max KL **1.02e-4/3.19e-4/1.05e-3/3.2866e-2** and
+**1168/1170 = 99.829%** top-1, with three exact repeats and exact isolation.
+One long-c8 row requires and passes manual review: KL 0.03287 (<0.05), same
+wide-margin top-1, and improved teacher NLL. These artifacts remain
+`profile_qualification_claim=false`: runtime-manifest, BF16-relative/task,
+serving SLO-goodput, and gfx1100 gates are still open. Evidence:
+[`c1 capture`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json) and
+[`packed gate`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-packed-production-gate.json).
 
 **c=N roofline (2026-08-18 follow-up — the concurrency value is quantified, not
 just "outside scope").** We do target c=N, so the multi-stream gain matters and
@@ -1490,11 +1502,13 @@ the state's share of bytes grows with c. Bandwidth-bound roofline (fp16 halves
 state traffic): c1 0.8%, c2 1.6%, c4 3.1%, **c8 5.9%, c16 10.5%**, c32 17.4%,
 c64 25.8% decode gain. Capacity is not a lever on gfx1151 (72 MiB/slot x 64 =
 4.6 GB vs 128 GB unified) — the win is purely bandwidth, unlike the external's
-24 GB VRAM story. **Prefill is unaffected**: the GDN prefill kernel holds the
-recurrent state in a register across the whole token loop (one read + one write
-per layer per prefill, ~288 MiB) so fp16 state is <0.1-0.2% of prefill wall.
-Caveats: the c>1 numbers are a **bandwidth-bound roofline, not a measurement**;
-MLP/attention GEMM work grows xN with concurrency and may turn compute-bound
+24 GB VRAM story. The old **c1 prefill** roofline correctly treated state as
+register-held, but it did not describe the former packed c>N fallback, which
+loaded/stored state every token. The repaired packed compact-segments route is
+register-held again; the clean bracket still measures FP16 aggregate prefill
+wins of **+1.65% at c4 / +3.31% at c8** because packed chunk boundaries retain
+per-slot state traffic. Caveats: the c>1 numbers are a **bandwidth-bound
+roofline, not a measurement**; MLP/attention GEMM work grows xN with concurrency and may turn compute-bound
 before c16-32 (no retained gfx1151 Qwen3.8 c>1 decode topline existed to pin the
 crossover — a c8 `rocprofv3` decode profile was run to check it). **Measured c8
 result (2026-08-18): the crossover question is currently unanswerable because
@@ -1514,7 +1528,23 @@ and
 [`2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-cn-roofline.json) +
 [`2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json`](../benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r2-c8-decode-profile.json).
 
-**Measured production result (2026-08-20 — the c8 GEMV gap is closed and fp16 state is harvestable).** The 2026-08-18 units added native c8 GEMV owners (single projection rowtile8, gate/up rowtile8, combination map), so a fair production-route A/B is now possible. Same-session gfx1151 Qwen3.8-27B Q4_K_S packed-AR (`gguf_packed_ar_bench.py --route production`, p512/tok 9707/64 steps/3 runs, `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1` vs FP32, fp16 indexed-singleton decode sibling keeps the kernel path identical): c1 12.958 -> 13.053 (+0.73%), c4 10.660 -> 10.995 (+3.14%), native_c8 7.190 -> 7.410 (+3.07%). Correctness: the fp16-state production gate passed on the full suite (kl_mean 3.68e-5, kl_max 1.28e-3, top-1 100%, deterministic state SHA). fp16-state remains behind the env flag (FP32 stays the strict default); promotion to the public production-profile default additionally requires the complete serving-packet SLO-goodput gate (EXECUTION-PROFILES §2.1: >=3% goodput, <=1% c1 regression). Evidence: [`2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json).
+**Measured retained opt-in result (2026-08-20).** A clean
+FP32-control-A -> FP16 -> FP32-control-B bracket on commit `d73c08a0e`
+(p512/tok9707/64 decode steps, one warmup + three measurements per process)
+uses the pooled six-sample FP32 median. Aggregate decode is
+**12.9005 -> 13.0204 tok/s (+0.93%)** at c1,
+**42.5856 -> 43.8535 (+2.98%)** at c4, and
+**57.2905 -> 59.0106 (+3.00%)** at native c8. Per-request c4/c8 is
+**10.6464 -> 10.9634** and **7.1613 -> 7.3763 tok/s**; these are now labeled
+separately rather than presenting per-request values as aggregate throughput.
+Aggregate prefill is **377.31 -> 379.09 (+0.47%)**, **307.16 -> 312.24
+(+1.65%)**, and **246.26 -> 254.41 (+3.31%)** at c1/c4/c8. The eight-session
+packet saves **1,234,698,240 tracked bytes (1.15 GiB)**. FP16 remains behind
+the env flag and FP32 remains the strict/public default pending the open gates
+above. Evidence:
+[`repaired production bracket`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json); the former
+[`fair c=N artifact`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json)
+is superseded.
 
 ### R3 — lm_head int8 / embed_tokens int8 (see what it looks like)
 

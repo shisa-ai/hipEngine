@@ -3,7 +3,7 @@
     "candidate_environment": {
       "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "1"
     },
-    "classification": "T2",
+    "classification": "T1",
     "mechanism": "fp16 recurrent-state storage (fp32 accumulate, RNE half round-trip) on the chain_compact_peer_wave32 production route",
     "name": "fp16_state",
     "strict_environment": {
@@ -15,6 +15,13 @@
   "kind": "hipengine_execution_profile_gguf_fp16_state_gate",
   "measurement_valid": true,
   "performance_claim": false,
+  "profile_qualification_claim": false,
+  "qualification_blockers": [
+    "c1-only capture; packed c4/c8 arithmetic is qualified separately",
+    "no runtime-resolved public production-profile manifest",
+    "fresh BF16-relative and external task-score verdicts are unavailable",
+    "complete dynamic serving/SLO-goodput packet has not run"
+  ],
   "prompts": [
     {
       "category": "code",

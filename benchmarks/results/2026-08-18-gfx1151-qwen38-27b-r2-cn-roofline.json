@@ -67,6 +67,11 @@
   "detail": "The GDN prefill kernel (qwen35_gdn_prefill_recurrent_kernel in gdn.hip) holds the recurrent state in a register across the whole token loop: float state_value = recurrent_state[state_offset] read once, recurrent_state[state_offset] = state_value written once. State DRAM traffic during prefill = 1 read + 1 write per layer = 288 MiB per prefill (~0.2 GB/s at 512 tokens) vs weight reads ~12 GB/s and compute ~20 TFLOP; even the >1025-token segmented path only adds a read/write per segment. fp16 state saves ~144 MiB per prefill -> <0.1-0.2% of prefill wall. Prefill is compute- and weight-read-bound; the state is register-resident, not a bandwidth term.",
   "kernel_reference": "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip:1190 qwen35_gdn_prefill_recurrent_kernel"
  },
+ "post_implementation_correction": {
+  "date": "2026-08-20",
+  "detail": "The register-held prefill conclusion was valid for c1 compact-peer but not for the first packed c>N implementation, which bypassed that route and loaded/stored FP16 state every token. The repaired indexed compact-segments kernel restores FP32 register residency across each packed segment. A clean FP32-A/FP16/FP32-B bracket still measures aggregate prefill gains of 0.47%/1.65%/3.31% at c1/c4/c8 because packed chunk boundaries retain per-slot state traffic.",
+  "artifact": "benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json"
+ },
  "caveats": [
   "The c>1 numbers are a bandwidth-bound roofline, not a measurement.",
   "MLP/attention GEMM work grows xN with concurrency and may turn compute-bound before c16-32, saturating the gain below the roofline; the c8 rocprofv3 decode profile measures the state-family kernel share to check where the crossover sits.",

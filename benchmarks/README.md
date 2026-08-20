@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-20**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -92,6 +92,17 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR;
 hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three
 draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
+
+## Current opt-in packet
+
+On Strix Halo/gfx1151, Qwen3.8-27B `Q4_K_S` FP16 recurrent state remains an
+explicit opt-in rather than the public default. A clean p512 FP32/FP16 bracket
+measures aggregate c1/c4/c8 decode **12.9005/42.5856/57.2905 ->
+13.0204/43.8535/59.0106 tok/s** and aggregate prefill
+**377.31/307.16/246.26 -> 379.09/312.24/254.41 tok/s**, while the complete
+packed numerical/isolation hard gate passes. Public promotion remains blocked
+on the serving and remaining profile evidence listed in the
+[`artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json).
 
 ## Where detailed evidence lives
 

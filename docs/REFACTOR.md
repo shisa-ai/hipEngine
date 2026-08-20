@@ -3876,9 +3876,9 @@ should be boring.
   decode_order writer remains fp16-capable as a generic fallback, but the
   Q4_K_S production packed-AR path now uses the registered compact-peer
   segmented sibling: each indexed slot stays FP32-register-resident across its
-  packed token segment and converts only at a chunk boundary. This targets the
+  packed token segment and converts only at a chunk boundary. This repairs the
   failed c4/c8 prefill top-1 scopes and removes the per-token global-state
-  fallback from the measured route; the repaired full gate remains pending.
+  fallback from the measured route; the repaired 1,170-row hard gate passes.
   The packed AR prefill/decode guards that required
   `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` remain removed. Remaining
   fail-closed guards:
@@ -3892,20 +3892,23 @@ should be boring.
   the MTP verifier (or permanently gate them off) and delete the remaining
   fail-closed guards; (3) drop `gdn_effective_mode`/frozen-mode assumptions if
   the flag is later allowed beyond the compact-peer-wave32 route.
-- Checkpoint 2026-08-20: the strict-teacher production-profile gate PASSED for
-  the fp16-state route (450 teacher-forced rows, kl_max 1.43e-3, top-1 99.78%,
-  three bit-stable repeats; see
-  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`).
-  The c1/c4/c8 fp16-vs-fp32 production benchmark (task #16/#21, same-session
-  gfx1151 packed-AR A/B) is also complete: **non-regressive and faster at c>1**
-  — c1 12.958 -> 13.053 (+0.73%), c4 10.660 -> 10.995 (+3.14%), native_c8
-  7.190 -> 7.410 (+3.07%) — see
-  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-fair-cn-production.json`.
-  Decision: fp16-state remains behind `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1`;
-  it does not collapse to the default yet. Public-default promotion requires
-  the complete serving-packet SLO-goodput gate (EXECUTION-PROFILES §2.1:
-  >=3% goodput, <=1% c1 regression) plus gfx1100 decode-side applicability
-  evidence. Trigger (1) above is therefore re-scoped: collapse the flag only
-  after the serving-packet SLO-goodput gate passes; until then the flag is the
-  retained production route and FP32 stays the strict fallback. The
-  chain-journal/MTP guards stay until fp16 variants land (trigger 2 unchanged).
+- Checkpoint 2026-08-20 (audited): the 450-row c1 numerical capture passes at
+  global mean/p95/p99/max KL `5.28e-5/2.80e-4/5.81e-4/1.43e-3` and 99.78%
+  top-1. The repaired packed c4/c8 gate passes every hard category/shape/
+  transition threshold over 1,170 rows at `1.02e-4/3.19e-4/1.05e-3/3.2866e-2`
+  and 99.829% top-1, with exact repeats, sparse/neighbor/permutation isolation,
+  and indexed decode ownership. One long-c8 row passes manual review (same
+  wide-margin top-1 and improved teacher NLL). See
+  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`
+  and `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-packed-production-gate.json`.
+- The clean FP32-A/FP16/FP32-B p512 bracket retains FP16 as non-regressive:
+  aggregate decode improves c1/c4/c8 `12.9005/42.5856/57.2905 ->
+  13.0204/43.8535/59.0106 tok/s` (`+0.93%/+2.98%/+3.00%`); aggregate prefill
+  improves `+0.47%/+1.65%/+3.31%`; tracked peak saves 1.15 GiB. See
+  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json`.
+- Decision: fp16-state remains behind `HIPENGINE_GGUF_FP16_RECURRENT_STATE=1`;
+  it does not collapse to the default. Public-profile promotion still requires
+  a runtime manifest, BF16-relative/task verdicts, the complete serving
+  SLO-goodput gate (>=3% goodput, <=1% c1 regression), and gfx1100 evidence.
+  Until then FP32 stays the strict/public fallback and the chain-journal/MTP
+  guards remain.
