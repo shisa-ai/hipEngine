@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_direct_c1_c8_width_review",
+  "created_at": "2026-08-20T05:49:18.078699+00:00",
+  "status": "accepted_diagnostic_width_baseline",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "same-load direct packed graph model-step c1-c8 plus serial composition controls; not production HTTP serving",
+  "provenance": {
+    "host_name": "epyc",
+    "device_name": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hipengine_commit": "d63b694b43c80e84c6d524db33dad5b6454429ac",
+    "git_dirty": false,
+    "rocm_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "source_full_artifact": {
+      "local_path": "/tmp/q38-c1-c8-review.json",
+      "sha256": "de270b8e4b028fa72674559c1ef692f43b099b9bbe5be04b322666852d553f49",
+      "bytes": 985523
+    }
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 8552862704, 17105725408]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_length": 128,
+    "decode_steps": 8,
+    "prompt_rows_sha256": "1a1d110033ae3df305b160f9eaf85343397086dfbf17e3cde3afed5a4b5d25d0",
+    "sampling": "greedy_top1",
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "timing_boundary": "one synchronized graph replay per direct physical group per logical decode transition"
+  },
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --configurations c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4 --prompt-length 128 --decode-steps 8 --warmup-runs 1 --measured-runs 2 --compiler-version-file /tmp/compiler-version.txt --json /tmp/q38-c1-c8-review.json",
+  "direct_widths": {
+    "c1": {"step_ms": 33.215785, "aggregate_tok_s": 30.220154, "tok_s_samples": [30.266011, 30.174298], "scale_vs_c1": 1.0, "stdev_pct": 0.214594},
+    "c2": {"step_ms": 37.470454, "aggregate_tok_s": 53.672279, "tok_s_samples": [53.740815, 53.603742], "scale_vs_c1": 1.776043, "stdev_pct": 0.180587},
+    "c3": {"step_ms": 40.172126, "aggregate_tok_s": 75.492574, "tok_s_samples": [75.733859, 75.251289], "scale_vs_c1": 2.498087, "stdev_pct": 0.452003},
+    "c4": {"step_ms": 43.265114, "aggregate_tok_s": 93.602613, "tok_s_samples": [93.907559, 93.297668], "scale_vs_c1": 3.097357, "stdev_pct": 0.460733},
+    "c5": {"step_ms": 74.915577, "aggregate_tok_s": 67.172539, "tok_s_samples": [67.284840, 67.060238], "scale_vs_c1": 2.222773, "stdev_pct": 0.236433},
+    "c6": {"step_ms": 81.578680, "aggregate_tok_s": 74.000319, "tok_s_samples": [74.041643, 73.958995], "scale_vs_c1": 2.448708, "stdev_pct": 0.078974},
+    "c7": {"step_ms": 110.313712, "aggregate_tok_s": 63.482780, "tok_s_samples": [63.539866, 63.425693], "scale_vs_c1": 2.100677, "stdev_pct": 0.127172},
+    "c8": {"step_ms": 114.718803, "aggregate_tok_s": 69.746505, "tok_s_samples": [69.802761, 69.690250], "scale_vs_c1": 2.307947, "stdev_pct": 0.114065}
+  },
+  "composition_controls": {
+    "two_serial_c4_for_c8": {
+      "step_ms": 88.744033,
+      "aggregate_tok_s": 91.059264,
+      "tok_s_samples": [91.136720, 90.981807],
+      "speedup_vs_native_c8": 1.305573,
+      "native_c8_step_regression_pct": 29.270425
+    },
+    "four_serial_c1_for_c4": {
+      "step_ms": 135.469900,
+      "aggregate_tok_s": 29.644334,
+      "tok_s_samples": [29.631833, 29.656834]
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "direct_c1_c8_match_repeating_independent_fixture": {"1": true, "2": true, "3": true, "4": true, "5": true, "6": true, "7": true, "8": true},
+    "c4_matches_serial_c4": true,
+    "native_c8_matches_repeating_c4": true,
+    "chunked_c8_matches_repeating_c4": true,
+    "all_measured_runs_repeatable": true
+  },
+  "kernel_threshold_census": {
+    "timing_is_diagnostic": true,
+    "route_and_token_checks_passed": true,
+    "c4": {
+      "kernel_sum_ms": 39.115234,
+      "dense_projection_ms": 28.082345,
+      "q5": {"route": "true_col4_rowtile", "dispatches": 48, "duration_ms": 3.344990},
+      "q6_planar": {"route": "true_col8_rowtile", "dispatches": 64, "duration_ms": 6.790210},
+      "profile": {"local_path": "/tmp/c4-profile-review.json", "sha256": "429e2ba89c231d1bc06b07c1fcd3bd0b108a6fc22c8487b0539207768c653627", "source_commit": "e8c65550c581a29fc4dd8971254080084b1ba016", "source_dirty": true, "dirty_scope": "documentation-only CONCURRENCY2 review edits"}
+    },
+    "c5": {
+      "kernel_sum_ms": 69.041311,
+      "dense_projection_ms": 60.894107,
+      "q5": {"route": "padded_wmma", "dispatches": 48, "duration_ms": 21.309132},
+      "q6_planar": {"route": "same-variant direct-per-row GEMV fallback", "dispatches": 64, "duration_ms": 17.349736},
+      "profile": {"local_path": "/tmp/c5-profile-review.json", "sha256": "59dc307f76bdbf35901ef867dac82aa8a64bca40d10c98a9c6784cd5c6e4543c", "source_commit": "4355af861a0458a806df31cc7f78c21cf8b16fe7", "source_dirty": false}
+    },
+    "c7": {
+      "kernel_sum_ms": 104.550000,
+      "dense_projection_ms": 95.034000,
+      "q5": {"route": "padded_wmma", "dispatches": 48, "duration_ms": 19.841000},
+      "q6_planar": {"route": "padded_wmma", "dispatches": 64, "duration_ms": 51.386000},
+      "profile": {"local_path": "/tmp/c7-profile-review.json", "sha256": "4b69a55ec576e88c706d5de1f7a69c86243469594884d86c8c4739611cc4042d", "source_commit": "e8c65550c581a29fc4dd8971254080084b1ba016", "source_dirty": false}
+    },
+    "profiler_status_note": "Dense Qwen3.8 route/token/physical-shape checks pass. The legacy top-level C3 closure census remains failed because it assumes MoE selected kernels and an older LM-head name; family attribution is reprocessed with the corrected classifier."
+  },
+  "active_decode_tensor_census": {
+    "decode_layers": 64,
+    "nextn_block": 64,
+    "ffn_gate": {"Q4_K": 64},
+    "ffn_up": {"Q4_K": 64},
+    "ffn_down": {"Q4_K": 32, "Q6_K": 32},
+    "ssm_out": {"Q5_K": 48},
+    "attn_qkv": {"Q4_K": 24, "Q6_K": 24},
+    "attn_v": {"Q4_K": 8, "Q6_K": 8},
+    "attn_output": {"Q4_K": 16},
+    "q5_q6_decode_projection_calls": 112
+  },
+  "product_reachability": {
+    "continuous_owner_physical_widths": [1, 2, 4, 8],
+    "current_policy": "largest-width chunks plus ceiling padding",
+    "logical_routes": {"c3": "masked_c4", "c5": "masked_c8", "c6": "masked_c8", "c7": "masked_c8", "c13": "c8_plus_masked_c8"},
+    "direct_c3_c5_c6_c7_product_reachable": false
+  },
+  "decisions": [
+    "Prioritize true Q5T16 rows5-8 and planar-qmicro Q6T16 rows5-8 rowtiles.",
+    "Implement an artifact-backed full-step D2 cost resolver; grouping already exists but is not cost-aware.",
+    "Do not advertise direct physical c3/c5/c6/c7 until dynamic lifecycle and graph/state/KV gates pass.",
+    "Keep the rejected Q4 ROW_TILE=16/32 prototype removed; row32 is closed."
+  ],
+  "memory": {
+    "tracked_peak_allocated_bytes": 30265830820,
+    "hip_used_peak_sampled_bytes": 31341936640
+  },
+  "limitations": [
+    "Direct model-step graph packet, not HTTP/SSE serving goodput or latency.",
+    "Fixed deterministic repeating four-row prompt fixture; varied-prompt product lifecycle evidence remains separate.",
+    "Profiler durations include instrumentation and marker synchronization and are diagnostic only.",
+    "The c4 profile source was documentation-dirty; no code/kernel hunk was dirty. Performance numbers come from the clean same-load packet."
+  ]
+}

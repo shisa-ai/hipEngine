@@ -400,12 +400,12 @@ decision procedure the packed-decode path must implement.
 
 Three decisions have to be made, and they are separable:
 
-- **D1 kernel choice** — for `(backend, quant, layer-shape K×N, width M)`,
-  which registered variant runs.
-- **D2 group decomposition** — for `W` admitted rows, which multiset of
-  physical widths to execute (`W=16` → `1×16`, `2×8`, `4×4`, …).
-- **D3 coverage** — every width in `1..W_max` must have a non-cliff path.
-  Missing instantiations are how `c5` once cost more than `c8`.
+- **D1 primitive and complete-group choice** — which registered operation
+  variants and physical-group route run for a qualified artifact/profile/shape.
+- **D2 group decomposition** — for `W` ready rows, which sequence of certified
+  `(active rows, physical rows, mask)` groups executes.
+- **D3 coverage** — every relevant quant/layout/operation and every logical width
+  has bounded measured regret versus the best certified composition.
 
 Numbers below are W7900 / gfx1100 observations on one model. **The procedure
 is the normative part; the constants are not portable.** Every quantity marked
@@ -413,72 +413,62 @@ is the normative part; the constants are not portable.** Every quantity marked
 
 ### Where the packed-decode cost actually is
 
-Measured, `scripts/gguf_packed_ar_bench.py --prompt-length 128 --decode-steps 8
---warmup-runs 1 --measured-runs 2`, Qwen3.8-27B-Q4_K_M, W7900, 64 decode-path
-FFN layers (48 GDN + 16 full-attention; GGUF `block_count=65` includes the
-nextn block):
+**Current clean direct curve.** W7900 / gfx1100, exact-file
+Qwen3.8-27B-Q4_K_M, BF16 KV, one shared load, graph replay, p128/d8, one warmup
+plus two measured runs, commit `d63b694b4`. Every direct c1-c8 trajectory matches
+the repeating independent c4/c1 fixture and both controls are exact.
 
-| c | step ms (measured) | agg tok/s (measured) | FFN GEMM ms (measured per-call × 64) | non-FFN ms (derived) |
-|---:|---:|---:|---:|---:|
-| 1 | 33.0 | 30.4 | (GEMV path, not probed) | — |
-| 2 | 37.2 | 53.9 | ~16.8 | ~20.4 |
-| 4 | 42.9 | 94.5 | 19.6 | 23.3 |
-| 5 | 74.2 | 67.8 | ~21.2 | ~53.0 |
-| 6 | 80.6 | 75.0 | ~23.1 | ~57.5 |
-| 7 | 108.9 | 64.3 | ~25.0 | ~83.9 |
-| 8 | 111.4 | 71.9 | 26.9 | 84.5 |
+| direct physical c | step ms | aggregate tok/s | scale vs c1 |
+| ---: | ---: | ---: | ---: |
+| 1 | 33.216 | 30.220 | 1.000× |
+| 2 | 37.470 | 53.672 | 1.776× |
+| 3 | 40.172 | 75.493 | 2.498× |
+| 4 | 43.265 | **93.603** | **3.097×** |
+| 5 | 74.916 | 67.173 | 2.223× |
+| 6 | 81.579 | 74.000 | 2.449× |
+| 7 | 110.314 | 63.483 | 2.101× |
+| 8 | 114.719 | 69.747 | 2.308× |
 
-The FFN column is built from directly measured per-call kernel times (rowtile
-gate/up 0.093 ms at M=4 and ~0.134 ms at M=8; rowtile down 0.1195 ms at M=4 and
-0.1520 ms at M=8); the M=5/6/7 down times are interpolated, so those two rows
-carry ±3 ms. The non-FFN column is `step − FFN` and is therefore derived, not
-measured — `scripts/tmp_c8_stage_timing.py` exists to measure it directly and
-**that measurement is the blocking prerequisite for any further FFN kernel
-work.**
+Honest two-c4 c8 is **88.744 ms / 91.059 tok/s**, while serial-c1 c4 is
+135.470 ms / 29.644 tok/s. Thus c4 is the current throughput peak and the
+current native c8 route is **29.3% slower in step wall than 2×c4**. These are
+model-step results, not production-server rows: the continuous owner still
+advertises only physical `(1,2,4,8)` and rounds c3 to masked c4 and c5-c7 to
+masked c8. Direct c3/c5/c6/c7 are not yet product-reachable.
 
-Three facts follow, and they reframe the whole problem:
+**Clean threshold traces (one profiler-instrumented decode transition; durations
+are diagnostic).** The family classifier now includes quantized WMMA projection
+kernels instead of dropping them into `other`:
 
-1. **Below c4 the FFN GEMM is the marginal cost; above c4 it is not.** Marginal
-   step cost is 3.3 ms/row over c1→c4 and 17.1 ms/row over c4→c8, while the
-   marginal FFN GEMM cost is ~1.8 ms/row across the whole range (the rowtile's
-   own measured slope, 0.0103 ms/row/tile × 3 tiles × 64 layers). **~90% of the
-   c4→c8 growth is outside the FFN GEMM.**
-2. **The non-FFN cost is a cliff, not a slope**: flat at ~20–23 ms for c1–c4,
-   then ~53–57 ms at c5–c6 and ~84 ms at c7–c8. A roofline cannot produce that
-   shape. It is a path/variant-coverage effect in the GDN and full-attention
-   stages, and it is the largest single item on the c>4 ledger.
-3. **Aggregate throughput peaks at c4 (94.5 tok/s) and c8 is a 24% regression
-   (71.9 tok/s), not a plateau.** Composition makes the point sharper: two
-   sequential c4 groups deliver 8 rows in 2×42.9 = 85.8 ms, against 111.4 ms for
-   the native c8 route — and native c8 should *win* that comparison by one
-   saved weight-read pass (~19.6 ms), so the native c8 path is ~45 ms worse than
-   first principles predict. That gap is the non-FFN cliff, not the GEMM.
+| width | total kernel sum | dense projection | Q5T16 route (48 calls) | planar-Q6T16 BF16 route (64 calls) |
+| ---: | ---: | ---: | --- | --- |
+| c4 | 39.1 ms | 28.1 ms | true col4 rowtile, 3.34 ms | true col8 rowtile, 6.79 ms |
+| c5 | 69.0 ms | 60.9 ms | **padded WMMA, 21.31 ms** | misleading `rowtile` wrapper → direct per-row GEMV, 17.35 ms |
+| c7 | 104.6 ms | 95.0 ms | padded WMMA, 19.84 ms | **padded WMMA, 51.39 ms** |
 
-**Correction (2026-08-20, measured — supersedes fact 2's attribution).** The
-kernel-trace census (`rocprofv3 --kernel-trace` of the packed-decode graph
-replay, W7900, p512; c8 + c4 + c1 reference) shows the c4→c8 jump is **not** a
-GDN / full-attention coverage gap:
+This proves two distinct D3 thresholds: Q5 falls off its true rowtile at 4→5;
+planar-qmicro Q6 leaves its true rowtile at 4→5 (direct per-row at 5/6) and then
+falls to padded WMMA at 6→7. The numerical similarities c5≈c4+c1 and
+c7≈c6+c1 do **not** imply decomposition—the benchmark manifest and trace both
+show one physical c5/c7 group.
 
-| stage (census family) | c1 (31.5 ms) | c4 (39.3 ms) | c8 (109.8 ms) |
-| --- | ---: | ---: | ---: |
-| dense_projection (Q4_K rowtile + any Q5/6 rowtile) | 23.7 (75%) | 27.4 (70%) | 26.3 (24%) |
-| **Q5_K/Q6_K padded-WMMA prefill** | 0 | **0** | **71.7 (65%)** |
-| linear_attention_state (GDN SSM core) | 0.9 | 5.2 | 8.1 |
-| full_attention_core | 2.6 | 2.0 | 1.9 |
-| norm_residual | 1.6 | 4.6 | 1.7 |
+**Exact decode-path tensor census.** The active model has 64 decode layers, not
+all 65 GGUF blocks:
 
-Full-attention is **flat** (2.6/2.0/1.9 ms); GDN SSM core rises only to ~8 ms
-(7%). The 70.5 ms c4→c8 jump is the **Q5_K/Q6_K padded-WMMA prefill, which is
-present only at c8 (71.7 ms, 65%) and zero at c4**. That bucket is cut by
-**quant family, not stage**: it is the Q5_K/Q6_K **linear layers**, which span
-FFN (`ffn_down`, 33 of 65 Q6_K), GDN (`ssm_out`, 48 Q5_K), and attention
-(`attn_qkv` 24 Q6_K + `attn_v` 9 Q6_K); `ffn_gate`/`ffn_up` are all Q4_K and are
-not in it. So neither "the cliff is the FFN" nor "the cliff is GDN/full-attention"
-is the right label — **the cliff is the Q5_K/Q6_K linear layers, spanning all
-three stages.** The decode window holds **112** Q5/Q6 prefill launches (64
-Q6_K + 48 Q5_K = 71.67 ms) ≈ the predicted 114 (33+48+24+9; the gap is 64 decode
-layers vs `block_count` 65), confirming it is decode-only, not p512 prefill
-leakage, at ~0.64 ms/call. See "D3 — coverage" for the quant axis this implies.
+| role | active decode quant/count |
+| --- | --- |
+| `ffn_gate`, `ffn_up` | Q4_K 64 each |
+| `ffn_down` | Q4_K 32 + Q6_K 32 |
+| `ssm_out` | Q5_K 48 |
+| `attn_qkv` | Q4_K 24 + Q6_K 24 |
+| `attn_v` | Q4_K 8 + Q6_K 8 |
+| `attn_output` | Q4_K 16 |
+
+Therefore the c7/c8 fallback count is **exactly 112**: 48 Q5 calls plus 64 Q6
+calls (`32 ffn_down + 24 attn_qkv + 8 attn_v`). The earlier expectation of 114
+counted block 64's Q6 `ffn_down` and `attn_v`; that block is NextN and does not
+execute in normal AR decode. The bucket spans FFN, GDN, and attention because it
+is a quant/layout cut, not a stage cut.
 
 ### Roofline: three roofs and a parallelism floor
 
@@ -548,24 +538,16 @@ efficiency at M=16/32" is not a coherent target for a rowtile-shaped kernel;
 tile caps this family near M≈8–12 regardless. The unexploited lever here is
 VOPD dual-issue (56% → potentially ~112% of the scalar roof).
 
-**Standing prediction for a larger rowtile `ROW_TILE`** (recorded before the
-measurement, so the probe is decisive either way). Extrapolating the measured
-slopes — gate/up 0.0103 ms/row over a 0.052 ms intercept, down 0.0081 ms/row
-over 0.087 — a direct `ROW_TILE=16` saves one weight-read pass against `2×8`:
-
-| shape | `2×8` | direct 16 | predicted |
-|---|---:|---:|---:|
-| gate/up 5120×17408 | 0.268 ms | ~0.217 ms | 1.24× |
-| down 17408×5120 | 0.304 ms | ~0.217 ms | 1.40× |
-
-So `ROW_TILE=16` is expected to be a **real but small** win — the same shape of
-win as the `ROW_TILE=8` down change (1.45×), and worth ~7% of a c16 step once
-the FFN is only ~24–30% of it. `ROW_TILE=32` is predicted to **regress**:
-`acc[32][8]` is 256 accumulator VGPRs before operands, against a 256-VGPR
-wave32 architectural limit, so it should spill to scratch. Both halves are
-cheap to falsify — the register half statically (protocol item 7), the timing
-half with one probe run. Neither changes the priority order below: there is no
-c>8 execution path to plug a 16-row kernel into until D2 exists.
+**Closed Q4 `ROW_TILE=16/32` prototype.** The predeclared prediction was
+falsified quantitatively on the down shape: direct row8/16/32 measured
+0.1530/0.2744/5.3206 ms in the same single-tile synchronized diagnostic.
+Row16 is only **1.115×** faster than 2×row8 (0.3060 ms), not the predicted
+1.40×; row32 is **8.69× slower** than 4×row8 (0.6120 ms), confirming catastrophic
+register/scratch pressure. The hot tile fits in L3 and timing includes per-call
+synchronization, so these values are not width-map or bandwidth evidence, but
+the A/B is sufficient to reject row32 and deprioritize row16. No production
+physical-16 route consumes it. The dirty launcher/wrapper changes and all six
+obsolete `tmp_*` probes were discarded; row8 remains the supported Q4 owner.
 
 `t16_wmma_prefill` (matrix class, gate/up, per call): 0.338 / 0.402 / 0.397 /
 0.411 / 0.418 / 0.465 ms at M = 1 / 2 / 4 / 8 / 16 / 32.
@@ -600,83 +582,88 @@ retained bandwidth claim must come from a tile-rotating probe (below).
 
 | retracted claim | status |
 |---|---|
-| "The FFN linear layers are the dominant packed-decode cost" | False above c4; non-FFN is ~76% of the c8 step and ~90% of the c4→c8 growth. |
+| "The FFN linear layers are dominant" / "non-FFN is 76%" | Both came from the invalid `step − one Q4 probe ×64` partition. Do not retain either stage percentage. The measured bottleneck is the Q5/Q6 projection routes across FFN, GDN, and attention. |
 | "Rowtile multi-group beats the wmma prefill at every M>8 (2.9× at 16, 1.45× at 32)" | Priced an 8-row group at the M=2 efficiency. Measured: 2×0.134 = 0.268 vs 0.418 → **1.56×** at M=16; 4×0.134 = 0.536 vs 0.465 → **wmma wins 1.15×** at M=32. Crossover is M≈24–32. |
 | "wmma prefill is latency/occupancy-bound at 11% of peak BW" | Wrong mechanism and wrong metric; it is row-padding bound (64 rows of MAC work at every M ≤ 64), measured under L3 residency. |
 | "Rowtile is a good bandwidth kernel (64% of peak)" | True only at M≈2–3, and only against a VRAM denominator the probe could not exercise. Vector-issue bound from M≈4. |
 | "M_ridge ≈ 27" | Mixed measured/theoretical roofs and applied a matrix ridge to a vector kernel. Use the ridge table above. |
-| "Aggregate stays flat at ≈c8 (~68 tok/s)" | It peaks at c4 (94.5) and regresses to 71.9 at c8. |
-| "Rowtile multi-group is the best existing c>8 option" | No multi-group scheduler exists; the decomposition question (D2) is open and `4×4` currently looks better than `2×8`. |
-| "Close the 11% → 64% BW gap is the single biggest lever" | The single biggest lever is the non-FFN cliff at c>4. |
-| "The non-FFN cliff is a GDN / full-attention variant-coverage gap" (and the "non-FFN = step − Q4_K-FFN" split) | Measured false (2026-08-20 kernel-trace census): the c4→c8 jump is the **Q5_K/Q6_K padded-WMMA prefill** (71.7 ms, 65%, zero at c4), which spans `ffn_down`+`ssm_out`+`attn_qkv/v` — a *quant-family* cut, not a GDN/full-attn stage cut. Full-attn is flat (~2 ms); GDN SSM core rises only to 8 ms. The split was structurally wrong because a Q4_K `ffn_down` probe was extrapolated ×64 across a mixed-quant artifact. See the correction note above the roofline and the quant axis in D3. |
+| "Aggregate stays flat at ≈c8 (~68 tok/s)" | Fresh clean c1-c8 is 30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s; it peaks at c4 and has cliffs at c5 and c7. |
+| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping exists and is exact, but uses largest-width chunking plus ceiling padding. The missing piece is an artifact-backed cost optimizer. Current two-c4 c8 is 91.06 tok/s versus native c8 69.75. |
+| "Close the 11% → 64% BW gap is the single biggest lever" | Wrong metric. The largest current kernel lever is true Q5/planar-Q6 rowtile coverage through c8; the engine lever is cost-aware group selection. |
+| "The non-FFN cliff is GDN/full-attention" | False. Clean traces show Q5 true-rowtile→WMMA at c5 (3.34→21.31 ms / 48 calls) and planar-Q6 true-rowtile→direct-per-row at c5 then WMMA at c7 (6.79→17.35→51.39 ms / 64 calls). This is a quant/layout projection cut spanning all stages. |
+| "c5 runs as c4+c1; c4→c5 and c6→c7 are D2" | False. The direct benchmark manifest and traces show one physical c5/c7 group. Similar wall times were coincidence; the two jumps are the Q5 and Q6 thresholds above. |
+| "Mixed-quant effective width must be clamped to the minimum family cap" | Too strong. One group can mix registered variants. Price each operation and the complete group; use D2 when the mixed route loses. |
+| "Q4 direct ROW_TILE=16 should win ~1.40× and row32 might spill" | Measured down-leaf result: row16 wins only 1.115× versus 2×row8; row32 is 8.69× slower than 4×row8. Prototype discarded. |
 
 ### Dispatch policy the engine must implement
 
-**D1 — kernel choice is a measured lookup, not a constant.** An offline
-autotune pass emits, per backend, a width map keyed by
-`(backend, quant, layer-role, K, N, M)` → `variant` with the measured time and
-the fixture hash that qualified it. The dispatcher resolves through the
-four-axis registry against that artifact; there are no `if backend == …` or
-`if quant == …` branches, and an absent entry resolves to the registered strict
-fallback rather than silently changing widths. Artifact location:
-`benchmarks/results/<date>-<backend>-gemm-width-map.json`.
+**D1 — resolve two measured maps, not one heuristic.** The primitive map chooses
+a registered implementation for one operation. Its key includes physical host
+and hardware identity, backend, model/artifact and layout fingerprint,
+execution profile, registry quant, operation boundary (for example
+`linear_pair_silu` versus `linear`), layer role, `K×N`, active rows, physical
+rows/mask class, and graph/eager mode when that changes cost. Its value is a
+four-axis registry key, strict fallback, correctness fixture/manifest hash,
+resource data, and measured time. Width is **not** a fifth registry axis: the
+cold model/package plan resolves the measured record to an immutable set of
+ordinary `(backend, layer, quant, variant)` keys.
 
-**D2 — group decomposition is a scheduler cost model over the same artifact.**
-For `W` admitted rows the scheduler enumerates decompositions into registered
-widths and picks the one minimizing a stated objective — default
-`step_ms(decomposition)` for aggregate throughput, with a per-request
-`tok/s/user` floor as a constraint — where
-`step_ms(D) = Σ_g (FFN_ms(w_g) + non_FFN_ms(w_g))` from measured per-width step
-costs. On today's W7900 numbers this immediately says `4×4` (171.6 ms for 16
-rows, 93 tok/s) beats `2×8` (222.8 ms, 72 tok/s), and it says the same about
-`2×4` versus native `c8`. **This is the piece that makes throughput scale with
-arbitrary c today, before any new kernel exists**, and it is measurable now.
-The additive form of `step_ms(D)` assumes groups execute **serially**; if groups
-are ever overlapped or pipelined the cost model must be re-derived rather than
-reused.
+The model-step map prices a complete certified physical group after those
+primitive choices, including attention, GDN/state, norms, LM head, graph replay,
+and gather/scatter. The scheduler consumes this second map; it must not estimate
+a serving step by multiplying one probed Q4 tensor across a mixed-quant model.
+Absent/uncertified records fail closed to a registered strict route. Compact
+artifacts live under `benchmarks/results/`; bulky raw autotune/profiler logs do
+not.
 
-**D3 — coverage is an invariant, not an optimization.** For every width in
-`1..W_max` and every layer role, dispatch must resolve to a variant whose
-measured per-row cost is within a stated factor (proposed: 1.25×) of the best
-neighbouring width. A width that falls off a fast path is a regression even if
-it is "exact" — `c5` at 25 tok/s while `c4` ran at 94, and the `rows>7` rowtile
-cap, were both this failure. Add a test that walks every width and asserts the
-resolved variant is not the generic fallback.
+**D2 — decomposition exists; cost-aware decomposition does not.**
+`plan_physical_batch_groups(..., compact_active_rows=True)` already lowers
+arbitrary logical concurrency. Today it chunks by the largest registered width
+and rounds each remainder **up** to the next bucket: c3→masked-c4,
+c5/c6/c7→masked-c8, c13→c8+masked-c8. This is a correct ceiling-bucket planner,
+not the measured optimizer described here.
 
-A width may satisfy D3 **either** by having its own instantiation **or** by a
-declared D2 decomposition into registered widths (`9 = 8+1`) whose composed cost
-meets the bound. What is not allowed is a **sparse ladder**: a launcher that
-accepts `{2..8, 16, 32}` and returns `hipErrorInvalidValue` for 9–15 and 17–31
-has reopened the cliff, because dispatch above it must then silently fall back
-to the generic path for two thirds of the range. Widening a launcher cap is
-therefore not complete until the shape check, the dispatch gate, the
-decomposition rule for the interior widths, and the coverage test all move with
-it.
+The target planner enumerates certified candidates `(active_rows,
+physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
+minimize complete model-step wall subject to per-request ITL/fairness and
+workspace constraints. Serial groups use the sum of **measured full-group**
+costs; overlapped/pipelined groups require a separately measured model. The
+clean 2026-08-20 packet makes the immediate error concrete: direct c8 is
+114.72 ms, while two serial c4 groups are 88.74 ms, so the current largest-width
+heuristic selects a route 29.3% slower than an already certified composition.
 
-**D3 has a quant axis.** Coverage is per `(quant, layer-role, width)`, not per
-`(layer-role, width)`. A mixed-quant artifact (Q4_K_M) carries a *different*
-rowtile cap per quant family — on W7900 / Qwen3.8-27B-Q4_K_M: Q4_K = 8 (16/32
-uncommitted), Q6_K = 4 or 6 (`gguf_q6_k_t16_gemv.hip`), Q5_K = 4
-(`launch_q5_dense_rowtile_col4`). The engine's **effective width coverage is the
-minimum across the quant families present**, so for this artifact it is **4**
-(the Q5_K cap) even though Q4_K reaches 8. Every Q5_K/Q6_K linear layer above
-width 4 falls to the padded WMMA prefill (computes 64 rows to deliver M) — this
-is the measured c4→c8 cliff (71.7 ms, 65% of the c8 step, spanning `ffn_down`,
-`ssm_out`, and `attn_qkv`/`attn_v`). Consequence for the width map: D1/D2 must
-resolve **per quant family**, and the *binding* width for a mixed artifact is
-the **minimum over families**, not the maximum over the family that was probed
-(the earlier `bpw`/rowtile derivation extrapolated a Q4_K `ffn_down` ×64 across
-a model where a third of `ffn_down` are Q6_K and all of `ssm_out` are Q5_K —
-structurally wrong for those layers). The D3 coverage test must therefore walk
-`(quant, layer-role, width)` and assert no family's resolved variant is the
-padded-WMMA fallback above that family's own rowtile cap.
+**D3 — coverage is bounded regret across every relevant dimension.** Every
+logical width must resolve to either a certified native/masked group or a D2
+composition. Coverage is per `(artifact, hardware, profile, quant/layout,
+operation, active rows, physical rows/mask)`, not merely `(layer role, width)`.
+A generic fallback is not automatically wrong and a rowtile is not automatically
+right; the binding test is measured regret versus the best certified complete
+composition under the same SLO. The earlier proposed fixed 1.25× neighbouring-
+width bound is not retained as a universal constant—it must be derived per
+backend/SLO and checked on the composed route.
 
-**Promotion gate.** A width-map entry may become the default when it is exact
-(or passes the production-profile gate in `EXECUTION-PROFILES.md`), is
-repeatable, and improves the *composed* objective at the widths the scheduler
-would actually select — not just the isolated kernel time. Native `c8` is the
-cautionary case: the kernel change was a real 1.45× win on the down GEMV and
-the composed route still loses to `2×c4`.
+Sparse ladders remain forbidden. A wrapper cannot advertise `2..32` while its
+C switch accepts only `{2..8,16,32}`; unsupported interior widths must reject
+before HIP and D2 must cover them explicitly. Coverage tests walk every
+quant/layout/operation/width record, assert selected and strict-fallback registry
+keys exist, compare the declared route with the measured artifact, and then walk
+logical c1-c32 through the actual scheduler.
+
+**The quant/layout axis explains the current cliffs but does not globally clamp
+physical width.** On this exact Qwen3.8 artifact, standard Q4T16 has true
+rowtiles through 8; Q5T16 has a true rowtile through 4; planar-qmicro Q6T16 has
+a true rowtile through 4, a misleading same-variant direct-per-row fallback at
+5/6, and padded WMMA at 7/8. The full model may mix those variants in one
+physical group, so there is no correct rule saying "clamp the engine to the
+minimum family width." D1 prices each operation and D2 prices the complete
+mixed route. The top kernel fix is nevertheless clear: provide true Q5 and
+planar-Q6 rowtiles through 8, then remeasure the full map.
+
+**Promotion gate.** A primitive or group record becomes default only when its
+declared strict/production contract passes, its route and resource provenance
+are repeatable, and the actual scheduler's composed objective improves. Native
+c8 is the cautionary case: Q4 rowtile leaf wins were real, but the complete c8
+route still loses to two c4 groups.
 
 ### Measurement protocol (what the autotune probe must do)
 
@@ -705,45 +692,51 @@ Any probe whose numbers enter the width map must:
    run on a wider register tile: build with `-Rpass-analysis=kernel-resource-usage`
    (or read the generated `.s`) and reject any variant with non-zero
    `ScratchSize`, or whose VGPR count drops occupancy below the level its
-   latency hiding needs. This is seconds of compile against minutes of model
-   load, and it answers the `ROW_TILE=32` question on its own.
-8. **Emit the artifact and the rollup rows** per the evidence policy.
+   latency hiding needs. The Q4 row32 prototype is already rejected; apply this
+   rule to every future candidate.
+8. **Measure complete physical groups and compositions.** Primitive wins enter
+   the model-step map only after graph/eager full-model A/B. Measure exact native,
+   masked, and serial-composed candidates with all sessions resident; never infer
+   scheduler cost from a sum of one-layer microbenchmarks alone.
+9. **Emit the compact artifact and rollup rows** per the evidence policy.
 
 ### Next steps, in priority order
 
-1. ~~**Measure the stage split at c4/c5/c8**~~ — **DONE (2026-08-20).** Kernel-trace
-   census (W7900, p512): the c4→c8 cliff is the **Q5_K/Q6_K padded-WMMA prefill**
-   (71.7 ms, 65%, **zero at c4**), spanning `ffn_down`/`ssm_out`/`attn_qkv`/`attn_v`
-   — **not** a GDN/full-attention gap (full-attn flat at ~2 ms; GDN SSM core rises
-   only to 8 ms). 112 Q5/Q6 prefill launches in the decode window ≈ the predicted
-   114, so it is decode-only. `tmp_c8_stage_timing.py` is a dead end (stage timers
-   not wired into the packed graph); the kernel trace is the instrument. See the
-   correction note above the roofline.
-2. **Diagnose the c4→c5 and c6→c7 discontinuities** (+31.7 ms and +28.3 ms for one
-   row each). **Measured: they are decomposition (D2), not a coverage cliff** —
-   c1 (31.5) + c4 (39.3) = 70.8 ms ≈ the measured c5 step (74.2 ms), so c5 runs as
-   `c4 + c1` (two weight-read passes) because no single c5 route exists. The c4→c8
-   cliff itself is the Q5_K/Q6_K linear fallback (step 1), not these one-row jumps.
-3. **Implement D2 and measure `4×4` vs `2×8` vs native `c8`** with the full
-   session count resident, so KV/GDN working-set effects are included. Possible
-   1.3× aggregate win at c8/c16 with no new kernel. This is the first thing that
-   makes arbitrary-c throughput scale.
-4. **Linear-kernel work (the top lever, now):** extend the **Q5_K rowtile 4→8**
-   and give **Q6_K rowtile rows 5–8** — the same template treatment Q4_K already
-   received twice. This removes the 71.7 ms c8 fallback at widths that exist today
-   (c5–c8), plausibly tens of ms off the 111.4 ms c8 step. It jumps ahead of the
-   `ROW_TILE=16/32` work: bigger win, widths that exist, same proven pattern, and
-   no c>8 execution path to plug a 16-row kernel into until D2 exists. The former
-   4(a) (template `ROW_TILES_PER_BLOCK` on M in the Q4_K WMMA prefill) is
-   **deprioritized** — the Q4_K qkv/o already runs the rowtile; it is the Q5_K/Q6_K
-   qkv/down that falls back. Remaining 4(b)–(d) (down-shape grid, `shared_b`
-   re-tile, VOPD) and a new weight-once large-M GEMM are justified only if the
-   Q5_K/Q6_K rows=8 fix leaves a gap.
-5. **Port protocol.** On a new backend (gfx1151 first) run the autotune probe,
-   emit the width map, and let D1/D2 resolve from it. Re-measure the four roofs
-   and the ridge table; do not copy W7900 constants. The decision procedure, the
-   coverage invariant (now with the quant axis), and the promotion gate carry over
-   unchanged.
+1. ~~**Establish a complete direct c1-c8 baseline and threshold traces.**~~
+   **DONE (2026-08-20).** Clean same-load graph packet at `d63b694b4`: c1-c8 is
+   **30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s**, every direct row is
+   exact against the repeating independent fixture, and honest two-c4 c8 is
+   **91.06 tok/s / 88.74 ms** versus native c8 **69.75 / 114.72 ms**. Clean c5/c7
+   traces bind the two cliffs to Q5 and planar-qmicro Q6 projection routes.
+2. **Remove the measured quant/layout cliffs (highest current kernel leverage).**
+   In separate RED/GREEN units, extend Q5T16's true rowtile from 4→8, then extend
+   planar-qmicro Q6T16's true col8 rowtile from 4→8 and delete its disguised
+   direct-per-row rows5/6 fallback. Each unit needs rows2-8 strict primitive
+   parity, production-shape actual-weight coverage, full direct c1-c8 graph A/B,
+   and a kernel trace proving the expected name/count. Do not modify standard Q6
+   or Q4 paths that already retain their own measured policies.
+3. **Implement the artifact-backed D2 resolver (host-first; may proceed in
+   parallel with step 2).** Preserve the current ceiling planner as strict
+   fallback, add dynamic programming over certified `(active,physical,mask)`
+   group records, and test every logical c1-c32. Do not default it from hand-
+   entered microbench constants; populate it from the remeasured full-step map
+   after step 2. The immediate current-map control must choose two c4 groups over
+   native c8.
+4. **Certify product reachability, then promote.** Direct c3/c5/c6/c7 are
+   benchmark-only today; the continuous owner still advertises `(1,2,4,8)` and
+   maps c5-c7 to masked c8. Run the dynamic serving matrix (ragged neighbours,
+   retirement/refill, cancellation, graph rebuild, slot permutation, state/KV
+   hashes) for every proposed physical width. Only then expand package
+   capabilities and compare the actual server's chosen D2 plan with the artifact.
+5. **Re-profile the post-fix ledger before wider kernels.** Attack the new top
+   complete-model family. The dirty Q4 `ROW_TILE=16/32` prototype is closed:
+   direct row16 down was only 1.115× faster than 2×row8, row32 was 8.69× slower
+   than 4×row8, it had no product route, and all prototype code/probes were
+   discarded. A physical-16 kernel is reconsidered only if the promoted D2 map
+   shows repeated weight reads dominate after Q5/Q6 coverage; row32 is rejected.
+6. **Port protocol.** On a new backend (gfx1151 first), regenerate both primitive
+   and complete-step maps and rerun the lifecycle matrix. Copy the decision
+   procedure and schemas, never W7900 constants.
 
 ## Target architecture
 

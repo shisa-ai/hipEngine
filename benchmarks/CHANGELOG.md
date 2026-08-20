@@ -20,6 +20,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-20
+
+- [Concurrency2 Qwen3.8-27B clean direct-width review; accepted diagnostic baseline and attribution correction] W7900 / Q4_K_M / BF16 KV / graph model-step p128-d8: no complete mechanically bound c1-c8 packet -> **30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s**, all direct rows exact/repeatable; native c8 **114.72 ms / 69.75 tok/s** loses to two-c4 **88.74 ms / 91.06 tok/s (1.306x)**. Clean traces correct the prior "GDN/attention" and `c5=c4+c1` labels: Q5 true-rowtile→WMMA at c5 (**3.34→21.31 ms / 48 calls**) and planar-Q6 true-rowtile→direct-per-row at c5 then WMMA at c7 (**6.79→17.35→51.39 ms / 64 calls**). `benchmarks/results/2026-08-20-concurrency2-qwen38-direct-c1-c8-width-review.json`.
+
 ## 2026-08-19
 
 - [Concurrency2 Qwen3.8-27B native_c8 gate/up ROW_TILE=8 rowtile; accepted] Qwen3.8-27B / Q4_K_M / W7900 / gguf_packed_ar_bench p128-d8: the c8 FFN gate/up (5120x17408 x2, the dominant FFN cost) was falling back to the `t16_wmma_prefill` GEMM (the dense dual rowtile SiLU was rows 2-4 only). Added a native **ROW_TILE=8** instantiation of the dense dual rowtile SiLU (weight read once for all 8 rows): templated the `projected[2][4][8]` shared buffer to `projected[2][ROW_TILE][8]` (the hardcoded 4 would overflow at 8), added the CASE(8) launch, and allowed rows=8 for the sole-t16 dispatch. native_c8 **125.4 ms -> 116.9 ms/step, 63.6 -> 68.6 tok/s** (2.25x c1), prefix-exact + repeatable; c1/c2/c4 unchanged (**c1_c2_c4_prefix_exact = True**). c8 still not close-to-linear (per-row 14.6 ms vs c4 10.7 ms): the FFN is now ~2x c4, so the remaining excess is the GDN/attention (non-FFN) stage scaling ~2.6x c4 for 2x rows — the next c8 bottleneck. `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-native-c8-gate-up-rowtile8.json`.
