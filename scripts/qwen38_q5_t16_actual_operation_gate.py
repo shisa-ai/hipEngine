@@ -295,7 +295,14 @@ def _quality_gate(weight: UploadedQ5, x: np.ndarray, candidate: np.ndarray) -> d
 
 def _validate_full_model_smoke(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text())
-    runs = [run for run in payload["runs_by_workload"]["512/8"] if run["measured"]]
+    raw_runs = (
+        payload.get("runs_by_workload", {}).get("512/8")
+        if isinstance(payload.get("runs_by_workload"), dict)
+        else None
+    )
+    if raw_runs is None:
+        raw_runs = payload.get("runs", [])
+    runs = [run for run in raw_runs if run["measured"]]
     if len(runs) != 1:
         raise ValueError(f"expected one measured smoke run, got {len(runs)}")
     run = runs[0]
