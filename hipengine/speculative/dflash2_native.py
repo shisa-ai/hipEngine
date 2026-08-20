@@ -336,9 +336,10 @@ class DFlash2NativeDrafter:
 
     # -- attention ---------------------------------------------------------
 
-    def _run_attention(self, hidden_ptr: int, positions: np.ndarray, layer: int, bs: int) -> None:
+    def _run_attention(self, hidden_ptr: int, positions: np.ndarray, layer: int) -> None:
         """q/k/v projections + head norms + rotary + sliding attention + o_proj
-        into ``self.attn_out``."""
+        into ``self.attn_out`` at the drafter's trained block geometry."""
+        bs = self.block_size
         ctx = self.ctx_len
         q_proj = self._w(f"layers.{layer}.self_attn.q_proj.weight")
         k_proj = self._w(f"layers.{layer}.self_attn.k_proj.weight")
@@ -398,9 +399,10 @@ class DFlash2NativeDrafter:
 
     # -- forward -----------------------------------------------------------
 
-    def _forward_layer(self, layer: int, positions: np.ndarray, *, bs: int, debug_callback=None) -> None:
-        """Run one drafter layer; ``block_hidden_a`` holds the layer output on
-        return (and becomes the next layer's input)."""
+    def _forward_layer(self, layer: int, positions: np.ndarray, *, debug_callback=None) -> None:
+        """Run one fixed-geometry drafter layer; ``block_hidden_a`` holds the
+        layer output on return (and becomes the next layer's input)."""
+        bs = self.block_size
         half_offset = 2 * (self.hidden_size // self.group_size)  # 640
         in_layernorm = self._w(f"layers.{layer}.input_layernorm.weight")
         post_attn = self._w(f"layers.{layer}.post_attention_layernorm.weight")
@@ -419,7 +421,7 @@ class DFlash2NativeDrafter:
         self._dense_bf16(self.block_norm.ptr, conv_kp, self.conv_proj.ptr, bs, self.conv_proj_features)
         self._conv(self.block_norm.ptr, self.conv_proj.ptr, conv_base, self.conv_out.ptr, bs, 0)
         # attention
-        self._run_attention(self.conv_out.ptr, positions, layer, bs)
+        self._run_attention(self.conv_out.ptr, positions, layer)
         # attention conv finish (output side) reads o_proj_out.
         self._conv(self.o_proj_out.ptr, self.conv_proj.ptr, conv_base + 2 * self.hidden_size * 2, self.conv_out.ptr, bs, half_offset)
         # residual: layer_out = layer_input + attn_finish (B); mlp_norm = rmsnorm(layer_out)
@@ -452,24 +454,26 @@ class DFlash2NativeDrafter:
         noise_bf16: np.ndarray,
         positions: np.ndarray,
         *,
-        bs: int | None = None,
         debug_callback=None,
     ) -> int:
-        """Run the 5-layer drafter forward over the block; returns the device
-        pointer to the final-normed draft hidden (bs, hidden).  ``bs`` defaults
-        to the config block size; smaller blocks run at a reduced draft length
-        (the within-block attention/conv see fewer positions)."""
-        if bs is None:
-            bs = self.block_size
+        """Run the 5-layer drafter at its trained block geometry.
+
+        Returns the device pointer to ``(block_size - 1, hidden)`` final-normed
+        draft rows; row zero is the anchor and is not returned.
+        """
         self._h2d(self.block_hidden_a, noise_bf16)
         for layer in range(self.num_layers):
-            self._forward_layer(layer, positions, bs=bs, debug_callback=debug_callback)
-        # final norm: skip the anchor row (block row 0) -> bs-1 draft rows.
+            self._forward_layer(layer, positions, debug_callback=debug_callback)
         norm = self._w("norm.weight")
         dflash_rmsnorm_bf16(
-            self.block_hidden_a.ptr + self.hidden_size * 2, norm, self.draft_hidden.ptr,
-            bs - 1, self.hidden_size,
-            eps=self.eps, library=self._lib1, runtime=self.runtime,
+            self.block_hidden_a.ptr + self.hidden_size * 2,
+            norm,
+            self.draft_hidden.ptr,
+            self.block_size - 1,
+            self.hidden_size,
+            eps=self.eps,
+            library=self._lib1,
+            runtime=self.runtime,
         )
         return self.draft_hidden.ptr
 
@@ -481,18 +485,13 @@ class DFlash2NativeDrafter:
         output_head_bf16_ptr: int | None,
         logits_f32_ptr: int | None,
         anchor_ids: np.ndarray,
-        *,
-        rows: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Run the top-16 selector over the draft hidden block.
+        """Run the top-16 selector over all trained draft rows.
 
-        ``output_head_bf16_ptr`` (rows x hidden BF16) is used to compute draft
-        logits when ``logits_f32_ptr`` is None.  Returns ``(path, scores)``.
-        ``rows`` defaults to ``block_size - 1``; pass a smaller value to select
-        a shorter draft chain (matches a reduced ``forward(bs=...)``).
+        ``output_head_bf16_ptr`` is used to compute draft logits when
+        ``logits_f32_ptr`` is None. Returns ``(path, scores)``.
         """
-        if rows is None:
-            rows = self.block_size - 1
+        rows = self.block_size - 1
         if logits_f32_ptr is None:
             if output_head_bf16_ptr is None:
                 raise ValueError("select requires an output head or precomputed logits")
@@ -530,11 +529,9 @@ class DFlash2NativeDrafter:
         scores = self._d2h(self.selector_scores, (rows, self.selector_top_k), np.float32)
         return path, scores
 
-    def last_candidates(self, *, rows: int | None = None) -> np.ndarray:
-        """Top-K candidate token ids from the most recent ``select`` call
-        (rows, top_k), for diagnostics like per-position recall@K."""
-        if rows is None:
-            rows = self.block_size - 1
+    def last_candidates(self) -> np.ndarray:
+        """Top-K candidates from the most recent fixed-geometry select call."""
+        rows = self.block_size - 1
         return self._d2h(self.topk_ids, (rows, self.selector_top_k), np.int32)
 
     def last_logits_argmax(self) -> np.ndarray:

@@ -9,6 +9,7 @@ greedy selector path / candidate tables.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +26,20 @@ SNAPSHOT = Path(
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "cpu_reference" / "dflash2_drafter_golden.npz"
 
 NEEDS_REF = SNAPSHOT.exists() and GOLDEN.exists()
+
+
+def test_dflash2_native_api_uses_fixed_trained_block_geometry() -> None:
+    from hipengine.speculative.dflash2_native import DFlash2NativeDrafter
+
+    assert "bs" not in inspect.signature(DFlash2NativeDrafter.forward).parameters
+    assert "rows" not in inspect.signature(DFlash2NativeDrafter.select).parameters
+    assert "rows" not in inspect.signature(DFlash2NativeDrafter.last_candidates).parameters
+
+    cycle_source = (
+        Path(__file__).resolve().parents[1] / "scripts" / "dflash2_gguf_cycle.py"
+    ).read_text()
+    assert "DF2_FWD_BS" not in cycle_source
+    assert "DF2_CYCLE_DEBUG" not in cycle_source
 
 
 @pytest.mark.skipif(not NEEDS_REF, reason="Qwen3.8-27B-DFlash2 snapshot or golden trace not cached")

@@ -107,7 +107,6 @@ documentation review:
 
 | Scope | Why it is ready | What to remove / what to keep |
 | --- | --- | --- |
-| DFlash2 reduced-block/debug plumbing | D4/B-sweep is closed; `DF2_CYCLE_DEBUG` was a one-script print hook and `DF2_FWD_BS` is a measured quality/economics loss. | Remove both env branches plus reduced `forward(bs=...)`, `select(rows=...)`, and `last_candidates(rows=...)` plumbing after a fixed-config DFlash2 smoke. Keep the fixed trained block-size path and artifacts. |
 | GGUF MTP rolling slots | The default-off route is rejected at c8 and only one 129-line generator method consumes it. | Remove `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`, `_generate_rolling_mtp_serving_slots`, telemetry, and focused tests. Keep the four-slot packed verifier cap until a true wider verifier qualifies. |
 | GGUF MTP final-state fastpath | The default-off path regresses c4 because rejected/partial cycles replay state; captured-row/deferred-scatter is retained. | Remove the env resolver and `final_state_fastpath` branches from serial and packed verification. Keep captured-row commit and the transactional exact fallback. |
 | GGUF AR stream prefill | The only runtime consumer is the rejected default-off per-slot stream prefill; packed prefill is retained. | Remove the env, `_try_prefill_ar_serving_slots_streams`, its dedicated `prefill_async_top1` surface if no remaining caller exists, and focused tests. Keep stream decode as the unsupported-shape oracle until its separate rollback window closes. |
@@ -4064,26 +4063,6 @@ should be boring.
   that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
   Runtime-manifest, BF16-relative/task, and gfx1100 named-profile evidence
   remain unavailable, while chain-journal/MTP guards remain.
-
-## DFlash2 B-sweep debug hook
-
-- `DF2_CYCLE_DEBUG=1` (default off) prints per-cycle verify rows + wall for
-  `scripts/dflash2_gguf_cycle.py --batch-verify`. Added 2026-08-19 while
-  root-causing the verify-row count during the D4 B-sweep (the CLI block size
-  was being clamped to the drafter config). Remove the env-gated print once the
-  B-sweep closeout is merged and no further cycle-timing debugging needs it.
-
-## DFlash2 variable-block forward (DF2_FWD_BS)
-
-- `DF2_FWD_BS` (default unset = config block size 8) runs the native drafter
-  forward/select at a smaller block (e.g. 4 for B3). Measured net loss: on
-  `code_merge_intervals` acceptance drops 3.08 -> 2.86 (-7%, recall@16
-  0.970 -> 0.909) because the drafter's within-block attention is non-causal
-  and needs its full trained block context, while throughput is flat (the
-  forward is launch-bound, not compute-bound: 74ms -> 67ms only). Remove the
-  `DF2_FWD_BS` env branch and the `forward(bs=...)` / `select(rows=...)`
-  plumbing when the B-sweep closeout merges and no smaller-block drafter
-  experiment needs it.
 
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 
