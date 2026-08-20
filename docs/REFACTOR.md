@@ -3906,13 +3906,13 @@ should be boring.
   13.0204/43.8535/59.0106 tok/s` (`+0.93%/+2.98%/+3.00%`); aggregate prefill
   improves `+0.47%/+1.65%/+3.31%`; tracked peak saves 1.15 GiB. See
   `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json`.
-- Decision correction: the fixed 3% materiality threshold is removed. The
+- Decision correction: the fixed 3% materiality threshold is removed. FP16 is
+  now the backend/file-type scoped default for gfx1151 `mostly_q4_k_s`;
+  `HIPENGINE_GGUF_FP16_RECURRENT_STATE=0` is the strict-storage rollback. The
   clean predeclared serving screen is non-regressive: c1 exact goodput improves
   `8.2121 -> 8.2434 tok/s`, exact c8 server throughput improves
   `13.0999 -> 13.2738 tok/s` (**+1.33%**), and c8 ITL-p99 improves
   `0.8532 -> 0.8287 s`. Both modes share the absolute 0.5-second SLO failure;
-  that serving-path issue does not erase the candidate win. Promote FP16 by
-  default only for validated gfx1151 Q4_K_S and retain env `=0` as rollback;
-  see `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
+  that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
   Runtime-manifest, BF16-relative/task, and gfx1100 named-profile evidence
   remain unavailable, while chain-journal/MTP guards remain.

@@ -2147,7 +2147,7 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
     assert plan.has_chain
     assert plan.has_exact_chain
     assert plan.has_fused
-    assert len(resolved) == 32
+    assert len(resolved) == 35
     assert set(resolved) == {"hip_gfx1151"}
 
 

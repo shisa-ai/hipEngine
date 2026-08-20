@@ -1554,8 +1554,8 @@ same compact-peer route. FP16 c1 exact/SLO-goodput improves
 failure (**0.8532/0.8287 s > 0.5 s**); this remains a serving-path issue, not a
 candidate regression. Completed responses remain exact, native routing/
 ownership/memory recovery pass, and FP16 saves 1.08 GiB tracked peak. The fixed
-3% threshold was removed because cumulative small wins are first-class; scoped
-gfx1151 Q4_K_S default promotion is reopened with explicit FP32 rollback.
+3% threshold was removed because cumulative small wins are first-class; FP16
+is now the scoped gfx1151 Q4_K_S default with explicit `=0` FP32 rollback.
 Evidence:
 [`serving rejection`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json).
 

@@ -837,6 +837,10 @@ GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
 # AOTriton. Runtime capacity remains capped at the validated 64K allocation
 # class, and env=0 or any allocation denial restores strided AOTriton exactly.
 GGUF_AOTRITON_HEAD_MAJOR_KV = True
+# R2's complete packed numerical/isolation gate plus counterbalanced engine and
+# real-Uvicorn serving A/B admit FP16 recurrent-state storage for dense Q4_K_S.
+# The environment remains an explicit rollback: =0 restores FP32 storage.
+GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -2151,6 +2155,7 @@ __all__ = [
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
+    "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",

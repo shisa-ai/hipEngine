@@ -147,7 +147,7 @@ fallback, not the Q4_K_S compact-peer production owner. The complete c>N
 numerical/dynamic/isolation hard gate passes. The serving screen is also
 non-regressive (+0.38% c1 and +1.33% exact c8 throughput); both modes share an
 absolute ITL-p99 SLO failure. With the fixed percentage threshold removed,
-FP16 is the validated gfx1151 Q4_K_S default candidate with FP32 env rollback;
+FP16 is the validated gfx1151 Q4_K_S default with FP32 env rollback;
 runtime-manifest, BF16-relative/task, and gfx1100 named-profile packets remain
 unavailable.
 Prepare and RMSNorm still cover the complete prefill once. This chunk is

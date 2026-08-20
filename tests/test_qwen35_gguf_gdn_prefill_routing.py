@@ -1525,6 +1525,39 @@ def _recorder(sink: list[tuple[str, object]], name: str):
     return fake
 
 
+def test_fp16_recurrent_state_defaults_only_for_validated_gfx1151_q4ks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gguf_fp16_recurrent_state_enabled,
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    assert _gguf_fp16_recurrent_state_enabled(
+        backend="hip_gfx1151",
+        file_type_name="mostly_q4_k_s",
+    )
+    assert not _gguf_fp16_recurrent_state_enabled(
+        backend="hip_gfx1151",
+        file_type_name="mostly_q4_k_m",
+    )
+    assert not _gguf_fp16_recurrent_state_enabled(
+        backend="hip_gfx1100",
+        file_type_name="mostly_q4_k_s",
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "0")
+    assert not _gguf_fp16_recurrent_state_enabled(
+        backend="hip_gfx1151",
+        file_type_name="mostly_q4_k_s",
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    assert _gguf_fp16_recurrent_state_enabled(
+        backend="hip_gfx1100",
+        file_type_name="mostly_q4_k_m",
+    )
+
+
 def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch) -> None:
     """Verify-capture decode-order row-state writers route to fp16 under the flag.
 
