@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import ctypes
-import os
 
 import numpy as np
 import pytest
+
+from hipengine.kernels.backends import detect_hip_target_arches
 
 
 def _rocm_available() -> bool:
@@ -24,8 +25,8 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_registry_selected_pm4_submission_reuses_one_queue_without_hip_fallback() -> None:
-    if os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100") != "gfx1100":
-        pytest.skip("initial PM4 transport integration gate is gfx1100-only")
+    if "gfx1100" not in detect_hip_target_arches():
+        pytest.skip("initial PM4 transport integration gate requires physical gfx1100")
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (

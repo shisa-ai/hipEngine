@@ -79,6 +79,24 @@ def build_gguf_q8_0_t16_gemv(
     )
 
 
+_Q8_0_T16_GEMV_LIBRARY: ctypes.CDLL | None = None
+
+
+def _q8_0_t16_gemv_library() -> ctypes.CDLL:
+    """Memoized default build so per-call launches skip build_hip entirely.
+
+    The per-call launch path calls ``build_gguf_q8_0_t16_gemv(load=True)`` on
+    every launch (~19 us/call of build_hip fast-path overhead even on a cache
+    hit); at 141 launches/step that is ~2.6 ms/step of host CPU that lands on
+    the critical path. Hoist it once, mirroring the router library pattern.
+    """
+
+    global _Q8_0_T16_GEMV_LIBRARY
+    if _Q8_0_T16_GEMV_LIBRARY is None:
+        _Q8_0_T16_GEMV_LIBRARY = build_gguf_q8_0_t16_gemv(load=True)
+    return _Q8_0_T16_GEMV_LIBRARY
+
+
 def gguf_q8_0_t16_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -629,7 +647,7 @@ def _launch_single(
     if out_features % _T16_COLS != 0:
         raise ValueError("out_features must be a multiple of 16 (T16 tile)")
     threads = _resolve_threads(threads)
-    library = library or build_gguf_q8_0_t16_gemv(load=True)
+    library = library or _q8_0_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -679,7 +697,7 @@ def _launch_dual(
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
     threads = _resolve_threads(threads)
-    library = library or build_gguf_q8_0_t16_gemv(load=True)
+    library = library or _q8_0_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -734,7 +752,7 @@ def _launch_dual_split(
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b must be multiples of 16 (T16 tile)")
     threads = _resolve_threads(threads)
-    library = library or build_gguf_q8_0_t16_gemv(load=True)
+    library = library or _q8_0_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [
@@ -794,7 +812,7 @@ def _launch_triple_split(
     if out_features_a % _T16_COLS != 0 or out_features_b % _T16_COLS != 0 or out_features_c % _T16_COLS != 0:
         raise ValueError("out_features_a/out_features_b/out_features_c must be multiples of 16 (T16 tile)")
     threads = _resolve_threads(threads)
-    library = library or build_gguf_q8_0_t16_gemv(load=True)
+    library = library or _q8_0_t16_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
     fn.argtypes = [

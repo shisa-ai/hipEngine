@@ -163,6 +163,9 @@ class Qwen35GGUFDeviceWeight:
     def allocation(self, name: str = "raw") -> DeviceTensorAllocation:
         return self.allocations[name]
 
+    def has_allocation(self, name: str) -> bool:
+        return name in self.allocations
+
     def free(self, *, runtime: HipRuntime | None = None) -> None:
         for allocation in reversed(tuple(self.allocations.values())):
             allocation.free(runtime=runtime)

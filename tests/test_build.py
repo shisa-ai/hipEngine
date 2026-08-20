@@ -137,6 +137,49 @@ def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path)
     assert not artifact.cache_dir.exists()
 
 
+def test_resolve_compiler_version_explicit_becomes_process_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit version becomes the process default for per-call loads.
+
+    The per-call launch path calls ``build_X(load=True)`` with
+    ``compiler_version=None``. When a session pins an explicit version, the
+    loaded-library cache would be missed (the None path resolving a different
+    version), re-running build_hip machinery on every launch. Cache the explicit
+    version so later None calls resolve to it and hit ``_LOADED_LIB_CACHE``.
+    """
+
+    monkeypatch.setattr(build_module, "_COMPILER_VERSION_CACHE", {})
+    resolved = build_module._resolve_compiler_version(
+        compiler="hipcc", compiler_version="v-pinned 1", dry_run=False
+    )
+    assert resolved == "v-pinned 1"
+    assert build_module._COMPILER_VERSION_CACHE == {"hipcc": "v-pinned 1"}
+
+    # A later per-call (compiler_version=None) resolves to the pinned version
+    # instead of probing a potentially different installed compiler.
+    resolved_none = build_module._resolve_compiler_version(
+        compiler="hipcc", compiler_version=None, dry_run=False
+    )
+    assert resolved_none == "v-pinned 1"
+
+
+def test_resolve_compiler_version_explicit_strip_and_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(build_module, "_COMPILER_VERSION_CACHE", {})
+    resolved = build_module._resolve_compiler_version(
+        compiler="hipcc", compiler_version="  v-pinned 2\n", dry_run=False
+    )
+    assert resolved == "v-pinned 2"
+    assert build_module._COMPILER_VERSION_CACHE == {"hipcc": "v-pinned 2"}
+    # dry_run must not touch the cache (no side effect for planning).
+    build_module._resolve_compiler_version(
+        compiler="clang", compiler_version="dry", dry_run=True
+    )
+    assert "clang" not in build_module._COMPILER_VERSION_CACHE
+
+
 def test_build_hip_uses_version_file_for_cached_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

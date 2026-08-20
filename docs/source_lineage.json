@@ -45,6 +45,11 @@
       "path": "/home/lhl/llama.cpp/llama.cpp-hip",
       "baseline_ref": "1ebf790cda38d827559548f67b0469189690cc8c",
       "baseline_note": "Pinned clean HIP tree used for the UD-Q3_K_M raw-Q8 MMQ128 port and numerical-boundary audit."
+    },
+    "dflash": {
+      "path": "/home/lhl/dflash",
+      "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
+      "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
     }
   },
   "files": [
@@ -404,6 +409,20 @@
       "path": "ggml/src/ggml-cuda/convert.cu",
       "kind": "kernel",
       "family": "IQ2_XS GPU block dequantization schedule"
+    },
+    {
+      "repo": "dflash",
+      "path": "dflash/model.py",
+      "kind": "source",
+      "family": "DFlash2DraftModel / GroupedDynamicCausalConv / CandidateSelector / dflash_generate reference math",
+      "baseline_ref": "07ebd93"
+    },
+    {
+      "repo": "dflash",
+      "path": "dflash/model_mlx.py",
+      "kind": "source",
+      "family": "DFlash2 quantized-target MLX variant (comparator lane for GGUF target)",
+      "baseline_ref": "07ebd93"
     }
   ],
   "external_artifacts": [
@@ -458,6 +477,16 @@
       ],
       "local_snapshot_root": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots",
       "note": "Packed PARO target; benchmark rows must record exact snapshot path/revision."
+    },
+    {
+      "name": "z-lab/Qwen3.8-27B-DFlash2",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+      "code_files": {
+        "model.safetensors_lfs_sha256": "67fc76d68dc5a9415511a4f394ef744d67510cd20e93b37cc2cc7d28e4bab65c"
+      },
+      "note": "Qwen3.8-27B DFlash2 drafter artifact; DFlash2DraftModel, block_size 8, taps at [5,19,33,47,61], target-shared output head. GGUF target pair validated by scripts/dflash_validate_artifacts.py --target-kind gguf."
     }
   ]
 }

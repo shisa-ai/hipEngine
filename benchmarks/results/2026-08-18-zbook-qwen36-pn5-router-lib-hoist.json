@@ -1,0 +1,27 @@
+{
+  "id": "zbook-qwen36-pn5-router-lib-hoist",
+  "date": "2026-08-18",
+  "hardware": "AMD Radeon 8060S (ZBook Ultra G1a, gfx1151, 40 CU / 80 SIMD)",
+  "status": "retained",
+  "mechanism": "Hoist the qwen35_router shared-object handle into a module-level cache (_router_library()) so the 40 cooperative router launches/step stop re-running build_qwen35_router(load=True) per call (~34 us/call from the pinned-compiler-version loaded-library cache miss)",
+  "family": "MoE router slice (router_topk_split_shared cooperative F32-weight kernel, persistent counter)",
+  "source_plan": "docs/QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md (PN5 new unit; PN8 named launch restructure as next owner)",
+  "measurements_ms_per_token": {
+    "old_per_call_build_run1": 30.86,
+    "new_cached_library": 29.83,
+    "old_per_call_build_run2": 30.70,
+    "mean_old": 30.78,
+    "delta_us_per_token": 957,
+    "delta_pct": 3.2
+  },
+  "exactness": "tokens byte-identical old1/new/old2 over 30-step counter-rotated sync'd eager runs (token 9707, prefill 512)",
+  "protocol": "sync'd eager decode, 30 steps, warmup 6, HIPENGINE_HIP_ARCH=gfx1151, require_cached_build, compiler version pinned from 20260817T024001Z hipcc-version.txt; script scripts/pn5_router_lib_ab_probe.py",
+  "supporting_probes": {
+    "slice_noop_ab_us_per_tok": 1732,
+    "host_dispatch_us_per_call_median": 45.1,
+    "raw_launch_default_us": 49.0,
+    "raw_launch_preloaded_library_us": 14.6
+  },
+  "red_state": "test_gfx1151_backend.py, test_laguna_router_gpu.py, test_execution_profile_gguf_c1_route_gate.py, test_qwen35_gguf_hidden_seed_contract.py, test_llm_generate.py all pass",
+  "disposition": "retained on the default path (module cache is the default). Pure host-side change; kernel code and math untouched. Same library-or-build pattern exists at ~609 kernel sites; a targeted audit of the largest families is a cheap follow-up, but PN4 established launch_gguf_linear is mostly GPU-bound."
+}

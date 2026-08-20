@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -60,6 +61,13 @@ class DFlashDraftConfig:
     aux_hidden_norm_count: int = 0
     causal: bool = False
     draft_vocab_size: int = 0
+    # DFlash2 grouped dynamic conv + candidate selector geometry (0 = not a DFlash2 drafter).
+    conv_kernel_size: int = 0
+    conv_group_size: int = 0
+    selector_rank: int = 0
+    selector_top_k: int = 0
+    output_multiplier: float = 1.0
+    final_logit_softcapping: float = 0.0
 
     @property
     def q_features(self) -> int:
@@ -72,6 +80,24 @@ class DFlashDraftConfig:
     @property
     def qkv_features(self) -> int:
         return self.q_features + 2 * self.kv_features
+
+    @property
+    def is_dflash2(self) -> bool:
+        return self.conv_group_size > 0 and self.conv_kernel_size > 0
+
+    @property
+    def conv_groups(self) -> int:
+        """Number of dynamic-conv coefficient groups (hidden_size // group_size)."""
+
+        if not self.is_dflash2 or self.hidden_size % self.conv_group_size != 0:
+            return 0
+        return self.hidden_size // self.conv_group_size
+
+    @property
+    def conv_projection_features(self) -> int:
+        """Output width of kernel_projection: 2 * conv_kernel_size * conv_groups."""
+
+        return 2 * self.conv_kernel_size * self.conv_groups
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -102,6 +128,12 @@ class DFlashDraftConfig:
             "draft_vocab_size": self.draft_vocab_size,
             "dtype": self.dtype,
             "layer_types": list(self.layer_types),
+            "conv_kernel_size": self.conv_kernel_size,
+            "conv_group_size": self.conv_group_size,
+            "selector_rank": self.selector_rank,
+            "selector_top_k": self.selector_top_k,
+            "output_multiplier": self.output_multiplier,
+            "final_logit_softcapping": self.final_logit_softcapping,
         }
 
 
@@ -285,7 +317,7 @@ def _parse_qwen_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
     return DFlashDraftConfig(
         architecture="DFlashDraftModel",
         decoder_arch="qwen",
-        block_size=int(config["block_size"]),
+        block_size=_dflash_int(dflash_config, config, "block_size"),
         mask_token_id=int(dflash_config["mask_token_id"]),
         target_layer_ids=target_layer_ids,
         target_capture_depths=capture_depths,
@@ -298,7 +330,7 @@ def _parse_qwen_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
         num_attention_heads=num_attention_heads,
         num_key_value_heads=int(config.get("num_key_value_heads", num_attention_heads)),
         head_dim=int(config.get("head_dim", hidden_size // num_attention_heads)),
-        rope_theta=float(config.get("rope_theta", 10000.0)),
+        rope_theta=_qwen_rope_theta(config),
         rms_norm_eps=float(config.get("rms_norm_eps", 1.0e-6)),
         max_position_embeddings=int(config.get("max_position_embeddings", 0) or 0),
         sliding_windows=_normalized_sliding_windows(config, num_layers),
@@ -310,6 +342,23 @@ def _parse_qwen_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
         draft_vocab_size=int(config.get("draft_vocab_size", config["vocab_size"])),
         dtype=str(config.get("dtype", config.get("torch_dtype", "bfloat16"))),
         layer_types=_layer_types(config, num_layers),
+    )
+
+
+def _parse_qwen_dflash2_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
+    """Normalize a DFlash2DraftModel HF config (Qwen backbone + grouped dynamic conv + selector)."""
+
+    dflash_config = _dflash_config_mapping(config)
+    base = _parse_qwen_dflash_config(config)
+    return dataclasses.replace(
+        base,
+        architecture="DFlash2DraftModel",
+        conv_kernel_size=int(dflash_config.get("conv_kernel_size", 0) or 0),
+        conv_group_size=int(dflash_config.get("conv_group_size", 0) or 0),
+        selector_rank=int(dflash_config.get("selector_rank", 0) or 0),
+        selector_top_k=int(dflash_config.get("selector_top_k", 0) or 0),
+        output_multiplier=float(dflash_config.get("output_multiplier", 1.0)),
+        final_logit_softcapping=float(dflash_config.get("final_logit_softcapping", 0.0) or 0.0),
     )
 
 
@@ -354,6 +403,27 @@ def _parse_laguna_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
     )
 
 
+def _dflash_int(dflash_config: Mapping[str, Any], config: Mapping[str, Any], key: str) -> int:
+    """Read an int from dflash_config first, then the top-level HF config."""
+
+    for source in (dflash_config, config):
+        value = source.get(key)
+        if value is not None:
+            return int(value)
+    return 0
+
+
+def _qwen_rope_theta(config: Mapping[str, Any]) -> float:
+    """Read rope_theta from rope_parameters, then top-level, then 10k default."""
+
+    rope_params = config.get("rope_parameters")
+    if isinstance(rope_params, Mapping):
+        value = rope_params.get("rope_theta")
+        if value is not None:
+            return float(value)
+    return float(config.get("rope_theta", 10000.0))
+
+
 def _dflash_config_mapping(config: Mapping[str, Any]) -> Mapping[str, Any]:
     value = config.get("dflash_config")
     return value if isinstance(value, Mapping) else {}
@@ -378,6 +448,7 @@ def _normalized_sliding_windows(config: Mapping[str, Any], num_layers: int) -> t
 
 
 register_dflash_draft_config_parser("DFlashDraftModel", _parse_qwen_dflash_config)
+register_dflash_draft_config_parser("DFlash2DraftModel", _parse_qwen_dflash2_config)
 register_dflash_draft_config_parser("DFlashLagunaForCausalLM", _parse_laguna_dflash_config)
 
 
@@ -602,6 +673,24 @@ def dflash_drafter_runtime_tensor_names(
         )
     if include_terminal:
         names.append("norm.weight")
+    if config.is_dflash2:
+        for layer in range(layers):
+            prefix = f"layers.{layer}"
+            names.extend(
+                (
+                    f"{prefix}.attention_conv.base_kernel",
+                    f"{prefix}.attention_conv.kernel_projection.weight",
+                    f"{prefix}.mlp_conv.base_kernel",
+                    f"{prefix}.mlp_conv.kernel_projection.weight",
+                )
+            )
+        names.extend(
+            (
+                "candidate_selector.hidden_projection.weight",
+                "candidate_selector.predecessor_codebook",
+                "candidate_selector.successor_codebook",
+            )
+        )
     return tuple(names)
 
 
@@ -702,6 +791,59 @@ def dflash_drafter_tensor_requirements(config: DFlashDraftConfig) -> tuple[Tenso
                 TensorRequirement(f"{prefix}.mlp.down_proj.weight", "BF16", (config.hidden_size, config.intermediate_size)),
             )
         )
+    if config.is_dflash2:
+        for layer in range(config.num_hidden_layers):
+            prefix = f"layers.{layer}"
+            reqs.extend(
+                (
+                    TensorRequirement(
+                        f"{prefix}.attention_conv.base_kernel",
+                        "BF16",
+                        (2, config.conv_kernel_size, config.hidden_size),
+                        "attention grouped dynamic conv base kernel",
+                    ),
+                    TensorRequirement(
+                        f"{prefix}.attention_conv.kernel_projection.weight",
+                        "BF16",
+                        (config.conv_projection_features, config.hidden_size),
+                        "attention grouped dynamic conv projection",
+                    ),
+                    TensorRequirement(
+                        f"{prefix}.mlp_conv.base_kernel",
+                        "BF16",
+                        (2, config.conv_kernel_size, config.hidden_size),
+                        "mlp grouped dynamic conv base kernel",
+                    ),
+                    TensorRequirement(
+                        f"{prefix}.mlp_conv.kernel_projection.weight",
+                        "BF16",
+                        (config.conv_projection_features, config.hidden_size),
+                        "mlp grouped dynamic conv projection",
+                    ),
+                )
+            )
+        reqs.extend(
+            (
+                TensorRequirement(
+                    "candidate_selector.hidden_projection.weight",
+                    "BF16",
+                    (config.selector_rank, config.hidden_size),
+                    "selector context gate projection",
+                ),
+                TensorRequirement(
+                    "candidate_selector.predecessor_codebook",
+                    "BF16",
+                    (config.vocab_size, config.selector_rank),
+                    "selector predecessor codebook",
+                ),
+                TensorRequirement(
+                    "candidate_selector.successor_codebook",
+                    "BF16",
+                    (config.vocab_size, config.selector_rank),
+                    "selector successor codebook",
+                ),
+            )
+        )
     return tuple(reqs)
 
 
@@ -749,6 +891,37 @@ def dflash_target_tensor_requirements(config: DFlashTargetConfig) -> tuple[Tenso
                 )
             )
     return tuple(reqs)
+
+
+def validate_dflash_drafter_against_gguf_target(
+    drafter: DFlashDraftConfig,
+    *,
+    num_target_layers: int,
+    hidden_size: int,
+    vocab_size: int,
+) -> tuple[str, ...]:
+    """Pair-check a DFlash drafter config against GGUF target metadata.
+
+    The GGUF target carries no PARO-specific geometry, so this validates only
+    the shared contract: target layer count, hidden size, vocab size, and the
+    in-range target-layer taps.
+    """
+
+    errors: list[str] = []
+    if drafter.num_target_layers != num_target_layers:
+        errors.append(
+            f"num_target_layers {drafter.num_target_layers} does not match GGUF layers {num_target_layers}"
+        )
+    if drafter.target_hidden_size != hidden_size:
+        errors.append(
+            f"target_hidden_size {drafter.target_hidden_size} does not match GGUF hidden_size {hidden_size}"
+        )
+    if drafter.vocab_size != vocab_size:
+        errors.append(f"vocab_size {drafter.vocab_size} does not match GGUF vocab_size {vocab_size}")
+    for layer in drafter.target_layer_ids:
+        if layer < 0 or layer >= num_target_layers:
+            errors.append(f"target_layer_ids includes {layer} outside [0, {num_target_layers})")
+    return tuple(errors)
 
 
 def _validate_dflash_config(config: DFlashDraftConfig, *, target_config: DFlashTargetConfig | None) -> tuple[str, ...]:
@@ -817,6 +990,29 @@ def _validate_dflash_config(config: DFlashDraftConfig, *, target_config: DFlashT
             errors.append("Qwen DFlash does not support auxiliary hidden norms")
     else:
         errors.append(f"unsupported DFlash decoder architecture {config.decoder_arch!r}")
+    if config.architecture == "DFlash2DraftModel":
+        if config.decoder_arch != "qwen":
+            errors.append("DFlash2DraftModel requires the qwen decoder backbone")
+        if config.conv_kernel_size <= 0:
+            errors.append(f"DFlash2 conv_kernel_size must be positive, got {config.conv_kernel_size}")
+        if config.conv_group_size <= 0 or config.hidden_size % config.conv_group_size != 0:
+            errors.append(
+                f"DFlash2 conv_group_size {config.conv_group_size} must divide hidden_size {config.hidden_size}"
+            )
+        if config.conv_projection_features <= 0:
+            errors.append(f"DFlash2 conv projection width must be positive, got {config.conv_projection_features}")
+        if config.selector_rank <= 0:
+            errors.append(f"DFlash2 selector_rank must be positive, got {config.selector_rank}")
+        if config.selector_top_k <= 0 or config.selector_top_k > config.vocab_size:
+            errors.append(
+                f"DFlash2 selector_top_k {config.selector_top_k} must be in (0, vocab_size {config.vocab_size}]"
+            )
+        if config.causal:
+            errors.append("DFlash2DraftModel requires non-causal (is_causal=false) drafting")
+        if any(layer_type != "sliding_attention" for layer_type in config.layer_types):
+            errors.append("DFlash2DraftModel currently requires sliding_attention for every draft layer")
+        if any(window <= 0 for window in config.sliding_windows):
+            errors.append("DFlash2 sliding windows must all be positive")
     if target_config is not None:
         if config.num_target_layers != target_config.num_hidden_layers:
             errors.append(

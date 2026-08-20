@@ -361,6 +361,9 @@ def test_all_committed_cpu_reference_fixtures_pass() -> None:
 
     assert {path.name for path in fixture_paths} == {
         "attention_decode_masked.json",
+        "dflash2_conv_finish.json",
+        "dflash2_conv_prepare.json",
+        "dflash2_selector_path.json",
         "full_attn_prefill_causal_gqa_gate.json",
         "kv_int8_dequant_per_token_head.json",
         "linear_basic.json",

@@ -115,7 +115,8 @@ bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
   const bool n2 = control->stage_mask == kN2Stages;
   const uint32_t rows = control->row_count;
   const uint32_t candidates = rows >= 1 ? rows - 1 : 0;
-  const bool supported_rows = rows == 2 || rows == 3 || rows == 4;
+  const bool supported_rows = rows == 2 || rows == 3 || rows == 4 ||
+                             rows == 5 || rows == 6 || rows == 7 || rows == 8;
   return (verify_only || n2) &&
          control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
          control->request_count == 1 &&

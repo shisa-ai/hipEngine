@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import ctypes
-import os
 
 import numpy as np
 import pytest
+
+from hipengine.kernels.backends import detect_hip_target_arches
 
 
 def _rocm_available() -> bool:
@@ -24,8 +25,8 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
-    if os.environ.get("HIPENGINE_HIP_ARCH", "gfx1100") != "gfx1100":
-        pytest.skip("initial native PM4 gate is gfx1100-only")
+    if "gfx1100" not in detect_hip_target_arches():
+        pytest.skip("initial native PM4 gate requires physical gfx1100")
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (

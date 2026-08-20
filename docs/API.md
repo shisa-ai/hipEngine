@@ -78,7 +78,14 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving is guarded and default-off. Start with
+GGUF MTP serving is enabled by default for dense routes. For dense Qwen
+models with NextN tensors, compatible (non-streaming, greedy) requests use MTP
+automatically through the fast llama.cpp-style **native** verify path
+(`HIPENGINE_GGUF_MTP_VERIFY_MODE`, default `native`, candidate budget 3 via
+`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`); set `native` to `serial_exact` for the
+token-exact rollback control that re-runs exact c=1 AR per candidate row but
+cannot beat AR decode speed. MoE MTP is not exact against true AR, so it stays
+request-opt-in: start with
 `--speculative-mtp-serving opt_in` or
 `HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
 `"speculative_mtp": true` on a non-streaming greedy request. That explicitly
@@ -88,12 +95,31 @@ policy carries compatible requests to the realized batch group but selects
 exact/default AR with a recorded reason, group width, and output horizon. The
 capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
-and the loaded engine exposes a real MTP hook. With a positive
+and the loaded engine exposes a real MTP hook, and
+`sampling.speculative_mtp.default_enabled=true` when the default policy routes
+compatible requests through MTP. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
 non-streaming MTP requests can coalesce into one backend MTP call. The GGUF hook
 uses one shared target-weight runner plus per-request resident target/MTP slot
 state; c=2 is the implementation target and c=4/c=8 have functional smoke
 coverage.
+
+**MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
+exact only for the greedy fast path, so host-sampler thinking-budget enforcement
+(soft-close bias, EOS suppression, hard-close forcing) would make MTP inexact.
+Under the default **hint** policy
+(`--speculative-mtp-thinking hint`, env
+`HIPENGINE_SPECULATIVE_MTP_THINKING=hint`), thinking requests keep their
+reasoning hints in the rendered prompt but relax the host-sampler enforcement,
+so `reasoning_effort` off/medium/high/xhigh requests route through exact MTP
+like any other greedy request — the standard way reasoning models are served
+with speculative decoding. Set `--speculative-mtp-thinking hard` (or
+`HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
+enforcement; then the thinking budget is a hard MTP blocker and thinking
+requests fall back to plain AR. A request can override the server policy with
+`"speculative_mtp": {"enabled": true, "thinking": "hint" | "hard"}`; the
+capabilities manifest reports the active policy as
+`sampling.speculative_mtp.thinking_policy`.
 
 Generic draft-model providers are a separate explicit-only route. For the
 pinned Poolside Laguna B4 DFlash owner, start the server with:
@@ -1365,7 +1391,9 @@ generated text.
   serial-prefix-equivalent. Resident-slot c=N explicit serving is supported
   through the generation batcher when the batch window and active-request cap
   allow it; c=2 is the target path and c=4/c=8 have functional smoke coverage.
-  Streaming MTP and the exact/default MTP server route are not implemented yet.
+  Streaming MTP is not implemented yet; non-streaming MTP uses the default
+  `native` verify path (or `serial_exact` via
+  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact`).
   Current MTP serving compatibility is greedy-fast only; `logit_bias`,
   penalties, token suppressions, min-token/EOS policy, explicit EOS finish
   policy, token stops, `ignore_eos=true`, pending forced-token queues,

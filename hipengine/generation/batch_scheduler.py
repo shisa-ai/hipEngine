@@ -1506,6 +1506,48 @@ class ResidentBatchScheduler:
                     break
         return tuple(completed)
 
+    def finish_request_at_stop(
+        self,
+        request_id: int,
+        *,
+        eos_token_id: int | None = None,
+        stop_token_ids: Sequence[int] = (),
+        finish_reason: str = "stop",
+    ) -> CompletedRequest | None:
+        """Retire an active request early at its first EOS/stop token.
+
+        The speculative decode loop records whole draft/verify cycles, so it can
+        overshoot the model EOS by up to a candidate budget.  This trims the
+        recorded generated tokens to end exactly at the first stop token and
+        completes the request through the normal reclaim path.  Returns None
+        when the request is not active or has not generated a stop token yet.
+        """
+
+        rid = int(request_id)
+        if rid not in self.active_batch.requests:
+            return None
+        request = self.active_batch.requests[rid]
+        stop_index = _first_stop_token_index(
+            request.generated_tokens,
+            eos_token_id=eos_token_id,
+            stop_token_ids=stop_token_ids,
+        )
+        if stop_index is None:
+            return None
+        eos = None if eos_token_id is None else int(eos_token_id)
+        matched = int(request.generated_tokens[stop_index])
+        selected_reason = "eos" if eos is not None and matched == eos else finish_reason
+        trimmed = replace(
+            request,
+            generated_tokens=request.generated_tokens[: stop_index + 1],
+            max_new_tokens=stop_index + 1,
+            finished=True,
+        )
+        self.active_batch.update_request(trimmed)
+        self.active_batch.finish(rid)
+        reclaimed = self.active_batch.reclaim(rid)
+        return self._complete_request(reclaimed, finish_reason=selected_reason)
+
     def speculative_verify_shape_key(
         self,
         work: SpeculativeVerifyWork,
@@ -2113,6 +2155,26 @@ def _stable_sampler_seed(*, base_seed: int, request_id: int, row_index: int) -> 
     value = (value * 0x94D049BB133111EB) & ((1 << 64) - 1)
     value ^= (int(row_index) + 0xD6E8FEB86659FD93) & ((1 << 64) - 1)
     return value & ((1 << 63) - 1)
+
+
+def _first_stop_token_index(
+    generated_tokens: Sequence[int],
+    *,
+    eos_token_id: int | None,
+    stop_token_ids: Sequence[int],
+) -> int | None:
+    """Return the index of the first EOS/stop token in generated tokens."""
+
+    eos = None if eos_token_id is None else int(eos_token_id)
+    stops = {int(stop) for stop in stop_token_ids}
+    if eos is not None:
+        stops.add(eos)
+    if not stops:
+        return None
+    for index, token in enumerate(generated_tokens):
+        if int(token) in stops:
+            return index
+    return None
 
 
 def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, int, bool]) -> GeneratedToken:

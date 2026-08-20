@@ -1,5 +1,15 @@
 """gfx1100 speculative decoding kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
+    DFLASH2_SELECTOR_MAX_TOP_K,
+    DFLASH2_SELECTOR_MAX_RANK,
+    build_dflash2,
+    dflash2_grouped_conv,
+    dflash2_selector,
+    dflash2_top16_rows,
+    plan_dflash2_build,
+    register_dflash2_kernels,
+)
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -84,7 +94,14 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     register_mtp_nextn_kernels,
 )
 
-__all__ = [
+__all__ = ["DFLASH2_SELECTOR_MAX_TOP_K",
+    "DFLASH2_SELECTOR_MAX_RANK",
+    "build_dflash2",
+    "dflash2_grouped_conv",
+    "dflash2_selector",
+    "dflash2_top16_rows",
+    "plan_dflash2_build",
+    "register_dflash2_kernels",
     "build_dflash_accept",
     "ACCEPT_PACKED_PAYLOAD_FIELDS",
     "build_dflash_commit",

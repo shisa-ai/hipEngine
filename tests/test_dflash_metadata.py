@@ -9,8 +9,10 @@ import pytest
 from hipengine.loading.dflash import (
     DFLASH_DRAFTER_MODEL,
     DFLASH_PACKED_TARGET_MODEL,
+    _validate_dflash_config,
     dflash_draft_config_from_hf,
     dflash_drafter_runtime_tensor_names,
+    validate_dflash_drafter_against_gguf_target,
     validate_dflash_drafter_metadata,
     validate_dflash_target_metadata,
 )
@@ -123,6 +125,142 @@ def test_dflash_defaults_do_not_reference_old_quark_mtp_artifact() -> None:
     assert DFLASH_DRAFTER_MODEL == "z-lab/Qwen3.6-35B-A3B-DFlash"
     script = Path("scripts/dflash_speculative_bench.py").read_text()
     assert "Qwen3.6-35B-A3B-Quark-W8A8-INT8-MTP-BF16" not in script
+
+
+def test_dflash2_config_captures_conv_and_selector_fields() -> None:
+    cfg = dflash_draft_config_from_hf(_dflash2_config())
+
+    assert cfg.architecture == "DFlash2DraftModel"
+    assert cfg.is_dflash2 is True
+    assert cfg.conv_kernel_size == 2
+    assert cfg.conv_group_size == 4
+    assert cfg.conv_groups == 4
+    assert cfg.conv_projection_features == 16
+    assert cfg.selector_rank == 8
+    assert cfg.selector_top_k == 5
+    assert cfg.causal is False
+    assert cfg.layer_types == ("sliding_attention", "sliding_attention")
+
+
+def test_dflash2_drafter_metadata_validation_passes_fake_manifest() -> None:
+    result = validate_dflash_drafter_metadata(_dflash2_index())
+
+    assert result.passed is True
+    assert result.config.architecture == "DFlash2DraftModel"
+    assert "layers.0.attention_conv.base_kernel" in result.present
+    assert "layers.1.mlp_conv.kernel_projection.weight" in result.present
+    assert "candidate_selector.predecessor_codebook" in result.present
+    assert "candidate_selector.successor_codebook" in result.present
+    assert "candidate_selector.hidden_projection.weight" in result.present
+
+
+def test_dflash2_drafter_metadata_validation_reports_missing_conv_selector() -> None:
+    index = _dflash2_index()
+    tensors = dict(index.tensors)
+    tensors.pop("layers.0.attention_conv.base_kernel")
+    tensors.pop("candidate_selector.successor_codebook")
+    bad = WeightIndex(index.model_path, index.config, tensors, index.shards)
+
+    result = validate_dflash_drafter_metadata(bad)
+
+    assert result.passed is False
+    assert "layers.0.attention_conv.base_kernel" in result.missing
+    assert "candidate_selector.successor_codebook" in result.missing
+
+
+def test_dflash2_config_rejects_bad_conv_grouping_and_selector() -> None:
+    cfg = _dflash2_config()
+    cfg["dflash_config"]["conv_group_size"] = 5  # does not divide hidden_size 16
+    bad_conv = dflash_draft_config_from_hf(cfg)
+    errs = _validate_errors(bad_conv)
+    assert any("conv_group_size 5 must divide hidden_size 16" in err for err in errs)
+
+    cfg2 = _dflash2_config()
+    cfg2["dflash_config"]["selector_top_k"] = 0
+    bad_sel = dflash_draft_config_from_hf(cfg2)
+    errs2 = _validate_errors(bad_sel)
+    assert any("selector_top_k 0" in err for err in errs2)
+
+
+def test_dflash2_runtime_names_include_conv_and_selector() -> None:
+    config = dflash_draft_config_from_hf(_dflash2_config())
+
+    names = dflash_drafter_runtime_tensor_names(config, layer_limit=1)
+
+    assert "layers.0.attention_conv.base_kernel" in names
+    assert "layers.0.attention_conv.kernel_projection.weight" in names
+    assert "layers.0.mlp_conv.base_kernel" in names
+    assert "layers.0.mlp_conv.kernel_projection.weight" in names
+    assert "candidate_selector.predecessor_codebook" in names
+    assert "candidate_selector.successor_codebook" in names
+    assert "candidate_selector.hidden_projection.weight" in names
+    assert "layers.1.attention_conv.base_kernel" not in names
+
+
+def test_dflash2_drafter_against_gguf_target_contract() -> None:
+    config = dflash_draft_config_from_hf(_dflash2_config())
+
+    ok = validate_dflash_drafter_against_gguf_target(
+        config,
+        num_target_layers=2,
+        hidden_size=16,
+        vocab_size=100,
+    )
+    assert ok == ()
+
+    bad = validate_dflash_drafter_against_gguf_target(
+        config,
+        num_target_layers=1,
+        hidden_size=32,
+        vocab_size=100,
+    )
+    assert any("num_target_layers 2" in err for err in bad)
+    assert any("hidden_size 32" in err for err in bad)
+
+
+def test_dflash2_drafter_against_gguf_target_rejects_out_of_range_taps() -> None:
+    cfg = _dflash2_config()
+    cfg["dflash_config"]["target_layer_ids"] = [0, 9]  # 9 outside [0, 2)
+    config = dflash_draft_config_from_hf(cfg)
+
+    errors = validate_dflash_drafter_against_gguf_target(
+        config,
+        num_target_layers=2,
+        hidden_size=16,
+        vocab_size=100,
+    )
+
+    assert any("target_layer_ids includes 9 outside [0, 2)" in err for err in errors)
+
+
+@pytest.mark.skipif(
+    not Path(
+        "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/"
+        "50307d4c4cde6860d4eee73e2547cd786fe8e8a4"
+    ).exists(),
+    reason="local Qwen3.8-27B-DFlash2 snapshot not cached",
+)
+def test_local_cached_qwen38_dflash2_artifact_metadata_offline() -> None:
+    path = Path(
+        "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/"
+        "50307d4c4cde6860d4eee73e2547cd786fe8e8a4"
+    )
+    drafter = validate_dflash_drafter_metadata(load_weight_index(path))
+
+    assert drafter.passed, drafter.to_json_dict()
+    assert drafter.config.architecture == "DFlash2DraftModel"
+    assert drafter.config.target_layer_ids == (5, 19, 33, 47, 61)
+    assert drafter.config.block_size == 8
+    assert drafter.config.mask_token_id == 248070
+    assert drafter.config.conv_kernel_size == 2
+    assert drafter.config.conv_group_size == 16
+    assert drafter.config.conv_groups == 320
+    assert drafter.config.conv_projection_features == 1280
+    assert drafter.config.selector_rank == 256
+    assert drafter.config.selector_top_k == 16
+    assert drafter.config.vocab_size == 248320
+    assert drafter.config.rope_theta == 10_000_000.0
+    assert len(drafter.present) == 81
 
 
 @pytest.mark.skipif(not (LOCAL_TARGET.exists() and LOCAL_DRAFTER.exists()), reason="local DFlash artifacts not cached")
@@ -273,3 +411,85 @@ def _dense_target_index() -> WeightIndex:
 
 def _tensor(name: str, dtype: str, shape: tuple[int, ...]) -> TensorInfo:
     return TensorInfo(name=name, shard_path=Path("fake.safetensors"), dtype=dtype, shape=shape)
+
+
+def _dflash2_config() -> dict:
+    return {
+        "architectures": ["DFlash2DraftModel"],
+        "dflash_config": {
+            "block_size": 3,
+            "conv_group_size": 4,
+            "conv_kernel_size": 2,
+            "mask_token_id": 99,
+            "selector_rank": 8,
+            "selector_top_k": 5,
+            "target_layer_ids": [0, 1],
+        },
+        "dtype": "bfloat16",
+        "head_dim": 4,
+        "hidden_size": 16,
+        "intermediate_size": 32,
+        "is_causal": False,
+        "layer_types": ["sliding_attention", "sliding_attention"],
+        "max_position_embeddings": 512,
+        "model_type": "qwen3",
+        "num_attention_heads": 4,
+        "num_hidden_layers": 2,
+        "num_key_value_heads": 2,
+        "num_target_layers": 2,
+        "rope_theta": 10_000_000.0,
+        "sliding_window": 16,
+        "vocab_size": 100,
+    }
+
+
+def _dflash2_index() -> WeightIndex:
+    cfg = _dflash2_config()
+    tensors = {
+        "fc.weight": _tensor("fc.weight", "BF16", (16, 32)),
+        "hidden_norm.weight": _tensor("hidden_norm.weight", "BF16", (16,)),
+        "norm.weight": _tensor("norm.weight", "BF16", (16,)),
+        "candidate_selector.hidden_projection.weight": _tensor(
+            "candidate_selector.hidden_projection.weight", "BF16", (8, 16)
+        ),
+        "candidate_selector.predecessor_codebook": _tensor(
+            "candidate_selector.predecessor_codebook", "BF16", (100, 8)
+        ),
+        "candidate_selector.successor_codebook": _tensor(
+            "candidate_selector.successor_codebook", "BF16", (100, 8)
+        ),
+    }
+    for layer in range(2):
+        prefix = f"layers.{layer}"
+        tensors.update(
+            {
+                f"{prefix}.input_layernorm.weight": _tensor(f"{prefix}.input_layernorm.weight", "BF16", (16,)),
+                f"{prefix}.post_attention_layernorm.weight": _tensor(
+                    f"{prefix}.post_attention_layernorm.weight", "BF16", (16,)
+                ),
+                f"{prefix}.self_attn.q_proj.weight": _tensor(f"{prefix}.self_attn.q_proj.weight", "BF16", (16, 16)),
+                f"{prefix}.self_attn.k_proj.weight": _tensor(f"{prefix}.self_attn.k_proj.weight", "BF16", (8, 16)),
+                f"{prefix}.self_attn.v_proj.weight": _tensor(f"{prefix}.self_attn.v_proj.weight", "BF16", (8, 16)),
+                f"{prefix}.self_attn.o_proj.weight": _tensor(f"{prefix}.self_attn.o_proj.weight", "BF16", (16, 16)),
+                f"{prefix}.self_attn.q_norm.weight": _tensor(f"{prefix}.self_attn.q_norm.weight", "BF16", (4,)),
+                f"{prefix}.self_attn.k_norm.weight": _tensor(f"{prefix}.self_attn.k_norm.weight", "BF16", (4,)),
+                f"{prefix}.mlp.gate_proj.weight": _tensor(f"{prefix}.mlp.gate_proj.weight", "BF16", (32, 16)),
+                f"{prefix}.mlp.up_proj.weight": _tensor(f"{prefix}.mlp.up_proj.weight", "BF16", (32, 16)),
+                f"{prefix}.mlp.down_proj.weight": _tensor(f"{prefix}.mlp.down_proj.weight", "BF16", (16, 32)),
+                f"{prefix}.attention_conv.base_kernel": _tensor(
+                    f"{prefix}.attention_conv.base_kernel", "BF16", (2, 2, 16)
+                ),
+                f"{prefix}.attention_conv.kernel_projection.weight": _tensor(
+                    f"{prefix}.attention_conv.kernel_projection.weight", "BF16", (16, 16)
+                ),
+                f"{prefix}.mlp_conv.base_kernel": _tensor(f"{prefix}.mlp_conv.base_kernel", "BF16", (2, 2, 16)),
+                f"{prefix}.mlp_conv.kernel_projection.weight": _tensor(
+                    f"{prefix}.mlp_conv.kernel_projection.weight", "BF16", (16, 16)
+                ),
+            }
+        )
+    return WeightIndex(Path("/fake/dflash2"), cfg, tensors, (Path("fake.safetensors"),))
+
+
+def _validate_errors(config) -> list[str]:
+    return list(_validate_dflash_config(config, target_config=None))

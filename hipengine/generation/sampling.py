@@ -819,6 +819,53 @@ def supports_speculative_mtp_sampling(params: Any) -> bool:
     return not speculative_mtp_sampling_blockers(params)
 
 
+MTP_THINKING_RELAXABLE_BLOCKERS: tuple[str, ...] = ("thinking_budget",)
+"""MTP fast-path blockers the server can relax under the hint thinking policy.
+
+The host-sampler thinking budget (soft-close bias, EOS suppression, and
+hard-close forcing) modifies the greedy path in ways the raw-argmax MTP
+verifier cannot reproduce.  When a request routes through MTP we keep the
+thinking hints in the rendered prompt but drop the host-sampler enforcement
+fields, which makes the request raw-greedy-exact again.  This is how
+speculative decoding is served on reasoning models by other engines.
+"""
+
+
+def mtp_thinking_blockers_only(params: Any) -> bool:
+    """Return whether thinking-budget control is the only MTP fast-path blocker.
+
+    Every blocker other than ``thinking_budget`` (temperature, penalties,
+    logprobs, forced/stop tokens, ...) cannot be relaxed away, so a request
+    with those still cannot use the raw-argmax MTP route.
+    """
+
+    blockers = speculative_mtp_sampling_blockers(params)
+    return bool(blockers) and all(
+        blocker in MTP_THINKING_RELAXABLE_BLOCKERS for blocker in blockers
+    )
+
+
+def relax_thinking_budget_for_mtp(params: Any) -> Any:
+    """Return ``params`` with host-sampler thinking enforcement cleared.
+
+    Returns ``params`` unchanged when no thinking enforcement is active.  The
+    rendered prompt keeps its thinking hints; only the sampler-level budget
+    fields (close-token ids, hard cap, soft-close window) are dropped so the
+    request becomes raw-greedy-exact for the MTP verifier.
+    """
+
+    if not thinking_budget_active(params):
+        return params
+    import dataclasses
+
+    return dataclasses.replace(
+        params,
+        thinking_close_token_ids=(),
+        thinking_hard_token_cap=None,
+        thinking_soft_close_window=0,
+    )
+
+
 def derive_row_seed(
     base_seed: int | None,
     row_index: int,

@@ -122,6 +122,27 @@ def _b3_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
     )
 
 
+def _b7_control(*, cycle_id: int = 12) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    return replace(
+        control,
+        shape=replace(
+            control.shape,
+            row_count=8,
+            active_row_count=8,
+            row_capacity=8,
+            candidate_count=7,
+            active_candidate_count=7,
+            candidate_capacity=7,
+            candidate_budget=7,
+            span_count=8,
+            span_capacity=8,
+            hidden_row_capacity=8,
+            output_stride=8,
+        ),
+    )
+
+
 def _proposal_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
     control = _b2_control(cycle_id=cycle_id)
     return replace(
@@ -499,18 +520,34 @@ def test_provider_target_graph_has_registered_w4_paro_plugin_boundary() -> None:
     )
 
 
-def test_gguf_target_graph_keeps_strict_b1_b2_b3_contract() -> None:
+def test_gguf_target_graph_rejects_shape_beyond_b7_contract() -> None:
     launcher = NativeSpecTargetGraphLauncher(
         graph_exec=0x6000,
         graph_launch_fn=0x7000,
         stream_synchronize_fn=0x8000,
         library=_FakeNativeLibrary(),
     )
+    control = _b7_control()
+    b8 = replace(
+        control,
+        shape=replace(
+            control.shape,
+            row_count=9,
+            active_row_count=9,
+            row_capacity=9,
+            candidate_count=8,
+            active_candidate_count=8,
+            candidate_capacity=8,
+            candidate_budget=8,
+            span_count=9,
+            span_capacity=9,
+            hidden_row_capacity=9,
+            output_stride=9,
+        ),
+    )
 
-    with pytest.raises(ValueError, match="B1/B2/B3"):
-        launcher.launch(
-            replace(_provider_b4_control(), stages=NativeSpecCycleStage.VERIFY)
-        )
+    with pytest.raises(ValueError, match="B1-B7"):
+        launcher.launch(b8)
 
 
 def test_native_target_graph_launcher_accepts_n2_device_accept_commit_control() -> None:
@@ -534,7 +571,7 @@ def test_native_target_graph_launcher_accepts_n2_device_accept_commit_control() 
     assert launcher.launch_count == 1
 
 
-def test_native_target_graph_launcher_accepts_b1_b2_and_b3_shape_buckets() -> None:
+def test_native_target_graph_launcher_accepts_b1_through_b7_shape_buckets() -> None:
     library = _FakeNativeLibrary()
     launcher = NativeSpecTargetGraphLauncher(
         graph_exec=0x6000,
@@ -546,12 +583,14 @@ def test_native_target_graph_launcher_accepts_b1_b2_and_b3_shape_buckets() -> No
     b1 = launcher.launch(_b1_control())
     b2 = launcher.launch(_b2_control())
     b3 = launcher.launch(_b3_control())
+    b7 = launcher.launch(_b7_control())
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
     assert b3.status is NativeSpecCycleStatus.COMPLETE
-    assert b1.request_count == b2.request_count == b3.request_count == 1
-    assert launcher.launch_count == 3
+    assert b7.status is NativeSpecCycleStatus.COMPLETE
+    assert b1.request_count == b2.request_count == b3.request_count == b7.request_count == 1
+    assert launcher.launch_count == 4
 
 
 def test_native_target_graph_launcher_accepts_b3_n2_device_commit() -> None:
@@ -615,7 +654,7 @@ def test_native_target_graph_launcher_surfaces_terminal_backend_failure() -> Non
     assert result.backend_error_code == 700
 
 
-def test_native_target_graph_launcher_rejects_non_b2_or_deadline_control() -> None:
+def test_native_target_graph_launcher_rejects_inconsistent_shape_or_deadline_control() -> None:
     launcher = NativeSpecTargetGraphLauncher(
         graph_exec=0x6000,
         graph_launch_fn=0x7000,
@@ -624,7 +663,7 @@ def test_native_target_graph_launcher_rejects_non_b2_or_deadline_control() -> No
     )
     control = _b2_control()
 
-    with pytest.raises(ValueError, match="B2"):
+    with pytest.raises(ValueError, match="B1-B7"):
         launcher.launch(replace(control, shape=replace(control.shape, candidate_budget=1)))
     with pytest.raises(ValueError, match="deadline"):
         launcher.launch(replace(control, deadline_ns=1))

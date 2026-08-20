@@ -1,0 +1,46 @@
+{
+    "id": "2026-08-20-gfx1151-qwen36-35b-pn3-fullattn-fused-gate-no-win",
+    "benchmark": "Qwen3.6-35B-A3B-UD-Q4_K_M c1 decode fused fixed256-context-batch+gate leaf closeout",
+    "status": "rejected-promotion",
+    "verdict": "measured no-win",
+    "hardware": "HP ZBook Ultra G1a, Radeon 8060S / gfx1151, ROCm 7.15.0 pinned, 32 GiB MALL; micro-benchmark on AMD Radeon Pro W7900 / gfx1100",
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (arch qwen36, 16Q/2KV heads, D256, 10 layers/token of private-c1 full attention)",
+    "date": "2026-08-20",
+    "command": "scripts/pn3_fullattn_fused_gate_ab.py (whole-decode A/B) + scripts/pn3_fullattn_fused_gate_micro.py (kernel-level micro); both removed with the revert, evidence below",
+    "protocol": {
+        "session": "Qwen35GGUFResidentSession(..., max_sequence_length=900, backend='hip_gfx1151'), prefill 512x9707 bulk, sync'd eager greedy AR decode, median of 30 steps x2 counter-rotated; fused leaf gated off by default in the retained path",
+        "correctness": "fused leaf bit-exact vs unfixed256+gate_mul chain (mismatches 0/4096, KL 0.0, top-1 100%); production GGUF capture golden tokens 9707 identical across all four A/B legs",
+        "do_not_repeat": [
+            "fuse the private-c1 gate_mul into the fixed256 context-batch leaf (gate_mul is ~1 us/call of a ~95 us attention call; GPU-bound decode hides the launch)",
+            "expect launch-count reductions in c1 decode to move wall time (decode is GPU-bound; host is overlapped)",
+            "route decode attention through a fused leaf without re-running the full mtp-bench category suite first"
+        ]
+    },
+    "baseline": {
+        "complete_wall_ms_per_tok": 26.11,
+        "attention_call_ms_at_context_513": 0.095,
+        "gate_mul_slice_ms_per_call": 0.001,
+        "gate_mul_share_of_attention_call_pct": 1.0
+    },
+    "mechanism_ab": {
+        "micro_chain_ms_call": [0.095, 0.095],
+        "micro_fused_ms_call": [0.094, 0.094],
+        "micro_delta_us_call": 1,
+        "micro_delta_pct": 0.72,
+        "whole_decode_unfused_ms_tok": [25.906, 26.306, 25.886, 25.979],
+        "whole_decode_fused_ms_tok": [26.322, 26.679, 25.965, 26.636],
+        "whole_decode_mean_unfused_ms_tok": 26.106,
+        "whole_decode_mean_fused_ms_tok": 26.501,
+        "whole_decode_delta_us_tok": -395,
+        "whole_decode_delta_pct": -1.49,
+        "gate_mul_calls_per_window_unfused": 400,
+        "gate_mul_calls_per_window_fused": 0,
+        "conclusion": "fused leaf is flat to +0.7% at kernel level and within-noise-to-slightly-negative whole-decode; the gate_mul is ~1% of the attention call and the launch is hidden under GPU-bound decode"
+    },
+    "cross_refs": {
+        "moeselect_no_win": "2026-08-20-gfx1151-qwen36-35b-pn3-moeselect-no-win.json — same conclusion for host-dispatch removal: c1 decode is GPU-bound, host/launch reduction recovers ~0 wall",
+        "worklog": "worklog/entries/20260820T084054.841923Z-lhl-pn3-fullattn-fused-gate-0ef26a.md"
+    },
+    "reason": "The fused fixed256+gate leaf is bit-exact, eliminates 10 gate_mul launches/token and the intermediate F32 round trip, yet measures flat: the gate_mul is ~1 us of a ~95 us attention call, and the decode is GPU-bound so the removed launch was already hidden. No headroom exists at current context/geometry. Implementation reverted entirely so the default path stays byte-identical to the pre-candidate commit.",
+    "next_owner": "P3-FULLATTN attention-core kernel math (the ~0.095 ms/call fixed256 scan at context 513, 10 calls/token): gfx1151-specific thread-geometry override of the shared .hip template, then split-K3 / split-policy / WMMA-tile variants on the retained c1 exact spine. Validate on the full multi-prompt mtp-bench category suite, never a single fixed prompt."
+}
