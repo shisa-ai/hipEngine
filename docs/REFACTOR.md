@@ -3867,14 +3867,19 @@ should be boring.
   `gguf_q5_k_t16_v1`) to fp16-state instantiations; strict FP32 remains the
   registered fallback.
 - Fail-closed guards raise when the flag is combined with an FP32-state writer
-  that has no fp16 variant yet: verify-capture decode_order prefill
-  (state-rows kernels), segmented decode_order prefill, chain-journal output and
-  snapshot fusion, and any `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the
-  auto `chain_compact_peer_wave32` Q4_K_S route.
+  that has no fp16 variant yet. As of 2026-08-20 the decode_order state-rows
+  writers (verify-capture and segmented) are fp16-capable (see the
+  20260820T065950 worklog entry and `kernel: fp16-state decode_order state-rows
+  prefill writers`), so their fail-closed guard in
+  `_run_linear_attention_prefill_layer_rows` was removed and the dispatch
+  selects the fp16-state variant under the flag. Remaining fail-closed guards:
+  chain-journal output and snapshot fusion, the MTP tree/chain verifier, and
+  any `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the auto
+  `chain_compact_peer_wave32` Q4_K_S route.
 - Removal triggers: (1) after the c8 fp16-vs-fp32 benchmark and the
   strict-teacher gate validate the production route, decide whether the fp16
   state becomes the default and the flag collapses to a
-  remove/rollback seam; (2) add fp16 variants for the verify-capture and
-  chain-journal writers (or permanently gate them off) and delete the
+  remove/rollback seam; (2) add fp16 variants for the chain-journal writers and
+  the MTP verifier (or permanently gate them off) and delete the remaining
   fail-closed guards; (3) drop `gdn_effective_mode`/frozen-mode assumptions if
   the flag is later allowed beyond the compact-peer-wave32 route.
