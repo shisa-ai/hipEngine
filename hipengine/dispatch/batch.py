@@ -246,6 +246,7 @@ def plan_physical_batch_groups(
     *,
     physical_bucket_widths: Sequence[int],
     compact_active_rows: bool = False,
+    width_sequence: Sequence[int] | None = None,
 ) -> tuple[PhysicalBatchGroup, ...]:
     """Lower arbitrary logical work into declared physical buckets.
 
@@ -255,6 +256,12 @@ def plan_physical_batch_groups(
     bucket.  ``compact_active_rows`` instead densifies only the ephemeral model
     execution row map.  Stable request ids, scheduler slots, state, and KV
     ownership remain unchanged and are reported through ``global_slot_indices``.
+
+    ``width_sequence`` (only valid with ``compact_active_rows=True``) supplies an
+    explicit per-group physical width composition, e.g. the artifact-backed D2
+    optimizer's ``(7, 6)`` for 13 active rows instead of the ceiling ``(8, 5)``.
+    Each width must be a declared bucket and the widths must sum exactly to the
+    active row count.
     """
 
     widths = tuple(int(width) for width in physical_bucket_widths)
@@ -277,13 +284,37 @@ def plan_physical_batch_groups(
     provisional: list[dict[str, object]] = []
     if compact_active_rows:
         ordered_slots = tuple(sorted(request_by_slot))
-        for physical_slot_base in range(0, len(ordered_slots), max_width):
-            group_slots = ordered_slots[physical_slot_base : physical_slot_base + max_width]
+        if width_sequence is not None:
+            seq = tuple(int(width) for width in width_sequence)
+            if not seq or any(width <= 0 or width > max_width for width in seq):
+                raise ValueError(
+                    "width_sequence widths must be declared buckets in (0, max_width]"
+                )
+            if sum(seq) != len(ordered_slots):
+                raise ValueError(
+                    "width_sequence must cover the active row count exactly"
+                )
+            slices: list[tuple[int, tuple[int, ...], int]] = []
+            cursor = 0
+            for width in seq:
+                slices.append((width, ordered_slots[cursor : cursor + width], cursor))
+                cursor += width
+        else:
+            slices = []
+            for start in range(0, len(ordered_slots), max_width):
+                group_slots = ordered_slots[start : start + max_width]
+                active_rows = len(group_slots)
+                try:
+                    physical_rows = next(
+                        width for width in widths if width >= active_rows
+                    )
+                except StopIteration as exc:  # pragma: no cover - max-width chunks are defensive
+                    raise ValueError(
+                        "physical_bucket_widths cannot cover active rows"
+                    ) from exc
+                slices.append((physical_rows, group_slots, start))
+        for physical_rows, group_slots, physical_slot_base in slices:
             active_rows = len(group_slots)
-            try:
-                physical_rows = next(width for width in widths if width >= active_rows)
-            except StopIteration as exc:  # pragma: no cover - max-width chunks are defensive
-                raise ValueError("physical_bucket_widths cannot cover active rows") from exc
             local_slots = tuple(range(active_rows))
             provisional.append(
                 {

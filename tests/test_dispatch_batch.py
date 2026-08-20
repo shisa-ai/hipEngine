@@ -353,6 +353,53 @@ def test_physical_batch_group_plan_adaptive_c9_uses_c8_plus_c1() -> None:
     assert all(group.dense_execution_rows for group in groups)
 
 
+def test_physical_batch_group_plan_width_sequence_overrides_ceiling() -> None:
+    request_ids = tuple(range(100, 113))
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=request_ids,
+        row_to_request=request_ids,
+        slot_ids=tuple(range(13)),
+        active_mask=(True,) * 13,
+    )
+
+    # Ceiling with direct widths: 8 + 5.
+    ceiling = plan_physical_batch_groups(
+        work,
+        physical_bucket_widths=(1, 2, 3, 4, 5, 6, 7, 8),
+        compact_active_rows=True,
+    )
+    assert tuple(group.physical_rows for group in ceiling) == (8, 5)
+
+    # D2 width_sequence: 7 + 6.
+    d2 = plan_physical_batch_groups(
+        work,
+        physical_bucket_widths=(1, 2, 3, 4, 5, 6, 7, 8),
+        compact_active_rows=True,
+        width_sequence=(7, 6),
+    )
+    assert tuple(group.physical_rows for group in d2) == (7, 6)
+    assert tuple(group.request_ids for group in d2) == (request_ids[:7], request_ids[7:])
+    assert tuple(group.active_mask for group in d2) == ((True,) * 7, (True,) * 6)
+    assert all(group.dense_execution_rows for group in d2)
+
+    # Invalid width_sequence fails closed before model work.
+    with pytest.raises(ValueError, match="cover the active row count exactly"):
+        plan_physical_batch_groups(
+            work,
+            physical_bucket_widths=(1, 2, 3, 4, 5, 6, 7, 8),
+            compact_active_rows=True,
+            width_sequence=(7, 7),
+        )
+    with pytest.raises(ValueError, match="declared buckets"):
+        plan_physical_batch_groups(
+            work,
+            physical_bucket_widths=(1, 2, 4, 8),
+            compact_active_rows=True,
+            width_sequence=(9, 4),
+        )
+
+
 def test_physical_batch_group_plan_validates_declared_widths_and_slot_metadata() -> None:
     work = WorkItem(
         kind=WorkKind.DECODE,

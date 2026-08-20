@@ -12,6 +12,7 @@ import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
+from hipengine.dispatch.d2_resolver import CostTable, PhysicalWidthCost, d2_partition
 from hipengine.generation import (
     EngineLoopConfig,
     GenerationAdmissionRejected,
@@ -7255,3 +7256,165 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups(
     )
     assert packed_calls == [((0, 1, 2), 4, (0, 1, 2))]
     assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2, 4, 8]
+
+
+def test_resident_runner_follows_d2_composition_across_c1_to_c32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prove the actual resident owner lowers every logical c1-c32 to the D2
+    artifact-backed composition when a cost table is configured.
+
+    Ceiling remains the fail-closed fallback when no cost table is set; with one
+    set, the plan's group physical widths must equal ``d2_partition``.
+    """
+    step_ms = {
+        1: 33.1701, 2: 37.5209, 3: 40.0602, 4: 43.2973,
+        5: 48.0149, 6: 52.7025, 7: 57.8864, 8: 63.5257,
+    }
+    cost_table = CostTable(
+        tuple(
+            PhysicalWidthCost(w, ms, "post-promotion-fixture")
+            for w, ms in step_ms.items()
+        )
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    runner._gguf_ar_cost_table = cost_table
+    runner._step_native_chunk = lambda rows, **kwargs: True
+    runner._step_native_serial = lambda rows, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    for c in range(1, 33):
+        rows = [
+            SimpleNamespace(
+                request_id=request_id,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for request_id in range(c)
+        ]
+        runner._step_native_rows(
+            rows,
+            work=WorkItem(
+                kind=WorkKind.DECODE,
+                request_ids=tuple(range(c)),
+                row_to_request=tuple(range(c)),
+                slot_ids=tuple(range(c)),
+                active_mask=(True,) * c,
+            ),
+        )
+        plan = runner._last_physical_group_plan
+        got = sorted(
+            (int(group["physical_rows"]) for group in plan["groups"]),
+            reverse=True,
+        )
+        expected = list(d2_partition(c, cost_table))
+        assert got == expected, f"c{c}: plan {got} != D2 {expected}"
+        # Composition must cover every active row exactly.
+        assert sum(got) == c
+
+    # Without a cost table the owner fails closed to ceiling (not D2).
+    runner._gguf_ar_cost_table = None
+    runner._step_native_rows(
+        [
+            SimpleNamespace(
+                request_id=r,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for r in range(13)
+        ],
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(13)),
+            row_to_request=tuple(range(13)),
+            slot_ids=tuple(range(13)),
+            active_mask=(True,) * 13,
+        ),
+    )
+    plan = runner._last_physical_group_plan
+    got = sorted(
+        (int(group["physical_rows"]) for group in plan["groups"]),
+        reverse=True,
+    )
+    assert got == [8, 5]  # ceiling fallback, not D2 (7,6)
+
+
+def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch, tmp_path) -> None:
+    import json
+
+    # Build a minimal canonical artifact with measured medians.
+    artifact = {
+        "summaries": {
+            label: {
+                "latency": {"inter_token_model_step_seconds": {"median": seconds}}
+            }
+            for label, seconds in [
+                ("c1", 0.0331), ("c2", 0.0375), ("c3", 0.0400), ("c4", 0.0433),
+                ("c5", 0.0480), ("c6", 0.0527), ("c7", 0.0578), ("native_c8", 0.0635),
+            ]
+        }
+    }
+    path = tmp_path / "d2_artifact.json"
+    path.write_text(json.dumps(artifact), encoding="utf-8")
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", str(path))
+    qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+    try:
+        ct = qwen35_gguf._gguf_ar_resolve_cost_table("hip_gfx1100")
+        assert ct is not None
+        assert ct.widths == (1, 2, 3, 4, 5, 6, 7, 8)
+
+        runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+            qwen35_gguf.Qwen35GGUFResidentModelRunner
+        )
+        runner._resident_batch_owner = object()
+        runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+        runner._last_execution_manifest = {}
+        runner._last_physical_group_plan = {}
+        runner._step_native_chunk = lambda rows, **kwargs: True
+        runner._step_native_serial = lambda rows, **kwargs: None
+        monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+        runner._step_native_rows(
+            [
+                SimpleNamespace(
+                    request_id=r,
+                    slot=SimpleNamespace(
+                        session=SimpleNamespace(kv_attention_source="bf16"),
+                        c1_decode_graph=None,
+                    ),
+                )
+                for r in range(13)
+            ],
+            work=WorkItem(
+                kind=WorkKind.DECODE,
+                request_ids=tuple(range(13)),
+                row_to_request=tuple(range(13)),
+                slot_ids=tuple(range(13)),
+                active_mask=(True,) * 13,
+            ),
+        )
+        got = sorted(
+            int(group["physical_rows"])
+            for group in runner._last_physical_group_plan["groups"]
+        )
+        assert got == [6, 7]  # D2 composition loaded from the artifact
+    finally:
+        qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+
+
+def test_resident_runner_d2_artifact_env_absent_fails_closed(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", raising=False)
+    qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+    try:
+        assert qwen35_gguf._gguf_ar_resolve_cost_table("hip_gfx1100") is None
+    finally:
+        qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
