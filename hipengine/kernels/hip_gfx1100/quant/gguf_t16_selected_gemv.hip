@@ -6164,7 +6164,7 @@ int launch_q5_dense_rowtile_col4(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles || !out || rows < 2 || rows > 4 ||
+  if (!x || !tiles || !out || rows < 2 || rows > 8 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -6184,6 +6184,10 @@ int launch_q5_dense_rowtile_col4(
     Q5_T16_DENSE_ROWTILE_COL4_CASE(2);
     Q5_T16_DENSE_ROWTILE_COL4_CASE(3);
     Q5_T16_DENSE_ROWTILE_COL4_CASE(4);
+    Q5_T16_DENSE_ROWTILE_COL4_CASE(5);
+    Q5_T16_DENSE_ROWTILE_COL4_CASE(6);
+    Q5_T16_DENSE_ROWTILE_COL4_CASE(7);
+    Q5_T16_DENSE_ROWTILE_COL4_CASE(8);
     default:
       return hipErrorInvalidValue;
   }

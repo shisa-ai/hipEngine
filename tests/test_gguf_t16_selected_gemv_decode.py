@@ -1130,7 +1130,7 @@ def test_q4_t16_dense_c1_down_residual_is_bit_exact(
     np.testing.assert_array_equal(candidate, expected)
 
 
-@pytest.mark.parametrize("rows", [1, 2, 3, 4])
+@pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 6, 7, 8])
 def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
     rows: int,
     t16_selected_library,
