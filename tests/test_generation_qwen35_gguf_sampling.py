@@ -1085,109 +1085,13 @@ def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> 
     assert "prefill_batch_ms" in timing
 
 
-def test_gguf_speculative_mtp_rolls_slots_above_four(monkeypatch) -> None:
-    events: list[tuple] = []
-    cycle_counts: dict[int, int] = {}
-
-    def fake_open_slots(shared_runner, assets, encoded_prompts, request, *, pool_sessions):
-        del shared_runner, assets, pool_sessions
-        events.append(("open", tuple(request.prompts)))
-        slots = []
-        for local_index, _prompt in enumerate(request.prompts):
-            slots.append(
-                qwen35_gguf._GGUFMTPServingSlot(
-                    request_id=local_index,
-                    prompt_ids=list(encoded_prompts[local_index]),
-                    session=SimpleNamespace(runtime=SimpleNamespace()),
-                    resident_draft=SimpleNamespace(),
-                    resident_context=SimpleNamespace(),
-                    mtp_key_cache=SimpleNamespace(ptr=0x1000 + local_index),
-                    mtp_value_cache=SimpleNamespace(ptr=0x2000 + local_index),
-                    mtp_buffers=[],
-                    hidden_size=2,
-                    prev_token=1,
-                    seq_position=4,
-                    generated_ids=[1],
-                )
-            )
-        return slots
-
-    def fake_run_cycle(slots, assets, request, *, base_env, verify_owner_session=None):
-        del assets, request, base_env
-        assert verify_owner_session is not None
-        live_ids = tuple(slot.request_id for slot in slots if not slot.done)
-        events.append(("cycle", live_ids))
-        assert len(live_ids) <= qwen35_gguf._MTP_SERVING_TARGET_BATCH_MAX_SLOTS
-        for slot in slots:
-            if slot.done:
-                continue
-            request_id = int(slot.request_id)
-            cycle_counts[request_id] = cycle_counts.get(request_id, 0) + 1
-            slot.timing["target_verify_batch_ms"] = 1.0
-            slot.generated_ids.append(2)
-            slot.cycles.append(
-                {
-                    "mode": "llama_compat_direct_commit",
-                    "generated_draft_tokens": 1,
-                    "accepted_draft_tokens": 1,
-                    "visible_output_tokens": 2,
-                }
-            )
-            slot.done = (request_id in {0, 1} and cycle_counts[request_id] == 1) or cycle_counts[request_id] >= 2
-
-    def fake_close(slots, *, reuse=True):
-        events.append(("close", tuple(slot.request_id for slot in slots), bool(reuse)))
-
-    def fake_output(prompt_ids, generated_ids, request, *, row_index, resident_slot_count, timing=None):
-        del prompt_ids, generated_ids, request, timing
-        return SimpleNamespace(text=f"out{row_index}", resident_slot_count=int(resident_slot_count))
-
-    generator = _generator()
-    monkeypatch.setattr(generator, "_open_mtp_serving_slots", fake_open_slots)
-    monkeypatch.setattr(generator, "_run_mtp_serving_slots_cycle", fake_run_cycle)
-    monkeypatch.setattr(generator, "_close_mtp_serving_slots", fake_close)
-    monkeypatch.setattr(generator, "_mtp_generation_output", fake_output)
-
-    request = _request(prompts=("first", "second", "long", "long2", "{", "}"), max_tokens=3)
-    outputs: list[object] = []
-    resident_slots, verify_batching = generator._generate_rolling_mtp_serving_slots(
-        SimpleNamespace(),
-        qwen35_gguf._GGUFMTPServingAssets(
-            weights={},
-            token_embd_f32=np.zeros((8, 2), dtype=np.float32),
-            rope_cos=np.ones((16, 2), dtype=np.float32),
-            rope_sin=np.zeros((16, 2), dtype=np.float32),
-        ),
-        {
-            0: [10, 11],
-            1: [20],
-            2: [10, 11, 12, 13],
-            3: [20, 21, 22, 23],
-            4: [5],
-            5: [4],
-        },
-        request,
-        base_env={},
-        prompt_rows_by_request={},
-        generated_ids_by_request={},
-        mtp_cycles_by_request={},
-        tokenize_ms_by_request={},
-        assets_load_ms=0.0,
-        pool_sessions=True,
-        outputs=outputs,
+def test_gguf_speculative_mtp_has_no_rejected_rolling_slot_route() -> None:
+    assert not hasattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_generate_rolling_mtp_serving_slots",
     )
-
-    assert resident_slots == 4
-    assert verify_batching == "packed_slot_batch"
-    assert [output.text for output in outputs] == ["out0", "out1", "out2", "out3", "out4", "out5"]
-    assert events[:5] == [
-        ("open", ("first", "second", "long", "long2")),
-        ("cycle", (0, 1, 2, 3)),
-        ("close", (1,), True),
-        ("open", ("{", "}")),
-        ("cycle", (2, 3, 4, 5)),
-    ]
-    assert events[-1] == ("close", (0,), True)
+    source = Path(qwen35_gguf.__file__).read_text()
+    assert "HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS" not in source
 
 
 def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
