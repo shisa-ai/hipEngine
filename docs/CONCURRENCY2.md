@@ -739,11 +739,15 @@ Any probe whose numbers enter the width map must:
    retirement/refill, cancellation, graph rebuild, slot permutation, state/KV
    hashes) for every proposed physical width. Only then expand package
    capabilities and compare the actual server's chosen D2 plan with the artifact.
-   **Blocker (2026-08-20):** the direct-width certification surfaced a packed-AR
-   capture/replay position off-by-one on the compaction path for non-power-of-2
-   widths (`step_batch_native` `positions` vs `session.position`; see worklog
-   `20260820T150624Z-...direct-width-c5-compaction-blocker...`). Direct widths
-   stay opt-in; `(1,2,4,8)` remains the default until that is fixed.
+   **Certification checkpoint (2026-08-20):** direct-c5 first exposed a packed-AR
+   position `+1` during compaction. Root cause was width-independent capture-only
+   ownership: an imported graph state was marked dirty before any replay, then
+   its singleton layout was scattered during invalidation. Capture now preserves
+   pre-capture ownership and the c5 compaction reproduction passes (see worklogs
+   `20260820T150624Z-...direct-width-c5-compaction-blocker...` and
+   `20260820T152319Z-...packed-graph-capture-only-cursor-advance...`). Direct
+   widths still stay opt-in and `(1,2,4,8)` remains the default until the clean
+   c3/c5/c6/c7 lifecycle plus numerical requalification matrix completes.
 5. **Re-profile the post-fix ledger before wider kernels.** Attack the new top
    complete-model family. The dirty Q4 `ROW_TILE=16/32` prototype is closed:
    direct row16 down was only 1.115× faster than 2×row8, row32 was 8.69× slower
