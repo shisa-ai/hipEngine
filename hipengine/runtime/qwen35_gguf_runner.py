@@ -10780,11 +10780,14 @@ def _gguf_aotriton_head_major_kv_enabled(backend: str) -> bool:
 def _gguf_aotriton_prefill_allowed(backend: str) -> bool:
     """Whether AOTriton may serve GGUF full-attention prefill for this backend.
 
-    gfx1151 sets ``GGUF_AOTRITON_PREFILL = False`` (native
-    ``causal_gqa_gate_bf16`` measured ~2-5% faster at every prefill length
-    64-2048, no crossover, on the 8060S). gfx1100 leaves it undefined -> the
-    default ``True`` keeps the measured 512-crossover threshold policy.
-    ``HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE`` overrides either default.
+    gfx1151 sets ``GGUF_AOTRITON_PREFILL = True``. An earlier slice measurement
+    claimed native was ~2-5% faster at 64..2048 with no crossover, but native
+    bulk prefill collapses at mid/long context (1K=828, 2K=362, 4K=234 tok/s and
+    can hang at 2K+) while AOTriton holds flat ~1300-1330 tok/s. Sub-512 native
+    is still used via the 512-token crossover regardless. gfx1100 leaves the
+    capability undefined -> the default ``True`` keeps the measured 512-crossover
+    threshold policy. ``HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE`` overrides either
+    default.
     """
 
     if _env_value(_GGUF_AOTRITON_PREFILL_ENABLE_ENV) is not None:

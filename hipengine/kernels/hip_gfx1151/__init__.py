@@ -841,14 +841,15 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # real-Uvicorn serving A/B admit FP16 recurrent-state storage for dense Q4_K_S.
 # The environment remains an explicit rollback: =0 restores FP32 storage.
 GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
-# Measured 2026-08-20 (35B-A3B, 8060S): the native causal_gqa_gate_bf16 prefill
-# kernel beats AOTriton v3 at every prefill length (64/128/256/512/1024/2048),
-# ~2-5% faster on the serialized full-attention slice, never slower, with no
-# crossover. AOTriton is tuned for larger GPUs (gfx1100's 96 CU / 48 MiB MALL);
-# on the 40-CU 8060S the simpler native scan wins and drops the aotriton
-# wrapper overhead (bf16 conversion, head-major KV copy, stream bridge).
-# Native is the exact same kernel already validated below the 512 threshold.
-GGUF_AOTRITON_PREFILL = False
+# Default AOTriton ON for gfx1151. An earlier 2026-08-20 slice measurement
+# (64..2048) claimed native causal_gqa_gate_bf16 was ~2-5% faster with no
+# crossover, which set this to False; but the native full-attention path scales
+# badly in bulk prefill and collapses at mid/long context. Measured 2026-08-21
+# (35B-A3B @ 8060S): native 1K=828, 2K=362, 4K=234 tok/s (and can hang/fail at
+# 2K+) while AOTriton holds flat ~1300-1330 tok/s at 1K/2K/4K (1274 at 512).
+# Below the 512-token crossover native is still used regardless. This restores
+# the retained 4K prefill (~1430 tok/s) that predated the False default.
+GGUF_AOTRITON_PREFILL = True
 # Measured 2026-08-20 (35B-A3B @ 2048/4096, 8060S): 512-row linear/MoE prefill
 # chunks are ~1.2% (2048 tok) / ~2.3% (4096 tok) faster than the 1024 default,
 # and chunk-boundary-correct (KL 0.00013 at 2048, far below the 0.034 run-noise
