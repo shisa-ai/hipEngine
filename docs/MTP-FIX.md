@@ -11,7 +11,7 @@ broader than removing the 1024-token guard. The campaign is complete only when
 an eligible request can use MTP across its declared context, lifecycle, API,
 quality, and load envelope—or can fall back to AR before speculative state is
 mutated—without hangs, state corruption, silent semantic changes, or misleading
-telemetry.
+request/cycle records.
 
 Related design and historical evidence:
 
@@ -20,8 +20,153 @@ Related design and historical evidence:
 - [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) — external comparison protocol;
 - [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) — numerical/control contracts;
 - [`CONCURRENCY.md`](CONCURRENCY.md) — scheduler and dynamic-serving scenarios;
-- [`API.md`](API.md) — current OpenAI-compatible routing and telemetry;
+- [`API.md`](API.md) — current OpenAI-compatible routing and response reporting;
 - [`REFACTOR.md`](REFACTOR.md) — temporary flags and rollback paths.
+
+## Campaign punchlist and coder handoff
+
+**As of 2026-08-21.** This is the resumable implementation ledger. A checked
+item is complete and must not be redone unless a later regression invalidates
+its recorded evidence. An unchecked item is not qualified merely because a
+partial probe passed.
+
+**Exclusive GPU owner:** the coder actively continuing this campaign has
+exclusive use of the GPU for the duration of its coding/validation session. No
+other agent may start a GPU test, benchmark, profiler, model load, server, or
+background GPU task unless the user explicitly reassigns or shares the device.
+Other agents must restrict themselves to CPU/read-only work and must not infer
+that an idle utilization sample releases the lease. Before the campaign coder
+starts a long gate it should still state the command, reason, and expected
+duration, but it does not need additional approval. On handoff, it must stop or
+identify every surviving GPU process/background task before the next coder
+claims the lease.
+
+### Completed and committed
+
+- [x] **Campaign audit and plan:** commit `c964f8370` created this campaign and
+      recorded C0–C9, RF0–RF7, validation tiers, and promotion rules.
+- [x] **RF0 containment:** commit `9aa25016e` added context/output/binding-aware
+      graph admission, prevented incompatible device proposals, retained safe
+      pre-launch eager fallback, added stable miss reasons, and changed implicit
+      server policy to fail-closed `auto`. The recorded gfx1151 27B crossing
+      gate matched 12 AR IDs and a subsequent AR health request passed.
+- [x] **RF1 oracle harness:** commit `d83879ff0` added
+      `scripts/gguf_mtp_long_context_gate.py`, focused schema/unit coverage, and
+      the eager-native versus serial-exact state/KV/commit gate. This completes
+      the harness, **not** RF1 qualification.
+- [x] **Page-boundary RF1 packet:** the existing RF1 run passed all 9 direct
+      page-boundary cases (`/tmp/mtp-rf1-pages.json`, 101.88 s). Preserve this
+      result; rerun only if the eventual fix changes relevant attention,
+      state/KV, commit, or rollback behavior.
+- [x] **Failure localization for the 1024 transition:** the original boundary
+      packet passed 18/19 direct cases and its real generation case. The sole
+      failure was `end1024-b3-a3` (B3 full accept ending exactly at 1024):
+      top-1, accepted count, and rollback were exact, while full logits,
+      selected state/KV/hidden, and commit were not. Live-prefix KV, every
+      recurrent state, hidden/root, and cursor were independently proven exact
+      before verification. The first verifier-output drift was layer 46 row 3
+      (295 BF16 elements, max abs `0.015625`), in the staged multi-row
+      linear-attention/FFN path before later KV propagation. Do not repeat the
+      prefix or layer bisects unless new evidence contradicts them.
+
+### Resolved RF0 planner questions
+
+These decisions describe the retained RF0 implementation. They are not open
+questions for the next coder.
+
+1. **Base/starting point — validate forward, do not reimplement.** Start from a
+   clean commit containing `9aa25016e` (and normally `d83879ff0`, which builds
+   RF1 on it). RF0 is committed and validated; do not re-derive or port an older
+   uncommitted scaffold. If a separate branch lacks RF0, cherry-pick the atomic
+   RF0 commit rather than manually recreating its hunks. The only implementation
+   state that remains dirty is the RF1 candidate identified below.
+2. **Draft-side defense — keep the target verifier authoritative.** Do **not**
+   tighten the draft executor's independent `position + budget` graph guard to
+   `position + budget + 1`. The draft graph executes B proposal rows and its
+   existing limit accurately describes that provider. The target graph must
+   retire B+1 verifier rows, so `_maybe_launch_device_proposal()` first requires
+   the verifier's `device_proposal_ready()` check with `rows=budget+1`. Tests
+   bind the orchestration invariant that the draft launcher is never called
+   when that target check fails. Duplicating the target cap in the draft
+   provider would conflate two graph capabilities and would drift when RF2 adds
+   distinct context buckets.
+3. **C2/request-level admission — deferred to D1, not required to close RF0.**
+   RF0 is containment: `auto` is fail-closed and an operator-selected `enabled`
+   route may use MTP only while each live cycle is eligible, then safely
+   pre-launch-fall back. That is sufficient to prevent the wedge. It is not
+   certification of `enabled` for arbitrary requests. Immutable request/context
+   planning, certified scopes, and admission-time rejection/reasoning remain D1
+   work and must precede automatic production enablement.
+4. **Reason taxonomy — stable strings now, centralized taxonomy at D1.** RF0's
+   externally recorded values, especially `target_graph_context_bucket_miss`
+   and `target_graph_output_room_miss`, are compatibility-stable and must not be
+   renamed casually. Module constants are sufficient for RF0; D1 should
+   centralize all route/admission reasons in a typed enum or equivalent registry
+   while preserving these serialized string values. Do not churn RF0 solely to
+   replace literals with an enum.
+5. **Collection — use direct cycle/result records, not external telemetry.**
+   RF0 requires the realized in-process cycle record and request result to
+   identify the pre-launch miss, which the retained implementation and crossing
+   smoke prove. D1/D7 should extend those direct structured records and campaign
+   artifacts for failure class, graph bucket, and circuit-breaker state. This
+   campaign does not require Prometheus or another external telemetry system.
+6. **Tier-B crossing smoke — already authorized, completed, and retained.** Do
+   not rerun it merely to answer the old authorization question. The exact
+   gfx1151 27B command and host/model evidence are in the RF0 worklog; the final
+   isolated node passed in 93.09 s and proved pre-crossing graph use,
+   pre-launch fallback without device chaining, 12 AR-exact output IDs, a
+   stable reason in the direct result, and subsequent AR health. Future
+   necessary campaign GPU gates are covered by the repository's assigned-task
+   validation policy; state the reason and expected duration before starting
+   them.
+
+### In-progress handoff — preserve the dirty RF1 candidate
+
+- [ ] **Review and continue, do not discard, the current uncommitted candidate**
+      in `hipengine/runtime/qwen35_gguf_runner.py` and
+      `tests/test_gguf_native_spec_cycle.py`. At long split-K contexts with
+      multiple verifier rows, it routes each attention and FFN row through the
+      registered c1/strict dispatch while retaining the native split-K leaf;
+      retained short-context batching is unchanged. The associated uncommitted
+      checkpoint is
+      `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
+- [x] **Focused candidate proof:** the isolated repaired `end1024-b3-a3` case
+      passed with exact logits/top-1, state, KV, hidden, commit, cursor, and
+      rollback; split-K ownership was observed. This is encouraging but is not
+      enough to retain the candidate.
+- [ ] **Finish candidate validation:** the combined transition packet was
+      intentionally stopped and emitted no artifact. Run the focused unit test
+      plus the boundary transition packet for cycle ends `1024,1025,1032`,
+      budgets B1/B2/B3, B3 full accept at 1024, and the real generation crossing.
+      Preserve the earlier passing page packet unless this code path makes it
+      genuinely affected. If any strict surface fails, keep RF1 blocked and
+      localize from the layer-46 row-3 finding rather than restarting the
+      investigation.
+- [ ] **Decide the candidate:** retain and commit it only if the complete focused
+      transition packet passes. Record that it is a strict eager/oracle fallback
+      and measure its cost; do not promote it as the fast long-context route.
+      If rejected, record the failed surface and leave RF1 open.
+
+### Remaining campaign work
+
+- [ ] **Complete RF1:** after the repaired transition packet, cover 2K, 4K, 8K,
+      16K, 32K, 64K/largest practical context and near-cap output tails, then
+      record task/state/KV/wall/memory evidence. RF1 remains open today.
+- [ ] **RF2:** implement and qualify context-bucketed split-K target graphs.
+- [ ] **RF3:** add cancellation, deadline, shutdown, termination, and injected
+      failure ownership gates.
+- [ ] **RF4:** qualify API semantics and stable capability/fallback reporting.
+- [ ] **RF5:** prove concurrency/fairness/resources/soak or explicitly retain an
+      honest serialized dense-MTP policy.
+- [ ] **RF6:** run the complete quality and true-AR performance promotion packet.
+- [ ] **RF7:** canary, circuit-breaker, rollback, restart, and staged rollout.
+- [ ] Keep automatic production MTP disabled until the phase gates below permit
+      a named scope. The running server was not restarted during the RF1 work.
+
+**Shared-worktree warning:** the many untracked benchmark artifacts and the
+existing `benchmarks/README.md` modification belong to concurrent work and are
+not part of this campaign handoff. Do not clean, stage, or rewrite them while
+continuing RF1.
 
 ## 1. Executive decision
 
@@ -75,7 +220,7 @@ and safe routing for all of them.
 - Short-context reusable N1/N2 target graphs and device proposal chaining have
   retained gfx1100/gfx1151 evidence.
 - The server has explicit MTP routing, greedy-sampling guards, a thinking policy,
-  per-request acceptance reporting, Prometheus metrics, and an AR opt-out.
+  per-request acceptance reporting, and an AR opt-out.
 - Reject, partial-accept, full-accept, rollback, selected-state, and graph reuse
   have substantial focused coverage.
 
@@ -85,16 +230,16 @@ These are necessary foundations. They do not establish the real-world envelope.
 
 | ID | Severity | Finding | Current evidence / code |
 | --- | --- | --- | --- |
-| C0 | Critical | A cached below-1024 N2 graph remains “device proposal ready” after the live target cursor has crossed the graph's context limit. The draft proposal may be launched, after which the target graph rejects the context. In-flight proposal errors are deliberately not allowed to fall back, producing the observed long-context failure/wedge. | `Qwen35GGUFTransactionalVerifier.device_proposal_ready()` checks cache/config compatibility but not `target.position + rows <= graph.context_limit`; `Qwen35GGUFTransactionalVerifier.prepare()` re-raises misses after a device proposal exists. |
+| C0 | Resolved in RF0 | Historically, a cached below-1024 N2 graph remained “device proposal ready” after the live target cursor crossed its context limit, allowing a draft launch that the target graph could not retire. | Commit `9aa25016e` added exact live-cycle admission and recheck before launch/submission; see the punchlist and RF0 worklog. |
 | C1 | Critical | The reusable target graph is structurally captured for a static `context_limit=min(1023, max_positions)`. Long contexts switch attention ownership at 1024 to split-K/workspace-backed routes. Removing only the admission guard would bind the wrong graph/workspace policy or capture an impractically large static context. | `gguf_native_spec_cycle.py` admission, graph `context_limit`, dynamic spans, and long-context split threshold in `qwen35_gguf_runner.py`. |
 | C2 | High | Dense default admission is model-level (`has MTP tensors` and `not MoE`), not request/context/profile/backend/resource-level. It can advertise default-safe MTP for a request outside the graph's qualified envelope. | `Qwen35GGUFTextGenerator.supports_default_mtp`; server `enabled` policy. |
 | C3 | High | Deadline/cancellation is checked around the dense generation call, but the inner one-request MTP cycle loop has no per-cycle cancellation/deadline poll. A timed-out HTTP request may stop waiting while GPU work continues. | `_generate_dense_speculative_mtp_detailed()` and `Qwen35GGUFMTPDecodeSession.generate()`. |
 | C4 | High | Dense multi-prompt MTP currently iterates request rows serially through one target session. Server batching tests prove route grouping, not true concurrent dense-MTP execution, fairness, isolation under load, or aggregate benefit. | `_generate_dense_speculative_mtp_detailed()` loops over encoded prompts with `resident_slot_count=1`. |
 | C5 | High | No binding long-context MTP matrix covers the 1024 transition, page boundaries, 4K–64K contexts, prompt-plus-decode crossings, graph/eager parity, state/KV ownership, teardown, and task quality together. | Historical short/category suites and separate KV long-context harnesses do not form this packet. |
 | C6 | Medium | The default `thinking=hint` policy removes host-sampler thinking-budget enforcement. It may be a valid product mode, but it is not semantically identical to the original hard-controlled request and needs explicit API labeling plus task-quality evidence. | Server routing relaxes `thinking_budget`; prompt hints remain but soft-close/EOS suppression/hard-close controls do not. |
-| C7 | Medium | Streaming, logprobs, tools/grammars, penalties, non-greedy sampling, token stop sequences, and several structured controls fall back or reject. This is acceptable only if capability and per-request route telemetry are exact and tested. | `SPECULATIVE_MTP_INCOMPATIBLE_FIELDS`, API routing, `streaming_compatible=false`. |
+| C7 | Medium | Streaming, logprobs, tools/grammars, penalties, non-greedy sampling, token stop sequences, and several structured controls fall back or reject. This is acceptable only if capability and per-request route result fields are exact and tested. | `SPECULATIVE_MTP_INCOMPATIBLE_FIELDS`, API routing, `streaming_compatible=false`. |
 | C8 | Medium | A GPU hang/fatal HIP error has no MTP-specific circuit breaker or worker quarantine policy. One bad graph can make the entire server unhealthy. | Current route has rollback for owned Python exceptions, but no post-fatal process recovery contract. |
-| C9 | Medium | Existing observability reports use/counts, but not a stable reason taxonomy for pre-launch fallback, graph miss, context-bucket transition, cancellation phase, post-launch failure, quarantine, or fallback wall cost. | Current response summary and `hipengine_mtp_*` metrics. |
+| C9 | Medium | Existing direct result records report use/counts, but not a stable reason taxonomy for pre-launch fallback, graph miss, context-bucket transition, cancellation phase, post-launch failure, quarantine, or fallback wall cost. | Current response summary and in-process MTP cycle records. |
 
 ### 3.3 Important distinction: eager long-context MTP versus fast graphs
 
@@ -127,7 +272,8 @@ These bind every phase and execution profile.
    request/transaction generation. Stale generations are rejected.
 3. **Exact control ownership.** Request IDs, row maps, positions, causal limits,
    `KVLiveSpans`, page tables, live counts, Conv/GDN state, target KV, draft KV,
-   output queues, and metrics belong to the correct request at every transition.
+   output queues, and direct result counters belong to the correct request at
+   every transition.
 4. **Prefix-closed commit.** Rejected draft suffixes never become visible and
    never remain reachable in authoritative target or draft state.
 5. **Bounded work.** Every cycle has an output-room check, cancellation/deadline
@@ -175,7 +321,8 @@ MTPRequestPlan
 
 The plan is immutable for one admitted request except at explicit cycle
 boundaries where a separately validated context-bucket transition occurs.
-Responses and metrics report the realized plan, not merely server configuration.
+Responses and direct in-process records report the realized plan, not merely
+server configuration.
 
 ### 5.2 Context-bucketed graph ownership
 
@@ -284,7 +431,7 @@ Exit gate:
 - all focused tests pass;
 - a real prompt whose decode crosses 1024 completes or pre-launch-falls back;
 - no hang, leaked transaction, stale graph, or subsequent AR corruption;
-- route telemetry names the miss.
+- the direct route result names the miss.
 
 **Implemented 2026-08-21:** cached N2 admission now checks the live cycle end,
 output room, graph configuration, allocation binding, and row shape before a
@@ -528,7 +675,8 @@ Rollout order:
 2. local server explicit only;
 3. one canary worker with `auto`, short certified buckets only;
 4. canary expands one context/backend scope at a time;
-5. production percentage rollout with circuit-breaker and AR fallback metrics;
+5. production percentage rollout with directly collected circuit-breaker and
+   AR fallback results;
 6. default `auto` only after the final soak and rollback drill;
 7. consider removing temporary flags only after one release window and a new
    immutable worklog decision.
@@ -551,7 +699,7 @@ covering interactions that benchmarks missed.
 - cancellation/deadline phase injection;
 - EOS/stop/output-tail accounting;
 - graph-key completeness and cache eviction lifecycle;
-- telemetry ownership/counting;
+- direct result-record ownership/counting;
 - no-ROCm skip guards for tests that load HIP.
 
 ### 7.2 Tier B — focused real-GPU gate
@@ -561,7 +709,7 @@ covering interactions that benchmarks missed.
 - eager/graph parity where graph is admitted;
 - state/KV/cursor oracle;
 - cancellation and subsequent-request health;
-- expected kernel trace and graph/fallback telemetry.
+- expected kernel trace and direct graph/fallback records.
 
 ### 7.3 Tier C — nightly/campaign gate
 
@@ -630,28 +778,26 @@ Do not tune on the heldout rows. Repeated-token prompts remain mechanical
 smokes only. Performance claims continue to use the canonical category suite and
 true AR protocol from `BENCHMARK.md`.
 
-## 9. Required telemetry and operator view
+## 9. Required direct collection and operator view
 
-Per request:
+This campaign has no Prometheus or external-telemetry dependency. Collect every
+required field directly from the owning runtime/server objects into structured
+request/cycle results and the campaign artifact. Tests must assert those objects
+rather than scrape a separate service. Aggregate summaries are computed by the
+campaign harness from the direct records.
+
+Per request/cycle record:
 
 - requested/effective route and stable decision reason;
 - model/backend/profile/context bucket/candidate budget/verify mode;
 - used MTP, cycles, proposed/accepted/rejected drafts, acceptance;
 - graph captures/replays/misses and eager/AR fallback;
-- cancellation/deadline/termination phase;
+- pre-launch versus post-launch failure class;
+- cancellation/deadline/termination phase and latency;
 - transaction terminal status;
-- circuit-breaker/quarantine state when relevant.
-
-Prometheus additions/refinements:
-
-- requests by effective route and decision reason;
-- graph capture/replay/miss/failure by context bucket;
-- eager-MTP and AR fallback totals;
-- pre-launch versus post-launch failures;
-- cancellation/deadline counts and latency;
-- circuit-breaker state/transitions;
-- MTP target/draft KV, graph-workspace, and cache high-water;
-- complete request and cycle latency histograms, not only cumulative acceptance.
+- circuit-breaker/quarantine state when relevant;
+- target/draft KV, graph-workspace, and cache high-water snapshots;
+- complete request and cycle timing samples.
 
 Startup/capabilities must distinguish:
 
@@ -668,7 +814,7 @@ Startup/capabilities must distinguish:
 | Deliverable | Depends on | Completion evidence |
 | --- | --- | --- |
 | D0 context-aware proposal/target admission | none | RF0 RED/GREEN + real crossing smoke |
-| D1 request-plan/reason taxonomy and safe auto fallback | D0 | server route/API tests and telemetry |
+| D1 request-plan/reason taxonomy and safe auto fallback | D0 | server route/API tests and direct result records |
 | D2 eager long-context oracle | D0 | RF1 state/KV/task matrix |
 | D3 bucketed split-K N1/N2 graphs | D2 | RF2 graph/eager/context packet + trace |
 | D4 cycle cancellation/deadline/shutdown controls | D0 | RF3 fault-injection matrix |
@@ -702,8 +848,8 @@ profile)` only when all statements below are true:
       strict/production contract.
 - [ ] Every auto-routed scope beats true same-protocol AR by the predeclared
       promotion floor and is non-regressive on task/SLO/resource gates.
-- [ ] Capabilities, responses, logs, metrics, and artifacts report the realized
-      route and reason accurately.
+- [ ] Capabilities, responses, direct runtime records, and artifacts report the
+      realized route and reason accurately.
 - [ ] Final soak and rollback/restart drills pass with no hang, leak, stale
       graph, ownership mismatch, or unexplained readiness loss.
 - [ ] Benchmark artifact, rollup, changelog, immutable worklog, and any
@@ -712,21 +858,15 @@ profile)` only when all statements below are true:
 Anything less may be a useful MTP diagnostic or explicit opt-in, but it is not a
 production-ready default.
 
-## 12. First implementation slice
+## 12. RF0 implementation slice — completed
 
-The first coding unit should be deliberately small and safety-only:
+Commit `9aa25016e` completed the original safety-only first slice: RED/GREEN
+coverage, graph `can_launch()`/reason admission, context/output-aware
+`device_proposal_ready()`, no draft launch on a target miss, safe pre-launch
+eager fallback, a stable context reason in the direct result, and the real
+crossing/health smoke. Do not reimplement this slice; the exact evidence and
+resolved decisions are in the punchlist above and the RF0 worklog.
 
-1. RED tests for cached short N2 graph eligibility at/crossing 1024 and proof
-   that the device proposal launcher is not called on a miss.
-2. Add graph `can_launch(position, rows, remaining_decode, binding_generation)`
-   or equivalent side-effect-free admission.
-3. Make `device_proposal_ready()` context/output aware.
-4. Preserve host-proposal + eager verifier fallback only when no device proposal
-   has launched.
-5. Emit `target_graph_context_bucket_miss` telemetry.
-6. Run focused unit tests, real 1024-crossing MTP/AR health smoke, rollback,
-   subsequent AR/MTP request, and worklog/commit.
-
-Do **not** remove `end >= 1024`, change `context_limit=min(1023, ...)`, or claim
-long-context MTP in this first unit. Those belong to RF1/RF2 after the existing
-long-context eager/split-K path has a direct oracle.
+The retained constraint still applies: do **not** remove `end >= 1024`, change
+`context_limit=min(1023, ...)`, or claim fast long-context MTP as part of RF0.
+Functional eager qualification is RF1, and context-bucketed fast graphs are RF2.
