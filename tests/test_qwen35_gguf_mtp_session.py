@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
@@ -36,6 +38,87 @@ def test_mtp_int8_target_policy_registration_keeps_scale_metadata() -> None:
     reservation = policy.reservations[7]
     assert reservation.storage_dtype is DType.INT8_PER_TOKEN_HEAD
     assert reservation.scale_metadata is metadata
+
+
+@pytest.mark.parametrize(
+    ("budget", "position", "remaining_decode", "expected", "expected_reason"),
+    [
+        (1, 1021, 2, True, None),
+        (1, 1022, 2, False, "target_graph_context_bucket_miss"),
+        (2, 1020, 3, True, None),
+        (2, 1021, 3, False, "target_graph_context_bucket_miss"),
+        (3, 1019, 4, True, None),
+        (3, 1020, 4, False, "target_graph_context_bucket_miss"),
+        (3, 1019, 3, False, "target_graph_output_room_miss"),
+    ],
+)
+def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
+    budget: int,
+    position: int,
+    remaining_decode: int,
+    expected: bool,
+    expected_reason: str | None,
+) -> None:
+    class Graph:
+        closed = False
+
+        def compatible_with(self, _target, **_kwargs) -> bool:
+            return True
+
+        def launch_ineligibility_reason(self, _target, **kwargs) -> str | None:
+            rows = int(kwargs["rows"])
+            if int(kwargs["position"]) + rows > 1023:
+                return "target_graph_context_bucket_miss"
+            if int(kwargs["remaining_decode"]) < rows:
+                return "target_graph_output_room_miss"
+            return None
+
+    target = SimpleNamespace(position=position)
+    setattr(target, f"_native_spec_b{budget}_target_graph_n2", Graph())
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.closed = False
+    verifier.target_verify_mode = "native"
+    verifier.target = target
+    verifier.last_device_proposal_fallback_reason = "stale"
+
+    assert verifier.device_proposal_ready(
+        budget,
+        remaining_decode=remaining_decode,
+    ) is expected
+    assert verifier.last_device_proposal_fallback_reason == expected_reason
+
+
+def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Verifier:
+        last_device_proposal_fallback_reason = None
+
+        def device_proposal_ready(self, budget, *, remaining_decode):
+            calls.append(("ready", int(budget), int(remaining_decode)))
+            self.last_device_proposal_fallback_reason = (
+                "target_graph_context_bucket_miss"
+            )
+            return False
+
+    class Provider:
+        def launch_device_proposal(self, *_args, **_kwargs):
+            calls.append(("launch",))
+            raise AssertionError("ineligible target graph must prevent proposal launch")
+
+    proposal = mtp_module._maybe_launch_device_proposal(
+        Verifier(),
+        Provider(),
+        SimpleNamespace(root_positions=(1020,)),
+        candidate_budget=3,
+        remaining_decode=4,
+        return_cycle_logits=False,
+    )
+
+    assert proposal is None
+    assert calls == [("ready", 3, 4)]
 
 
 def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:

@@ -68,6 +68,34 @@ def _initial_state_only_journal_applies(
     )
 
 
+def _maybe_launch_device_proposal(
+    verifier: Any,
+    draft_provider: Any,
+    proposal_context: MtpProposalContext,
+    *,
+    candidate_budget: int,
+    remaining_decode: int,
+    return_cycle_logits: bool,
+) -> Any | None:
+    """Launch a draft graph only when its cached target graph can retire it."""
+
+    if bool(return_cycle_logits):
+        return None
+    device_ready = getattr(verifier, "device_proposal_ready", None)
+    launch_device = getattr(draft_provider, "launch_device_proposal", None)
+    if not callable(device_ready) or not callable(launch_device):
+        return None
+    if not device_ready(
+        int(candidate_budget),
+        remaining_decode=int(remaining_decode),
+    ):
+        return None
+    return launch_device(
+        proposal_context,
+        candidate_budget=int(candidate_budget),
+    )
+
+
 @dataclass
 class Qwen35GGUFVerifyGraphBucket:
     """Stable shared-ABI buffers for one scheduler verify shape.
@@ -607,6 +635,7 @@ class Qwen35GGUFTransactionalVerifier:
             compiler_version=target.compiler_version,
             require_cached=target.require_cached_build,
         )
+        self.last_device_proposal_fallback_reason: str | None = None
         self.closed = False
 
     def graph_bucket(self, key: object, batch: TargetVerifyBatch) -> Qwen35GGUFVerifyGraphBucket:
@@ -633,30 +662,53 @@ class Qwen35GGUFTransactionalVerifier:
         self._buckets[key] = bucket
         return bucket
 
-    def device_proposal_ready(self, candidate_budget: int) -> bool:
-        """Report cached-only eligibility without capturing or launching work."""
+    def device_proposal_ready(
+        self,
+        candidate_budget: int,
+        *,
+        remaining_decode: int | None = None,
+    ) -> bool:
+        """Report cached target eligibility before launching any proposal work."""
 
+        self.last_device_proposal_fallback_reason = None
         budget = int(candidate_budget)
-        if self.closed or self.target_verify_mode != "native" or budget not in _GGUF_MTP_CANDIDATE_BUDGETS:
+        if self.closed:
+            self.last_device_proposal_fallback_reason = "target_graph_verifier_closed"
+            return False
+        if self.target_verify_mode != "native":
+            self.last_device_proposal_fallback_reason = "target_graph_verify_mode_miss"
+            return False
+        if budget not in _GGUF_MTP_CANDIDATE_BUDGETS:
+            self.last_device_proposal_fallback_reason = "target_graph_budget_miss"
             return False
         graph = getattr(
             self.target,
             f"_native_spec_b{budget}_target_graph_n2",
             None,
         )
-        return bool(
-            graph is not None
-            and not graph.closed
-            and graph.compatible_with(
-                self.target,
-                bulk_attention_mode="native",
-                use_wmma_prefill=False,
-                capture_linear_state_rows=True,
-                capture_pre_output_norm_hidden=True,
-                defer_linear_state_commit=True,
-                device_accept_commit=True,
-            )
+        if graph is None:
+            self.last_device_proposal_fallback_reason = "target_graph_not_cached"
+            return False
+        eligibility = getattr(graph, "launch_ineligibility_reason", None)
+        if not callable(eligibility):
+            self.last_device_proposal_fallback_reason = "target_graph_admission_unavailable"
+            return False
+        reason = eligibility(
+            self.target,
+            position=int(self.target.position),
+            rows=budget + 1,
+            remaining_decode=(
+                None if remaining_decode is None else int(remaining_decode)
+            ),
+            bulk_attention_mode="native",
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            capture_pre_output_norm_hidden=True,
+            defer_linear_state_commit=True,
+            device_accept_commit=True,
         )
+        self.last_device_proposal_fallback_reason = reason
+        return reason is None
 
     def prepare(
         self,
@@ -1275,20 +1327,23 @@ class Qwen35GGUFMTPDecodeSession:
                 target_hidden=self.target.last_target_hidden,
             )
             proposal_started = time.perf_counter()
-            device_proposal = None
-            device_ready = getattr(self.verifier, "device_proposal_ready", None)
-            launch_device = getattr(self.draft_provider, "launch_device_proposal", None)
-            if (
-                not return_cycle_logits
-                and remaining >= budget + 1
-                and callable(device_ready)
-                and device_ready(budget)
-                and callable(launch_device)
-            ):
-                device_proposal = launch_device(
-                    proposal_context,
-                    candidate_budget=budget,
+            device_proposal = _maybe_launch_device_proposal(
+                self.verifier,
+                self.draft_provider,
+                proposal_context,
+                candidate_budget=budget,
+                remaining_decode=remaining,
+                return_cycle_logits=return_cycle_logits,
+            )
+            device_proposal_fallback_reason = (
+                None
+                if return_cycle_logits
+                else getattr(
+                    self.verifier,
+                    "last_device_proposal_fallback_reason",
+                    None,
                 )
+            )
             if device_proposal is None:
                 draft = self.draft_provider.propose(
                     proposal_context,
@@ -1463,6 +1518,7 @@ class Qwen35GGUFMTPDecodeSession:
                 "target_native_graph_submit_ms": prepared_native_graph_submit_ms,
                 "target_native_graph_readback_ms": prepared_native_graph_readback_ms,
                 "target_native_graph_fallback_reason": prepared_native_graph_fallback_reason,
+                "device_proposal_fallback_reason": device_proposal_fallback_reason,
                 "target_native_device_accept_commit": prepared_native_device_accept_commit,
                 "proposal_target_device_chained": bool(
                     device_proposal is not None

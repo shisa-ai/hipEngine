@@ -271,8 +271,8 @@ Important limits:
 - Maple currently uses greedy generation only.
 - Advertised model context lengths are not a promise that hipEngine supports the
   same length. Use the model guide and set a conservative server context limit.
-- Dense-Qwen server MTP defaults to native B3 for faster decode and may differ from AR;
-  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` restores token-exact control. Other MTP stays opt-in; see [Server API](docs/API.md).
+- Dense-Qwen server MTP defaults to fail-closed `auto`; explicit MTP uses native B3 and may differ from AR.
+  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` restores token-exact control; see [Server API](docs/API.md).
 - APIs and supported combinations can still change before 1.0.
 
 ## Hardware detection

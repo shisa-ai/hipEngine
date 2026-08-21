@@ -80,7 +80,7 @@ def _env_optional_nonnegative_float(name: str) -> float | None:
     return _nonnegative_float(raw)
 
 
-def _env_speculative_mtp_serving(name: str, default: str = "enabled") -> str:
+def _env_speculative_mtp_serving(name: str, default: str = "auto") -> str:
     raw = os.environ.get(name)
     mode = default if raw is None or raw == "" else raw
     return mode.strip().lower().replace("-", "_")
@@ -266,7 +266,7 @@ def build_parser() -> argparse.ArgumentParser:
             "GGUF MTP serving policy: off, opt_in via request speculative_mtp=true, "
             "auto with exact-AR fallback until an exact/default MTP route is admitted, "
             "or enabled to route compatible requests through exact dense MTP by default "
-            "(env HIPENGINE_SPECULATIVE_MTP_SERVING; default: enabled)"
+            "(env HIPENGINE_SPECULATIVE_MTP_SERVING; default: auto)"
         ),
     )
     parser.add_argument(

@@ -959,6 +959,100 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback() -> None:
+    """A cached short graph never strands an in-flight proposal at 1024."""
+
+    if resolve_backend("auto") not in {"hip_gfx1100", "hip_gfx1151"}:
+        pytest.skip("dense native MTP context crossing requires a qualified gfx11 backend")
+    _require_free_vram(19.0)
+    seed = (
+        7734,
+        264,
+        12654,
+        709,
+        421,
+        4523,
+        279,
+        307,
+        7324,
+        76938,
+        1324,
+        1608,
+        20781,
+        1954,
+        13,
+    )
+    prompt = tuple(seed[index % len(seed)] for index in range(1018))
+    require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
+    with Qwen35GGUFResidentSession(
+        _DENSE_MODEL,
+        max_sequence_length=1050,
+        require_cached_build=require_cached,
+    ) as target:
+        target.select_prefill_quant("gguf_q4_k_m")
+        root = int(target.prefill(prompt, use_bulk=True, return_logits=False).token_id)
+        expected = [root]
+        while len(expected) < 12:
+            expected.append(int(target.step(expected[-1], return_logits=False).token_id))
+
+        target.reset()
+        borrowed_fallback_weights = borrow_qwen35_gguf_nextn_fallback_weights(target)
+        provider = Qwen35GGUFNextNDraftProvider.from_model(
+            _DENSE_MODEL,
+            max_positions=1050,
+            max_requests=1,
+            runtime=target.runtime,
+            require_cached_build=require_cached,
+            borrowed_fallback_weights=borrowed_fallback_weights,
+        )
+        try:
+            with Qwen35GGUFMTPDecodeSession(
+                target,
+                provider,
+                candidate_budget=3,
+                quant="gguf_q4_k_m",
+                target_verify_mode="native",
+            ) as decoder:
+                actual = decoder.generate(
+                    prompt,
+                    max_new_tokens=12,
+                    use_bulk_prefill=True,
+                )
+        finally:
+            provider.close()
+
+        context_misses = [
+            record
+            for record in actual.cycle_records
+            if record["target_native_graph_fallback_reason"]
+            == "target_graph_context_bucket_miss"
+        ]
+        assert actual.token_ids == tuple(expected)
+        assert any(
+            record["target_native_graph_submitted"]
+            for record in actual.cycle_records
+        )
+        assert context_misses, actual.cycle_records
+        assert all(
+            int(record["root_position"]) + int(record["budget"]) + 1 > 1023
+            for record in context_misses
+        )
+        assert all(
+            not record["target_native_graph_submitted"]
+            and not record["proposal_target_device_chained"]
+            and record["device_proposal_fallback_reason"]
+            == "target_graph_context_bucket_miss"
+            for record in context_misses
+        )
+
+        target.reset()
+        health = target.prefill(seed, use_bulk=False, return_logits=False)
+        assert int(health.token_id) >= 0
+        assert int(target.position) == len(seed)
+
+
+@pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_f32_pair_calls: list[tuple[int, int, int]],

@@ -318,7 +318,7 @@ class ServerConfig:
     max_active_requests: int | None = None
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
-    speculative_mtp_serving: str = "enabled"
+    speculative_mtp_serving: str = "auto"
     speculative_mtp_thinking: str = "hint"
     speculative_provider: str | None = None
     draft_model: str | None = None
