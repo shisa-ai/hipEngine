@@ -1,6 +1,6 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-20.
+Last updated: 2026-08-21.
 
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
 short/long serving and the canonical W7900 production load are retained, while
@@ -32,7 +32,7 @@ Related source-of-truth documents:
 | C2-2 resource admission | Format-neutral atomic ledger, fit-aware bounded lookahead, named pressure telemetry. | Closed. |
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
-| C2-5 token budget/c1-c32 | Logical c1-c32, byte-exact physical-c4/c8 decomposition (registered `(1,2,4,8)`), same-round prefill/decode fairness. | Closed for retained gfx1100 short route; c4/c8 promoted byte-exact (steady/shrink-sparse/graph/p512) with c1-c32 end-to-end exact. |
+| C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
@@ -111,6 +111,168 @@ Evidence:
 and
 [`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
 
+### Simplified c=N view: what scaling proves—and what remains unknown
+
+The retained direct graph packet, not the later invalid eager D2 sweep, is the
+current model-step evidence for Qwen3.8-27B `Q4_K_M` on W7900: c1 is **33.17 ms /
+30.30 aggregate tok/s** and direct c8 is **63.53 ms / 127.32 aggregate tok/s**.
+Packing therefore produces **4.20× aggregate throughput** at c8 while increasing
+round wall only **1.92×**. This proves useful weight/metadata/workspace
+amortization and substantially better GPU utilization. It does **not** identify
+the limiting mechanism. A fitted “fixed” term includes the one weight stream,
+dequant setup, device kernels, dispatch, and synchronization; it cannot be
+relabeled host overhead from scaling alone.
+
+A packed rowtile can reuse a physical group's weight reads across active rows,
+so useful arithmetic intensity rises approximately as `AI = 2M/bpw`. That makes
+sub-linear wall growth expected under both a bandwidth-limited weight stream and
+an underfilled/issue-limited c1 kernel. Likewise, “compute-bound means c8 must
+take 8× c1 wall” is false when c1 does not fill the machine or c8 selects a
+different row-shaped implementation. The model executes **64 normal AR decode
+layers** (48 linear-attention + 16 full-attention), each with multiple kernels;
+there is no measured 28-layer latency model.
+
+The c1-c32 D2/ceiling eager sweep is retained only as a diagnostic. It bypassed
+HTTP, EngineService, scheduler-owned lowering, graph replay, TTFT/ITL, dynamic
+membership, server memory, and drain; lacked clean provenance/canonical command;
+always ran D2 before ceiling; mixed p512 and p128 lanes; and originally reported
+incorrectly scaled goodput. It must not appear as a current product throughput
+table. D2 remains explicit-config pending the actual-server gate described
+below.
+
+#### Corrected roofline bounds, not a bottleneck verdict
+
+W7900 VRAM is **864 GB/s theoretical** GDDR6. A generic large sequential stream
+may sustain roughly **650–735 GB/s**, but that range is not a measurement of the
+current kernels. Treat the ~15.3 GB active-weight figure as an illustrative
+resident-byte proxy, not measured VRAM transactions: cache-line waste, repeated
+metadata, activation/state traffic, cache hits, and role-specific layouts can
+change actual bytes substantially.
+
+| illustrative quantity | value | interpretation |
+| --- | ---: | --- |
+| one 15.3 GB stream @ 864 GB/s | ~17.7 ms | unattainable theoretical floor |
+| one 15.3 GB stream @ 650–735 GB/s | ~20.8–23.5 ms | generic stream bound, not kernel evidence |
+| retained c1 step | 33.17 ms | 1.41–1.59× the generic sustained floor |
+| c8 aggregate ceiling from that proxy | ~340–452 tok/s | assumes one exact stream per eight rows |
+| retained direct c8 | 63.53 ms / 127.32 tok/s | ~28% theoretical or ~33–37% generic sustained roof |
+
+Being below an ideal bandwidth roof does **not** prove the step is not
+bandwidth-limited: low occupancy, scattered/cache-line-wasteful reads, poor
+channel utilization, and dequant issue can all reduce attainable bandwidth.
+Nor does nominal Q4 row8 AI prove the step is not compute/issue-limited. For the
+T16 Q4 layout (`bpw = 0.578125`), useful row8 AI is about **27.7 FLOP/byte**,
+but the relevant vector roof depends on VOPD pairing, and dequantization shares
+the VALU issue path. Q5/Q6, attention, GDN recurrence, norms, and the LM head
+have different roofs. The 2.30 TB/s Infinity-Cache figure is also not a
+whole-model weight roof: 15.3 GB is far larger than the 96 MB cache.
+
+**Current whole-step classification: unknown/mixed.** The defensible statement
+is that c8 has material headroom relative to an idealized byte roof while the
+retained trace already assigns most observed time to device kernels. It is not
+defensible to call the complete step globally bandwidth-bound, compute-bound,
+or host/launch-latency-bound without family-level traffic and issue counters.
+
+#### Current measured c8 opportunity ledger
+
+The clean post-rowtile records give the following steering ledger. The 63.53 ms
+wall and 54.05 ms profiler kernel sum are from comparable but not identical
+measurement boundaries, so the subtraction is an **upper bound**, not a measured
+host-overhead bucket.
+
+| opportunity | measured / bounded time | share of 63.53 ms wall | ideal 2× saving | status |
+| --- | ---: | ---: | ---: | --- |
+| Dense projections, complete family | 43.25 ms | 68.1% | 21.63 ms | largest measured target |
+| ├─ Q4 paired projections | 12.89 ms | 20.3% | 6.45 ms | mechanism unknown |
+| ├─ planar-Q6 projections | 10.76 ms | 16.9% | 5.38 ms | mechanism unknown; row8 VGPR136 |
+| ├─ Q4 singleton projections | 10.69 ms | 16.8% | 5.35 ms | mechanism unknown |
+| └─ Q5 projections | 4.30 ms | 6.8% | 2.15 ms | true rowtile already active |
+| GDN/state family | 8.17 ms | 12.9% | 4.09 ms | recurrence/issue split unknown |
+| Wall minus traced kernel sum | ≤9.48 ms | ≤14.9% | not applicable | unreconciled upper bound |
+| Other traced kernels | ~2.63 ms | ~4.1% | ≤1.32 ms | lower priority in isolation |
+
+The profiler sum is ~85% of the non-profiled wall and dense projections alone
+are ~68%, which contradicts an assertion that host launch overhead is already
+known to dominate. Conversely, the ≤9.48 ms unreconciled bound is large enough
+that dispatch/synchronization/fusion remains a serious candidate. The next unit
+must measure which interpretation is correct rather than choose one by prose.
+
+#### #37 measurement ladder: rank before tuning
+
+Run these in order on one tracked-clean commit, one physical W7900 host, exact
+Qwen3.8 model fingerprint, BF16 KV, cached builds, and one fixed prompt/context
+shape. Keep c1/c4/c8 and eager/graph controls separate; do not mix p128 and p512
+inside one comparison.
+
+1. **Reconcile complete wall.** Repeat the non-profiled c1/c4/c8 graph packet,
+   then use `scripts/gguf_packed_ar_rocprof.py` to profile one marked cached-only
+   transition per width. Record complete wall, kernel sum, kernel count, H2D/D2H,
+   HIP API/synchronization time, and inter-kernel gaps. Attribute at least 90% of
+   wall before naming a dominant non-kernel bucket. Profile the final child, not
+   a parent harness that launches nested processes.
+2. **Measure actual bytes by family.** Join each traced operation to its resident
+   allocation bytes, call count, active/physical rows, and route manifest. In a
+   separate counter run (counter collection perturbs timing), collect available
+   TCC/L2/VRAM read/write traffic and cache-hit signals. Report effective GB/s
+   for Q4-pair, Q4-single, planar-Q6, Q5, attention, GDN/state, and LM head—not
+   one model-wide “bandwidth utilization” percentage.
+3. **Measure issue and occupancy.** Record static VGPR/LDS/scratch and grid/wave
+   counts, then available VALU/WMMA instruction and stall/occupancy counters.
+   Determine whether dequant/VALU issue, VOPD pairing, VGPR-limited occupancy,
+   or grid underfill explains low effective bandwidth. Do not reuse a hot
+   single-tile L3 microbenchmark as production VRAM evidence.
+4. **Measure width slopes per family.** Compare matched c1→c4→c8 duration,
+   bytes, instructions, and waves for every top family. A flat duration with
+   fixed bytes suggests successful bandwidth amortization; linear row slope
+   with high VALU issue suggests compute/dequant pressure; a width cliff with
+   falling waves suggests occupancy/geometry.
+5. **Confirm the winning mechanism end to end.** For any candidate, require its
+   exact/production numerical contract, same-suite graph wall, complete model
+   trace, memory, and lifecycle gate. Then repeat through the actual continuous
+   owner/server before changing a product default or publishing c=N goodput.
+
+#### Conditional optimization queue
+
+This is a decision tree, not permission to implement every idea. Rank candidates
+by **measured milliseconds recoverable from complete wall**. A leaf win is only
+high priority when its call-weighted family saving survives the complete step.
+
+1. **Dense projections (known largest family, 43.25 ms).** Profile first.
+   - If measured traffic is near the attainable VRAM roof, reduce bytes or
+     repeated reads: preserve weight-once rowtiles, pair only compatible
+     same-input operations, and reconsider wider physical groups only when D2
+     shows repeated streams dominate.
+   - If bandwidth is low while VALU/dequant issue is high, target metadata/dequant
+     instruction count, activation quantization reuse, or verified VOPD/dp4a
+     paths. Changed arithmetic requires the full production numerical gate.
+   - If waves fall with width, tune tile/column/thread geometry and VGPRs. The
+     planar-Q6 row8 owner (VGPR136) is the first occupancy hypothesis to test,
+     not an automatic rewrite.
+2. **Unreconciled wall (≤9.48 ms upper bound).** If matched API/gap accounting
+   confirms a large serial dispatch/sync bucket, prioritize graph-input updates,
+   removing readbacks/synchronizations, and low-risk producer/epilogue fusion.
+   Do not call it host overhead until measured; graph replay still pays MEC/SPI
+   per-dispatch work.
+3. **GDN/state (8.17 ms).** Split Conv, recurrent GDN, normalization/gate, and
+   state commit. If recurrence compute dominates, optimize that kernel/parallel
+   schedule; if state movement or short launches dominate, fuse the safe
+   boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
+   projection, which belongs to the projection family.
+4. **Small traced remainder (~2.63 ms).** Norm/cast/metadata/LM-head fusion is
+   lower priority unless launch-gap accounting moves it into the unreconciled
+   bucket or a zero-risk fusion removes repeated traffic.
+5. **Physical row16 remains conditional; row32 remains rejected.** The prior
+   direct-row16 down leaf beat 2×row8 by only 1.115× and row32 was 8.69× slower
+   than 4×row8. Reopen row16 only if production D2 traces prove repeated weight
+   streams are the largest remaining wall opportunity and its projected saving
+   exceeds the best c≤8 family candidate.
+
+The highest-impact next action is therefore **measurement**, followed most
+likely by one of: Q4-pair/Q4-single projection issue/traffic work, planar-Q6
+occupancy work, a verified dispatch/synchronization reduction, or GDN recurrence
+work. The ordering among those four is deliberately unresolved until the #37
+ledger closes.
+
 ## Executive decision
 
 hipEngine will have **one long-lived engine service per loaded model replica**.
@@ -139,8 +301,9 @@ never assumes that one logical token is one BF16 page. Full immutable prefix
 pages may be shared by refcount; writable tails are private or copy-on-write;
 zero-active-reference cache pages are LRU-evictable. The scheduler admits by a
 backend-produced resource-claim vector and current pool state, not by a
-hardcoded physical c4/c8 route width or dtype-specific byte formula. Physical
-c1/c2/c4/c8 kernels are execution buckets: 23 ready rows may be lowered to
+hardcoded physical route width or dtype-specific byte formula. Registered
+physical kernels are execution buckets (gfx1100 Qwen3.8 currently
+c1-c8; other packages may retain c1/c2/c4/c8): 23 ready rows may be lowered to
 several certified groups in one fairness round without limiting resident
 concurrency to eight.
 
@@ -232,7 +395,7 @@ failures.
 | --- | --- |
 | Stable `RequestState`, `ActiveBatch`, `WorkItem`, and request-to-slot maps | Keep. Split resident slots from ephemeral execution rows and remove fixed physical-width assumptions. |
 | `ResidentEngineLoop` admission/prefill/decode/reclaim contract | Keep the lifecycle semantics. Replace caller-driven polling and one-work-item ticks with one service-owned scheduling loop and multi-item rounds. |
-| Native GGUF/PARO c1/c2/c4/c8 runners | Keep as certified execution buckets behind model/backend capability registration. |
+| Native GGUF/PARO physical-width runners | Keep backend/model-specific certified sets behind capability registration (gfx1100 Qwen3.8 c1-c8; do not transfer widths to peers without evidence). |
 | Row-scoped cancellation and reclaim callbacks | Keep. Move command handling into the sole engine service. |
 | `KVPolicy`, `KVLiveSpans`, and speculative `begin/commit/rollback` | Keep the liveness and transaction invariants. Evolve the fixed-page `KVPolicy` shim into the `KVCacheBackend` contract below so storage codecs do not leak into the scheduler. |
 | `DeviceChunkedKVPool` refcounts, COW tests, and pointer-stability checks | Reuse their invariants and fixtures. Replace one-backing/contiguous-per-request constraints with the production global pool substrate. |
@@ -435,9 +598,10 @@ Both the Q5T16 (48 calls / 4.30 ms at c8) and planar-qmicro Q6T16 (64 calls /
 c5/c7 cliffs. **Native c8 is now 127.32 tok/s and beats honest two-c4 chunked
 c8 (91.13 tok/s) by 39.7%**; `native_c8_scaling_gate_passed = True`. c1-c4 are
 unchanged (within noise). These are model-step results, not production-server
-rows: the continuous owner still advertises only physical `(1,2,4,8)` and
-rounds c3 to masked c4 and c5-c7 to masked c8. Direct c3/c5/c6/c7 are not yet
-product-reachable.
+rows. The gfx1100 Qwen3.8 package now advertises physical c1-c8 after the clean
+direct-width quality/lifecycle gates. Cost-aware c>8 D2 remains explicit-config
+pending its separate actual-server gate; absent D2, the owner uses ceiling
+composition over the registered c1-c8 set.
 
 **Kernel threshold traces (one profiler-instrumented decode transition;
 durations are diagnostic).** The pre-promotion controls localized the cliffs;
@@ -500,8 +664,9 @@ compute roof to ride against, and RDNA3 makes the distinction matter:
   against 84.8 are upper bounds only.
 - **Parallelism is a fourth limiter that shape controls.** The grid must fill
   192 SIMDs. The down projection (`K=17408, N=5120`) generates 3.4× fewer
-  output tiles than gate/up for identical weight bytes, and that alone —
-  not bandwidth — explains its behaviour under the WMMA kernel (below).
+  output tiles than gate/up for identical weight bytes, providing a concrete
+  underfill mechanism for its WMMA diagnostic. Family traffic/issue counters are
+  still required before excluding other simultaneous limits.
 
 Consequently there are **two ridges, and each kernel must be judged against
 its own**: `M_ridge = AI_ridge · bpw / 2`.
@@ -533,14 +698,16 @@ vector kernel. Quote the range and the kernel class, not the point estimate.
 | 7 | 0.124 | 0.010 | |
 | 8 | ~0.134 | 0.010 | extrapolated; production uses the fused dual kernel |
 
-The marginal cost is **0.0103 ms/row = 8.65e12 FMA/s = 56% of the non-VOPD
-vector roof** — i.e. above M≈3 this kernel is vector-issue bound, and each extra
-row costs full price. It is not a bandwidth kernel at M=8, and no amount of
-tuning makes it one. Two consequences: (a) "reach rowtile-grade bandwidth
-efficiency at M=16/32" is not a coherent target for a rowtile-shaped kernel;
-(b) `acc[ROW_TILE][8]` is 64 VGPRs at ROW_TILE=8 and 128 at 16, so the register
-tile caps this family near M≈8–12 regardless. The unexploited lever here is
-VOPD dual-issue (56% → potentially ~112% of the scalar roof).
+Within this synchronized hot-tile diagnostic, the marginal cost is **0.0103
+ms/row = 8.65e12 FMA/s = 56% of the non-VOPD vector roof**. Together with L3
+residency, that slope is consistent with vector/dequant issue limiting the leaf
+above M≈3; it is not proof that production rowtile calls streaming the complete
+model are globally issue-bound. Two consequences still hold for this register-
+tile design: (a) "reach rowtile-grade bandwidth efficiency at M=16/32" is not a
+coherent target without production traffic counters; (b)
+`acc[ROW_TILE][8]` is 64 VGPRs at ROW_TILE=8 and 128 at 16, so width growth has a
+hard occupancy cost. VOPD pairing is a hypothesis to measure, not a guaranteed
+56%→112% gain.
 
 **Closed Q4 `ROW_TILE=16/32` prototype.** The predeclared prediction was
 falsified quantitatively on the down shape: direct row8/16/32 measured
@@ -568,11 +735,11 @@ for gate/up (1.9 waves/SIMD) and **107 blocks for the down shape** (~1 wave per
 CU), the latter costing ≈1.0 ms/call for the same weight bytes.
 
 So the earlier diagnosis — "latency/occupancy-bound at 11% of peak bandwidth,
-and closing 11% → 64% is the biggest lever" — named the wrong mechanism and the
-wrong metric. The kernel is **row-padding bound first, parallelism bound
-second**, and a bandwidth percentage is not a meaningful score for a kernel that
-over-computes 4×. The corresponding fixes are a template parameter and a grid
-change, not a new kernel.
+and closing 11% → 64% is the biggest lever" — named the wrong metric. The
+measured diagnostic exposes row padding and severe grid underfill; a bandwidth
+percentage is not meaningful while the kernel over-computes 4×. Template/grid
+changes are therefore the first hypotheses for that WMMA leaf, subject to a
+production family trace rather than assumed to be the whole-step answer.
 
 **Measurement caveat that bounds all of the above.** The probe hot-loops a
 single 51.53 MB tile, which fits in the 96 MB Infinity Cache. After the first
@@ -586,14 +753,14 @@ retained bandwidth claim must come from a tile-rotating probe (below).
 
 | retracted claim | status |
 |---|---|
-| "The FFN linear layers are dominant" / "non-FFN is 76%" | Both came from the invalid `step − one Q4 probe ×64` partition. Do not retain either stage percentage. The measured bottleneck is the Q5/Q6 projection routes across FFN, GDN, and attention. |
+| "The FFN linear layers are dominant" / "non-FFN is 76%" | Both came from the invalid `step − one Q4 probe ×64` partition. Do not retain either stage percentage. Baseline cliffs were Q5/Q6 projection routes across FFN, GDN, and attention; those cliffs are now closed, and the current 43.25-ms dense-projection family needs #37 mechanism profiling. |
 | "Rowtile multi-group beats the wmma prefill at every M>8 (2.9× at 16, 1.45× at 32)" | Priced an 8-row group at the M=2 efficiency. Measured: 2×0.134 = 0.268 vs 0.418 → **1.56×** at M=16; 4×0.134 = 0.536 vs 0.465 → **wmma wins 1.15×** at M=32. Crossover is M≈24–32. |
 | "wmma prefill is latency/occupancy-bound at 11% of peak BW" | Wrong mechanism and wrong metric; it is row-padding bound (64 rows of MAC work at every M ≤ 64), measured under L3 residency. |
-| "Rowtile is a good bandwidth kernel (64% of peak)" | True only at M≈2–3, and only against a VRAM denominator the probe could not exercise. Vector-issue bound from M≈4. |
+| "Rowtile is a good bandwidth kernel (64% of peak)" | Unsupported: the hot-tile probe could not exercise the VRAM denominator. Its M≥4 slope is consistent with vector/dequant issue pressure in that diagnostic; production classification needs traffic/issue counters. |
 | "M_ridge ≈ 27" | Mixed measured/theoretical roofs and applied a matrix ridge to a vector kernel. Use the ridge table above. |
 | "Aggregate stays flat at ≈c8 (~68 tok/s)" | Pre-promotion measurement exposed c5/c7 cliffs; the retained post-promotion curve is 30.30/53.79/75.47/93.49/105.67/115.30/122.36/127.32 tok/s. |
-| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping exists and is exact, but uses largest-width chunking plus ceiling padding. Before Q5/Q6, two-c4 beat native c8; post-promotion native c8 wins 127.32 versus 91.13 tok/s. The missing piece is artifact-backed optimization for c9-c14 remainders and other SLOs. |
-| "Close the 11% → 64% BW gap is the single biggest lever" | Wrong metric. The largest current kernel lever is true Q5/planar-Q6 rowtile coverage through c8; the engine lever is cost-aware group selection. |
+| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping and artifact-backed D2 now exist; D2 is explicit-config and ceiling remains default. Before Q5/Q6, two-c4 beat native c8; post-promotion native c8 wins 127.32 versus 91.13 tok/s. The remaining gap is a clean actual-server c1-c32 D2 promotion gate, not host DP implementation. |
+| "Close the 11% → 64% BW gap is the single biggest lever" | Wrong metric. Q5/planar-Q6 rowtile coverage and the host D2 resolver are now implemented. The current largest measured family is dense projection (43.25 ms), but #37 must determine whether traffic, dequant/issue, occupancy, or dispatch is the next lever. |
 | "The non-FFN cliff is GDN/full-attention" | False. Baseline traces localized Q5/Q6 quant-layout projection cliffs spanning all stages; the rows2-8 Q5/Q6 promotions close them and cut c8 kernel sum to 54.05 ms. |
 | "c5 runs as c4+c1; c4→c5 and c6→c7 are D2" | False. The direct benchmark manifest and traces show one physical c5/c7 group. Similar wall times were coincidence; the two jumps are the Q5 and Q6 thresholds above. |
 | "Mixed-quant effective width must be clamped to the minimum family cap" | Too strong. One group can mix registered variants. Price each operation and the complete group; use D2 when the mixed route loses. |
@@ -754,35 +921,26 @@ Any probe whose numbers enter the width map must:
    c6 +56%, c7 +93%, c8 +82%), all exact; native c8 kernel census:
    Q5 true rowtile 48/4.30 ms + planar-Q6 true rowtile 64/10.76 ms, zero
    Q6 WMMA. Native c8 now beats two-c4 chunked c8 by 39.7%.
-3. **Implement the artifact-backed D2 resolver (host-first).** Preserve the
-   current ceiling planner as strict fallback, add dynamic programming over
-   certified `(active,physical,mask)` group records, and test every logical
-   c1-c32. Populate it from the clean post-promotion full-step map, not hand-
-   entered microbench constants. Its current-map controls must choose native c8
-   over two c4 groups and evaluate c9/c13/c17 remainder alternatives honestly.
-4. **Certify product reachability, then promote.** Direct c3/c5/c6/c7 are
-   benchmark-only today; the continuous owner still advertises `(1,2,4,8)` and
-   maps c5-c7 to masked c8. Run the dynamic serving matrix (ragged neighbours,
-   retirement/refill, cancellation, graph rebuild, slot permutation, state/KV
-   hashes) for every proposed physical width. Only then expand package
-   capabilities and compare the actual server's chosen D2 plan with the artifact.
-   **Certified for integration (2026-08-20):** direct-c5 first exposed a real
-   width-independent capture-only ownership bug (`+1` cursor on invalidation),
-   now fixed by preserving pre-replay ownership. The subsequent current-package
-   numerical gate is bit-exact over 1,950/1,950 static/transition/sparse rows,
-   and the clean c3/c5/c6/c7 lifecycle matrix passes direct+neighbor routes,
-   compaction/permutation, state/live-KV and resource hashes, graph invalidation,
-   cancellation/refill/session reuse, zero fallback, tracked-memory recovery,
-   and final drain. All four widths may now enter package integration; `(1,2,4,8)`
-   intentionally remains the default until artifact-backed D2 and the actual
-   server c1-c32 promotion gate complete. Evidence:
-   `benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-{quality,lifecycle}.json`.
-5. **Re-profile the post-fix ledger before wider kernels.** Attack the new top
-   complete-model family. The dirty Q4 `ROW_TILE=16/32` prototype is closed:
-   direct row16 down was only 1.115× faster than 2×row8, row32 was 8.69× slower
-   than 4×row8, it had no product route, and all prototype code/probes were
-   discarded. A physical-16 kernel is reconsidered only if the promoted D2 map
-   shows repeated weight reads dominate after Q5/Q6 coverage; row32 is rejected.
+3. ~~**Implement the artifact-backed D2 resolver (host-first).**~~ **DONE as an
+   explicit-config path (2026-08-20).** The retained cost map is clean-identity
+   bound, the DP recovers the expected balanced compositions, and ceiling remains
+   the strict default fallback. Production-default D2 is still open because the
+   attempted c1-c32 sweep was eager resident-session diagnostic evidence, not an
+   actual-server route/goodput/TTFT/ITL/memory/drain gate.
+4. ~~**Certify direct-width product reachability.**~~ **DONE for physical c1-c8
+   on gfx1100 Qwen3.8 (2026-08-20).** Direct c3/c5/c6/c7 pass the clean 1,950-row
+   numerical gate and dynamic lifecycle matrix (compaction/permutation,
+   state/live-KV and resource hashes, graph invalidation, cancellation/refill,
+   session reuse, memory recovery, and drain). The package advertises c1-c8.
+   Remaining #29 work is only the clean actual-server D2-vs-ceiling promotion
+   gate; D2 stays explicit-config until it passes.
+5. **Profile the post-rowtile c8 ledger before selecting another kernel (#37).**
+   Follow the measurement ladder and conditional queue above. The current known
+   largest family is dense projection (43.25/63.53 ms wall), but whether its
+   subfamilies are traffic-, dequant/issue-, occupancy-, or dispatch-limited is
+   unknown. Reconcile wall first, then choose the candidate with the largest
+   measured recoverable milliseconds. Physical row16 remains conditional;
+   row32 remains rejected.
 6. **Port protocol.** On a new backend (gfx1151 first), regenerate both primitive
    and complete-step maps and rerun the lifecycle matrix. Copy the decision
    procedure and schemas, never W7900 constants.
@@ -811,7 +969,7 @@ HTTP / library callers
 |    KVPoolSet -> payload/scale/tier/metadata pools            |
 |    topology -> dense/sliding/DMS/...                         |
 |    codec    -> BF16/INT8/FP8/HIGGS/AQUA/OSCAR/...            |
-|  ExecutionPlanner -> c1/c2/c4/c8/verify/prefill groups       |
+|  ExecutionPlanner -> certified decode/verify/prefill groups  |
 |  ModelRunner + graph/workspace caches                        |
 +---------------------------+----------------------------------+
                             |
@@ -979,9 +1137,9 @@ Generation 2 has three row identities:
    compactable only at a commit barrier through an explicit move plan.
 3. **Execution row** — ephemeral dense row in one physical kernel group.
 
-Execution gathers resident slots into dense c1/c2/c4/c8 rows and scatters
-results back by request ID/slot map. KV pages do not move merely because
-physical width changes.
+Execution gathers resident slots into dense rows from the backend/model's
+certified physical-width set and scatters results back by request ID/slot map.
+KV pages do not move merely because physical width changes.
 
 For 23 ready decode rows, a backend may select `8+8+4+2+1`. Every selected row
 advances once in the fairness round before a second normal decode step for the
