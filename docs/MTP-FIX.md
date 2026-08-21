@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign plan; implementation not started; production MTP remains disabled**
+- Status: **active campaign; RF0 containment implemented; automatic production MTP remains disabled pending RF1–RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -285,6 +285,19 @@ Exit gate:
 - a real prompt whose decode crosses 1024 completes or pre-launch-falls back;
 - no hang, leaked transaction, stale graph, or subsequent AR corruption;
 - route telemetry names the miss.
+
+**Implemented 2026-08-21:** cached N2 admission now checks the live cycle end,
+output room, graph configuration, allocation binding, and row shape before a
+device proposal can launch, then rechecks before target submission. Context and
+tail misses report `target_graph_context_bucket_miss` /
+`target_graph_output_room_miss`; the short graph remains cached while the host
+proposal uses eager verification. The server default is now fail-closed `auto`,
+so implicit traffic remains AR while explicit controlled MTP stays available.
+The real gfx1151 dense-27B gate captured a short graph, crossed 1024, matched all
+12 AR output IDs, reported the context miss, avoided device chaining on fallback
+cycles, and completed a subsequent AR health request. This closes RF0
+containment only; it does not qualify eager or graphed long-context MTP for
+automatic use.
 
 ### RF1 — Prove eager long-context MTP correctness
 

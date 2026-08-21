@@ -1671,15 +1671,16 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
     assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
 
 
-def test_capabilities_endpoint_reports_auto_exact_fallback() -> None:
+def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
     fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        eager_load=False,
+    )
+    assert config.speculative_mtp_serving == "auto"
     app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            eager_load=False,
-            speculative_mtp_serving="auto",
-        ),
+        config,
         llm=fake,
     )
     client = TestClient(app)
@@ -6251,15 +6252,16 @@ def test_metrics_reports_mtp_serving_and_draft_acceptance() -> None:
     assert _metric_value(after.text, "hipengine_mtp_draft_acceptance_rate") == 4 / 6
 
 
-def test_completions_auto_keeps_compatibility_mtp_explicit_only() -> None:
+def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> None:
     fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    assert config.speculative_mtp_serving == "auto"
     app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            speculative_mtp_serving="auto",
-            max_active_requests=4,
-        ),
+        config,
         llm=fake,
     )
     client = TestClient(app)

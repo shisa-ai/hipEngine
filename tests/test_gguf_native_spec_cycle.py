@@ -293,8 +293,226 @@ def test_device_proposal_handoff_stages_both_token_metadata_columns() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("rows", "position", "remaining_decode", "expected_reason"),
+    [
+        (2, 1021, 2, None),
+        (2, 1022, 2, "target_graph_context_bucket_miss"),
+        (3, 1020, 3, None),
+        (3, 1021, 3, "target_graph_context_bucket_miss"),
+        (4, 1019, 4, None),
+        (4, 1020, 4, "target_graph_context_bucket_miss"),
+        (4, 1019, 3, "target_graph_output_room_miss"),
+    ],
+)
+def test_native_target_graph_launch_eligibility_covers_live_context_and_output_room(
+    monkeypatch,
+    rows: int,
+    position: int,
+    remaining_decode: int,
+    expected_reason: str | None,
+) -> None:
+    session = SimpleNamespace(position=position)
+    monkeypatch.setattr(
+        native_cycle_mod,
+        "_native_target_binding_signature",
+        lambda _session: (0xCAFE,),
+    )
+    graph = native_cycle_mod.Qwen35GGUFNativeB2TargetGraph.__new__(
+        native_cycle_mod.Qwen35GGUFNativeB2TargetGraph
+    )
+    graph.closed = False
+    graph.session = session
+    graph.rows = rows
+    graph.context_limit = 1023
+    graph.device_accept_commit = True
+    graph.configuration_key = native_cycle_mod._native_target_configuration_key(
+        bulk_attention_mode="native",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+    )
+    graph.binding_signature = (0xCAFE,)
+
+    reason = graph.launch_ineligibility_reason(
+        session,
+        position=position,
+        rows=rows,
+        remaining_decode=remaining_decode,
+        bulk_attention_mode="native",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+    )
+
+    assert reason == expected_reason
+    assert graph.can_launch(
+        session,
+        position=position,
+        rows=rows,
+        remaining_decode=remaining_decode,
+        bulk_attention_mode="native",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+    ) is (expected_reason is None)
+
+
+def test_native_target_graph_rejects_proposal_cursor_drift_before_submit(
+    monkeypatch,
+) -> None:
+    session = SimpleNamespace(position=18)
+    monkeypatch.setattr(
+        native_cycle_mod,
+        "_native_target_binding_signature",
+        lambda _session: (0xCAFE,),
+    )
+
+    class Launcher:
+        def launch(self, *_args, **_kwargs):
+            raise AssertionError("cursor drift must fail before target graph submission")
+
+    graph = native_cycle_mod.Qwen35GGUFNativeB2TargetGraph.__new__(
+        native_cycle_mod.Qwen35GGUFNativeB2TargetGraph
+    )
+    graph.closed = False
+    graph.session = session
+    graph.binding_signature = (0xCAFE,)
+    graph.device_accept_commit = True
+    graph.rows = 4
+    graph.context_limit = 1023
+    graph.launcher = Launcher()
+    proposal = SimpleNamespace(
+        budget=3,
+        request_id=7,
+        root_token=101,
+        root_position=17,
+        result_ptr=0x1000,
+        result_nbytes=24,
+        completion_event=0x2000,
+    )
+
+    with pytest.raises(ValueError, match="root position drifted"):
+        graph.launch(
+            cycle_id=5,
+            transaction_id=6,
+            request_id=7,
+            remaining_decode=4,
+            device_proposal=proposal,
+        )
+
+
+def test_native_target_context_miss_falls_back_eager_with_stable_reason() -> None:
+    session = _FallbackSession()
+    session.position = 1020
+
+    class Graph:
+        closed = False
+
+        def compatible_with(self, _session, **_kwargs) -> bool:
+            return True
+
+        def launch(self, *_args, **_kwargs):
+            raise NativeSpecTargetGraphUnsupportedError(
+                "target_graph_context_bucket_miss"
+            )
+
+        def close(self) -> None:
+            raise AssertionError("a clean context miss must keep the short graph cached")
+
+    session._native_spec_b3_target_graph_n2 = Graph()
+
+    result = verify_qwen35_gguf_native_b2_target(
+        session,
+        [1, 2, 3, 4],
+        fallback=True,
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+        remaining_decode=4,
+    )
+
+    assert result.token_ids == [7, 8]
+    assert (
+        session.last_native_spec_target_fallback_reason
+        == "target_graph_context_bucket_miss"
+    )
+    assert session._native_spec_b3_target_graph_n2.closed is False
+    assert session.calls == [
+        (
+            (1, 2, 3, 4),
+            {
+                "bulk_attention_mode": "native",
+                "use_wmma_prefill": False,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
+                "capture_pre_output_norm_hidden": True,
+            },
+        )
+    ]
+
+
+def test_device_proposal_handoff_rechecks_context_before_target_launch() -> None:
+    proposal = SimpleNamespace(budget=3, request_id=7, root_position=1020)
+    launches: list[object] = []
+
+    class Graph:
+        closed = False
+
+        def compatible_with(self, _session, **_kwargs) -> bool:
+            return True
+
+        def launch_ineligibility_reason(self, _session, **_kwargs) -> str:
+            return "target_graph_context_bucket_miss"
+
+        def launch(self, **kwargs):
+            launches.append(kwargs)
+            raise AssertionError("context-ineligible target graph must not launch")
+
+        def close(self) -> None:
+            raise AssertionError("a clean context miss must not destroy the cached short graph")
+
+    session = SimpleNamespace(
+        position=1020,
+        _native_spec_b3_target_graph_n2=Graph(),
+        last_native_spec_target_submitted=True,
+        last_native_spec_target_fallback_reason=None,
+        last_native_spec_target_capture_ms=1.0,
+        last_native_spec_target_submit_ms=2.0,
+        last_native_spec_target_readback_ms=3.0,
+    )
+
+    with pytest.raises(
+        NativeSpecTargetGraphUnsupportedError,
+        match="target_graph_context_bucket_miss",
+    ):
+        verify_qwen35_gguf_native_target_from_device_proposal(
+            session,
+            proposal,
+            cycle_id=5,
+            transaction_id=6,
+            request_id=7,
+            remaining_decode=4,
+        )
+
+    assert launches == []
+    assert session.last_native_spec_target_submitted is False
+    assert (
+        session.last_native_spec_target_fallback_reason
+        == "target_graph_context_bucket_miss"
+    )
+
+
 def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() -> None:
-    proposal = SimpleNamespace(budget=3, request_id=7)
+    proposal = SimpleNamespace(budget=3, request_id=7, root_position=17)
     launches: list[dict[str, object]] = []
 
     class Graph:
@@ -305,12 +523,16 @@ def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() 
             assert kwargs["bulk_attention_mode"] == "native"
             return True
 
+        def launch_ineligibility_reason(self, _session, **_kwargs):
+            return None
+
         def launch(self, input_token_ids=None, **kwargs):
             assert input_token_ids is None
             launches.append(dict(kwargs))
             return "retired"
 
     session = SimpleNamespace(
+        position=17,
         _native_spec_b3_target_graph_n2=Graph(),
         last_native_spec_target_submitted=True,
         last_native_spec_target_fallback_reason="stale",

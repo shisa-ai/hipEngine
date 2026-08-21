@@ -62,6 +62,10 @@ class NativeSpecTargetGraphUnsupportedError(RuntimeError):
     """The fixed native bucket cannot safely represent this verifier invocation."""
 
 
+NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS = "target_graph_context_bucket_miss"
+NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS = "target_graph_output_room_miss"
+
+
 _COMPLETE_CYCLE_STAGES = (
     NativeSpecCycleStage.PROPOSE
     | NativeSpecCycleStage.VERIFY
@@ -652,7 +656,7 @@ def _validate_capture_admission(
     end = int(session.position) + rows
     if end >= 1024:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 is limited to the exact decode-batch context below 1024"
+            NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
         )
     if not _gguf_prefill_device_metadata_enabled(
         backend=str(session.backend),
@@ -740,6 +744,77 @@ class Qwen35GGUFNativeB2TargetGraph:
             and _native_target_binding_signature(session) == self.binding_signature
         )
 
+    def launch_ineligibility_reason(
+        self,
+        session: Any,
+        *,
+        position: int,
+        rows: int,
+        remaining_decode: int | None,
+        bulk_attention_mode: str,
+        use_wmma_prefill: bool,
+        capture_linear_state_rows: bool,
+        capture_pre_output_norm_hidden: bool,
+        defer_linear_state_commit: bool,
+        device_accept_commit: bool,
+    ) -> str | None:
+        """Return a stable pre-launch rejection reason for this cached graph."""
+
+        if self.closed:
+            return "target_graph_closed"
+        if session is not self.session:
+            return "target_graph_session_miss"
+        if int(rows) != int(self.rows):
+            return "target_graph_row_shape_miss"
+        expected_key = _native_target_configuration_key(
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=use_wmma_prefill,
+            capture_linear_state_rows=capture_linear_state_rows,
+            capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
+            defer_linear_state_commit=defer_linear_state_commit,
+            device_accept_commit=device_accept_commit,
+        )
+        if expected_key != self.configuration_key:
+            return "target_graph_configuration_miss"
+        if _native_target_binding_signature(session) != self.binding_signature:
+            return "target_graph_binding_generation_miss"
+        if int(position) + int(rows) > int(self.context_limit):
+            return NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
+        if bool(device_accept_commit) and (
+            remaining_decode is None or int(remaining_decode) < int(rows)
+        ):
+            return NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS
+        return None
+
+    def can_launch(
+        self,
+        session: Any,
+        *,
+        position: int,
+        rows: int,
+        remaining_decode: int | None,
+        bulk_attention_mode: str,
+        use_wmma_prefill: bool,
+        capture_linear_state_rows: bool,
+        capture_pre_output_norm_hidden: bool,
+        defer_linear_state_commit: bool,
+        device_accept_commit: bool,
+    ) -> bool:
+        """Return whether the exact live cycle fits this immutable graph owner."""
+
+        return self.launch_ineligibility_reason(
+            session,
+            position=position,
+            rows=rows,
+            remaining_decode=remaining_decode,
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=use_wmma_prefill,
+            capture_linear_state_rows=capture_linear_state_rows,
+            capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
+            defer_linear_state_commit=defer_linear_state_commit,
+            device_accept_commit=device_accept_commit,
+        ) is None
+
     def launch(
         self,
         input_token_ids: Sequence[int] | None = None,
@@ -798,7 +873,13 @@ class Qwen35GGUFNativeB2TargetGraph:
         bucket_end = start + int(self.rows)
         if bucket_end > int(self.context_limit):
             raise NativeSpecTargetGraphUnsupportedError(
-                "native target graph dynamic context exceeds the captured below-1024 bucket"
+                NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
+            )
+        if self.device_accept_commit and (
+            remaining_decode is None or int(remaining_decode) < int(self.rows)
+        ):
+            raise NativeSpecTargetGraphUnsupportedError(
+                NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS
             )
         batch = build_native_b2_target_batch(tokens, start_position=start, request_id=request_id)
         runtime = self.session.runtime
@@ -2047,16 +2128,28 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         )
     cache_name = f"_native_spec_b{rows - 1}_target_graph_n2"
     graph = getattr(session, cache_name, None)
-    if graph is None or graph.closed or not graph.compatible_with(
+    if graph is None:
+        reason = "device proposal handoff requires a compatible cached N2 target graph"
+        session.last_native_spec_target_fallback_reason = reason
+        raise NativeSpecTargetGraphUnsupportedError(reason)
+    eligibility = getattr(graph, "launch_ineligibility_reason", None)
+    if not callable(eligibility):
+        reason = "device proposal handoff requires target graph admission metadata"
+        session.last_native_spec_target_fallback_reason = reason
+        raise NativeSpecTargetGraphUnsupportedError(reason)
+    reason = eligibility(
         session,
+        position=int(session.position),
+        rows=rows,
+        remaining_decode=int(remaining_decode),
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=True,
-    ):
-        reason = "device proposal handoff requires a compatible cached N2 target graph"
+    )
+    if reason is not None:
         session.last_native_spec_target_fallback_reason = reason
         raise NativeSpecTargetGraphUnsupportedError(reason)
     try:
@@ -2076,6 +2169,8 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
 
 
 __all__ = [
+    "NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS",
+    "NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS",
     "NativeSpecTargetGraphUnsupportedError",
     "Qwen35GGUFNativeAcceptCommitResult",
     "Qwen35GGUFNativeB2TargetGraph",

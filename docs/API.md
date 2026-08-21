@@ -78,9 +78,12 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving is enabled by default for dense routes. For dense Qwen
-models with NextN tensors, compatible (non-streaming, greedy) requests use MTP
-automatically through the fast llama.cpp-style **native** verify path
+GGUF MTP serving defaults to the fail-closed `auto` policy while the
+[`MTP-FIX.md`](MTP-FIX.md) real-world readiness campaign is active. Implicit
+compatible requests therefore use exact/default AR; explicit non-streaming,
+greedy requests may still opt into MTP, and operators may deliberately select
+`enabled` for controlled validation. Dense Qwen models with NextN tensors use
+the fast llama.cpp-style **native** verify path when MTP is selected
 (`HIPENGINE_GGUF_MTP_VERIFY_MODE`, default `native`, candidate budget 3 via
 `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`); set `native` to `serial_exact` for the
 token-exact rollback control that re-runs exact c=1 AR per candidate row but
@@ -99,21 +102,23 @@ and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes
 compatible requests through MTP. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
-non-streaming MTP requests can coalesce into one backend MTP call. The GGUF hook
-uses one shared target-weight runner plus per-request resident target/MTP slot
-state; c=2 is the implementation target and c=4/c=8 have functional smoke
-coverage.
+non-streaming MTP requests can coalesce into one backend call. The current dense
+transactional hook nevertheless iterates those rows serially through one
+resident target slot; route coalescing is not physical c>N MTP execution or a
+concurrency qualification. True dense MTP concurrency, fairness, and aggregate
+benefit remain RF5 work in [`MTP-FIX.md`](MTP-FIX.md).
 
 **MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement
 (soft-close bias, EOS suppression, hard-close forcing) would make MTP inexact.
-Under the default **hint** policy
+When MTP is explicitly selected, the default **hint** policy
 (`--speculative-mtp-thinking hint`, env
-`HIPENGINE_SPECULATIVE_MTP_THINKING=hint`), thinking requests keep their
-reasoning hints in the rendered prompt but relax the host-sampler enforcement,
-so `reasoning_effort` off/medium/high/xhigh requests route through exact MTP
-like any other greedy request — the standard way reasoning models are served
-with speculative decoding. Set `--speculative-mtp-thinking hard` (or
+`HIPENGINE_SPECULATIVE_MTP_THINKING=hint`) keeps reasoning hints in the rendered
+prompt but relaxes host-sampler enforcement, so `reasoning_effort`
+off/medium/high/xhigh can use the raw-greedy-compatible MTP route. This is an
+explicit policy change rather than equality with the original hard-controlled
+request; its task/closure/token-use gate remains RF4/RF6 work in
+[`MTP-FIX.md`](MTP-FIX.md). Set `--speculative-mtp-thinking hard` (or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
 enforcement; then the thinking budget is a hard MTP blocker and thinking
 requests fall back to plain AR. A request can override the server policy with

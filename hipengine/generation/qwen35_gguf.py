@@ -2302,6 +2302,12 @@ class Qwen35GGUFBringupGenerator:
                             "generated_draft_tokens": len(record.get("draft_tokens", ())),
                             "accepted_draft_tokens": int(record.get("accepted", 0)),
                             "visible_output_tokens": int(record.get("accepted", 0)) + 1,
+                            "device_proposal_fallback_reason": record.get(
+                                "device_proposal_fallback_reason"
+                            ),
+                            "target_native_graph_fallback_reason": record.get(
+                                "target_native_graph_fallback_reason"
+                            ),
                         }
                         for record in result.cycle_records
                     ]
