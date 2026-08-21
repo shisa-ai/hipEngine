@@ -4,6 +4,13 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151 prefill default] Restored `GGUF_AOTRITON_PREFILL=True` for gfx1151
+  (was set `False` by f76a76697 from a 64..2048 slice measurement). Native
+  bulk-prefill full-attention collapses with context (Qwen3.6-35B-A3B:
+  512=1094, 1K=828, 2K=362, 4K=234 tok/s, hangs at 2K+) while AOTriton holds
+  flat (1274/1318/1333/1310); Ornith-1.5-35B-A3B Q4_K_M 4K prefill goes
+  **220 -> 976 tok/s** (4.4x), decode/memory non-regressive. Restores the
+  retained ~1430 4K prefill. Worklog `20260821T050400...`.
 - [gfx1151 evidence correction] Direct Qwen3.6-35B-A3B GGUF 512-vs-1024 chunk-boundary smoke on the 140W desktop at 2048 tokens passes across two independent-session runs with KL(l1024||l512) **0.00012652 / 0.00013192**, matching top-1 **9707**, and max absolute logit delta **7.89071131 / 9.61576939**. This replaces the inaccurate labeling of the earlier KL 0.00013 result, which compared 256 vs 1024 rather than the retained 512 policy; corrected artifacts `results/2026-08-20-gfx1151-qwen36-35b-prefill-chunk-512-retained.json` and `results/2026-08-21-gfx1151-27b-35b-prefill-chunk-512-vs-1024-null.json`.
 
 - [gfx1151] 140W desktop lane: GGUF prefill chunk 512-vs-1024 resolved as NULL for both Qwen3.6-27B (512 45487 vs 1024 45413 ms @2048, +0.16%) and Qwen3.6-35B-A3B control (9822 vs 9824 ms, -0.03%), within 0.8-1.1% clock swing (clock-pinnable lane); deferred 27B question closed as no-effect, and the retained 35B 512-override ~1.2% win (measured on the 60W ZBook below its ~10% noise floor) does not transfer. The override stays after a direct 512-vs-1024 numerical smoke passed. Also: the 60W sanity leg was a 512-vs-512 no-op (override forces 512 on H2048-MoE). Script scripts/pn3_27b_chunk_resolve.py; artifact results/2026-08-21-gfx1151-27b-35b-prefill-chunk-512-vs-1024-null.json.
