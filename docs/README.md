@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-17
+Last updated: 2026-08-21
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -66,7 +66,8 @@ working on.
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |
-| [`MTP.md`](MTP.md) | Multi-token prediction plan. |
+| [`MTP.md`](MTP.md) | Multi-token prediction implementation history, economics, and provider design. |
+| [`MTP-FIX.md`](MTP-FIX.md) | Active campaign to make MTP safe and useful across real contexts, lifecycle events, APIs, load, quality, and rollout. |
 | [`GGUF.md`](GGUF.md) | GGUF loading / comparison notes. |
 
 ## Common reading paths
