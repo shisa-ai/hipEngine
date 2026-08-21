@@ -710,6 +710,78 @@ def _single_file(root: Path, pattern: str) -> Path:
     return matches[0]
 
 
+def _optional_file(root: Path, pattern: str) -> Path | None:
+    matches = sorted(root.rglob(pattern))
+    if len(matches) > 1:
+        raise ValueError(f"expected at most one {pattern} under {root}, observed {matches}")
+    return matches[0] if matches else None
+
+
+def _sum_trace_time(path: Path | None, window: tuple[int, int]) -> tuple[int, int]:
+    """Count and sum on-device durations of traced rows inside the marker window."""
+    if path is None or not path.exists():
+        return (0, 0)
+    ws, we = window
+    count = 0
+    total = 0
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            start = _int_or_none(row.get("Start_Timestamp"))
+            end = _int_or_none(row.get("End_Timestamp"))
+            if start is None or end is None or end < start:
+                continue
+            if start >= ws and end <= we:
+                count += 1
+                total += end - start
+    return (count, total)
+
+
+def _timeline_accounting(
+    rows: Sequence[KernelTraceRow],
+    window: tuple[int, int],
+    hip_api_csv: Path | None,
+    memory_copy_csv: Path | None,
+) -> dict[str, int]:
+    """Per-lane wall accounting that does not double-count overlapping kernels.
+
+    kernel_interval_union is the distinct marker-window time covered by at least
+    one kernel (a true busy-time lower bound under multi-stream overlap), and
+    uncovered_ns is marker wall minus that union. Summed kernel duration is
+    reported separately and must NOT be treated as wall coverage.
+    """
+    ws, we = window
+    wall = we - ws
+    kern_sum = 0
+    union = 0
+    if rows:
+        kern_sum = sum(int(r.duration_ns) for r in rows)
+        ivs = sorted((int(r.start_ns), int(r.end_ns)) for r in rows)
+        cur_s, cur_e = None, None
+        for s, e in ivs:
+            if cur_s is None:
+                cur_s, cur_e = s, e
+            elif s <= cur_e:
+                cur_e = max(cur_e, e)
+            else:
+                union += cur_e - cur_s
+                cur_s, cur_e = s, e
+        if cur_s is not None:
+            union += cur_e - cur_s
+    hip_count, hip_time = _sum_trace_time(hip_api_csv, window)
+    mem_count, mem_time = _sum_trace_time(memory_copy_csv, window)
+    return {
+        "marker_wall_ns": wall,
+        "kernel_sum_ns": kern_sum,
+        "kernel_interval_union_ns": union,
+        "uncovered_ns": wall - union,
+        "kernel_count": len(rows),
+        "hip_api_calls": hip_count,
+        "hip_api_time_ns": hip_time,
+        "memory_copy_ops": mem_count,
+        "memory_copy_time_ns": mem_time,
+    }
+
+
 def _read_compiler_version(path: Path | None) -> str | None:
     if path is None:
         return None
@@ -819,6 +891,7 @@ def _run_packed_child(owner: Any, sessions: Sequence[Any], args: argparse.Namesp
         "prefill_plan": dict(owner.last_packed_prefill_plan),
         "warmup_token_ids": current,
         "profile_token_ids": final,
+        "generated_token_ids": observed,
         "all_tokens_exact": all(token == int(args.expected_token_id) for token in observed),
         "execution_manifest": manifest,
         "flush_executed": flushed,
@@ -850,7 +923,7 @@ def _run_child(args: argparse.Namespace) -> int:
     }
     with ExitStack() as stack:
         owner = stack.enter_context(Qwen35GGUFResidentSession(args.model, **kwargs))
-        if int(args.concurrency) == 1:
+        if int(args.concurrency) == 1 and str(args.decode_mode) == "eager":
             payload = _run_c1_child(owner, args, marker)
         elif _profiler_concurrency_supported(int(args.concurrency)):
             if owner.runner is None:
@@ -869,7 +942,7 @@ def _run_child(args: argparse.Namespace) -> int:
                 )
             payload = _run_packed_child(owner, sessions, args, marker)
         else:
-            raise ValueError("GGUF profiler child supports only c1-c8")
+            raise ValueError("GGUF profiler child supports only c1-c8 (graph c1 routes through packed graph)")
         payload.update(
             {
                 "schema": 1,
@@ -986,6 +1059,8 @@ def _profile_one(
         str(args.rocprofv3),
         "--kernel-trace",
         "--marker-trace",
+        "--hip-runtime-trace",
+        "--memory-copy-trace",
         "--output-format",
         "csv",
         "-d",
@@ -1001,20 +1076,26 @@ def _profile_one(
         raise ValueError(f"c{concurrency} profiled child did not require cached builds")
     kernel_csv = _single_file(trace_dir, "*_kernel_trace.csv")
     marker_csv = _single_file(trace_dir, "*_marker_api_trace.csv")
+    hip_api_csv = _optional_file(trace_dir, "*_hip_api_trace.csv")
+    memory_copy_csv = _optional_file(trace_dir, "*_memory_copy_trace.csv")
     window = _read_marker_window(marker_csv, _marker_name(concurrency))
     all_rows = _read_kernel_csv(kernel_csv)
     selected = _filter_window(all_rows, window)
     if not selected:
         raise ValueError(f"c{concurrency} marker window contains no kernels")
+    accounting = _timeline_accounting(selected, window, hip_api_csv, memory_copy_csv)
     return {
         "command": command,
         "child": payload,
         "rows": selected,
+        "timeline_accounting": accounting,
         "raw_trace": {
             "kernel_csv": str(kernel_csv),
             "kernel_csv_sha256": _sha256(kernel_csv),
             "marker_csv": str(marker_csv),
             "marker_csv_sha256": _sha256(marker_csv),
+            "hip_api_csv": str(hip_api_csv) if hip_api_csv else None,
+            "memory_copy_csv": str(memory_copy_csv) if memory_copy_csv else None,
             "whole_trace_dispatches": len(all_rows),
             "selected_dispatches": len(selected),
             "marker_start_ns": window[0],
@@ -1119,7 +1200,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         warmups=1,
         repetitions=1,
         profiler={
-            "kind": "rocprofv3_kernel_and_marker_trace",
+            "kind": "rocprofv3_kernel_marker_hipapi_memcopy_trace",
             "c1_command": c1["command"],
             f"{packed_label}_command": packed["command"],
         },
@@ -1170,7 +1251,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             f"{packed_label}_rows": packed_concurrency,
             "physical_bucket_width": packed_concurrency,
             "active_mask": [True] * packed_concurrency,
-            "c1_decode_mode": "eager",
+            "c1_decode_mode": str(args.decode_mode),
             f"{packed_label}_decode_mode": str(args.decode_mode),
             "submission_transport": str(args.submission_transport),
             "sampling": "greedy_top1",
@@ -1191,6 +1272,10 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "raw_traces": {
             "c1": c1["raw_trace"],
             packed_label: packed["raw_trace"],
+        },
+        "timeline_accounting": {
+            "c1": c1["timeline_accounting"],
+            packed_label: packed["timeline_accounting"],
         },
         "commands": {
             "parent": command,
