@@ -2,7 +2,7 @@
   "id": "2026-08-21-gfx1151-27b-35b-prefill-chunk-512-vs-1024-null",
   "benchmark": "gfx1151 GGUF prefill chunk 512-vs-1024 resolution on the 140W desktop lane (27B dense + 35B-A3B control)",
   "status": "rejected",
-  "verdict": "null: 512-row linear/MoE prefill chunks do not beat 1024-row on 27B dense or 35B-A3B prefill at 2048 tok on the 140W gfx1151 desktop lane. Deferred ZBook 27B chunk question resolved as no-effect; the retained 35B 512-override ~1.2% claim (measured on the 60W ZBook below its ~10% clock-noise floor) does not reproduce here. The override is correctness-neutral (KL 0.00013) and stays.",
+  "verdict": "null: 512-row linear/MoE prefill chunks do not beat 1024-row on 27B dense or 35B-A3B prefill at 2048 tok on the 140W gfx1151 desktop lane. Deferred ZBook 27B chunk question resolved as no-effect; the retained 35B 512-override ~1.2% claim (measured on the 60W ZBook below its ~10% clock-noise floor) does not reproduce here. A direct 35B 512-vs-1024 numerical smoke passes (two KL runs 0.00012652 / 0.00013192, top-1 9707==9707), so the override stays.",
   "hardware": "Desktop AMD RYZEN AI MAX+ 395 / Radeon 8060S, gfx1151 (RDNA 3.5), 40 CU, 2900 MHz max sclk, ROCm/HIP 7.15.0, 128.8 GB shared GTT. power_dpm_force_performance_level=high honored (clock-pinnable lane). Sustained-load sclk ~2680-2800 MHz, per-leg swing ~0.8-1.1%.",
   "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (H2048 MoE, 40 layers = 30 GDN + 10 full-attn); Qwen3.6-27B-Q4_K_M (H5120 dense, 65 GDN blocks)",
   "date": "2026-08-21",
@@ -11,7 +11,7 @@
     "session": "single Qwen35GGUFResidentSession per model; chunk changed in place by mutating prefill_config (linear_chunk_size=moe_chunk_size) between legs; no per-leg model reload",
     "measure": "whole-prefill wall at 2048 tok, median of 2 timed prefills per leg, 6 interleaved counter-rotated reps (12 measurements per chunk), per-leg sclk sampling, perf level forced high before each leg, thermal pre-warmup (4 discarded prefills)",
     "control": "35B-A3B geometry override (GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY=(512,512) for H2048-MoE) bypassed via monkeypatch so the 35B leg is a true 512-vs-1024 (the 60W pn3_27b_chunk_pinned.py sanity leg was a 512-vs-512 no-op because the override forces 512 on that geometry)",
-    "correctness": "wall-time only; chunk-boundary correctness already established as effectively exact (KL 0.00013, top-1 9707==9707) in the retained 512-override artifact"
+    "correctness": "Timing run was wall-time only. Follow-up direct 35B check on this physical host compared independent 512 and 1024 sessions at 2048 tokens: two KL(l1024||l512) runs were 0.00012652 / 0.00013192, top-1 9707==9707, and max absolute logit deltas were 7.89071131 / 9.61576939. The earlier KL 0.00013 evidence was an indirect 256-vs-1024 check and is no longer presented as direct 512 evidence."
   },
   "results": {
     "27B_2048_512_ms": "45487 median (12 legs)",
@@ -27,9 +27,15 @@
   },
   "verdict_detail": {
     "27B_resolution": "no measurable chunk-size effect (512 +0.16% vs 1024, within 1.1% clock swing) -> deferred question resolved as null on the 140W lane",
-    "35B_control": "retained ~1.2% 512-win does not reproduce (512 -0.03% vs 1024, within 0.8% swing); the claim was measured on the 60W ZBook where the ~10% clock-band swing makes sub-10% wall-time verdicts structurally unreliable (handoff lane policy). Override kept: correctness-neutral, no regression on the 140W lane.",
+    "35B_control": "retained ~1.2% 512-win does not reproduce (512 -0.03% vs 1024, within 0.8% swing); the claim was measured on the 60W ZBook where the ~10% clock-band swing makes sub-10% wall-time verdicts structurally unreliable (handoff lane policy). Override kept: direct 512-vs-1024 numerical smoke passes and no wall-time regression is measurable on the 140W lane.",
     "sanity_leg_bug": "pn3_27b_chunk_pinned.py 35B leg was a 512-vs-512 no-op: _gguf_prefill_chunk_sizes_for forces (512,512) for H2048-MoE, replacing both configured chunk sizes at session init"
   },
   "reason": "Lane handoff (2026-08-20) deferred the 27B H5120 chunk 512-vs-1024 question to the 140W gfx1151 system after the 60W ZBook could not resolve it (clock not pinnable, ~10% swing). On the 140W desktop (clock-pinnable, ~0.8-1.1% swing) the interleaved protocol resolves it as a null for 27B dense and, as a positive control, shows the retained 35B 512-override win does not transfer across power lanes. scripts/pn3_27b_chunk_resolve.py added (single-resident-session in-place chunk mutation + interleaved counter-rotated legs + per-leg sclk sampling).",
-  "follow_up": "Optional: re-audit the retained 35B 512-override's ~1.2% claim with a fresh same-host sweep on the 140W lane at 2048/4096 tok; current evidence says neutral there, so no change is required. Keep the override (correctness-neutral)."
+  "correctness_follow_up": {
+    "date": "2026-08-21",
+    "physical_host": "gfx1151 140W desktop",
+    "command": "uv run python scripts/pn3_chunk_correctness.py --length 2048 (run twice)",
+    "result": "KL(l1024||l512)=0.00012652 / 0.00013192; top1_1024=9707 and top1_512=9707 in both runs; max_abs_logit=7.89071131 / 9.61576939"
+  },
+  "follow_up": "Optional: re-audit the retained 35B 512-override's ~1.2% claim with a fresh same-host sweep on the 140W lane at 2048/4096 tok; current evidence says neutral there, so no change is required."
 }
