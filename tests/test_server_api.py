@@ -58,7 +58,10 @@ from hipengine.server.api import (
     _prepared_context_tokens,
     _request_completion_cap,
     _request_control,
+    _ServerMetrics,
     _startup_memory_summary,
+    _mtp_accepted_rejected_counts,
+    _mtp_response_summary,
 )
 
 
@@ -2663,6 +2666,42 @@ def test_token_diagnostics_reject_session_for_raw_text() -> None:
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_parameter"
     assert response.json()["error"]["param"] == "session"
+
+
+def test_lazy_startup_logs_pending_then_effective_mtp_state(caplog, monkeypatch) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = SpeculativeMTPFakeLLM()
+    monkeypatch.setattr("hipengine.server.api.LLM", lambda *args, **kwargs: fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="enabled",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "one",
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "speculative_mtp": False,
+            },
+        )
+
+    assert response.status_code == 200
+    assert (
+        "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
+        "default_enabled=unknown policy=enabled thinking=hint"
+    ) in caplog.text
+    assert (
+        "EFFECTIVE_MTP: serving=enabled engine_supported=True "
+        "default_enabled=True policy=enabled thinking=hint"
+    ) in caplog.text
 
 
 def test_server_eager_loads_model_on_startup(caplog) -> None:
@@ -6112,6 +6151,61 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
         "acceptance_rate": 4 / 6,
         "draft_cycles": 2,
     }
+
+
+def test_mtp_summary_honors_batch_timing_ownership() -> None:
+    details = []
+    for row_index, timing_owner in enumerate((True, False)):
+        details.append(
+            GenerationOutput(
+                text="done",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=4,
+                    generated_tokens=3,
+                    row_index=row_index,
+                    execution_path="speculative_mtp_server",
+                    timing={
+                        "mtp_cycles_count": 2,
+                        "mtp_generated_draft_tokens": 6,
+                        "mtp_accepted_draft_tokens": 4,
+                    },
+                    timing_scope="batch",
+                    batch_id="mtp-batch",
+                    group_rows=2,
+                    timing_owner=timing_owner,
+                ),
+            )
+        )
+
+    assert _mtp_accepted_rejected_counts(details) == (4, 2)
+    assert _mtp_response_summary("speculative_mtp", details) == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 6,
+        "accepted_draft_tokens": 4,
+        "rejected_draft_tokens": 2,
+        "acceptance_rate": 4 / 6,
+        "draft_cycles": 2,
+    }
+
+
+def test_mtp_metrics_count_owned_zero_draft_request() -> None:
+    metrics = _ServerMetrics()
+
+    metrics.record_success(
+        {
+            "prompt_tokens": 4,
+            "completion_tokens": 1,
+            "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "rejected_prediction_tokens": 0,
+            },
+        }
+    )
+
+    assert metrics.mtp_requests_total == 1
+    assert metrics.mtp_draft_tokens_accepted_total == 0
+    assert metrics.mtp_draft_tokens_rejected_total == 0
 
 
 def test_metrics_reports_mtp_serving_and_draft_acceptance() -> None:

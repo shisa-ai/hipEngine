@@ -1929,19 +1929,21 @@ class _ServerMetrics:
     mtp_draft_tokens_accepted_total: int = 0
     mtp_draft_tokens_rejected_total: int = 0
 
-    def record_success(self, usage: Mapping[str, int]) -> None:
+    def record_success(self, usage: Mapping[str, Any]) -> None:
         self.request_total += 1
         self.request_completed_total += 1
         self.prompt_tokens_total += int(usage.get("prompt_tokens", 0))
         self.completion_tokens_total += int(usage.get("completion_tokens", 0))
         completion_details = usage.get("completion_tokens_details")
-        if isinstance(completion_details, Mapping):
+        if isinstance(completion_details, Mapping) and (
+            "accepted_prediction_tokens" in completion_details
+            or "rejected_prediction_tokens" in completion_details
+        ):
             accepted = int(completion_details.get("accepted_prediction_tokens", 0) or 0)
             rejected = int(completion_details.get("rejected_prediction_tokens", 0) or 0)
-            if accepted or rejected:
-                self.mtp_requests_total += 1
-                self.mtp_draft_tokens_accepted_total += accepted
-                self.mtp_draft_tokens_rejected_total += rejected
+            self.mtp_requests_total += 1
+            self.mtp_draft_tokens_accepted_total += accepted
+            self.mtp_draft_tokens_rejected_total += rejected
 
     def record_failure(self) -> None:
         self.request_total += 1
@@ -3655,6 +3657,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
             )
+            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
 
@@ -9356,13 +9359,20 @@ def _startup_memory_summary(
 
 
 def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> None:
-    """Log the server's effective MTP serving state at startup.
+    """Log configured or effective MTP serving state.
 
-    Mirrors the visible spec-decode configuration logging vLLM emits so an
-    operator can tell whether default-on MTP serving is active, what policy it
-    uses, and whether the loaded engine actually supports the route.
+    Lazy startup has no engine to inspect yet, so it reports a pending state;
+    ``get_llm`` emits the effective state immediately after creating the model.
     """
 
+    if engine is None:
+        _LOGGER.info(
+            "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
+            "default_enabled=unknown policy=%s thinking=%s",
+            config.speculative_mtp_serving,
+            config.speculative_mtp_thinking,
+        )
+        return
     capability = _speculative_mtp_capability(config, engine=engine)
     _LOGGER.info(
         "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s",
@@ -13538,27 +13548,38 @@ def _usage(
     return usage
 
 
+def _mtp_telemetry_parts(detail: GenerationOutput) -> tuple[Mapping[str, Any] | None, Any, bool]:
+    """Return timing, decode state, and timing ownership from one output."""
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        timing = telemetry.get("timing")
+        decode_state = telemetry.get("decode_state")
+        timing_owner = telemetry.get("timing_owner")
+    else:
+        timing = None if telemetry is None else getattr(telemetry, "timing", None)
+        decode_state = None if telemetry is None else getattr(telemetry, "decode_state", None)
+        timing_owner = None if telemetry is None else getattr(telemetry, "timing_owner", None)
+    return (timing if isinstance(timing, Mapping) else None), decode_state, timing_owner is not False
+
+
 def _mtp_accepted_rejected_counts(
     details: Sequence[GenerationOutput] | None,
 ) -> tuple[int, int] | None:
-    """Sum per-row MTP draft acceptance from generation telemetry.
+    """Sum owned MTP draft acceptance from generation telemetry.
 
     Mirrors vLLM's ``usage.completion_tokens_details.accepted_prediction_tokens``
-    and ``rejected_prediction_tokens`` fields: the draft tokens the speculator
-    proposed that the target accepted / rejected. Returns ``None`` when no row
-    carries MTP telemetry.
+    and ``rejected_prediction_tokens`` fields while honoring batch timing
+    ownership so copied non-owner payloads are not counted more than once.
+    Returns ``None`` when no owned payload carries MTP telemetry.
     """
 
     accepted = 0
     generated = 0
     found = False
     for detail in (details or ()):
-        telemetry = getattr(detail, "telemetry", None)
-        if isinstance(telemetry, Mapping):
-            timing = telemetry.get("timing")
-        else:
-            timing = None if telemetry is None else getattr(telemetry, "timing", None)
-        if not isinstance(timing, Mapping):
+        timing, _, timing_owner = _mtp_telemetry_parts(detail)
+        if timing is None or not timing_owner:
             continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")
         row_generated = timing.get("mtp_generated_draft_tokens")
@@ -13586,20 +13607,17 @@ def _mtp_response_summary(
     accepted = 0
     generated = 0
     cycles = 0
-    used = False
+    used = route == _SPECULATIVE_MTP_BATCH_ROUTE
     for detail in (details or ()):
-        telemetry = getattr(detail, "telemetry", None)
-        if isinstance(telemetry, Mapping):
-            timing = telemetry.get("timing")
-            decode_state = telemetry.get("decode_state")
+        timing, decode_state, timing_owner = _mtp_telemetry_parts(detail)
+        if isinstance(decode_state, Mapping):
+            execution_path = decode_state.get("execution_path")
         else:
-            timing = None if telemetry is None else getattr(telemetry, "timing", None)
-            decode_state = None if telemetry is None else getattr(telemetry, "decode_state", None)
-        if not isinstance(timing, Mapping):
-            continue
-        execution_path = None if decode_state is None else getattr(decode_state, "execution_path", None)
+            execution_path = None if decode_state is None else getattr(decode_state, "execution_path", None)
         if execution_path and "mtp" in str(execution_path).lower():
             used = True
+        if timing is None or not timing_owner:
+            continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")
         row_generated = timing.get("mtp_generated_draft_tokens")
         row_cycles = timing.get("mtp_cycles_count")

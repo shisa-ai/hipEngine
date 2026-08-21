@@ -518,10 +518,12 @@ counts so standard spec-decode tooling works unchanged:
 
 `accepted_prediction_tokens` is the number of draft tokens the MTP target
 accepted and `rejected_prediction_tokens` is the number it rejected, summed
-from backend `GenerationTelemetry.timing` across the request's rows. They are
-present in non-streaming responses, in the final SSE `usage` payload when
-`stream_options.include_usage` is set, and in `hipengine.usage` when
-`stream_options.include_hipengine` is set. Non-MTP requests omit both fields.
+from ownership-bearing backend `GenerationTelemetry.timing` payloads. Copied
+batch-timing payloads with `timing_owner=false` are ignored. The fields are
+present in non-streaming responses, including zero-draft MTP requests, and
+non-MTP requests omit both fields. Speculative MTP requests are currently
+non-streaming (`streaming_compatible=false`), so no MTP SSE usage contract is
+advertised yet.
 
 The per-request effective MTP state is also reported in the top-level
 `hipengine.speculative_mtp` extension of non-streaming completion and chat
@@ -543,19 +545,22 @@ responses:
 
 `effective_route` mirrors the realized generation route from
 `hipengine.generation_shape.route` (`default`, `speculative_mtp`, or
-`speculative`); `acceptance_rate` is `null` when no drafts were proposed. When
-`stream_options.include_hipengine` is enabled, per-choice backend telemetry
-additionally exposes the raw `decode_state.execution_path` and `timing.mtp_*`
-values for the same request.
+`speculative`); `used` remains true for a realized MTP route even when it
+proposes zero drafts, and `acceptance_rate` is then `null`. Non-MTP streaming
+requests with `stream_options.include_hipengine` continue to expose their
+per-choice backend telemetry, but compact MTP streaming summaries are deferred
+until the MTP route supports streaming.
 
 The `--metrics prometheus` endpoint exports cumulative MTP observability:
 `hipengine_mtp_requests_total`, `hipengine_mtp_draft_tokens_accepted_total`,
 `hipengine_mtp_draft_tokens_rejected_total`, a cumulative
 `hipengine_mtp_draft_acceptance_rate` gauge, and a static
 `hipengine_mtp_serving` gauge (1 when the server's effective MTP route is
-enabled for the loaded engine, 0 otherwise). At startup the server logs the
-effective state on one line, e.g. `EFFECTIVE_MTP: serving=enabled
-engine_supported=True default_enabled=True policy=enabled thinking=hint`.
+enabled for the loaded engine, 0 otherwise). Eager startup logs the effective
+state on one line, e.g. `EFFECTIVE_MTP: serving=enabled engine_supported=True
+default_enabled=True policy=enabled thinking=hint`. Lazy startup first reports
+`serving=pending engine_supported=unknown`; immediately after first-request
+model creation it logs the loaded engine's effective state.
 
 ### Choice telemetry
 
