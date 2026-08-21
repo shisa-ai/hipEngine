@@ -2,7 +2,7 @@
   "id": "2026-08-20-gfx1151-qwen36-35b-prefill-chunk-512-retained",
   "benchmark": "Qwen3.6-35B-A3B-UD-Q4_K_M gfx1151 GGUF prefill: 512-row linear/MoE chunk override (geometry-keyed) retained",
   "status": "accepted",
-  "verdict": "retained: 512-row linear/MoE prefill chunks for H2048-MoE geometry on gfx1151 (~1.2% @2048 / ~2.3% @4096 prefill win, chunk-boundary exact); 27B H5120 left on 1024 (inconclusive)",
+  "verdict": "retained: 512-row linear/MoE prefill chunks for H2048-MoE geometry on gfx1151 (~1.2% @2048 / ~2.3% @4096 prefill win on the 60W ZBook lane; direct 512-vs-1024 boundary smoke passes on the 140W gfx1151 lane); 27B H5120 left on 1024 (inconclusive)",
   "hardware": "HP ZBook Ultra G1a, Radeon 8060S / gfx1151, ROCm 7.15.0 pinned, 32 GiB MALL, 40 CU / 20 WGP, 2 MiB L2, ~221 GB/s, 60 W power-limited",
   "model": "Qwen3.6-35B-A3B-UD-Q4_K_M (H2048 MoE, 40 layers = 30 GDN + 10 full-attn); Qwen3.6-27B-Q4_K_M (H5120 dense) used for robustness",
   "date": "2026-08-20",
@@ -10,7 +10,7 @@
   "protocol": {
     "session": "Qwen35GGUFResidentSession(..., prefill_config=PrefillConfig(linear_chunk_size=X, moe_chunk_size=X), prefill L bulk, warmup + timed)",
     "measure": "whole-prefill wall, median of 2 iters per chunk size (128/256/512/1024) at 2048 tok on 35B; 512 vs 1024 at 4096 tok on 35B and 2048 tok on 27B",
-    "correctness": "KL(logits 1024-chunk || 256-chunk) = 0.00013 at 2048 tok, top-1 9707 == 9707 (chunk-boundary change is effectively exact; far below 0.034 run-noise floor)"
+    "correctness": "Original 60W-lane check was indirect: KL(logits 1024-chunk || 256-chunk) = 0.00013 at 2048 tok, top-1 9707 == 9707. Direct 140W-lane correction check with independent sessions: KL(logits 1024-chunk || 512-chunk) = 0.00012652 / 0.00013192 across two runs, top-1 9707 == 9707, max absolute logit delta 7.89071131 / 9.61576939."
   },
   "chunk_sweep_2048_35b_ms": {
     "128": 20058, "256": 19952, "512": 19742, "1024": 19984
@@ -24,12 +24,19 @@
     "file": "hipengine/kernels/hip_gfx1151/__init__.py",
     "capability": "GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY = {(QWEN35_MOE_H2048_E256_GEOMETRY, 'MOSTLY_Q4_K_M'): (512, 512)}",
     "policy": "_gguf_prefill_chunk_sizes_for(backend, weights) applied after resolve_prefill_config_for_sequence in the GGUF session init; geometry-keyed via _gguf_policy_identity",
-    "exactness": "same kernels, different chunk boundaries; short prompts (<512) unaffected (chunk = min(tokens, 512) = tokens); GDN prefill chunking is effectively exact across boundaries (KL 0.00013)"
+    "exactness": "same kernels, different chunk boundaries; short prompts (<512) unaffected (chunk = min(tokens, 512) = tokens); direct 512-vs-1024 2048-token smoke passes the broad KL/top-1 floor (two KL runs 0.00012652 / 0.00013192, top-1 equal), but is numerical rather than bit-exact"
   },
   "context": {
     "finding": "gfx1151 was already 47/56 GGUF-path capability knobs overridden; the gfx1151 _ARCH_CHUNK_PROFILES (linear/moe 256) exists for PARO but the GGUF runner never passes target_arch, so GGUF prefill used the generic 1024/4096 chunks. Sweep showed 512 is the GGUF optimum (the PARO 256 is only -0.2%).",
     "inherited_gfx1100_tables": "5 tables inherit gfx1100 defaults (DENSE_PREFILL_SCRATCH_LIVENESS, Q4_T16_UNEQUAL_PAIR, T16_F16_ROCBLAS_*); mostly 27B H5120 memory/prefill-variant policies, low value, not changed here.",
     "deferred_to_P3_FULLATTN": "hard-coded threads=256 launch geometry in shared .hip (paged_attn_decode, cast, gather, conv, group_scatter) — shared with gfx1100, needs .hip changes"
   },
-  "reason": "Measured, correctness-neutral (KL 0.00013), config-level win for long-prompt (>1K) prefill on the 35B-A3B gfx1151 lane: 512-row linear/MoE chunks reduce transient scratch and improve pipelining on the 40-CU APU. Gated to the proven H2048-MoE geometry; the 27B H5120 is left on default because its benefit is inconclusive within 60W-lane variance. Benchmark suites (mtpbench 56-214 tok) are unaffected (chunking only applies >1K)."
+  "correctness_correction": {
+    "date": "2026-08-21",
+    "physical_host": "gfx1151 140W desktop",
+    "command": "uv run python scripts/pn3_chunk_correctness.py --length 2048 (run twice)",
+    "result": "KL(l1024||l512)=0.00012652 / 0.00013192; top1_1024=9707 and top1_512=9707 in both runs; max_abs_logit=7.89071131 / 9.61576939",
+    "note": "This directly closes the evidence-labeling gap: the original KL 0.00013 check compared 256 vs 1024, not the retained 512 vs 1024 policy."
+  },
+  "reason": "Measured config-level win for long-prompt (>1K) prefill on the 35B-A3B 60W gfx1151 lane, with a direct 512-vs-1024 numerical smoke now passing on the 140W gfx1151 lane (two KL runs 0.00012652 / 0.00013192, top-1 equal). Gated to the H2048-MoE geometry; the 27B H5120 is left on default because its benefit is inconclusive within 60W-lane variance. Benchmark suites (mtpbench 56-214 tok) are unaffected (chunking only applies >1K)."
 }
