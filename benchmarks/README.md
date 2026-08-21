@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-20**
+Last updated: **2026-08-21**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -119,6 +119,48 @@ scoreboard:
 ```bash
 git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md
 ```
+
+## Benchmark harness catalog
+
+There is no single "run everything" benchmark. Different questions are answered
+by different harnesses, each with a specific timing scope, numerical contract,
+and shape. The table below is the map: it says what each harness measures so a
+result is only compared against like-for-like rows. A ✓ marks what a harness
+owns and reports; a column left blank means that axis is not measured by that
+harness (not that it is zero). Always run hipEngine rows through the hermetic
+thecrock wrapper for the target architecture (see `docs/BENCHMARK.md`).
+
+Legend: **AR** = true no-MTP autoregressive decode · **MTP** = speculative
+multi-token-prediction decode (with a true-AR denominator where a ratio is
+reported) · **Prefill** = prompt-processing tok/s · **Decode** = generation
+tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
+(c=1..8) sweep.
+
+| Harness (`scripts/`) | What it answers | AR | MTP | Prefill | Decode | Mem | Conc | Canonical entrypoint |
+| --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
+| `qwen35_readme_sweep.py` | Single-request prefill/decode/memory per shape (llama-bench-style), one resident session, per-shape reset | ✓ | | ✓ | ✓ | ✓ | | `--engine gguf --model <model> --backend hip_gfx1151 --workloads 512/128 1K/128 ...` |
+| `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
+| `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
+| `gguf_mtp_category_bench.py` | MTP category matrix over budgets 1..8 with guarded objective extraction; attach a true-AR baseline for ratios | | ✓ | | ✓ | | | `--budgets 1,3,5 --objective-budget b5` |
+| `gguf_ar_mtp_suite.py` | One-command AR-vs-MTP decode ratio over the category suite under one enforced decode config | ✓ | ✓ | | ✓ | | | `--scope partial --output <json>` |
+| `qwen35_batch_retained_bench.py` | **PARO-path** compact c>N batch decode; aggregate + per-request tok/s, equality vs c1, optional MTP draft depth | ✓ | ✓ | | ✓ | ✓ | ✓ | `--batch-size 8 --decode-tokens 128` |
+| `qwen35_batch_gguf_diagnostic.py` | GGUF c>N generated-token **correctness** equality vs independent c1 (no throughput claim) | ✓ | | | | | ✓ | `--rows 8 --execute` |
+| `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency (c=1..8) for hipEngine vs llama.cpp HIP/Vulkan; combined throughput + memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8` |
+| `gguf_concurrency_baseline.py` | GGUF c1 + explicit serial c2/c4 timing controls (Phase-A route baseline) | ✓ | | ✓ | ✓ | | ✓ | `--model <model> --concurrencies 1,2,4` |
+| `mtp-bench.py` | llama.cpp-compatible MTP prompt-suite benchmark (server economics); can wrap hipEngine verifier economics | ✓ | ✓ | | ✓ | | | `--mode hipengine-current` |
+| `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
+| `benchmark_matrix.py` | Join exact-token direct/server rows into a validated matrix report | ✓ | ✓ | | | | | `build --manifest ...` |
+
+The two rows that most closely produce the README **concurrency scoreboards**
+are `qwen35_batch_retained_bench.py` (direct engine) and `server_f1_concurrency_bench.py`
+(OpenAI server). The **single-request** tables come from `qwen35_readme_sweep.py`
+(GGUF/PARO) and `qwen35_gguf_bench.py`. The **speculative-decode** tables come
+from `gguf_ar_mtp_suite.py` / `gguf_mtp_category_bench.py` with a
+`gguf_true_ar_category_bench.py` true-AR denominator.
+
+This catalog is maintained alongside the harnesses themselves: when a harness
+learns a new axis (for example MTP added to a previously AR-only bench), update
+this table in the same unit.
 
 ## Evidence status
 
