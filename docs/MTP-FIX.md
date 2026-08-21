@@ -324,6 +324,19 @@ If eager MTP fails correctness, stop and localize with layer/state/KV ladders.
 Do not proceed to graph capture. If it passes but is slower than AR, retain it as
 an oracle/fallback only and route production traffic to AR in those buckets.
 
+**RF1 harness implemented 2026-08-21:**
+`scripts/gguf_mtp_long_context_gate.py` compares host-materialized target batches
+on the eager-native verifier against an independently journaled serial-exact
+teacher. It fails closed on graph submission, logits/top-1/accept-summary drift,
+selected Conv/GDN
+state, touched BF16 K/V rows, hidden/cursor, post-commit rollback, split-workspace
+capacity, or missing split-K ownership at long cycle ends. Controlled B3 cases
+cover reject, every partial depth, and full accept; optional real NextN runs
+force host proposals with cycle-logit diagnostics and compare all generated IDs
+to true AR. This establishes the reusable RF1 oracle machinery only. RF1 remains
+open until the long-context/task matrix above is recorded through the largest
+practical context; the short reusable graph guard is unchanged.
+
 ### RF2 — Add fast long-context graph buckets
 
 **Goal:** reusable MTP target graphs execute the correct long-context attention
