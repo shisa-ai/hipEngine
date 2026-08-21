@@ -3974,3 +3974,27 @@ should be boring.
   overturns the 1024 win), collapse the runtime-threads entrypoint back to a
   fixed constexpr and drop the capability/env unless a named validation gap
   still needs the override.
+
+## Dense long split-K multi-row eager verifier row-wise strict dispatch
+
+- Retained 2026-08-21 as the RF1 strict eager/oracle fallback in
+  `Qwen35GGUFFullStackRunner._run_native_attention_bulk_ffn_layer_rows`
+  (`strict_long_rows`). When a dense (non-MoE) multi-row verifier batch is in
+  long split-K territory (`_use_gguf_full_attention_split_decode(start_position +
+  rows)`), each attention and FFN row routes through the registered c1/strict
+  dispatch while keeping the native split-K attention leaf, so selected
+  Conv/GDN state and BF16 K/V stay byte-exact. Retained short-context batched
+  staging is unchanged. Rationale: a real B3 full accept ending at 1024 crossed
+  a BF16 rounding boundary in the staged multi-row linear-attention/FFN output
+  versus scalar AR (layer 46 row 3, max abs 0.015625). The retained 13/13
+  transition packet and real crossing are in
+  `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
+- This is deliberately not the fast long-context route (direct cycle cost
+  0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
+  context cap.
+- Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified
+  and the eager long path becomes a non-authoritative fallback, re-evaluate
+  whether the row-wise serialization can be consolidated into the registered
+  strict chain. The strict eager/unfused fallback itself must remain per
+  `EXECUTION-PROFILES.md` invariant #8; only the duplicated per-row staging in
+  the eager verifier may be collapsed once RF2 changes ownership semantics.
