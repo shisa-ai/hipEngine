@@ -120,32 +120,33 @@ questions for the next coder.
    validation policy; state the reason and expected duration before starting
    them.
 
-### In-progress handoff — preserve the dirty RF1 candidate
+### In-progress handoff — RF1 candidate retained and committed
 
-- [ ] **Review and continue, do not discard, the current uncommitted candidate**
+- [x] **Review and continue, do not discard, the current uncommitted candidate**
       in `hipengine/runtime/qwen35_gguf_runner.py` and
       `tests/test_gguf_native_spec_cycle.py`. At long split-K contexts with
       multiple verifier rows, it routes each attention and FFN row through the
       registered c1/strict dispatch while retaining the native split-K leaf;
-      retained short-context batching is unchanged. The associated uncommitted
-      checkpoint is
+      retained short-context batching is unchanged. The associated checkpoint is
       `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
 - [x] **Focused candidate proof:** the isolated repaired `end1024-b3-a3` case
       passed with exact logits/top-1, state, KV, hidden, commit, cursor, and
       rollback; split-K ownership was observed. This is encouraging but is not
       enough to retain the candidate.
-- [ ] **Finish candidate validation:** the combined transition packet was
-      intentionally stopped and emitted no artifact. Run the focused unit test
-      plus the boundary transition packet for cycle ends `1024,1025,1032`,
-      budgets B1/B2/B3, B3 full accept at 1024, and the real generation crossing.
-      Preserve the earlier passing page packet unless this code path makes it
-      genuinely affected. If any strict surface fails, keep RF1 blocked and
-      localize from the layer-46 row-3 finding rather than restarting the
-      investigation.
-- [ ] **Decide the candidate:** retain and commit it only if the complete focused
-      transition packet passes. Record that it is a strict eager/oracle fallback
-      and measure its cost; do not promote it as the fast long-context route.
-      If rejected, record the failed surface and leave RF1 open.
+- [x] **Finish candidate validation:** the combined transition packet for cycle
+      ends `1024,1025,1032`, budgets B1/B2/B3, B3 full accept at 1024, and the
+      real generation crossing passed on gfx1151 (13/13 direct + 1/1 generation,
+      400.91 s, `--fail-on-fail`). All surfaces exact, split-K ownership present
+      (16/32/48/64 calls), zero target-graph submissions; the real crossing
+      matched all 8 AR IDs with GPU/CPU accept parity. The earlier passing page
+      packet (cycle ends 255/256/257) is below the 1024 split threshold and is
+      unaffected by the candidate — preserved. The committed RF0 e2e crossing
+      test also passes with the candidate (92.81 s).
+- [x] **Decide the candidate:** retained and committed as a **strict
+      eager/oracle fallback** for long split-K multi-row verifier batches (row
+      cost 0.4–1.6 s/direct cycle, 44.7 s for 8 generated tokens). It is not
+      promoted as the fast long-context route and does not raise the 1023 graph
+      context cap. Full RF1 (2K–64K and task/category evidence) remains open.
 
 ### Remaining campaign work
 
@@ -483,6 +484,21 @@ force host proposals with cycle-logit diagnostics and compare all generated IDs
 to true AR. This establishes the reusable RF1 oracle machinery only. RF1 remains
 open until the long-context/task matrix above is recorded through the largest
 practical context; the short reusable graph guard is unchanged.
+
+**RF1 1024 boundary transition repaired and retained 2026-08-21:** the eager
+long-context oracle localized the sole strict mismatch to a layer-46 row-3 BF16
+rounding boundary in the staged multi-row linear-attention/FFN path at a B3 full
+accept ending exactly at 1024. The retained candidate routes each attention and
+FFN row through the registered c1/strict dispatch (with the native split-K
+attention leaf) whenever a dense multi-row verifier batch is in long split-K
+territory, so selected state/KV stays byte-exact; retained short-context batching
+is unchanged. The complete transition packet (cycle ends 1024/1025/1032 x B1/B2/B3,
+B3 reject/partial/full at 1024, and a real generation crossing 1020→1028) passes
+on gfx1151: 13/13 direct + 1/1 generation, all surfaces exact, zero target-graph
+submissions, split-K ownership present, all 8 real-generation IDs matching AR. It
+is a strict eager/oracle fallback with measured cost (0.4–1.6 s/direct cycle,
+44.7 s per 8 generated tokens), not a fast-graph claim; RF2 owns the speed path
+and the 1023 graph cap is unchanged.
 
 ### RF2 — Add fast long-context graph buckets
 

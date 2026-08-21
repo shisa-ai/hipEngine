@@ -793,6 +793,82 @@ def test_native_linear_chain_scheduler_stages_all_rows_once(monkeypatch) -> None
     assert [call[0] for call in calls] == ["scalar", "ffn"]
 
 
+def test_native_long_context_serializes_dense_ffn_rows(monkeypatch) -> None:
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=16, is_moe=False)
+    )
+    runner.runtime = SimpleNamespace()
+    calls: list[tuple[object, ...]] = []
+    dispatch_states: list[bool] = []
+
+    monkeypatch.setattr(
+        runner,
+        "_run_linear_attention_attn_chain_rows_exact",
+        lambda *args, **kwargs: calls.append(("attention", args, kwargs)),
+        raising=False,
+    )
+
+    def attention(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("attention", args, kwargs))
+
+    def ffn(*args, **kwargs):
+        dispatch_states.append(qgr.gguf_native_batch_decode_enabled())
+        calls.append(("ffn", args, kwargs))
+
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", attention)
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", ffn)
+    monkeypatch.setattr(
+        qgr,
+        "_use_gguf_full_attention_split_decode",
+        lambda context: int(context) >= 1024,
+    )
+    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x5000))
+
+    with qgr.native_batch_decode_session(True):
+        runner._run_native_attention_bulk_ffn_layer_rows(
+            46,
+            LINEAR_ATTENTION,
+            0x1000,
+            0x2000,
+            scratch,
+            rows=4,
+            decode_scratch=SimpleNamespace(),
+            start_position=1020,
+            hidden_f32_ptr=0x3000,
+            out_f32_ptr=0x4000,
+        )
+
+    assert [call[0] for call in calls] == [
+        "attention",
+        "attention",
+        "attention",
+        "attention",
+        "ffn",
+        "ffn",
+        "ffn",
+        "ffn",
+    ]
+    ffn_calls = calls[4:]
+    assert [call[1][1:4] for call in ffn_calls] == [
+        (0x1000 + row * 32, 0x5000 + row * 32, 0x2000 + row * 32)
+        for row in range(4)
+    ]
+    assert all(call[2]["rows"] == 1 for call in ffn_calls)
+    assert [call[2]["hidden_f32_ptr"] for call in ffn_calls] == [
+        0x3000 + row * 64 for row in range(4)
+    ]
+    assert [call[2]["out_f32_ptr"] for call in ffn_calls] == [
+        0x4000 + row * 64 for row in range(4)
+    ]
+    assert dispatch_states == [False] * 8
+
+
 def test_native_full_attention_chain_scheduler_stages_dynamic_dense_rows_once(
     monkeypatch,
 ) -> None:

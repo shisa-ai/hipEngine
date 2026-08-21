@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -6641,10 +6641,16 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
+        strict_long_rows = (
+            rows > 1
+            and not bool(self.weights.config.is_moe)
+            and _use_gguf_full_attention_split_decode(start_position + rows)
+        )
         staged_dense_linear = (
             layer_type == LINEAR_ATTENTION
             and rows > 1
             and not bool(self.weights.config.is_moe)
+            and not strict_long_rows
         )
         staged_dense_full = (
             layer_type == FULL_ATTENTION
@@ -6705,65 +6711,107 @@ class Qwen35GGUFFullStackRunner:
                     else int(hidden_f32_ptr) + row * row_f32_nbytes
                 )
                 attn_row = scratch.attn_out.ptr + row * row_nbytes
-                if layer_type == LINEAR_ATTENTION:
-                    self._run_linear_attention_attn_only(
-                        layer_id,
-                        hidden_row,
-                        attn_row,
-                        row_decode_scratch,
-                        hidden_f32_ptr=hidden_f32_row,
-                        stream=stream,
-                    )
-                    if linear_state_rows is not None:
-                        conv_state = row_decode_scratch.layer_conv_states[layer_id]
-                        recurrent_state = row_decode_scratch.layer_recurrent_states[layer_id]
-                        if conv_state is None or recurrent_state is None:
-                            raise ValueError(
-                                f"layer {layer_id} has no linear-attention state"
+                row_dispatch = (
+                    native_batch_decode_session(False)
+                    if strict_long_rows
+                    else nullcontext()
+                )
+                with row_dispatch:
+                    if layer_type == LINEAR_ATTENTION:
+                        self._run_linear_attention_attn_only(
+                            layer_id,
+                            hidden_row,
+                            attn_row,
+                            row_decode_scratch,
+                            hidden_f32_ptr=hidden_f32_row,
+                            stream=stream,
+                        )
+                        if linear_state_rows is not None:
+                            conv_state = row_decode_scratch.layer_conv_states[layer_id]
+                            recurrent_state = row_decode_scratch.layer_recurrent_states[layer_id]
+                            if conv_state is None or recurrent_state is None:
+                                raise ValueError(
+                                    f"layer {layer_id} has no linear-attention state"
+                                )
+                            conv_state_rows, recurrent_state_rows = linear_state_rows
+                            runtime.memcpy_async(
+                                conv_state_rows.ptr + row * int(conv_state.nbytes),
+                                conv_state.ptr,
+                                int(conv_state.nbytes),
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
                             )
-                        conv_state_rows, recurrent_state_rows = linear_state_rows
-                        runtime.memcpy_async(
-                            conv_state_rows.ptr + row * int(conv_state.nbytes),
-                            conv_state.ptr,
-                            int(conv_state.nbytes),
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
+                            runtime.memcpy_async(
+                                recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                                recurrent_state.ptr,
+                                int(recurrent_state.nbytes),
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                    elif layer_type == FULL_ATTENTION:
+                        if decode_row_scratches is None:
+                            row_decode_scratch.set_full_attention_position(position, runtime)
+                        self._run_full_attention_attn_only(
+                            layer_id,
+                            hidden_row,
+                            attn_row,
+                            row_decode_scratch,
+                            position=position,
+                            hidden_f32_ptr=hidden_f32_row,
+                            stream=stream,
+                            attention_max_context_len=attention_context_limit,
                         )
-                        runtime.memcpy_async(
-                            recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
-                            recurrent_state.ptr,
-                            int(recurrent_state.nbytes),
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
-                        )
-                elif layer_type == FULL_ATTENTION:
-                    if decode_row_scratches is None:
-                        row_decode_scratch.set_full_attention_position(position, runtime)
-                    self._run_full_attention_attn_only(
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        if strict_long_rows:
+            # Dense rows2-4 staged attention/FFN is exact on retained short
+            # fixtures, but one real B3 full-accept row ending at 1024 crosses a
+            # BF16 rounding boundary in the layer-46 staged linear-attention
+            # output versus scalar AR. Long eager MTP is the strict
+            # oracle/fallback, not the RF2 fast graph: apply each registered c1
+            # primitive row-wise (including the split-K attention leaf) so
+            # selected state/KV remains byte-exact.
+            for row in range(rows):
+                with native_batch_decode_session(False):
+                    self._run_post_attention_ffn_rows(
                         layer_id,
-                        hidden_row,
-                        attn_row,
-                        row_decode_scratch,
-                        position=position,
-                        hidden_f32_ptr=hidden_f32_row,
+                        hidden_ptr + row * row_nbytes,
+                        scratch.attn_out.ptr + row * row_nbytes,
+                        out_ptr + row * row_nbytes,
+                        scratch,
+                        rows=1,
                         stream=stream,
-                        attention_max_context_len=attention_context_limit,
+                        hidden_f32_ptr=(
+                            None
+                            if hidden_f32_ptr is None
+                            else int(hidden_f32_ptr) + row * row_f32_nbytes
+                        ),
+                        out_f32_ptr=(
+                            None
+                            if out_f32_ptr is None
+                            else int(out_f32_ptr) + row * row_f32_nbytes
+                        ),
+                        next_norm_weight_ptr=next_norm_weight_ptr,
+                        next_norm_out_ptr=(
+                            None
+                            if next_norm_out_ptr is None
+                            else int(next_norm_out_ptr) + row * row_nbytes
+                        ),
                     )
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-        self._run_post_attention_ffn_rows(
-            layer_id,
-            hidden_ptr,
-            scratch.attn_out.ptr,
-            out_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            hidden_f32_ptr=hidden_f32_ptr,
-            out_f32_ptr=out_f32_ptr,
-            next_norm_weight_ptr=next_norm_weight_ptr,
-            next_norm_out_ptr=next_norm_out_ptr,
-        )
+        else:
+            self._run_post_attention_ffn_rows(
+                layer_id,
+                hidden_ptr,
+                scratch.attn_out.ptr,
+                out_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                hidden_f32_ptr=hidden_f32_ptr,
+                out_f32_ptr=out_f32_ptr,
+                next_norm_weight_ptr=next_norm_weight_ptr,
+                next_norm_out_ptr=next_norm_out_ptr,
+            )
 
     def _run_linear_attention_prefill_layer_rows(
         self,
