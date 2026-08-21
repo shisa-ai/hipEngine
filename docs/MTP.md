@@ -1,5 +1,11 @@
 # hipEngine MTP Native Implementation Plan
 
+> **Production-readiness campaign (2026-08-21):** short-context MTP evidence is
+> not sufficient for default serving. The active context/lifecycle/API/load
+> campaign is [`MTP-FIX.md`](MTP-FIX.md); production MTP remains disabled until
+> its staged safety and qualification gates pass. This document remains the
+> implementation/economics history and provider design reference.
+>
 > Status (2026-06-13): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
