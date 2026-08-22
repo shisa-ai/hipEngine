@@ -64,9 +64,12 @@ The remaining work is not all “tuning,” however. Keep these scopes distinct:
 - **Feature/product closure:** real-checkpoint no-shadow DMS device conformance,
   realistic tier restore economics, and C2-S continuous MTP/SpecDec integration
   remain implementation campaigns rather than tuning of the dense AR core.
-- **Comparison coverage:** matched prior-engine/llama.cpp/vLLM/SGLang serving is
-  evidence work and may remain unavailable without invalidating the retained
-  W7900 same-engine gates.
+- **Comparison coverage:** the current same-host audit finds vLLM/SGLang absent,
+  llama.cpp HIP incompatible with this CPU/ROCm generation, and the available
+  llama.cpp Vulkan binary CPU-only (`no usable GPU found`). Its p128/d8 packet
+  is invalid and c8 fails same-engine c1 trajectory parity, so no external rate
+  is reported. This does not invalidate the retained W7900 same-engine gates.
+  Evidence: [`external availability audit`](../benchmarks/results/2026-08-22-concurrency2-external-serving-unavailable.json).
 
 Open optional or backend-specific capabilities stay default-off, explicit, or
 fail-closed. They do not justify withholding the working common architecture

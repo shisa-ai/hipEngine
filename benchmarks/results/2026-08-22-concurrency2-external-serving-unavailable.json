@@ -1,0 +1,86 @@
+{
+  "availability": {
+    "llamacpp_hip": {
+      "default_binary": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-server",
+          "--version"
+        ],
+        "returncode": 127,
+        "stderr": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release/bin/llama-server: CPU ISA level is lower than required",
+        "stdout": ""
+      },
+      "rocwmma_missing_sonames": [
+        "libhipblas.so.2",
+        "librocblas.so.4",
+        "libamdhip64.so.6"
+      ],
+      "status": "unavailable"
+    },
+    "llamacpp_vulkan": {
+      "c1_exact": "4/4 warmup+measured",
+      "c8_first_mismatch": "token index 5, oracle 11 vs observed 321",
+      "c8_log_sha256": "ce7fdce364bc24d628004aa2365fb91f85ea1772b72f1203b5176246de01491a",
+      "c8_measured_exact": "18/24",
+      "diagnostic_only_http_tok_s": {
+        "c1_samples": [
+          0.752,
+          0.755,
+          0.747
+        ],
+        "c8_samples": [
+          0.921,
+          0.925,
+          0.926
+        ]
+      },
+      "packet_passed": false,
+      "packet_status": "failed_gate",
+      "raw_sha256": "8d0e13ac033216e9c9509187fb11997d8328f117c1824d0eeb5801eba4d6e9c7",
+      "server_log_evidence": "warning: no usable GPU found, --gpu-layers option will be ignored",
+      "status": "invalid_cpu_only",
+      "version": {
+        "command": [
+          "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+          "--version"
+        ],
+        "returncode": 0,
+        "stderr": "version: 10290 (c8e03ce81)\nbuilt with GNU 16.1.1 for Linux x86_64",
+        "stdout": ""
+      }
+    },
+    "sglang": {
+      "python_package": false,
+      "repo_exists": false,
+      "status": "not_installed"
+    },
+    "vllm": {
+      "python_package": false,
+      "repo_exists": true,
+      "status": "not_installed"
+    }
+  },
+  "created_at": "2026-08-22T13:45:00Z",
+  "decision": "No external result is valid for comparison. Keep C2-6.external unavailable; do not report CPU-only rates. The W7900 same-engine correctness/default gate remains authoritative. Re-run only with a GPU-enabled same-host external build and exact c1/cN contract.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "kind": "concurrency2_external_serving_availability_audit",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "054f945a6",
+    "host": "epyc",
+    "tracked_clean": true
+  },
+  "status": "unavailable_no_valid_external_gpu_backend",
+  "target_protocol": {
+    "kv": "f16 external / BF16 hipEngine",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "shape": "p128 d8 c1,c8",
+    "timing": "barrier-to-last-response HTTP wall"
+  }
+}
