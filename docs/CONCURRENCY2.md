@@ -259,18 +259,22 @@ bucket merely to increase graph reuse.
 #### G1151-3 — kernel priorities after the path ledger closes
 
 Rank by recoverable complete-wall milliseconds for the selected model; do not
-create one universal gfx1151 kernel queue. For the current Qwen3.8 c17/c32
-blocker, execute this measured order before leaf tuning:
+create one universal gfx1151 kernel queue. For the current Qwen3.8 c17/c32 blocker, eager c1-c8 complete-owner costs are
+now measured, and both wider structural candidates are **rejected**. Native c16
+is exact but costs **341.46 ms** versus **273.90 ms** for two c8 owners. Native
+c9 is exact at **228.05 ms**, and actual c17 9+8 regresses **406.50→425.86 ms
+(+4.76%)** versus retained 8+8+1. Do not expand the packaged width set. Evidence:
+[`gfx1151 wider-width screen`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-eager-wider-width-screen.json).
 
-1. repair gfx1151 marker-window collection and measure eager production-owner
-   c1-c8 costs at c17/c32, including group-boundary/state-import gaps;
-2. test true physical c9/c16 ownership because it can structurally reduce c17
-   from three groups to two and c32 from four to two; first gate allocation,
-   exactness, and workspace rather than assuming rowtile-8 kernels imply a
-   wider complete owner; and
-3. isolate kernel-family wall in that same owner and tune the largest recoverable
-   family. Until step 1, the exact share outside kernels and the winning eager
-   composition are **unknown**.
+The measured order is therefore:
+
+1. repair gfx1151 marker-window collection and isolate eager c17 family wall,
+   including group-boundary/state-import gaps;
+2. optimize the largest recoverable kernel family in that owner, expected from
+   current model-specific evidence to be quantized projections but not assumed
+   until the marked trace exists; and
+3. rerun the exact c17/c32 serving SLO gate. The exact share outside kernels and
+   the winning projection subfamily are still **unknown**.
 
 Device-kernel priorities after those owner-level measurements are:
 

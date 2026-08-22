@@ -1,0 +1,135 @@
+{
+  "c17_comparison": {
+    "delta_ms": 19.35151603538543,
+    "delta_percent": 4.760477501009697,
+    "diagnostic_wider": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 425.85519200656563,
+      "widths": [
+        9,
+        8
+      ]
+    },
+    "retained_ceiling": {
+      "marked_wall_ms": 406.5036759711802,
+      "widths": [
+        8,
+        8,
+        1
+      ]
+    }
+  },
+  "certified_width_owner_ms": {
+    "1": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 74.54783993307501,
+      "widths": [
+        1
+      ]
+    },
+    "2": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 102.67197189386934,
+      "widths": [
+        2
+      ]
+    },
+    "3": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 100.92444997280836,
+      "widths": [
+        3
+      ]
+    },
+    "4": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 100.70817999076098,
+      "widths": [
+        4
+      ]
+    },
+    "5": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 105.97970511298627,
+      "widths": [
+        5
+      ]
+    },
+    "6": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 117.94576793909073,
+      "widths": [
+        6
+      ]
+    },
+    "7": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 125.62203593552113,
+      "widths": [
+        7
+      ]
+    },
+    "8": {
+      "all_rows_equal": true,
+      "marked_wall_ms": 136.9476990075782,
+      "widths": [
+        8
+      ]
+    }
+  },
+  "created_at": "2026-08-23T06:50:00Z",
+  "decision": "Reject c9 and c16 physical ownership for this gfx1151 Qwen3.8 route. c16 loses to two c8 groups; actual c17 9+8 loses to retained 8+8+1. Do not expand production width capability. Move to marked eager-owner kernel-family attribution/optimization.",
+  "diagnostic_wider_widths": {
+    "c16": {
+      "all_rows_equal": true,
+      "fallback_reasons": {},
+      "marked_wall_ms": 341.46160597447306
+    },
+    "c9": {
+      "all_rows_equal": true,
+      "fallback_reasons": {},
+      "marked_wall_ms": 228.04559906944633
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151",
+    "host": "gfx1151"
+  },
+  "kind": "concurrency2_gfx1151_qwen38_eager_width_and_wider_owner_screen",
+  "limitations": [
+    "single clean owner observation per width; sufficient to reject large regressions, not publish absolute throughput",
+    "diagnostic modifications were never committed or promoted and remote checkout was restored clean"
+  ],
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "raw_sha256": {
+    "c1.json": "fde26c4dba247703237a9f55d12c2ca39d82cc77fc24102db975ceaab4d956c6",
+    "c2-gfx1151-owner-c16-diagnostic-native.json": "3ed0ea567f72610887292467ee1ac476541362eae706305575c36dcc8f5af811",
+    "c2-gfx1151-owner-c17-c9plus8-diagnostic.json": "ce313fe61752e27aeb129cd9ecfbfd28175cb8588f8e35616ec747d899532903",
+    "c2-gfx1151-owner-c17-clean.json": "a122f8ee02c02fb195efc79386223c276be7d4dc8181e5ddbbf2787ccdfd692f",
+    "c2-gfx1151-owner-c9-diagnostic-native.json": "0fdd0bd5c2a6e960ff626f0c47439d745128d63a74ea6ef384df71a8cf3f0ebf",
+    "c2.json": "f9b5a7ac81af0ca85819d2dfb924aea46ba714a638e6701fd5d9e61fd5b2dbce",
+    "c3.json": "d4233fd28822106c51605d12fdaa75d498ca2d3f38c8f868c1b1fdcbefbbe2b9",
+    "c4.json": "ba4cb7e0db8fed6737abd227341447f3c523b4f98ee6b8ca8d8b440c5aea48f2",
+    "c5.json": "81fe718b4a6767a85028fed029f29d82fe2cd5097e1273e0e2fab392a020f3c4",
+    "c6.json": "7c3e1ca26d5791bc487fd2ad398e433021d3df5ca38a5d36d58b5800eeb61d2a",
+    "c7.json": "fb2532d4d85a5fe54a147357ff14d615adb1bdbb433bbb48c3770718e534f5ba",
+    "c8.json": "b406783d6925af08e7e81b23a74f94d124ed946da159cd74f9f2fa7fcc65bacb"
+  },
+  "schema": 1,
+  "source_commit": "a3f8f403bbd3752e444759e0b0d98a5c3536f545",
+  "status": "wider_widths_rejected",
+  "workload": {
+    "decode_tokens": 8,
+    "graph_mode": "eager",
+    "marker_transition": 3,
+    "prompt_length": 128
+  }
+}
