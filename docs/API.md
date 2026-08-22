@@ -109,7 +109,11 @@ RF5 retains this honest explicit-only policy after c1/c2/c4/c8 offered-load and
 100-request soak qualification. Capabilities report
 `physical_concurrency="serialized_target_slot"`,
 `max_physical_target_slots=1`, and
-`route_coalescing_is_physical_concurrency=false`.
+`route_coalescing_is_physical_concurrency=false`. Capabilities also expose the
+restart-scoped circuit breaker. Repeated backend/runtime failures open one
+model/backend/profile/context scope; request cancellation and deadline errors do
+not count. `POST /v1/hipengine/speculative_mtp/rollback` disables MTP for all new
+requests without racing in-flight cycles, and restart resets the state.
 
 **MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement
@@ -175,6 +179,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready; loaded-model metadata includes artifact-scoped approximate-KV capability provenance. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate and artifact-scoped capability decision, routing count, and capabilities URL. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
+| `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: routes every new MTP request to AR until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
