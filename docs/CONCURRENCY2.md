@@ -553,12 +553,15 @@ Projection candidate guardrails:
   geometry and lifetimes. Q6 row8 is the first such hypothesis, not an automatic
   rewrite.
 
-5. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN,
-   normalization/gate, and state commit. If recurrence compute dominates,
-   optimize that kernel/parallel
-   schedule; if state movement or short launches dominate, fuse the safe
-   boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
-   projection, which belongs to the projection family.
+5. ~~**GDN/state attribution.**~~ **DONE (2026-08-22).** The fused segmented
+   recurrence/norm/gate/state owner is **7.813 ms / 48 calls**; indexed Conv is
+   only **0.329 ms**. There is no separate multi-ms state-commit copy. Exact c8
+   FP32 state performs at least two reads plus one write over 48×128×128 values
+   per request/layer: **3.375 GiB/step**, ~463.8 GB/s. The delta depends on the
+   complete K dot, so strict ownership requires the second traversal. FP16 state
+   or reassociation is a separate production-numerics campaign with strict FP32
+   fallback, not a core-correctness-safe gfx1100 default for this merge.
+   Evidence: [`GDN attribution`](../benchmarks/results/2026-08-22-concurrency2-qwen38-c8-gdn-attribution.json).
 6. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
    lower priority unless launch-gap accounting moves it into the unreconciled
    bucket or a zero-risk fusion removes repeated traffic.
