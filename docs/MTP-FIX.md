@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF5 complete on gfx1151; automatic production MTP remains disabled pending RF6**
+- Status: **active campaign; RF0–RF6 complete on gfx1151; RF6 rejected every automatic MTP scope; RF7 rollback/no-canary closure pending**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -229,7 +229,13 @@ questions for the next coder.
       alternating soak, bounded resources, and shutdown pass. Route coalescing
       is explicitly not physical MTP concurrency. Artifact:
       `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf5-serialized-load.json`.
-- [ ] **RF6:** run the complete quality and true-AR performance promotion packet.
+- [x] **RF6:** complete canonical quality/performance qualification is retained
+      as a rejection. Short full-suite server MTP is 1.925x true AR median with
+      70.03% acceptance and deterministic repeats, but strict IDs differ on two
+      heldout prompts, RF1 long-task score is 4/6, long graph MTP is 0.7164x AR,
+      and streaming SLO/full-logit production gates are absent. No automatic
+      scope is promoted. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf6-qualification-rejected.json`.
 - [ ] **RF7:** canary, circuit-breaker, rollback, restart, and staged rollout.
 - [ ] Keep automatic production MTP disabled until the phase gates below permit
       a named scope. The running server was not restarted during the RF1 work.
@@ -836,6 +842,21 @@ Promotion rules:
   context/backend/model/profile scoped.
 - llama.cpp MTP-off and MTP-on are both useful external diagnostics, but neither
   substitutes for hipEngine's true AR denominator or predicts hipEngine speed.
+
+**RF6 closed as rejected on gfx1151 2026-08-22.** The canonical committed
+10-prompt suite uses six train/four heldout rows across code, English, Japanese,
+and mixed Japanese/English. A production true-AR direct baseline is 12.107
+tok/s. Matched persistent-server AR is 11.54 tok/s; explicit B3 MTP repeats are
+21.77/22.21/22.24 tok/s, median **1.925x AR**, with 70.03% acceptance and exact
+MTP repeat IDs/acceptance. Train and heldout speedups are 1.969x and 1.781x and
+every prompt exceeds 1.61x. Binding quality nevertheless fails: MTP differs
+from AR on heldouts `general_ja_explain` (token 65) and
+`mixed_ja_en_review` (token 72), RF1 absolute long-task quality is 4/6, long
+RF2 graph MTP is 0.7164x true AR, and no streaming TTFT/ITL or binding
+production full-logit KL/task packet exists after strict heldout failure. No
+automatic scope is promoted; explicit diagnostic MTP remains available and
+`auto` continues AR. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf6-qualification-rejected.json`.
 
 ### RF7 — Staged rollout and removal of emergency controls
 
