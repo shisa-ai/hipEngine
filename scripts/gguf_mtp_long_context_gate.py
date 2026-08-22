@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Callable, Iterable, Iterator, Sequence
 
 import numpy as np
 
@@ -61,6 +61,34 @@ _REQUIRED_RESULT_BOOLEANS = (
     "commit_exact",
     "rollback_exact",
 )
+
+ProgressCallback = Callable[[str, dict[str, Any]], None]
+ResultCallback = Callable[[str, dict[str, Any]], None]
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically replace one checkpoint/artifact without leaving partial JSON."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _notify_progress(
+    callback: ProgressCallback | None,
+    event: str,
+    details: dict[str, Any],
+) -> None:
+    if callback is not None:
+        callback(str(event), dict(details))
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +454,8 @@ def _run_direct_cases(
     *,
     max_sequence_length: int,
     require_cached_build: bool,
+    progress: ProgressCallback | None = None,
+    on_result: ResultCallback | None = None,
 ) -> list[dict[str, Any]]:
     from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -460,6 +490,15 @@ def _run_direct_cases(
             target_verify_mode="serial_exact",
         ) as strict_verifier:
             for start_position in sorted(grouped):
+                group_cases = grouped[start_position]
+                _notify_progress(
+                    progress,
+                    "direct_prefill_start",
+                    {
+                        "start_position": int(start_position),
+                        "case_ids": [case.case_id for case in group_cases],
+                    },
+                )
                 native.reset()
                 strict.reset()
                 prompt = _prompt(start_position)
@@ -474,10 +513,27 @@ def _run_direct_cases(
                         f"prefill root mismatch at {start_position}: "
                         f"native={native_root} strict={strict_root}"
                     )
+                _notify_progress(
+                    progress,
+                    "direct_prefill_complete",
+                    {
+                        "start_position": int(start_position),
+                        "case_ids": [case.case_id for case in group_cases],
+                    },
+                )
                 initial_state = _linear_state_bytes(native)
                 initial_hidden = _hidden_bytes(native)
                 teacher_cache: dict[int, tuple[int, ...]] = {}
-                for case in grouped[start_position]:
+                for case in group_cases:
+                    _notify_progress(
+                        progress,
+                        "direct_case_start",
+                        {
+                            "case_id": case.case_id,
+                            "cycle_end": int(case.cycle_end),
+                            "candidate_budget": int(case.candidate_budget),
+                        },
+                    )
                     started = time.perf_counter()
                     result: dict[str, Any] = {
                         **asdict(case),
@@ -677,6 +733,17 @@ def _run_direct_cases(
                         )
                     )
                     results.append(result)
+                    if on_result is not None:
+                        on_result("direct", result)
+                    _notify_progress(
+                        progress,
+                        "direct_case_complete",
+                        {
+                            "case_id": case.case_id,
+                            "passed": bool(result["passed"]),
+                            "wall_seconds": float(result["wall_seconds"]),
+                        },
+                    )
     return results
 
 
@@ -688,6 +755,8 @@ def _run_generation_contexts(
     max_new_tokens: int,
     max_sequence_length: int,
     require_cached_build: bool,
+    progress: ProgressCallback | None = None,
+    on_result: ResultCallback | None = None,
 ) -> list[dict[str, Any]]:
     from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
     from hipengine.runtime.qwen35_gguf_nextn import (
@@ -721,6 +790,15 @@ def _run_generation_contexts(
                 target_verify_mode="native",
             ) as decoder:
                 for context in contexts:
+                    _notify_progress(
+                        progress,
+                        "generation_case_start",
+                        {
+                            "context_tokens": int(context),
+                            "candidate_budget": int(candidate_budget),
+                            "max_new_tokens": int(max_new_tokens),
+                        },
+                    )
                     started = time.perf_counter()
                     prompt = _prompt(int(context))
                     target.reset()
@@ -745,6 +823,10 @@ def _run_generation_contexts(
                             return_cycle_logits=True,
                             use_bulk_prefill=True,
                         )
+                    # The server releases each NextN request slot after the
+                    # owned cycle; the harness must do the same or a second
+                    # generation context fails with "no free request slot".
+                    provider.release_request(40_000 + len(results))
                     cycles = tuple(actual.cycle_records)
                     result = {
                         "context_tokens": int(context),
@@ -796,6 +878,17 @@ def _run_generation_contexts(
                         )
                     )
                     results.append(result)
+                    if on_result is not None:
+                        on_result("generation", result)
+                    _notify_progress(
+                        progress,
+                        "generation_case_complete",
+                        {
+                            "context_tokens": int(context),
+                            "passed": bool(result["passed"]),
+                            "wall_seconds": float(result["wall_seconds"]),
+                        },
+                    )
         finally:
             provider.close()
     return results
@@ -885,8 +978,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not args.model.is_file():
         raise SystemExit(f"model not found: {args.model}")
-    cycle_ends = parse_token_spec(args.cycle_ends)
-    budgets = parse_token_spec(args.candidate_budgets)
+    cycle_ends = (
+        () if not str(args.cycle_ends).strip() else parse_token_spec(args.cycle_ends)
+    )
+    budgets = (
+        ()
+        if not str(args.candidate_budgets).strip()
+        else parse_token_spec(args.candidate_budgets)
+    )
     acceptance_cycle_ends = (
         ()
         if not str(args.acceptance_cycle_ends).strip()
@@ -903,6 +1002,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--generation-budget must be 1, 2, or 3")
     if int(args.max_new_tokens) <= 0:
         raise SystemExit("--max-new-tokens must be positive")
+    if cycle_ends and not budgets:
+        raise SystemExit("--candidate-budgets is required when --cycle-ends is set")
     cases = (
         *build_cycle_cases(
             cycle_ends=cycle_ends,
@@ -913,8 +1014,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_budget=int(args.acceptance_budget),
         ),
     )
+    if not cases and not generation_contexts:
+        raise SystemExit("at least one direct or generation scenario is required")
     maximum = max(
-        max(cycle_ends),
+        max(cycle_ends, default=0),
         max(acceptance_cycle_ends, default=0),
         max(generation_contexts, default=0) + int(args.max_new_tokens),
     )
@@ -926,26 +1029,108 @@ def main(argv: Sequence[str] | None = None) -> int:
     if max_sequence_length < maximum:
         raise SystemExit("--max-sequence-length does not cover the requested cycles")
 
+    configuration = {
+        "cycle_ends": list(cycle_ends),
+        "candidate_budgets": list(budgets),
+        "acceptance_cycle_ends": list(acceptance_cycle_ends),
+        "acceptance_budget": int(args.acceptance_budget),
+        "generation_contexts": list(generation_contexts),
+        "generation_budget": int(args.generation_budget),
+        "max_new_tokens": int(args.max_new_tokens),
+        "max_sequence_length": max_sequence_length,
+        "require_cached_build": bool(args.require_cached_build),
+    }
+    checkpoint_direct: list[dict[str, Any]] = []
+    checkpoint_generation: list[dict[str, Any]] = []
     started = time.perf_counter()
-    direct_results = _run_direct_cases(
-        args.model,
-        cases,
-        max_sequence_length=max_sequence_length,
-        require_cached_build=bool(args.require_cached_build),
-    )
-    generation_results = (
-        _run_generation_contexts(
-            args.model,
-            generation_contexts,
-            candidate_budget=int(args.generation_budget),
-            max_new_tokens=int(args.max_new_tokens),
-            max_sequence_length=max_sequence_length,
-            require_cached_build=bool(args.require_cached_build),
+
+    def write_checkpoint(event: str, details: dict[str, Any]) -> None:
+        if args.out is None:
+            return
+        _atomic_write_json(
+            args.out,
+            {
+                "schema": 1,
+                "kind": "gguf_mtp_eager_long_context_correctness_checkpoint",
+                "status": "running",
+                "verdict": None,
+                "command": [sys.executable, *sys.argv],
+                "configuration": configuration,
+                "active_event": str(event),
+                "active_details": dict(details),
+                "direct_results": checkpoint_direct,
+                "generation_results": checkpoint_generation,
+                "summary": {
+                    "direct_cases_completed": len(checkpoint_direct),
+                    "generation_cases_completed": len(checkpoint_generation),
+                    "wall_seconds": time.perf_counter() - started,
+                },
+            },
         )
-        if generation_contexts
-        else []
-    )
-    direct_passed = gate_passed(direct_results)
+
+    def progress(event: str, details: dict[str, Any]) -> None:
+        print(
+            json.dumps({"event": str(event), **details}, sort_keys=True),
+            file=sys.stderr,
+            flush=True,
+        )
+        write_checkpoint(event, details)
+
+    def record_result(kind: str, result: dict[str, Any]) -> None:
+        destination = (
+            checkpoint_direct if kind == "direct" else checkpoint_generation
+        )
+        destination.append(dict(result))
+        write_checkpoint(
+            f"{kind}_result_checkpointed",
+            {
+                "case_id": result.get("case_id"),
+                "context_tokens": result.get("context_tokens"),
+                "passed": bool(result.get("passed", False)),
+            },
+        )
+
+    write_checkpoint("run_start", {})
+    try:
+        direct_results = (
+            _run_direct_cases(
+                args.model,
+                cases,
+                max_sequence_length=max_sequence_length,
+                require_cached_build=bool(args.require_cached_build),
+                progress=progress,
+                on_result=record_result,
+            )
+            if cases
+            else []
+        )
+        generation_results = (
+            _run_generation_contexts(
+                args.model,
+                generation_contexts,
+                candidate_budget=int(args.generation_budget),
+                max_new_tokens=int(args.max_new_tokens),
+                max_sequence_length=max_sequence_length,
+                require_cached_build=bool(args.require_cached_build),
+                progress=progress,
+                on_result=record_result,
+            )
+            if generation_contexts
+            else []
+        )
+    except Exception as exc:
+        progress(
+            "run_error",
+            {"error": f"{type(exc).__name__}: {exc}"},
+        )
+        if args.out is not None:
+            failure = json.loads(args.out.read_text())
+            failure["status"] = "error"
+            failure["verdict"] = "error"
+            failure["error"] = f"{type(exc).__name__}: {exc}"
+            _atomic_write_json(args.out, failure)
+        raise
+    direct_passed = gate_passed(direct_results) if direct_results else True
     generation_passed = (
         all(bool(result.get("passed", False)) for result in generation_results)
         if generation_results
@@ -969,17 +1154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "target_verify_mode": "eager_native",
         "reusable_target_graph_context_limit": 1023,
         "provenance": _provenance(args.model, hash_model=bool(args.hash_model)),
-        "configuration": {
-            "cycle_ends": list(cycle_ends),
-            "candidate_budgets": list(budgets),
-            "acceptance_cycle_ends": list(acceptance_cycle_ends),
-            "acceptance_budget": int(args.acceptance_budget),
-            "generation_contexts": list(generation_contexts),
-            "generation_budget": int(args.generation_budget),
-            "max_new_tokens": int(args.max_new_tokens),
-            "max_sequence_length": max_sequence_length,
-            "require_cached_build": bool(args.require_cached_build),
-        },
+        "configuration": configuration,
         "direct_results": direct_results,
         "generation_results": generation_results,
         "summary": {
@@ -995,11 +1170,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.out is None:
         print(text, end="")
     else:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text)
+        _atomic_write_json(args.out, payload)
         print(
             f"wrote {args.out}: passed={payload['passed']} "
-            f"direct={len(direct_results)} generation={len(generation_results)}"
+            f"direct={len(direct_results)} generation={len(generation_results)}",
+            flush=True,
         )
     if args.fail_on_fail and not payload["passed"]:
         return 1

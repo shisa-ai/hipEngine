@@ -163,11 +163,13 @@ questions for the next coder.
       than 80 minutes it still had a zero-byte buffered log and had not written
       `/tmp/mtp-rf1-32k-64k.json`; the user stopped it. It produced no verdict
       and must not be described as a failed correctness gate or rerun unchanged.
-- [ ] **Fix harness operability before another >=32K run.** Add independently
-      selectable direct and generation modes, immediate flushed case-start/end
-      progress, and an atomic per-case checkpoint/result. A killed or failing
-      late case must not erase earlier cases. Validate those controls without a
-      large GPU run first.
+- [x] **Fix harness operability before another >=32K run.** The harness now
+      permits direct-only or generation-only invocation, emits immediate
+      case/prefill start/end JSON progress on stderr, and atomically replaces the
+      output with a running checkpoint after every event/result before writing
+      the final artifact. A killed late case preserves completed rows and names
+      the active stage. CPU/fake-runner coverage passed; no large GPU run was
+      used to validate these controls.
 - [ ] **Run one isolated 32K B3 direct oracle case.** B1/B2/B3 row shapes are
       already covered through 16K; B3 at 32K pairs the maximum verifier width
       with the larger split count. Give this process its own artifact and
