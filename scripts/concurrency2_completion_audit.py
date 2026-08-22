@@ -43,6 +43,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
     spec_c0 = "benchmarks/results/2026-08-22-concurrency2-spec-c0-host-contracts.json"
     spec_c1 = "benchmarks/results/2026-08-22-concurrency2-spec-c1-engine-service.json"
     spec_c2 = "benchmarks/results/2026-08-22-concurrency2-spec-c2-continuous-packing.json"
+    spec_c3 = "benchmarks/results/2026-08-22-concurrency2-spec-c3-streaming-sampling.json"
     return (
         AuditRequirement("C2-0", "roadmap", "contracts and deterministic simulator", "passed", ("hipengine/generation/concurrency2_simulator.py", "tests/test_concurrency2_simulator.py"), "deterministic/property host suite"),
         AuditRequirement("C2-1", "roadmap", "sole EngineService and independent child outputs", "passed", ("hipengine/generation/engine_service.py", "tests/test_generation_engine_service.py"), "service/refill/collector/cancellation suite"),
@@ -69,6 +70,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
         AuditRequirement("C2-S.C0", "roadmap", "speculative host contracts and deterministic simulator", "passed", ("hipengine/speculative/interfaces.py", "hipengine/speculative/simulator.py", "tests/test_speculative_cycle_simulator.py", spec_c0), "one-to-many row maps, provider+target atomic claims, reject/partial/full transactions, cancellation at every stage, final conservation"),
         AuditRequirement("C2-S.C1", "roadmap", "guarded MTP under one EngineService lifecycle", "passed", ("hipengine/generation/engine_service.py", "hipengine/generation/engine_loop.py", "tests/test_generation_engine_service.py", spec_c1), "VERIFY_CHAIN submission/work metadata, shared child/output/cancel/release path, declared pre-launch legacy fallback, actual Qwen parity"),
         AuditRequirement("C2-S.C2", "roadmap", "continuous compatible speculative packing and cost policy", "passed", ("hipengine/speculative/packing.py", "hipengine/generation/engine_service.py", "tests/test_speculative_packing.py", spec_c2), "one driver batch/multi-request VERIFY_CHAIN work, verifier-only cost map/budgets, fairness/refill/pressure/deadline fallback, actual Qwen c2 parity"),
+        AuditRequirement("C2-S.C3", "roadmap", "committed streaming and sampling semantics", "passed", ("hipengine/speculative/streaming.py", "hipengine/generation/engine_service.py", "tests/test_speculative_streaming.py", spec_c3), "committed-only multi-token output, EOS/stop/length tails, stochastic RNG accounting, cancel/backpressure, blocking/stream parity, actual Qwen stream"),
         AuditRequirement("DoD.service", "definition_of_done", "one service owns blocking/SSE/library children", "passed", ("hipengine/generation/engine_service.py",), "sole-driver tests"),
         AuditRequirement("DoD.independent", "definition_of_done", "independent terminal publication/reclaim", "passed", ("tests/test_generation_engine_service.py",), "short-before-long/refill tests"),
         AuditRequirement("DoD.ledger", "definition_of_done", "one format-neutral resource ledger", "passed", ("hipengine/kvcache/ledger.py",), "dense/DMS/tier claims"),

@@ -267,6 +267,48 @@ def test_engine_service_batches_compatible_speculative_children_once() -> None:
         service.close()
 
 
+def test_engine_service_speculative_blocking_and_streaming_trim_same_committed_tail() -> None:
+    class TailDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def submit_speculative_detailed(self, request: GenerationRequest) -> GenerationSubmission:
+            request_id = self._next_request_id
+            self._next_request_id += 1
+            submission = GenerationSubmission(
+                request_ids=(request_id,), request=request, max_ticks=1,
+                work_kind="verify_chain", execution_route="spec_tail",
+            )
+            self._outputs[request_id] = GenerationOutput(
+                text="untrimmed", generated_token_ids=(10, 2, 99)
+            )
+            return submission
+
+        def detokenize(self, token_ids) -> str:
+            return ",".join(str(token) for token in token_ids)
+
+    request = replace(
+        _request("tail:3", max_tokens=3),
+        eos_token_id=2,
+        ignore_eos=False,
+    )
+    driver = TailDriver()
+    service = EngineService(driver)
+    try:
+        blocking = service.generate_speculative_mtp_detailed(request)[0]
+        chunks = tuple(service.stream_speculative_mtp_detailed(request))
+
+        assert blocking.generated_token_ids == (10, 2)
+        assert blocking.text == "10,2"
+        assert blocking.finish_details is not None
+        assert blocking.finish_details.reason == "eos"
+        assert len(chunks) == 1
+        assert chunks[0].generated_token_ids == blocking.generated_token_ids
+        assert chunks[0].finish_details == blocking.finish_details
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
 def test_engine_service_speculative_handle_cancels_through_shared_reclaim() -> None:
     class CancellableSpecDriver(_FakeSoleDriver):
         supports_speculative_mtp = True

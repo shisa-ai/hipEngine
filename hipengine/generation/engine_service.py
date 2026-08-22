@@ -28,6 +28,7 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
 )
+from hipengine.speculative.streaming import trim_speculative_output
 
 
 @dataclass(slots=True)
@@ -289,12 +290,16 @@ class EngineService:
     def submit_speculative_child(
         self,
         request: GenerationRequest,
+        *,
+        streaming: bool = False,
+        stream_queue_max_chunks: int | None = None,
     ) -> EngineServiceHandle:
         """Submit one guarded VERIFY_CHAIN child through the shared lifecycle."""
 
         state = self._new_child_state(
             request,
-            streaming=False,
+            streaming=streaming,
+            stream_queue_max_chunks=stream_queue_max_chunks,
             execution_mode="verify_chain",
         )
         response = _CommandResponse()
@@ -312,11 +317,13 @@ class EngineService:
     def submit_speculative_children(
         self,
         requests: Sequence[GenerationRequest],
+        *,
+        streaming: bool = False,
     ) -> tuple[EngineServiceHandle, ...]:
         states = tuple(
             self._new_child_state(
                 request,
-                streaming=False,
+                streaming=streaming,
                 execution_mode="verify_chain",
             )
             for request in requests
@@ -473,6 +480,27 @@ class EngineService:
         if first_error is not None:
             raise first_error
         return outputs
+
+    def stream_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        children = _split_generation_request(request)
+        if len(children) != 1:
+            raise ValueError("speculative streaming requires exactly one prompt")
+        submit = getattr(self._driver, "submit_speculative_detailed", None)
+        if not callable(submit):
+            raise NotImplementedError(
+                "speculative streaming has no legacy out-of-band fallback"
+            )
+        handle = self.submit_speculative_child(children[0], streaming=True)
+        consumed = False
+        try:
+            yield from handle.iter_chunks()
+            consumed = True
+        finally:
+            if not consumed and not handle.done:
+                handle.cancel(reason="disconnect")
 
     def live_loop_snapshot(self) -> dict[str, object]:
         payload = self._control("live_loop_snapshot")
@@ -886,6 +914,11 @@ class EngineService:
                         if isinstance(output, GenerationOutput)
                         else GenerationOutput(text=str(output))
                     )
+                    if state.execution_mode in {"verify_chain", "verify_tree"}:
+                        generation_output = self._normalize_speculative_output(
+                            state,
+                            generation_output,
+                        )
                     output_ids = generation_output.generated_token_ids
                     if output_ids is not None and not state.token_ids:
                         for token_id in output_ids:
@@ -920,6 +953,44 @@ class EngineService:
             elif token is not None and bool(getattr(token, "cancelled", False)):
                 details = FinishDetails.from_value(getattr(token, "finish_details", None))
                 self._cancel_state(state, reason="timeout" if details.deadline_exceeded else "disconnect")
+
+    def _normalize_speculative_output(
+        self,
+        state: _ChildState,
+        output: GenerationOutput,
+    ) -> GenerationOutput:
+        token_ids = output.generated_token_ids
+        if token_ids is None:
+            raise RuntimeError("speculative output must publish committed token ids")
+        tail = trim_speculative_output(
+            token_ids,
+            max_tokens=state.request.max_tokens,
+            min_tokens=state.request.min_tokens,
+            eos_token_id=state.request.eos_token_id,
+            stop_token_ids=state.request.stop_token_ids,
+            stop_token_sequences=state.request.stop_token_sequences,
+            ignore_eos=state.request.ignore_eos,
+        )
+        if tail.token_ids == tuple(token_ids) and tail.finish_reason is None:
+            return output
+        text = output.text
+        if tail.token_ids != tuple(token_ids):
+            detokenize = getattr(self._driver, "detokenize", None)
+            if callable(detokenize):
+                text = str(detokenize(tail.token_ids))
+        details = output.finish_details
+        if tail.finish_reason is not None:
+            details = FinishDetails(
+                reason=tail.finish_reason,
+                stop_sequence=tail.matched_stop_sequence,
+            )
+        return GenerationOutput(
+            text=text,
+            token_logprobs=output.token_logprobs[: len(tail.token_ids)],
+            finish_details=details,
+            telemetry=output.telemetry,
+            generated_token_ids=tail.token_ids,
+        )
 
     def _cancel_state(
         self,

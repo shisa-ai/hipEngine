@@ -137,6 +137,13 @@ from hipengine.speculative.packing import (
     VerifierCostRecord,
     pack_speculative_requests,
 )
+from hipengine.speculative.streaming import (
+    SpeculativeCommitEvent,
+    SpeculativeOutputTail,
+    StochasticAcceptanceAccounting,
+    stochastic_acceptance_accounting,
+    trim_speculative_output,
+)
 from hipengine.speculative.simulator import (
     SpecCycleStage,
     SpecTransaction,
@@ -296,6 +303,11 @@ __all__ = [
     "VerifierCostMap",
     "VerifierCostRecord",
     "pack_speculative_requests",
+    "SpeculativeCommitEvent",
+    "SpeculativeOutputTail",
+    "StochasticAcceptanceAccounting",
+    "stochastic_acceptance_accounting",
+    "trim_speculative_output",
     "SpecCycleStage",
     "SpecTransaction",
     "SpeculativeCycleResult",
