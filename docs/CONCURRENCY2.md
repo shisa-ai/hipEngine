@@ -459,7 +459,7 @@ directly recoverable milliseconds.
 | Kernel interval union | **15.716 ms** | at least one traced kernel active |
 | Kernel duration sum | 54.469 ms | non-additive under graph overlap |
 | Q4 paired projections | 12.634 ms sum | 6.417 GB encoded weights; 508.0 GB/s; highest family efficiency |
-| planar-Q6 BF16 projections | 10.570 ms sum | **rank 1:** 3.406 GB; 322.2 GB/s; c4→c8 +61.4%; VGPR136/LDS1 KiB |
+| planar-Q6 BF16 projections | 10.570 ms pre-change sum | **optimized:** row8 DPP gives -0.959 ms / -1.634% complete wall; VGPR136→112 |
 | Q4 singleton projections | 10.537 ms sum | **rank 2:** 4.082 GB; 387.4 GB/s; c4→c8 +41.0%; VGPR216 |
 | GDN recurrence/state | 7.813 ms sum | rank 4; recurrent row work needs its own operation ledger |
 | Q5 projections | 4.228 ms sum | rank 3: 1.038 GB; 245.5 GB/s; VGPR72 |
@@ -518,12 +518,11 @@ This is a decision tree, not permission to implement every idea. Rank candidates
 by **measured milliseconds recoverable from complete wall**. A leaf win is only
 high priority when its call-weighted family saving survives the complete step.
 
-1. **Planar-Q6 row8.** Optimize first. Its exact encoded payload is 3.406 GB at
-   322.2 GB/s, c4→c8 duration rises 6.551→10.570 ms (+61.4%), and the owner is
-   VGPR136/LDS1 KiB with issue-heavy dequant/reduction ISA. The diagnostic gap
-   to Q4-pair's same-step encoded rate is 3.865 ms; this is a ranking bound, not
-   promised wall recovery. Test lower-VGPR/reduction/dequant geometry under the
-   actual-operation exact gate and complete owner wall.
+1. ~~**Planar-Q6 row8.**~~ **DONE (2026-08-22).** Exact permlanex16+DPP
+   reduction removes 320 bpermutes, lowers allocated VGPR 136→112, passes all
+   55 actual-operation rows, and improves complete marked owner wall
+   **58.693→57.734 ms (-1.634%)**. It is now the gfx1100 row8 default; rows1-7
+   and standard-Q6 remain unchanged fallbacks.
 2. **Q4 singleton row8.** Next: 4.082 GB at 387.4 GB/s, c4→c8
    7.475→10.537 ms (+41.0%), VGPR216. Target register lifetime and reduction/
    dequant issue before changing arithmetic.
@@ -561,9 +560,10 @@ Projection candidate guardrails:
    streams are the largest remaining wall opportunity and its projected saving
    exceeds the best c≤8 family candidate.
 
-The highest-impact next implementation is planar-Q6 row8, followed by Q4
-singleton row8. This ranking combines exact bytes, current-owner width slopes,
-and static resources rather than summed duration alone. Transport is no longer
+The highest-impact next implementation is now Q4 singleton row8; planar-Q6
+row8 has landed an exact 0.959-ms complete-step win. This ranking combines exact
+bytes, current-owner width slopes, and static resources rather than summed
+duration alone. Transport is no longer
 the leading unknown: PM4's retained steady-step gain is ~1 ms and its existing
 c8 80-replay threshold remains appropriate.
 

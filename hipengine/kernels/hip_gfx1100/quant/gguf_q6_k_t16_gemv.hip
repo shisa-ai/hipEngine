@@ -2354,7 +2354,11 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(5)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(6)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(7)
-    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(8)
+    case 8:
+      hipLaunchKernelGGL(
+          (q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<out_t, 8, true>),
+          grid, block, 0, stream, xp, tp, op, rows, in_features, out_features);
+      break;
     default:
       return hipErrorInvalidValue;
   }

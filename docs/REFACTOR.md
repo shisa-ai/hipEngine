@@ -392,11 +392,11 @@ fallback count is not a success metric.
 
 ## gfx1100 planar-Q6 row8 DPP candidate seam
 
-- Added 2026-08-22 as a separately named exact candidate while complete-owner
-  adjudication remains open. Remove the losing row8 kernel/export/wrapper after
-  the tracked-clean counterbalanced c8 wall A/B. If DPP wins, replace the
-  retained row8 body and remove the candidate symbol rather than keeping two
-  permanent exact implementations; rows1-7 and standard-Q6 remain fallbacks.
+- Added 2026-08-22 as a separately named exact candidate; adjudication is now
+  complete and DPP is the row8 default after a 1.634% complete-owner wall win.
+  Remove the old row8 specialization plus comparison export/wrapper/test in the
+  immediate follow-up, leaving one DPP row8 body; rows1-7 and standard-Q6 remain
+  fallbacks.
 
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
