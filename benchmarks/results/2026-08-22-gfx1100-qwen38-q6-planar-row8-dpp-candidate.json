@@ -1,0 +1,251 @@
+{
+  "actual_operation_gate": {
+    "all_bit_exact": true,
+    "all_finite": true,
+    "cpu_quality": {
+      "finite": true,
+      "max_abs": 0.004004478454589844,
+      "max_kl": 1.2086090926308203e-07,
+      "passed": true,
+      "top1_agreement": 1.0,
+      "top1_matches": 16,
+      "top1_total": 16
+    },
+    "full_model_control": {
+      "dense_bf16_bytes": 0,
+      "final_token_id": 9707,
+      "finite_final_logits": true,
+      "passed": true,
+      "path": "/tmp/qwen38-rowtile-review-smoke-clean/smoke.json",
+      "planar_q6_bytes": 4449177600,
+      "production_graph": true,
+      "standard_q6_bytes": 0,
+      "teardown_bytes": 0
+    },
+    "operation_verdicts": 55,
+    "raw_sha256": "4afc71b3a87326a38c0a3fd51e561c91ceff76c2b575c385df411f8949d7671d",
+    "teardown_exact": true
+  },
+  "actual_weight_screen": {
+    "inner": 3,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "roles": {
+      "narrow_v": {
+        "candidate_median_ms": 0.028959999481836956,
+        "candidate_ms": [
+          0.029106999437014263,
+          0.029027000069618225,
+          0.028947000702222187,
+          0.02890666574239731,
+          0.028959999481836956,
+          0.029013666013876598,
+          0.02896033227443695,
+          0.028933333853880566,
+          0.028973333537578583,
+          0.028987000385920208,
+          0.028893666962782543,
+          0.02893366664648056,
+          0.028866998851299286,
+          0.028933333853880566,
+          0.028973333537578583
+        ],
+        "control_median_ms": 0.03146666785081228,
+        "control_ms": [
+          0.0315733328461647,
+          0.03147999942302704,
+          0.031413666903972626,
+          0.03138699879248937,
+          0.03150700032711029,
+          0.03149333347876867,
+          0.03162666658560435,
+          0.03136033316453298,
+          0.031453666587670646,
+          0.03136033316453298,
+          0.03146666785081228,
+          0.031426665683587394,
+          0.031626999378204346,
+          0.031413666903972626,
+          0.03150700032711029
+        ],
+        "delta_percent": -7.966106805015949,
+        "encoded_bytes": 4300800,
+        "exact": true,
+        "shape": [
+          1024,
+          5120
+        ],
+        "tensor": "blk.3.attn_v.weight"
+      },
+      "wide_ffn_down": {
+        "candidate_median_ms": 0.1893736720085144,
+        "candidate_ms": [
+          0.17981332540512085,
+          0.1707599957784017,
+          0.18010665973027548,
+          0.17986667156219482,
+          0.21822667121887207,
+          0.23035999139149985,
+          0.25682665904362995,
+          0.25585367282231647,
+          0.22930665810902914,
+          0.21261332432428995,
+          0.1893736720085144,
+          0.19161333640416464,
+          0.18878666559855142,
+          0.17956000566482544,
+          0.18418733278910318
+        ],
+        "control_median_ms": 0.19725332657496134,
+        "control_ms": [
+          0.1897333264350891,
+          0.18162665764490762,
+          0.1826266646385193,
+          0.204053004582723,
+          0.19725332657496134,
+          0.23919999599456787,
+          0.26593367258707684,
+          0.24466667572657266,
+          0.23550699154535928,
+          0.21900000174840292,
+          0.19859999418258667,
+          0.19382667541503906,
+          0.19594699144363403,
+          0.18701332807540894,
+          0.19072033961613974
+        ],
+        "delta_percent": -3.9946877972942385,
+        "encoded_bytes": 73113600,
+        "exact": true,
+        "shape": [
+          5120,
+          17408
+        ],
+        "tensor": "blk.0.ffn_down.weight"
+      },
+      "wide_qkv": {
+        "candidate_median_ms": 0.12613399823506674,
+        "candidate_ms": [
+          0.10453400015830994,
+          0.11085399985313416,
+          0.10940066973368327,
+          0.10245399673779805,
+          0.11544066667556763,
+          0.10780066251754761,
+          0.12698733806610107,
+          0.12613399823506674,
+          0.15572099884351095,
+          0.1576943298180898,
+          0.16200066606203714,
+          0.16160066922505698,
+          0.17092100779215494,
+          0.14574767152468363,
+          0.12498733401298523
+        ],
+        "control_median_ms": 0.12832066416740417,
+        "control_ms": [
+          0.12832066416740417,
+          0.11361400286356609,
+          0.1087873379389445,
+          0.10501399636268616,
+          0.11517399549484253,
+          0.11014733711878459,
+          0.11978766322135925,
+          0.12788100043932596,
+          0.1382539967695872,
+          0.15230766932169595,
+          0.16298733154932657,
+          0.17518800497055054,
+          0.1767343282699585,
+          0.15853400031725565,
+          0.148867666721344
+        ],
+        "delta_percent": -1.7040637581837603,
+        "encoded_bytes": 43008000,
+        "exact": true,
+        "shape": [
+          10240,
+          5120
+        ],
+        "tensor": "blk.0.attn_qkv.weight"
+      }
+    },
+    "rounds": 15,
+    "rows": 8,
+    "schema": 1,
+    "script_sha256": "018835fd739e2fa679d4e5320f7284160a6f7f85e327e8797e6dadba1676419e",
+    "warmups": 5
+  },
+  "candidate": {
+    "mechanism": "Replace only row8 wave peer-transfer instruction form: shfl/bpermute 16/8/4/2/1 -> exact permlanex16 plus DPP-add tree. Preserve FMA stream, association, four-wave LDS publication, serial wave sum, BF16 store, payload, ABI, and fallback.",
+    "registered_default": false,
+    "symbol": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>"
+  },
+  "commands": {
+    "actual_gate": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt therock-python /tmp/q6_dpp_actual_gate_driver.py",
+    "actual_screen": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt therock-python /tmp/q6_dpp_actual_screen.py",
+    "focused_red_green": "uv run pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_qmicro_planar_row8_dpp_candidate_is_bit_exact",
+    "trace": "rocprofv3 --kernel-trace --output-format csv -d /tmp/q6-dpp-unit-trace -- uv run pytest -q <focused-node>"
+  },
+  "date": "2026-08-22",
+  "decision": "Admit the separate candidate for tracked-clean production-owner A/B. Do not change registry/default until complete c8 wall wins counterbalanced and all gates remain exact.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "kind": "gfx1100_qwen38_q6_planar_row8_dpp_candidate_admission",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "performance_claim": "actual-operation event timing only; production-owner wall pending",
+  "physical_evidence": {
+    "candidate": {
+      "allocated_vgpr": 112,
+      "bpermutes": 0,
+      "dpp_adds": 256,
+      "dual_ops": 326,
+      "lds_bytes": 1024,
+      "logical_vgpr": 111,
+      "permlanex16": 64,
+      "scratch_bytes": 0,
+      "static_instruction_slots": 1775,
+      "symbol_size_bytes": 9784,
+      "waitcnt": 57
+    },
+    "candidate_isa_sha256": "3126c7498e2b8e5340aa9d174637c7ea2e011cded53d98a6676c9ef2573c3557",
+    "control": {
+      "allocated_vgpr": 136,
+      "bpermutes": 320,
+      "dual_ops": 518,
+      "lds_bytes": 1024,
+      "logical_vgpr": 130,
+      "scratch_bytes": 0,
+      "static_instruction_slots": 2107,
+      "symbol_size_bytes": 10908,
+      "waitcnt": 232
+    },
+    "control_isa_sha256": "fc7f97bbdab999b04d0cf93419e62fb342fb54433252afcfedc80058fad53b84",
+    "trace_sha256": "6db72a6764b61f48e7945b5a2bdf0c775195c505e02b72ee18385ce5b2c113e8",
+    "unit_trace_us": {
+      "candidate": 15.039,
+      "control": 16.532,
+      "delta_percent": -9.030970239535453
+    }
+  },
+  "raw_scripts": {
+    "gate_driver_sha256": "4c2cd84045960b05221d84934397f902f31cbc8e3ad4fb7a9192c4fe97910698",
+    "screen_sha256": "018835fd739e2fa679d4e5320f7284160a6f7f85e327e8797e6dadba1676419e"
+  },
+  "red_green": {
+    "green": "Focused candidate test passed bit-exact to retained row8 owner.",
+    "red": "Focused test failed AttributeError because candidate wrapper was absent."
+  },
+  "schema": 1,
+  "source": {
+    "base_commit": "0fb35b5b4",
+    "host": "epyc",
+    "tree": "dirty only with candidate/test/worklog during admission"
+  },
+  "status": "candidate_admitted_default_unchanged"
+}
