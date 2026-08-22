@@ -198,8 +198,17 @@ fallback, numerical state/KV gate, graph closure, and exact memory recovery.
 This is width/lifecycle correctness, not canonical load/SLO closure. Evidence:
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json).
 
-The prior ZBook Qwen3.6 server packet saturated the physical bucket and failed
-its long soak through overload/ITL/TTFT pressure. Do not “fix” that by enlarging
+The current Qwen3.8 canonical packet confirms the same offered-load boundary.
+Strict `token_budget` passes blocking exactness but streaming fails at c8+.
+Retained `fair:256` repairs c8 (**10.244 tok/s**, TTFT p95 5.196 s, ITL p99
+0.185 s), but c17/c32 goodput remains zero: c17 TTFT/ITL **11.020/0.514 s**
+and c32 **20.765/0.839 s**. Every row is exact and memory/routes are healthy;
+live admission does not overlap the first request. Therefore production/load
+closure remains blocked on service capacity/prefill interference, not width
+correctness. Evidence: [`gfx1151 load blocker`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-production-load-blocked.json).
+
+The prior ZBook Qwen3.6 server packet also saturated the physical bucket and
+failed its long soak through overload/ITL/TTFT pressure. Do not “fix” that by enlarging
 queues or weakening SLOs. First determine whether the limiting resource is
 model service rate, physical grouping, prefill interference, admission policy,
 or memory; then tune the measured owner and rerun offered-load goodput.
