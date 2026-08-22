@@ -1,0 +1,355 @@
+{
+  "backend": "hip_gfx1151",
+  "blocking_reasons": [
+    "strict generated trajectory differs on 2/4 heldout prompts",
+    "RF1 long-task absolute correctness is 4/6",
+    "long-context graph MTP is 0.7164x true AR",
+    "no binding production full-logit KL/task packet after strict heldout failure",
+    "streaming TTFT/ITL unavailable because MTP streaming is unsupported"
+  ],
+  "categories": {
+    "code": {
+      "ar_tok_s": 11.57559177952115,
+      "draft_acceptance": 0.8175675675675675,
+      "ids_exact": 4,
+      "mtp_tok_s": 23.296023296023293,
+      "prompts": 4,
+      "speedup": 2.0125125125125125,
+      "tokens": 512
+    },
+    "general_en": {
+      "ar_tok_s": 11.5737601157376,
+      "draft_acceptance": 0.6812749003984063,
+      "ids_exact": 2,
+      "mtp_tok_s": 22.30742418961311,
+      "prompts": 2,
+      "speedup": 1.9274137330080168,
+      "tokens": 256
+    },
+    "general_ja": {
+      "ar_tok_s": 11.578471279963818,
+      "draft_acceptance": 0.6074074074074074,
+      "ids_exact": 1,
+      "mtp_tok_s": 20.74554294975689,
+      "prompts": 2,
+      "speedup": 1.7917341977309562,
+      "tokens": 256
+    },
+    "mixed_ja_en": {
+      "ar_tok_s": 11.37167419337287,
+      "draft_acceptance": 0.600896860986547,
+      "ids_exact": 1,
+      "mtp_tok_s": 19.29468242245199,
+      "prompts": 2,
+      "speedup": 1.696731905465288,
+      "tokens": 209
+    }
+  },
+  "decision": "Reject every automatic MTP scope. Retain explicit diagnostic MTP and auto-route production to AR. Short canonical speed exceeds the floor, but binding strict heldout, long-task, long-context economics, and streaming SLO gates do not pass.",
+  "execution_profile": "strict",
+  "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+  "kind": "mtp_rf6_quality_performance_qualification",
+  "legacy_direct_matrix_attempt": {
+    "reason": "scripts/gguf_mtp_bench.py hardcodes 35B MoE blk.40 while dense 27B NextN is blk.64",
+    "retained": false,
+    "status": "incompatible"
+  },
+  "load_lifecycle": {
+    "rf3": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf3-lifecycle.json",
+    "rf4": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf4-api-semantics.json",
+    "rf5": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf5-serialized-load.json"
+  },
+  "long_context": {
+    "automatic_long_scope": false,
+    "graph_mtp_vs_ar_ratio_4079x8": 0.7163593156887731,
+    "rf1_functional_artifact": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf1-eager-long-context.json",
+    "rf2_graph_artifact": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json"
+  },
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "GGUF Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "performance": {
+    "acceptance": 0.7003,
+    "ar_tok_s": 11.54,
+    "ar_tokens": 1233,
+    "ar_wall_s": 106.84,
+    "cold_warm_capture": "short target graphs; capture included in first request, warm repeats r2/r3",
+    "mtp_tok_s_median": 22.21,
+    "mtp_tok_s_repeats": [
+      21.77,
+      22.21,
+      22.24
+    ],
+    "mtp_tokens": 1233,
+    "mtp_vs_ar_speedup_median": 1.9246100519930678,
+    "mtp_vs_ar_speedup_repeats": [
+      1.8864818024263432,
+      1.9246100519930678,
+      1.927209705372617
+    ],
+    "mtp_wall_s_repeats": [
+      56.63,
+      55.52,
+      55.43
+    ],
+    "promotion_floor": 1.1,
+    "request_wall_p50_s": 5.6365,
+    "request_wall_p95_s": 6.77895,
+    "request_wall_p99_s": 6.87579,
+    "ttft_itl": "unavailable_nonstreaming_mtp"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "profile_manifest_hash": null,
+  "prompt_suite": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout": 4,
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "train": 6
+  },
+  "quality": {
+    "full_logit_kl": "not_retained; strict trajectory already failed on two heldouts",
+    "long_task_absolute_score": "4/6 (RF1)",
+    "mismatches": [
+      {
+        "category": "general_ja",
+        "first_mismatch_index": 65,
+        "id": "general_ja_explain",
+        "split": "heldout"
+      },
+      {
+        "category": "mixed_ja_en",
+        "first_mismatch_index": 72,
+        "id": "mixed_ja_en_review",
+        "split": "heldout"
+      }
+    ],
+    "mtp_repeat_acceptance_exact": true,
+    "mtp_repeat_ids_exact": true,
+    "mtp_vs_ar_exact_prompts": 8,
+    "mtp_vs_ar_total_prompts": 10,
+    "production_task_gate": false,
+    "strict_trajectory_passed": false
+  },
+  "rows": [
+    {
+      "accepted_draft_tokens": 90,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.055,
+      "category": "code",
+      "draft_acceptance": 0.7965,
+      "draft_tokens": 113,
+      "first_mismatch_index": null,
+      "id": "code_merge_intervals",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 6.316,
+      "speedup": 1.750316656111463,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 92,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.058,
+      "category": "code",
+      "draft_acceptance": 0.8519,
+      "draft_tokens": 108,
+      "first_mismatch_index": null,
+      "id": "code_topological_sort",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.083,
+      "speedup": 2.1754869171748967,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 92,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.065,
+      "category": "code",
+      "draft_acceptance": 0.8679,
+      "draft_tokens": 106,
+      "first_mismatch_index": null,
+      "id": "code_lru_cache",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.137,
+      "speedup": 2.1539809227175395,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 89,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.053,
+      "category": "code",
+      "draft_acceptance": 0.7607,
+      "draft_tokens": 117,
+      "first_mismatch_index": null,
+      "id": "code_markdown_table",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.442,
+      "speedup": 2.0310547592796766,
+      "split": "heldout"
+    },
+    {
+      "accepted_draft_tokens": 87,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.059,
+      "category": "general_en",
+      "draft_acceptance": 0.719,
+      "draft_tokens": 121,
+      "first_mismatch_index": null,
+      "id": "general_en_plan",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.564,
+      "speedup": 1.9875988497483823,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 84,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.06,
+      "category": "general_en",
+      "draft_acceptance": 0.6462,
+      "draft_tokens": 130,
+      "first_mismatch_index": null,
+      "id": "general_en_explain",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.912,
+      "speedup": 1.870771312584574,
+      "split": "heldout"
+    },
+    {
+      "accepted_draft_tokens": 86,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.058,
+      "category": "general_ja",
+      "draft_acceptance": 0.6992,
+      "draft_tokens": 123,
+      "first_mismatch_index": null,
+      "id": "general_ja_plan",
+      "ids_exact": true,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 5.709,
+      "speedup": 1.9369416710457175,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 78,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.052,
+      "category": "general_ja",
+      "draft_acceptance": 0.5306,
+      "draft_tokens": 147,
+      "first_mismatch_index": 65,
+      "id": "general_ja_explain",
+      "ids_exact": false,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 6.631,
+      "speedup": 1.6667169356054892,
+      "split": "heldout"
+    },
+    {
+      "accepted_draft_tokens": 57,
+      "ar_tokens": 81,
+      "ar_wall_s": 7.216,
+      "category": "mixed_ja_en",
+      "draft_acceptance": 0.76,
+      "draft_tokens": 75,
+      "first_mismatch_index": null,
+      "id": "mixed_ja_en_translate",
+      "ids_exact": true,
+      "mtp_tokens": 81,
+      "mtp_wall_s": 3.932,
+      "speedup": 1.8351983723296033,
+      "split": "train"
+    },
+    {
+      "accepted_draft_tokens": 77,
+      "ar_tokens": 128,
+      "ar_wall_s": 11.163,
+      "category": "mixed_ja_en",
+      "draft_acceptance": 0.5203,
+      "draft_tokens": 148,
+      "first_mismatch_index": 72,
+      "id": "mixed_ja_en_review",
+      "ids_exact": false,
+      "mtp_tokens": 128,
+      "mtp_wall_s": 6.9,
+      "speedup": 1.6178260869565217,
+      "split": "heldout"
+    }
+  ],
+  "schema": 1,
+  "server_protocol": {
+    "ar_artifact_sha256": "57a7ce695b33abe3d6dd42eba4ecc78742b6039a88de404561b05e03aea5f113",
+    "concurrency": 1,
+    "endpoint": "/v1/chat/completions",
+    "max_tokens": 128,
+    "mtp_artifact_sha256": [
+      "a988ca175025e0ef498de1d32884fd3196fe628d6f89406701e5fc944bd2e66b",
+      "d7db5d2d390df46c879ab0b1ff06225fad920990fb383481040db2700def6093",
+      "bfb404dbd9802741c15cb2c32b77ecedba52551d8087b386b3286ebb908b397e"
+    ],
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "source_artifacts": {
+    "/tmp/mtp-rf6-ar/true-ar-baseline.json": "5a82ad8e64e29a40c91b7ac5ac08605dfceff2a1f0ed9f5e7d73508c17e96dc6",
+    "/tmp/mtp-rf6-server-ar.json": "57a7ce695b33abe3d6dd42eba4ecc78742b6039a88de404561b05e03aea5f113",
+    "/tmp/mtp-rf6-server-mtp-r2.json": "d7db5d2d390df46c879ab0b1ff06225fad920990fb383481040db2700def6093",
+    "/tmp/mtp-rf6-server-mtp-r3.json": "bfb404dbd9802741c15cb2c32b77ecedba52551d8087b386b3286ebb908b397e",
+    "/tmp/mtp-rf6-server-mtp.json": "a988ca175025e0ef498de1d32884fd3196fe628d6f89406701e5fc944bd2e66b"
+  },
+  "speed_claim_eligible": false,
+  "splits": {
+    "heldout": {
+      "ar_tok_s": 11.550261685616315,
+      "draft_acceptance": 0.6051660516605166,
+      "ids_exact": 2,
+      "mtp_tok_s": 20.574643359453486,
+      "prompts": 4,
+      "speedup": 1.7813140446051838,
+      "tokens": 512
+    },
+    "train": {
+      "ar_tok_s": 11.533970021276255,
+      "draft_acceptance": 0.7801857585139319,
+      "ids_exact": 6,
+      "mtp_tok_s": 22.71510034340443,
+      "prompts": 6,
+      "speedup": 1.9694086512712263,
+      "tokens": 721
+    }
+  },
+  "status": "rejected",
+  "true_ar_direct_protocol": {
+    "artifact": "/tmp/mtp-rf6-ar/true-ar-baseline.json",
+    "decode_ms": 105721.14809602499,
+    "schema_flags": {
+      "kind": "hipengine_gguf_true_ar_category_baseline",
+      "same_prompt_suite": true,
+      "same_timing_protocol": true,
+      "schema": 1,
+      "status": "complete",
+      "true_autoregressive_path": true
+    },
+    "sha256": "5a82ad8e64e29a40c91b7ac5ac08605dfceff2a1f0ed9f5e7d73508c17e96dc6",
+    "tok_s": 12.107322168289304,
+    "tokens": 1280
+  },
+  "verdict": "no_automatic_scope"
+}
