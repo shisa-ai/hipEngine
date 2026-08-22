@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1100 Qwen3.8 Q5 row8 DPP rejection; no performance claim] W7900 / six actual `ssm_out` Q5_K layers / BF16 row8: four layers improve, two regress; 48-call event projection is only **4.314→4.250 ms (-1.481%, 0.064 ms/step, ~0.11% wall)**. Candidate is fully removed; DPP is not a generic win outside high-pressure Q6. Proceed to GDN recurrence/state. `benchmarks/results/2026-08-22-gfx1100-qwen38-q5-row8-dpp-rejected.json`.
+
 - [gfx1100 Qwen3.8 Q4-single row8 DPP rejection; no performance claim] W7900 / seven actual Q4_K roles / BF16 row8: six roles improve but `attn_q` regresses **1.178%**; call-weighted event projection is only **10.001→9.895 ms (-1.059%, 0.106 ms/step, ~0.18% wall)**. The profiler attempt is invalid (old-DSO injection segfault; then uncached unrelated Q6 build) and supports no claim. Candidate is fully removed; avoid role-specific policy for a sub-noise wall target and proceed to Q5/GDN. `benchmarks/results/2026-08-22-gfx1100-qwen38-q4-single-row8-dpp-rejected.json`.
 
 - [gfx1100 Qwen3.8 planar-Q6 row8 DPP default promotion] W7900 / Qwen3.8-27B Q4_K_M / BF16 KV / public `LLM`→`EngineService` p512 physical-c8 marked transition: generic shuffle reduction **58.693 ms** median (58.592/58.693/58.707) -> exact permlanex16+DPP **57.734 ms** (57.708/58.027/57.734), **-0.959 ms / -1.634%**; three wins, identical 8×32 IDs, packed HIP-graph route, and clean drain. Final default gate remains 55/55 operation rows exact, KL max 1.21e-7, top-1 16/16. `benchmarks/results/2026-08-22-gfx1100-qwen38-q6-planar-row8-dpp-promotion.json`.
