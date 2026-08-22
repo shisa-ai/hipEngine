@@ -150,6 +150,38 @@ def test_generation_shape_accepts_grouped_c13_as_physical_c8_plus_c5() -> None:
     assert summary["native_false_records_expected"] == 0
 
 
+def test_generation_shape_accepts_grouped_c32_as_four_physical_c8_groups() -> None:
+    grouped = [
+        {
+            "generation_shape": {
+                "queue_group": {
+                    "id": "group-32",
+                    "request_count": 32,
+                    "prompt_rows": 32,
+                    "item_index": index,
+                    "item_prompt_offset": index,
+                    "item_prompt_rows": 1,
+                },
+                "backend_groups": [
+                    {
+                        "input_rows": 32,
+                        "actual_group_rows": [8, 8, 8, 8],
+                        "max_actual_group_rows": 8,
+                    }
+                ],
+            }
+        }
+        for index in range(32)
+    ]
+
+    summary = SCRIPT.generation_shape_proves_native_group(grouped, concurrency=32)
+
+    assert summary["passed"] is True
+    assert summary["queue_group_count"] == 1
+    assert summary["backend_group_rows"] == [8, 8, 8, 8]
+    assert summary["max_backend_group_rows"] == 8
+
+
 def test_generation_shape_accepts_c13_as_complete_route_cap_four_groups() -> None:
     records = []
     for group_index, rows in enumerate((4, 4, 4, 1)):
@@ -185,8 +217,11 @@ def test_generation_shape_accepts_c13_as_complete_route_cap_four_groups() -> Non
     assert summary["native_false_records_expected"] == 1
 
 
-def test_matched_concurrency_plan_is_bounded_at_c13() -> None:
-    assert SCRIPT._validate_concurrency_plan([1, 2, 4, 8, 13], live_concurrency=13) == [1, 2, 4, 8, 13]
+def test_matched_concurrency_plan_accepts_arbitrary_logical_widths_through_c32() -> None:
+    assert SCRIPT._validate_concurrency_plan(
+        [1, 2, 4, 8, 13, 16, 17, 32],
+        live_concurrency=17,
+    ) == [1, 2, 4, 8, 13, 16, 17, 32]
     with pytest.raises(ValueError, match="must include c1"):
         SCRIPT._validate_concurrency_plan([2], live_concurrency=2)
     assert SCRIPT._validate_concurrency_plan(
@@ -194,8 +229,8 @@ def test_matched_concurrency_plan_is_bounded_at_c13() -> None:
         live_concurrency=2,
         require_c1=False,
     ) == [2]
-    with pytest.raises(ValueError, match="limited to c1/c2/c4/c8/c13"):
-        SCRIPT._validate_concurrency_plan([1, 2, 16], live_concurrency=2)
+    with pytest.raises(ValueError, match="limited to logical c1-c32"):
+        SCRIPT._validate_concurrency_plan([1, 2, 33], live_concurrency=2)
 
 
 def test_live_admission_uses_sse_when_streaming_is_primary() -> None:
@@ -569,17 +604,20 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
     assert args.hipengine_kv_scale_granularity == "per_token_head"
     assert args.batch_window_ms == 5.0
     assert args.hipengine_prefill_chunk_tokens is None
+    assert args.same_server_oracle is False
     assert args.memory_sample_through_shutdown is False
     lifecycle_args = SCRIPT.build_parser().parse_args(
         [
             "--engine",
             "hipengine",
             "--memory-sample-through-shutdown",
+            "--same-server-oracle",
             "--json",
             str(tmp_path / "lifecycle.json"),
         ]
     )
     assert lifecycle_args.memory_sample_through_shutdown is True
+    assert lifecycle_args.same_server_oracle is True
 
 
 def test_hipengine_command_separates_generation_window_from_prefill_chunk(
@@ -607,6 +645,30 @@ def test_hipengine_command_separates_generation_window_from_prefill_chunk(
 
     assert command[command.index("--generation-batch-window-ms") + 1] == "5.0"
     assert env["HIPENGINE_MAX_PREFILL_CHUNK_TOKENS"] == "256"
+    assert env["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
+
+
+def test_hipengine_serial_route_disables_actual_packed_decode_selector(
+    tmp_path: Path,
+) -> None:
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--hipengine-route-expectation",
+            "serial-c1-per-row",
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+    _command, env, _cwd = SCRIPT._server_command_and_env(
+        args,
+        engine="hipengine",
+        concurrency=8,
+        port=19123,
+    )
+    assert env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] == "0"
+    assert env["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "0"
 
 
 def test_hipengine_command_forwards_explicit_int8_kv_policy(tmp_path: Path) -> None:
@@ -684,6 +746,15 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         concurrency=4,
         expectation="serial-c1-per-row",
         serial_values=[True] * 12,
+        native_values=[False] * 12,
+        shape_passed=True,
+        resident_capacity=4.0,
+        execution_paths=["gguf_packed_ar_server_decode"],
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=4,
+        expectation="serial-c1-per-row",
+        serial_values=[False, True, True, True] * 3,
         native_values=[False] * 12,
         shape_passed=True,
         resident_capacity=4.0,

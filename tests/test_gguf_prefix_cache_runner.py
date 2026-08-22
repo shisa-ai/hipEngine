@@ -659,3 +659,120 @@ def test_prefix_reuse_falls_back_for_exact_prompt_and_sampled_boundary() -> None
     runner.rollback_admission(SimpleNamespace(request_id=20))
     assert runner.kv_pool.stats.refcounted_pages == 0
     runner.close()
+
+
+class _FakeGlobalPoolSession:
+    """Fake resident session exposing the global-pool factory ABI."""
+
+    kv_attention_source = None
+    defer_kv_allocation = True
+
+    def __init__(self, slot_id: int) -> None:
+        self.slot_id = int(slot_id)
+        # 768-token scratch: 3 pages per request, below the packed workspace's
+        # 1024-token (4-page) per-slot union floor.
+        self.scratch = SimpleNamespace(max_positions=768)
+        self.created_pools = []
+        self.bound_workspace_pools = []
+        self.workspace_release_calls = 0
+        self.closed = False
+        self._reset_current_slot_only = False
+
+    def resident_slot_view(self, index: int):
+        return _FakeGlobalPoolSession(index)
+
+    def create_global_device_kv_pool(self, *, page_capacity, generation):
+        from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+        pool = GlobalDeviceKVPool(
+            page_bytes=4096,
+            backend_fingerprint="test",
+            generation=int(generation),
+            backing=None,
+            plane_page_pointers={
+                "payload": tuple(0x10000 * (index + 1) for index in range(int(page_capacity)))
+            },
+            pointer_table_pointers={"payload": 0xF0000},
+            metadata_descriptor_pointer=0xF1000,
+            close_storage=lambda: None,
+        )
+        self.created_pools.append(pool)
+        return pool
+
+    def bind_workspace_kv_pool(self, pool) -> None:
+        self.bound_workspace_pools.append(pool)
+
+    def release_idle_packed_workspace(self) -> int:
+        self.workspace_release_calls += 1
+        return 0
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakeGlobalPoolOwner:
+    backend = "hip_gfx1100"
+    target_arch = "gfx1100"
+    _prepared_max_sequence_length = 1024
+    _defer_resident_session_policy_resolution = True
+    tokenizer = SimpleNamespace(eos_token_id=None, decode=lambda tokens: "")
+
+    def __init__(self) -> None:
+        self.sessions: list[_FakeGlobalPoolSession] = []
+
+    def _get_shared_runner(self):
+        return SimpleNamespace(runtime=SimpleNamespace(mem_get_info=lambda: (100, 200)))
+
+    def _acquire_shared_session(self, shared_runner, **kwargs):
+        del shared_runner
+        session = _FakeGlobalPoolSession(int(kwargs.get("max_batch_size", 0)))
+        self.sessions.append(session)
+        return session, ("continuous_ar_dynamic_kv", True, True, 1024), False
+
+    def _release_shared_session(self, key, session) -> None:
+        del key, session
+
+    def _flush_ar_packed_decode_owners(self, slots) -> None:
+        del slots
+
+
+def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
+
+    owner = _FakeGlobalPoolOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)
+    config = EngineLoopConfig(
+        max_active_requests=2,
+        kv_pool_initial_pages=8,
+        kv_pool_low_water_pages=8,
+        kv_pool_chunk_pages=8,
+        prefix_cache="off",
+    )
+    runner._reserve_sessions()
+    runner.configure_engine_loop(config)
+
+    pool = runner.kv_pool
+    batch_owner = owner.sessions[0]
+    # capacity=2 requests * 3 pages/request = 6 request pages; the packed
+    # workspace lease adds max(8, capacity) * max(3, 1024/256) = 32 pinned
+    # pages on top (the union floor is 1024 tokens per slot even when the
+    # request context is shorter).
+    assert pool.current_pages == 38
+    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+    assert lease is not None and len(lease) == 32
+    assert pool.stats.free_pages == 6
+    assert pool.stats.pinned_pages == 32
+    assert batch_owner.bound_workspace_pools == [pool]
+
+    # Reconfiguration releases the lease and the idle workspace before the
+    # old pool closes, then re-leases on the fresh pool.
+    runner.configure_engine_loop(config)
+    new_pool = runner.kv_pool
+    assert new_pool is not pool
+    assert batch_owner.workspace_release_calls == 1
+    assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
+    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 32
+    assert batch_owner.bound_workspace_pools[-1] is new_pool
+
+    runner.close()
+    assert runner.kv_pool is None

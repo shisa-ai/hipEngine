@@ -21,7 +21,11 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kernels.registry import _KERNELS
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+    LAYOUT_RAW_GGUF,
+)
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
@@ -41,6 +45,7 @@ def _fake_weight(*, layout: str, quant_key: str):
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
         "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=12)),
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
+        "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=14)),
     }
 
     class Weight:
@@ -71,6 +76,39 @@ _Q4_GEMV_DECODE = KernelKey(
 )
 _Q8_WMMA_DUAL_PREFILL = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_dual_gate_up_bf16_bf16_out"
+)
+
+
+# Q5T16 native batch decode family (base decode + true rowtile + padded WMMA
+# fallback) used to verify the rows 5-8 rowtile promotion.
+_Q5_T16_DECODE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"
+)
+_Q5_T16_ROWTILE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_rowtile_bf16_bf16_out"
+)
+_Q5_T16_WMMA = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
+)
+
+# Planar-qmicro Q6T16 native batch decode family for the rows 5-8 rowtile.
+_Q6_PLANAR_DECODE = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q6_k_t16_qmicro_planar_v1",
+    "t16_gemv_decode_bf16_bf16_out",
+)
+_Q6_PLANAR_ROWTILE = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q6_k_t16_qmicro_planar_v1",
+    "t16_gemv_rowtile_bf16_bf16_out",
+)
+_Q6_PLANAR_WMMA = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q6_k_t16_qmicro_planar_v1",
+    "t16_wmma_prefill_bf16_bf16_out",
 )
 
 
@@ -161,6 +199,37 @@ def _capture_launch(
 # ---------------------------------------------------------------------------
 # Default off + opt-in precedence.
 # ---------------------------------------------------------------------------
+
+
+def test_native_batch_decode_q5_t16_rows_5_8_route_to_true_rowtile() -> None:
+    """Q5T16 true rowtile is now certified through rows 8, so native batch
+    decode rewrites rows 5-8 to the rowtile instead of padded WMMA.
+    """
+    for rows in (5, 6, 7, 8):
+        key, _, _ = _capture_launch(
+            rows=rows,
+            native_batch_decode=True,
+            quant_key="gguf_q5_k_t16_v1",
+            layout=LAYOUT_GGUF_Q5_K_T16,
+            extra_keys=(_Q5_T16_ROWTILE, _Q5_T16_WMMA),
+        )
+        assert key == _Q5_T16_ROWTILE
+
+
+def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> None:
+    """Planar-qmicro Q6T16 true col8 rowtile is now certified through rows 8,
+    so native batch decode rewrites rows 5-8 to the rowtile instead of the
+    per-row fallback (5/6) or padded WMMA (7/8).
+    """
+    for rows in (5, 6, 7, 8):
+        key, _, _ = _capture_launch(
+            rows=rows,
+            native_batch_decode=True,
+            quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+            layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+            extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
+        )
+        assert key == _Q6_PLANAR_ROWTILE
 
 
 def test_native_batch_decode_routes_c2_c8_q6_head_to_exact_pack8_and_restores() -> None:

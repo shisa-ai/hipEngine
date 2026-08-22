@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-08-19",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "backend": "hip_gfx1100 (AMD Radeon Pro W7900)",
+  "protocol": "gguf_packed_ar_bench p128-d8 warmup1 measured2",
+  "status": "accepted-c8-gate-up-rowtile8",
+  "c1_c2_c4_prefix_exact": true,
+  "all_repeatable": true,
+  "rows": {
+    "c1": {
+      "step_ms_median": 33.04,
+      "agg_tok_s_median": 30.434,
+      "passed": true,
+      "repeatable": true
+    },
+    "c2": {
+      "step_ms_median": 37.23,
+      "agg_tok_s_median": 53.868,
+      "passed": true,
+      "repeatable": true
+    },
+    "c4": {
+      "step_ms_median": 42.91,
+      "agg_tok_s_median": 94.46,
+      "passed": true,
+      "repeatable": true
+    },
+    "native_c8": {
+      "step_ms_median": 116.89,
+      "agg_tok_s_median": 68.604,
+      "passed": true,
+      "repeatable": true
+    }
+  },
+  "notes": [
+    "c8 FFN gate/up (5120x17408 x2) now uses a native ROW_TILE=8 dense dual rowtile SiLU (weight read once) instead of the t16_wmma_prefill fallback.",
+    "c8 125.4 ms -> 116.9 ms/step, 63.6 -> 68.6 tok/s (2.25x c1); prefix-exact, repeatable.",
+    "c2/c4 unchanged (c1_c2_c4_prefix_exact=True).",
+    "c8 still not close-to-linear (per-row 14.6 ms vs c4 10.7 ms): FFN ~2x c4; remaining excess is GDN/attention scaling ~2.6x c4 for 2x rows."
+  ],
+  "source": "/tmp/hb-c1248-r8.json"
+}

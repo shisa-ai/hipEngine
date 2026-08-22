@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+from copy import copy
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
@@ -137,6 +138,7 @@ from hipengine.kvcache import (
     DeviceChunkedKVPool,
     DeviceKVPoolAllocation,
     FixedPagedKVPolicy,
+    GlobalDeviceKVPool,
     KVLiveSpans,
     KVScaleMetadata,
 )
@@ -172,7 +174,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
-    register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
@@ -1188,6 +1189,52 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _rebind_packed_verify_layout_pages(
+    layout: _GGUFPackedVerifyLayout,
+    packed_state: _GGUFPackedTargetState,
+) -> _GGUFPackedVerifyLayout:
+    """Rebind a packed layout's block table to the state's physical pages.
+
+    Layout builders emit slot-local identity block tables; the packed state's
+    ``page_ids`` supply the authoritative physical page mapping (identity for
+    the private chunk, arbitrary arena pages under a GlobalDeviceKVPool
+    workspace lease). The paged attention kernels and the page-aware copy
+    segments must consume the same mapping, so the table is rewritten through
+    ``page_ids`` once the workspace geometry is known. Identity mappings keep
+    the original layout object so the private-chunk path is unchanged.
+    """
+
+    state_slots = int(packed_state.slot_count)
+    state_bps = int(packed_state.blocks_per_slot)
+    layout_bps = int(layout.blocks_per_slot)
+    if int(layout.slot_count) > state_slots:
+        raise ValueError(
+            f"packed layout slot_count {layout.slot_count} exceeds packed state slot_count {state_slots}"
+        )
+    if layout_bps > state_bps:
+        raise ValueError(
+            f"packed layout blocks_per_slot {layout_bps} exceeds packed state blocks_per_slot {state_bps}"
+        )
+    page_ids = packed_state.page_ids
+    if state_bps == layout_bps and all(
+        int(page_id) == index for index, page_id in enumerate(page_ids)
+    ):
+        return layout
+    block_table = np.empty_like(layout.block_table)
+    for slot_index in range(int(layout.slot_count)):
+        row_start = int(layout.cu_seqlens[slot_index])
+        row_end = int(layout.cu_seqlens[slot_index + 1])
+        if not bool(layout.active_mask[slot_index]):
+            block_table[row_start:row_end, :] = -1
+            continue
+        base = slot_index * state_bps
+        block_table[row_start:row_end, :] = np.asarray(
+            page_ids[base : base + layout_bps],
+            dtype=np.int32,
+        )[None, :]
+    return replace(layout, block_table=block_table)
+
+
 def _packed_ar_slot_capacity(
     max_live_count: int,
     *,
@@ -1330,6 +1377,42 @@ class _GGUFPackedARAttentionWorkspace:
         )
 
 
+@dataclass
+class _PackedWorkspaceState:
+    """Shared mutable packed-workspace bookkeeping for one batch owner.
+
+    The batch owner and every ``resident_slot_view`` reference one instance so
+    the packed verify/decode state, deferred-scatter dirtiness, and workspace
+    geometry stay consistent no matter which session object executes a step
+    or triggers a resize.
+    """
+
+    verify_state: object | None = None
+    verify_scratch: object | None = None
+    ar_attention_workspace: object | None = None
+    verify_session_ids: tuple[int, ...] = ()
+    verify_max_written_positions: tuple[int, ...] = ()
+    decode_sessions: tuple = ()
+    decode_last_layout: object | None = None
+    decode_state_dirty: bool = False
+    decode_session_ids: tuple[int, ...] = ()
+    decode_positions: tuple[int, ...] = ()
+
+
+# Union-geometry defaults for the packed verify workspace. Physical packed
+# decode/verify groups are bounded by the certified graph width (8) and the
+# packed AR paths reject context >= 1024, so the first allocation sizes to
+# these caps and steady-state prefill/decode interleaving never resizes.
+_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY = 8
+_PACKED_VERIFY_MIN_MAX_SEQUENCE = 1024
+_PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
+
+# GlobalDeviceKVPool workspace-lease key for the packed execution KV backing.
+# The generation layer takes this lease eagerly at pool creation so admission
+# accounting always sees the pinned pages (task #5 contract unification).
+_GGUF_PACKED_WORKSPACE_LEASE_KEY = "qwen35_gguf_packed_execution"
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot recurrent state plus policy-shaped packed KV backing."""
@@ -1350,6 +1433,66 @@ class _GGUFPackedTargetState:
     full_v_scale_caches: tuple[object | None, ...]
     full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
     buffers: tuple[object, ...]
+    # Slot-major physical page IDs backing the packed KV planes. The private
+    # chunk uses the identity mapping; a GlobalDeviceKVPool workspace lease
+    # supplies arbitrary arena pages (task #5 contract unification).
+    page_ids: tuple[int, ...] = ()
+    # "private" = owned chunk allocated by this state; "pool_lease" = planes
+    # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
+    kv_backing_kind: str = "private"
+
+    def __post_init__(self) -> None:
+        if self.kv_backing_kind not in {"private", "pool_lease"}:
+            raise ValueError(
+                f"unknown packed KV backing kind {self.kv_backing_kind!r}"
+            )
+        if not self.page_ids:
+            object.__setattr__(
+                self,
+                "page_ids",
+                tuple(range(int(self.slot_count) * int(self.blocks_per_slot))),
+            )
+        expected = int(self.slot_count) * int(self.blocks_per_slot)
+        if len(self.page_ids) != expected:
+            raise ValueError(
+                f"packed KV page_ids length {len(self.page_ids)} != slots*blocks {expected}"
+            )
+
+    def copy_segments(
+        self,
+        slot_index: int,
+        *,
+        start_position: int,
+        rows: int,
+    ) -> tuple[tuple[int, int, int], ...]:
+        """Map packed slot-logical rows to physical backing rows for D2D copies.
+
+        Mirrors ``_gguf_device_kv_copy_segments`` on the packed side so copies
+        stay correct when the backing pages are arbitrary arena pages rather
+        than one dense private chunk.
+        """
+
+        slot = int(slot_index)
+        if slot < 0 or slot >= int(self.slot_count):
+            raise ValueError("packed KV slot index outside slot_count")
+        start = int(start_position)
+        remaining = int(rows)
+        page_tokens = int(self.block_size)
+        if start < 0 or remaining < 0:
+            raise ValueError("packed KV copy range must be non-negative")
+        base = slot * int(self.blocks_per_slot)
+        segments: list[tuple[int, int, int]] = []
+        logical = start
+        while remaining:
+            page, in_page = divmod(logical, page_tokens)
+            if page >= int(self.blocks_per_slot):
+                raise ValueError("packed KV copy range exceeds the slot page reservation")
+            page_id = int(self.page_ids[base + page])
+            take = min(remaining, page_tokens - in_page)
+            segments.append((logical, page_id * page_tokens + in_page, take))
+            logical += take
+            remaining -= take
+        return tuple(segments)
 
     @classmethod
     def allocate(
@@ -1361,6 +1504,7 @@ class _GGUFPackedTargetState:
         runtime: HipRuntime,
         block_size: int = 256,
         kv_layout: Qwen35GGUFKVChunkLayout | None = None,
+        kv_pool: object | None = None,
     ) -> "_GGUFPackedTargetState":
         slot_count = int(slot_count)
         max_sequence_length = int(max_sequence_length)
@@ -1419,11 +1563,13 @@ class _GGUFPackedTargetState:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
                     recurrent_state = buf(recurrent_state_nbytes)
+                    # Track both buffers before any runtime call so a memset
+                    # failure cannot leak the pair.
+                    state_buffers.extend((conv_state, recurrent_state))
                     memset = getattr(runtime, "memset", None)
                     if callable(memset):
                         memset(conv_state.ptr, 0, conv_state.nbytes)
                         memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
-                    state_buffers.extend((conv_state, recurrent_state))
                     layer_conv_states.append(conv_state)
                     layer_recurrent_states.append(recurrent_state)
                 elif layer_type == FULL_ATTENTION:
@@ -1431,13 +1577,39 @@ class _GGUFPackedTargetState:
                     layer_recurrent_states.append(None)
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-            kv_backing = _allocate_qwen35_gguf_kv_chunk(
-                runner,
-                runtime=runtime,
-                start_block_id=0,
-                pages=total_pages,
-                layout=kv_layout,
-            )
+            lease_pages: tuple[int, ...] | None = None
+            if kv_pool is not None:
+                workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
+                if callable(workspace_pages_fn):
+                    lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if lease_pages is not None:
+                # Pool-leased backing: the arena planes back the workspace and
+                # page_ids select this state's pages inside them. The lease
+                # pages stay pinned by the pool; this state never frees them.
+                arena_backing = getattr(kv_pool, "backing", None)
+                if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
+                    raise RuntimeError(
+                        "packed workspace lease has no layout-compatible KV backing"
+                    )
+                if len(lease_pages) < total_pages:
+                    raise RuntimeError(
+                        f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
+                    )
+                kv_backing = arena_backing
+                page_ids = tuple(int(page) for page in lease_pages[:total_pages])
+                backing_kind = "pool_lease"
+                owned_buffers = tuple(state_buffers)
+            else:
+                kv_backing = _allocate_qwen35_gguf_kv_chunk(
+                    runner,
+                    runtime=runtime,
+                    start_block_id=0,
+                    pages=total_pages,
+                    layout=kv_layout,
+                )
+                page_ids = ()
+                backing_kind = "private"
+                owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
@@ -1458,7 +1630,9 @@ class _GGUFPackedTargetState:
             full_k_scale_caches=kv_backing.full_k_scale_caches,
             full_v_scale_caches=kv_backing.full_v_scale_caches,
             full_kv_scale_metadata=kv_backing.full_kv_scale_metadata,
-            buffers=(*tuple(state_buffers), *kv_backing.buffers),
+            buffers=owned_buffers,
+            page_ids=page_ids,
+            kv_backing_kind=backing_kind,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -13419,19 +13593,98 @@ class Qwen35GGUFResidentSession:
     _verify_linear_state_conv_row_nbytes: int = field(default=0, init=False)
     _verify_linear_state_recurrent_row_nbytes: int = field(default=0, init=False)
     _verify_linear_state_layer_count: int = field(default=0, init=False)
-    _packed_verify_state: _GGUFPackedTargetState | None = field(default=None, init=False)
-    _packed_verify_scratch: object | None = field(default=None, init=False)
-    _packed_verify_session_ids: tuple[int, ...] = field(default=(), init=False)
-    _packed_verify_max_written_positions: tuple[int, ...] = field(default=(), init=False)
-    _packed_decode_sessions: tuple["Qwen35GGUFResidentSession | None", ...] = field(default=(), init=False)
-    _packed_decode_last_layout: _GGUFPackedVerifyLayout | None = field(default=None, init=False)
-    _packed_decode_state_dirty: bool = field(default=False, init=False)
-    _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
-    _packed_decode_positions: tuple[int, ...] = field(default=(), init=False)
-    _packed_ar_attention_workspace: _GGUFPackedARAttentionWorkspace | None = field(
-        default=None,
-        init=False,
-    )
+    # Packed verify/decode workspace bookkeeping lives in one shared
+    # _PackedWorkspaceState holder so the batch owner and its resident slot
+    # views observe the same allocations, geometry, and deferred-scatter
+    # dirtiness (see the serving-load stability contracts in
+    # tests/test_gguf_packed_workspace_stability.py).
+
+    def _packed_workspace_state(self) -> _PackedWorkspaceState:
+        state = self.__dict__.get("_packed_ws_state")
+        if state is None:
+            state = _PackedWorkspaceState()
+            self.__dict__["_packed_ws_state"] = state
+        return state
+
+    @property
+    def _packed_verify_state(self):
+        return self._packed_workspace_state().verify_state
+
+    @_packed_verify_state.setter
+    def _packed_verify_state(self, value) -> None:
+        self._packed_workspace_state().verify_state = value
+
+    @property
+    def _packed_verify_scratch(self):
+        return self._packed_workspace_state().verify_scratch
+
+    @_packed_verify_scratch.setter
+    def _packed_verify_scratch(self, value) -> None:
+        self._packed_workspace_state().verify_scratch = value
+
+    @property
+    def _packed_verify_session_ids(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().verify_session_ids
+
+    @_packed_verify_session_ids.setter
+    def _packed_verify_session_ids(self, value) -> None:
+        self._packed_workspace_state().verify_session_ids = value
+
+    @property
+    def _packed_verify_max_written_positions(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().verify_max_written_positions
+
+    @_packed_verify_max_written_positions.setter
+    def _packed_verify_max_written_positions(self, value) -> None:
+        self._packed_workspace_state().verify_max_written_positions = value
+
+    @property
+    def _packed_decode_sessions(self) -> tuple:
+        return self._packed_workspace_state().decode_sessions
+
+    @_packed_decode_sessions.setter
+    def _packed_decode_sessions(self, value) -> None:
+        self._packed_workspace_state().decode_sessions = value
+
+    @property
+    def _packed_decode_last_layout(self):
+        return self._packed_workspace_state().decode_last_layout
+
+    @_packed_decode_last_layout.setter
+    def _packed_decode_last_layout(self, value) -> None:
+        self._packed_workspace_state().decode_last_layout = value
+
+    @property
+    def _packed_decode_state_dirty(self) -> bool:
+        return self._packed_workspace_state().decode_state_dirty
+
+    @_packed_decode_state_dirty.setter
+    def _packed_decode_state_dirty(self, value: bool) -> None:
+        self._packed_workspace_state().decode_state_dirty = bool(value)
+
+    @property
+    def _packed_decode_session_ids(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().decode_session_ids
+
+    @_packed_decode_session_ids.setter
+    def _packed_decode_session_ids(self, value) -> None:
+        self._packed_workspace_state().decode_session_ids = value
+
+    @property
+    def _packed_decode_positions(self) -> tuple[int, ...]:
+        return self._packed_workspace_state().decode_positions
+
+    @_packed_decode_positions.setter
+    def _packed_decode_positions(self, value) -> None:
+        self._packed_workspace_state().decode_positions = value
+
+    @property
+    def _packed_ar_attention_workspace(self):
+        return self._packed_workspace_state().ar_attention_workspace
+
+    @_packed_ar_attention_workspace.setter
+    def _packed_ar_attention_workspace(self, value) -> None:
+        self._packed_workspace_state().ar_attention_workspace = value
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -13523,7 +13776,10 @@ class Qwen35GGUFResidentSession:
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b3_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_selected_hidden_bf16: object | None = field(default=None, init=False, repr=False)
-    _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    _device_kv_pool: DeviceChunkedKVPool | GlobalDeviceKVPool | None = field(
+        default=None, init=False, repr=False
+    )
+    _workspace_kv_pool: GlobalDeviceKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -13979,6 +14235,62 @@ class Qwen35GGUFResidentSession:
             )
         self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
 
+    def resident_slot_view(self, slot: int) -> "Qwen35GGUFResidentSession":
+        """Create one lightweight logical session over a preallocated state slot.
+
+        The returned view owns no device allocation. Model weights, temporary
+        execution buffers, bulk-prefill scratch, and packed workspaces remain
+        owned by this batch session; only recurrent state, metadata, cursor,
+        graph bookkeeping, and the eventual KV lease are slot-local. Execution
+        is scheduler-serialized, so sharing temporary buffers is intentional.
+        """
+
+        owner = self._target_scratch_owner
+        if owner is None or self.scratch is None or self._target_layout is None:
+            raise RuntimeError("resident slot views require a live target scratch owner")
+        index = int(slot)
+        if index <= 0 or index >= int(owner.slot_count):
+            raise ValueError(
+                f"resident slot view {index} outside [1, {int(owner.slot_count)})"
+            )
+        view = copy(self)
+        view.max_batch_size = 1
+        view.scratch = owner.for_slot(index)
+        view._target_scratch_owner = owner
+        view._reset_current_slot_only = True
+        view._target_layout = replace(self._target_layout, max_batch_size=1)
+        view._owns_runner = False
+        view._buffers = ()
+        view._position = 0
+        view._device_kv_pool = None
+        view._device_kv_allocation = None
+        view._decode_graphs = []
+        view._decode_graph_submission_contexts = {}
+        view._device_kv_graph_handles = {}
+        view._int8_prefill_oracle_buffers = {}
+        view._linear_state_snapshot_backups = ()
+        # Share the batch owner's packed workspace bookkeeping: views never
+        # own a packed allocation and every resize/dirty check is owner-wide.
+        view.__dict__["_packed_ws_state"] = self._packed_workspace_state()
+        view.__dict__.pop("_resident_slot_views", None)
+        view._native_sampler_workspace = None
+        view._last_layer_output_hidden = {}
+        view.last_verify_stage_timings_ms = {}
+        view.last_packed_verify_stage_timings_ms = {}
+        view.last_prefill_gpu_stage_timings_ms = {}
+        view.last_decode_gpu_stage_timings_ms = {}
+        view.last_packed_prefill_plan = {}
+        view.last_packed_execution_manifest = {}
+        view._resident_batch_owner = self
+        view._resident_slot_index = index
+        views = self.__dict__.setdefault("_resident_slot_views", [])
+        if not any(
+            getattr(candidate, "_resident_slot_index", None) == index
+            for candidate in views
+        ):
+            views.append(view)
+        return view
+
     @property
     def position(self) -> int:
         """Next token position that will be consumed by :meth:`step`."""
@@ -14095,7 +14407,21 @@ class Qwen35GGUFResidentSession:
             + scale_bytes
             + mirror_bytes
         )
+        device_pool = self._device_kv_pool
+        storage_view = (
+            device_pool.storage_view()
+            if callable(getattr(device_pool, "storage_view", None))
+            else None
+        )
         return {
+            "pool_contract": (
+                "global_generation2"
+                if bool(getattr(device_pool, "generation2_compatible", False))
+                else "legacy_single_backing"
+            ),
+            "pool_storage_layout": (
+                None if storage_view is None else str(storage_view.layout_key)
+            ),
             "storage_dtype": layout.storage_dtype.value,
             "storage_layout": str(layout.storage_layout),
             "scale_dtype": layout.scale_dtype.value,
@@ -14125,9 +14451,36 @@ class Qwen35GGUFResidentSession:
             return 0
         return 0 if self.defer_kv_allocation else int(self.scratch.max_positions)
 
+    def bind_workspace_kv_pool(self, pool: GlobalDeviceKVPool | None) -> None:
+        """Bind the load-time global KV pool backing packed workspace leases.
+
+        Owner-wide: slot views delegate to the resident batch owner so the
+        shared packed workspace sees exactly one pool.
+        """
+
+        if pool is not None and not isinstance(pool, GlobalDeviceKVPool):
+            raise TypeError("packed workspace pool must be a GlobalDeviceKVPool")
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            delegate.bind_workspace_kv_pool(pool)
+            return
+        self._workspace_kv_pool = pool
+
+    @property
+    def packed_workspace_backing(self) -> str | None:
+        """Backing kind of the owner-shared packed workspace, when allocated."""
+
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            return delegate.packed_workspace_backing
+        state = self._packed_verify_state
+        if state is None:
+            return None
+        return str(getattr(state, "kv_backing_kind", "private"))
+
     def bind_device_kv_allocation(
         self,
-        pool: DeviceChunkedKVPool,
+        pool: DeviceChunkedKVPool | GlobalDeviceKVPool,
         allocation: DeviceKVPoolAllocation,
     ) -> None:
         """Bind one scheduler-owned allocation to this otherwise resident session."""
@@ -14498,6 +14851,15 @@ class Qwen35GGUFResidentSession:
     def _commit_prefix_state_clone(self, boundary: int, *, stream: int) -> None:
         self._set_full_attention_position_device(int(boundary), stream=int(stream))
         self._position = int(boundary)
+        # Slot-local clone must not discard owner-wide deferred packed decode
+        # state that other in-flight rows still need: scatter it back to the
+        # recorded sessions first, then clear the shared bookkeeping.
+        if bool(self._packed_decode_state_dirty):
+            if not self.flush_packed_decode_state():
+                raise RuntimeError(
+                    "GGUF slot state clone could not flush deferred packed"
+                    " decode state owned by other resident rows"
+                )
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -14626,6 +14988,135 @@ class Qwen35GGUFResidentSession:
                 backing, runtime=runtime
             ),
             page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
+        )
+
+    def create_global_device_kv_pool(
+        self,
+        *,
+        page_capacity: int,
+        generation: int,
+    ) -> GlobalDeviceKVPool:
+        """Allocate one stable arbitrary-page pool and per-plane pointer tables."""
+
+        capacity = int(page_capacity)
+        pool_generation = int(generation)
+        if capacity <= 0:
+            raise ValueError("GGUF global KV page capacity must be positive")
+        if pool_generation <= 0:
+            raise ValueError("GGUF global KV generation must be positive")
+        if not self.defer_kv_allocation:
+            raise RuntimeError("GGUF session was not created for deferred KV allocation")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        cfg = self.runner.weights.config
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        backing = _allocate_qwen35_gguf_kv_chunk(
+            self.runner,
+            runtime=runtime,
+            start_block_id=0,
+            pages=capacity,
+            layout=layout,
+        )
+        plane_page_pointers: dict[str, tuple[int, ...]] = {}
+
+        def add_plane(role: str, buffer: DeviceBuffer | None) -> None:
+            if buffer is None:
+                return
+            if int(buffer.nbytes) % capacity:
+                raise RuntimeError(
+                    f"GGUF global KV plane {role} does not contain whole pages"
+                )
+            page_nbytes = int(buffer.nbytes) // capacity
+            plane_page_pointers[role] = tuple(
+                int(buffer.ptr) + page_id * page_nbytes
+                for page_id in range(capacity)
+            )
+
+        for layer_id in range(len(layout.layer_storage_dtypes)):
+            add_plane(f"layer{layer_id}.key_payload", backing.full_key_caches[layer_id])
+            add_plane(f"layer{layer_id}.value_payload", backing.full_value_caches[layer_id])
+            add_plane(
+                f"layer{layer_id}.bf16_mirror_key",
+                backing.full_bf16_mirror_key_caches[layer_id],
+            )
+            add_plane(
+                f"layer{layer_id}.bf16_mirror_value",
+                backing.full_bf16_mirror_value_caches[layer_id],
+            )
+            add_plane(f"layer{layer_id}.key_scale", backing.full_k_scale_caches[layer_id])
+            add_plane(f"layer{layer_id}.value_scale", backing.full_v_scale_caches[layer_id])
+        if not plane_page_pointers:
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            raise RuntimeError("GGUF global KV layout has no full-attention planes")
+
+        pointer_tables: dict[str, DeviceBuffer] = {}
+        descriptor: DeviceBuffer | None = None
+        try:
+            for role, pointers in plane_page_pointers.items():
+                host = np.ascontiguousarray(pointers, dtype=np.uint64)
+                table = malloc(host.nbytes, runtime=runtime)
+                copy_host_to_device(
+                    table,
+                    host_array_ptr(host),
+                    host.nbytes,
+                    runtime=runtime,
+                )
+                pointer_tables[role] = table
+            descriptor_host = np.zeros((256,), dtype=np.uint8)
+            descriptor_host[:16] = np.asarray(
+                [pool_generation, capacity],
+                dtype=np.uint64,
+            ).view(np.uint8)
+            descriptor = malloc(descriptor_host.nbytes, runtime=runtime)
+            copy_host_to_device(
+                descriptor,
+                host_array_ptr(descriptor_host),
+                descriptor_host.nbytes,
+                runtime=runtime,
+            )
+        except Exception:
+            if descriptor is not None:
+                free(descriptor, runtime=runtime)
+            for table in reversed(tuple(pointer_tables.values())):
+                free(table, runtime=runtime)
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            raise
+
+        closed = False
+
+        def close_storage() -> None:
+            nonlocal closed
+            if closed:
+                return
+            assert descriptor is not None
+            free(descriptor, runtime=runtime)
+            for table in reversed(tuple(pointer_tables.values())):
+                free(table, runtime=runtime)
+            _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            closed = True
+
+        page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
+        fingerprint = (
+            f"{self.runner.backend}:qwen35_gguf:{Path(self.model_path).resolve()}:"
+            f"{self.kv_storage_dtype.value}:{self.kv_storage_layout}:"
+            f"{layout.scale_dtype.value}:{layout.scale_granularity}"
+        )
+        assert descriptor is not None
+        return GlobalDeviceKVPool(
+            page_bytes=page_bytes,
+            backend_fingerprint=fingerprint,
+            generation=pool_generation,
+            backing=backing,
+            plane_page_pointers=plane_page_pointers,
+            pointer_table_pointers={
+                role: int(table.ptr) for role, table in pointer_tables.items()
+            },
+            metadata_descriptor_pointer=int(descriptor.ptr),
+            close_storage=close_storage,
         )
 
     def decode_graph_min_replay_steps(self) -> int | None:
@@ -15253,6 +15744,15 @@ class Qwen35GGUFResidentSession:
             self._target_scratch_owner.zero_states(runtime, stream=stream)
         self._position = 0
         self._last_target_hidden_ptr = 0
+        # Slot-local reset must not discard owner-wide deferred packed decode
+        # state that other in-flight rows still need: scatter it back to the
+        # recorded sessions first, then clear the shared bookkeeping.
+        if bool(self._packed_decode_state_dirty):
+            if not self.flush_packed_decode_state():
+                raise RuntimeError(
+                    "GGUF slot reset could not flush deferred packed decode"
+                    " state owned by other resident rows"
+                )
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -16873,6 +17373,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
@@ -18807,6 +19308,18 @@ class Qwen35GGUFResidentSession:
         """Run bounded packed prefill and release every transient BF16 oracle."""
 
         session_tuple = (self,) if sessions is None else tuple(sessions)
+        # Decode graphs bind and mutate the shared private slots. Prefill is a
+        # different occupant of those same slots, so an old graph must not
+        # survive the overwrite and later replay against prefill-owned state.
+        # Close binding graphs first, then scatter the last synchronized graph
+        # state back to its sessions before the prefill reuses the workspace.
+        self._invalidate_live_packed_decode_graphs()
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            if not self.flush_packed_decode_state(stream=stream):
+                raise RuntimeError(
+                    "packed prefill could not flush deferred packed decode"
+                    " state before reusing the packed workspace slots"
+                )
         try:
             return self._prefill_batch_native_impl(
                 prompt_token_ids,
@@ -19165,6 +19678,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=slot_capacity,
             runtime=runtime,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         hidden_seed_buf = None
         if return_hidden_seeds:
             self._ensure_verify_block_buffers(rows, runtime=runtime)
@@ -19493,9 +20007,11 @@ class Qwen35GGUFResidentSession:
                 )
                 session._verify_hidden_seed_rows_populated = slot_rows
                 session._hidden_seed_fp32_populated = True
-        self._packed_decode_sessions = ()
-        self._packed_decode_last_layout = None
+        # Clear the scatter-dirty flag before the recipient tuple so an
+        # interleaved reader never observes dirty state with no recipients.
         self._packed_decode_state_dirty = False
+        self._packed_decode_last_layout = None
+        self._packed_decode_sessions = ()
         self._packed_decode_session_ids = (
             ()
             if slot_local_full_prefill
@@ -19622,6 +20138,7 @@ class Qwen35GGUFResidentSession:
             )
         )
         with (
+            native_batch_decode_session(2 <= rows <= 8),
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
             native_batch_decode_session(True),
@@ -19843,6 +20360,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
         )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
         split_workspace = (
             self._ensure_packed_ar_attention_workspace(
                 rows=rows,
@@ -21103,6 +21621,15 @@ class Qwen35GGUFResidentSession:
         return released_bytes
 
     def _free_packed_verify_workspace(self, *, runtime: HipRuntime) -> None:
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            delegate._free_packed_verify_workspace(runtime=runtime)
+            return
+        # Return pages to the allocator only after queued work that may
+        # still reference them has completed.
+        synchronize = getattr(runtime, "device_synchronize", None)
+        if callable(synchronize):
+            synchronize()
         attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
         if attention_workspace is not None:
             for buffer in reversed(attention_workspace.buffers):
@@ -21146,6 +21673,10 @@ class Qwen35GGUFResidentSession:
             or int(workspace.num_splits) < required_splits
         ):
             if workspace is not None:
+                self._invalidate_live_packed_decode_graphs()
+                synchronize = getattr(runtime, "device_synchronize", None)
+                if callable(synchronize):
+                    synchronize()
                 for buffer in reversed(workspace.buffers):
                     free(buffer, runtime=runtime)
             workspace = _GGUFPackedARAttentionWorkspace.allocate(
@@ -21157,6 +21688,93 @@ class Qwen35GGUFResidentSession:
             self._packed_ar_attention_workspace = workspace
         return workspace
 
+    def _invalidate_live_packed_decode_graphs(self) -> int:
+        """Close every graph that still binds the packed workspace buffers.
+
+        Growth must never free memory a replay graph still references, and
+        prefill must not overwrite private slots that a graph can replay.
+        Invalidate first and let the scheduler re-capture on the next eligible
+        round, mirroring ``invalidate_device_kv_graphs`` for pool rebinding.
+        """
+
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            return int(delegate._invalidate_live_packed_decode_graphs())
+        sessions = [self]
+        views = self.__dict__.get("_resident_slot_views")
+        if views:
+            sessions.extend(views)
+        closed = 0
+        candidates: list[object] = []
+        for session in sessions:
+            candidates.extend(getattr(session, "_decode_graphs", ()))
+            handles = getattr(session, "_device_kv_graph_handles", None)
+            if isinstance(handles, dict):
+                candidates.extend(handles.values())
+        seen: set[int] = set()
+        for graph in candidates:
+            if id(graph) in seen or bool(getattr(graph, "closed", False)):
+                continue
+            seen.add(id(graph))
+            close = getattr(graph, "close", None)
+            if not callable(close):
+                raise RuntimeError(
+                    "cannot resize the packed verify workspace: a live"
+                    " decode graph exposes no close()"
+                )
+            close()
+            closed += 1
+        return closed
+
+    def _packed_verify_union_geometry(
+        self,
+        *,
+        slot_count: int,
+        rows: int,
+        max_sequence_length: int,
+    ) -> tuple[int, int, int, int]:
+        """Union the request with current holdings and serving caps.
+
+        The workspace is sized once to the union of every geometry the serving
+        loop can request (prefill chunk width, physical packed width, the
+        1024-token context cap) so prefill/decode interleaving never frees or
+        reallocates buffers mid-tick.
+        """
+
+        state = self._packed_verify_state
+        scratch = self._packed_verify_scratch
+        capacity = getattr(self, "max_batch_size", None)
+        try:
+            capacity = max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, int(capacity))
+        except (TypeError, ValueError):
+            capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+        state_slots = capacity
+        state_max_seq = _PACKED_VERIFY_MIN_MAX_SEQUENCE
+        if state is not None:
+            state_slots = max(state_slots, int(state.slot_count))
+            state_max_seq = max(state_max_seq, int(state.max_sequence_length))
+        scratch_rows = self._packed_verify_prefill_row_cap()
+        scratch_segments = capacity
+        if scratch is not None:
+            scratch_rows = max(scratch_rows, int(scratch.rows))
+            scratch_segments = max(
+                scratch_segments, int(scratch.gdn_segment_capacity)
+            )
+        return (
+            max(slot_count, state_slots),
+            max(rows, scratch_rows),
+            max(max_sequence_length, state_max_seq),
+            max(slot_count, scratch_segments),
+        )
+
+    def _packed_verify_prefill_row_cap(self) -> int:
+        bulk = getattr(self, "_bulk_prefill_scratch", None)
+        rows = getattr(bulk, "rows", None)
+        try:
+            return max(int(rows), _PACKED_VERIFY_DEFAULT_PREFILL_ROWS)
+        except (TypeError, ValueError):
+            return _PACKED_VERIFY_DEFAULT_PREFILL_ROWS
+
     def _ensure_packed_verify_workspace(
         self,
         *,
@@ -21166,6 +21784,18 @@ class Qwen35GGUFResidentSession:
         runtime: HipRuntime,
         stream: int = 0,
     ) -> tuple[_GGUFPackedTargetState, object]:
+        delegate = getattr(self, "_resident_batch_owner", None)
+        if delegate is not None and delegate is not self:
+            state, scratch = delegate._ensure_packed_verify_workspace(
+                slot_count=slot_count,
+                rows=rows,
+                max_sequence_length=max_sequence_length,
+                runtime=runtime,
+                stream=stream,
+            )
+            self._packed_verify_state = state
+            self._packed_verify_scratch = scratch
+            return state, scratch
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
         slot_count = int(slot_count)
@@ -21190,25 +21820,42 @@ class Qwen35GGUFResidentSession:
             and int(self._packed_verify_scratch.gdn_segment_capacity) >= slot_count
         )
         if not state_ready or not scratch_ready:
+            # Genuine growth (never shrink): graphs must not bind the buffers
+            # we are about to free, and deferred decode state must be
+            # scattered back to the slot sessions first.
+            self._invalidate_live_packed_decode_graphs()
             if getattr(self, "_packed_decode_state_dirty", False):
                 if not self.flush_packed_decode_state(stream=stream):
                     raise RuntimeError(
                         "cannot resize packed workspace before deferred state is scattered"
                     )
             self._free_packed_verify_workspace(runtime=runtime)
+        (
+            union_slots,
+            union_rows,
+            union_max_seq,
+            union_segments,
+        ) = self._packed_verify_union_geometry(
+            slot_count=slot_count,
+            rows=rows,
+            max_sequence_length=max_sequence_length,
+        )
+        if self._packed_verify_state is None:
             self._packed_verify_state = _GGUFPackedTargetState.allocate(
                 self.runner,
-                slot_count=slot_count,
-                max_sequence_length=max_sequence_length,
+                slot_count=union_slots,
+                max_sequence_length=union_max_seq,
                 runtime=runtime,
                 kv_layout=kv_layout,
+                kv_pool=self._workspace_kv_pool,
             )
+        if self._packed_verify_scratch is None:
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
-                rows=rows,
-                capacity=max_sequence_length,
+                rows=union_rows,
+                capacity=union_max_seq,
                 allocate_kv_cache=False,
-                segments=slot_count,
+                segments=union_segments,
                 runtime=runtime,
             )
         if self._packed_verify_state is None or self._packed_verify_scratch is None:
@@ -21331,6 +21978,63 @@ class Qwen35GGUFResidentSession:
                 int(stream),
             )
 
+    def _copy_session_packed_kv_segments(
+        self,
+        session: "Qwen35GGUFResidentSession",
+        packed_state: _GGUFPackedTargetState,
+        slot_index: int,
+        layer_id: int,
+        *,
+        start_position: int,
+        rows: int,
+        packed_to_session: bool,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        """Copy KV rows between a session lease and one packed slot.
+
+        Both sides walk page-aligned segments: the session side through its
+        ``DeviceKVPoolAllocation`` block IDs, the packed side through the
+        packed state's leased ``page_ids``. This keeps copies exact when
+        either backing is a set of arbitrary arena pages.
+        """
+
+        for logical_start, session_physical, segment_rows in _gguf_device_kv_copy_segments(
+            session,
+            start_position=start_position,
+            rows=rows,
+        ):
+            for packed_logical, packed_physical, take in packed_state.copy_segments(
+                slot_index,
+                start_position=logical_start,
+                rows=segment_rows,
+            ):
+                session_start = int(session_physical) + (
+                    int(packed_logical) - int(logical_start)
+                )
+                if packed_to_session:
+                    self._copy_packed_kv_rows(
+                        packed_state,
+                        session.scratch,
+                        layer_id,
+                        source_start=int(packed_physical),
+                        destination_start=session_start,
+                        rows=int(take),
+                        runtime=runtime,
+                        stream=stream,
+                    )
+                else:
+                    self._copy_packed_kv_rows(
+                        session.scratch,
+                        packed_state,
+                        layer_id,
+                        source_start=session_start,
+                        destination_start=int(packed_physical),
+                        rows=int(take),
+                        runtime=runtime,
+                        stream=stream,
+                    )
+
     def _sync_packed_verify_initial_state(
         self,
         jobs: list[dict[str, object]],
@@ -21383,22 +22087,17 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= int(written_positions[slot_index]):
                         continue
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=0,
                         rows=start_position,
-                    ):
-                        self._copy_packed_kv_rows(
-                            session.scratch,
-                            packed_state,
-                            layer_id,
-                            source_start=physical_start,
-                            destination_start=physical_base + logical_start,
-                            rows=copy_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=False,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             written_positions[slot_index] = max(int(written_positions[slot_index]), start_position)
@@ -21420,6 +22119,15 @@ class Qwen35GGUFResidentSession:
         can_reuse = (
             self._packed_decode_session_ids == session_ids
             and len(prior_positions) == len(sessions)
+            # Import reuse additionally requires a consistent recorded
+            # session tuple; anything that discarded deferred state cleared
+            # it, and reusing across a private-slot reuse would attend over
+            # the wrong occupant's KV.
+            and tuple(
+                0 if session is None else id(session)
+                for session in self._packed_decode_sessions
+            )
+            == session_ids
         )
         cfg = self.runner.weights.config
         imported_slot_indices: list[int] = []
@@ -21460,22 +22168,17 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= 0:
                         continue
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=0,
                         rows=start_position,
-                    ):
-                        self._copy_packed_kv_rows(
-                            session.scratch,
-                            packed_state,
-                            layer_id,
-                            source_start=physical_start,
-                            destination_start=physical_base + logical_start,
-                            rows=copy_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=False,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
         return tuple(imported_slot_indices)
@@ -21720,24 +22423,19 @@ class Qwen35GGUFResidentSession:
                         stream,
                     )
                 elif layer_type == FULL_ATTENTION and copy_kv:
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     copy_start = 0 if copy_full_kv else start_position
                     copy_rows = end_position if copy_full_kv else slot_rows
-                    for logical_start, physical_start, segment_rows in _gguf_device_kv_copy_segments(
+                    self._copy_session_packed_kv_segments(
                         session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
                         start_position=copy_start,
                         rows=copy_rows,
-                    ):
-                        self._copy_packed_kv_rows(
-                            packed_state,
-                            session.scratch,
-                            layer_id,
-                            source_start=physical_base + logical_start,
-                            destination_start=physical_start,
-                            rows=segment_rows,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        packed_to_session=True,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 elif layer_type == FULL_ATTENTION:
                     continue
                 else:
@@ -21798,7 +22496,18 @@ class Qwen35GGUFResidentSession:
         if self._packed_verify_state is None or self._packed_decode_last_layout is None:
             return False
         if not self._packed_decode_sessions:
-            return False
+            # A packed prefill slab reused the slots after this deferred
+            # state was created, discarding its recipient sessions. There is
+            # nothing left to scatter; clear the stale bookkeeping --
+            # including the import-reuse tokens, or a later round with the
+            # same membership would skip the KV re-import and attend over
+            # the prefill's slots -- and let the next decode round
+            # re-gather state through its initial-state sync.
+            self._packed_decode_last_layout = None
+            self._packed_decode_state_dirty = False
+            self._packed_decode_session_ids = ()
+            self._packed_decode_positions = ()
+            return True
         runtime = self.runtime or get_hip_runtime()
         self._scatter_packed_decode_state(
             self._packed_decode_sessions,
@@ -21836,7 +22545,6 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         cfg = self.runner.weights.config
-        row_nbytes = self._packed_full_kv_row_nbytes()
         hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
         written_positions = list(self._packed_verify_max_written_positions)
         results: list[Qwen35GGUFBlockVerifyResult] = []
@@ -21924,23 +22632,16 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if defer_state_scatter:
                         continue
-                    src_key, src_value = packed_state.full_cache(layer_id)
-                    dst_key, dst_value = session.scratch.full_cache(layer_id)
-                    physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    nbytes = slot_rows * row_nbytes
-                    runtime.memcpy_async(
-                        dst_key.ptr + start_position * row_nbytes,
-                        src_key.ptr + (physical_base + start_position) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        dst_value.ptr + start_position * row_nbytes,
-                        src_value.ptr + (physical_base + start_position) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
+                    self._copy_session_packed_kv_segments(
+                        session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
+                        start_position=start_position,
+                        rows=slot_rows,
+                        packed_to_session=True,
+                        runtime=runtime,
+                        stream=stream,
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -22047,7 +22748,6 @@ class Qwen35GGUFResidentSession:
             stream,
         )
 
-        full_row_nbytes = self._packed_full_kv_row_nbytes()
         for layer_id, layer_type in enumerate(cfg.layer_types):
             if layer_type == LINEAR_ATTENTION:
                 src_pair = self._verify_linear_state_row_pair(layer_id)
@@ -22073,23 +22773,16 @@ class Qwen35GGUFResidentSession:
                     stream,
                 )
             elif layer_type == FULL_ATTENTION:
-                src_key, src_value = packed_state.full_cache(layer_id)
-                dst_key, dst_value = destination_session.scratch.full_cache(layer_id)
-                physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                nbytes = consumed_rows * full_row_nbytes
-                runtime.memcpy_async(
-                    dst_key.ptr + start_position * full_row_nbytes,
-                    src_key.ptr + (physical_base + start_position) * full_row_nbytes,
-                    nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-                runtime.memcpy_async(
-                    dst_value.ptr + start_position * full_row_nbytes,
-                    src_value.ptr + (physical_base + start_position) * full_row_nbytes,
-                    nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
+                self._copy_session_packed_kv_segments(
+                    destination_session,
+                    packed_state,
+                    slot_index,
+                    layer_id,
+                    start_position=start_position,
+                    rows=consumed_rows,
+                    packed_to_session=True,
+                    runtime=runtime,
+                    stream=stream,
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -22371,6 +23064,14 @@ class Qwen35GGUFResidentSession:
             raise ValueError("verify lm-head rows must be positive")
         if rows <= int(self._verify_lm_rows_capacity):
             return
+        # Growth frees buffers that live decode graphs may still bind (the
+        # token/index planes are replay targets). Invalidate binding graphs
+        # first and let the scheduler re-capture, mirroring the packed
+        # workspace growth contract.
+        self._invalidate_live_packed_decode_graphs()
+        synchronize = getattr(runtime, "device_synchronize", None)
+        if callable(synchronize):
+            synchronize()
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,
@@ -22453,13 +23154,61 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
+    def _verify_lm_head_rowtile_max_rows(self) -> int:
+        """Return the registered root-head rowtile's explicit width bound.
+
+        Width support belongs to the resolved four-axis primitive, not to a
+        model-wide quant branch or backend constant. Missing metadata fails
+        closed so the caller retains the ordinary linear fallback.
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            return 0
+        from hipengine.runtime.gguf_linear import (
+            GGUF_ACTIVATION_BF16,
+            resolve_gguf_linear_dispatch,
+        )
+
+        try:
+            weight = self.runner.weights.root("lm_head")
+            dispatch = resolve_gguf_linear_dispatch(
+                weight,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend=self.runner.backend,
+                rows=2,
+            )
+            if dispatch.abi != "t16":
+                return 0
+            rowtile_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "t16_gemv_rowtile_bf16_f32_out",
+            )
+            if not is_registered(rowtile_key):
+                return 0
+            rowtile = resolve(
+                backend=rowtile_key.backend,
+                layer=rowtile_key.layer,
+                quant=rowtile_key.quant,
+                variant=rowtile_key.variant,
+            )
+            max_rows = int(getattr(rowtile, "_hipengine_max_rows", 0))
+        except (KeyError, TypeError, ValueError):
+            return 0
+        return max_rows if 2 <= max_rows <= 8 else 0
+
     def _verify_lm_head_rowtile_chunked(
         self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
     ) -> bool:
         rows = int(rows)
         if rows <= 0:
             raise ValueError("rows must be positive")
-        if rows <= 8:
+        primitive_max_rows = self._verify_lm_head_rowtile_max_rows()
+        if primitive_max_rows < 2:
+            return False
+        if rows <= primitive_max_rows:
             return self._verify_lm_head_rowtile(
                 hidden_ptr,
                 out_ptr,
@@ -22486,6 +23235,7 @@ class Qwen35GGUFResidentSession:
         )
         if max_chunk < 2 or max_chunk > 8:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 8]")
+        max_chunk = min(max_chunk, primitive_max_rows)
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False
@@ -22512,7 +23262,7 @@ class Qwen35GGUFResidentSession:
     ) -> bool:
         """Accuracy-traded verifier lm-head path matching the llama-compat top-1 class."""
 
-        if not _gguf_verify_lm_head_q6_top1_dp4a_enabled():
+        if not _gguf_verify_lm_head_q6_top1_dp4a_enabled() or int(rows) != 1:
             return False
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -23759,7 +24509,15 @@ def _allocate_prefill_scratch_liveness_owner_slots(
             slot_members.append([name])
             slot_sizes.append(size)
 
-    owners = tuple(malloc(_align_prefill_scratch(size), runtime=runtime) for size in slot_sizes)
+    tracked: list[DeviceBuffer] = []
+    try:
+        for size in slot_sizes:
+            tracked.append(malloc(_align_prefill_scratch(size), runtime=runtime))
+    except BaseException:
+        for buffer in reversed(tracked):
+            free(buffer, runtime=runtime)
+        raise
+    owners = tuple(tracked)
     views: dict[str, DeviceBuffer] = {}
     virtual_offsets: dict[str, tuple[int, int]] = {}
     field_groups: dict[str, str] = {}
@@ -24527,243 +25285,254 @@ class _GGUFFullAttentionPrefillScratch:
             tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
         ] = MappingProxyType({})
         owners: list[DeviceBuffer] = []
-        liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
-            runner,
-            rows=rows,
-        )
-        scratch_lifetimes = (
-            _GGUF_PREFILL_SCRATCH_LIFETIMES
-            if bool(cfg.is_moe)
-            else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
-        )
-        if liveness_disabled_fields is not None:
-            if (
-                _gguf_gdn_prefill_session_mode(
-                    runner.backend,
-                    weights=getattr(runner, "weights", None),
-                    cfg=getattr(getattr(runner, "weights", None), "config", None),
+        try:
+            liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
+                runner,
+                rows=rows,
+            )
+            scratch_lifetimes = (
+                _GGUF_PREFILL_SCRATCH_LIFETIMES
+                if bool(cfg.is_moe)
+                else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
+            )
+            if liveness_disabled_fields is not None:
+                # NOTE: no conv_out lifetime override here. 59fd48631 briefly
+                # shrank conv_out to stage (2, 4) so its full-row plane could share
+                # arena pages with recurrent_out on the claim that split prepare
+                # consumes conv_out completely before recurrence begins. That is
+                # false: the exact recurrence reads the full convolution sequence
+                # while writing recurrent_out, so the shared pages alias and
+                # corrupt state in multi-row prefill (bit-exactness broken for
+                # packed c2/c8 vs independent c1; W7900 state oracle 2026-08-17).
+                # Keep the base ("linear", 2, 5) lifetime for every GDN mode.
+                arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
+                # Dense SiLU consumes gate/up elementwise and may replace the dead
+                # gate plane in place.  Keep this intentional source/output alias
+                # separate from ordinary stage-disjoint arena coloring. Owner-slot
+                # arenas cannot describe subranges and retain the ordinary layout.
+                inplace_aliases = (
+                    {"ffn_intermediate": "ffn_gate_up"}
+                    if not bool(cfg.is_moe) and arena_grouping == "single"
+                    else {}
                 )
-                != "fused"
-            ):
-                # Split GDN prepare consumes conv_out completely before
-                # recurrent_out begins. End stage 4 is exclusive, so both
-                # full-row planes may share physical arena pages while keeping
-                # the admitted kernels and raw-pointer ABI unchanged.
-                scratch_lifetimes = MappingProxyType(
+                active_names = {
+                    name
+                    for name in field_sizes
+                    if name not in liveness_disabled_fields and name not in inactive_fields
+                }
+                active_sizes = {
+                    name: int(field_sizes[name])
+                    for name in active_names
+                    if name not in inplace_aliases
+                }
+                allocation_plan_lifetimes = dict(scratch_lifetimes)
+                planned_subranges: dict[
+                    str,
+                    tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
+                ] = {}
+                for alias, source in inplace_aliases.items():
+                    source_lifetimes = scratch_lifetimes[source]
+                    alias_lifetimes = scratch_lifetimes[alias]
+                    alias_nbytes = int(field_sizes[alias])
+                    source_nbytes = int(field_sizes[source])
+                    combined_lifetimes = tuple(
+                        dict.fromkeys((*source_lifetimes, *alias_lifetimes))
+                    )
+                    allocation_plan_lifetimes[source] = combined_lifetimes
+                    source_subranges = [(0, alias_nbytes, combined_lifetimes)]
+                    if source_nbytes > alias_nbytes:
+                        source_subranges.append(
+                            (
+                                alias_nbytes,
+                                source_nbytes - alias_nbytes,
+                                source_lifetimes,
+                            )
+                        )
+                    planned_subranges[source] = tuple(source_subranges)
+                arenas, active_fields, allocation_offsets, allocation_groups = (
+                    _allocate_prefill_scratch_liveness_arenas(
+                        active_sizes,
+                        grouping=arena_grouping,
+                        runtime=runtime,
+                        lifetimes=allocation_plan_lifetimes,
+                        allocation_subranges=planned_subranges,
+                        priority_min_live_stages=(
+                            _gguf_prefill_scratch_priority_min_live_stages(
+                                runner,
+                                rows=rows,
+                            )
+                        ),
+                    )
+                )
+                fields = {
+                    name: (
+                        _GGUF_PREFILL_SCRATCH_EMPTY
+                        if name in liveness_disabled_fields or name in inactive_fields
+                        else active_fields.get(name)
+                    )
+                    for name in field_sizes
+                }
+                offsets = dict(allocation_offsets)
+                groups = dict(allocation_groups)
+                for alias, source in inplace_aliases.items():
+                    alias_nbytes = int(field_sizes[alias])
+                    source_view = fields[source]
+                    if source_view is None or alias_nbytes > int(source_view.nbytes):
+                        raise RuntimeError(
+                            f"invalid dense prefill in-place alias {alias} -> {source}"
+                        )
+                    fields[alias] = DeviceBuffer(
+                        ptr=int(source_view.ptr),
+                        nbytes=alias_nbytes,
+                    )
+                    source_offset, _source_nbytes = offsets[source]
+                    offsets[alias] = (int(source_offset), alias_nbytes)
+                    groups[alias] = groups[source]
+                owners.extend(arenas)
+                allocation_mode = "liveness_aliased"
+                allocation_offsets = MappingProxyType(offsets)
+                allocation_lifetimes = MappingProxyType(
                     {
-                        **scratch_lifetimes,
-                        "conv_out": (("linear", 2, 4),),
+                        name: (
+                            scratch_lifetimes[name]
+                            if name in inplace_aliases
+                            else allocation_plan_lifetimes[name]
+                        )
+                        for name in active_names
                     }
                 )
-            arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
-            # Dense SiLU consumes gate/up elementwise and may replace the dead
-            # gate plane in place.  Keep this intentional source/output alias
-            # separate from ordinary stage-disjoint arena coloring. Owner-slot
-            # arenas cannot describe subranges and retain the ordinary layout.
-            inplace_aliases = (
-                {"ffn_intermediate": "ffn_gate_up"}
-                if not bool(cfg.is_moe) and arena_grouping == "single"
-                else {}
-            )
-            active_names = {
-                name
-                for name in field_sizes
-                if name not in liveness_disabled_fields and name not in inactive_fields
-            }
-            active_sizes = {
-                name: int(field_sizes[name])
-                for name in active_names
-                if name not in inplace_aliases
-            }
-            allocation_plan_lifetimes = dict(scratch_lifetimes)
-            planned_subranges: dict[
-                str,
-                tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-            ] = {}
-            for alias, source in inplace_aliases.items():
-                source_lifetimes = scratch_lifetimes[source]
-                alias_lifetimes = scratch_lifetimes[alias]
-                alias_nbytes = int(field_sizes[alias])
-                source_nbytes = int(field_sizes[source])
-                combined_lifetimes = tuple(
-                    dict.fromkeys((*source_lifetimes, *alias_lifetimes))
-                )
-                allocation_plan_lifetimes[source] = combined_lifetimes
-                source_subranges = [(0, alias_nbytes, combined_lifetimes)]
-                if source_nbytes > alias_nbytes:
-                    source_subranges.append(
-                        (
-                            alias_nbytes,
-                            source_nbytes - alias_nbytes,
-                            source_lifetimes,
-                        )
+                allocation_groups = MappingProxyType(groups)
+                allocation_inplace_aliases = MappingProxyType(inplace_aliases)
+                allocation_subranges = MappingProxyType(planned_subranges)
+            else:
+                fields = {}
+                for name, nbytes in field_sizes.items():
+                    buffer = (
+                        _GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes)
                     )
-                planned_subranges[source] = tuple(source_subranges)
-            arenas, active_fields, allocation_offsets, allocation_groups = (
-                _allocate_prefill_scratch_liveness_arenas(
-                    active_sizes,
-                    grouping=arena_grouping,
-                    runtime=runtime,
-                    lifetimes=allocation_plan_lifetimes,
-                    allocation_subranges=planned_subranges,
-                    priority_min_live_stages=(
-                        _gguf_prefill_scratch_priority_min_live_stages(
-                            runner,
-                            rows=rows,
-                        )
-                    ),
-                )
-            )
-            fields = {
-                name: (
-                    _GGUF_PREFILL_SCRATCH_EMPTY
-                    if name in liveness_disabled_fields or name in inactive_fields
-                    else active_fields.get(name)
-                )
-                for name in field_sizes
-            }
-            offsets = dict(allocation_offsets)
-            groups = dict(allocation_groups)
-            for alias, source in inplace_aliases.items():
-                alias_nbytes = int(field_sizes[alias])
-                source_view = fields[source]
-                if source_view is None or alias_nbytes > int(source_view.nbytes):
-                    raise RuntimeError(
-                        f"invalid dense prefill in-place alias {alias} -> {source}"
-                    )
-                fields[alias] = DeviceBuffer(
-                    ptr=int(source_view.ptr),
-                    nbytes=alias_nbytes,
-                )
-                source_offset, _source_nbytes = offsets[source]
-                offsets[alias] = (int(source_offset), alias_nbytes)
-                groups[alias] = groups[source]
-            owners.extend(arenas)
-            allocation_mode = "liveness_aliased"
-            allocation_offsets = MappingProxyType(offsets)
-            allocation_lifetimes = MappingProxyType(
-                {
-                    name: (
-                        scratch_lifetimes[name]
-                        if name in inplace_aliases
-                        else allocation_plan_lifetimes[name]
-                    )
-                    for name in active_names
-                }
-            )
-            allocation_groups = MappingProxyType(groups)
-            allocation_inplace_aliases = MappingProxyType(inplace_aliases)
-            allocation_subranges = MappingProxyType(planned_subranges)
-        else:
-            fields = {
-                name: (_GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes))
-                for name, nbytes in field_sizes.items()
-            }
-            owners.extend(
-                value for name, value in fields.items() if name not in inactive_fields
-            )
+                    fields[name] = buffer
+                    if name not in inactive_fields:
+                        owners.append(buffer)
 
-        dedicated_fields = {
-            "gdn_cu_seqlens": buf((segments + 1) * DType.INT32.itemsize),
-            "gdn_state_indices": buf(segments * DType.INT64.itemsize),
-            "key_cache": buf(cache_nbytes) if allocate_kv_cache else None,
-            "value_cache": buf(cache_nbytes) if allocate_kv_cache else None,
-            "block_table": buf(block_table_arr.nbytes),
-            "positions": buf(positions_arr.nbytes),
-            "context_counts": buf(context_arr.nbytes),
-            "cu_q": buf(cu_arr.nbytes),
-            "cu_k": buf(cu_arr.nbytes),
-            "softmax_lse": buf(cfg.head_count * rows * 4),
-            "full_attn_split_partial": buf(full_attn_split_partial_bytes),
-            "full_attn_split_m": buf(full_attn_split_stat_bytes),
-            "full_attn_split_l": buf(full_attn_split_stat_bytes),
-            "atomic": buf(atomic_arr.nbytes),
-            "moe_router_counter": buf(DType.INT32.itemsize),
-        }
-        fields.update(dedicated_fields)
-        owners.extend(value for value in dedicated_fields.values() if value is not None)
-        copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
-        copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
-        copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
-        copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
-        copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
-        copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
-        copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
-        gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
-        copy_host_to_device(
-            fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
-        )
-        copy_host_to_device(
-            fields["gdn_state_indices"],
-            host_array_ptr(gdn_state_indices_arr),
-            gdn_state_indices_arr.nbytes,
-            runtime=runtime,
-        )
-        block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
-        positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
-        context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
-        append_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table_tensor,
-            live_counts=positions_tensor,
-            max_live_count=rows - 1,
-            storage_dtype=DType.BF16,
-            row_positions=positions_tensor,
-            span_role="prefill",
-        )
-        prefill_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table_tensor,
-            live_counts=context_tensor,
-            max_live_count=rows,
-            storage_dtype=DType.BF16,
-            row_positions=positions_tensor,
-            span_role="prefill",
-        )
-        weights = getattr(runner, "weights", None)
-        cfg = getattr(weights, "config", None)
-        try:
-            gdn_mode = _gguf_gdn_prefill_session_mode(
-                runner.backend, weights=weights, cfg=cfg
-            )
-        except ValueError:
-            # Unvalidated/exotic backends have no capability policy; keep the
-            # neutral frozen marker so dispatch still resolves env-side.
-            gdn_mode = "auto"
-        return cls(
-            **fields,
-            rows=rows,
-            backend=runner.backend,
-            gdn_effective_mode=gdn_mode,
-            gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
-            block_table_tensor=block_table_tensor,
-            positions_tensor=positions_tensor,
-            context_counts_tensor=context_tensor,
-            retained_key_cache=None,
-            retained_value_cache=None,
-            retained_append_spans=None,
-            append_spans=append_spans,
-            prefill_spans=prefill_spans,
-            block_size=block_size,
-            blocks=blocks,
-            max_positions=capacity,
-            full_attn_split_batch_rows=full_attn_split_batch_rows,
-            full_attn_split_count=full_attn_split_count,
-            moe_group_counts_zero=moe_group_counts_zero,
-            moe_scatter_offsets_zero=moe_scatter_offsets_zero,
-            moe_wmma_total_host=moe_wmma_total_host,
-            moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
-            moe_selected_rows_capacity=moe_selected_rows_capacity,
-            moe_wmma_rows_capacity=moe_wmma_rows_capacity,
-            buffers=tuple(owners),
-            runtime_state_library=runtime_state_library,
-            allocation_mode=allocation_mode,
-            allocation_offsets=allocation_offsets,
-            allocation_lifetimes=allocation_lifetimes,
-            allocation_groups=allocation_groups,
-            allocation_inplace_aliases=allocation_inplace_aliases,
-            allocation_subranges=allocation_subranges,
-            gdn_segment_capacity=segments,
-            gdn_active_segments=1,
-        )
+            dedicated_fields: dict[str, DeviceBuffer | None] = {}
+            for name, nbytes in (
+                ("gdn_cu_seqlens", (segments + 1) * DType.INT32.itemsize),
+                ("gdn_state_indices", segments * DType.INT64.itemsize),
+                ("block_table", block_table_arr.nbytes),
+                ("positions", positions_arr.nbytes),
+                ("context_counts", context_arr.nbytes),
+                ("cu_q", cu_arr.nbytes),
+                ("cu_k", cu_arr.nbytes),
+                ("softmax_lse", cfg.head_count * rows * 4),
+                ("full_attn_split_partial", full_attn_split_partial_bytes),
+                ("full_attn_split_m", full_attn_split_stat_bytes),
+                ("full_attn_split_l", full_attn_split_stat_bytes),
+                ("atomic", atomic_arr.nbytes),
+                ("moe_router_counter", DType.INT32.itemsize),
+            ):
+                buffer = buf(nbytes)
+                dedicated_fields[name] = buffer
+                owners.append(buffer)
+            if allocate_kv_cache:
+                for name in ("key_cache", "value_cache"):
+                    buffer = buf(cache_nbytes)
+                    dedicated_fields[name] = buffer
+                    owners.append(buffer)
+            else:
+                dedicated_fields["key_cache"] = None
+                dedicated_fields["value_cache"] = None
+            fields.update(dedicated_fields)
+            try:
+                copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
+                copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
+                copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
+                copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
+                copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
+                copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+                copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
+                gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
+                copy_host_to_device(
+                    fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+                )
+                copy_host_to_device(
+                    fields["gdn_state_indices"],
+                    host_array_ptr(gdn_state_indices_arr),
+                    gdn_state_indices_arr.nbytes,
+                    runtime=runtime,
+                )
+                block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
+                positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
+                context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
+                append_spans = KVLiveSpans.paged_uniform(
+                    block_table=block_table_tensor,
+                    live_counts=positions_tensor,
+                    max_live_count=rows - 1,
+                    storage_dtype=DType.BF16,
+                    row_positions=positions_tensor,
+                    span_role="prefill",
+                )
+                prefill_spans = KVLiveSpans.paged_uniform(
+                    block_table=block_table_tensor,
+                    live_counts=context_tensor,
+                    max_live_count=rows,
+                    storage_dtype=DType.BF16,
+                    row_positions=positions_tensor,
+                    span_role="prefill",
+                )
+                weights = getattr(runner, "weights", None)
+                cfg = getattr(weights, "config", None)
+                try:
+                    gdn_mode = _gguf_gdn_prefill_session_mode(
+                        runner.backend, weights=weights, cfg=cfg
+                    )
+                except ValueError:
+                    # Unvalidated/exotic backends have no capability policy; keep the
+                    # neutral frozen marker so dispatch still resolves env-side.
+                    gdn_mode = "auto"
+                return cls(
+                    **fields,
+                    rows=rows,
+                    backend=runner.backend,
+                    gdn_effective_mode=gdn_mode,
+                    gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
+                    block_table_tensor=block_table_tensor,
+                    positions_tensor=positions_tensor,
+                    context_counts_tensor=context_tensor,
+                    retained_key_cache=None,
+                    retained_value_cache=None,
+                    retained_append_spans=None,
+                    append_spans=append_spans,
+                    prefill_spans=prefill_spans,
+                    block_size=block_size,
+                    blocks=blocks,
+                    max_positions=capacity,
+                    full_attn_split_batch_rows=full_attn_split_batch_rows,
+                    full_attn_split_count=full_attn_split_count,
+                    moe_group_counts_zero=moe_group_counts_zero,
+                    moe_scatter_offsets_zero=moe_scatter_offsets_zero,
+                    moe_wmma_total_host=moe_wmma_total_host,
+                    moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
+                    moe_selected_rows_capacity=moe_selected_rows_capacity,
+                    moe_wmma_rows_capacity=moe_wmma_rows_capacity,
+                    buffers=tuple(owners),
+                    runtime_state_library=runtime_state_library,
+                    allocation_mode=allocation_mode,
+                    allocation_offsets=allocation_offsets,
+                    allocation_lifetimes=allocation_lifetimes,
+                    allocation_groups=allocation_groups,
+                    allocation_inplace_aliases=allocation_inplace_aliases,
+                    allocation_subranges=allocation_subranges,
+                    gdn_segment_capacity=segments,
+                    gdn_active_segments=1,
+                )
+            except BaseException:
+                for buffer in reversed(owners):
+                    free(buffer, runtime=runtime)
+                raise
+        except BaseException:
+            for buffer in reversed(owners):
+                free(buffer, runtime=runtime)
+            raise
 
     def for_chunk(self, start: int, rows: int, total_tokens: int, *, runtime: HipRuntime, stream: int = 0):
         start = int(start)
@@ -26996,7 +27765,8 @@ def _resolve_gguf_linear_attention_decode_batch_plan(
 def _resolve_gguf_gdn_prefill_plan(
     backend: str = "hip_gfx1100",
 ) -> _GGUFGDNPrefillPlan:
-    register_qwen35_linear_attn_gdn_kernels()
+    # Backend/module import owns registration. Do not re-register the whole GDN
+    # family here: that would overwrite plugin or test overrides during prefill.
     load_backend_kernel_package(backend)
 
     def _resolve(key: KernelKey):

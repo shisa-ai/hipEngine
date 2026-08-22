@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_q5_q6_rowtile8_actual_operation_gate",
+  "created_at": "2026-08-20T13:30:00+00:00",
+  "status": "accepted_correctness_gate",
+  "passed": true,
+  "performance_claim": false,
+  "host": {
+    "name": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_size_bytes": 17106773984,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "q5": {
+    "commit": "949f3703c8a594b152cf30111a3439c79a9c8e9d",
+    "command": "python3 scripts/qwen38_q5_t16_actual_operation_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --compiler-version-file /tmp/compiler-version.txt --require-cached-build --full-model-smoke /tmp/qwen38-rowtile-review-smoke-clean/smoke.json --output /tmp/qwen38-rowtile-review-smoke-clean/q5-actual.json",
+    "layers": [0, 1, 2, 4],
+    "rows": [1, 2, 3, 4, 5, 6, 7, 8, 16, 33, 512, 1024, 4096],
+    "operation_verdicts": 52,
+    "all_bf16_exact_to_selected_physical_oracle": true,
+    "rows5_8_exact": true,
+    "all_finite": true,
+    "cpu_quality": {
+      "max_kl": 0.00005487642646974638,
+      "top1_matches": 64,
+      "top1_total": 64,
+      "top1_agreement": 1.0,
+      "max_abs": 0.021106719970703125,
+      "passed": true
+    },
+    "ownership": {
+      "q5_t16_bytes": 1061683200,
+      "dense_bf16_shadow_bytes": 0,
+      "teardown_exact": true
+    },
+    "source": {
+      "local_path": "/tmp/qwen38-rowtile-review-smoke-clean/q5-actual.json",
+      "sha256": "305be6844009cde5ddf4b477ddf1d47002686e8a377e072f684fc1198597c42c",
+      "bytes": 22293,
+      "git_dirty": false
+    }
+  },
+  "q6": {
+    "commit": "f19b1039df42fe8cc88a939e6f0c824f9f6457a6",
+    "command": "python3 scripts/qwen38_q6_planar_actual_operation_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --compiler-version-file /tmp/compiler-version.txt --require-cached-build --full-model-smoke /tmp/qwen38-rowtile-review-smoke-clean/smoke.json --output /tmp/qwen38-rowtile-review-smoke-clean/q6-actual.json",
+    "roles": ["wide_ffn_down", "wide_qkv", "narrow_v", "root_lm_head"],
+    "bf16_rows": [1, 2, 3, 4, 5, 6, 7, 8],
+    "f32_rows": [1, 2, 3, 4],
+    "operation_verdicts": 55,
+    "all_bit_exact_to_standard_q6_t16": true,
+    "bf16_rows5_8_exact": true,
+    "all_finite": true,
+    "cpu_quality": {
+      "max_kl": 0.00000012086090926308203,
+      "top1_matches": 16,
+      "top1_total": 16,
+      "top1_agreement": 1.0,
+      "max_abs": 0.004004478454589844,
+      "passed": true
+    },
+    "ownership": {
+      "planar_q6_bytes": 4449177600,
+      "standard_q6_shadow_bytes": 0,
+      "dense_bf16_shadow_bytes": 0,
+      "teardown_exact": true
+    },
+    "source": {
+      "local_path": "/tmp/qwen38-rowtile-review-smoke-clean/q6-actual.json",
+      "sha256": "e3603701f03c8211e1ca42ffc3496c43b7de68ead0043f57fc401c4ab639fa70",
+      "bytes": 22088,
+      "git_dirty": false
+    }
+  },
+  "full_model_smoke": {
+    "commit": "f49a49a6f546c88957814cbe4706b64cd761997d",
+    "command": "python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 512 --decode-tokens 8 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --graph-replay-decode --compiler-version-file /tmp/compiler-version.txt --require-cached-build --json /tmp/qwen38-rowtile-review-smoke-clean/smoke.json",
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "production_graph": true,
+    "tracked_teardown_bytes": 0,
+    "source": {
+      "local_path": "/tmp/qwen38-rowtile-review-smoke-clean/smoke.json",
+      "sha256": "2df86f1d41103b6216b3f6d5e96f6cb46bd297d80db19171e7f69db4b9362ed1",
+      "bytes": 325320,
+      "git_dirty": false
+    }
+  },
+  "limitations": [
+    "Correctness/ownership gate only; performance is reported in the separate clean combined c1-c8 promotion packet.",
+    "Fixed synthetic activations over actual immutable model tensors; dynamic server lifecycle certification remains separate.",
+    "gfx1100 only; gfx1151 requires independent measurement and qualification."
+  ]
+}

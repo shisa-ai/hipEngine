@@ -434,14 +434,19 @@ class _DeviceKVPoolChunkState:
 
 
 class DeviceChunkedKVPool:
-    """Chunked page allocator whose chunks own real runtime backing.
+    """Generation-1 single-backing compatibility allocator.
 
     The allocator invokes ``allocate_chunk`` only when it appends a chunk and
-    ``free_chunk`` only for fully-free, graph-unpinned tail chunks.  A request's
-    pages always come from one backing chunk so kernels with a base pointer plus
-    int32 block-table ABI can address every page without a pointer-table ABI
-    change.  Logical block ids are monotonic and are never reused after shrink.
+    ``free_chunk`` only for fully-free, graph-unpinned tail chunks. A request's
+    pages always come from one backing chunk so legacy kernels with a base
+    pointer plus int32 block-table ABI can address every page. Generation-2
+    production backends use ``GlobalKVPoolSet`` and stable arbitrary-page
+    pointer tables instead. Logical block ids remain monotonic here and are
+    never reused after shrink.
     """
+
+    generation2_compatible = False
+    compatibility_reason = "legacy_single_backing_base_pointer_abi"
 
     def __init__(
         self,

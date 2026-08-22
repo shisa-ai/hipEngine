@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Requalify the gfx1151 GGUF Q8T16 all-rowtile batch route.
+"""Requalify GGUF packed batch routes against independent strict-c1 teachers.
 
-The adapter compares full-vocabulary packed c4/c8 and width-transition outputs
-against independent strict-c1 teacher trajectories. It also exercises sparse
-physical-c8 masks and exact candidate repeats. The capture is numerical and
-transition evidence only: it does not fabricate full control telemetry, task
-verdicts, or a runtime-resolved production-profile manifest.
+The default profile retains the gfx1151 Q8T16 c4/c8 candidate protocol. The
+explicit ``current_package_direct`` profile instead evaluates the current
+package's direct c3/c5/c6/c7 routes and their width transitions without forcing
+candidate environment overrides. Both profiles exercise sparse physical-c8
+masks and exact candidate repeats. The capture is numerical and transition
+evidence only: it does not fabricate full control telemetry, task verdicts, or
+a runtime-resolved production-profile manifest.
 """
 
 from __future__ import annotations
@@ -28,13 +30,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.benchmark.execution_profiles import (
+from hipengine.benchmark.execution_profiles import (  # noqa: E402
     EvaluationThresholds,
     RowDescriptor,
     compare_profile_logits,
 )
-from hipengine.benchmark.provenance import collect_artifact_provenance
-from scripts.execution_profile_gdn_calibration import (
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from scripts.execution_profile_gdn_calibration import (  # noqa: E402
     CalibrationError,
     _file_sha256,
     _matrix_sha256,
@@ -42,14 +44,17 @@ from scripts.execution_profile_gdn_calibration import (
     _trajectory_sha256,
     validate_strict_baseline,
 )
-from scripts.gguf_gdn_semantic_gate import (
+from scripts.gguf_gdn_semantic_gate import (  # noqa: E402
     DEFAULT_PROMPTS,
     _configure_gate_environment,
     _load_suites,
 )
-from scripts.gguf_gdn_trajectory_gate import _gdn_mode, _run_logits_trajectory
-from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.gguf_mtp_category_bench import prompt_sha256
+from scripts.gguf_gdn_trajectory_gate import (  # noqa: E402
+    _gdn_mode,
+    _run_logits_trajectory,
+)
+from scripts.gguf_mtp_bench import build_chat_prompt  # noqa: E402
+from scripts.gguf_mtp_category_bench import prompt_sha256  # noqa: E402
 
 KIND = "hipengine_execution_profile_gguf_batch_route_requalification_capture"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -63,8 +68,12 @@ ROUTER_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
 ROUTER_PERSISTENT_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
 _router_candidate_enabled = False
 DEFAULT_GDN_MODE = "chain_lds32_direct_nonvolatile"
-SUPPORTED_WIDTHS = frozenset({1, 2, 4, 8})
+ROUTE_PROFILE_Q8T16 = "q8t16_candidate"
+ROUTE_PROFILE_CURRENT_DIRECT = "current_package_direct"
+SUPPORTED_WIDTHS = frozenset(range(1, 9))
+DIRECT_STATIC_WIDTHS = frozenset({3, 5, 6, 7})
 DEFAULT_DYNAMIC_SCHEDULE = ((0, 8), (6, 4), (12, 2), (18, 1))
+DIRECT_DYNAMIC_SCHEDULE = ((0, 7), (6, 6), (12, 5), (18, 3))
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +262,36 @@ def _rowtile_policy(enabled: bool) -> Iterator[None]:
 
 
 @contextlib.contextmanager
+def _current_package_policy() -> Iterator[None]:
+    """Use package defaults while restoring any caller diagnostic overrides."""
+
+    keys = (POLICY_ENV, ROUTER_COOP_ENV, ROUTER_PERSISTENT_ENV)
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        for key in keys:
+            os.environ.pop(key, None)
+        yield
+    finally:
+        for key, prior in previous.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+@contextlib.contextmanager
+def _candidate_route_policy(route_profile: str) -> Iterator[None]:
+    if str(route_profile) == ROUTE_PROFILE_CURRENT_DIRECT:
+        with _current_package_policy():
+            yield
+        return
+    if str(route_profile) != ROUTE_PROFILE_Q8T16:
+        raise ValueError(f"unsupported batch-route profile {route_profile!r}")
+    with _rowtile_policy(True):
+        yield
+
+
+@contextlib.contextmanager
 def _candidate_bundle_policy(
     candidate: bool,
     *,
@@ -331,12 +370,13 @@ def _run_static_group(
     decode_steps: int,
     repeat_runs: int,
     gdn_mode: str,
+    route_profile: str,
 ) -> list[list[tuple[dict[str, object], ...]]]:
     all_runs: list[list[tuple[dict[str, object], ...]]] = []
     for _ in range(int(repeat_runs)):
         _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
-        with _rowtile_policy(True):
+        with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
                 token_ids = [
                     int(strict[str(row["id"])][step]["token_id"])
@@ -379,6 +419,7 @@ def _run_dynamic(
     decode_steps: int,
     repeat_runs: int,
     gdn_mode: str,
+    route_profile: str,
 ) -> tuple[
     list[dict[int, tuple[dict[str, object], ...]]],
     dict[int, tuple[str, ...]],
@@ -391,7 +432,7 @@ def _run_dynamic(
     for repeat_index in range(int(repeat_runs)):
         _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
         trajectories: dict[int, list[dict[str, object]]] = {index: [] for index in range(8)}
-        with _rowtile_policy(True):
+        with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
                 width, entered, previous = _schedule_width(schedule, step)
                 active_indices = survivor_order[:width]
@@ -441,13 +482,14 @@ def _run_sparse_c8(
     decode_steps: int,
     repeat_runs: int,
     gdn_mode: str,
+    route_profile: str,
 ) -> list[list[tuple[dict[str, object], ...]]]:
     active_slots = (0, 2, 5, 7)
     all_runs: list[list[tuple[dict[str, object], ...]]] = []
     for _ in range(int(repeat_runs)):
         _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
-        with _rowtile_policy(True):
+        with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
                 token_ids = [
                     int(strict[str(row["id"])][step]["token_id"])
@@ -474,12 +516,27 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         raise CalibrationError(f"historical source does not exist: {args.historical_source}")
     if int(args.decode_steps) <= 0 or int(args.repeat_runs) < 3:
         raise CalibrationError("decode steps must be positive and repeat runs at least three")
+    route_profile = str(args.route_profile)
     widths = tuple(int(value) for value in args.widths.split(",") if value.strip())
-    if not widths or any(width not in {4, 8} for width in widths):
-        raise CalibrationError("static widths must be a non-empty subset of 4,8")
+    if route_profile == ROUTE_PROFILE_Q8T16:
+        if not widths or any(width not in {4, 8} for width in widths):
+            raise CalibrationError("Q8T16 candidate widths must be a non-empty subset of 4,8")
+        dynamic_schedule = DEFAULT_DYNAMIC_SCHEDULE
+    elif route_profile == ROUTE_PROFILE_CURRENT_DIRECT:
+        if not widths or any(width not in DIRECT_STATIC_WIDTHS for width in widths):
+            raise CalibrationError(
+                "current-package direct widths must be a non-empty subset of 3,5,6,7"
+            )
+        if bool(args.include_router_candidate):
+            raise CalibrationError(
+                "current-package direct profile cannot include the router candidate"
+            )
+        dynamic_schedule = DIRECT_DYNAMIC_SCHEDULE
+    else:
+        raise CalibrationError(f"unsupported route profile {route_profile!r}")
     schedule = (
         validate_width_schedule(
-            DEFAULT_DYNAMIC_SCHEDULE,
+            dynamic_schedule,
             decode_steps=int(args.decode_steps),
         )
         if args.dynamic
@@ -519,7 +576,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     package_value = getattr(package, POLICY_CAPABILITY)
     package_min_rows = int(getattr(package, POLICY_MIN_ROWS_CAPABILITY, 0))
-    if package_value is not False:
+    if route_profile == ROUTE_PROFILE_Q8T16 and package_value is not False:
         raise CalibrationError(
             f"current package {POLICY_CAPABILITY} must be False, got {package_value!r}"
         )
@@ -530,7 +587,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 
     global _router_candidate_enabled
     previous_router_candidate = _router_candidate_enabled
-    _router_candidate_enabled = bool(args.include_router_candidate)
+    _router_candidate_enabled = bool(
+        route_profile == ROUTE_PROFILE_Q8T16 and args.include_router_candidate
+    )
     stack = ExitStack()
     captures: list[BatchRouteCapture] = []
     strict: dict[str, tuple[Mapping[str, object], ...]] = {}
@@ -603,6 +662,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     decode_steps=int(args.decode_steps),
                     repeat_runs=int(args.repeat_runs),
                     gdn_mode=str(args.gdn_mode),
+                    route_profile=route_profile,
                 )
                 for row_index, row in enumerate(actual):
                     prompt_id = str(row["id"])
@@ -631,6 +691,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 decode_steps=int(args.decode_steps),
                 repeat_runs=int(args.repeat_runs),
                 gdn_mode=str(args.gdn_mode),
+                route_profile=route_profile,
             )
             for index, row in enumerate(dynamic_rows):
                 length = len(runs[0][index])
@@ -661,6 +722,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 decode_steps=int(args.decode_steps),
                 repeat_runs=int(args.repeat_runs),
                 gdn_mode=str(args.gdn_mode),
+                route_profile=route_profile,
             )
             for index, row in enumerate(sparse_rows):
                 prompt_id = str(row["id"])
@@ -699,15 +761,24 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ROUTER_COOP_ENV: os.environ.get(ROUTER_COOP_ENV),
             ROUTER_PERSISTENT_ENV: os.environ.get(ROUTER_PERSISTENT_ENV),
         },
-        build_profile="execution_profile_gguf_q8t16_batch_requalification",
+        build_profile=(
+            "execution_profile_gguf_direct_width_batch_requalification"
+            if route_profile == ROUTE_PROFILE_CURRENT_DIRECT
+            else "execution_profile_gguf_q8t16_batch_requalification"
+        ),
         timing_protocol="none_full_logits_only_v1",
         warmups=0,
         repetitions=int(args.repeat_runs),
         profiler={"enabled": False, "kind": None, "command": None},
     )
+    required_widths = (
+        DIRECT_STATIC_WIDTHS
+        if route_profile == ROUTE_PROFILE_CURRENT_DIRECT
+        else frozenset({4, 8})
+    )
     complete_matrix = bool(
         complete_suite
-        and set(widths) == {4, 8}
+        and set(widths) == required_widths
         and args.dynamic
         and args.sparse
         and len(prompt_rows) == 18
@@ -717,6 +788,54 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     deterministic = bool(evaluated["repeat_determinism"]["passed"])
     measurement_valid = bool(complete_matrix and deterministic and not provenance.get("dirty"))
     historical = json.loads(args.historical_source.read_text(encoding="utf-8"))
+    current_direct = route_profile == ROUTE_PROFILE_CURRENT_DIRECT
+    candidate_environment = (
+        {
+            POLICY_ENV: "unset: current package default",
+            ROUTER_COOP_ENV: "unset: current package default",
+            ROUTER_PERSISTENT_ENV: "unset: current package default",
+        }
+        if current_direct
+        else {
+            POLICY_ENV: (
+                "unset: package physical-width floor"
+                if args.include_router_candidate
+                else "1"
+            ),
+            **(
+                {
+                    ROUTER_COOP_ENV: "1",
+                    ROUTER_PERSISTENT_ENV: "1",
+                }
+                if args.include_router_candidate
+                else {}
+            ),
+        }
+    )
+    candidate_variants: Mapping[str, Any] = (
+        {"source": "current_package_execution_manifests"}
+        if current_direct
+        else candidate_variant_manifest(
+            include_router_candidate=bool(args.include_router_candidate)
+        )
+    )
+    policy_restored = (
+        all(
+            key not in os.environ
+            for key in (POLICY_ENV, ROUTER_COOP_ENV, ROUTER_PERSISTENT_ENV)
+        )
+        if current_direct
+        else (
+            POLICY_ENV not in os.environ
+            and (
+                not args.include_router_candidate
+                or (
+                    ROUTER_COOP_ENV not in os.environ
+                    and ROUTER_PERSISTENT_ENV not in os.environ
+                )
+            )
+        )
+    )
     return {
         "schema_version": 1,
         "kind": KIND,
@@ -731,25 +850,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "fresh task and BF16-relative verdicts are not available",
         ],
         "route": {
+            "route_profile": route_profile,
             "policy_capability": POLICY_CAPABILITY,
-            "package_value_verified": False,
+            "package_value_verified": package_value,
             "package_min_rows_capability": POLICY_MIN_ROWS_CAPABILITY,
             "package_min_rows_verified": package_min_rows,
-            "candidate_environment": {
-                POLICY_ENV: (
-                    "unset: package physical-width floor"
-                    if args.include_router_candidate
-                    else "1"
-                ),
-                **(
-                    {
-                        ROUTER_COOP_ENV: "1",
-                        ROUTER_PERSISTENT_ENV: "1",
-                    }
-                    if args.include_router_candidate
-                    else {}
-                ),
-            },
+            "candidate_environment": candidate_environment,
             "strict_environment": {
                 POLICY_ENV: "0",
                 **(
@@ -762,16 +868,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 ),
             },
             "router_candidate_included": bool(args.include_router_candidate),
-            "policy_restored_after_capture": (
-                POLICY_ENV not in os.environ
-                and (
-                    not args.include_router_candidate
-                    or (
-                        ROUTER_COOP_ENV not in os.environ
-                        and ROUTER_PERSISTENT_ENV not in os.environ
-                    )
-                )
-            ),
+            "policy_restored_after_capture": policy_restored,
             "strict_variants": {
                 "c1_c2_c4": {
                     "single": "t16_gemv_decode_bf16_bf16_out",
@@ -784,11 +881,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     "triple": "t16_triple_gemv_decode_bf16_bf16_out",
                 },
             },
-            "candidate_variants": candidate_variant_manifest(
-                include_router_candidate=bool(args.include_router_candidate)
-            ),
+            "candidate_variants": candidate_variants,
         },
         "protocol": {
+            "route_profile": route_profile,
             "prompt_suites": [str(path.resolve()) for path in args.prompts],
             "complete_prompt_and_heldout_suite": complete_suite,
             "prompt_count": len(prompt_rows),
@@ -831,6 +927,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--route-profile",
+        choices=(ROUTE_PROFILE_Q8T16, ROUTE_PROFILE_CURRENT_DIRECT),
+        default=ROUTE_PROFILE_Q8T16,
+    )
     parser.add_argument("--widths", default="4,8")
     parser.add_argument("--decode-steps", type=int, default=24)
     parser.add_argument("--repeat-runs", type=int, default=3)

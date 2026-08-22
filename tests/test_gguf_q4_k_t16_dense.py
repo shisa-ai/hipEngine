@@ -231,9 +231,11 @@ def test_q4_t16_dense_dispatch_uses_one_tiles_abi_for_decode_and_prefill() -> No
         (True, "gguf_q4_k_qmicro_t16_v1"),
     ],
 )
+@pytest.mark.parametrize("native_rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q4_dense_launch_routes_c1_small_rows_and_bulk_without_shadow_allocations(
     qmicro: bool,
     quant: str,
+    native_rows: int,
 ) -> None:
     weight = _weight(0x1000, qmicro=qmicro)
     keys = (
@@ -269,23 +271,41 @@ def test_q4_dense_launch_routes_c1_small_rows_and_bulk_without_shadow_allocation
         clear_gguf_linear_dispatch_cache()
         launch_gguf_linear(weight, 0x2000, 0x3000, 1, 256, 16)
         with native_batch_decode_session(True):
-            launch_gguf_linear(weight, 0x2000, 0x3000, 3, 256, 16)
+            launch_gguf_linear(
+                weight,
+                0x2000,
+                0x3000,
+                native_rows,
+                256,
+                16,
+            )
         launch_gguf_linear(weight, 0x2000, 0x3000, 512, 256, 16)
     finally:
         for key, fn in originals.items():
             register(key, fn, replace=True)
         clear_gguf_linear_dispatch_cache()
 
+    native_variant = (
+        "dense_rowtile_bf16_bf16_out"
+        if not qmicro or native_rows <= 4
+        else "t16_wmma_prefill_bf16_bf16_out"
+    )
     assert [variant for variant, _args in calls] == [
         "dense_single_local32_bf16_bf16_out",
-        "dense_rowtile_bf16_bf16_out",
+        native_variant,
         "t16_wmma_prefill_bf16_bf16_out",
     ]
     assert all(args[:3] == (0x2000, 0x1000, 0x3000) for _variant, args in calls)
 
 
+@pytest.mark.parametrize(
+    ("native_rows", "native_label"),
+    [(3, "native"), (5, None), (8, None)],
+)
 def test_q4_qmicro_dense_pair_silu_routes_c1_native_rows_and_prefill(
     monkeypatch: pytest.MonkeyPatch,
+    native_rows: int,
+    native_label: str | None,
 ) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.runtime import gguf_linear as gguf_linear_module
@@ -369,15 +389,16 @@ def test_q4_qmicro_dense_pair_silu_routes_c1_native_rows_and_prefill(
             q8_1_workspace_ptr=0x5000,
         )
         with native_batch_decode_session(True):
-            assert launch_gguf_linear_pair_silu(
+            native_launched = launch_gguf_linear_pair_silu(
                 weight_a,
                 weight_b,
                 0x3000,
                 0x4000,
-                3,
+                native_rows,
                 5_120,
                 17_408,
             )
+        assert native_launched is (native_label is not None)
         assert launch_gguf_linear_pair_silu(
             weight_a,
             weight_b,
@@ -404,16 +425,20 @@ def test_q4_qmicro_dense_pair_silu_routes_c1_native_rows_and_prefill(
             register(key, fn, replace=True)
         clear_gguf_linear_dispatch_cache()
 
-    assert [label for label, _args in calls] == [
-        "c1",
-        "native",
-        "direct",
-        "expanded",
-    ]
+    expected_labels = ["c1"]
+    if native_label is not None:
+        expected_labels.append(native_label)
+    expected_labels.extend(["direct", "expanded"])
+    assert [label for label, _args in calls] == expected_labels
     assert calls[0][1][:4] == (0x5000, 0x1000, 0x2000, 0x4000)
-    assert calls[1][1][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
-    assert calls[2][1][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
-    assert calls[3][1][:6] == (
+    direct_index = 2 if native_label is not None else 1
+    assert calls[direct_index][1][:4] == (
+        0x3000,
+        0x1000,
+        0x2000,
+        0x4000,
+    )
+    assert calls[direct_index + 1][1][:6] == (
         0x3000,
         0x1000,
         0x2000,

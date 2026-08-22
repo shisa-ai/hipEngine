@@ -2486,7 +2486,7 @@ extern "C" int
 hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
-  if (rows >= 2 && rows <= 4) {
+  if (rows >= 2 && rows <= 8) {
     return launch_q6_t16_qmicro_planar_rowtile_col8<uint16_t>(
         x, tiles, out, rows, in_features, out_features, stream);
   }

@@ -33,7 +33,7 @@ def _runtime():
 
 
 @pytest.fixture(scope="module")
-def _library():
+def _library(hip_test_target_arch: str):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
 
@@ -44,8 +44,7 @@ def _library():
         else None
     )
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
-    target_arch = os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151")
-    with hip_target_arch_environment(target_arch):
+    with hip_target_arch_environment(hip_test_target_arch):
         return build_lm_head(
             load=True,
             compiler_version=compiler_version,

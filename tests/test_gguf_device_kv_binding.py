@@ -257,6 +257,8 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     assert session.scratch.full_kv_scale_metadata == (None, metadata)
     assert copied_tables[0].tolist() == [0, 1]
     assert session.device_kv_layout_audit() == {
+        "pool_contract": "legacy_single_backing",
+        "pool_storage_layout": None,
         "storage_dtype": "int8_per_token_head",
         "storage_layout": "uniform",
         "scale_dtype": "fp16",
@@ -357,6 +359,52 @@ def test_shifted_direct_int8_prefill_keeps_paged_payload_at_backing_base() -> No
     assert bound.retained_value_cache is retained_value
     assert bound.retained_append_spans is retained_spans
     assert bound.retained_append_spans.scale_metadata is scale_metadata
+
+
+def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> None:
+    slot_scratch = object()
+    target_owner = SimpleNamespace(
+        slot_count=4,
+        for_slot=lambda slot: slot_scratch if slot == 2 else object(),
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.max_batch_size = 4
+    session.scratch = object()
+    session._target_scratch_owner = target_owner
+    session._target_layout = gguf_runner.Qwen35GGUFResidentTargetLayout(
+        max_batch_size=4,
+        hidden_size=8,
+        vocab_size=16,
+        max_sequence_length=256,
+    )
+    session._decode_graphs = [object()]
+    session._decode_graph_submission_contexts = {"old": object()}
+    session._device_kv_graph_handles = {1: object()}
+    session._int8_prefill_oracle_buffers = {1: (object(), object())}
+    session._linear_state_snapshot_backups = (object(),)
+    session._packed_verify_state = object()
+    session._packed_verify_scratch = object()
+    session._native_sampler_workspace = object()
+
+    view = session.resident_slot_view(2)
+
+    assert view is not session
+    assert view.max_batch_size == 1
+    assert view.scratch is slot_scratch
+    assert view._target_scratch_owner is target_owner
+    assert view._reset_current_slot_only is True
+    assert view._target_layout.max_batch_size == 1
+    assert view._buffers == ()
+    assert view._position == 0
+    assert view._decode_graphs == []
+    assert view._device_kv_graph_handles == {}
+    # Views share the batch owner's packed workspace bookkeeping instead of
+    # owning a private allocation (serving-load stability contract).
+    assert view._packed_verify_state is session._packed_verify_state
+    assert view._packed_verify_scratch is session._packed_verify_scratch
+    assert view._packed_decode_state_dirty is session._packed_decode_state_dirty
+    assert view._resident_batch_owner is session
+    assert view._resident_slot_index == 2
 
 
 def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkeypatch) -> None:

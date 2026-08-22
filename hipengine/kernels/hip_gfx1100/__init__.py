@@ -261,10 +261,14 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
-# Q5T16 row reuse is measured only for native rows 2-4. Other T16 quants retain
-# the generic rows-through-6 behavior unless their backend package overrides it.
+# Q5T16 and planar-qmicro Q6T16 true rowtile primitives were extended and
+# validated to rows 5-8 (strict bit-parity vs the per-row producer), so native
+# batch decode rewrites rows 2-8 to the true rowtile instead of padded WMMA.
+# Other T16 quants retain the generic rows-through-6 behavior unless their
+# backend package overrides it.
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    "gguf_q5_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 8,
+    "gguf_q6_k_t16_qmicro_planar_v1": 8,
 }
 # Exact c1 sibling selection is architecture/shape qualified. W7900 retains
 # the established direct owners until an independent device gate admits one.
@@ -370,6 +374,14 @@ GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
     (4_096, 6_144, 512): -1_140_855_996,
 }
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
+# Concurrency2 C2-6 W7900 qualification (re-qualified 2026-08-17 after the
+# conv_out arena-aliasing fix 422209168 and the state-oracle checkout fix
+# 46466a86e). Shared-slot packed AR decode is byte-exact through physical c8:
+# steady, masked-lane shrink-sparse, fixed-width graph, and p128/p512
+# state-oracle gates all exact on tokens, Conv/GDN state, live KV, and every
+# layer hidden versus independent c1, with resolution provenance recorded.
+# Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
+GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -857,6 +869,7 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
+    "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

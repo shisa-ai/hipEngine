@@ -23,6 +23,14 @@ def _hip_available() -> bool:
     return True
 
 
+def _gfx1151_available() -> bool:
+    if not _hip_available():
+        return False
+    from hipengine.kernels.backends import detect_hip_target_arches
+
+    return "gfx1151" in detect_hip_target_arches()
+
+
 def _require_cached_build() -> bool:
     return os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD", "").strip().lower() in {
         "1",
@@ -4374,7 +4382,10 @@ def test_laguna_swa_gqa3_vstage64_matches_cpu_after_wrap_and_eviction() -> None:
         cache.free()
 
 
-@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.skipif(
+    not _gfx1151_available(),
+    reason="Laguna global GQA2/WMMA numerical gate requires physical gfx1151",
+)
 def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
@@ -4399,7 +4410,6 @@ def test_laguna_global_gqa2_vstage64_matches_cpu_with_eviction() -> None:
         laguna_global_attention_decode_fused_exact_gated_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local1024_exp32_producer_max_dpp_qk_dense_prefix_idle_double_buffer_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
-        laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_dense_prefix_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_fused_exact_gated_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape_bf16_spans,
         laguna_global_attention_decode_wmma_qk_three_term_mixed32_exp32_producer_max_exact_pv_bf16_spans,

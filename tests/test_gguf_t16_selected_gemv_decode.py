@@ -51,7 +51,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_paircoeff_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_parallel_silu_pairq_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
-    gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
@@ -66,7 +65,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
-    gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
@@ -79,7 +77,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
-    gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
@@ -88,7 +85,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_gemv_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_selected_natural_parallel_weighted_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
-    gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
@@ -872,6 +868,15 @@ def _run_pack8_dual_rowtile_silu(
             free(buffer)
 
 
+def _pack8_rowtile_chunks(rows: int) -> tuple[int, ...]:
+    """Compose the retained 2-4-row pack8 oracle without a one-row tail."""
+
+    if rows <= 4:
+        return (rows,)
+    first = 3 if rows == 5 else 4
+    return (first, rows - first)
+
+
 @pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     rows: int,
@@ -891,6 +896,19 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
     tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
 
+    chunks = _pack8_rowtile_chunks(rows)
+    single_control = np.concatenate(
+        [
+            _run_pack8_single(
+                chunk,
+                packed_a,
+                out_features,
+                q4_library,
+            )
+            for chunk in np.split(x_bf16, np.cumsum(chunks)[:-1])
+        ],
+        axis=0,
+    )
     single_actual = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
         x_bf16,
@@ -898,6 +916,28 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         out_features,
         np.uint16,
         t16_selected_library,
+    )
+    dual_control = np.concatenate(
+        [
+            _run_pack8_dual_rowtile_silu(
+                chunk,
+                packed_a,
+                packed_b,
+                out_features,
+                q4_library,
+            )
+            for chunk in np.split(x_bf16, np.cumsum(chunks)[:-1])
+        ],
+        axis=0,
+    )
+    dual_actual = _run_dense_dual_silu(
+        x_bf16,
+        tiles_a,
+        tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     )
     single_col4 = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
@@ -907,51 +947,9 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         np.uint16,
         t16_selected_library,
     )
-    if rows <= 4:
-        single_control = _run_pack8_single(
-            x_bf16,
-            packed_a,
-            out_features,
-            q4_library,
-        )
-        dual_control = _run_pack8_dual_rowtile_silu(
-            x_bf16,
-            packed_a,
-            packed_b,
-            out_features,
-            q4_library,
-        )
-        dual_actual = _run_dense_dual_silu(
-            x_bf16,
-            tiles_a,
-            tiles_b,
-            out_features,
-            np.uint16,
-            t16_selected_library,
-            fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
-        )
-        np.testing.assert_array_equal(single_actual, single_control)
-        np.testing.assert_array_equal(dual_actual, dual_control)
-        np.testing.assert_array_equal(single_col4, single_control)
-    else:
-        # rows 5-8: the pack8 rowtile production control caps at rows 4, so
-        # assert bit-exactness against the retained serial-c1 owner instead.
-        single_control = np.concatenate(
-            [
-                _run_dense_single(
-                    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
-                    x_bf16[row : row + 1],
-                    tiles_a,
-                    out_features,
-                    np.uint16,
-                    t16_selected_library,
-                )
-                for row in range(rows)
-            ],
-            axis=0,
-        )
-        np.testing.assert_array_equal(single_actual, single_control)
-        np.testing.assert_array_equal(single_col4, single_control)
+    np.testing.assert_array_equal(single_actual, single_control)
+    np.testing.assert_array_equal(dual_actual, dual_control)
+    np.testing.assert_array_equal(single_col4, single_control)
     expected_single = gguf_quant_gemv(
         _bf16_u16_to_f32(x_bf16),
         raw_a,
@@ -1800,9 +1798,13 @@ def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
 def test_p9_h3d_wrappers_validate_args() -> None:
     with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
-    with pytest.raises(ValueError, match="rows in 2..4"):
+    with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
-            0, 0, 0, 0, 5, 256, 16
+            0, 0, 0, 0, 9, 256, 16
+        )
+    with pytest.raises(ValueError, match="rows in 2..4"):
+        gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
+            0, 0, 0, 5, 256, 16
         )
     with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
@@ -1864,8 +1866,7 @@ def test_p9_h3d_q4_t16_dual_bf16_matches_cpu_oracle(
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_p9_h3d_q4_t16_direct_dual_bf16_matches_cpu_oracle(t16_selected_library) -> None:
-    x_rows, top_k = 2, 3
-    rows = x_rows * top_k
+    x_rows = 2
     selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
     in_features, out_features = 512, 256
     num_experts = 3
@@ -2301,8 +2302,7 @@ def test_laguna_t16_natural_selected_decode_matches_production_bits(
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_library) -> None:
-    x_rows, top_k = 2, 3
-    rows = x_rows * top_k
+    x_rows = 2
     selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
     in_features, out_features = 512, 256
     num_experts = 3
@@ -2344,7 +2344,7 @@ def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_li
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_sh2_m4_q4_qmicro_fused_silu_matches_t16_production_bits(t16_selected_library) -> None:
-    rows, x_rows = 8, 1
+    x_rows = 1
     in_features, out_features, num_experts = 512, 32, 3
     rng = np.random.default_rng(202608061)
     x_bf16 = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(x_rows, in_features)).astype(np.float32))
@@ -2409,8 +2409,7 @@ def test_sh2_m4_q5_qmicro_qwen_tile8_matches_t16_production_bits(t16_selected_li
 def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_library) -> None:
     """Repeated expert IDs may share weights without changing row arithmetic."""
 
-    x_rows, top_k = 8, 8
-    rows = x_rows * top_k
+    x_rows = 8
     # Cover byte-identical repeated inputs, different-input repeated experts,
     # and unpaired IDs in the same physical-C8 launch.
     selected = np.array(
@@ -2957,8 +2956,7 @@ def test_t16_q4_direct_dual_q8_1_dp4a_matches_float_path_quality_gate(t16_select
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_t16_q4_direct_dual_silu_q8_1_dp4a_matches_split_dp4a_rounding(t16_selected_library) -> None:
-    x_rows, top_k = 2, 3
-    rows = x_rows * top_k
+    x_rows = 2
     selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
     in_features, out_features = 512, 256
     num_experts = 3
@@ -3339,7 +3337,7 @@ def test_p9_h3d_qk_t16_bf16_matches_cpu_oracle(
 def test_p9_h3d_qk_t16_direct_bf16_matches_cpu_oracle(
     _name, builder, repack, fn_direct_bf16, qtype_enum, t16_selected_library,
 ) -> None:
-    x_rows, top_k = 2, 3
+    x_rows = 2
     selected = np.array([2, 0, 1, 1, 2, 0], dtype=np.int64)
     in_features, out_features = 512, 256
     num_experts = 3

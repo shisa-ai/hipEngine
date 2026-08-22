@@ -26,15 +26,23 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
         return True
 
     monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 4,
+    )
 
     handled = session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12, stream=3, runtime=runtime)
 
     assert handled is True
     hidden_stride = 64 * runner_mod.DType.BF16.itemsize
     logits_stride = 128 * runner_mod.DType.FP32.itemsize
+    # The planar-qmicro lm_head f32 rowtile owner accepts rows in [2, 4], so
+    # the chunk planner caps configured chunks to 4 and rows=12 splits 4+4+4.
     assert calls == [
-        (0x100000, 0x200000, 6, 3, runtime),
-        (0x100000 + 6 * hidden_stride, 0x200000 + 6 * logits_stride, 6, 3, runtime),
+        (0x100000, 0x200000, 4, 3, runtime),
+        (0x100000 + 4 * hidden_stride, 0x200000 + 4 * logits_stride, 4, 3, runtime),
+        (0x100000 + 8 * hidden_stride, 0x200000 + 8 * logits_stride, 4, 3, runtime),
     ]
 
 
@@ -54,6 +62,11 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
         runner_mod.Qwen35GGUFResidentSession,
         "_verify_lm_head_rowtile",
         fake_rowtile,
+    )
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 6,
     )
 
     # c8 now has a native rows-8 owner: single direct launch, no partition.
@@ -84,6 +97,11 @@ def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
         return False
 
     monkeypatch.setattr(runner_mod.Qwen35GGUFResidentSession, "_verify_lm_head_rowtile", fake_rowtile)
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 6,
+    )
 
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12) is False
 
@@ -123,6 +141,7 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
         def kernel(*args, **kernel_kwargs):
             calls.append((args, kernel_kwargs))
 
+        setattr(kernel, "_hipengine_max_rows", 4)
         return kernel
 
     monkeypatch.setattr(runner_mod, "resolve", fake_resolve)
@@ -136,6 +155,7 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
     )
 
     assert handled is True
+    assert session._verify_lm_head_rowtile_max_rows() == 4
     assert calls == [
         (
             (0x1000, 0x2200, 0x2000, 4, 5120, 248320),
@@ -187,13 +207,13 @@ def test_verify_lm_head_q6_top1_dp4a_launches_x8_sidecar(monkeypatch: pytest.Mon
     launched = runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
         session,
         0x9000,
-        3,
+        1,
         stream=7,
         runtime=session.runtime,
     )
 
     assert launched is True
-    assert calls[0] == ("quant", (0x9000, 0x1000, 3, 64), {"stream": 7, "runtime": session.runtime})
+    assert calls[0] == ("quant", (0x9000, 0x1000, 1, 64), {"stream": 7, "runtime": session.runtime})
     assert calls[1][0] == "top1"
     assert calls[1][1][:11] == (
         0x1000,
@@ -204,12 +224,34 @@ def test_verify_lm_head_q6_top1_dp4a_launches_x8_sidecar(monkeypatch: pytest.Mon
         0x1400,
         None,
         None,
-        3,
+        1,
         64,
         128,
     )
     assert calls[1][1][11] == 0
     assert calls[1][2] == {"stream": 7, "library": session._q6_pack8_library, "runtime": session.runtime}
+
+
+def test_verify_lm_head_q6_top1_dp4a_rejects_multirow_shortcut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session_with_lm_head_x8()
+    monkeypatch.setattr(
+        runner_mod,
+        "_gguf_verify_lm_head_q6_top1_dp4a_enabled",
+        lambda: True,
+    )
+
+    assert (
+        runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
+            session,
+            0x9000,
+            2,
+            stream=7,
+            runtime=session.runtime,
+        )
+        is False
+    )
 
 
 def test_verify_lm_head_q6_top1_dp4a_quantizes_f32_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,14 +278,14 @@ def test_verify_lm_head_q6_top1_dp4a_quantizes_f32_hidden(monkeypatch: pytest.Mo
     launched = runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
         session,
         0x9800,
-        2,
+        1,
         activation_dtype=runner_mod.GGUF_ACTIVATION_F32,
         stream=5,
         runtime=session.runtime,
     )
 
     assert launched is True
-    assert calls[0] == ("quant_f32", (0x9800, 0x1000, 2, 64), {"stream": 5, "runtime": session.runtime})
+    assert calls[0] == ("quant_f32", (0x9800, 0x1000, 1, 64), {"stream": 5, "runtime": session.runtime})
     assert calls[1][0] == "top1"
 
 
@@ -257,7 +299,7 @@ def test_verify_lm_head_q6_top1_dp4a_requires_sidecar(monkeypatch: pytest.Monkey
         runner_mod.Qwen35GGUFResidentSession._verify_lm_head_q6_top1_dp4a(
             session,
             0x9000,
-            3,
+            1,
             stream=7,
             runtime=session.runtime,
         )

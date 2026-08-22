@@ -973,19 +973,19 @@ class LagunaGGUFResidentModelRunner:
                 decoder=_IncrementalLagunaDecoder(self.generator.tokenizer),
             )
 
-    def reserve_admission(self, request: RequestState) -> bool:
+    def reserve_admission(self, request: RequestState) -> None:
         row = self._row(request.request_id)
         if int(row.request.max_tokens) == 0:
-            return True
+            return
         if row.session is not None:
-            return True
+            return
         started = time.perf_counter()
         reused = self._take_reusable_session(row)
         if reused is not None:
             row.session = reused
             row.session_prepare_seconds = time.perf_counter() - started
             row.session_prepare_mode = "reuse"
-            return True
+            return
         if not self._available and self._retained_session is not None:
             self._release_retained_session()
         if not self._available and len(self._all_sessions) < self.capacity:
@@ -994,7 +994,7 @@ class LagunaGGUFResidentModelRunner:
             self._all_sessions.append(session)
             self._available.append(session)
         if not self._available:
-            return False
+            raise RuntimeError("Laguna scheduler slot has no resident session")
         session = self._available.pop()
         try:
             session.reset_state()
@@ -1010,7 +1010,6 @@ class LagunaGGUFResidentModelRunner:
         row.session = session
         row.session_prepare_seconds = time.perf_counter() - started
         row.session_prepare_mode = "reset"
-        return True
 
     def rollback_admission(self, request: RequestState) -> None:
         row = self._row(request.request_id)

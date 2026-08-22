@@ -176,6 +176,30 @@ A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
 
+## Current Generation-2 qualification
+
+W7900 Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8, token-budget
+scheduling, and same-loaded-server c1 oracles:
+
+| Logical concurrency | 1 | 4 | 8 | 17 | 32 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Aggregate HTTP tok/s | **27.443** | **43.337** | **46.158** | **45.797** | **44.320** |
+| Exact rows | 1/1 | 4/4 | 8/8 | 17/17 | 32/32 |
+
+The canonical load packet passes all nine fixed/ragged/Poisson/cancel/overload/
+recovery/soak workloads with **210/210** correctness-accounted rows, bounded
+`engine_busy` overload, **271/271** admission/reclaim, zero final refs/pins, and
+zero tracked-memory delta. Physical c1/c2/c4/c8 and logical c1-c32 are retained
+for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json).
+
+The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
+`(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
+115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true
+rowtiles own rows 5-8; dynamic compaction, state/KV, graph invalidation, cancel/
+refill, memory recovery, and drain pass. Logical c>8 uses deterministic ceiling
+composition; artifact-backed D2 remains explicit research only.
+[`Width and lifecycle evidence`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json).
+
 ## Current Qwen3.6-35B quantization quality
 
 The current gate scores 90 full-vocabulary BF16-teacher positions across all ten

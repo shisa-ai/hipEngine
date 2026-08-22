@@ -1,0 +1,2002 @@
+{
+  "decision": {
+    "current_package_capability": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "gfx1151_transfer": "unverified; requires independent hardware evidence",
+    "lifecycle_qualified_widths": [
+      3,
+      5,
+      6,
+      7
+    ],
+    "may_be_added_to_package_capability": true,
+    "package_capability_changed_by_this_artifact": false,
+    "remaining_before_product_promotion": [
+      "implement artifact-backed cost-aware D2 resolver (task 28)",
+      "expand package capability and prove actual server c1-c32 route selection (task 29)"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "concurrency2_qwen38_direct_physical_width_lifecycle_qualification",
+  "kv_dtype": "bf16",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_fingerprint": {
+    "algorithm": "sha256-sampled-v1",
+    "exists": true,
+    "path_type": "file",
+    "sample_offsets": [
+      0,
+      8552862704,
+      17105725408
+    ],
+    "sampled_bytes": 3145728,
+    "size_bytes": 17106773984,
+    "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "protocol": {
+    "compact_after_middle_hole": true,
+    "gates": [
+      "direct and neighbor routing",
+      "independent c1 tokens",
+      "external full-logit quality",
+      "state and live-KV hashes",
+      "slot compaction and row permutation",
+      "graph invalidation",
+      "cancellation and session reuse",
+      "tracked memory recovery",
+      "final scheduler/session drain"
+    ],
+    "newcomer_max_tokens": 3,
+    "original_max_tokens": 5,
+    "physical_width_override": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prompt_length_base": 16,
+    "qualified_widths": [
+      3,
+      5,
+      6,
+      7
+    ],
+    "require_cached_build": true
+  },
+  "quality_gate": {
+    "path": "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+    "protocol": {
+      "candidate_repeat_runs": 3,
+      "complete_prompt_and_heldout_suite": true,
+      "decode_steps": 24,
+      "dynamic_schedule": [
+        [
+          0,
+          7
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          18,
+          3
+        ]
+      ],
+      "prompt_count": 18,
+      "prompt_suites": [
+        "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      ],
+      "route_profile": "current_package_direct",
+      "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+      "sparse_physical_c8_active_slots": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "static_widths": [
+        3,
+        5,
+        6,
+        7
+      ],
+      "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+      "teacher_forced_rows": 1950,
+      "thresholds_evaluated": {
+        "max_kl_max": 0.05,
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02,
+        "top1_min": 0.99
+      }
+    },
+    "repeat_deterministic": true,
+    "sha256": "4ca269e8977844d68a6e500988b64283355204a5615921e40157f0fc89848f00",
+    "source_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+    "summary": {
+      "candidate_teacher_nll_mean": 0.16367257223854284,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "kl_p50": 0.0,
+      "kl_p95": 0.0,
+      "kl_p99": 0.0,
+      "max_abs_logit_delta": 0.0,
+      "rows": 1950,
+      "strict_margin_min": 0.004119873046875,
+      "strict_teacher_nll_mean": 0.16367257223854284,
+      "teacher_delta_p_mean": 0.0,
+      "teacher_nll_delta": 0.0,
+      "top1_agreement": 1.0,
+      "top1_matches": 1950,
+      "topk_overlap_mean": 1.0
+    }
+  },
+  "quant": "gguf_q4_k_m",
+  "rows": {
+    "3": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --rows 3 --cancel-slots 0 1 --original-max-tokens 5 --newcomer-max-tokens 3 --prompt-length 16 --compact-after-middle-hole --allow-c1-arithmetic-drift --quality-artifact benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/qwen38-direct-c3-lifecycle-final.json",
+      "compaction": {
+        "compacted_slots": [
+          0
+        ],
+        "graph_handles_before": [
+          {
+            "bucket": "1ded95e715d81ea1fc7aee7db690fba7db9ba7a8910babdb533d0b269b396df0",
+            "closed_after_compaction": true,
+            "handle_id": 140429213092944,
+            "replay_count": 0
+          }
+        ],
+        "graph_handles_closed": true,
+        "graph_invalidation_delta": 1,
+        "moved_request_ids": [
+          2
+        ],
+        "moves": [
+          {
+            "new_slot": 0,
+            "old_slot": 2,
+            "request_id": 2
+          }
+        ],
+        "passed": true,
+        "resource_identity_sha256": {
+          "2": {
+            "after": "ff6039987107c94e9653d3aa62b0590d035d90a1ac4331be4cc60069042d6e29",
+            "before": "ff6039987107c94e9653d3aa62b0590d035d90a1ac4331be4cc60069042d6e29",
+            "exact": true
+          }
+        },
+        "resource_mismatch_count": 0,
+        "state_mismatch_count": 0,
+        "state_snapshot_sha256": {
+          "2": {
+            "after": "a9b4ec2dabe54e6d208ab7a7c228ab9ad7d8f9a6099aef911d3dd1ccc2c4a09b",
+            "before": "a9b4ec2dabe54e6d208ab7a7c228ab9ad7d8f9a6099aef911d3dd1ccc2c4a09b",
+            "exact": true
+          }
+        }
+      },
+      "elapsed_seconds": 94.57940464979038,
+      "environment": {
+        "HIPENGINE_COMPILER_VERSION_FILE": null,
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+        "HIPENGINE_HIP_ARCH": null,
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "memory": {
+        "active_allocation_delta": 0,
+        "active_allocations_after": 0,
+        "active_allocations_before": 0,
+        "current_allocated_bytes_after": 0,
+        "current_allocated_bytes_before": 0,
+        "current_allocated_delta_bytes": 0,
+        "passed": true,
+        "peak_allocated_bytes": 19991231260,
+        "scope": "hipengine_tracked_process",
+        "total_allocated_bytes": 21769010860,
+        "total_freed_bytes": 21769010860
+      },
+      "ownership_and_drain": {
+        "cancelled_finish_details": [
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "cancelled_sessions_reused_by_newcomers": true,
+        "final_active_request_ids": [],
+        "final_available_sessions": 3,
+        "final_scheduler_active": 0
+      },
+      "passed": true,
+      "plans": {
+        "initial": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true
+              ],
+              "active_rows": 3,
+              "active_slot_indices": [
+                0,
+                1,
+                2
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 3,
+              "physical_rows": 3,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 3,
+              "request_ids": [
+                0,
+                1,
+                2
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 3,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "middle_hole": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true
+              ],
+              "active_rows": 1,
+              "active_slot_indices": [
+                0
+              ],
+              "execution_path": "native_c1_eager",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                2
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 1,
+              "physical_rows": 1,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 1,
+              "request_ids": [
+                2
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 1,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "refill": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true
+              ],
+              "active_rows": 3,
+              "active_slot_indices": [
+                0,
+                1,
+                2
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 3,
+              "physical_rows": 3,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 3,
+              "request_ids": [
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 3,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        }
+      },
+      "provenance": {
+        "build_profile": "gguf_arbitrary_c_lifecycle",
+        "collected_at": "2026-08-20T16:13:49.756055+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_arbitrary_c_lifecycle.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--backend",
+          "hip_gfx1100",
+          "--rows",
+          "3",
+          "--cancel-slots",
+          "0",
+          "1",
+          "--original-max-tokens",
+          "5",
+          "--newcomer-max-tokens",
+          "3",
+          "--prompt-length",
+          "16",
+          "--compact-after-middle-hole",
+          "--allow-c1-arithmetic-drift",
+          "--quality-artifact",
+          "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "--compiler-version-file",
+          "/tmp/hipengine-c2-6-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/qwen38-direct-c3-lifecycle-final.json"
+        ],
+        "configured_backend": "hip_gfx1100",
+        "device_name": "AMD Radeon Pro W7900",
+        "dirty": false,
+        "environment": {
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+          "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+          "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+          "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+          "HIPENGINE_HIP_ARCH": null,
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "git_branch": "concurrency2",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "de07f45ba132d66b5bd664a622f71813e70f118d",
+        "host_name": "epyc",
+        "kind": "hipengine_artifact_provenance",
+        "kv_dtype": "bf16",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "exists": true,
+          "path_type": "file",
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "sampled_bytes": 3145728,
+          "size_bytes": 17106773984,
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+        },
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "profiler": {
+          "command": null,
+          "enabled": false,
+          "kind": null
+        },
+        "quant": "gguf_q4_k_m",
+        "repetitions": 1,
+        "repo_root": "/home/lhl/hipEngine-concurrency2",
+        "resolved_backend": "hip_gfx1100",
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "schema_version": 2,
+        "staged_dirty": false,
+        "target_arch": "gfx1100",
+        "timing_protocol": "none_correctness_only_v1",
+        "unstaged_dirty": false,
+        "untracked_count": 0,
+        "untracked_dirty": false,
+        "warmups": 0
+      },
+      "route_gates": {
+        "declared_widths_only": true,
+        "fallback_reasons": {},
+        "no_serial_fallback": true,
+        "physical_width_decode_steps": {
+          "1": 2,
+          "2": 1,
+          "3": 2,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0
+        }
+      },
+      "shape": {
+        "cancel_slots": [
+          0,
+          1
+        ],
+        "compact_after_middle_hole": true,
+        "logical_c": 3,
+        "newcomer_max_tokens": 3,
+        "newcomer_prompt_lengths": [
+          17,
+          18
+        ],
+        "newcomer_slots": [
+          1,
+          2
+        ],
+        "original_max_tokens": 5,
+        "prefill_chunk_size": 256,
+        "prompt_lengths": [
+          16,
+          17,
+          18
+        ]
+      },
+      "source_artifact_sha256": "75e0357e92a96a01c89ce12ceef9da68a4cc4c3f6e93c0931bf39d2be80ebe78",
+      "state_quality": {
+        "accepted": true,
+        "c1_bit_exact": false,
+        "external_gate": {
+          "hard_gate_passed": true,
+          "hipengine_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+          "host_name": "epyc",
+          "kl_max": 0.0,
+          "path": "/home/lhl/hipEngine-concurrency2/benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "route_profile": "current_package_direct",
+          "rows": 1950,
+          "static_widths": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "top1_agreement": 1.0
+        },
+        "mismatch_counts": {
+          "cancelled": 32,
+          "inactive_sessions_during_middle_hole": 0,
+          "newcomers_final": 224,
+          "survivors_final": 0,
+          "survivors_middle_hole": 32
+        }
+      },
+      "token_gates": {
+        "comparison_contract": "every emitted row equals the independent c1 reference prefix; cancelled rows are intentionally shorter",
+        "newcomer_exact": true,
+        "newcomer_output_sha256": "c851be50fc461783b8bc754c4b5a010d932fd95f1bf71d7d200725da1fe53331",
+        "newcomer_reference_sha256": "c851be50fc461783b8bc754c4b5a010d932fd95f1bf71d7d200725da1fe53331",
+        "original_exact": true,
+        "original_output_sha256": "559bdb84508901fdaaddeef048955edbc7c868a5d946e3584028d5e130d77ee0",
+        "original_reference_sha256": "3952af0af901a022dfa298d67d3e0436cadbc40212caf05bc15560ccd48fe69b"
+      }
+    },
+    "5": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --rows 5 --cancel-slots 1 3 --original-max-tokens 5 --newcomer-max-tokens 3 --prompt-length 16 --compact-after-middle-hole --allow-c1-arithmetic-drift --quality-artifact benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/qwen38-direct-c5-lifecycle-final.json",
+      "compaction": {
+        "compacted_slots": [
+          0,
+          1,
+          2
+        ],
+        "graph_handles_before": [
+          {
+            "bucket": "264291fcb3169f4a18a270c8dbbc3e67678f0c558e29303b41013a0419940f54",
+            "closed_after_compaction": true,
+            "handle_id": 140346602403696,
+            "replay_count": 0
+          }
+        ],
+        "graph_handles_closed": true,
+        "graph_invalidation_delta": 1,
+        "moved_request_ids": [
+          2,
+          4
+        ],
+        "moves": [
+          {
+            "new_slot": 0,
+            "old_slot": 0,
+            "request_id": 0
+          },
+          {
+            "new_slot": 1,
+            "old_slot": 2,
+            "request_id": 2
+          },
+          {
+            "new_slot": 2,
+            "old_slot": 4,
+            "request_id": 4
+          }
+        ],
+        "passed": true,
+        "resource_identity_sha256": {
+          "2": {
+            "after": "48282e619b506eba8376f81145e59b75fc4eaf69088ce245d7de10b7c197fd56",
+            "before": "48282e619b506eba8376f81145e59b75fc4eaf69088ce245d7de10b7c197fd56",
+            "exact": true
+          },
+          "4": {
+            "after": "2e508efc2df628204ef51c709c6b94fc9c2b2e094c7883952223b16e8be9183c",
+            "before": "2e508efc2df628204ef51c709c6b94fc9c2b2e094c7883952223b16e8be9183c",
+            "exact": true
+          }
+        },
+        "resource_mismatch_count": 0,
+        "state_mismatch_count": 0,
+        "state_snapshot_sha256": {
+          "2": {
+            "after": "bb96f781526b82d867e541e655643dcadfa0cecc02fa677d351d7fd82588f264",
+            "before": "bb96f781526b82d867e541e655643dcadfa0cecc02fa677d351d7fd82588f264",
+            "exact": true
+          },
+          "4": {
+            "after": "ba6c818088654174129fc5f5112f7bafc3b4842309b21fb94633ef103da17dc3",
+            "before": "ba6c818088654174129fc5f5112f7bafc3b4842309b21fb94633ef103da17dc3",
+            "exact": true
+          }
+        }
+      },
+      "elapsed_seconds": 98.21727690985426,
+      "environment": {
+        "HIPENGINE_COMPILER_VERSION_FILE": null,
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+        "HIPENGINE_HIP_ARCH": null,
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "memory": {
+        "active_allocation_delta": 0,
+        "active_allocations_after": 0,
+        "active_allocations_before": 0,
+        "current_allocated_bytes_after": 0,
+        "current_allocated_bytes_before": 0,
+        "current_allocated_delta_bytes": 0,
+        "passed": true,
+        "peak_allocated_bytes": 20358237523,
+        "scope": "hipengine_tracked_process",
+        "total_allocated_bytes": 22497052147,
+        "total_freed_bytes": 22497052147
+      },
+      "ownership_and_drain": {
+        "cancelled_finish_details": [
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "cancelled_sessions_reused_by_newcomers": true,
+        "final_active_request_ids": [],
+        "final_available_sessions": 5,
+        "final_scheduler_active": 0
+      },
+      "passed": true,
+      "plans": {
+        "initial": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 5,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 5,
+              "physical_rows": 5,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 5,
+              "request_ids": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 5,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "middle_hole": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true
+              ],
+              "active_rows": 3,
+              "active_slot_indices": [
+                0,
+                1,
+                2
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                2,
+                4
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 3,
+              "physical_rows": 3,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 3,
+              "request_ids": [
+                0,
+                2,
+                4
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 3,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "refill": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 5,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 5,
+              "physical_rows": 5,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 5,
+              "request_ids": [
+                0,
+                2,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 5,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        }
+      },
+      "provenance": {
+        "build_profile": "gguf_arbitrary_c_lifecycle",
+        "collected_at": "2026-08-20T16:11:35.374296+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_arbitrary_c_lifecycle.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--backend",
+          "hip_gfx1100",
+          "--rows",
+          "5",
+          "--cancel-slots",
+          "1",
+          "3",
+          "--original-max-tokens",
+          "5",
+          "--newcomer-max-tokens",
+          "3",
+          "--prompt-length",
+          "16",
+          "--compact-after-middle-hole",
+          "--allow-c1-arithmetic-drift",
+          "--quality-artifact",
+          "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "--compiler-version-file",
+          "/tmp/hipengine-c2-6-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/qwen38-direct-c5-lifecycle-final.json"
+        ],
+        "configured_backend": "hip_gfx1100",
+        "device_name": "AMD Radeon Pro W7900",
+        "dirty": false,
+        "environment": {
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+          "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+          "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+          "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+          "HIPENGINE_HIP_ARCH": null,
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "git_branch": "concurrency2",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "de07f45ba132d66b5bd664a622f71813e70f118d",
+        "host_name": "epyc",
+        "kind": "hipengine_artifact_provenance",
+        "kv_dtype": "bf16",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "exists": true,
+          "path_type": "file",
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "sampled_bytes": 3145728,
+          "size_bytes": 17106773984,
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+        },
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "profiler": {
+          "command": null,
+          "enabled": false,
+          "kind": null
+        },
+        "quant": "gguf_q4_k_m",
+        "repetitions": 1,
+        "repo_root": "/home/lhl/hipEngine-concurrency2",
+        "resolved_backend": "hip_gfx1100",
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "schema_version": 2,
+        "staged_dirty": false,
+        "target_arch": "gfx1100",
+        "timing_protocol": "none_correctness_only_v1",
+        "unstaged_dirty": false,
+        "untracked_count": 0,
+        "untracked_dirty": false,
+        "warmups": 0
+      },
+      "route_gates": {
+        "declared_widths_only": true,
+        "fallback_reasons": {},
+        "no_serial_fallback": true,
+        "physical_width_decode_steps": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 0,
+          "5": 2,
+          "6": 0,
+          "7": 0,
+          "8": 0
+        }
+      },
+      "shape": {
+        "cancel_slots": [
+          1,
+          3
+        ],
+        "compact_after_middle_hole": true,
+        "logical_c": 5,
+        "newcomer_max_tokens": 3,
+        "newcomer_prompt_lengths": [
+          17,
+          18
+        ],
+        "newcomer_slots": [
+          3,
+          4
+        ],
+        "original_max_tokens": 5,
+        "prefill_chunk_size": 256,
+        "prompt_lengths": [
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "source_artifact_sha256": "028e3d1ce9968ee1cf45005d5f9ecece75e86a397ecd1c97dd8c64ac93395b53",
+      "state_quality": {
+        "accepted": true,
+        "c1_bit_exact": false,
+        "external_gate": {
+          "hard_gate_passed": true,
+          "hipengine_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+          "host_name": "epyc",
+          "kl_max": 0.0,
+          "path": "/home/lhl/hipEngine-concurrency2/benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "route_profile": "current_package_direct",
+          "rows": 1950,
+          "static_widths": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "top1_agreement": 1.0
+        },
+        "mismatch_counts": {
+          "cancelled": 64,
+          "inactive_sessions_during_middle_hole": 0,
+          "newcomers_final": 224,
+          "survivors_final": 64,
+          "survivors_middle_hole": 64
+        }
+      },
+      "token_gates": {
+        "comparison_contract": "every emitted row equals the independent c1 reference prefix; cancelled rows are intentionally shorter",
+        "newcomer_exact": true,
+        "newcomer_output_sha256": "a6607f3e95a4c264fafa5843e7c590054e2dd6638468e20e801a37ba7ad395c1",
+        "newcomer_reference_sha256": "a6607f3e95a4c264fafa5843e7c590054e2dd6638468e20e801a37ba7ad395c1",
+        "original_exact": true,
+        "original_output_sha256": "5c8031c5b2832e155366ca48563a31d82e5b6414d1876ec9bf22a7df3d59147c",
+        "original_reference_sha256": "6b8a799504eae69a6cd3526e5be23b5f5d6b10d80763ba19376e558bd4958b76"
+      }
+    },
+    "6": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --rows 6 --cancel-slots 1 4 --original-max-tokens 5 --newcomer-max-tokens 3 --prompt-length 16 --compact-after-middle-hole --allow-c1-arithmetic-drift --quality-artifact benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/qwen38-direct-c6-lifecycle-final.json",
+      "compaction": {
+        "compacted_slots": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "graph_handles_before": [
+          {
+            "bucket": "5c8aacd81c5401e8ed53a7df1d89084f1205317493fec492f160fe11e6a7084e",
+            "closed_after_compaction": true,
+            "handle_id": 140611008554064,
+            "replay_count": 0
+          }
+        ],
+        "graph_handles_closed": true,
+        "graph_invalidation_delta": 1,
+        "moved_request_ids": [
+          2,
+          3,
+          5
+        ],
+        "moves": [
+          {
+            "new_slot": 0,
+            "old_slot": 0,
+            "request_id": 0
+          },
+          {
+            "new_slot": 1,
+            "old_slot": 2,
+            "request_id": 2
+          },
+          {
+            "new_slot": 2,
+            "old_slot": 3,
+            "request_id": 3
+          },
+          {
+            "new_slot": 3,
+            "old_slot": 5,
+            "request_id": 5
+          }
+        ],
+        "passed": true,
+        "resource_identity_sha256": {
+          "2": {
+            "after": "0a357a14214f6effa18fff842f3f0a5effbe7e5182a2dc7535aae570b02ae6ed",
+            "before": "0a357a14214f6effa18fff842f3f0a5effbe7e5182a2dc7535aae570b02ae6ed",
+            "exact": true
+          },
+          "3": {
+            "after": "5c0e7aacda47ee64f388e26d7a99ac295cc8ba560d6895d7d6b25d14d5b6f535",
+            "before": "5c0e7aacda47ee64f388e26d7a99ac295cc8ba560d6895d7d6b25d14d5b6f535",
+            "exact": true
+          },
+          "5": {
+            "after": "44e5783ce61e4d0241080874325149ebb778cf47432429c6766cbc2340bf408f",
+            "before": "44e5783ce61e4d0241080874325149ebb778cf47432429c6766cbc2340bf408f",
+            "exact": true
+          }
+        },
+        "resource_mismatch_count": 0,
+        "state_mismatch_count": 0,
+        "state_snapshot_sha256": {
+          "2": {
+            "after": "05ea63396628d590ee7c28118ff4ad7164fe9d14202a75e129cf06b8843978af",
+            "before": "05ea63396628d590ee7c28118ff4ad7164fe9d14202a75e129cf06b8843978af",
+            "exact": true
+          },
+          "3": {
+            "after": "cb672b0f84a921fd1335c03ad3eaf7e488b13d0cd821b7c11934a29098536980",
+            "before": "cb672b0f84a921fd1335c03ad3eaf7e488b13d0cd821b7c11934a29098536980",
+            "exact": true
+          },
+          "5": {
+            "after": "7f9f76c1176c77974d6a9d1c6ce6aca73c22e94d94450aa9ce6567c4c321c786",
+            "before": "7f9f76c1176c77974d6a9d1c6ce6aca73c22e94d94450aa9ce6567c4c321c786",
+            "exact": true
+          }
+        }
+      },
+      "elapsed_seconds": 100.05318068386987,
+      "environment": {
+        "HIPENGINE_COMPILER_VERSION_FILE": null,
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+        "HIPENGINE_HIP_ARCH": null,
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "memory": {
+        "active_allocation_delta": 0,
+        "active_allocations_after": 0,
+        "active_allocations_before": 0,
+        "current_allocated_bytes_after": 0,
+        "current_allocated_bytes_before": 0,
+        "current_allocated_delta_bytes": 0,
+        "passed": true,
+        "peak_allocated_bytes": 20541740730,
+        "scope": "hipengine_tracked_process",
+        "total_allocated_bytes": 22861072894,
+        "total_freed_bytes": 22861072894
+      },
+      "ownership_and_drain": {
+        "cancelled_finish_details": [
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "cancelled_sessions_reused_by_newcomers": true,
+        "final_active_request_ids": [],
+        "final_available_sessions": 6,
+        "final_scheduler_active": 0
+      },
+      "passed": true,
+      "plans": {
+        "initial": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 6,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 6,
+              "physical_rows": 6,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 6,
+              "request_ids": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 6,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "middle_hole": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 4,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                2,
+                3,
+                5
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 4,
+              "physical_rows": 4,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 4,
+              "request_ids": [
+                0,
+                2,
+                3,
+                5
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 4,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "refill": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 6,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 6,
+              "physical_rows": 6,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 6,
+              "request_ids": [
+                0,
+                2,
+                3,
+                5,
+                6,
+                7
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 6,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        }
+      },
+      "provenance": {
+        "build_profile": "gguf_arbitrary_c_lifecycle",
+        "collected_at": "2026-08-20T16:15:30.483992+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_arbitrary_c_lifecycle.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--backend",
+          "hip_gfx1100",
+          "--rows",
+          "6",
+          "--cancel-slots",
+          "1",
+          "4",
+          "--original-max-tokens",
+          "5",
+          "--newcomer-max-tokens",
+          "3",
+          "--prompt-length",
+          "16",
+          "--compact-after-middle-hole",
+          "--allow-c1-arithmetic-drift",
+          "--quality-artifact",
+          "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "--compiler-version-file",
+          "/tmp/hipengine-c2-6-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/qwen38-direct-c6-lifecycle-final.json"
+        ],
+        "configured_backend": "hip_gfx1100",
+        "device_name": "AMD Radeon Pro W7900",
+        "dirty": false,
+        "environment": {
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+          "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+          "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+          "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+          "HIPENGINE_HIP_ARCH": null,
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "git_branch": "concurrency2",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "de07f45ba132d66b5bd664a622f71813e70f118d",
+        "host_name": "epyc",
+        "kind": "hipengine_artifact_provenance",
+        "kv_dtype": "bf16",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "exists": true,
+          "path_type": "file",
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "sampled_bytes": 3145728,
+          "size_bytes": 17106773984,
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+        },
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "profiler": {
+          "command": null,
+          "enabled": false,
+          "kind": null
+        },
+        "quant": "gguf_q4_k_m",
+        "repetitions": 1,
+        "repo_root": "/home/lhl/hipEngine-concurrency2",
+        "resolved_backend": "hip_gfx1100",
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "schema_version": 2,
+        "staged_dirty": false,
+        "target_arch": "gfx1100",
+        "timing_protocol": "none_correctness_only_v1",
+        "unstaged_dirty": false,
+        "untracked_count": 0,
+        "untracked_dirty": false,
+        "warmups": 0
+      },
+      "route_gates": {
+        "declared_widths_only": true,
+        "fallback_reasons": {},
+        "no_serial_fallback": true,
+        "physical_width_decode_steps": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 2,
+          "5": 0,
+          "6": 2,
+          "7": 0,
+          "8": 0
+        }
+      },
+      "shape": {
+        "cancel_slots": [
+          1,
+          4
+        ],
+        "compact_after_middle_hole": true,
+        "logical_c": 6,
+        "newcomer_max_tokens": 3,
+        "newcomer_prompt_lengths": [
+          17,
+          18
+        ],
+        "newcomer_slots": [
+          4,
+          5
+        ],
+        "original_max_tokens": 5,
+        "prefill_chunk_size": 256,
+        "prompt_lengths": [
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ]
+      },
+      "source_artifact_sha256": "8e4e3971bb5de44655d5ab169546420f3cccc7e95cdba32fa5e433caf2d785ea",
+      "state_quality": {
+        "accepted": true,
+        "c1_bit_exact": false,
+        "external_gate": {
+          "hard_gate_passed": true,
+          "hipengine_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+          "host_name": "epyc",
+          "kl_max": 0.0,
+          "path": "/home/lhl/hipEngine-concurrency2/benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "route_profile": "current_package_direct",
+          "rows": 1950,
+          "static_widths": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "top1_agreement": 1.0
+        },
+        "mismatch_counts": {
+          "cancelled": 64,
+          "inactive_sessions_during_middle_hole": 0,
+          "newcomers_final": 224,
+          "survivors_final": 96,
+          "survivors_middle_hole": 96
+        }
+      },
+      "token_gates": {
+        "comparison_contract": "every emitted row equals the independent c1 reference prefix; cancelled rows are intentionally shorter",
+        "newcomer_exact": true,
+        "newcomer_output_sha256": "1f7216f9efcd38df88cdd0e8f6d67f0fbea4004e77f6c3bac5697f26a6cc990f",
+        "newcomer_reference_sha256": "1f7216f9efcd38df88cdd0e8f6d67f0fbea4004e77f6c3bac5697f26a6cc990f",
+        "original_exact": true,
+        "original_output_sha256": "000f707122858a4c7e2a2d86ce2c2620dd236de5ba498336a7a60021d21b6ae1",
+        "original_reference_sha256": "c3ce586eb7142dc8288ffd2a5a3bb126b7bb793f9a34d81e420532298c98d79b"
+      }
+    },
+    "7": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --rows 7 --cancel-slots 1 5 --original-max-tokens 5 --newcomer-max-tokens 3 --prompt-length 16 --compact-after-middle-hole --allow-c1-arithmetic-drift --quality-artifact benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/qwen38-direct-c7-lifecycle-final.json",
+      "compaction": {
+        "compacted_slots": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "graph_handles_before": [
+          {
+            "bucket": "d01249b9d6fb7cd59384f08fb079f9e2c6cfd02aee986f5b16610587d43c8393",
+            "closed_after_compaction": true,
+            "handle_id": 140324035954400,
+            "replay_count": 0
+          }
+        ],
+        "graph_handles_closed": true,
+        "graph_invalidation_delta": 1,
+        "moved_request_ids": [
+          2,
+          3,
+          4,
+          6
+        ],
+        "moves": [
+          {
+            "new_slot": 0,
+            "old_slot": 0,
+            "request_id": 0
+          },
+          {
+            "new_slot": 1,
+            "old_slot": 2,
+            "request_id": 2
+          },
+          {
+            "new_slot": 2,
+            "old_slot": 3,
+            "request_id": 3
+          },
+          {
+            "new_slot": 3,
+            "old_slot": 4,
+            "request_id": 4
+          },
+          {
+            "new_slot": 4,
+            "old_slot": 6,
+            "request_id": 6
+          }
+        ],
+        "passed": true,
+        "resource_identity_sha256": {
+          "2": {
+            "after": "4e4a02b2393a9d3edcdf75e1a332d56788480d3d150f2f0604bfcf88b14e059c",
+            "before": "4e4a02b2393a9d3edcdf75e1a332d56788480d3d150f2f0604bfcf88b14e059c",
+            "exact": true
+          },
+          "3": {
+            "after": "d7c6c1c1cce54e5b8f37b644e2b3eaf097f01cca7f1df13e034c6cc1461675ae",
+            "before": "d7c6c1c1cce54e5b8f37b644e2b3eaf097f01cca7f1df13e034c6cc1461675ae",
+            "exact": true
+          },
+          "4": {
+            "after": "61ffcc7600885b49de43d8405167cea832043886aa52325dfaffb103c8560288",
+            "before": "61ffcc7600885b49de43d8405167cea832043886aa52325dfaffb103c8560288",
+            "exact": true
+          },
+          "6": {
+            "after": "25b6cf112cd8c73a7870dd6d32954b5546e48f17c747927025b2744151ef2553",
+            "before": "25b6cf112cd8c73a7870dd6d32954b5546e48f17c747927025b2744151ef2553",
+            "exact": true
+          }
+        },
+        "resource_mismatch_count": 0,
+        "state_mismatch_count": 0,
+        "state_snapshot_sha256": {
+          "2": {
+            "after": "577f72006775739fe1f355a8915c20e0c656fe58f151480fc9feefb5025eb844",
+            "before": "577f72006775739fe1f355a8915c20e0c656fe58f151480fc9feefb5025eb844",
+            "exact": true
+          },
+          "3": {
+            "after": "f25779661b1b2b2fa15df29578741283ab9d5d03ae28d637b062c8ab50b9ab89",
+            "before": "f25779661b1b2b2fa15df29578741283ab9d5d03ae28d637b062c8ab50b9ab89",
+            "exact": true
+          },
+          "4": {
+            "after": "3bc6d560c11053f27891af4c9409d1578885de0ab6a35766ed360c9fd15e2fc1",
+            "before": "3bc6d560c11053f27891af4c9409d1578885de0ab6a35766ed360c9fd15e2fc1",
+            "exact": true
+          },
+          "6": {
+            "after": "b1ee2dfaf6aaa1897eac877ac0be77a5d79602a69505c375cd840c7bcf292735",
+            "before": "b1ee2dfaf6aaa1897eac877ac0be77a5d79602a69505c375cd840c7bcf292735",
+            "exact": true
+          }
+        }
+      },
+      "elapsed_seconds": 101.2718211170286,
+      "environment": {
+        "HIPENGINE_COMPILER_VERSION_FILE": null,
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+        "HIPENGINE_HIP_ARCH": null,
+        "HIP_VISIBLE_DEVICES": "0"
+      },
+      "memory": {
+        "active_allocation_delta": 0,
+        "active_allocations_after": 0,
+        "active_allocations_before": 0,
+        "current_allocated_bytes_after": 0,
+        "current_allocated_bytes_before": 0,
+        "current_allocated_delta_bytes": 0,
+        "passed": true,
+        "peak_allocated_bytes": 20725243867,
+        "scope": "hipengine_tracked_process",
+        "total_allocated_bytes": 23225093548,
+        "total_freed_bytes": 23225093548
+      },
+      "ownership_and_drain": {
+        "cancelled_finish_details": [
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          },
+          {
+            "cancelled": true,
+            "reason": "cancelled"
+          },
+          {
+            "length_limit": 5,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "cancelled_sessions_reused_by_newcomers": true,
+        "final_active_request_ids": [],
+        "final_available_sessions": 7,
+        "final_scheduler_active": 0
+      },
+      "passed": true,
+      "plans": {
+        "initial": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 7,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 7,
+              "physical_rows": 7,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 7,
+              "request_ids": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 7,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "middle_hole": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 5,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                2,
+                3,
+                4,
+                6
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 5,
+              "physical_rows": 5,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 5,
+              "request_ids": [
+                0,
+                2,
+                3,
+                4,
+                6
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 5,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        },
+        "refill": {
+          "group_count": 1,
+          "groups": [
+            {
+              "active_mask": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ],
+              "active_rows": 7,
+              "active_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "execution_path": "packed_native",
+              "execution_row_mapping": "dense_active_rows",
+              "global_slot_indices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ],
+              "group_count": 1,
+              "group_index": 0,
+              "logical_c": 7,
+              "physical_rows": 7,
+              "physical_slot_base": 0,
+              "physical_slot_extent": 7,
+              "request_ids": [
+                0,
+                2,
+                3,
+                4,
+                6,
+                7,
+                8
+              ]
+            }
+          ],
+          "kind": "gguf_ar_physical_group_plan",
+          "logical_c": 7,
+          "physical_bucket_widths": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "policy": "occupancy_adaptive_dense_execution",
+          "schema": 1
+        }
+      },
+      "provenance": {
+        "build_profile": "gguf_arbitrary_c_lifecycle",
+        "collected_at": "2026-08-20T16:17:12.435146+00:00",
+        "command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3",
+          "scripts/gguf_arbitrary_c_lifecycle.py",
+          "--model",
+          "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "--backend",
+          "hip_gfx1100",
+          "--rows",
+          "7",
+          "--cancel-slots",
+          "1",
+          "5",
+          "--original-max-tokens",
+          "5",
+          "--newcomer-max-tokens",
+          "3",
+          "--prompt-length",
+          "16",
+          "--compact-after-middle-hole",
+          "--allow-c1-arithmetic-drift",
+          "--quality-artifact",
+          "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "--compiler-version-file",
+          "/tmp/hipengine-c2-6-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/qwen38-direct-c7-lifecycle-final.json"
+        ],
+        "configured_backend": "hip_gfx1100",
+        "device_name": "AMD Radeon Pro W7900",
+        "dirty": false,
+        "environment": {
+          "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+          "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+          "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+          "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": "1,2,3,4,5,6,7,8",
+          "HIPENGINE_HIP_ARCH": null,
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "git_branch": "concurrency2",
+        "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+        "hipengine_commit": "de07f45ba132d66b5bd664a622f71813e70f118d",
+        "host_name": "epyc",
+        "kind": "hipengine_artifact_provenance",
+        "kv_dtype": "bf16",
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "exists": true,
+          "path_type": "file",
+          "sample_offsets": [
+            0,
+            8552862704,
+            17105725408
+          ],
+          "sampled_bytes": 3145728,
+          "size_bytes": 17106773984,
+          "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+        },
+        "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "model_revision": null,
+        "profiler": {
+          "command": null,
+          "enabled": false,
+          "kind": null
+        },
+        "quant": "gguf_q4_k_m",
+        "repetitions": 1,
+        "repo_root": "/home/lhl/hipEngine-concurrency2",
+        "resolved_backend": "hip_gfx1100",
+        "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+        "schema_version": 2,
+        "staged_dirty": false,
+        "target_arch": "gfx1100",
+        "timing_protocol": "none_correctness_only_v1",
+        "unstaged_dirty": false,
+        "untracked_count": 0,
+        "untracked_dirty": false,
+        "warmups": 0
+      },
+      "route_gates": {
+        "declared_widths_only": true,
+        "fallback_reasons": {},
+        "no_serial_fallback": true,
+        "physical_width_decode_steps": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 0,
+          "5": 2,
+          "6": 0,
+          "7": 2,
+          "8": 0
+        }
+      },
+      "shape": {
+        "cancel_slots": [
+          1,
+          5
+        ],
+        "compact_after_middle_hole": true,
+        "logical_c": 7,
+        "newcomer_max_tokens": 3,
+        "newcomer_prompt_lengths": [
+          17,
+          18
+        ],
+        "newcomer_slots": [
+          5,
+          6
+        ],
+        "original_max_tokens": 5,
+        "prefill_chunk_size": 256,
+        "prompt_lengths": [
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22
+        ]
+      },
+      "source_artifact_sha256": "3410dbdfb833882f6da8ab31d7144704dfeccb2e6936bb74fc908a61583dbb97",
+      "state_quality": {
+        "accepted": true,
+        "c1_bit_exact": false,
+        "external_gate": {
+          "hard_gate_passed": true,
+          "hipengine_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+          "host_name": "epyc",
+          "kl_max": 0.0,
+          "path": "/home/lhl/hipEngine-concurrency2/benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+          "route_profile": "current_package_direct",
+          "rows": 1950,
+          "static_widths": [
+            3,
+            5,
+            6,
+            7
+          ],
+          "top1_agreement": 1.0
+        },
+        "mismatch_counts": {
+          "cancelled": 64,
+          "inactive_sessions_during_middle_hole": 0,
+          "newcomers_final": 224,
+          "survivors_final": 128,
+          "survivors_middle_hole": 128
+        }
+      },
+      "token_gates": {
+        "comparison_contract": "every emitted row equals the independent c1 reference prefix; cancelled rows are intentionally shorter",
+        "newcomer_exact": true,
+        "newcomer_output_sha256": "d0c26f5a75f0ca7e3b0d8df631626d69842cafd2ad697484137e8f377a5c2f1b",
+        "newcomer_reference_sha256": "d0c26f5a75f0ca7e3b0d8df631626d69842cafd2ad697484137e8f377a5c2f1b",
+        "original_exact": true,
+        "original_output_sha256": "df7a1970b5a82494fac6fc38ebc242b193801edf768daddc4c4b37e222719707",
+        "original_reference_sha256": "f7593ad52772133f814da31798d490b1c3b613c934a7273492010298ae25f738"
+      }
+    }
+  },
+  "schema": 1,
+  "source_commit": "de07f45ba132d66b5bd664a622f71813e70f118d",
+  "status": "accepted_for_product_integration"
+}

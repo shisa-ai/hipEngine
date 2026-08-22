@@ -180,6 +180,127 @@ fallback count is not a success metric.
   batch-invariant behavior. Then remove omitted-profile legacy selection and
   any duplicate env-to-profile adapter. Keep registered strict fallbacks.
 
+## Generation-2 GGUF width-selection hardcoding
+
+- Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
+  `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification. The
+  artifact-backed D2 resolver remains explicit-config only through
+  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling is the production default. The
+  attempted default-promotion sweep was eager resident-session, not actual-
+  server evidence, and its composed-c13 lifecycle observation was dirty. The
+  2026-08-22 core-merge decision closes #29 on the safe ceiling default; a
+  future D2 promotion/removal campaign is optional performance work, not a
+  gfx1100 correctness or integration blocker.
+- Primitive selection is spread across quant/layout capability maps and
+  per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
+  true rowtiles through 8 (2026-08-20,
+  `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
+  `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
+  to per-row for rows 5+. The separate FP32 LM-head rowtiles publish their own
+  primitive bounds (standard Q6=6, planar-qmicro=4), which the chunk planner
+  intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
+  generic fallback ladders still demonstrate why one model-wide max-row value
+  or variant name is not honest coverage.
+- Removal trigger: compact D1/D2 schemas, strict group-cost map, and direct
+  c3/c5/c6/c7 lifecycle are present. Still required: clean actual-server
+  direct/masked/composed c1-c32 route telemetry; counterbalanced same-shape D2-
+  vs-ceiling goodput and TTFT/ITL; refill/cancel, memory, and drain; then cold
+  package resolution to ordinary registry/plugin evidence. Keep registered
+  strict kernels and ceiling fallback until those gates pass; only afterward
+  remove duplicate sidecar cases, generic row caps, and manual ladders.
+
+## Generation-1 GGUF single-backing KV compatibility path
+
+- Added 2026-08-17 with C2-3. Generation-2 dense backends use one load-time
+  `GlobalKVPoolSet`, stable per-plane arbitrary-page pointer tables,
+  `KVStorageView`, typed leases, and KV-aware execution. C2-6 migrates the
+  gfx1100 Qwen3.6 GGUF BF16 package through `GlobalDeviceKVPool`: one stable
+  arena and per-layer/per-plane pointer tables back arbitrary free-page leases;
+  no request-local chunk, contiguous-run admission, growth, or shrink remains
+  on that selected path.
+- `DeviceChunkedKVPool` and base-pointer identity binding remain as explicit
+  numerical/peer-package fallbacks for unported GGUF layouts and backends. They
+  must not leak same-chunk constraints into the Generation-2 scheduler, ledger,
+  or new backend contracts.
+- Shared-slot physical c4/c8 were first held unregistered after their old
+  direct-top1 route emitted sentinel `2147483647`. The exact promoted package
+  scoped Q8_1 direct-top1 to c1, registered physical `(1, 2)`, flushed canonical
+  state between c2 groups, and decomposed logical c1-c32 honestly. On 2026-08-17
+  the packed lm-head/state paths were re-proven byte-exact at c4/c8 (steady,
+  masked-lane shrink-sparse, fixed-width graph, and p512 state-oracle gates), so
+  the registered widths are now `(1, 2, 4, 8)`: logical c4/c8 lower to one
+  physical c4/c8 bucket. Matched W7900 p128/d8 c8 improved exact serial-c1
+  **27.634 -> 44.031 tok/s (+59.27%)** (was +29.68% at c2), and p512/d128 c8
+  reaches ~0.973x the old design. Serial remains the required numerical fallback.
+- Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8
+  global adapters execute the C2-6 graph-pointer, lifecycle, cancellation,
+  pressure, SLO, and production-load gates on both gfx1100 and gfx1151, migrate
+  every remaining registered GGUF package and remove the chunk allocator,
+  same-backing admission/identity branches, and compatibility-only fixtures.
+  Keep a separately registered unfused/serial numerical fallback as required.
+
+## C2-6 production oracle process-partition seam
+
+- Added 2026-08-17 after repeated W7900 page faults when a 13-key exact-oracle
+  campaign handed the same HIP generation to measured serving. The production
+  load harness can partition oracle keys into isolated workers, verify merged
+  token digests, and start a separate measured owner. This is benchmark
+  containment, not runtime serving architecture.
+- The current GPU generation remained unstable after 4/4/4/1 partitioning and
+  after replacing workers with fully drained same-owner serial c1 oracles.
+  Disabling decode graphs during all 13 same-owner oracle rows still faults
+  before the first tuning result. The canonical packet is blocked; worker and
+  same-owner modes remain only for fresh-generation rerun/bisection.
+- Removal trigger: after the canonical clean-source production packet completes
+  twice without an oracle teardown/handoff fault, collapse to the simplest
+  stable independent-oracle protocol and remove abandoned worker variants.
+
+## C2-6 guarded idle packed-workspace release API
+
+- Added 2026-08-18. Row reclaim no longer frees the owner-shared packed
+  workspace: the slab is union-geometry and shared by every resident view, so
+  per-reclaim release forced a same-size hot-path reallocation on the next
+  packed step (the accepted C2-6 canonical packet recorded 246 releases /
+  242.39 GiB cumulative churn). Session close frees the workspace directly;
+  `Qwen35GGUFResidentSession.release_idle_packed_workspace()` remains as a
+  guarded (unflushed-state / live-graph fail-closed) public release API with
+  no production caller.
+- Removal trigger: either wire it to a future idle-reclaim path that satisfies
+  the guards, or delete it (and its lifecycle test) once the task-5 backend
+  unification moves packed workspace ownership into the load-time resource
+  ledger, where reclaim is ownership-based rather than session-based.
+
+## Packed workspace page table and identity-table device kernels
+
+- Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries
+  slot-major `page_ids` + `copy_segments()`, and
+  `_rebind_packed_verify_layout_pages` fills layout block tables from them.
+  Production page IDs are still identity (private chunk), so
+  `prepare_packed_decode_metadata*` device kernels (which write identity block
+  tables on device) and packed decode graph replay (which refreshes metadata
+  through them) remain correct; the `_packed_decode_metadata_device_eligible`
+  gate already falls back to host upload for non-identity tables, but the
+  graph-replay refresh path has no such fallback.
+- Removal trigger: with S1d (pool-leased workspace pages), either extend the
+  device metadata kernels to consume a device-resident page table and rebind
+  graphs against it, or fail closed on graph capture when `page_ids` are
+  non-identity. Delete the private-chunk allocation path from
+  `_GGUFPackedTargetState` once the lease-backed path is the only producer.
+
+## Generation-1 prefill/decode policy compatibility choices
+
+- Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling
+  architecture: each round rotates bounded prefill quanta by stable slot and
+  then advances every due decode row once. `protect_decode`, `protect_ttft`,
+  and `fair` remain available because current GGUF packages and their retained
+  evidence select them explicitly; they are compatibility/rollback policy
+  names, not the long-term production planner interface.
+- Removal trigger: after C2-6 derives per-model/backend round budgets from
+  measured TTFT/ITL SLO rows and passes c1-c32 production soaks on gfx1100 and
+  gfx1151, promote those registered token budgets, remove generic policy
+  selection from public production configuration, and retain only a diagnostic
+  compatibility seam while old GGUF runners remain supported.
+
 ## gfx1100 GGUF Q4_K_M fair launch-policy default (scoped registry default)
 
 - Added 2026-08-17. The `("hip_gfx1100", "gguf_q4_k_m")` generator factory now
@@ -3974,3 +4095,55 @@ should be boring.
   overturns the 1024 win), collapse the runtime-threads entrypoint back to a
   fixed constexpr and drop the capability/env unless a named validation gap
   still needs the override.
+## Compact DMS device payloads opt-in (C2-7 U6)
+
+- `DMSCompactBackend(..., device_payloads=True)` or
+  `HIPENGINE_DMS_DEVICE_PAYLOADS=1` moves the BF16 K/V payload into the
+  device slot buffers owned by `DMSDevicePayloadStore`
+  (`hipengine/kvcache/dms_device.py`); the host keeps only the
+  O(rows x heads x capacity) extent metadata. Default is off: the host
+  parent remains the production path until the C2-7 product gate passes
+  (trained `dms_metadata.json`, rocprof kernel-identity rows on a stable
+  GPU, c1-c32 lifecycle rerun). Remove the flag (device mode becomes the
+  only BF16 path) after that gate, keeping the host parent as the
+  registered `cpu_reference` fallback for no-HIP hosts.
+- `HIPENGINE_DMS_DEVICE_TRIPWIRE=1` (default off) reads back the
+  append-kernel overflow status after every device append. The host
+  pre-check already raises `MemoryError` before any device mutation, so
+  the tripwire is a state-drift canary for soak/lifecycle runs, not a
+  correctness gate. Revisit the per-layer-per-step D2H readback in the
+  optimization pass (e.g. fold the status into the next step's metadata
+  staging) before enabling it by default.
+
+## Qwen3.8-27B gfx1100 packed route: T2 production drift, not a blocker (corrected 2026-08-19)
+
+- The current C2 packed decode route is NOT byte-exact vs the c1 oracle for
+  Qwen3.8-27B Q4_K_M on gfx1100: prompt row 2 (last token 9708) diverges at
+  decode token 73 (observed 6866 vs oracle 3154), deterministic at c2 and c4
+  (the two packed widths are byte-identical to each other). The pre-C2 tree
+  (b08ed12d6) was byte-exact on the same host/protocol.
+- **Corrected classification (supersedes the earlier "regression/blocker"
+  label):** this is a **T2 production drift** (width-specific packed
+  arithmetic vs c1), which `docs/EXECUTION-PROFILES.md` explicitly allows for
+  the `production` profile ("width- and shape-specific arithmetic is
+  allowed"; "cross-width generated-ID equality is diagnostic, not a
+  promotion requirement"). The produced text is fluent and valid ("giving
+  back to society" vs "making a positive impact on society"), the packed
+  trajectory is the oracle shifted by exactly 2 tokens after the single
+  step-73 flip, and both end in the same repeat loop. It is **not** a
+  correctness bug and **not** a production gate failure; the F1 harness
+  "mismatch" is a composition-invariance detector, not a correctness oracle.
+- It becomes a requirement only if this route is ever declared `strict`
+  (bit-stable on retained fixtures) or `batch_invariant` (result preserved
+  across widths/slots/admission order). If that is needed, restore
+  cross-width parity (bisect af5d00098 / 29a786afc) or keep the route
+  `production`. Optional: measure the step-73 logit margin (3154 vs 6866)
+  in a high-precision reference to confirm the narrow-margin flip. Evidence:
+  `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`,
+  worklog `qwen38-27b-old-vs-new-ab` and
+  `qwen38-27b-packed-drift-correction`.
+- Separate pre-existing performance fact (not C2-specific, the item to
+  profile): the dense 27B packed c2/c4 step costs ~5x the c1 step (ITL 36ms
+  -> 184/198ms) in BOTH trees, so neither design scales this model's
+  aggregate throughput; rocprof kernel-family audit of the packed step is
+  the follow-up.
