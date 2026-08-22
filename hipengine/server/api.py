@@ -1362,6 +1362,9 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
             "default_enabled": default_enabled,
             "streaming_compatible": False,
             "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+            "physical_concurrency": "serialized_target_slot",
+            "max_physical_target_slots": 1,
+            "route_coalescing_is_physical_concurrency": False,
         }
     )
     if configured_mode == "auto":

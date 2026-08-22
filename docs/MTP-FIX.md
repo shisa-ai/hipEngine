@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF4 complete on gfx1151; automatic production MTP remains disabled pending RF5–RF6**
+- Status: **active campaign; RF0–RF5 complete on gfx1151; automatic production MTP remains disabled pending RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -223,8 +223,12 @@ questions for the next coder.
       streaming/non-greedy rejection, exact usage, direct MTP extensions,
       capability scopes, and post-restart health are qualified. Artifact:
       `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf4-api-semantics.json`.
-- [ ] **RF5:** prove concurrency/fairness/resources/soak or explicitly retain an
-      honest serialized dense-MTP policy.
+- [x] **RF5:** retained and qualified the honest serialized dense-MTP policy.
+      c1/c2/c4/c8 offered load, one c8 multi-prompt request, ragged prompts,
+      mixed AR/MTP c8, deadline/readmission, queue/fairness controls, 100-request
+      alternating soak, bounded resources, and shutdown pass. Route coalescing
+      is explicitly not physical MTP concurrency. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf5-serialized-load.json`.
 - [ ] **RF6:** run the complete quality and true-AR performance promotion packet.
 - [ ] **RF7:** canary, circuit-breaker, rollback, restart, and staged rollout.
 - [ ] Keep automatic production MTP disabled until the phase gates below permit
@@ -776,6 +780,18 @@ Soak tiers:
 - 1-hour mixed-context/load run for campaign iterations;
 - final 8-hour or equivalent request-count promotion soak with no hang, leak,
   stale route, ownership failure, or unexplained readiness transition.
+
+**RF5 closed on gfx1151 2026-08-22 with serialized explicit-only dense MTP.**
+Capabilities state `physical_concurrency=serialized_target_slot`, maximum one
+physical target slot, and `route_coalescing_is_physical_concurrency=false`.
+Real c1/c2/c4/c8 independent offered load and one c8 multi-prompt request match
+sequential AR IDs; mixed AR/MTP c8, deadline/readmission, and six queue/fairness
+CPU gates pass. A 100-request alternating soak completes 50 AR + 50 MTP with
+zero failures. Tracked peak is 21,914,879,597 bytes; total allocation/free bytes
+match at 103,913,324,658 and final ownership is zero. The 1-hour/final promotion
+soaks are not applicable because RF2/RF6 admit no automatic MTP scope; production
+continues AR. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf5-serialized-load.json`.
 
 ### RF6 — Quality and performance qualification
 

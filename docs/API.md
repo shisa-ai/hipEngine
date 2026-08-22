@@ -104,9 +104,12 @@ compatible requests through MTP. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
 non-streaming MTP requests can coalesce into one backend call. The current dense
 transactional hook nevertheless iterates those rows serially through one
-resident target slot; route coalescing is not physical c>N MTP execution or a
-concurrency qualification. True dense MTP concurrency, fairness, and aggregate
-benefit remain RF5 work in [`MTP-FIX.md`](MTP-FIX.md).
+resident target slot; route coalescing is not physical c>N MTP execution.
+RF5 retains this honest explicit-only policy after c1/c2/c4/c8 offered-load and
+100-request soak qualification. Capabilities report
+`physical_concurrency="serialized_target_slot"`,
+`max_physical_target_slots=1`, and
+`route_coalescing_is_physical_concurrency=false`.
 
 **MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement
