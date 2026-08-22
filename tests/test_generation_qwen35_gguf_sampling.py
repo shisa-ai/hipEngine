@@ -160,17 +160,19 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     )
 
     assert outputs[0].generated_token_ids == (1, 2, 3)
-    assert any(
-        call[0] == "generate"
-        and call[2]
-        == {
-            "max_new_tokens": 3,
-            "request_id": 0,
-            "eos_token_id": 99,
-            "stop_token_ids": (),
-        }
-        for call in calls
-    )
+    generate_call = next(call for call in calls if call[0] == "generate")
+    assert {key: generate_call[2][key] for key in (
+        "max_new_tokens",
+        "request_id",
+        "eos_token_id",
+        "stop_token_ids",
+    )} == {
+        "max_new_tokens": 3,
+        "request_id": 0,
+        "eos_token_id": 99,
+        "stop_token_ids": (),
+    }
+    assert callable(generate_call[2]["checkpoint"])
     assert ("provider_acquire", {"max_positions": 256, "pool_enabled": True}) in calls
     assert ("provider_release", 0) in calls
     assert calls[-1] == ("release", (7, "dense_nextn", 256), provider)

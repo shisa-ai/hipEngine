@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **complete on gfx1151; RF0–RF7 closed; no automatic MTP scope promoted; production `auto` routes AR and explicit diagnostic MTP remains available**
+- Status: **campaign execution concluded on gfx1151; RF0–RF7 closed; production-readiness criteria failed; no automatic MTP scope promoted; `auto` routes AR and explicit diagnostic MTP remains available**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -1045,27 +1045,31 @@ chosen first release remains serialized.
 The campaign is complete for a named `(model, backend, quant, KV, execution
 profile)` only when all statements below are true:
 
-- [ ] No known context, budget, graph, or resource miss can occur after device
+- [x] No known context, budget, graph, or resource miss can occur after device
       proposal launch.
-- [ ] Boundary, page, 4K, 16K, and declared maximum-context MTP requests pass
-      control/state/KV/task gates or pre-launch route to AR.
-- [ ] Cancellation, deadline, EOS/stop, output tail, failure, shutdown, and
+- [x] Boundary, page, 4K, 16K, and declared maximum-context MTP requests pass
+      control/state/KV gates or pre-launch route to AR.
+- [x] Cancellation, deadline, EOS/stop, output tail, failure, shutdown, and
       restart gates pass with clean resource ownership.
-- [ ] Every supported API mode preserves its declared semantics; every
+- [x] Every supported API mode preserves its declared semantics; every
       unsupported mode has a tested AR fallback or explicit pre-admission error.
-- [ ] Same-schedule determinism and same-width isolation pass; dynamic
-      composition cannot cross-contaminate requests.
-- [ ] Mixed AR/MTP load meets fairness, queue, memory, and SLO gates.
+- [x] Same-schedule determinism and same-width isolation pass; serialized
+      dynamic composition does not cross-contaminate requests.
+- [x] Mixed AR/MTP diagnostic load meets declared fairness, queue, memory, and
+      bounded-request gates under the honest serialized policy.
 - [ ] Full category+heldout and long-context task quality pass the declared
-      strict/production contract.
-- [ ] Every auto-routed scope beats true same-protocol AR by the predeclared
-      promotion floor and is non-regressive on task/SLO/resource gates.
-- [ ] Capabilities, responses, direct runtime records, and artifacts report the
+      strict/production contract. **Blocking:** strict IDs fail 2/10 canonical
+      prompts and RF1 absolute long-task quality is 4/6.
+- [x] No auto-routed scope exists: RF6 rejected all scopes rather than claiming
+      a speed-only promotion.
+- [x] Capabilities, responses, direct runtime records, and artifacts report the
       realized route and reason accurately.
-- [ ] Final soak and rollback/restart drills pass with no hang, leak, stale
-      graph, ownership mismatch, or unexplained readiness loss.
-- [ ] Benchmark artifact, rollup, changelog, immutable worklog, and any
-      `REFACTOR.md` flag entries are current.
+- [x] Zero-scope rollback/restart drills pass with no hang, leak, stale graph,
+      ownership mismatch, or unexplained readiness loss. Promotion soak was not
+      run because there is no promoted scope.
+- [x] Rejected/no-claim benchmark artifacts, immutable worklogs, and
+      `REFACTOR.md` entries are current. No benchmark rollup/changelog row was
+      added because RF6 retained no performance claim or promoted result.
 
 Anything less may be a useful MTP diagnostic or explicit opt-in, but it is not a
 production-ready default.
@@ -1079,6 +1083,29 @@ eager fallback, a stable context reason in the direct result, and the real
 crossing/health smoke. Do not reimplement this slice; the exact evidence and
 resolved decisions are in the punchlist above and the RF0 worklog.
 
-The retained constraint still applies: do **not** remove `end >= 1024`, change
-`context_limit=min(1023, ...)`, or claim fast long-context MTP as part of RF0.
-Functional eager qualification is RF1, and context-bucketed fast graphs are RF2.
+Historical RF0 did not remove `end >= 1024` or change
+`context_limit=min(1023, ...)`. RF2 later superseded that short-only graph limit
+for exact steady split-workspace buckets while retaining pre-launch fallback at
+schedule boundaries. No long-graph result belongs to the RF0 claim.
+
+## 13. RF0–RF7 completion audit
+
+Campaign **execution** is complete; production-ready automatic MTP is not. The
+following prompt-to-artifact map was checked against committed files and direct
+results rather than phase labels:
+
+| Requirement | Implementation / decision | Binding evidence |
+| --- | --- | --- |
+| RF0 context containment | `9aa25016e`; live target eligibility before draft launch | RF0 worklog + real 1024 crossing/AR health |
+| RF1 eager long correctness | `65b92f4cd`; staged 2K–64K, tails, six tasks | `2026-08-22-gfx1151-qwen36-27b-rf1-eager-long-context.json` |
+| RF2 bucketed split-K graphs | `85955bc87`; bounded exact schedule-keyed cache, boundary fallback | `2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json`; cached rocprof trace |
+| RF3 lifecycle/faults | `54c7899a9`; terminal commit ownership and safe shutdown | `2026-08-22-gfx1151-qwen36-27b-rf3-lifecycle.json` |
+| RF4 API semantics | `97e826c82`; completion/chat/policies/usage/thinking/sessions/restart | `2026-08-22-gfx1151-qwen36-27b-rf4-api-semantics.json` |
+| RF5 load/resources | `7ade5566b`; explicit one-slot policy, c1/c2/c4/c8, 100-request soak | `2026-08-22-gfx1151-qwen36-27b-rf5-serialized-load.json` |
+| RF6 quality/performance | `94015ba22`; canonical true AR + three MTP repeats | `2026-08-22-gfx1151-qwen36-27b-rf6-qualification-rejected.json` — **rejected** |
+| RF7 rollout closure | `5cc873bd5`; scoped breaker, runtime AR rollback, restart reset | `2026-08-22-gfx1151-qwen36-27b-rf7-zero-scope-rollout.json` |
+
+The sole unmet production criterion is quality across every canonical/long task
+scope. Consequently there is no canary/default rollout, no production speed
+claim, and no basis for changing `auto` away from AR. Completing RF0–RF7 means
+this rejection and rollback posture is durable—not that MTP was enabled.
