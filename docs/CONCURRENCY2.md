@@ -2,8 +2,9 @@
 
 Last updated: 2026-08-22.
 
-_Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
-short/long serving and the canonical W7900 production load are retained, while
+_Status: merged on `main`; Generation-2 implementation spans C2-0 through C2-8.
+Dense gfx1100 short/long serving and the canonical W7900 production load are
+retained as the declared default, while
 cross-backend/external and DMS product closure remain open. The executable audit
 reports 38 passed, 2 blocked, and 1 unavailable rows. This document remains the
 source of truth for the server scheduler, request
@@ -72,6 +73,10 @@ The remaining work is not all “tuning,” however. Keep these scopes distinct:
   is invalid and c8 fails same-engine c1 trajectory parity, so no external rate
   is reported. This does not invalidate the retained W7900 same-engine gates.
   Evidence: [`external availability audit`](../benchmarks/results/2026-08-22-concurrency2-external-serving-unavailable.json).
+- **Core merge closure:** the objective-to-artifact audit confirms gfx1100 dense
+  default correctness on `main`, broad/focused validation, optional fail-closed
+  boundaries, and explicit gfx1151 deferral. Evidence:
+  [`gfx1100 completion audit`](../benchmarks/results/2026-08-22-gfx1100-core-main-merge-complete.json).
 
 Open optional or backend-specific capabilities stay default-off, explicit, or
 fail-closed. They do not justify withholding the working common architecture
