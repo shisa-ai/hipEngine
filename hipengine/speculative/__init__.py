@@ -128,6 +128,15 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.packing import (
+    SpeculativePackedGroup,
+    SpeculativePackingBudget,
+    SpeculativePackingPlan,
+    SpeculativePackingRequest,
+    VerifierCostMap,
+    VerifierCostRecord,
+    pack_speculative_requests,
+)
 from hipengine.speculative.simulator import (
     SpecCycleStage,
     SpecTransaction,
@@ -280,6 +289,13 @@ __all__ = [
     "TargetVerifyBatch",
     "TargetVerifyBuffers",
     "Verifier",
+    "SpeculativePackedGroup",
+    "SpeculativePackingBudget",
+    "SpeculativePackingPlan",
+    "SpeculativePackingRequest",
+    "VerifierCostMap",
+    "VerifierCostRecord",
+    "pack_speculative_requests",
     "SpecCycleStage",
     "SpecTransaction",
     "SpeculativeCycleResult",

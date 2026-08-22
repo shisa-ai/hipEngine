@@ -5,7 +5,7 @@ Last updated: 2026-08-22.
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
 short/long serving and the canonical W7900 production load are retained, while
 cross-backend/external and DMS product closure remain open. The executable audit
-reports 35 passed, 1 blocked, and 1 unavailable rows. This document remains the
+reports 36 passed, 1 blocked, and 1 unavailable rows. This document remains the
 source of truth for the server scheduler, request
 lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
@@ -36,12 +36,13 @@ Related source-of-truth documents:
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
-| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, and guarded GGUF MTP under one EngineService lifecycle. | SPEC-C0/C1 correctness is closed; continuous packing, streaming/sampling, generic providers/trees, and product gates remain open. |
+| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, guarded GGUF MTP under one EngineService, and compatible c2 packing. | SPEC-C0/C1/C2 correctness is closed; streaming/sampling, generic providers/trees, and product gates remain open. |
 
 Executable source-to-evidence audit:
 [`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
-Its 35-passed/1-blocked/1-unavailable counts include SPEC-C0/C1 host
-integration; they are not a claim that SPEC-C2 through SPEC-C5 are implemented.
+Its 36-passed/1-blocked/1-unavailable counts include SPEC-C0/C1/C2 host and
+actual-c2 integration; they are not a claim that SPEC-C3 through SPEC-C5 are
+implemented.
 
 ### Closure interpretation: running core versus remaining product scope
 
@@ -1750,9 +1751,7 @@ Implement in this order:
    when a driver lacks speculative submission. Actual Qwen3.8 p16/d4 IDs are
    exact against that fallback and final ownership drains. Evidence:
    [`SPEC-C1 gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c1-engine-service.json).
-3. **SPEC-C2 — continuous packing and cost policy.** Batch proposal/verification
-   across compatible requests, add verifier-specific physical cost maps and
-   budgets, and prove mixed AR+SpecDec fairness, refill, pressure, and SLOs.
+3. ~~**SPEC-C2 — continuous packing and cost policy.**~~ **DONE (2026-08-22).** Compatible children enter one driver call and multi-request `VERIFY_CHAIN` work item. Verifier-only cost maps reject AR-D2 evidence; explicit draft/verify/cycle/transaction/work-item/deadline budgets preserve fairness, stable refill, and pre-mutation AR fallback. Actual Qwen3.8 c2 p16/d4 is 2/2 exact against the direct route with C=2/V=6/depth3 and final drain. Evidence: [`SPEC-C2 gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c2-continuous-packing.json).
 4. **SPEC-C3 — streaming and sampling.** Land multi-token output events,
    stop/EOS/output-tail truncation, per-request RNG accounting, disconnect,
    backpressure, and cancel/rollback semantics.

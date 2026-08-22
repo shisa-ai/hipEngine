@@ -677,6 +677,32 @@ class EngineService:
             if shutdown is not None:
                 return shutdown
 
+    def _bind_child_submission(
+        self,
+        state: _ChildState,
+        submission: GenerationSubmission,
+        *,
+        expected_mode: str | None = None,
+        backend_ids: set[int] | None = None,
+    ) -> None:
+        if len(submission.request_ids) != 1:
+            raise RuntimeError("one child submission must map to one backend request")
+        if expected_mode is not None and str(submission.work_kind) != expected_mode:
+            raise ValueError(
+                "speculative submission work_kind must match child execution mode"
+            )
+        backend_request_id = int(submission.request_ids[0])
+        if backend_request_id in self._states_by_backend_id or (
+            backend_ids is not None and backend_request_id in backend_ids
+        ):
+            raise RuntimeError("backend request_id is already owned by another child")
+        if backend_ids is not None:
+            backend_ids.add(backend_request_id)
+        state.submission = submission
+        state.backend_request_id = backend_request_id
+        self._states_by_service_id[state.service_request_id] = state
+        self._states_by_backend_id[backend_request_id] = state
+
     def _admit_child_state(self, state: _ChildState) -> None:
         if state.execution_mode == "ar":
             submission = self._driver.submit_detailed(state.request)
@@ -687,19 +713,11 @@ class EngineService:
                     "speculative submission is unavailable before child admission"
                 )
             submission = submit(state.request)
-            if str(getattr(submission, "work_kind", "")) != state.execution_mode:
-                raise ValueError(
-                    "speculative submission work_kind must match child execution mode"
-                )
-        if len(submission.request_ids) != 1:
-            raise RuntimeError("one child submission must map to one backend request")
-        backend_request_id = int(submission.request_ids[0])
-        if backend_request_id in self._states_by_backend_id:
-            raise RuntimeError("backend request_id is already owned by another child")
-        state.submission = submission
-        state.backend_request_id = backend_request_id
-        self._states_by_service_id[state.service_request_id] = state
-        self._states_by_backend_id[backend_request_id] = state
+        self._bind_child_submission(
+            state,
+            submission,
+            expected_mode=(None if state.execution_mode == "ar" else state.execution_mode),
+        )
 
     def _process_command(self, command: _ServiceCommand) -> _CommandResponse | None:
         if command.kind == "shutdown":
@@ -711,13 +729,62 @@ class EngineService:
                 else command.states
             )
             admitted: list[_ChildState] = []
+            batch_submissions: tuple[GenerationSubmission, ...] = ()
             try:
-                for state in states:
-                    self._admit_child_state(state)
-                    admitted.append(state)
+                batch_submit = (
+                    getattr(self._driver, "submit_speculative_many_detailed", None)
+                    if command.kind == "submit_speculative_many" and len(states) > 1
+                    else None
+                )
+                if callable(batch_submit):
+                    submissions = tuple(
+                        batch_submit(tuple(state.request for state in states))
+                    )
+                    batch_submissions = submissions
+                    if len(submissions) != len(states):
+                        raise RuntimeError(
+                            "speculative batch submission must return one submission per child"
+                        )
+                    backend_ids: set[int] = set()
+                    for submission in submissions:
+                        if len(submission.request_ids) != 1:
+                            raise RuntimeError(
+                                "one child submission must map to one backend request"
+                            )
+                        backend_request_id = int(submission.request_ids[0])
+                        if backend_request_id in backend_ids or backend_request_id in self._states_by_backend_id:
+                            raise RuntimeError(
+                                "backend request_id is already owned by another child"
+                            )
+                        if str(submission.work_kind) != "verify_chain":
+                            raise ValueError(
+                                "speculative submission work_kind must match child execution mode"
+                            )
+                        backend_ids.add(backend_request_id)
+                    backend_ids.clear()
+                    for state, submission in zip(states, submissions, strict=True):
+                        self._bind_child_submission(
+                            state,
+                            submission,
+                            expected_mode="verify_chain",
+                            backend_ids=backend_ids,
+                        )
+                        admitted.append(state)
+                else:
+                    for state in states:
+                        self._admit_child_state(state)
+                        admitted.append(state)
             except BaseException as exc:
                 for state in admitted:
                     self._cancel_state(state, reason="parent_submit_error")
+                if batch_submissions and not admitted:
+                    abort = getattr(self._driver, "abort_submission", None)
+                    if callable(abort):
+                        for submission in batch_submissions:
+                            try:
+                                abort(submission, reason="parent_submit_error")
+                            except BaseException:
+                                pass
                 command.response.finish(error=exc)
             else:
                 command.response.finish(
