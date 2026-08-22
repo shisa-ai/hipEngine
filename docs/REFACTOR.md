@@ -3998,3 +3998,20 @@ should be boring.
   strict chain. The strict eager/unfused fallback itself must remain per
   `EXECUTION-PROFILES.md` invariant #8; only the duplicated per-row staging in
   the eager verifier may be collapsed once RF2 changes ownership semantics.
+
+## gfx1151 native full-attention prefill dynamic LDS overflows at large context
+
+- Found 2026-08-22 during RF1 long-context qualification:
+  `launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16` sizes dynamic LDS as
+  `(max_context_len + threads + head_dim) * 4`, which exceeds the 64 KiB
+  workgroup limit once `max_context_len ~= 16K` and the launch fails with
+  `HIP error 1 (invalid argument)`. It is reachable only when the AOTriton
+  prefill default is disabled (`HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE=0`) at
+  large context; gfx1151 production uses AOTriton prefill by default and native
+  is only for sub-512, so no RF1 matrix row hit it.
+- Fix direction: bound or bucket the dynamic LDS by an actual workgroup-budgeted
+  tile (or fall back to the AOTriton/registered strict prefill at long context)
+  instead of sizing by whole context.
+- Removal trigger: once the native long prefill route is either capped to a
+  budget-safe tile or superseded, keep the guard that selects AOTriton/strict at
+  large context and drop any unbounded dynamic-LDS path.
