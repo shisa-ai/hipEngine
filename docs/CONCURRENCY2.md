@@ -74,6 +74,231 @@ from integration, but merge readiness still requires reconciling current
 `origin/main`, resolving shared-file conflicts, and proving no regression
 against the same baseline nodes and focused Generation-2 bundles.
 
+### gfx1151 qualification and optimization plan
+
+This is the Generation-2 port and tuning contract for Strix Halo / Radeon 8060S
+(`hip_gfx1151`). It complements the model-specific evidence in
+[`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md),
+[`QWEN38-27B-GFX1151-CAMPAIGN.md`](QWEN38-27B-GFX1151-CAMPAIGN.md), and
+[`PARO-GGUF-MTP-TRANSFER.md`](PARO-GGUF-MTP-TRANSFER.md). Those documents remain
+the authorities for their model/quant/kernel decisions; this section owns the
+common C2 integration order.
+
+#### What transfers and what does not
+
+The gfx1151 package reuses the common request table, `EngineService`, token-
+budget planner, output collectors, resource ledger, global-pool/radix-cache
+protocols, `KVLiveSpans`, transaction API, and host conformance simulator. The
+port should register capabilities and adapters, not copy or fork those systems.
+
+The following require independent gfx1151 evidence for each model/quant/KV
+combination:
+
+- physical decode and verifier widths, mask classes, context limits, graph
+  buckets, workspace and resident-state bounds;
+- strict/production variant manifests and fallbacks;
+- AR and verifier cost maps, D2 decomposition, prefill/decode policy, admission
+  limits, and graph/eager defaults;
+- every HIP kernel, layout, fusion, KV codec, and memory-saving route; and
+- complete correctness, lifecycle, load/SLO, memory, thermal, and performance
+  promotion.
+
+W7900 evidence never transfers to gfx1151, and two Radeon 8060S hosts are also
+independent physical lanes. Absolute rates, power-limited behavior, and defaults
+do not transfer merely because hosts share an architecture or kernel source.
+Retained ZBook evidence records its 60/60/45 W
+power state and one-queue protocol; a Framework or desktop lane needs its own
+baseline rather than an old-to-new ratio against ZBook.
+
+Existing gfx1151 evidence is useful but does not by itself close C2 production:
+PARO has qualified physical c2/c4/c8 in its existing owner; Qwen3.6 GGUF has
+named profiles, c1/cN numerical/lifecycle evidence, and model-specific retained
+routes; Qwen3.8 has a separately optimized dense package. The C2 gate must prove
+that those packages run through the common service, global backend-owned pool,
+logical c1-c32 planner, and production lifecycle rather than a legacy resident
+or benchmark-only loop.
+
+#### Hardware and measurement controls
+
+Treat the 40-CU integrated GPU and shared-memory system as a distinct roofline.
+Before selecting a mechanism:
+
+1. Freeze host, firmware/ROCm, power limits, AC state, scheduler/queue policy,
+   model fingerprint, quant, KV backend, execution profile, prompt hashes, and
+   thermal idle band.
+2. Prebuild JIT objects outside profiling and require cached builds inside it.
+3. Measure clean complete-request/server wall separately from synchronized
+   profiler windows; collect HIP API/copy, kernel intervals, stage/critical-path
+   evidence, and actual allocation bytes.
+4. Keep c1/c4/c8/c17/c32, eager/graph, p512 and long-context controls separate.
+5. Counterbalance same-resident A/B order and retain every thermally or
+   mechanically invalid sample with its reason.
+
+`rocprofv3` support itself is a gate. Historical gfx1151 traces have included
+zero-duration dispatches on some ROCm combinations; in that case use a declared
+same-stream device clock/stage method and do not invent kernel utilization from
+host markers. A low launch-API wall or low kernel interval union does not by
+itself identify a host or device bottleneck.
+
+#### G1151-0 — capability and C2-path audit
+
+Start with no tuning:
+
+- resolve the real backend/model package and emit registered prefill, AR,
+  verifier, sampler, KV, graph, and strict-fallback capabilities;
+- prove the server reaches `EngineService`, backend-produced resource claims,
+  `GlobalKVPoolSet`/`KVBatchView`, stable metadata slabs, and the C2 execution
+  planner with no backend/quant branch added to engine code;
+- inventory physical widths honestly. PARO c2/c4/c8 evidence does not imply GGUF
+  widths, and exact c3/c5/c6/c7 partitions are not native physical-width claims;
+- audit every decode transition for JIT/build, hidden allocation, host row loop,
+  copy/readback, synchronization, recapture, serial fallback, and stale graph
+  generation; and
+- establish tracked-clean c1/c4/c8 graph and eager route/correctness traces plus
+  clean non-profiled wall before changing policy.
+
+The current hot-path library-hoist work is a required baseline: the Qwen3.6 MoE
+router and GGUF linear families previously paid repeated `build_X(load=True)`
+costs, and those handles were hoisted. A C2 profile must confirm zero per-call
+builds rather than propose another dispatch refactor. Dense Qwen3.6's
+`t16_selected` hoist reduces host work but measured no complete-wall win, so
+“remove Python overhead” is not a default gfx1151 optimization premise.
+
+#### G1151-1 — functional production qualification
+
+Run the common host and physical-device gates before performance promotion:
+
+- fixed, ragged, delayed, Poisson, cancellation/disconnect, overload/recovery,
+  refill, sparse retirement, compaction, and 60-second-plus soak;
+- logical widths 1,2,3,4,5,7,8,9,13,16,17,24,32 with exact physical
+  decomposition, no route-cap admission clamp, and a direct physical c1;
+- 1K/4K/16K/32K and model-supported long-context membership, page growth,
+  changed-page graph replay, prefix attach/COW/eviction, memory recovery, and
+  final drain;
+- request/slot/row, token/position/mask, Conv/GDN/SSM, KV, graph, sampler, and
+  collector isolation under every transition; and
+- strict/production numerical gates plus the full task/category matrix required
+  by `EXECUTION-PROFILES.md`.
+
+The prior ZBook Qwen3.6 server packet saturated the physical bucket and failed
+its long soak through overload/ITL/TTFT pressure. Do not “fix” that by enlarging
+queues or weakening SLOs. First determine whether the limiting resource is
+model service rate, physical grouping, prefill interference, admission policy,
+or memory; then tune the measured owner and rerun offered-load goodput.
+
+#### G1151-2 — scheduler, widths, and graph policy
+
+Build gfx1151-specific maps from actual complete operations and the production
+owner:
+
+- price every certified `(active_rows, physical_rows, mask_class, variant)` for
+  AR and separately price verifier `(C,V,tree/chain)` shapes;
+- compare native/masked groups, balanced composition, and serial edges at c1-c32
+  under aggregate goodput, per-request rate, TTFT/ITL, workspace, and memory;
+- retain the current ceiling planner as exact fallback and promote D2 only after
+  a same-server dynamic-membership gate; and
+- select graph/eager and prefill/decode policy by complete wall and SLO, not
+  launch-count reduction alone.
+
+Graph replay is not assumed beneficial on gfx1151. Prior model-specific rows
+include neutral or rejected graph-width/graph-replay attempts, while other
+captured routes are retained. Profile graph node dependencies, recapture,
+submission, synchronization, and device idle intervals on the actual C2 owner.
+Use uncaptured exact fallbacks for rare shapes and never mask c1 into a wider
+bucket merely to increase graph reuse.
+
+#### G1151-3 — kernel priorities after the path ledger closes
+
+Rank by recoverable complete-wall milliseconds for the selected model; do not
+create one universal gfx1151 kernel queue.
+
+1. **Quantized projections and MoE.** For dense Qwen3.8, current model-specific
+   profiles place Q4 paired/singleton and planar-Q6 projection families far
+   ahead of already-reduced attention/norm work. For Qwen3.6 MoE, the remaining
+   high-value work is routed expert/linear GPU execution and cN expert grouping,
+   not another c1 T0 Q8/Q4 inner-loop variant: the prior c1 candidate ladder is
+   closed as a measured no-win. Measure routed lanes per expert, activation
+   reuse, bytes, VALU/WMMA issue, waves, VGPR/LDS/scratch, and grid occupancy;
+   choose row-GEMV versus compact/WMMA from routed lanes rather than request
+   count.
+2. **Operation-complete launch/dataflow contraction.** Keep exact producer-
+   consumer contractions that remove real graph nodes or repeated traffic—such
+   as qualified residual, BF16 handoff, alpha/beta, Conv, norm, or same-input
+   paired-projection boundaries—only when their call-weighted complete route
+   wins. Do not repeat already rejected all-width, metadata-broadcast,
+   output-subdivision, or fusion ideas without a materially new mechanism.
+3. **Attention by context regime.** Reproduce short/global/SWA family walls.
+   Qwen3.8's retained grouped-GQA long-context route already reduced attention
+   to a small share in its post-route profile; after that point projection work
+   outranks another generic attention rewrite. Other models may still justify
+   native full-attention prefill, split-K, wave/thread geometry, or packed query
+   work, but must show a current family-level ceiling.
+4. **Conv/GDN/SSM recurrence.** Split projection, Conv, decay, recurrence,
+   normalization/gate, state journal, and commit. Existing Qwen3.6 evidence
+   shows real recurrence kernel wall but also disproves using the larger host
+   marker as its cost. Optimize or fuse only the measured serial critical path;
+   preserve request-local state and exact rollback owners.
+5. **Prefill.** Rebuild thresholds by shape for native attention/AOTriton,
+   quantized WMMA, row/chunk geometry, and scratch capacity. Retained Q5 source-
+   F16, shared-Q6, and WMMA results are model/layout-specific. Avoid a second
+   resident layout or decode sidecar unless the complete memory-and-wall gate
+   beats sole ownership.
+6. **LM head, sampler, norms, and metadata.** Treat these as lower priority once
+   their measured family is small. Fuse only when it removes synchronization,
+   launch, or repeated traffic without broadening output/readback or changing
+   per-request RNG semantics.
+
+Changed-arithmetic T1/T2 candidates require the complete production-profile
+numerical/task gate and strict fallback. Exact leaf wins remain provisional
+until the complete C2 graph/server route improves. No optimization may depend on
+fixed prompt/token/candidate IDs.
+
+#### G1151-4 — memory, KV, and integrated-system policy
+
+Plan against measured process/system memory and backend allocations, not a
+W7900 VRAM formula. Account weights, graph/static slabs, model state, every KV
+plane, scale/codebook metadata, transaction journals, prefill/attention
+workspace, runtime reserve, and host/cold-tier objects. Admission uses the
+backend-produced claim vector and must survive pressure without late HIP OOM.
+
+Qualify dense BF16 first. No-mirror INT8/FP8 or compact DMS is a separate
+backend/layout/quality campaign: prior Qwen3.8 native INT8 K/V failed its model-
+level quality gate, so it is not a generic gfx1151 memory solution. Prefix
+sharing, tier restore, and DMS snapshot semantics retain their common C2
+contracts but need device-specific capacity, transfer, quality, and SLO proof.
+
+#### G1151-5 — MTP/SpecDec
+
+Reuse C2-S host contracts and the registered native-cycle ABI. Existing gfx1151
+MTP/native-cycle evidence is a provider-specific migration input, not full
+continuous SpecDec qualification. Independently gate proposal, target verify,
+accept, selected state/KV commit, cursors, streaming, cancellation, transaction
+memory, draft-side cross-request batching, and mixed AR/SpecDec fairness.
+
+Optimize verifier physical shapes and provider kernels from a true same-protocol
+AR baseline and the full multi-prompt category+heldout suite. AR widths/cost maps
+must not price verifier rows. DFlash or another drafter remains default-off when
+its exact end-to-end economics lose, regardless of a fast target verifier.
+
+#### Promotion order and exit
+
+Execute one measured unit at a time:
+
+1. tracked-clean capability/path ledger;
+2. correctness/lifecycle/global-pool C2 gate;
+3. canonical load and SLO baseline;
+4. production-owner wall/API/copy/kernel/bytes/issue/occupancy profile;
+5. one highest-recoverable-ms scheduler or kernel candidate;
+6. operation-complete and full-profile quality gates;
+7. counterbalanced complete-server A/B, memory, pressure, and soak; and
+8. compact artifact, rollup, default decision, and removal/`REFACTOR.md` entry.
+
+Task #50 closes only when one declared gfx1151 model/quant/KV configuration
+passes the same common Generation-2 ownership and production gate as W7900,
+with independent backend capabilities and artifacts. It is not blocked on every
+optional model, codec, SpecDec provider, or external comparison, but unsupported
+surfaces must advertise and fail closed honestly.
+
 ## Performance snapshot and old-design comparison
 
 ### Retained Generation-2 short-request packet
