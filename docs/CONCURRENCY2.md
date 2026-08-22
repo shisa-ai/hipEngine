@@ -458,11 +458,11 @@ directly recoverable milliseconds.
 | No-traced-kernel intervals | **44.713 ms** | trace accounting only; A/B rejects it as recoverable overhead |
 | Kernel interval union | **15.716 ms** | at least one traced kernel active |
 | Kernel duration sum | 54.469 ms | non-additive under graph overlap |
-| Q4 paired projections | 12.634 ms sum | largest named kernel family |
-| planar-Q6 BF16 projections | 10.570 ms sum | mechanism unknown |
-| Q4 singleton projections | 10.537 ms sum | mechanism unknown |
-| GDN recurrence/state | 7.813 ms sum | serial critical-path contribution unknown |
-| Q5 projections | 4.228 ms sum | true rowtile active |
+| Q4 paired projections | 12.634 ms sum | 6.417 GB encoded weights; 508.0 GB/s; highest family efficiency |
+| planar-Q6 BF16 projections | 10.570 ms sum | **rank 1:** 3.406 GB; 322.2 GB/s; c4→c8 +61.4%; VGPR136/LDS1 KiB |
+| Q4 singleton projections | 10.537 ms sum | **rank 2:** 4.082 GB; 387.4 GB/s; c4→c8 +41.0%; VGPR216 |
+| GDN recurrence/state | 7.813 ms sum | rank 4; recurrent row work needs its own operation ledger |
+| Q5 projections | 4.228 ms sum | rank 3: 1.038 GB; 245.5 GB/s; VGPR72 |
 | Q6 root/LM-head projection | 3.267 ms sum | two rowtile chunks |
 | PM4 vs HIP graph, clean steady transition | **-0.966 ms median (-1.640%)** | exact but d32 is below c8's 80-replay break-even |
 | Direct AQL vs HIP graph, profiled transition | **+2.256 ms** | rejected; serialization/submission cost |
@@ -470,8 +470,9 @@ directly recoverable milliseconds.
 The execution route is one physical c8 `packed_native` group, captured HIP graph
 replay, 873 dispatches, zero row-local/scalar fallback, zero steady H2D/D2H in
 the execution manifest, and eight equal 32-token outputs. Evidence:
-[`production-owner attribution`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json)
-and [`transport A/B`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-transport-ab.json).
+[`production-owner attribution`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json),
+[`transport A/B`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-transport-ab.json),
+and [`family mechanism ranking`](../benchmarks/results/2026-08-22-concurrency2-qwen38-c8-family-mechanism-ranking.json).
 
 #### #37 measurement ladder: rank before tuning
 
@@ -491,22 +492,21 @@ inside one comparison.
    steps and HIP fallback: d32 does not amortize capture/inspection and this
    packet is not an end-to-end generation promotion gate. Rocprof cannot expose
    kernels nested in the PM4 IB, so no PM4 kernel-union claim is made.
-3. **Measure actual bytes by family.** Join each traced operation to its resident
-   allocation bytes, call count, active/physical rows, and route manifest. In a
-   separate counter run (counter collection perturbs timing), collect available
-   TCC/L2/VRAM read/write traffic and cache-hit signals. Report effective GB/s
-   for Q4-pair, Q4-single, planar-Q6, Q5, attention, GDN/state, and LM head—not
-   one model-wide “bandwidth utilization” percentage.
-4. **Measure issue and occupancy.** Record static VGPR/LDS/scratch and grid/wave
-   counts, then available VALU/WMMA instruction and stall/occupancy counters.
-   Determine whether dequant/VALU issue, VOPD pairing, VGPR-limited occupancy,
-   or grid underfill explains low effective bandwidth. Do not reuse a hot
-   single-tile L3 microbenchmark as production VRAM evidence.
-5. **Measure width slopes per family.** Compare matched c1→c4→c8 duration,
-   bytes, instructions, and waves for every top family. A flat duration with
-   fixed bytes suggests successful bandwidth amortization; linear row slope
-   with high VALU issue suggests compute/dequant pressure; a width cliff with
-   falling waves suggests occupancy/geometry.
+3. ~~**Measure actual bytes by family.**~~ **DONE for encoded projection
+   weights (2026-08-22).** Exact resident tensor ledgers report Q4-pair/Q4-
+   single/Q6/Q5/LM-head encoded-weight-only rates of **508.0/387.4/322.2/245.5/
+   319.2 GB/s**. These exclude activations, metadata, overfetch, and cache reuse;
+   they are lower-bound traffic rates, not hardware-counter bandwidth.
+4. ~~**Measure issue and occupancy.**~~ **DONE to the usable stack boundary.**
+   `SQ_WAVES` is populated and exactly grid-derived; `MemUnitBusy` is zero for
+   every sampled Q4-pair dispatch and is unusable. Static/trace evidence makes
+   Q6 row8 VGPR136/LDS1 KiB with 320 bpermutes and 233 waitcnt sites; Q4-single
+   row8 is VGPR216 with 320 bpermutes. Do not interpret the zero counter as zero
+   memory activity.
+5. ~~**Measure width slopes per family.**~~ **DONE for c1/c4/c8 duration,
+   resources, and calls.** Q6 and Q4-single show the largest fixed-weight width
+   cliffs; GDN also grows sharply but has recurrent row work. Exact values and
+   trace hashes are in the family-ranking artifact.
 6. **Confirm the winning mechanism end to end.** For any candidate, require its
    exact/production numerical contract, same-suite graph wall, complete model
    trace, memory, and lifecycle gate. Then repeat through the actual continuous
@@ -518,38 +518,54 @@ This is a decision tree, not permission to implement every idea. Rank candidates
 by **measured milliseconds recoverable from complete wall**. A leaf win is only
 high priority when its call-weighted family saving survives the complete step.
 
-1. **Dense projections (largest summed kernel family).** Profile next. The
-   transport A/B limits measured steady-step submission headroom to ~1 ms; do
-   not rank the 44.713 ms trace-union complement as an optimization bucket.
-   - If measured traffic is near the attainable VRAM roof, reduce bytes or
-     repeated reads: preserve weight-once rowtiles, pair only compatible
-     same-input operations, and reconsider wider physical groups only when D2
-     shows repeated streams dominate.
-   - If bandwidth is low while VALU/dequant issue is high, target metadata/dequant
-     instruction count, activation quantization reuse, or verified VOPD/dp4a
-     paths. Changed arithmetic requires the full production numerical gate.
-   - If waves fall with width, tune tile/column/thread geometry and VGPRs. The
-     planar-Q6 row8 owner (VGPR136) is the first occupancy hypothesis to test,
-     not an automatic rewrite.
-2. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN,
-   normalization/gate, and state commit. If recurrence compute dominates, optimize that kernel/parallel
+1. **Planar-Q6 row8.** Optimize first. Its exact encoded payload is 3.406 GB at
+   322.2 GB/s, c4→c8 duration rises 6.551→10.570 ms (+61.4%), and the owner is
+   VGPR136/LDS1 KiB with issue-heavy dequant/reduction ISA. The diagnostic gap
+   to Q4-pair's same-step encoded rate is 3.865 ms; this is a ranking bound, not
+   promised wall recovery. Test lower-VGPR/reduction/dequant geometry under the
+   actual-operation exact gate and complete owner wall.
+2. **Q4 singleton row8.** Next: 4.082 GB at 387.4 GB/s, c4→c8
+   7.475→10.537 ms (+41.0%), VGPR216. Target register lifetime and reduction/
+   dequant issue before changing arithmetic.
+3. **Q5 row8.** Then: 1.038 GB at 245.5 GB/s and a 2.185 ms diagnostic gap,
+   but only 4.228 ms total and VGPR72. Reuse a proven Q6/Q4 mechanism where
+   possible rather than opening an independent broad rewrite.
+4. **Q4 paired projections.** Although the largest summed family at 12.634 ms,
+   it already reaches the highest encoded-weight-only rate (508.0 GB/s). Its
+   VGPR224 row8 body is a secondary occupancy target after the lower-efficiency
+   families, not the first target.
+
+Projection candidate guardrails:
+
+- If measured traffic is near the attainable VRAM roof, reduce bytes or repeated
+  reads: preserve weight-once rowtiles and pair only compatible same-input work.
+- If bandwidth is low while dequant/reduction issue is high, target instruction
+  count, activation reuse, or verified VOPD/dp4a paths. Changed arithmetic
+  requires the full production numerical gate.
+- If width increases registers and duration sharply, tune tile/column/thread
+  geometry and lifetimes. Q6 row8 is the first such hypothesis, not an automatic
+  rewrite.
+
+5. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN,
+   normalization/gate, and state commit. If recurrence compute dominates,
+   optimize that kernel/parallel
    schedule; if state movement or short launches dominate, fuse the safe
    boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
    projection, which belongs to the projection family.
-3. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
+6. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
    lower priority unless launch-gap accounting moves it into the unreconciled
    bucket or a zero-risk fusion removes repeated traffic.
-4. **Physical row16 remains conditional; row32 remains rejected.** The prior
+7. **Physical row16 remains conditional; row32 remains rejected.** The prior
    direct-row16 down leaf beat 2×row8 by only 1.115× and row32 was 8.69× slower
    than 4×row8. Reopen row16 only if production D2 traces prove repeated weight
    streams are the largest remaining wall opportunity and its projected saving
    exceeds the best c≤8 family candidate.
 
-The highest-impact next action is family bytes/issue/occupancy measurement,
-starting with Q4 paired and singleton projections, then planar-Q6 and GDN.
-Transport is no longer the leading unknown: PM4's retained steady-step gain is
-~1 ms and its existing c8 80-replay threshold remains appropriate. No kernel
-family is selected from summed duration alone.
+The highest-impact next implementation is planar-Q6 row8, followed by Q4
+singleton row8. This ranking combines exact bytes, current-owner width slopes,
+and static resources rather than summed duration alone. Transport is no longer
+the leading unknown: PM4's retained steady-step gain is ~1 ms and its existing
+c8 80-replay threshold remains appropriate.
 
 ## Executive decision
 
