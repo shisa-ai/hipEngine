@@ -1,0 +1,230 @@
+{
+  "command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python3",
+    "scripts/gguf_mtp_serial_load_gate.py",
+    "--soak-requests",
+    "100",
+    "--hash-model",
+    "--out",
+    "/tmp/mtp-rf5-serial-load.json",
+    "--fail-on-fail"
+  ],
+  "cpu_queue_fairness_gates": {
+    "coverage": [
+      "admit while neighbor live",
+      "active cap",
+      "prestart cancellation release",
+      "cancelled queue skip",
+      "queue-cap 429",
+      "active group limit"
+    ],
+    "passed": 6
+  },
+  "kind": "gguf_mtp_serial_load_gate",
+  "memory": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 21914879597,
+    "peak_allocations": 3271,
+    "total_allocated_bytes": 103913324658,
+    "total_freed_bytes": 103913324658
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "passed": true,
+  "performance_claim": false,
+  "policy": "serialized_dense_mtp_explicit_only",
+  "repo": {
+    "commit": "97e826c82b5e68e6bc95d1b793447f1cef4a27bc",
+    "dirty": true
+  },
+  "rows": [
+    {
+      "id": "declared_policy",
+      "max_physical_target_slots": 1,
+      "passed": true,
+      "physical_concurrency": "serialized_target_slot",
+      "route_coalescing_is_physical_concurrency": false
+    },
+    {
+      "ar_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "id": "sequential_baseline",
+      "ids_exact": true,
+      "mtp_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "passed": true
+    },
+    {
+      "id": "independent_c1",
+      "ids_exact": true,
+      "passed": true,
+      "routes": [
+        "speculative_mtp"
+      ],
+      "statuses": [
+        200
+      ],
+      "wall_seconds": 0.7453927459428087,
+      "width": 1
+    },
+    {
+      "id": "independent_c2",
+      "ids_exact": true,
+      "passed": true,
+      "routes": [
+        "speculative_mtp",
+        "speculative_mtp"
+      ],
+      "statuses": [
+        200,
+        200
+      ],
+      "wall_seconds": 1.4115921650081873,
+      "width": 2
+    },
+    {
+      "id": "independent_c4",
+      "ids_exact": true,
+      "passed": true,
+      "routes": [
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp"
+      ],
+      "statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "wall_seconds": 3.2315341191133484,
+      "width": 4
+    },
+    {
+      "id": "independent_c8",
+      "ids_exact": true,
+      "passed": true,
+      "routes": [
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp",
+        "speculative_mtp"
+      ],
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "wall_seconds": 6.741634029895067,
+      "width": 8
+    },
+    {
+      "choice_count": 8,
+      "id": "one_multi_prompt_c8",
+      "ids_exact": true,
+      "passed": true,
+      "route": "speculative_mtp",
+      "status": 200
+    },
+    {
+      "id": "mixed_ar_mtp_c8",
+      "ids_exact": true,
+      "passed": true,
+      "routes": [
+        "speculative_mtp",
+        "default",
+        "speculative_mtp",
+        "default",
+        "speculative_mtp",
+        "default",
+        "speculative_mtp",
+        "default"
+      ],
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "deadline_code": "deadline_exceeded",
+      "deadline_status": 408,
+      "health_ids_exact": true,
+      "health_status": 200,
+      "id": "deadline_and_readmission",
+      "passed": true
+    },
+    {
+      "failures": [],
+      "id": "focused_lifecycle_soak",
+      "passed": true,
+      "requests": 100,
+      "route_counts": {
+        "default": 50,
+        "speculative_mtp": 50
+      }
+    },
+    {
+      "id": "resource_and_shutdown",
+      "memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21914879597,
+        "peak_allocations": 3271,
+        "total_allocated_bytes": 103913324658,
+        "total_freed_bytes": 103913324658
+      },
+      "passed": true,
+      "ready_before_shutdown": 200
+    }
+  ],
+  "schema": 1,
+  "soak_scope": {
+    "focused_requests": 100,
+    "promotion_soak_required": false,
+    "reason": "no automatic MTP scope; RF2/RF6 economics route production to AR"
+  },
+  "source_local_path": "/tmp/mtp-rf5-serial-load.json",
+  "status": "passed",
+  "summary": {
+    "passed": 11,
+    "total": 11,
+    "wall_seconds": 168.24232990504242
+  },
+  "verdict": "pass"
+}

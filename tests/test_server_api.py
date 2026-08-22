@@ -1677,6 +1677,9 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "default_enabled": False,
         "streaming_compatible": False,
         "batch_route": "speculative_mtp",
+        "physical_concurrency": "serialized_target_slot",
+        "max_physical_target_slots": 1,
+        "route_coalescing_is_physical_concurrency": False,
     }
     assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
 
