@@ -482,6 +482,47 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_row8_dpp_candidate_is_bit_exact(
+    q6_t16_library,
+) -> None:
+    candidate = getattr(
+        t16_mod,
+        "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_dpp_bf16_bf16_out",
+    )
+    rows, in_features, out_features = 8, 512, 256
+    rng = np.random.default_rng(0x6D88)
+    qweight = make_q6_k_weight(out_features, in_features)
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    expected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        candidate,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [2, 3, 4])
 def test_q6_t16_qmicro_planar_down_residual_is_bit_exact(
     rows,

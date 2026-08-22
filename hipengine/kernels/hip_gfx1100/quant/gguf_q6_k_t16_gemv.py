@@ -49,6 +49,9 @@ _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1 = (
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_DPP_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_dpp_bf16_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "bf16_residual_bf16_out"
@@ -723,6 +726,36 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
         raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
     _launch(
         _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_dpp_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Candidate exact DPP-reduction planar-Q6 row8 owner."""
+
+    if rows != 8:
+        raise ValueError("qmicro planar DPP rowtile requires rows == 8")
+    _launch(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_DPP_BF16_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
