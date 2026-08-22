@@ -176,22 +176,23 @@ questions for the next coder.
       and rollback; 64 split-K calls; workspace 129 versus 128 required splits;
       zero target-graph submissions. B1/B2/B3 row shapes were already covered
       through 16K.
-- [ ] **Decide the largest practical context from the 32K result.** The measured
-      32K wall projects one isolated 64K B3 direct case to about 47 minutes, so
-      that case is authorized under the 60-minute mechanical-case budget and is
-      running separately. If it exceeds the operational budget, record 64K as
-      not practically certified on this host and retain 32K as the RF1 maximum.
-      `64K where hardware permits` is not a mandate to consume unbounded wall
-      time.
-- [ ] **Run real generation only at the selected maximum.** Use B3 and eight
-      generated tokens in a separate process after the direct oracle passes.
-      Do not duplicate generation at both 32K and 64K merely for Cartesian
-      completeness.
-- [ ] **Run near-cap output tails at one moderate certified context.** Exercise
-      remaining output 1/2/3 (`max_new_tokens` 2/3/4 because prefill publishes
-      the first token) at 4K or another justified moderate context,
-      where tail ownership is testable without repeating maximum-context
-      prefills.
+- [x] **Certify 64K as the largest practical context on gfx1151.** The isolated
+      64K B3 direct case passed in 2831.12 s, inside the 60-minute budget
+      (`/tmp/mtp-rf1-64k-b3-direct.json`): every strict surface exact, 64
+      split-K calls, workspace 257 versus 256 required splits, and zero target
+      graph submissions. Model SHA-256 is
+      `a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f`.
+- [x] **Run real generation only at the selected maximum.** The isolated 64K B3
+      eight-token case passed in 3392.03 s
+      (`/tmp/mtp-rf1-64k-b3-generation.json`): all IDs equal true AR, two full
+      B3 accepts, GPU/CPU acceptance parity, every cycle eager, 64,648 split-K
+      calls, and no target graph/device chaining. No duplicate 32K generation
+      was run.
+- [x] **Run near-cap output tails at one moderate certified context.** Isolated
+      4K cases for remaining output 1/2/3 (`max_new_tokens` 2/3/4) all passed
+      AR-ID equality, GPU/CPU accept parity, eager-only ownership, split-K
+      observation, and exact completion in one cycle. Artifacts:
+      `/tmp/mtp-rf1-tail-r1.json`, `-r2.json`, and `-r3.json`.
 - [ ] **Close RF1:** combine the retained boundary/page/2K–16K artifacts with
       the isolated maximum-context and tail results; record wall/memory and the
       model hash. RF1 remains open until that bounded packet and task evidence
