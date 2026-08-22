@@ -1,0 +1,565 @@
+{
+  "claim": "steady_transition_transport_comparison_not_end_to_end_generation",
+  "clean_counterbalanced_packet": {
+    "all_drained": true,
+    "all_token_hashes_equal": true,
+    "hipgraph_mean_ms": 59.02698511878649,
+    "hipgraph_median_ms": 58.932267129421234,
+    "hipgraph_ms": [
+      58.8385839946568,
+      58.932267129421234,
+      59.31010423228145
+    ],
+    "mean_delta_percent": -1.7154079851423365,
+    "median_delta_ms": -0.9663421660661697,
+    "median_delta_percent": -1.6397505358889064,
+    "order": [
+      "pm4",
+      "hipgraph",
+      "hipgraph",
+      "pm4",
+      "pm4",
+      "hipgraph"
+    ],
+    "pm4_mean_ms": 58.01443150267005,
+    "pm4_median_ms": 57.965924963355064,
+    "pm4_ms": [
+      57.71516915410757,
+      58.362200390547514,
+      57.965924963355064
+    ],
+    "runs": [
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 57.71516915410757,
+        "path": "/tmp/c2-owner-transport-pairs/1-pm4.json",
+        "raw_sha256": "a4c5c9cb22cfcf0a48fd8e0ee4a24e07b72fa278391eb6ba610461899ceb1b0a",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "pm4"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.8385839946568,
+        "path": "/tmp/c2-owner-transport-pairs/2-hipgraph.json",
+        "raw_sha256": "3f55949ff224f6f1503ae9e81a26eef05e88049bcaa753db6fb1ab86cd2413bd",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.932267129421234,
+        "path": "/tmp/c2-owner-transport-pairs/3-hipgraph.json",
+        "raw_sha256": "5901116d9e70ff20b7b00d0ff963fdc3fe0615a70b037cc4f94820db56e2fff1",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.362200390547514,
+        "path": "/tmp/c2-owner-transport-pairs/4-pm4.json",
+        "raw_sha256": "8be1ef41aa1ca875ba6de3341923b24ffded418710fa5964631f59763b1e658e",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "pm4"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 57.965924963355064,
+        "path": "/tmp/c2-owner-transport-pairs/5-pm4.json",
+        "raw_sha256": "4592d84039c48b85c69e24b7c2218a71b36410cb95590fcdfc8d4fefb50c3857",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "pm4"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 59.31010423228145,
+        "path": "/tmp/c2-owner-transport-pairs/6-hipgraph.json",
+        "raw_sha256": "057fbdeb9ed7c6a1c7066eaa3a109fd4f9dbc1d739fde1c39f10f874bf7109a9",
+        "route_counts": {
+          "host_sampler_requests": 0,
+          "native_c1_decode_steps": 4,
+          "native_full_prefill_rows": 0,
+          "native_incremental_prefill_chunks": 16,
+          "native_incremental_prefill_unsampled_chunks": 8,
+          "native_packed_decode_steps": 41,
+          "native_packed_graph_captures": 2,
+          "native_packed_graph_replays": 18,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_row_launches": 0,
+          "resident_fallback_requests": 0,
+          "serial_c1_row_steps": 0,
+          "serial_decode_fallback_steps": 0
+        },
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph"
+      }
+    ]
+  },
+  "commands": {
+    "aql_profile": "rocprofv3 kernel+marker+HIP-runtime+memory-copy trace around the same child with HIPENGINE_SUBMISSION_TRANSPORT=aql.",
+    "clean_packet": "Six fresh cached-only production-owner processes, counterbalanced order pm4,hipgraph,hipgraph,pm4,pm4,hipgraph; scripts/gguf_continuous_owner_profile_child.py with p512,c8,d32,marker-index=3 and HIPENGINE_SUBMISSION_TRANSPORT unset or pm4.",
+    "pm4_profile": "Same profiler command with HIPENGINE_SUBMISSION_TRANSPORT=pm4; rocprofv3 cannot expose kernels nested in the native PM4 IB."
+  },
+  "date": "2026-08-22",
+  "gates": {
+    "hipgraph_fallback_retained": true,
+    "no_runtime_change": true,
+    "performance_promotion_blocker": "This d32 run has fewer than the c8 80-replay PM4 break-even threshold and measures one steady transition, not total generation economics.",
+    "pm4_existing_scope": "gfx1100 exact model/file-type/physical-width/replay-window policy; c8 min replay steps 80"
+  },
+  "interpretation": {
+    "aql": "Direct AQL removes the three ~11.5-ms HIP-graph mid-replay empty intervals, but incurs a 12.563-ms pre-first-kernel native submission interval, reduces overlap (45.117-ms kernel union), and regresses complete profiled wall to 62.685 ms. Rejected.",
+    "decision": "The HIP-graph 44.713-ms no-traced-kernel union is not a recoverable-overhead estimate. Exact transport A/B finds only ~1 ms steady-step transport headroom. Existing c8 PM4 replay threshold remains 80; d32 does not amortize capture/inspection, so no default changes. Return priority to projection-family traffic/issue counters.",
+    "hipgraph_control": {
+      "clean_warm_marker_wall_ms": 58.576095,
+      "device_memory_copy_trace_rows": 0,
+      "hip_api": {
+        "hipDeviceSynchronize": {
+          "count": 1,
+          "ms": 0.250173
+        },
+        "hipGraphLaunch": {
+          "count": 1,
+          "ms": 0.690339
+        },
+        "hipMemcpy": {
+          "count": 1,
+          "ms": 0.04723
+        },
+        "hipStreamSynchronize": {
+          "count": 1,
+          "ms": 58.760183
+        }
+      },
+      "kernel_dispatches": 873,
+      "kernel_duration_sum_ms": 54.468739,
+      "kernel_interval_union_ms": 15.716024,
+      "kernel_segments": 214,
+      "largest_no_kernel_gaps_ms": [
+        11.593893,
+        11.510174,
+        11.497527,
+        6.178227,
+        1.001854
+      ],
+      "profile_child_marker_wall_ms": 60.413014,
+      "profiler_marker_wall_ms": 60.428884,
+      "uncovered_by_kernel_intervals_ms": 44.71286
+    },
+    "pm4": "Native PM4 improves clean steady-transition median by 0.966 ms (1.640%) and mean by 1.013 ms (1.716%) with exact IDs and clean lifecycle. rocprofv3 sees only the terminal copy because kernels are nested in the PM4 IB, so no PM4 kernel-union claim is made."
+  },
+  "kind": "concurrency2_production_owner_c8_transport_ab",
+  "model": {
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106773984
+  },
+  "native_controls": {
+    "aql_clean_screen": {
+      "all_rows_equal": true,
+      "final_requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 8,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 8
+      },
+      "marked_wall_ms": 59.63152786716819,
+      "path": "/tmp/c2-owner-aql-warm.json",
+      "raw_sha256": "07bcdaaf7af63498757bfb38991a1c991a5e0b13cdfa4948390de03c971a0559",
+      "route_counts": {
+        "host_sampler_requests": 0,
+        "native_c1_decode_steps": 4,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 16,
+        "native_incremental_prefill_unsampled_chunks": 8,
+        "native_packed_decode_steps": 41,
+        "native_packed_graph_captures": 2,
+        "native_packed_graph_replays": 18,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_row_launches": 0,
+        "resident_fallback_requests": 0,
+        "serial_c1_row_steps": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+      "transport": "aql"
+    },
+    "aql_marker_accounting": {
+      "apis": {
+        "hipDeviceSynchronize": {
+          "count": 1,
+          "ms": 0.169412
+        },
+        "hipMemcpy": {
+          "count": 1,
+          "ms": 0.200693
+        },
+        "hipStreamSynchronize": {
+          "count": 2,
+          "ms": 0.00515
+        }
+      },
+      "copies": [],
+      "gaps_over_100us_ms": [
+        12.562543,
+        0.77076,
+        0.415226
+      ],
+      "kernel_count": 873,
+      "kernel_sum_ms": 55.613689,
+      "kernel_union_ms": 45.117394,
+      "queues": [
+        [
+          "1",
+          "0"
+        ],
+        [
+          "2",
+          "0"
+        ]
+      ],
+      "segments": 730,
+      "sha256": {
+        "2971991_hip_api_trace.csv": "54833b0714cede3131a2879dee33f0e3c9b1fd9068fcae9edf59893c285d3d20",
+        "2971991_kernel_trace.csv": "bb4e28bd0d7c679578613e6c931b81b43043d860b804691953976735bb0d833e",
+        "2971991_marker_api_trace.csv": "1cafda17473f75851cebbed6c53724e56c1a841cc47d123ef8a534eb79b715a3",
+        "2971991_memory_copy_trace.csv": "ea8358bf004e14a8fbd23ebaffb8be79ad7aa6cdd249090d7226be9f4df2e895"
+      },
+      "top": [
+        {
+          "count": 64,
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "sum_ms": 12.624527
+        },
+        {
+          "count": 160,
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "sum_ms": 10.650564
+        },
+        {
+          "count": 64,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "sum_ms": 10.551717
+        },
+        {
+          "count": 48,
+          "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<unsigned short, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)",
+          "sum_ms": 8.150094
+        },
+        {
+          "count": 48,
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "sum_ms": 4.167157
+        }
+      ],
+      "uncovered_ms": 17.567381,
+      "wall_ms": 62.684775
+    },
+    "aql_profile_child": {
+      "all_rows_equal": true,
+      "final_requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 8,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 8
+      },
+      "marked_wall_ms": 62.67366465181112,
+      "path": "/tmp/c2-owner-aql-profile.json",
+      "raw_sha256": "61ffdffebcbb7355cc7f74e7e5f33f2d6aa9903fcdbde2fdf65c81b9d555a369",
+      "route_counts": {
+        "host_sampler_requests": 0,
+        "native_c1_decode_steps": 4,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 16,
+        "native_incremental_prefill_unsampled_chunks": 8,
+        "native_packed_decode_steps": 41,
+        "native_packed_graph_captures": 2,
+        "native_packed_graph_replays": 18,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_row_launches": 0,
+        "resident_fallback_requests": 0,
+        "serial_c1_row_steps": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+      "transport": "aql"
+    },
+    "pm4_clean_screen": {
+      "all_rows_equal": true,
+      "final_requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 8,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 8
+      },
+      "marked_wall_ms": 57.87361599504948,
+      "path": "/tmp/c2-owner-pm4-warm.json",
+      "raw_sha256": "91546f4201e33aa0570be551c47ec2769ea487161b89c2d7a47ef7ddd9530cd4",
+      "route_counts": {
+        "host_sampler_requests": 0,
+        "native_c1_decode_steps": 4,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 16,
+        "native_incremental_prefill_unsampled_chunks": 8,
+        "native_packed_decode_steps": 41,
+        "native_packed_graph_captures": 2,
+        "native_packed_graph_replays": 18,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_row_launches": 0,
+        "resident_fallback_requests": 0,
+        "serial_c1_row_steps": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+      "transport": "pm4"
+    },
+    "pm4_marker_accounting": {
+      "apis": {
+        "hipDeviceSynchronize": {
+          "count": 1,
+          "ms": 0.151732
+        },
+        "hipMemcpy": {
+          "count": 1,
+          "ms": 0.085511
+        },
+        "hipStreamSynchronize": {
+          "count": 2,
+          "ms": 0.004331
+        }
+      },
+      "copies": [],
+      "gaps_over_100us_ms": [
+        57.361162,
+        0.74304
+      ],
+      "kernel_count": 1,
+      "kernel_sum_ms": 0.00352,
+      "kernel_union_ms": 0.00352,
+      "queues": [
+        [
+          "1",
+          "0"
+        ]
+      ],
+      "segments": 1,
+      "sha256": {
+        "2979782_hip_api_trace.csv": "4635a2ed4aa89a4263d375071e4417757e9e80570472afdeec4c8641165ba911",
+        "2979782_kernel_trace.csv": "86ba6ad39a7a8a71f13f0520e1fa8585580ce13f349cc478658270b1fe1d93b4",
+        "2979782_marker_api_trace.csv": "24651803ad788c1b811e4e6c3ca19ad3926247aff2c5ee7e2c860ec38db6c5cf",
+        "2979782_memory_copy_trace.csv": "fe12b394b3b997c408752409146bb9ffbc6d7fc921e9e83057b99ca74b35beac"
+      },
+      "top": [
+        {
+          "count": 1,
+          "name": "__amd_rocclr_copyBuffer",
+          "sum_ms": 0.00352
+        }
+      ],
+      "uncovered_ms": 58.104202,
+      "wall_ms": 58.107722
+    },
+    "pm4_profile_child": {
+      "all_rows_equal": true,
+      "final_requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 8,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 8
+      },
+      "marked_wall_ms": 58.09641117230058,
+      "path": "/tmp/c2-owner-pm4-profile.json",
+      "raw_sha256": "37ff54820913703f2157d19a33b50cc554888707546f93d18be1be4aa73552ea",
+      "route_counts": {
+        "host_sampler_requests": 0,
+        "native_c1_decode_steps": 4,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 16,
+        "native_incremental_prefill_unsampled_chunks": 8,
+        "native_packed_decode_steps": 41,
+        "native_packed_graph_captures": 2,
+        "native_packed_graph_replays": 18,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_row_launches": 0,
+        "resident_fallback_requests": 0,
+        "serial_c1_row_steps": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+      "transport": "pm4"
+    }
+  },
+  "raw_files": {
+    "/tmp/c2-owner-aql-accounting.json": "d33e2c73eb5695a74cbe8f32a0200b3dabee6a79c136df0169807f6a2190635e",
+    "/tmp/c2-owner-pm4-accounting.json": "b2078790efda601f8a250ae7d173393d60f08b415c8449e74a34a845f0cdd566"
+  },
+  "schema": 1,
+  "source": {
+    "commit": "489e7acac",
+    "host": "epyc",
+    "repo": "/home/lhl/hipEngine-main",
+    "tree": "tracked-clean for all measurements"
+  },
+  "workload": {
+    "concurrency": 8,
+    "decode_tokens": 32,
+    "marker": "hipengine_c2_production_owner_c8_decode_transition_3",
+    "marker_transition": 3,
+    "path": "LLM.generate_detailed -> EngineService -> Qwen35GGUFResidentModelRunner._step_native_rows",
+    "prompt_length": 512,
+    "prompt_token_id": 9707,
+    "sampling": "greedy_top1_ignore_eos"
+  }
+}
