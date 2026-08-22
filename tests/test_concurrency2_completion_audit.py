@@ -16,7 +16,7 @@ def test_completion_audit_has_evidence_for_every_requirement() -> None:
     assert payload["missing_evidence"] == []
     assert payload["false_passes"] == []
     assert payload["status_counts"] == {
-        "passed": 35,
+        "passed": 36,
         "blocked": 1,
         "unavailable": 1,
     }

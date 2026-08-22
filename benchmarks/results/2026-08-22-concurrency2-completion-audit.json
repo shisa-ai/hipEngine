@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-22T14:48:21.118373+00:00",
+  "created_at": "2026-08-22T15:03:26.533739+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
-    "passed": 35,
+    "passed": 36,
     "blocked": 1,
     "unavailable": 1
   },
@@ -720,6 +720,47 @@
           "exists": true,
           "artifact": {
             "status": "accepted_engine_service_integration",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-S.C2",
+      "section": "roadmap",
+      "summary": "continuous compatible speculative packing and cost policy",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/speculative/packing.py",
+        "hipengine/generation/engine_service.py",
+        "tests/test_speculative_packing.py",
+        "benchmarks/results/2026-08-22-concurrency2-spec-c2-continuous-packing.json"
+      ],
+      "validation": "one driver batch/multi-request VERIFY_CHAIN work, verifier-only cost map/budgets, fairness/refill/pressure/deadline fallback, actual Qwen c2 parity",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/speculative/packing.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/generation/engine_service.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_speculative_packing.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-spec-c2-continuous-packing.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_and_actual_c2",
             "passed": true,
             "performance_claim": false
           }

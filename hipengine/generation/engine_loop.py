@@ -397,6 +397,87 @@ class SubmitPollTextGenerator:
             )
         return list(self._inner.generate_speculative_mtp_detailed(request))
 
+    def submit_speculative_many_detailed(
+        self,
+        requests: Sequence[GenerationRequest],
+    ) -> tuple[GenerationSubmission, ...]:
+        """Pack compatible phase-serial speculative children into one model call."""
+
+        normalized = tuple(requests)
+        if not normalized:
+            return ()
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        if any(len(request.prompts) != 1 for request in normalized):
+            raise ValueError("one speculative child requires exactly one prompt")
+        compatibility = tuple(
+            replace(request, prompts=(), cancellation_token=None)
+            for request in normalized
+        )
+        if any(item != compatibility[0] for item in compatibility[1:]):
+            return tuple(self.submit_speculative_detailed(request) for request in normalized)
+        with self._submission_priority.submission(self._loop_lock):
+            combined = replace(
+                normalized[0],
+                prompts=tuple(request.prompts[0] for request in normalized),
+                cancellation_token=None,
+            )
+            outputs = list(self._inner.generate_speculative_mtp_detailed(combined))
+            if len(outputs) != len(normalized):
+                raise RuntimeError(
+                    "packed speculative generation must return one output per child"
+                )
+            request_ids = tuple(
+                range(
+                    self._next_speculative_request_id,
+                    self._next_speculative_request_id + len(normalized),
+                )
+            )
+            self._next_speculative_request_id += len(normalized)
+            details = getattr(self._inner, "last_batch_generation", {})
+            spec_details = (
+                details.get("speculative_mtp", {}) if isinstance(details, Mapping) else {}
+            )
+            draft_depth = max(
+                1,
+                int(spec_details.get("draft_n_max", min(3, normalized[0].max_tokens))),
+            )
+            work_item = WorkItem(
+                kind=WorkKind.VERIFY_CHAIN,
+                request_ids=request_ids,
+                row_to_request=tuple(
+                    request_id
+                    for request_id in request_ids
+                    for _ in range(draft_depth)
+                ),
+                token_rows=tuple(() for _ in range(len(request_ids) * draft_depth)),
+                draft_depth=draft_depth,
+                tree_parents=tuple(
+                    parent
+                    for _request_id in request_ids
+                    for parent in range(draft_depth)
+                ),
+            )
+            submissions: list[GenerationSubmission] = []
+            for request_id, request, output in zip(
+                request_ids, normalized, outputs, strict=True
+            ):
+                submission = GenerationSubmission(
+                    request_ids=(request_id,),
+                    request=request,
+                    max_ticks=1,
+                    work_kind=WorkKind.VERIFY_CHAIN.value,
+                    execution_route="engine_service_packed_speculative",
+                    work_item=work_item,
+                )
+                self._speculative_outputs_by_request[request_id] = output
+                self._register_submission_cancellation_locked(submission)
+                submissions.append(submission)
+            self._last_speculative_submission = submissions[-1]
+            return tuple(submissions)
+
     def submit_speculative_detailed(
         self,
         request: GenerationRequest,

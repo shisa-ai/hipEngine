@@ -1,0 +1,125 @@
+{
+  "actual_qwen38": {
+    "engine_service": {
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "driver_thread_id": 139892828927680,
+      "last_speculative_draft_depth": 3,
+      "last_speculative_route": "engine_service_verify_chain",
+      "last_speculative_work_kind": "verify_chain",
+      "sole_driver": true,
+      "speculative_routes": {
+        "engine_service_verify_chain": 1,
+        "legacy_prelaunch_fallback": 0
+      }
+    },
+    "exact": [
+      true,
+      true
+    ],
+    "final_requests": {
+      "active": 0,
+      "admitted_current": 0,
+      "admitted_total": 0,
+      "completed_buffered": 0,
+      "pending": 0,
+      "reclaimed_total": 0
+    },
+    "legacy_ids": [
+      [
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      [
+        9708,
+        9708,
+        9708,
+        9708
+      ]
+    ],
+    "primary_ids": [
+      [
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      [
+        9708,
+        9708,
+        9708,
+        9708
+      ]
+    ],
+    "work_item": {
+      "draft_depth": 3,
+      "kind": "verify_chain",
+      "request_ids": [
+        1152921504606846976,
+        1152921504606846977
+      ],
+      "row_to_request": [
+        1152921504606846976,
+        1152921504606846976,
+        1152921504606846976,
+        1152921504606846977,
+        1152921504606846977,
+        1152921504606846977
+      ]
+    }
+  },
+  "created_at": "2026-08-22T15:02:00Z",
+  "decision": "SPEC-C2 closed for compatible guarded phase-serial provider calls. No GPU/default change; SPEC-C3 adds streaming and full sampling semantics.",
+  "implementation": {
+    "atomicity": "batch submissions prevalidated completely before child publication; invalid batch aborts all driver submissions",
+    "budgets": [
+      "draft rows/round",
+      "verify rows/round",
+      "cycles/round",
+      "transaction bytes",
+      "work items/round",
+      "deadline guard"
+    ],
+    "compatibility": [
+      "target",
+      "provider",
+      "policy",
+      "mode",
+      "context bucket",
+      "transaction mode",
+      "execution profile",
+      "candidate rows"
+    ],
+    "costs": "VerifierCostRecord/VerifierCostMap keyed by C,V,tree shape, context, transaction, profile with explicit AR-D2 rejection",
+    "fairness": "cycles_already_served then stable order; one cycle/request before repeat; incompatible boundaries do not reorder peers",
+    "fallback": "deadline/transaction failures select AR before mutation; deferred requests retain stable refill order",
+    "packing": "compatible speculative children enter one driver batch call and one multi-request VERIFY_CHAIN WorkItem"
+  },
+  "kind": "concurrency2_spec_c2_continuous_packing",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "6af63cdc5",
+    "host": "epyc",
+    "tree_note": "host packing/service/adapter/tests only"
+  },
+  "status": "accepted_host_and_actual_c2",
+  "validation": {
+    "actual": "Qwen3.8 c2 p16/d4 both primary rows exact to direct fallback; one c2 VERIFY_CHAIN work item, V=6, depth=3, final drain",
+    "green": "61 focused packing/service/loop/simulator/scheduler tests passed",
+    "hashes": {
+      "hipengine/generation/engine_loop.py": "c2f37e0f0d10d55b2ff70108c16bcecd7956555f50ecfc1307091668a38d4c6e",
+      "hipengine/generation/engine_service.py": "3f2ac4d26ef5cf2e33ccb8ea635226ff8624b59e7012d7c07e3171e265952a93",
+      "hipengine/speculative/packing.py": "af78e342118fbb2e477002159d8e1b645791b5c4ff12349b10898bcc4d0c40ea",
+      "tests/test_speculative_packing.py": "4078c4f6c14611ce349997bacc128744aaef437513dafc6716c13892a64decd9"
+    },
+    "raw_smoke_sha256": "dd4ea9147690c74fab422092915e2d706cd16b3a80c96b507d42efdf512f9609",
+    "red": [
+      "packing module absent",
+      "EngineService called per-child speculative submit instead of batch"
+    ]
+  }
+}

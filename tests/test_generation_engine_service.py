@@ -224,6 +224,49 @@ def test_engine_service_speculative_submission_uses_shared_child_lifecycle() -> 
         service.close()
 
 
+def test_engine_service_batches_compatible_speculative_children_once() -> None:
+    class PackedSpecDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.batch_calls: list[tuple[str, ...]] = []
+
+        def submit_speculative_many_detailed(self, requests):
+            self.batch_calls.append(tuple(str(request.prompts[0]) for request in requests))
+            request_ids = tuple(range(self._next_request_id, self._next_request_id + len(requests)))
+            self._next_request_id += len(requests)
+            submissions = []
+            for request_id, request in zip(request_ids, requests, strict=True):
+                submission = GenerationSubmission(
+                    request_ids=(request_id,), request=request, max_ticks=1,
+                    work_kind="verify_chain", execution_route="packed_speculative",
+                )
+                self._outputs[request_id] = GenerationOutput(
+                    text=f"packed:{request_id}", generated_token_ids=(900 + request_id,)
+                )
+                submissions.append(submission)
+            return tuple(submissions)
+
+        def submit_speculative_detailed(self, request):
+            raise AssertionError("compatible children must use batch submission")
+
+    driver = PackedSpecDriver()
+    service = EngineService(driver)
+    try:
+        handles = service.submit_speculative_children(
+            (_request("packed-a:1"), _request("packed-b:1"))
+        )
+        outputs = tuple(handle.result(timeout=2.0) for handle in handles)
+
+        assert driver.batch_calls == [("packed-a:1", "packed-b:1")]
+        assert tuple(output.generated_token_ids for output in outputs) == ((901,), (902,))
+        assert driver.release_order == [1, 2]
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
 def test_engine_service_speculative_handle_cancels_through_shared_reclaim() -> None:
     class CancellableSpecDriver(_FakeSoleDriver):
         supports_speculative_mtp = True
@@ -287,6 +330,49 @@ def test_submit_poll_adapter_admits_model_owned_mtp_as_verify_chain_submission()
     finally:
         service.close()
     assert inner.closed is True
+
+
+def test_submit_poll_adapter_packs_compatible_speculative_children() -> None:
+    class Inner:
+        supports_speculative_mtp = True
+
+        def __init__(self) -> None:
+            self.prompt_batches: list[tuple[str, ...]] = []
+
+        def generate_speculative_mtp_detailed(self, request: GenerationRequest):
+            prompts = tuple(str(prompt) for prompt in request.prompts)
+            self.prompt_batches.append(prompts)
+            return [
+                GenerationOutput(text=prompt, generated_token_ids=(950 + index,))
+                for index, prompt in enumerate(prompts)
+            ]
+
+        def close(self) -> None:
+            return None
+
+    inner = Inner()
+    adapter = SubmitPollTextGenerator(inner, capacity=2)
+    service = EngineService(adapter)
+    try:
+        handles = service.submit_speculative_children(
+            (_request("adapter-a:1"), _request("adapter-b:1"))
+        )
+        outputs = tuple(handle.result(timeout=2.0) for handle in handles)
+        submission = adapter.last_speculative_submission
+
+        assert inner.prompt_batches == [("adapter-a:1", "adapter-b:1")]
+        assert tuple(output.generated_token_ids for output in outputs) == ((950,), (951,))
+        assert submission is not None and submission.work_item is not None
+        assert len(submission.work_item.request_ids) == 2
+        assert submission.work_item.row_to_request == tuple(
+            request_id
+            for request_id in submission.work_item.request_ids
+            for _ in range(submission.work_item.draft_depth)
+        )
+        assert adapter._speculative_outputs_by_request == {}
+        assert adapter._submissions_by_request == {}
+    finally:
+        service.close()
 
 
 def test_engine_service_speculative_legacy_route_is_declared_prelaunch_fallback() -> None:
