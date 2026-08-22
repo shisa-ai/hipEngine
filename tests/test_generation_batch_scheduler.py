@@ -18234,6 +18234,31 @@ def test_resident_engine_loop_prefill_decode_policies() -> None:
         )
 
 
+def test_resident_batch_scheduler_emits_bounded_multirow_prefill_work() -> None:
+    scheduler = ResidentBatchScheduler(capacity=4, context_bucket_size=4)
+    request_ids = tuple(
+        scheduler.submit([10 + row, 20 + row], max_new_tokens=1)
+        for row in range(4)
+    )
+    assert scheduler.admit_pending() == request_ids
+
+    work = scheduler.next_prefill_batch_work(chunk_size=8, max_rows=3)
+
+    assert work is not None
+    assert work.kind is WorkKind.PREFILL
+    assert work.request_ids == request_ids[:3]
+    assert work.row_to_request == request_ids[:3]
+    assert work.token_rows == ((10, 20), (11, 21), (12, 22))
+    assert work.slot_ids == (0, 1, 2)
+    assert scheduler.active_batch.requests[request_ids[3]].remaining_prefill == 2
+    assert all(
+        scheduler.active_batch.requests[request_id].remaining_prefill == 0
+        for request_id in request_ids[:3]
+    )
+    with pytest.raises(ValueError, match="chunk_size/max_rows"):
+        scheduler.next_prefill_batch_work(chunk_size=8, max_rows=0)
+
+
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
     scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
     r0 = scheduler.submit([10, 11], max_new_tokens=2)

@@ -1107,6 +1107,9 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # 1..8 pass the numerical-profile-backed c13 lifecycle with cancellation,
 # refill, compaction, no scalar fallback, and exact memory recovery.
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# Same-length full-prompt rows may enter one native prefill call. This is scoped
+# independently from decode widths and falls back before mutation on misses.
+GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
 # +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
 # measured Q4_K_M generator registry entry; other quants/backends retain their
@@ -2260,6 +2263,7 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

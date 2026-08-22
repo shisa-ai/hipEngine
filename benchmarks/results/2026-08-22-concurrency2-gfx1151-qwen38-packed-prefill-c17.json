@@ -1,0 +1,155 @@
+{
+  "baseline": {
+    "end_to_end_p95_seconds": {
+      "median": 14.059181560063735,
+      "samples": [
+        14.020315670990385,
+        14.06156608404126,
+        14.059181560063735
+      ]
+    },
+    "exact_generated_tok_s_aggregate": {
+      "median": 9.672818742449783,
+      "samples": [
+        9.699810746273325,
+        9.671164933346416,
+        9.672818742449783
+      ]
+    },
+    "itl_p99_seconds": {
+      "median": 0.5253892280161381,
+      "samples": [
+        0.492563690058887,
+        0.5253892280161381,
+        0.5445709789637476
+      ]
+    },
+    "slo_goodput_tok_s_aggregate": {
+      "median": 0.0,
+      "samples": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "ttft_p95_seconds": {
+      "median": 11.03034633398056,
+      "samples": [
+        11.024820476071909,
+        11.031471643014811,
+        11.03034633398056
+      ]
+    }
+  },
+  "candidate": {
+    "end_to_end_p95_seconds": {
+      "median": 12.412120923982002,
+      "samples": [
+        12.409142790012993,
+        12.426141756004654,
+        12.412120923982002
+      ]
+    },
+    "exact_generated_tok_s_aggregate": {
+      "median": 10.956452703530099,
+      "samples": [
+        10.959296069100546,
+        10.944171186227088,
+        10.956452703530099
+      ]
+    },
+    "itl_p99_seconds": {
+      "median": 0.5093598529929295,
+      "samples": [
+        0.5178010660456493,
+        0.5093598529929295,
+        0.5061423270963132
+      ]
+    },
+    "slo_goodput_tok_s_aggregate": {
+      "median": 3.2224860892735587,
+      "samples": [
+        9.669967119794599,
+        3.2188738783020847,
+        3.2224860892735587
+      ]
+    },
+    "ttft_p95_seconds": {
+      "median": 9.40629428694956,
+      "samples": [
+        9.40629428694956,
+        9.414518475998193,
+        9.40586441103369
+      ]
+    }
+  },
+  "correctness": {
+    "all_blocking_and_streaming_rows_exact": true,
+    "final_drain": true,
+    "no_route_fallback": true
+  },
+  "created_at": "2026-08-22T19:43:00Z",
+  "decision": "Promote exact packed prefill on gfx1151. c17 remains product-blocked because ITL p99 0.509s exceeds 0.5s; c32 not closed. Continue with clean gfx1151 D2 costs/composition.",
+  "deltas": {
+    "end_to_end_p95_seconds": {
+      "absolute": -1.6470606360817328,
+      "percent": -11.715195717795869
+    },
+    "exact_generated_tok_s_aggregate": {
+      "absolute": 1.2836339610803158,
+      "percent": 13.270526361121671
+    },
+    "itl_p99_seconds": {
+      "absolute": -0.01602937502320856,
+      "percent": -3.050952354644809
+    },
+    "slo_goodput_tok_s_aggregate": {
+      "absolute": 3.2224860892735587,
+      "percent": null
+    },
+    "ttft_p95_seconds": {
+      "absolute": -1.6240520470310003,
+      "percent": -14.723490975327547
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151"
+  },
+  "kind": "concurrency2_gfx1151_qwen38_packed_prefill_c17",
+  "mechanism": "Scheduler emits up to 8 same-length full-prompt rows in one prefill WorkItem; gfx1151 runner calls existing prefill_batch_native once. Incompatible/prefix/incremental/sampled rows retain pre-launch scalar fallback. gfx1100 capability remains 1.",
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "passed": true,
+  "performance_claim": true,
+  "raw": {
+    "baseline_sha256": "99ae5243cdfdb4b4de61c0aceaf330baad56ae27089e24b9ab62219230afbf92",
+    "candidate_sha256": "b9759ff52aa4a299740ffbb79869fa3dc85be4f5cad0cf434d7833310e79f93c"
+  },
+  "schema": 1,
+  "source": {
+    "baseline_commit": "888e27bb8",
+    "candidate_files": [
+      "hipengine/generation/batch_scheduler.py",
+      "hipengine/generation/engine_loop.py",
+      "hipengine/generation/qwen35_gguf.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py"
+    ],
+    "host": "gfx1151"
+  },
+  "status": "promoted_with_slo_blocker",
+  "workload": {
+    "decode_tokens": 8,
+    "logical_c": 17,
+    "measured_runs": 3,
+    "policy": "fair:256",
+    "prompt_length": 128,
+    "same_server_c1_oracle": true,
+    "streaming_primary": true,
+    "warmup_runs": 1
+  }
+}
