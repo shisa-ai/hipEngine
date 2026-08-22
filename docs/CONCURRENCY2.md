@@ -56,8 +56,8 @@ scheduler rewrite.
 The remaining work is not all “tuning,” however. Keep these scopes distinct:
 
 - **Safe optional optimization:** #37 wall/critical-path attribution and later
-  family tuning; Qwen3.8 cost-aware D2 remains explicit-config until its actual
-  HTTP/`EngineService` c1-c32 route/SLO/memory/drain gate passes.
+  family tuning. Qwen3.8 cost-aware D2 remains an explicit-config experiment;
+  exact ceiling composition is the accepted merge/default policy.
 - **Backend qualification:** gfx1151 inherits the common host scheduler, ledger,
   pool, transaction, and output code, but independently qualifies physical
   widths, kernels, graphs, cost maps, lifecycle, and production load.
@@ -396,8 +396,8 @@ HTTP, EngineService, scheduler-owned lowering, graph replay, TTFT/ITL, dynamic
 membership, server memory, and drain; lacked clean provenance/canonical command;
 always ran D2 before ceiling; mixed p512 and p128 lanes; and originally reported
 incorrectly scaled goodput. It must not appear as a current product throughput
-table. D2 remains explicit-config pending the actual-server gate described
-below.
+table. D2 remains an identity-gated explicit research path; ceiling is the
+accepted production default below.
 
 #### Corrected roofline bounds, not a bottleneck verdict
 
@@ -1069,16 +1069,23 @@ The resident owner loads it only through the explicit
 and emits its source/identity/estimated wall in the physical-group plan. Missing
 configuration uses ceiling; invalid or mismatched explicit evidence raises.
 
-**Production-default D2 remains open.** The attempted c1-c32 promotion sweep was
-a direct eager resident-session diagnostic, not actual-server evidence: it
-bypassed HTTP, EngineService, scheduler-owned owner lowering, graph replay,
-TTFT/ITL, dynamic membership, server memory, and final drain; it also lacked
-clean provenance/canonical command and published incorrectly scaled goodput.
-The composed-c13 lifecycle observation is functionally positive but provenance-
-dirty. These artifacts cannot promote a default. Required next: a clean,
-counterbalanced, same-shape actual-server D2-vs-ceiling matrix with authoritative
-route telemetry, aggregate goodput, TTFT/ITL, refill/cancel membership, memory,
-and final drain. gfx1151 and XTX additionally require independent maps.
+**Production-default D2 is not promoted and is not a gfx1100 core-correctness
+or merge blocker.** The attempted c1-c32 promotion sweep was a direct eager
+resident-session diagnostic, not actual-server evidence: it bypassed HTTP,
+EngineService, scheduler-owned owner lowering, graph replay, TTFT/ITL, dynamic
+membership, server memory, and final drain; it also lacked clean provenance/
+canonical command and published incorrectly scaled goodput. The composed-c13
+lifecycle observation is functionally positive but provenance-dirty. These
+artifacts cannot promote a default.
+
+The accepted product policy is deterministic ceiling composition over the
+qualified physical c1-c8 set, with direct physical c1 and exact registered
+fallbacks. This policy is covered by the direct-width numerical/lifecycle gates
+and host planner/owner tests. D2 remains explicit-config, identity-gated, and
+fail-closed for research. A future D2 promotion is a new optional performance
+campaign requiring a clean counterbalanced same-shape actual-server matrix with
+authoritative route telemetry, goodput, TTFT/ITL, refill/cancel, memory, and
+drain; gfx1151 and XTX require independent maps.
 
 The target planner enumerates certified candidates `(active_rows,
 physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
@@ -1181,18 +1188,18 @@ Any probe whose numbers enter the width map must:
    Q5 true rowtile 48/4.30 ms + planar-Q6 true rowtile 64/10.76 ms, zero
    Q6 WMMA. Native c8 now beats two-c4 chunked c8 by 39.7%.
 3. ~~**Implement the artifact-backed D2 resolver (host-first).**~~ **DONE as an
-   explicit-config path (2026-08-20).** The retained cost map is clean-identity
-   bound, the DP recovers the expected balanced compositions, and ceiling remains
-   the strict default fallback. Production-default D2 is still open because the
-   attempted c1-c32 sweep was eager resident-session diagnostic evidence, not an
-   actual-server route/goodput/TTFT/ITL/memory/drain gate.
+   explicit-config path (2026-08-20); default decision closed 2026-08-22.** The
+   retained cost map is clean-identity bound, the DP recovers the expected
+   balanced compositions, and ceiling remains the strict production default.
+   The invalid attempted promotion does not block the core gfx1100 merge; any
+   later D2 default is a separate actual-server performance campaign.
 4. ~~**Certify direct-width product reachability.**~~ **DONE for physical c1-c8
    on gfx1100 Qwen3.8 (2026-08-20).** Direct c3/c5/c6/c7 pass the clean 1,950-row
    numerical gate and dynamic lifecycle matrix (compaction/permutation,
    state/live-KV and resource hashes, graph invalidation, cancellation/refill,
    session reuse, memory recovery, and drain). The package advertises c1-c8.
-   Remaining #29 work is only the clean actual-server D2-vs-ceiling promotion
-   gate; D2 stays explicit-config until it passes.
+   **#29 closes on the safe product policy:** direct c1-c8 plus deterministic
+   ceiling composition for c>8; D2 stays explicit-config and fail-closed.
 5. **Profile the post-rowtile c8 ledger before selecting another kernel (#37).**
    Follow the measurement ladder and conditional queue above. The current known
    largest family is dense projection (43.25/63.53 ms wall), but whether its

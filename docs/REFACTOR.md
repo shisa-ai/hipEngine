@@ -42,7 +42,10 @@ should be removed or collapsed.
   artifact-backed D2 resolver remains explicit-config only through
   `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling is the production default. The
   attempted default-promotion sweep was eager resident-session, not actual-
-  server evidence, and its composed-c13 lifecycle observation was dirty.
+  server evidence, and its composed-c13 lifecycle observation was dirty. The
+  2026-08-22 core-merge decision closes #29 on the safe ceiling default; a
+  future D2 promotion/removal campaign is optional performance work, not a
+  gfx1100 correctness or integration blocker.
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,
