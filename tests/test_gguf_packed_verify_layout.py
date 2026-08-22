@@ -90,9 +90,7 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     monkeypatch.setattr(
         gguf_runner.Qwen35GGUFResidentSession,
         "_set_full_attention_position_device",
-        lambda self, position, *, stream=0: calls.append(
-            ("set_position", int(position), int(stream))
-        ),
+        lambda self, position, *, stream=0: calls.append(("set_position", int(position), int(stream))),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     session.scratch = FakeScratch()
@@ -237,7 +235,9 @@ def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
     session._packed_verify_scratch = SimpleNamespace(
         buffers=(DeviceBuffer(ptr=0x2000, nbytes=20), DeviceBuffer(ptr=0x3000, nbytes=30))
     )
-    session._packed_verify_state = SimpleNamespace(buffers=(DeviceBuffer(ptr=0x4000, nbytes=40),))
+    session._packed_verify_state = SimpleNamespace(
+        buffers=(DeviceBuffer(ptr=0x4000, nbytes=40),)
+    )
     session._packed_verify_session_ids = (11, 22)
     session._packed_verify_max_written_positions = (4, 4)
     session._packed_decode_sessions = (object(),)
@@ -281,21 +281,11 @@ def test_gguf_packed_verify_layout_maps_rows_and_slot_state() -> None:
         block_size=4,
     )
 
-    np.testing.assert_array_equal(
-        layout.input_token_ids, np.asarray([11, 12, 13, 21, 22, 23], dtype=np.int64)
-    )
-    np.testing.assert_array_equal(
-        layout.row_slot_indices, np.asarray([0, 0, 0, 1, 1, 1], dtype=np.int32)
-    )
-    np.testing.assert_array_equal(
-        layout.row_offsets_in_slot, np.asarray([0, 1, 2, 0, 1, 2], dtype=np.int32)
-    )
-    np.testing.assert_array_equal(
-        layout.row_positions, np.asarray([4, 5, 6, 8, 9, 10], dtype=np.int64)
-    )
-    np.testing.assert_array_equal(
-        layout.live_counts, np.asarray([5, 6, 7, 9, 10, 11], dtype=np.int64)
-    )
+    np.testing.assert_array_equal(layout.input_token_ids, np.asarray([11, 12, 13, 21, 22, 23], dtype=np.int64))
+    np.testing.assert_array_equal(layout.row_slot_indices, np.asarray([0, 0, 0, 1, 1, 1], dtype=np.int32))
+    np.testing.assert_array_equal(layout.row_offsets_in_slot, np.asarray([0, 1, 2, 0, 1, 2], dtype=np.int32))
+    np.testing.assert_array_equal(layout.row_positions, np.asarray([4, 5, 6, 8, 9, 10], dtype=np.int64))
+    np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 9, 10, 11], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.asarray([0, 3, 6], dtype=np.int32))
     np.testing.assert_array_equal(layout.state_indices, np.asarray([0, 1], dtype=np.int64))
     np.testing.assert_array_equal(
@@ -332,9 +322,7 @@ def test_gguf_packed_verify_layout_preserves_inactive_physical_lanes() -> None:
     )
 
     np.testing.assert_array_equal(layout.active_mask, np.asarray([True, False, True, False]))
-    np.testing.assert_array_equal(
-        layout.input_token_ids, np.asarray([11, 0, 33, 0], dtype=np.int64)
-    )
+    np.testing.assert_array_equal(layout.input_token_ids, np.asarray([11, 0, 33, 0], dtype=np.int64))
     np.testing.assert_array_equal(layout.row_positions, np.asarray([5, -1, 7, -1], dtype=np.int64))
     np.testing.assert_array_equal(layout.live_counts, np.asarray([6, 0, 8, 0], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.arange(5, dtype=np.int32))
@@ -355,9 +343,7 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
         block_size=4,
     )
 
-    np.testing.assert_array_equal(
-        layout.input_token_ids, np.asarray([11, 12, 13, 21], dtype=np.int64)
-    )
+    np.testing.assert_array_equal(layout.input_token_ids, np.asarray([11, 12, 13, 21], dtype=np.int64))
     np.testing.assert_array_equal(layout.row_slot_indices, np.asarray([0, 0, 0, 1], dtype=np.int32))
     np.testing.assert_array_equal(layout.row_positions, np.asarray([4, 5, 6, 2], dtype=np.int64))
     np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 3], dtype=np.int64))
@@ -442,7 +428,10 @@ def test_gguf_packed_layer_output_hidden_scatter_selects_slot_rows() -> None:
 
 
 def test_gguf_packed_ar_prefill_chunks_all_row_c4_without_slot_serialization() -> None:
-    prompts = tuple(tuple(slot * 1000 + row for row in range(512)) for slot in range(4))
+    prompts = tuple(
+        tuple(slot * 1000 + row for row in range(512))
+        for slot in range(4)
+    )
 
     chunks = _plan_packed_ar_prefill_chunks(prompts, row_capacity=768)
 
@@ -794,9 +783,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
 
     view = scratch.for_packed_verify_layout(layout, runtime=SimpleNamespace())
 
-    block_upload = np.frombuffer(copies[scratch.block_table.ptr], dtype=np.int32).reshape(
-        layout.block_table.shape
-    )
+    block_upload = np.frombuffer(copies[scratch.block_table.ptr], dtype=np.int32).reshape(layout.block_table.shape)
     pos_upload = np.frombuffer(copies[scratch.positions.ptr], dtype=np.int64)
     live_upload = np.frombuffer(copies[scratch.context_counts.ptr], dtype=np.int64)
     cu_upload = np.frombuffer(copies[scratch.gdn_cu_seqlens.ptr], dtype=np.int32)
@@ -1014,10 +1001,7 @@ def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
         kv_nbytes,
         kv_nbytes,
     ]
-    assert state.linear_state_pair(0) == (
-        state.layer_conv_states[0],
-        state.layer_recurrent_states[0],
-    )
+    assert state.linear_state_pair(0) == (state.layer_conv_states[0], state.layer_recurrent_states[0])
     assert state.full_cache(1) == (state.full_key_caches[1], state.full_value_caches[1])
     with pytest.raises(ValueError, match="no packed full-attention"):
         state.full_cache(0)
@@ -1137,11 +1121,7 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
 
     assert runtime.copies == [
         (destination.full_key_caches[0].ptr + 7 * 8, source.full_key_caches[0].ptr + 3 * 8, 2 * 8),
-        (
-            destination.full_value_caches[0].ptr + 7 * 8,
-            source.full_value_caches[0].ptr + 3 * 8,
-            2 * 8,
-        ),
+        (destination.full_value_caches[0].ptr + 7 * 8, source.full_value_caches[0].ptr + 3 * 8, 2 * 8),
         (
             destination.full_bf16_mirror_key_caches[0].ptr + 7 * 16,
             source.full_bf16_mirror_key_caches[0].ptr + 3 * 16,
@@ -1152,16 +1132,8 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
             source.full_bf16_mirror_value_caches[0].ptr + 3 * 16,
             2 * 16,
         ),
-        (
-            destination.full_k_scale_caches[0].ptr + 7 * 4,
-            source.full_k_scale_caches[0].ptr + 3 * 4,
-            2 * 4,
-        ),
-        (
-            destination.full_v_scale_caches[0].ptr + 7 * 4,
-            source.full_v_scale_caches[0].ptr + 3 * 4,
-            2 * 4,
-        ),
+        (destination.full_k_scale_caches[0].ptr + 7 * 4, source.full_k_scale_caches[0].ptr + 3 * 4, 2 * 4),
+        (destination.full_v_scale_caches[0].ptr + 7 * 4, source.full_v_scale_caches[0].ptr + 3 * 4, 2 * 4),
     ]
 
 
@@ -1291,13 +1263,10 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
     owner._device_kv_layout = direct
     peer._device_kv_layout = direct
     assert owner._resident_ar_kv_layout_for_sessions((owner, peer)) == direct
-    assert (
-        owner._packed_ar_kv_layout_for_sessions(
-            (owner,),
-            allow_direct_int8_prefill=True,
-        )
-        == direct
-    )
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner,),
+        allow_direct_int8_prefill=True,
+    ) == direct
     with pytest.raises(NotImplementedError, match="single-row prefill"):
         owner._packed_ar_kv_layout_for_sessions(
             (owner, peer),
@@ -1311,30 +1280,21 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
     kernel = lambda *args, **kwargs: None
     owner._retained_decode_kernel = kernel
     peer._retained_decode_kernel = kernel
-    assert (
-        owner._packed_ar_direct_decode_kernel_for_sessions(
-            (owner, peer),
-            physical_rows=4,
-        )
-        is kernel
-    )
+    assert owner._packed_ar_direct_decode_kernel_for_sessions(
+        (owner, peer),
+        physical_rows=4,
+    ) is kernel
     peer._retained_decode_kernel = lambda *args, **kwargs: None
-    assert (
-        owner._packed_ar_direct_decode_kernel_for_sessions(
-            (owner, peer),
-            physical_rows=4,
-        )
-        is None
-    )
+    assert owner._packed_ar_direct_decode_kernel_for_sessions(
+        (owner, peer),
+        physical_rows=4,
+    ) is None
     peer._retained_decode_kernel = kernel
-    assert (
-        owner._packed_ar_kv_layout_for_sessions(
-            (owner, peer),
-            allow_direct_int8_decode=True,
-            physical_rows=4,
-        )
-        == direct
-    )
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_decode=True,
+        physical_rows=4,
+    ) == direct
     peer.packed_decode_max_rows = 1
     with pytest.raises(NotImplementedError, match="physical width 4"):
         owner._packed_ar_kv_layout_for_sessions(
@@ -1345,9 +1305,7 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
 
 
 def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:
-    monkeypatch.setattr(
-        gguf_runner, "malloc", lambda nbytes, *, runtime: DeviceBuffer(ptr=1, nbytes=int(nbytes))
-    )
+    monkeypatch.setattr(gguf_runner, "malloc", lambda nbytes, *, runtime: DeviceBuffer(ptr=1, nbytes=int(nbytes)))
     runner = SimpleNamespace(
         linear_qkv_width=10,
         ssm_value_dim=2,
@@ -1364,13 +1322,9 @@ def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:
     )
 
     with pytest.raises(ValueError, match="slot_count"):
-        _GGUFPackedTargetState.allocate(
-            runner, slot_count=0, max_sequence_length=1, runtime=SimpleNamespace()
-        )
+        _GGUFPackedTargetState.allocate(runner, slot_count=0, max_sequence_length=1, runtime=SimpleNamespace())
     with pytest.raises(ValueError, match="max_sequence_length"):
-        _GGUFPackedTargetState.allocate(
-            runner, slot_count=1, max_sequence_length=0, runtime=SimpleNamespace()
-        )
+        _GGUFPackedTargetState.allocate(runner, slot_count=1, max_sequence_length=0, runtime=SimpleNamespace())
     with pytest.raises(ValueError, match="block_size"):
         _GGUFPackedTargetState.allocate(
             runner,
@@ -1565,7 +1519,9 @@ def test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan() -
     )
 
     assert path == "indexed_batch"
-    assert batch_calls == [(0, 0x8000, 0x6000, 2, 0x2000, 0x4000, 0xA000, 0xB000, 0xC000, 7)]
+    assert batch_calls == [
+        (0, 0x8000, 0x6000, 2, 0x2000, 0x4000, 0xA000, 0xB000, 0xC000, 7)
+    ]
     assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
 
 
@@ -1736,22 +1692,16 @@ def test_gguf_contiguous_device_kv_cache_view_rebases_shifted_allocation() -> No
     assert gguf_runner._gguf_device_kv_contiguous_base_row(identity) == 0
     assert gguf_runner._gguf_device_kv_contiguous_base_row(shifted) == 3 * 256
     assert gguf_runner._gguf_device_kv_contiguous_base_row(noncontiguous) is None
-    assert (
-        gguf_runner._gguf_device_kv_contiguous_cache_view(
-            unbound,
-            cache,
-            row_nbytes=16,
-        )
-        is cache
-    )
-    assert (
-        gguf_runner._gguf_device_kv_contiguous_cache_view(
-            identity,
-            cache,
-            row_nbytes=16,
-        )
-        is cache
-    )
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        unbound,
+        cache,
+        row_nbytes=16,
+    ) is cache
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        identity,
+        cache,
+        row_nbytes=16,
+    ) is cache
     shifted_view = gguf_runner._gguf_device_kv_contiguous_cache_view(
         shifted,
         cache,
@@ -1761,14 +1711,11 @@ def test_gguf_contiguous_device_kv_cache_view_rebases_shifted_allocation() -> No
         0x10000 + 3 * 256 * 16,
         5 * 256 * 16,
     )
-    assert (
-        gguf_runner._gguf_device_kv_contiguous_cache_view(
-            noncontiguous,
-            cache,
-            row_nbytes=16,
-        )
-        is None
-    )
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        noncontiguous,
+        cache,
+        row_nbytes=16,
+    ) is None
 
 
 def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
@@ -2071,30 +2018,10 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
     )
 
     assert runtime.copies == [
-        (
-            0x100000 + (20 * 256 + 100) * row_nbytes,
-            0x200000 + (7 * 256 + 100) * row_nbytes,
-            156 * row_nbytes,
-            3,
-        ),
-        (
-            0x180000 + (20 * 256 + 100) * row_nbytes,
-            0x300000 + (7 * 256 + 100) * row_nbytes,
-            156 * row_nbytes,
-            3,
-        ),
-        (
-            0x100000 + (21 * 256) * row_nbytes,
-            0x200000 + (3 * 256) * row_nbytes,
-            244 * row_nbytes,
-            3,
-        ),
-        (
-            0x180000 + (21 * 256) * row_nbytes,
-            0x300000 + (3 * 256) * row_nbytes,
-            244 * row_nbytes,
-            3,
-        ),
+        (0x100000 + (20 * 256 + 100) * row_nbytes, 0x200000 + (7 * 256 + 100) * row_nbytes, 156 * row_nbytes, 3),
+        (0x180000 + (20 * 256 + 100) * row_nbytes, 0x300000 + (7 * 256 + 100) * row_nbytes, 156 * row_nbytes, 3),
+        (0x100000 + (21 * 256) * row_nbytes, 0x200000 + (3 * 256) * row_nbytes, 244 * row_nbytes, 3),
+        (0x180000 + (21 * 256) * row_nbytes, 0x300000 + (3 * 256) * row_nbytes, 244 * row_nbytes, 3),
     ]
 
     runtime.copies.clear()
@@ -2111,18 +2038,8 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
     )
 
     assert runtime.copies == [
-        (
-            0x200000 + (7 * 256) * row_nbytes,
-            0x100000 + (10 * 256) * row_nbytes,
-            256 * row_nbytes,
-            5,
-        ),
-        (
-            0x300000 + (7 * 256) * row_nbytes,
-            0x180000 + (10 * 256) * row_nbytes,
-            256 * row_nbytes,
-            5,
-        ),
+        (0x200000 + (7 * 256) * row_nbytes, 0x100000 + (10 * 256) * row_nbytes, 256 * row_nbytes, 5),
+        (0x300000 + (7 * 256) * row_nbytes, 0x180000 + (10 * 256) * row_nbytes, 256 * row_nbytes, 5),
         (0x200000 + (3 * 256) * row_nbytes, 0x100000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
         (0x300000 + (3 * 256) * row_nbytes, 0x180000 + (11 * 256) * row_nbytes, 44 * row_nbytes, 5),
     ]
@@ -2336,7 +2253,9 @@ def test_gguf_packed_target_state_allocate_uses_pool_workspace_lease(monkeypatch
     pool = SimpleNamespace(
         backing=backing,
         workspace_pages=lambda key: (
-            lease_pages if key == gguf_runner._GGUF_PACKED_WORKSPACE_LEASE_KEY else None
+            lease_pages
+            if key == gguf_runner._GGUF_PACKED_WORKSPACE_LEASE_KEY
+            else None
         ),
     )
 
