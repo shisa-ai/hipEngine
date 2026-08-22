@@ -1,0 +1,1027 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_completion_audit",
+  "created_at": "2026-08-22T13:29:02.149836+00:00",
+  "status": "blocked",
+  "passed": true,
+  "goal_complete": false,
+  "status_counts": {
+    "passed": 33,
+    "blocked": 1,
+    "unavailable": 1
+  },
+  "requirements": [
+    {
+      "requirement_id": "C2-0",
+      "section": "roadmap",
+      "summary": "contracts and deterministic simulator",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/generation/concurrency2_simulator.py",
+        "tests/test_concurrency2_simulator.py"
+      ],
+      "validation": "deterministic/property host suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/generation/concurrency2_simulator.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_concurrency2_simulator.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-1",
+      "section": "roadmap",
+      "summary": "sole EngineService and independent child outputs",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/generation/engine_service.py",
+        "tests/test_generation_engine_service.py"
+      ],
+      "validation": "service/refill/collector/cancellation suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/generation/engine_service.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_generation_engine_service.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-2",
+      "section": "roadmap",
+      "summary": "format-neutral ledger and fit-aware admission",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/ledger.py",
+        "tests/test_kvcache_resource_ledger.py"
+      ],
+      "validation": "atomic claim/lookahead/starvation/conservation suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/ledger.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_kvcache_resource_ledger.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-3",
+      "section": "roadmap",
+      "summary": "global pool and dense BF16/INT8 backends",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/global_pool.py",
+        "hipengine/kvcache/dense.py",
+        "tests/test_kvcache_global_pool.py"
+      ],
+      "validation": "global-page/dense conformance suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/global_pool.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/kvcache/dense.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_kvcache_global_pool.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-4",
+      "section": "roadmap",
+      "summary": "integrated radix snapshots and eviction",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/backend_prefix.py",
+        "hipengine/kvcache/radix.py",
+        "tests/test_kvcache_backend_prefix.py"
+      ],
+      "validation": "generation/COW/quota/eviction host suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/backend_prefix.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/kvcache/radix.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_kvcache_backend_prefix.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-5",
+      "section": "roadmap",
+      "summary": "token-budget scheduling and logical c1-c32",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/dispatch/execution_planner.py",
+        "tests/test_concurrency2_token_budget.py"
+      ],
+      "validation": "all logical widths and fairness suite",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/dispatch/execution_planner.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_concurrency2_token_budget.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-6.graph",
+      "section": "roadmap",
+      "summary": "changing-page graph/prefix/slot lifecycle",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
+      ],
+      "validation": "W7900 4 captures / 100 replays / 4 invalidations plus host prefix eviction",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked",
+            "passed": false,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-6.long",
+      "section": "roadmap",
+      "summary": "actual 4K/16K/32K mixed model execution",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
+      ],
+      "validation": "actual c2 1K/4K/16K/32K/64K and mixed 1K/4K/32K pass with SLO/resource/drain evidence",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked",
+            "passed": false,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-6.load",
+      "section": "roadmap",
+      "summary": "fixed/ragged/Poisson/overload/disconnect/soak",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+      ],
+      "validation": "clean W7900 canonical packet: tuning plus nine workloads, 210/210 correctness-accounted rows, bounded overload, 120/120 soak, final drain",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-6.external",
+      "section": "roadmap",
+      "summary": "matched prior/llama/vLLM/SGLang comparisons",
+      "status": "unavailable",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+      ],
+      "validation": "availability recorded",
+      "blocker": "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility",
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-6.default",
+      "section": "roadmap",
+      "summary": "full production default promotion",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+      ],
+      "validation": "global/native and physical c4/c8 defaults exact; canonical token-budget/256 packet passes correctness, SLO, overload, memory, and ownership gates",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.metadata",
+      "section": "roadmap",
+      "summary": "DMS checkpoint metadata gate",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/dms.py",
+        "scripts/dms_backend_gate.py",
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json"
+      ],
+      "validation": "strict loader and current-model fail-close",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/dms.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "scripts/dms_backend_gate.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.extents",
+      "section": "roadmap",
+      "summary": "compact extent/resource backend",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/dms.py",
+        "tests/test_kvcache_dms.py"
+      ],
+      "validation": "atomic fragmentation/rollback/conservation",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/dms.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_kvcache_dms.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.hip",
+      "section": "roadmap",
+      "summary": "registered HIP no-shadow pack and compact attention",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json",
+        "hipengine/kernels/hip_gfx1100/attention/dms_compact.hip",
+        "tests/test_kvcache_dms_device_hip.py",
+        "scripts/dms_device_rocprof_smoke.py"
+      ],
+      "validation": "53-test BF16 device parity/lifecycle bundle plus cached-only rocprof identities for all four kernels",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json",
+          "exists": true,
+          "artifact": {
+            "status": "device_fixture_qualified_product_checkpoint_blocked",
+            "passed": true,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/attention/dms_compact.hip",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_kvcache_dms_device_hip.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "scripts/dms_device_rocprof_smoke.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.widths",
+      "section": "roadmap",
+      "summary": "DMS common c1/c2/c4/c8/c16/c32",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+        "tests/test_kvcache_dms.py"
+      ],
+      "validation": "common ResidentEngineLoop host packet",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "tests/test_kvcache_dms.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.lifecycle",
+      "section": "roadmap",
+      "summary": "DMS pressure/fragmentation/cancel/reclaim/soak",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+        "tests/test_kvcache_dms.py"
+      ],
+      "validation": "host pressure/replacement/final drain",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "tests/test_kvcache_dms.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.codec",
+      "section": "roadmap",
+      "summary": "format-distinct qualified compressed codec",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json"
+      ],
+      "validation": "fixture-scoped INT8 KL/top-1 and same lifecycle",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-7.prefix",
+      "section": "roadmap",
+      "summary": "DMS prefix reuse disabled",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/dms.py"
+      ],
+      "validation": "hard fail-closed lookup/estimate",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/dms.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-8.maintenance",
+      "section": "roadmap",
+      "summary": "offload/restore work and host/NVMe pools",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/tiering.py",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json"
+      ],
+      "validation": "typed tier work and resource ledger",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/tiering.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_tier",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-8.codec",
+      "section": "roadmap",
+      "summary": "cold codec restores to hot attention backend",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/tiering.py"
+      ],
+      "validation": "delegated hot KVBatchView and checksummed restore",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/tiering.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-8.lifecycle",
+      "section": "roadmap",
+      "summary": "fingerprints/quotas/LRU/cancel/drain",
+      "status": "passed",
+      "evidence_paths": [
+        "tests/test_kvcache_tiering.py",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json"
+      ],
+      "validation": "deterministic host/NVMe lifecycle",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "tests/test_kvcache_tiering.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_tier",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-8.economics",
+      "section": "roadmap",
+      "summary": "restore TTFT versus recompute",
+      "status": "passed",
+      "evidence_paths": [
+        "scripts/tier_backend_gate.py",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json"
+      ],
+      "validation": "synthetic host proxy; no model claim",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "scripts/tier_backend_gate.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_tier",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.service",
+      "section": "definition_of_done",
+      "summary": "one service owns blocking/SSE/library children",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/generation/engine_service.py"
+      ],
+      "validation": "sole-driver tests",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/generation/engine_service.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.independent",
+      "section": "definition_of_done",
+      "summary": "independent terminal publication/reclaim",
+      "status": "passed",
+      "evidence_paths": [
+        "tests/test_generation_engine_service.py"
+      ],
+      "validation": "short-before-long/refill tests",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "tests/test_generation_engine_service.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.ledger",
+      "section": "definition_of_done",
+      "summary": "one format-neutral resource ledger",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/ledger.py"
+      ],
+      "validation": "dense/DMS/tier claims",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/ledger.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.global_pool",
+      "section": "definition_of_done",
+      "summary": "compatible requests share global pool",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json"
+      ],
+      "validation": "W7900 c1-c32 global_generation2",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.prefix",
+      "section": "definition_of_done",
+      "summary": "prefix refs/COW/quota/eviction",
+      "status": "passed",
+      "evidence_paths": [
+        "tests/test_kvcache_backend_prefix.py"
+      ],
+      "validation": "host conformance; DMS intentionally off",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "tests/test_kvcache_backend_prefix.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.logical_physical",
+      "section": "definition_of_done",
+      "summary": "logical concurrency independent of physical width",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
+      ],
+      "validation": "logical c32 over registered physical (1,2,4,8); c4/c8 lower to one bucket",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.load",
+      "section": "definition_of_done",
+      "summary": "width/load/overload matrices through c32",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+      ],
+      "validation": "c1-c32 exact plus canonical fixed/ragged/Poisson/cancel/overload/recovery/soak packet",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.performance",
+      "section": "definition_of_done",
+      "summary": "c1 direct and cN beats honest serial under SLO",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
+      ],
+      "validation": "matched c8 +60.25% after c4/c8 promotion (was +29.68% at c2 cap), exact/SLO; c1 direct retained",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_c4_c8_promotion",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.drain",
+      "section": "definition_of_done",
+      "summary": "graph/pool/state/collector ownership drains",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+        "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+      ],
+      "validation": "short, long/pressure, and canonical 271-admit/271-reclaim final drain",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_backend_packet",
+            "passed": true,
+            "performance_claim": true
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted",
+            "passed": true,
+            "performance_claim": true
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.compact",
+      "section": "definition_of_done",
+      "summary": "format-distinct compact backend conformance",
+      "status": "passed",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+        "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json"
+      ],
+      "validation": "host and gfx1100 device fixture conformance, no-shadow c1-c32 lifecycle, codec composition, profiler identities",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json",
+          "exists": true,
+          "artifact": {
+            "status": "device_fixture_qualified_product_checkpoint_blocked",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.swap",
+      "section": "definition_of_done",
+      "summary": "topology/codec/tier swap needs no concurrency fork",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/kvcache/dms.py",
+        "hipengine/kvcache/tiering.py"
+      ],
+      "validation": "common protocols/adapters",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/kvcache/dms.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/kvcache/tiering.py",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DoD.docs",
+      "section": "definition_of_done",
+      "summary": "docs/artifacts/telemetry disclose routes/memory",
+      "status": "passed",
+      "evidence_paths": [
+        "docs/CONCURRENCY2.md",
+        "docs/KVCACHE.md",
+        "benchmarks/README.md",
+        "benchmarks/CHANGELOG.md"
+      ],
+      "validation": "Worklog2 and compact artifacts",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "docs/CONCURRENCY2.md",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "docs/KVCACHE.md",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/README.md",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/CHANGELOG.md",
+          "exists": true,
+          "artifact": null
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "DMS.product",
+      "section": "definition_of_done",
+      "summary": "DMS checkpoint quality, HIP spans, no shadow",
+      "status": "blocked",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+        "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json"
+      ],
+      "validation": "host/device no-shadow implementation and fixture codec pass",
+      "blocker": "no valid trained retrofit checkpoint is available for model-quality, device-savings, and product-soak qualification",
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_product_metadata_and_hardware",
+            "passed": false,
+            "performance_claim": false
+          }
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json",
+          "exists": true,
+          "artifact": {
+            "status": "device_fixture_qualified_product_checkpoint_blocked",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    }
+  ],
+  "blockers": [
+    {
+      "requirement_id": "C2-6.external",
+      "status": "unavailable",
+      "blocker": "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility"
+    },
+    {
+      "requirement_id": "DMS.product",
+      "status": "blocked",
+      "blocker": "no valid trained retrofit checkpoint is available for model-quality, device-savings, and product-soak qualification"
+    }
+  ],
+  "missing_evidence": [],
+  "false_passes": [],
+  "validation_commands": [
+    "python3 -m pytest -q tests/test_concurrency2_simulator.py tests/test_generation_engine_service.py tests/test_kvcache_resource_ledger.py tests/test_kvcache_global_pool.py tests/test_kvcache_backend_prefix.py tests/test_concurrency2_token_budget.py tests/test_concurrency2_production_load.py tests/test_kvcache_dms.py tests/test_kvcache_dms_device_hip.py tests/test_kvcache_tiering.py",
+    "python3 scripts/worklog.py check",
+    "python3 scripts/sync_benchmark_readme.py --check"
+  ]
+}
