@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-22T14:25:45.307626+00:00",
+  "created_at": "2026-08-22T14:48:21.118373+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
-    "passed": 34,
+    "passed": 35,
     "blocked": 1,
     "unavailable": 1
   },
@@ -679,6 +679,47 @@
           "exists": true,
           "artifact": {
             "status": "accepted_host_contracts",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-S.C1",
+      "section": "roadmap",
+      "summary": "guarded MTP under one EngineService lifecycle",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/generation/engine_service.py",
+        "hipengine/generation/engine_loop.py",
+        "tests/test_generation_engine_service.py",
+        "benchmarks/results/2026-08-22-concurrency2-spec-c1-engine-service.json"
+      ],
+      "validation": "VERIFY_CHAIN submission/work metadata, shared child/output/cancel/release path, declared pre-launch legacy fallback, actual Qwen parity",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/generation/engine_service.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/generation/engine_loop.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_generation_engine_service.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-spec-c1-engine-service.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_engine_service_integration",
             "passed": true,
             "performance_claim": false
           }

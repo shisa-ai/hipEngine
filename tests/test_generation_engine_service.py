@@ -172,6 +172,152 @@ def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> No
     assert driver.reconfigurations == [(service.driver_thread_id, config)]
 
 
+def test_engine_service_speculative_submission_uses_shared_child_lifecycle() -> None:
+    class SpeculativeDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.speculative_submit_thread_ids: list[int] = []
+            self.legacy_calls = 0
+            self.speculative_submissions: list[GenerationSubmission] = []
+
+        def submit_speculative_detailed(self, request: GenerationRequest) -> GenerationSubmission:
+            self.speculative_submit_thread_ids.append(threading.get_ident())
+            request_id = self._next_request_id
+            self._next_request_id += 1
+            submission = GenerationSubmission(
+                request_ids=(request_id,),
+                request=request,
+                max_ticks=1,
+                work_kind="verify_chain",
+                execution_route="engine_service_speculative",
+            )
+            self.speculative_submissions.append(submission)
+            self._outputs[request_id] = GenerationOutput(
+                text="spec",
+                generated_token_ids=(700, 701),
+            )
+            return submission
+
+        def generate_speculative_mtp_detailed(self, request: GenerationRequest):
+            self.legacy_calls += 1
+            raise AssertionError("legacy fallback must not run")
+
+    driver = SpeculativeDriver()
+    service = EngineService(driver)
+    try:
+        outputs = service.generate_speculative_mtp_detailed(_request("spec:2"))
+        snapshot = service.live_loop_snapshot()["engine_service"]
+
+        assert outputs[0].generated_token_ids == (700, 701)
+        assert driver.legacy_calls == 0
+        assert driver.speculative_submit_thread_ids == [service.driver_thread_id]
+        assert driver.speculative_submissions[0].work_kind == "verify_chain"
+        assert driver.release_order == [1]
+        assert snapshot["active_children"] == 0
+        assert snapshot["speculative_routes"] == {
+            "engine_service_verify_chain": 1,
+            "legacy_prelaunch_fallback": 0,
+        }
+    finally:
+        service.close()
+
+
+def test_engine_service_speculative_handle_cancels_through_shared_reclaim() -> None:
+    class CancellableSpecDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def submit_speculative_detailed(self, request: GenerationRequest) -> GenerationSubmission:
+            submission = super().submit_detailed(request)
+            return replace(
+                submission,
+                work_kind="verify_chain",
+                execution_route="engine_service_speculative",
+            )
+
+    driver = CancellableSpecDriver()
+    service = EngineService(driver, idle_wait_seconds=0.05)
+    try:
+        handle = service.submit_speculative_child(_request("spec-cancel:100"))
+        backend_request_id = handle.backend_request_id
+
+        assert handle.cancel(reason="disconnect") is True
+        with pytest.raises(GenerationCancelled):
+            handle.result(timeout=2.0)
+        assert driver.abort_reasons == {backend_request_id: "disconnect"}
+        assert driver.release_order == [backend_request_id]
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
+def test_submit_poll_adapter_admits_model_owned_mtp_as_verify_chain_submission() -> None:
+    class Inner:
+        supports_speculative_mtp = True
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.closed = False
+
+        def generate_speculative_mtp_detailed(self, request: GenerationRequest):
+            self.calls += 1
+            return [GenerationOutput(text="adapter-spec", generated_token_ids=(900, 901))]
+
+        def close(self) -> None:
+            self.closed = True
+
+    inner = Inner()
+    adapter = SubmitPollTextGenerator(inner, capacity=1)
+    service = EngineService(adapter)
+    try:
+        output = service.generate_speculative_mtp_detailed(_request("adapter:2", max_tokens=2))[0]
+        snapshot = service.live_loop_snapshot()["engine_service"]
+
+        assert output.generated_token_ids == (900, 901)
+        assert inner.calls == 1
+        assert adapter._speculative_outputs_by_request == {}
+        assert adapter._submissions_by_request == {}
+        assert snapshot["last_speculative_route"] == "engine_service_verify_chain"
+        assert snapshot["last_speculative_work_kind"] == "verify_chain"
+        assert snapshot["last_speculative_draft_depth"] == 2
+        submission = adapter.last_speculative_submission
+        assert submission is not None and submission.work_item is not None
+        assert submission.work_item.row_to_request == (submission.request_ids[0],) * 2
+    finally:
+        service.close()
+    assert inner.closed is True
+
+
+def test_engine_service_speculative_legacy_route_is_declared_prelaunch_fallback() -> None:
+    class LegacyDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.legacy_thread_ids: list[int] = []
+
+        def generate_speculative_mtp_detailed(self, request: GenerationRequest):
+            self.legacy_thread_ids.append(threading.get_ident())
+            return [GenerationOutput(text="legacy", generated_token_ids=(800,))]
+
+    driver = LegacyDriver()
+    service = EngineService(driver)
+    try:
+        outputs = service.generate_speculative_mtp_detailed(_request("legacy:1"))
+        snapshot = service.live_loop_snapshot()["engine_service"]
+
+        assert outputs[0].generated_token_ids == (800,)
+        assert driver.legacy_thread_ids == [service.driver_thread_id]
+        assert snapshot["speculative_routes"] == {
+            "engine_service_verify_chain": 0,
+            "legacy_prelaunch_fallback": 1,
+        }
+        assert snapshot["last_speculative_route"] == "legacy_prelaunch_fallback"
+    finally:
+        service.close()
+
+
 def test_engine_service_rejects_one_pending_child_without_closing() -> None:
     class RejectingDriver(_FakeSoleDriver):
         def poll(self, *, max_ticks: int = 1):

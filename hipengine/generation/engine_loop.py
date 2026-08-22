@@ -144,6 +144,10 @@ class GenerationSubmission:
     request_ids: tuple[int, ...]
     request: GenerationRequest
     max_ticks: int
+    work_kind: str = "decode"
+    execution_route: str = "resident_scheduler"
+    prelaunch_fallback: str | None = None
+    work_item: WorkItem | None = None
 
 
 @dataclass(slots=True)
@@ -342,6 +346,9 @@ class SubmitPollTextGenerator:
         self._stream_queue_max_chunks = int(stream_queue_max_chunks)
         self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
         self._submissions_by_request: dict[int, GenerationSubmission] = {}
+        self._speculative_outputs_by_request: dict[int, GenerationOutput] = {}
+        self._next_speculative_request_id = 1 << 60
+        self._last_speculative_submission: GenerationSubmission | None = None
         self._cancel_dispatch_by_submission: dict[
             int,
             tuple[Any, Callable[[FinishDetails], None]],
@@ -369,6 +376,10 @@ class SubmitPollTextGenerator:
         )
 
     @property
+    def last_speculative_submission(self) -> GenerationSubmission | None:
+        return self._last_speculative_submission
+
+    @property
     def supports_default_mtp(self) -> bool:
         """Whether default-on MTP serving is safe for the wrapped model."""
 
@@ -378,13 +389,67 @@ class SubmitPollTextGenerator:
         self,
         request: GenerationRequest,
     ) -> list[GenerationOutput]:
-        """Delegate model-owned MTP outside the plain-AR submit/poll loop."""
+        """Legacy exact pre-launch fallback for drivers without submission support."""
 
         if not self.supports_speculative_mtp:
             raise NotImplementedError(
                 "speculative MTP generation is not supported by the wrapped generator"
             )
         return list(self._inner.generate_speculative_mtp_detailed(request))
+
+    def submit_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> GenerationSubmission:
+        """Submit one phase-serial VERIFY_CHAIN child to the shared service table.
+
+        SPEC-C1 keeps the validated model-owned target cycle intact, but gives it
+        stable request ownership and the normal EngineService collector/output
+        lifecycle. Cross-request proposal/verify packing remains SPEC-C2.
+        """
+
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        if len(request.prompts) != 1:
+            raise ValueError("one speculative submission requires exactly one prompt")
+        with self._submission_priority.submission(self._loop_lock):
+            outputs = list(self._inner.generate_speculative_mtp_detailed(request))
+            if len(outputs) != 1:
+                raise RuntimeError("one speculative submission must produce one output")
+            request_id = self._next_speculative_request_id
+            self._next_speculative_request_id += 1
+            details = getattr(self._inner, "last_batch_generation", {})
+            spec_details = (
+                details.get("speculative_mtp", {})
+                if isinstance(details, Mapping)
+                else {}
+            )
+            draft_depth = max(
+                1,
+                int(spec_details.get("draft_n_max", min(3, request.max_tokens))),
+            )
+            work_item = WorkItem(
+                kind=WorkKind.VERIFY_CHAIN,
+                request_ids=(request_id,),
+                row_to_request=(request_id,) * draft_depth,
+                token_rows=tuple(() for _ in range(draft_depth)),
+                draft_depth=draft_depth,
+                tree_parents=tuple(range(draft_depth)),
+            )
+            submission = GenerationSubmission(
+                request_ids=(request_id,),
+                request=request,
+                max_ticks=1,
+                work_kind=WorkKind.VERIFY_CHAIN.value,
+                execution_route="engine_service_speculative",
+                work_item=work_item,
+            )
+            self._speculative_outputs_by_request[request_id] = outputs[0]
+            self._last_speculative_submission = submission
+            self._register_submission_cancellation_locked(submission)
+            return submission
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
@@ -541,6 +606,14 @@ class SubmitPollTextGenerator:
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
+            if submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }:
+                return all(
+                    request_id in self._speculative_outputs_by_request
+                    for request_id in submission.request_ids
+                )
             return self._runner.has_outputs(submission.request_ids)
 
     def cancel_submission(
@@ -671,6 +744,21 @@ class SubmitPollTextGenerator:
         """Consume one completed submission in original prompt order."""
 
         with self._loop_lock:
+            if submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }:
+                if not all(
+                    request_id in self._speculative_outputs_by_request
+                    for request_id in submission.request_ids
+                ):
+                    raise RuntimeError("submitted speculative generation is incomplete")
+                outputs = [
+                    self._speculative_outputs_by_request.pop(request_id)
+                    for request_id in submission.request_ids
+                ]
+                self._unregister_submission_cancellation_locked(submission)
+                return outputs
             if not self._runner.has_outputs(submission.request_ids):
                 missing = self._runner.missing_outputs(submission.request_ids)
                 raise RuntimeError(f"submitted generation is incomplete; missing request_ids={missing}")
@@ -926,6 +1014,14 @@ class SubmitPollTextGenerator:
         *,
         reason: str,
     ) -> None:
+        if submission.work_kind in {
+            WorkKind.VERIFY_CHAIN.value,
+            WorkKind.VERIFY_TREE.value,
+        }:
+            for request_id in submission.request_ids:
+                self._speculative_outputs_by_request.pop(request_id, None)
+            self._unregister_submission_cancellation_locked(submission)
+            return
         for request_id in submission.request_ids:
             self._loop.cancel(request_id, reason=reason)
             self._loop.release_completed(request_id)
@@ -952,6 +1048,7 @@ class SubmitPollTextGenerator:
             }
             for submission in submissions.values():
                 self._unregister_submission_cancellation_locked(submission)
+            self._speculative_outputs_by_request.clear()
             with self._cancel_commands_lock:
                 self._cancel_commands.clear()
             closer = getattr(self._runner, "close", None)
