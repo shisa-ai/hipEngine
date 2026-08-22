@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF6 complete on gfx1151; RF6 rejected every automatic MTP scope; RF7 rollback/no-canary closure pending**
+- Status: **complete on gfx1151; RF0–RF7 closed; no automatic MTP scope promoted; production `auto` routes AR and explicit diagnostic MTP remains available**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -236,9 +236,14 @@ questions for the next coder.
       and streaming SLO/full-logit production gates are absent. No automatic
       scope is promoted. Artifact:
       `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf6-qualification-rejected.json`.
-- [ ] **RF7:** canary, circuit-breaker, rollback, restart, and staged rollout.
-- [ ] Keep automatic production MTP disabled until the phase gates below permit
-      a named scope. The running server was not restarted during the RF1 work.
+- [x] **RF7:** zero-scope rollout closure passes scoped circuit-breaker,
+      operator rollback without restart, in-flight retirement, shutdown drain,
+      restart reset, auto-AR confirmation, and explicit diagnostic MTP health.
+      No canary was started because RF6 promoted no scope. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf7-zero-scope-rollout.json`.
+- [x] Keep automatic production MTP disabled: no named scope passed RF6. The
+      public `auto` policy remains available but selects AR with direct reason
+      `automatic_mtp_scope_not_promoted`.
 
 **Shared-worktree warning:** the many untracked benchmark artifacts and the
 existing `benchmarks/README.md` modification belong to concurrent work and are
@@ -875,6 +880,18 @@ Rollout order:
 Rollback drill must prove an operator can switch to AR for new requests without
 restarting, allow or cancel in-flight owned cycles safely, drain MTP resources,
 and preserve readiness. Fatal GPU errors still require worker restart.
+
+**RF7 closed with zero rollout scope on gfx1151 2026-08-22.** A restart-scoped
+circuit breaker counts backend/runtime failures by model/backend/profile/context
+class, ignores user cancellation/deadline, and rejects further explicit MTP
+before launch after threshold. An authenticated runtime rollback routes all new
+MTP requests to AR without restart; a real in-flight MTP request retires under
+its existing owner, subsequent traffic is AR, and shutdown returns allocation
+ownership to zero. Restart resets the breaker; capabilities still advertise no
+certified default scopes, `auto` selects AR with the RF6 reason, and explicit
+MTP remains exact. No canary or production percentage rollout was started
+because RF6 promoted no scope. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf7-zero-scope-rollout.json`.
 
 ## 7. Validation matrix
 

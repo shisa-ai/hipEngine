@@ -1365,6 +1365,22 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
             "physical_concurrency": "serialized_target_slot",
             "max_physical_target_slots": 1,
             "route_coalescing_is_physical_concurrency": False,
+            "circuit_breaker": deepcopy(
+                getattr(
+                    engine,
+                    "mtp_circuit_breaker_state",
+                    {
+                        "state": "closed",
+                        "operator_disabled": False,
+                        "operator_reason": None,
+                        "threshold": 3,
+                        "open_scopes": [],
+                        "failures": [],
+                        "transitions": [],
+                        "reset_policy": "server_restart",
+                    },
+                )
+            ),
         }
     )
     if configured_mode == "auto":
@@ -2175,6 +2191,98 @@ def _log_stream_failure(
     )
 
 
+class _MTPCircuitBreaker:
+    """Restart-scoped protection for repeated MTP backend/runtime failures."""
+
+    def __init__(self, *, threshold: int = 3) -> None:
+        if int(threshold) <= 0:
+            raise ValueError("MTP circuit-breaker threshold must be positive")
+        self.threshold = int(threshold)
+        self._failures: dict[tuple[str, str, str, str], int] = {}
+        self._opened: set[tuple[str, str, str, str]] = set()
+        self._transitions: list[dict[str, Any]] = []
+        self._operator_disabled = False
+        self._operator_reason: str | None = None
+
+    def scope(
+        self,
+        engine: Any,
+        prompts: Sequence[PromptInput],
+    ) -> tuple[str, str, str, str]:
+        model = str(getattr(engine, "model_id", None) or getattr(engine, "model_path", "unknown"))
+        backend = str(
+            getattr(engine, "_resolved_backend", None)
+            or getattr(engine, "backend", "unknown")
+        )
+        profile = str(getattr(engine, "resolved_execution_profile", None) or "strict")
+        lengths = [
+            int(length)
+            for length in (_prepared_context_tokens(prompt) for prompt in prompts)
+            if length is not None and int(length) > 0
+        ]
+        context_bucket = (
+            "unknown"
+            if not lengths
+            else str(((max(lengths) + 255) // 256) * 256)
+        )
+        return model, backend, profile, context_bucket
+
+    @property
+    def operator_disabled(self) -> bool:
+        return bool(self._operator_disabled)
+
+    def disable_new_mtp(self, *, reason: str = "mtp_operator_rollback") -> None:
+        if not self._operator_disabled:
+            self._operator_disabled = True
+            self._operator_reason = str(reason)
+            self._transitions.append(
+                {"scope": ["all"], "state": "operator_disabled", "reason": str(reason)}
+            )
+
+    def is_open(self, scope: tuple[str, str, str, str]) -> bool:
+        return scope in self._opened
+
+    def record_failure(
+        self,
+        scope: tuple[str, str, str, str],
+        exc: BaseException,
+    ) -> None:
+        failures = self._failures.get(scope, 0) + 1
+        self._failures[scope] = failures
+        if failures >= self.threshold and scope not in self._opened:
+            self._opened.add(scope)
+            self._transitions.append(
+                {
+                    "scope": list(scope),
+                    "state": "open",
+                    "failures": failures,
+                    "error_type": type(exc).__name__,
+                }
+            )
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "state": (
+                "operator_disabled"
+                if self._operator_disabled
+                else ("open" if self._opened else "closed")
+            ),
+            "operator_disabled": bool(self._operator_disabled),
+            "operator_reason": self._operator_reason,
+            "threshold": self.threshold,
+            "open_scopes": [list(scope) for scope in sorted(self._opened)],
+            "failures": [
+                {"scope": list(scope), "count": count}
+                for scope, count in sorted(self._failures.items())
+            ],
+            "transitions": deepcopy(self._transitions),
+            "reset_policy": "server_restart",
+        }
+
+    def attach(self, engine: Any) -> None:
+        setattr(engine, "mtp_circuit_breaker_state", self.snapshot())
+
+
 @dataclass
 class _QueuedGeneration:
     prompts: tuple[PromptInput, ...]
@@ -2235,6 +2343,7 @@ class _GenerationBatcher:
         route_max_active_requests: Mapping[str, int] | None = None,
         retry_after_seconds: int = 1,
         stream_queue_max_chunks: int = 16,
+        mtp_circuit_breaker: _MTPCircuitBreaker | None = None,
     ) -> None:
         self._engine_factory = engine_factory
         self._batch_window_seconds = max(0.0, float(batch_window_seconds))
@@ -2252,6 +2361,7 @@ class _GenerationBatcher:
             self._route_max_active_requests[str(route)] = route_limit
         self._retry_after_seconds = max(1, int(retry_after_seconds))
         self._stream_queue_max_chunks = int(stream_queue_max_chunks)
+        self._mtp_circuit_breaker = mtp_circuit_breaker
         if self._stream_queue_max_chunks < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         self._queue: deque[_QueuedGeneration] = deque()
@@ -2577,6 +2687,22 @@ class _GenerationBatcher:
                 group_rows=len(prompts),
                 sampling=group_sampling,
             )
+            breaker = self._mtp_circuit_breaker
+            if (
+                route == _SPECULATIVE_MTP_BATCH_ROUTE
+                and breaker is not None
+                and breaker.operator_disabled
+            ):
+                route = _SPECULATIVE_MTP_DEFAULT_ROUTE
+                route_decision = {
+                    "requested_route": requested_route,
+                    "selected_route": route,
+                    "reason": "mtp_operator_rollback",
+                    "realized_group_rows": len(prompts),
+                    "output_horizon_tokens": int(group_sampling.max_tokens),
+                    "exact_default_required": True,
+                    "evidence": "operator_runtime_rollback",
+                }
             route_cap = self._route_request_cap(requested_route)
             try:
                 batch_result = await self._generate_prompts(
@@ -2635,16 +2761,46 @@ class _GenerationBatcher:
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+            breaker = self._mtp_circuit_breaker
+            scope = None if breaker is None else breaker.scope(engine, prompts)
+            if breaker is not None and scope is not None and breaker.is_open(scope):
+                breaker.attach(engine)
+                raise OpenAIHTTPError(
+                    503,
+                    "speculative_mtp circuit breaker is open for this scope",
+                    error_type="service_unavailable",
+                    code="mtp_circuit_breaker_open",
+                    param="speculative_mtp",
+                    extra={
+                        "hipengine": {
+                            "speculative_mtp": {
+                                "decision_reason": "mtp_circuit_breaker_open",
+                                "circuit_breaker": breaker.snapshot(),
+                            }
+                        }
+                    },
+                )
             # The raw-argmax MTP verifier is exact only for the greedy fast
             # path.  Under the hint thinking policy, host-sampler thinking
             # enforcement is relaxed (prompt hints stay) so thinking requests
             # can still use the MTP route.
             mtp_sampling = relax_thinking_budget_for_mtp(sampling)
-            raw_outputs = await _generate_speculative_mtp_detailed(
-                engine,
-                prompts,
-                mtp_sampling,
-            )
+            try:
+                raw_outputs = await _generate_speculative_mtp_detailed(
+                    engine,
+                    prompts,
+                    mtp_sampling,
+                )
+            except (GenerationCancelled, GenerationDeadlineExceeded, OpenAIHTTPError):
+                raise
+            except Exception as exc:
+                if breaker is not None and scope is not None:
+                    breaker.record_failure(scope, exc)
+                    breaker.attach(engine)
+                raise
+            else:
+                if breaker is not None:
+                    breaker.attach(engine)
         elif str(route) == _SPECULATIVE_PROVIDER_ROUTE:
             raw_outputs = await _generate_speculative_detailed(engine, prompts, sampling)
         else:
@@ -3655,6 +3811,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "fit_context_extra": rendered.fit_context_extra,
         }
 
+    mtp_circuit_breaker = _MTPCircuitBreaker()
+    app.state.hipengine_mtp_circuit_breaker = mtp_circuit_breaker
+
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(
@@ -3670,6 +3829,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 speculative_candidate_budget=config.speculative_candidate_budget,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+        mtp_circuit_breaker.attach(app.state.hipengine_llm)
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
 
@@ -3696,6 +3856,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         },
         retry_after_seconds=config.queue_retry_after_seconds,
         stream_queue_max_chunks=config.stream_queue_max_chunks,
+        mtp_circuit_breaker=mtp_circuit_breaker,
     )
     app.state.hipengine_generation_batcher = generation_batcher
 
@@ -5637,6 +5798,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "parallelism": _parallelism_capability(),
             "errors": _error_taxonomy_manifest(),
             "unsupported_fields": _known_unsupported_fields(),
+        }
+
+    @app.post("/v1/hipengine/speculative_mtp/rollback")
+    async def rollback_speculative_mtp(
+        _auth: None = Depends(require_auth),
+    ) -> dict[str, Any]:
+        """Route every new MTP request to AR until the server restarts."""
+
+        mtp_circuit_breaker.disable_new_mtp(reason="mtp_operator_rollback")
+        engine = getattr(app.state, "hipengine_llm", None)
+        if engine is not None:
+            mtp_circuit_breaker.attach(engine)
+        return {
+            "object": "hipengine.speculative_mtp.rollback",
+            "new_requests_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            "in_flight_policy": "retire_owned_cycle_then_cancel_or_complete",
+            "circuit_breaker": mtp_circuit_breaker.snapshot(),
         }
 
     @app.post("/v1/hipengine/tokenize")

@@ -50,6 +50,7 @@ from hipengine.server.api import (
     _chat_session_message_copy,
     _coerce_generation_output,
     _GenerationBatcher,
+    _MTPCircuitBreaker,
     _QueuedBatchResult,
     _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
@@ -1680,6 +1681,16 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "physical_concurrency": "serialized_target_slot",
         "max_physical_target_slots": 1,
         "route_coalescing_is_physical_concurrency": False,
+        "circuit_breaker": {
+            "state": "closed",
+            "operator_disabled": False,
+            "operator_reason": None,
+            "threshold": 3,
+            "open_scopes": [],
+            "failures": [],
+            "transitions": [],
+            "reset_policy": "server_restart",
+        },
     }
     assert client.get("/v1/models").json()["data"][0]["hipengine"]["capabilities"]["speculative_mtp"] is True
 
@@ -4391,6 +4402,101 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
         assert fake.calls == [(("one", "two", "three"), sampling)]
 
     asyncio.run(run())
+
+
+def test_mtp_circuit_breaker_opens_by_scope_and_restart_resets() -> None:
+    engine = SimpleNamespace(
+        model_id="model",
+        _resolved_backend="hip_gfx1151",
+        resolved_execution_profile="strict",
+    )
+    breaker = _MTPCircuitBreaker(threshold=2)
+    scope = breaker.scope(engine, ("prompt",))
+    assert breaker.is_open(scope) is False
+
+    breaker.record_failure(scope, RuntimeError("first"))
+    assert breaker.is_open(scope) is False
+    breaker.record_failure(scope, RuntimeError("second"))
+    breaker.attach(engine)
+
+    assert breaker.is_open(scope) is True
+    assert engine.mtp_circuit_breaker_state["state"] == "open"
+    assert engine.mtp_circuit_breaker_state["failures"][0]["count"] == 2
+    restarted = _MTPCircuitBreaker(threshold=2)
+    assert restarted.snapshot()["state"] == "closed"
+    assert restarted.is_open(scope) is False
+
+
+def test_generation_batcher_mtp_breaker_fails_before_third_backend_launch() -> None:
+    class FailingMTP(SpeculativeMTPFakeLLM):
+        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+            self.mtp_calls.append((tuple(prompts), sampling_params))
+            raise RuntimeError("injected MTP runtime failure")
+
+    async def run() -> None:
+        fake = FailingMTP()
+        breaker = _MTPCircuitBreaker(threshold=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            mtp_circuit_breaker=breaker,
+        )
+        for _ in range(2):
+            with pytest.raises(RuntimeError, match="injected MTP"):
+                await batcher.submit(
+                    ("prompt",),
+                    SamplingParams(max_tokens=2),
+                    route="speculative_mtp",
+                )
+        with pytest.raises(OpenAIHTTPError) as excinfo:
+            await batcher.submit(
+                ("prompt",),
+                SamplingParams(max_tokens=2),
+                route="speculative_mtp",
+            )
+        assert excinfo.value.status_code == 503
+        assert excinfo.value.code == "mtp_circuit_breaker_open"
+        assert len(fake.mtp_calls) == 2
+        assert fake.mtp_circuit_breaker_state["state"] == "open"
+
+    asyncio.run(run())
+
+
+def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="enabled",
+    )
+    app = create_app(config, llm=fake)
+    client = TestClient(app)
+    payload = {
+        "model": "fake-model",
+        "prompt": "hello",
+        "max_tokens": 2,
+        "temperature": 0.0,
+    }
+
+    before = client.post("/v1/completions", json=payload)
+    rollback = client.post("/v1/hipengine/speculative_mtp/rollback")
+    after = client.post("/v1/completions", json=payload)
+
+    assert before.status_code == rollback.status_code == after.status_code == 200
+    assert before.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert rollback.json()["new_requests_route"] == "default"
+    assert rollback.json()["circuit_breaker"]["state"] == "operator_disabled"
+    assert after.json()["hipengine"]["generation_shape"]["route"] == "default"
+    assert after.json()["hipengine"]["generation_shape"]["route_decision"]["reason"] == "mtp_operator_rollback"
+    assert len(fake.mtp_calls) == 1
+    assert len(fake.calls) == 1
+
+    restarted_fake = SpeculativeMTPFakeLLM()
+    restarted = TestClient(create_app(config, llm=restarted_fake))
+    restarted_response = restarted.post("/v1/completions", json=payload)
+    assert restarted_response.status_code == 200
+    assert restarted_response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert len(restarted_fake.mtp_calls) == 1
 
 
 def test_generation_batcher_keeps_speculative_mtp_and_default_routes_separate() -> None:

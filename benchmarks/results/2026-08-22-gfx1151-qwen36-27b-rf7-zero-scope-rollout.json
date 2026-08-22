@@ -1,0 +1,93 @@
+{
+  "canary_started": false,
+  "command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python3",
+    "scripts/gguf_mtp_rollout_gate.py",
+    "--hash-model",
+    "--out",
+    "/tmp/mtp-rf7-rollout.json",
+    "--fail-on-fail"
+  ],
+  "decision": "RF6 promoted no scope. Do not canary; keep auto on AR and explicit diagnostic MTP available after restart.",
+  "kind": "gguf_mtp_zero_scope_rollout_gate",
+  "memory": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 21077588888,
+    "peak_allocations": 2587,
+    "total_allocated_bytes": 43108425185,
+    "total_freed_bytes": 43108425185
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "passed": true,
+  "performance_claim": false,
+  "repo": {
+    "commit": "94015ba2280565f611d353f90c9a99a34cc64721",
+    "dirty": true
+  },
+  "rollout_scope": "none",
+  "rows": [
+    {
+      "after_reason": "mtp_operator_rollback",
+      "after_route": "default",
+      "after_used_mtp": false,
+      "before_route": "speculative_mtp",
+      "breaker_state": "operator_disabled",
+      "id": "runtime_rollback",
+      "in_flight_route": "speculative_mtp",
+      "in_flight_used_mtp": true,
+      "passed": true,
+      "rollback_state": "operator_disabled",
+      "rollback_status": 200
+    },
+    {
+      "id": "shutdown_drain",
+      "memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21077588888,
+        "peak_allocations": 2587,
+        "total_allocated_bytes": 22030990377,
+        "total_freed_bytes": 22030990377
+      },
+      "passed": true,
+      "ready_before_shutdown": 200
+    },
+    {
+      "auto_ids_equal_explicit": true,
+      "auto_reason": "automatic_mtp_scope_not_promoted",
+      "auto_route": "default",
+      "automatic_route_promoted": false,
+      "breaker_state": "closed",
+      "certified_default_scopes": [],
+      "explicit_route": "speculative_mtp",
+      "id": "restart_zero_scope",
+      "passed": true
+    },
+    {
+      "id": "restart_shutdown_drain",
+      "memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21077588888,
+        "peak_allocations": 2587,
+        "total_allocated_bytes": 43108425185,
+        "total_freed_bytes": 43108425185
+      },
+      "passed": true
+    }
+  ],
+  "schema": 1,
+  "source_local_path": "/tmp/mtp-rf7-rollout.json",
+  "status": "passed",
+  "summary": {
+    "passed": 4,
+    "total": 4,
+    "wall_seconds": 121.97070819395594
+  },
+  "verdict": "pass"
+}
