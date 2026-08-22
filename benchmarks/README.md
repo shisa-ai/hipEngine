@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-21**
+Last updated: **2026-08-22**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -199,6 +199,12 @@ rowtiles own rows 5-8; dynamic compaction, state/KV, graph invalidation, cancel/
 refill, memory recovery, and drain pass. Logical c>8 uses deterministic ceiling
 composition; artifact-backed D2 remains explicit research only.
 [`Width and lifecycle evidence`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json).
+
+The exact gfx1100 planar-Q6 row8 DPP reduction improves the marked production-
+owner physical-c8 transition **58.693→57.734 ms (-1.634%)** median with identical
+8×32 token IDs, route, graph transport, and drain. This is a steady-transition
+kernel result, not a replacement for the direct-width throughput packet.
+[`Promotion evidence`](results/2026-08-22-gfx1100-qwen38-q6-planar-row8-dpp-promotion.json).
 
 ## Current Qwen3.6-35B quantization quality
 
