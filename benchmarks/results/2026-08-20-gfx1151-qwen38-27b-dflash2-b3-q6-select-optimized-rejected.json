@@ -11,8 +11,9 @@
   "production_default_changed": false
  },
  "hardware": {
-  "gpu": "AMD Radeon Pro W7900-compute-lane (gfx1151 resident)",
-  "arch": "gfx1151"
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "host": "strixhalo"
  },
  "model": {
   "name": "Qwen3.8-27B",
@@ -57,6 +58,33 @@
    "mixed_ja_en_review": 9.69
   }
  },
- "blocker": "Q4_K_M lane: DFlash2 acceptance (2.80 B3) is below MTP B3 (3.85); the drafter feeds on quantized target hidden so its acceptance advantage over MTP (reference 4.80 vs 4.28 is BF16/T>0) does not materialize. B3 verify (166ms) is shared with MTP; drafter forward (~75ms) + select (22ms) vs MTP's ~5ms draft. Even with the optimized select, B3 = 0.66x AR < MTP B3 1.78x AR; zeroing the whole drafter leaves 1.26x AR < 1.78x. No operating point reaches MTP B3 on the Q4/8060S lane.",
- "evidence": "worklog/entries/20260819T235720.374366Z-lhl-dflash2-select-via-amortized-q6-k-head-6296a9.md"
+ "blocker": "Not promoted: DFlash2 B3 with the optimized Q6 select is 8.845 tok/s = 0.66x AR, ~2.7x below exact native MTP B3 (23.85 tok/s = 1.7845x AR). The deficit is cost, not acceptance: DFlash2 B3 accepts 2.80 tokens/cycle vs MTP B3's 2.85 (0.700 vs 0.740 per verify row, i.e. parity). DFlash2 pays ~96 ms/cycle of drafter forward + select against MTP's 2.37 ms proposal, and its verify costs 166 ms for 4 rows against MTP's 111 ms for 3.85 rows on a different target file and harness. Zeroing the whole drafter leaves 2.80/0.166 = 1.26x AR at DFlash2's own verify cost; at MTP's verify economics the same acceptance would give ~1.88x AR, so the binding constraint is the verify/draft implementation, not the drafter's acceptance. See 'correction' below.",
+ "evidence": "worklog/entries/20260819T235720.374366Z-lhl-dflash2-select-via-amortized-q6-k-head-6296a9.md",
+ "correction": {
+  "date": "2026-08-22",
+  "what_changed": "loss attribution only; no measured value in this artifact changed",
+  "misread": "MTP B3 'acceptance 3.85 / 0.96 per row' was read from 2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json as accepted tokens per cycle. 3.85 is target_forward_rows/cycles (335/87) = verify ROWS per cycle. MTP B3's accepted tokens per cycle is (161+87)/87 = 2.85, and its per-verify-row acceptance is 0.740.",
+  "corrected_comparison": {
+   "mtp_b3_rows_per_cycle": 3.851,
+   "mtp_b3_tokens_per_cycle": 2.851,
+   "mtp_b3_tokens_per_verify_row": 0.74,
+   "mtp_b3_verify_ms_per_cycle": 111.1,
+   "mtp_b3_proposal_ms_per_cycle": 2.37,
+   "dflash2_b3_rows_per_cycle": 4.0,
+   "dflash2_b3_tokens_per_cycle": 2.799,
+   "dflash2_b3_tokens_per_verify_row": 0.7,
+   "note": "acceptance is at parity (~2%); the deficit is drafter+verify cost"
+  },
+  "withdrawn_claims": [
+   "MTP B3 sustains ~0.96 accepted tokens per verify row / sits near the B3 cap",
+   "DFlash2's acceptance (2.80) is below MTP's (3.85)",
+   "the 4->8 row verify cost growth is O(N^2) causal block attention",
+   "the 166ms verify is shared with MTP and not DFlash2-specific",
+   "no operating point on this lane can reach MTP B3 regardless of drafter cost"
+  ],
+  "protocol_mismatch": "the MTP B3 comparator row is Qwen3.8-27B-Q4_K_S.gguf at --max-new-tokens 25 via qwen36_dense_gguf_suite.py with reusable target graphs; these DFlash2 rows are Q4_K_M at 40 tokens via dflash2_gguf_suite_smoke.py with per-cycle Python and explicit syncs, and the timed verify additionally carries DFlash2-only 5-layer hidden-state capture. Ratios-to-AR are comparable; absolute rates are not same-lane.",
+  "hardware_field_fixed": "gpu was 'AMD Radeon Pro W7900-compute-lane (gfx1151 resident)', which names the wrong machine (W7900 is gfx1100). Actual host: strixhalo, AMD Radeon 8060S Graphics, gfx1151.",
+  "reproducibility_note": "as of 2026-08-22 the drafter snapshot, ~/dflash, Qwen3.8-27B-Q4_K_S.gguf and ~/sm120-tuning are all absent from this host; re-running requires re-fetching the drafter and the Q4_K_S comparator target.",
+  "evidence": "worklog/entries/20260822T*-dflash2-economics-attribution-correction*.md; docs/QWEN38-27B-DFLASH2-CAMPAIGN.md Economics section"
+ }
 }
