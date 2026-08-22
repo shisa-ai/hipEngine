@@ -5,7 +5,7 @@ Last updated: 2026-08-22.
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
 short/long serving and the canonical W7900 production load are retained, while
 cross-backend/external and DMS product closure remain open. The executable audit
-reports 33 passed, 1 blocked, and 1 unavailable rows. This document remains the
+reports 34 passed, 1 blocked, and 1 unavailable rows. This document remains the
 source of truth for the server scheduler, request
 lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
@@ -36,12 +36,12 @@ Related source-of-truth documents:
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
-| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs and a guarded non-streaming GGUF MTP route are migration inputs. | Full continuous scheduling, draft-side batching, streaming, generic provider/tree support, and product gates remain open; see the full-support contract below. |
+| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, shared SPEC-C0 records/simulator, and a guarded non-streaming GGUF MTP route are migration inputs. | SPEC-C0 host correctness is closed; EngineService integration, continuous packing, streaming/sampling, generic providers/trees, and product gates remain open. |
 
 Executable source-to-evidence audit:
 [`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
-Its 33-passed/1-blocked/1-unavailable counts describe the pre-C2-S audit schema;
-they are not a claim that the new speculative-support units are implemented.
+Its 34-passed/1-blocked/1-unavailable counts include SPEC-C0 host contracts;
+they are not a claim that SPEC-C1 through SPEC-C5 are implemented.
 
 ### Closure interpretation: running core versus remaining product scope
 
@@ -1737,9 +1737,12 @@ Existing `N0`-`N4` launchers, target graphs, transaction journals, and exact
 oracles are migration components; they do not by themselves close these items.
 Implement in this order:
 
-1. **SPEC-C0 — host contracts and simulator.** Add the records above, one-to-many
-   request/verifier-row maps, provider claim composition, reject/partial/full
-   fake transactions, cancellation at every stage, and final conservation.
+1. ~~**SPEC-C0 — host contracts and simulator.**~~ **DONE (2026-08-22).** The
+   shared records now carry cycle/slot/candidate/provider metadata and extended
+   accept results; the deterministic simulator covers one-to-many row maps,
+   atomic provider+target+transient claims, reject/partial/full dual
+   transactions, cancellation at every provisional stage, and final
+   conservation. Evidence: [`SPEC-C0 host gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c0-host-contracts.json).
 2. **SPEC-C1 — one EngineService integration.** Move the guarded GGUF MTP chain
    behind `VERIFY_CHAIN` work items in the Generation-2 request table and output
    path. Preserve the old exact route as a pre-launch fallback.

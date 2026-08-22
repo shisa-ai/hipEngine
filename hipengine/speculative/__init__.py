@@ -128,6 +128,14 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.simulator import (
+    SpecCycleStage,
+    SpecTransaction,
+    SpeculativeCycleResult,
+    SpeculativeCycleSimulator,
+    SpeculativeRequestState,
+    compose_speculative_claims,
+)
 from hipengine.speculative.native_cycle import (
     NATIVE_SPEC_CYCLE_ABI_VERSION,
     FakeNativeSpecCycleLauncher,
@@ -272,6 +280,12 @@ __all__ = [
     "TargetVerifyBatch",
     "TargetVerifyBuffers",
     "Verifier",
+    "SpecCycleStage",
+    "SpecTransaction",
+    "SpeculativeCycleResult",
+    "SpeculativeCycleSimulator",
+    "SpeculativeRequestState",
+    "compose_speculative_claims",
     "NATIVE_SPEC_CYCLE_ABI_VERSION",
     "FakeNativeSpecCycleLauncher",
     "NativeSpecCycleControl",

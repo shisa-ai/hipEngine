@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-22T14:15:22.476490+00:00",
+  "created_at": "2026-08-22T14:25:45.307626+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
-    "passed": 33,
+    "passed": 34,
     "blocked": 1,
     "unavailable": 1
   },
@@ -638,6 +638,47 @@
           "exists": true,
           "artifact": {
             "status": "accepted_host_tier",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-S.C0",
+      "section": "roadmap",
+      "summary": "speculative host contracts and deterministic simulator",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/speculative/interfaces.py",
+        "hipengine/speculative/simulator.py",
+        "tests/test_speculative_cycle_simulator.py",
+        "benchmarks/results/2026-08-22-concurrency2-spec-c0-host-contracts.json"
+      ],
+      "validation": "one-to-many row maps, provider+target atomic claims, reject/partial/full transactions, cancellation at every stage, final conservation",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/speculative/interfaces.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/speculative/simulator.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_speculative_cycle_simulator.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-spec-c0-host-contracts.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_contracts",
             "passed": true,
             "performance_claim": false
           }
