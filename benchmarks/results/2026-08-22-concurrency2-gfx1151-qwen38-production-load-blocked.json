@@ -1,0 +1,139 @@
+{
+  "blocking_packet": {
+    "passed": true,
+    "raw_sha256": "713d1665d4168717519b675eebab005cac4e931c1b7ac8d92ea1a1271680ac73",
+    "status": "accepted_backend_packet"
+  },
+  "created_at": "2026-08-22T18:30:00Z",
+  "decision": "Keep gfx1151 physical widths1-8 promoted, but do not claim canonical C2 production/load closure. Do not weaken SLOs or enlarge queues. Optimize measured prefill/service owner or enforce an explicit product concurrency/SLO envelope, then rerun.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151"
+  },
+  "interpretation": [
+    "All blocking and streaming token trajectories are exact to same-loaded-server c1.",
+    "token_budget passes c1 only; c8 ITL p99 is 0.980 s.",
+    "retained fair:256 passes c1 and c8 SLO, raising c8 exact aggregate to 10.244 tok/s.",
+    "fair:256 still fails c17/c32: TTFT p95 exceeds 10 s and goodput is zero.",
+    "Live admission is observed but not during first request at c17 under both policies.",
+    "The blocker is offered-load service capacity/prefill interference, not width correctness, route fallback, or memory leak."
+  ],
+  "kind": "concurrency2_gfx1151_qwen38_production_load_gate",
+  "model": {
+    "algorithm": "sha256-sampled-v1",
+    "exists": true,
+    "path_type": "file",
+    "sample_offsets": [
+      0,
+      8060155376,
+      16120310752
+    ],
+    "sampled_bytes": 3145728,
+    "size_bytes": 16121359328,
+    "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "passed": false,
+  "performance_claim": false,
+  "qualified_widths_artifact": "benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json",
+  "schema": 1,
+  "source": {
+    "checkout": "clean",
+    "commit": "888e27bb8",
+    "host": "gfx1151"
+  },
+  "status": "blocked_streaming_slo_capacity",
+  "streaming_fair256": {
+    "passed": false,
+    "raw_sha256": "06761c2bda450d5222e3155d10a900a9e936bbcefee6fda2b16f9171ef40b987",
+    "rows": {
+      "1": {
+        "end_to_end_p95_seconds": 1.1853344490518793,
+        "exact_generated_tok_s_aggregate": 6.747844245404645,
+        "exact_rows": 1,
+        "itl_p99_seconds": 0.0786078249802813,
+        "rows": 1,
+        "slo_goodput_tok_s_aggregate": 6.747844245404645,
+        "slo_passed_runs": 1,
+        "ttft_p95_seconds": 0.655556719051674
+      },
+      "17": {
+        "end_to_end_p95_seconds": 14.017868962022476,
+        "exact_generated_tok_s_aggregate": 9.701629950475523,
+        "exact_rows": 17,
+        "itl_p99_seconds": 0.5137242879718542,
+        "rows": 17,
+        "slo_goodput_tok_s_aggregate": 0.0,
+        "slo_passed_runs": 0,
+        "ttft_p95_seconds": 11.01957588805817
+      },
+      "32": {
+        "end_to_end_p95_seconds": 25.73977464903146,
+        "exact_generated_tok_s_aggregate": 9.94542725384156,
+        "exact_rows": 32,
+        "itl_p99_seconds": 0.8390493880724534,
+        "rows": 32,
+        "slo_goodput_tok_s_aggregate": 0.0,
+        "slo_passed_runs": 0,
+        "ttft_p95_seconds": 20.7651604359271
+      },
+      "8": {
+        "end_to_end_p95_seconds": 6.2469135710271075,
+        "exact_generated_tok_s_aggregate": 10.244479979984137,
+        "exact_rows": 8,
+        "itl_p99_seconds": 0.18549243395682424,
+        "rows": 8,
+        "slo_goodput_tok_s_aggregate": 10.244479979984137,
+        "slo_passed_runs": 1,
+        "ttft_p95_seconds": 5.1956696260022
+      }
+    },
+    "status": "failed_gate"
+  },
+  "streaming_token_budget": {
+    "passed": false,
+    "raw_sha256": "2b3a77ec4393d108bd92770cda5948be66ce4ecb05ff715196038ccd9e140b5b",
+    "rows": {
+      "1": {
+        "end_to_end_p95_seconds": 1.1858516050269827,
+        "exact_generated_tok_s_aggregate": 6.744961414824143,
+        "exact_rows": 1,
+        "itl_p99_seconds": 0.07840929692611098,
+        "rows": 1,
+        "slo_goodput_tok_s_aggregate": 6.744961414824143,
+        "slo_passed_runs": 1,
+        "ttft_p95_seconds": 0.6548999770311639
+      },
+      "17": {
+        "end_to_end_p95_seconds": 14.21210537198931,
+        "exact_generated_tok_s_aggregate": 9.56854579019056,
+        "exact_rows": 17,
+        "itl_p99_seconds": 0.8219371041050181,
+        "rows": 17,
+        "slo_goodput_tok_s_aggregate": 0.0,
+        "slo_passed_runs": 0,
+        "ttft_p95_seconds": 13.324932938907295
+      },
+      "32": {
+        "end_to_end_p95_seconds": 26.39534685201943,
+        "exact_generated_tok_s_aggregate": 9.696723388836169,
+        "exact_rows": 32,
+        "itl_p99_seconds": 1.6271131279645488,
+        "rows": 32,
+        "slo_goodput_tok_s_aggregate": 0.0,
+        "slo_passed_runs": 0,
+        "ttft_p95_seconds": 24.687208627001382
+      },
+      "8": {
+        "end_to_end_p95_seconds": 6.9317790599307045,
+        "exact_generated_tok_s_aggregate": 9.232343242648104,
+        "exact_rows": 8,
+        "itl_p99_seconds": 0.9801956160226837,
+        "rows": 8,
+        "slo_goodput_tok_s_aggregate": 1.154042905331013,
+        "slo_passed_runs": 0,
+        "ttft_p95_seconds": 6.042622581939213
+      }
+    },
+    "status": "failed_gate"
+  }
+}
