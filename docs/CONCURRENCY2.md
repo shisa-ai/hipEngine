@@ -528,9 +528,10 @@ high priority when its call-weighted family saving survives the complete step.
    projection is only 0.106 ms/step (~0.18% wall), too small to justify role-
    specific policy. The candidate was fully removed. Other Q4 register/dequant
    mechanisms remain open only if they project materially more wall recovery.
-3. **Q5 row8.** Next: 1.038 GB at 245.5 GB/s and a 2.185 ms diagnostic gap,
-   but only 4.228 ms total and VGPR72. Reuse a proven Q6/Q4 mechanism where
-   possible rather than opening an independent broad rewrite.
+3. ~~**Q5 row8 DPP reduction.**~~ **REJECTED (2026-08-22).** Four sampled
+   actual layers improve and two regress; the 48-call projection saves only
+   0.064 ms/step (~0.11% wall). Candidate is fully removed. Other Q5 mechanisms
+   need a materially larger bound before implementation.
 4. **Q4 paired projections.** Although the largest summed family at 12.634 ms,
    it already reaches the highest encoded-weight-only rate (508.0 GB/s). Its
    VGPR224 row8 body is a secondary occupancy target after the lower-efficiency
@@ -562,8 +563,7 @@ Projection candidate guardrails:
    streams are the largest remaining wall opportunity and its projected saving
    exceeds the best c≤8 family candidate.
 
-The highest-impact next implementation is now Q5 row8 or the GDN recurrence
-ledger; planar-Q6 row8 landed an exact 0.959-ms complete-step win and the first
+The highest-impact next action is now the GDN recurrence/state ledger; planar-Q6 row8 landed an exact 0.959-ms complete-step win and the first
 Q4-single DPP mechanism was removed as sub-impact. This ranking combines exact
 bytes, current-owner width slopes, and static resources rather than summed
 duration alone. Transport is no longer
