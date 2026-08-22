@@ -35,12 +35,12 @@ Related source-of-truth documents:
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
-| C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
+| C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs and a guarded non-streaming GGUF MTP route are migration inputs. | Full continuous scheduling, draft-side batching, streaming, generic provider/tree support, and product gates remain open; see the full-support contract below. |
 
 Executable source-to-evidence audit:
 [`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
-Its 31-passed/3-blocked/1-unavailable counts describe the pre-C2-S audit schema;
+Its 33-passed/1-blocked/1-unavailable counts describe the pre-C2-S audit schema;
 they are not a claim that the new speculative-support units are implemented.
 
 ### Closure interpretation: running core versus remaining product scope
@@ -61,9 +61,11 @@ The remaining work is not all “tuning,” however. Keep these scopes distinct:
 - **Backend qualification:** gfx1151 inherits the common host scheduler, ledger,
   pool, transaction, and output code, but independently qualifies physical
   widths, kernels, graphs, cost maps, lifecycle, and production load.
-- **Feature/product closure:** real-checkpoint no-shadow DMS device conformance,
-  realistic tier restore economics, and C2-S continuous MTP/SpecDec integration
-  remain implementation campaigns rather than tuning of the dense AR core.
+- **Feature/product closure:** real-checkpoint DMS model qualification and C2-S
+  continuous MTP/SpecDec integration remain implementation campaigns rather
+  than tuning of the dense AR core. Tiering now has realistic host-byte
+  economics but remains default-off until integrated GPU rehydrate/request-SLO
+  policy is qualified.
 - **Comparison coverage:** the current same-host audit finds vLLM/SGLang absent,
   llama.cpp HIP incompatible with this CPU/ROCm generation, and the available
   llama.cpp Vulkan binary CPU-only (`no usable GPU found`). Its p128/d8 packet
@@ -2550,11 +2552,23 @@ Implemented host status: `TieredKVCacheBackend` delegates all execution views to
 the hot backend and adds typed offload/restore/evict work, separate host/NVMe
 cache and transfer-workspace ledger pools, complete fingerprinted cold keys,
 KVTC-style checksummed compression, tenant quotas, pin-aware LRU, atomic hot/cold
-ownership transfer, restore rollback, and deterministic drain. A synthetic 1
-MiB host packet measures median restore **1.203 ms** versus **8.967 ms**
-recompute proxy, but its repeated payload is intentionally non-representative;
-no model TTFT or default claim follows. Evidence:
-[`2026-08-17-concurrency2-c2-8-tier-host-accepted.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
+ownership transfer, restore rollback, queued request cancellation, and
+deterministic drain.
+
+The realistic gate captures **10 MiB** of actual p512 BF16 K/V from ten full-
+attention layers of Qwen3.6-35B PARO. It compresses to **7.58 MiB (1.319×)**,
+not the old synthetic 369×. Median host restore/decompression is **39.527 ms**
+versus **185.705 ms** for same-loaded-model native prefill, a **146.179 ms**
+host-boundary saving. Three objects spill across host/NVMe under pressure,
+restore roundtrips byte-exactly, queued restore cancellation preserves the cold
+object without allocating hot state, and final drain leaves zero objects/owners.
+
+This is realistic model-byte evidence, not integrated end-user TTFT: the restore
+callback does not yet copy bytes into the model's GPU cache, and compression
+costs ~0.56 s/object as background maintenance. Tiering remains default-off
+pending integrated GPU rehydrate/request-SLO qualification. Evidence:
+[`real-model tier gate`](../benchmarks/results/2026-08-22-concurrency2-c2-8-real-model-tier-qualified.json)
+and [`synthetic implementation gate`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
 
 ## Acceptance gates
 

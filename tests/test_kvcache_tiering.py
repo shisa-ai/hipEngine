@@ -321,6 +321,36 @@ def test_tier_backend_gate_measures_restore_and_drains() -> None:
     assert payload["economics"]["recompute_median_seconds"] >= 0.0
 
 
+def test_cancel_request_removes_queued_restore_without_consuming_cold_object() -> None:
+    hot = _hot_backend()
+    tiered = TieredKVCacheBackend(
+        hot,
+        store=ColdTierStore(host_capacity_bytes=4096, nvme_capacity_bytes=0),
+        transfer_workspace_bytes=4096,
+        maintenance_budget_bytes=4096,
+    )
+    key = _key(hot)
+    lease = _lease(hot, 1)
+    tiered.enqueue_offload(key=key, lease=lease, hot_payload=b"real-kv" * 64)
+    assert tiered.maintenance()[0].passed is True
+    restored: list[bytes] = []
+    work_id = tiered.enqueue_restore(
+        key=key,
+        request=_request(2),
+        restore_callback=lambda _lease, payload: restored.append(payload),
+    )
+
+    cancelled = tiered.cancel_request(2)
+
+    assert cancelled == (work_id,)
+    assert restored == []
+    assert tiered.store.contains(key)
+    assert hot.has_request(2) is False
+    assert tiered.observability_snapshot()["tier"]["pending_maintenance"] == 0
+    tiered.drain()
+    tiered.assert_conserved()
+
+
 def test_tier_drain_cleans_pending_and_cold_ownership() -> None:
     hot = _hot_backend()
     tiered = TieredKVCacheBackend(

@@ -596,6 +596,42 @@ class TieredKVCacheBackend:
         )
         return work_id
 
+    def cancel_request(self, request_id: int) -> tuple[str, ...]:
+        """Cancel queued maintenance owned by ``request_id`` before execution.
+
+        Restore cancellation leaves the cold object available for another
+        request and has no provisional workspace to release. A queued offload
+        already owns its hot lease, so cancellation reclaims that lease instead
+        of leaking hot capacity. Completed maintenance is unaffected.
+        """
+
+        target = int(request_id)
+        kept: deque[TierMaintenanceWork] = deque()
+        cancelled: list[str] = []
+        while self._queue:
+            work = self._queue.popleft()
+            owner = None
+            if work.lease is not None:
+                owner = int(work.lease.request_id)
+            elif work.request is not None and hasattr(work.request, "request_id"):
+                owner = int(work.request.request_id)
+            if owner != target:
+                kept.append(work)
+                continue
+            if work.kind == "offload" and work.lease is not None:
+                self.hot_backend.reclaim(work.lease)
+            cancelled.append(work.work_id)
+            self._results.append(
+                TierMaintenanceResult(
+                    work_id=work.work_id,
+                    kind=work.kind,
+                    passed=False,
+                    error="cancelled before maintenance",
+                )
+            )
+        self._queue = kept
+        return tuple(cancelled)
+
     def maintenance(self, budget: Any = None) -> list[TierMaintenanceResult]:
         limit = self.maintenance_budget_bytes
         if isinstance(budget, Mapping):
