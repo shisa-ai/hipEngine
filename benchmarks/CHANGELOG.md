@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [Concurrency2 gfx1151 Qwen3.8 wider-owner rejection] Clean eager diagnostics are exact but lose: native c16 **341.46 ms** vs 2×c8 **273.90 ms**; native c9 **228.05 ms**; actual c17 9+8 **425.86 ms** vs retained 8+8+1 **406.50 ms (+4.76% regression)**. Keep physical widths 1..8 and move to marked eager-owner kernel-family work. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-eager-wider-width-screen.json`.
+
 - [Concurrency2 gfx1151 Qwen3.8 c17 D2/profile rejection] Captured-replay costs predicted 8+5+4 **336.40 ms** versus ceiling 8+8+1 **351.72 ms**, but canonical d8 is eager: clean owner **406.50→409.39 ms** and streaming throughput **10.956→10.926 tok/s** / E2E **12.412→12.446 s** regress. Reject this D2 map; measure eager costs. Profiler wall is +4.80%; no marker trace was emitted, so marked family shares remain unknown. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json`.
 
 - [Concurrency2 gfx1151 Qwen3.8 packed-prefill promotion; production still blocked] Radeon 8060S / Q4_K_S / strict FP32 state / BF16 KV / fair:256 p128 d8 c17: scalar scheduler prefill **9.673 tok/s, TTFT 11.030 s, ITL 0.525 s** -> bounded native packed prefill **10.956 tok/s (+13.27%), TTFT 9.406 s (-14.72%), ITL 0.509 s (-3.05%)** over three streaming repeats; every row exact. Promote gfx1151-only packed prefill; c17 ITL remains 9 ms above SLO and c32 remains open. `benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json`.
