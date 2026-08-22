@@ -25,21 +25,19 @@ Related design and historical evidence:
 
 ## Campaign punchlist and coder handoff
 
-**As of 2026-08-21.** This is the resumable implementation ledger. A checked
+**As of 2026-08-22.** This is the resumable implementation ledger. A checked
 item is complete and must not be redone unless a later regression invalidates
 its recorded evidence. An unchecked item is not qualified merely because a
 partial probe passed.
 
-**Exclusive GPU owner:** the coder actively continuing this campaign has
-exclusive use of the GPU for the duration of its coding/validation session. No
-other agent may start a GPU test, benchmark, profiler, model load, server, or
+**GPU lease:** this primary `MTP-FIX` coder session has exclusive ownership of
+the GPU. The prior monolithic 32K/64K process (PID 3648063) is no longer present.
+No other agent may start a GPU test, benchmark, profiler, model load, server, or
 background GPU task unless the user explicitly reassigns or shares the device.
 Other agents must restrict themselves to CPU/read-only work and must not infer
-that an idle utilization sample releases the lease. Before the campaign coder
-starts a long gate it should still state the command, reason, and expected
-duration, but it does not need additional approval. On handoff, it must stop or
-identify every surviving GPU process/background task before the next coder
-claims the lease.
+that an idle utilization sample releases the lease. Before a long gate, state
+the command, reason, expected duration, and stop budget. On handoff, stop or
+identify every surviving GPU process/background task.
 
 ### Completed and committed
 
@@ -148,11 +146,54 @@ questions for the next coder.
       promoted as the fast long-context route and does not raise the 1023 graph
       context cap. Full RF1 (2K–64K and task/category evidence) remains open.
 
+### RF1 extended-matrix status and corrected execution order
+
+- [x] **Retain the completed 2K–16K evidence; do not rerun it.** The direct
+      2K/4K/8K/16K packet passed 16/16 cases in 61.5 min
+      (`/tmp/mtp-rf1-2k-16k-direct.json`): B1/B2/B3 plus B3 reject/partial/full
+      at 4K, with exact logits/top-1, state, touched KV, hidden, cursor, commit,
+      rollback, split-K ownership, and sufficient workspace. Real B3 generation
+      at 2K/4K/16K passed 3/3 in 19.5 min
+      (`/tmp/mtp-rf1-2k-16k-gen.json`), matching all eight AR IDs with GPU/CPU
+      acceptance parity and no graph/device chaining. These are retained local
+      checkpoint artifacts, not yet committed campaign artifacts.
+- [x] **Record the stopped 32K/64K attempt as non-evidence.** The command mixed
+      six direct oracle cases and two real-generation cases in one process,
+      requiring roughly sixteen large native/strict/AR/MTP prefills. After more
+      than 80 minutes it still had a zero-byte buffered log and had not written
+      `/tmp/mtp-rf1-32k-64k.json`; the user stopped it. It produced no verdict
+      and must not be described as a failed correctness gate or rerun unchanged.
+- [ ] **Fix harness operability before another >=32K run.** Add independently
+      selectable direct and generation modes, immediate flushed case-start/end
+      progress, and an atomic per-case checkpoint/result. A killed or failing
+      late case must not erase earlier cases. Validate those controls without a
+      large GPU run first.
+- [ ] **Run one isolated 32K B3 direct oracle case.** B1/B2/B3 row shapes are
+      already covered through 16K; B3 at 32K pairs the maximum verifier width
+      with the larger split count. Give this process its own artifact and
+      stop-on-fail budget.
+- [ ] **Decide the largest practical context from the 32K result.** Attempt one
+      isolated 64K B3 direct case only if its projected wall/memory fits the
+      predeclared budget. The default maximum is 60 minutes for one mechanical
+      case; exceeding it requires explicit user approval. If 64K exceeds that
+      operational budget, record it as not practically certified on this host
+      and make 32K the RF1 maximum—`64K where hardware permits` is not a mandate
+      to consume unbounded wall time.
+- [ ] **Run real generation only at the selected maximum.** Use B3 and eight
+      generated tokens in a separate process after the direct oracle passes.
+      Do not duplicate generation at both 32K and 64K merely for Cartesian
+      completeness.
+- [ ] **Run near-cap output tails at one moderate certified context.** Exercise
+      remaining output 1/2/3 at 4K (or another justified moderate context),
+      where tail ownership is testable without repeating maximum-context
+      prefills.
+- [ ] **Close RF1:** combine the retained boundary/page/2K–16K artifacts with
+      the isolated maximum-context and tail results; record wall/memory and the
+      model hash. RF1 remains open until that bounded packet and task evidence
+      are complete.
+
 ### Remaining campaign work
 
-- [ ] **Complete RF1:** after the repaired transition packet, cover 2K, 4K, 8K,
-      16K, 32K, 64K/largest practical context and near-cap output tails, then
-      record task/state/KV/wall/memory evidence. RF1 remains open today.
 - [ ] **RF2:** implement and qualify context-bucketed split-K target graphs.
 - [ ] **RF3:** add cancellation, deadline, shutdown, termination, and injected
       failure ownership gates.
@@ -461,12 +502,20 @@ Implementation/measurement:
   serial AR/strict teacher rows.
 - Measure wall/memory, but do not require a speed win for this phase.
 
-Required contexts:
+Required context coverage is pairwise and staged, not a full Cartesian product:
 
 - prompt/decode cycle ends around `1016..1032` for B1/B2/B3;
 - page boundaries around the configured block size;
-- 2K, 4K, 8K, 16K, 32K, and 64K where the model/hardware gate permits;
-- largest certified context and near-cap output-room tails.
+- B1/B2/B3 direct coverage through 2K, 4K, 8K, and 16K;
+- one maximum-width B3 direct case at 32K, then at 64K only when the measured
+  host wall/memory budget permits;
+- one real-generation crossing at the largest practically certified context;
+- near-cap output-room tails at one moderate certified context.
+
+For RF1, “largest practical” is a declared host-specific qualification bound,
+not synonymous with the model's theoretical maximum. A context that cannot
+finish one isolated mechanical case inside the predeclared resource budget may
+remain uncertified and route to AR.
 
 If eager MTP fails correctness, stop and localize with layer/state/KV ladders.
 Do not proceed to graph capture. If it passes but is slower than AR, retain it as
@@ -482,8 +531,17 @@ capacity, or missing split-K ownership at long cycle ends. Controlled B3 cases
 cover reject, every partial depth, and full accept; optional real NextN runs
 force host proposals with cycle-logit diagnostics and compare all generated IDs
 to true AR. This establishes the reusable RF1 oracle machinery only. RF1 remains
-open until the long-context/task matrix above is recorded through the largest
-practical context; the short reusable graph guard is unchanged.
+open until the staged long-context/task packet above is recorded through the
+largest practical context; the short reusable graph guard is unchanged.
+
+**Long-run execution protocol:** before any >=32K gate, the harness must support
+one independently selectable scenario per process and write a distinct artifact.
+It must emit flushed start/end progress and atomically checkpoint each completed
+case. Run stages in increasing cost, stop on the first binding failure, and use
+background exit notification rather than repeated `sleep` polling. A monitor
+may report only directly emitted stage progress; GPU utilization alone does not
+prove which case is running. State an expected duration and stop budget before
+launch. Do not start a monolithic 32K+64K direct+generation command.
 
 **RF1 1024 boundary transition repaired and retained 2026-08-21:** the eager
 long-context oracle localized the sole strict mismatch to a layer-46 row-3 BF16
@@ -730,7 +788,7 @@ covering interactions that benchmarks missed.
 ### 7.3 Tier C — nightly/campaign gate
 
 - full category+heldout suite;
-- contexts 512, boundary, 4K, 16K, and largest practical long fixture;
+- contexts 512, boundary, 4K, 16K, and one largest-practical long fixture;
 - c1/c2/c4/c8 dynamic lifecycle subset;
 - three deterministic repeats;
 - quality/task and same-protocol true-AR economics;
@@ -762,7 +820,11 @@ covering interactions that benchmarks missed.
 
 Create one orchestrator, tentatively
 `scripts/gguf_mtp_realworld_gate.py`, that reuses focused existing runners rather
-than reimplementing model logic. It should emit one compact artifact with:
+than reimplementing model logic. It should emit one compact rollup artifact
+assembled from independently checkpointed scenario artifacts. The orchestrator
+must write each completed scenario atomically before starting the next, and must
+be able to resume without
+rerunning passing scenarios. It should contain:
 
 ```text
 schema/kind/status/verdict
