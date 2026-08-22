@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections import Counter
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Sequence
@@ -58,6 +59,7 @@ class _ChildState:
     token_ids: list[int] = field(default_factory=list)
     pending_stop_chunks: list[tuple[int, GenerationStreamChunk]] = field(default_factory=list)
     terminal: bool = False
+    execution_mode: str = "ar"
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +199,8 @@ class EngineService:
         self._request_id_lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
         self._output_condition = threading.Condition()
+        self._speculative_route_counts: Counter[str] = Counter()
+        self._last_speculative_route: str | None = None
         self._closing = False
         self._closed = False
         self._driver_thread_id: int | None = None
@@ -280,6 +284,51 @@ class EngineService:
         response = _CommandResponse()
         self._enqueue(_ServiceCommand("submit_many", response, states=states))
         response.result(timeout=self._command_timeout_seconds)
+        return tuple(EngineServiceHandle(self, state) for state in states)
+
+    def submit_speculative_child(
+        self,
+        request: GenerationRequest,
+    ) -> EngineServiceHandle:
+        """Submit one guarded VERIFY_CHAIN child through the shared lifecycle."""
+
+        state = self._new_child_state(
+            request,
+            streaming=False,
+            execution_mode="verify_chain",
+        )
+        response = _CommandResponse()
+        self._enqueue(
+            _ServiceCommand(
+                "submit_speculative_many",
+                response,
+                states=(state,),
+            )
+        )
+        response.result(timeout=self._command_timeout_seconds)
+        self._record_speculative_route("engine_service_verify_chain")
+        return EngineServiceHandle(self, state)
+
+    def submit_speculative_children(
+        self,
+        requests: Sequence[GenerationRequest],
+    ) -> tuple[EngineServiceHandle, ...]:
+        states = tuple(
+            self._new_child_state(
+                request,
+                streaming=False,
+                execution_mode="verify_chain",
+            )
+            for request in requests
+        )
+        if not states:
+            return ()
+        response = _CommandResponse()
+        self._enqueue(
+            _ServiceCommand("submit_speculative_many", response, states=states)
+        )
+        response.result(timeout=self._command_timeout_seconds)
+        self._record_speculative_route("engine_service_verify_chain")
         return tuple(EngineServiceHandle(self, state) for state in states)
 
     def cancel(self, service_request_id: int, *, reason: str = "cancel") -> bool:
@@ -397,16 +446,60 @@ class EngineService:
         return str(self._control("detokenize", tuple(int(token) for token in token_ids), **kwargs))
 
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
-        return list(self._control("generate_speculative_mtp_detailed", request))
+        """Run guarded MTP through the shared child lifecycle when supported.
+
+        Drivers implementing ``submit_speculative_detailed`` enter the same
+        service request table, collectors, completion, cancellation, and output
+        path as AR children. Older exact model-owned routes remain a declared
+        pre-launch fallback and never mix with an admitted speculative child.
+        """
+
+        children = _split_generation_request(request)
+        submit = getattr(self._driver, "submit_speculative_detailed", None)
+        if not callable(submit):
+            outputs = list(self._control("generate_speculative_mtp_detailed", request))
+            self._record_speculative_route("legacy_prelaunch_fallback")
+            return outputs
+        handles = self.submit_speculative_children(children)
+        outputs: list[GenerationOutput] = []
+        first_error: BaseException | None = None
+        for handle in handles:
+            try:
+                outputs.append(handle.result())
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+                outputs.append(GenerationOutput(text=""))
+        if first_error is not None:
+            raise first_error
+        return outputs
 
     def live_loop_snapshot(self) -> dict[str, object]:
         payload = self._control("live_loop_snapshot")
         snapshot = dict(payload) if isinstance(payload, dict) else {}
+        last_submission = getattr(self._driver, "last_speculative_submission", None)
         snapshot["engine_service"] = {
             "sole_driver": True,
             "driver_thread_id": self.driver_thread_id,
             "active_children": len(self._states_by_service_id),
             "command_queue_depth": self._commands.qsize(),
+            "speculative_routes": {
+                "engine_service_verify_chain": int(
+                    self._speculative_route_counts["engine_service_verify_chain"]
+                ),
+                "legacy_prelaunch_fallback": int(
+                    self._speculative_route_counts["legacy_prelaunch_fallback"]
+                ),
+            },
+            "last_speculative_route": self._last_speculative_route,
+            "last_speculative_work_kind": (
+                None if last_submission is None else last_submission.work_kind
+            ),
+            "last_speculative_draft_depth": (
+                None
+                if last_submission is None or last_submission.work_item is None
+                else int(last_submission.work_item.draft_depth)
+            ),
         }
         return snapshot
 
@@ -441,6 +534,7 @@ class EngineService:
         *,
         streaming: bool,
         stream_queue_max_chunks: int | None = None,
+        execution_mode: str = "ar",
     ) -> _ChildState:
         if len(request.prompts) != 1:
             raise ValueError("one engine child requires exactly one prompt")
@@ -459,7 +553,20 @@ class EngineService:
         else:
             collector = BlockingOutputCollector(max_output_tokens=request.max_tokens)
         collector.bind(service_request_id)
-        return _ChildState(service_request_id, request, collector)
+        mode = str(execution_mode)
+        if mode not in {"ar", "verify_chain", "verify_tree"}:
+            raise ValueError("execution_mode must be ar, verify_chain, or verify_tree")
+        return _ChildState(
+            service_request_id,
+            request,
+            collector,
+            execution_mode=mode,
+        )
+
+    def _record_speculative_route(self, route: str) -> None:
+        with self._lifecycle_lock:
+            self._speculative_route_counts[str(route)] += 1
+            self._last_speculative_route = str(route)
 
     def _allocate_service_request_id(self) -> int:
         with self._request_id_lock:
@@ -534,7 +641,9 @@ class EngineService:
                 if not events and self._states_by_service_id and self._idle_wait_seconds:
                     time.sleep(self._idle_wait_seconds)
         except BaseException as exc:
-            import os, sys, traceback
+            import os
+            import sys
+            import traceback
             if os.environ.get("HIPENGINE_ENGINE_SERVICE_TRACEBACK"):
                 print("=== engine service driver exception ===", file=sys.stderr, flush=True)
                 traceback.print_exc()
@@ -569,7 +678,19 @@ class EngineService:
                 return shutdown
 
     def _admit_child_state(self, state: _ChildState) -> None:
-        submission = self._driver.submit_detailed(state.request)
+        if state.execution_mode == "ar":
+            submission = self._driver.submit_detailed(state.request)
+        else:
+            submit = getattr(self._driver, "submit_speculative_detailed", None)
+            if not callable(submit):
+                raise NotImplementedError(
+                    "speculative submission is unavailable before child admission"
+                )
+            submission = submit(state.request)
+            if str(getattr(submission, "work_kind", "")) != state.execution_mode:
+                raise ValueError(
+                    "speculative submission work_kind must match child execution mode"
+                )
         if len(submission.request_ids) != 1:
             raise RuntimeError("one child submission must map to one backend request")
         backend_request_id = int(submission.request_ids[0])
@@ -583,7 +704,7 @@ class EngineService:
     def _process_command(self, command: _ServiceCommand) -> _CommandResponse | None:
         if command.kind == "shutdown":
             return command.response
-        if command.kind in {"submit", "submit_many"}:
+        if command.kind in {"submit", "submit_many", "submit_speculative_many"}:
             states = (
                 (command.state,)
                 if command.kind == "submit" and command.state is not None
