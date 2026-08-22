@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-22T15:16:06.484629+00:00",
+  "created_at": "2026-08-22T15:24:11.926282+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
-    "passed": 37,
+    "passed": 38,
     "blocked": 1,
     "unavailable": 1
   },
@@ -802,6 +802,47 @@
           "exists": true,
           "artifact": {
             "status": "accepted_host_and_actual_streaming",
+            "passed": true,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
+      "requirement_id": "C2-S.C4",
+      "section": "roadmap",
+      "summary": "generic providers and tree metadata",
+      "status": "passed",
+      "evidence_paths": [
+        "hipengine/speculative/registry.py",
+        "hipengine/speculative/generic.py",
+        "tests/test_speculative_generic_providers.py",
+        "benchmarks/results/2026-08-22-concurrency2-spec-c4-generic-providers-trees.json"
+      ],
+      "validation": "attached/independent capability and resource ownership, exact plugin axes, chain support, bounded nonuniform tree lowering/acceptance, explicit unsupported modes",
+      "blocker": null,
+      "evidence": [
+        {
+          "path": "hipengine/speculative/registry.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "hipengine/speculative/generic.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "tests/test_speculative_generic_providers.py",
+          "exists": true,
+          "artifact": null
+        },
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-spec-c4-generic-providers-trees.json",
+          "exists": true,
+          "artifact": {
+            "status": "accepted_host_plugins_and_tree",
             "passed": true,
             "performance_claim": false
           }

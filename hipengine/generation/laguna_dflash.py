@@ -134,6 +134,14 @@ class LagunaDFlashTextProvider:
     def capabilities(self) -> dict[str, Any]:
         return {
             "provider": self.provider_name,
+            "attachment_mode": "independent",
+            "supported_modes": ["verify_chain"],
+            "tree_supported": False,
+            "tree_unsupported_reason": "registered Laguna DFlash provider exposes chain proposals only",
+            "transaction_mode": "journal",
+            "provider_state_key": "laguna_dflash_state_bf16",
+            "provider_kv_key": "laguna_dflash_kv_bf16",
+            "resource_ownership": "independent provider state/KV/workspaces",
             "policy": "explicit_only",
             "default_enabled": False,
             "streaming_compatible": True,
