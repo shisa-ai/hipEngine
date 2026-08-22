@@ -1,0 +1,166 @@
+{
+  "actual_owner_clean": {
+    "all_rows_exact": true,
+    "ceiling": {
+      "marked_wall_ms": 406.5036759711802,
+      "widths": [
+        8,
+        8,
+        1
+      ]
+    },
+    "d2": {
+      "marked_wall_ms": 409.3915680423379,
+      "widths": [
+        8,
+        5,
+        4
+      ]
+    },
+    "graphs": {
+      "captures": 0,
+      "replays": 0
+    }
+  },
+  "actual_server_streaming": {
+    "ceiling": {
+      "end_to_end_p95_seconds": {
+        "median": 12.412120923982002,
+        "samples": [
+          12.409142790012993,
+          12.426141756004654,
+          12.412120923982002
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.956452703530099,
+        "samples": [
+          10.959296069100546,
+          10.944171186227088,
+          10.956452703530099
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.5093598529929295,
+        "samples": [
+          0.5178010660456493,
+          0.5093598529929295,
+          0.5061423270963132
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.40629428694956,
+        "samples": [
+          9.40629428694956,
+          9.414518475998193,
+          9.40586441103369
+        ]
+      }
+    },
+    "d2": {
+      "end_to_end_p95_seconds": {
+        "median": 12.446075395913795,
+        "samples": [
+          12.43664050695952,
+          12.446075395913795,
+          12.451489269034937
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.926286082537635,
+        "samples": [
+          10.934463972822922,
+          10.926286082537635,
+          10.921989534627304
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.5061577250016853,
+        "samples": [
+          0.5061577250016853,
+          0.5069614530075341,
+          0.5008629569783807
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.42095171706751,
+        "samples": [
+          9.418801740044728,
+          9.42095171706751,
+          9.421596719068475
+        ]
+      }
+    }
+  },
+  "captured_replay_width_cost_ms": {
+    "1": 75.36941730359104,
+    "2": 80.09886818763334,
+    "3": 83.64065956266131,
+    "4": 91.94962262699846,
+    "5": 106.26879456685856,
+    "6": 118.39066294487566,
+    "7": 126.49949237675173,
+    "8": 138.17760113306576
+  },
+  "created_at": "2026-08-23T05:40:00Z",
+  "decision": "Reject captured-replay-priced D2 for canonical short eager serving. It changes c17 8+8+1 to 8+5+4 but regresses clean owner wall 406.50 to 409.39 ms and streaming throughput/E2E. Measure eager production-owner costs before revisiting D2.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151",
+    "host": "gfx1151"
+  },
+  "kind": "concurrency2_gfx1151_qwen38_c17_d2_and_profile",
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "next_ranked": [
+    "Measure eager c1-c8 complete owner costs and repair marker trace isolation on gfx1151.",
+    "Prototype true physical c9/c16 ownership to reduce c17 from three groups to two and c32 from four to two; gate exactness and workspace first.",
+    "Then rank gfx1151 quantized projection families by isolated marked kernel wall and tune the highest recoverable-ms family."
+  ],
+  "passed": true,
+  "performance_claim": false,
+  "predicted": {
+    "c17_ceiling_ms": 351.72461956972256,
+    "c17_ceiling_widths": [
+      8,
+      8,
+      1
+    ],
+    "c17_d2_ms": 336.3960183269228,
+    "c17_d2_widths": [
+      8,
+      5,
+      4
+    ],
+    "c32_widths": [
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "profiler": {
+    "clean_marked_wall_ms": 406.5036759711802,
+    "full_process_kernel_rows": 75551,
+    "interpretation": "Kernel trace covers model load, prefill, and all seven transitions; without emitted marker rows it cannot mechanically isolate the marked transition. Do not infer marked kernel-family shares from this file.",
+    "marked_wall_ms": 425.99940195214003,
+    "marker_trace_available": false,
+    "profiler_inflation_percent": 4.795953181575174,
+    "zero_or_negative_duration_rows": 0
+  },
+  "raw_sha256": {
+    "c2-gfx1151-owner-c17-clean.json": "a122f8ee02c02fb195efc79386223c276be7d4dc8181e5ddbbf2787ccdfd692f",
+    "c2-gfx1151-owner-c17-d2-clean.json": "cb8f876b10ee1af8e174e9a35c1755e7dc748285d10dc88ef699f68126883263",
+    "c2-gfx1151-owner-c17-profile.json": "7b5da92921d9ec16847696b9fbbf7b028f15d01d66ec34e93a4c293206732b0d",
+    "c2-gfx1151-prefill-batch-c17-repeat.json": "b9759ff52aa4a299740ffbb79869fa3dc85be4f5cad0cf434d7833310e79f93c",
+    "c2-gfx1151-prefill-d2-c17.json": "bd84b4787d2f63bcbb6a8811f4427618c75ab5fed3265dfac0425b871fbb200a",
+    "c2-gfx1151-qwen38-width-costs-complete.json": "239c888002ce92e50219ef89f5f7ad0f1fa48f2ec222105e6752a8642ccd8d61"
+  },
+  "schema": 1,
+  "source_commit": "a3f8f403bbd3752e444759e0b0d98a5c3536f545",
+  "status": "rejected_with_next_measurement"
+}

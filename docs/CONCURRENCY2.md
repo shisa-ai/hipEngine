@@ -206,6 +206,18 @@ tok/s (+13.27%)**, TTFT **11.030→9.406 s**, ITL **0.525→0.509 s**, and E2E
 **14.059→12.412 s** over three repeats. c17 remains 9 ms outside ITL SLO, so
 production closure stays blocked. Evidence: [`gfx1151 packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json).
 
+A first gfx1151 D2 attempt is **rejected**, and its failure corrects an improper
+inference: captured-replay direct-width costs predicted c17 **8+5+4 (336.40
+ms)** over ceiling **8+8+1 (351.72 ms)**, but canonical d8 serving is eager
+(`min_replay_steps=128`). The actual clean production owner regressed
+**406.50→409.39 ms**, and streaming throughput/E2E also regressed. Therefore
+this packet does not rank eager compositions and cannot promote a D2 map. A
+profiled owner wall was 426.00 ms versus 406.50 ms clean (+4.80%); all 75,551
+full-process dispatch rows had positive durations, but this ROCm run emitted no
+marker-trace file, so marked-window kernel-family shares remain **unknown** and
+must not be inferred from the whole-process trace. Evidence:
+[`gfx1151 c17 D2/profile rejection`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json).
+
 The current Qwen3.8 canonical packet confirms the same offered-load boundary.
 Strict `token_budget` passes blocking exactness but streaming fails at c8+.
 Retained `fair:256` repairs c8 (**10.244 tok/s**, TTFT p95 5.196 s, ITL p99
@@ -237,7 +249,9 @@ owner:
 
 Graph replay is not assumed beneficial on gfx1151. Prior model-specific rows
 include neutral or rejected graph-width/graph-replay attempts, while other
-captured routes are retained. Profile graph node dependencies, recapture,
+captured routes are retained. Cost maps are execution-mode-specific: a
+captured-replay map must not price short eager service, even when host/model and
+physical widths otherwise match. Profile graph node dependencies, recapture,
 submission, synchronization, and device idle intervals on the actual C2 owner.
 Use uncaptured exact fallbacks for rare shapes and never mask c1 into a wider
 bucket merely to increase graph reuse.
@@ -245,7 +259,20 @@ bucket merely to increase graph reuse.
 #### G1151-3 — kernel priorities after the path ledger closes
 
 Rank by recoverable complete-wall milliseconds for the selected model; do not
-create one universal gfx1151 kernel queue.
+create one universal gfx1151 kernel queue. For the current Qwen3.8 c17/c32
+blocker, execute this measured order before leaf tuning:
+
+1. repair gfx1151 marker-window collection and measure eager production-owner
+   c1-c8 costs at c17/c32, including group-boundary/state-import gaps;
+2. test true physical c9/c16 ownership because it can structurally reduce c17
+   from three groups to two and c32 from four to two; first gate allocation,
+   exactness, and workspace rather than assuming rowtile-8 kernels imply a
+   wider complete owner; and
+3. isolate kernel-family wall in that same owner and tune the largest recoverable
+   family. Until step 1, the exact share outside kernels and the winning eager
+   composition are **unknown**.
+
+Device-kernel priorities after those owner-level measurements are:
 
 1. **Quantized projections and MoE.** For dense Qwen3.8, current model-specific
    profiles place Q4 paired/singleton and planar-Q6 projection families far
