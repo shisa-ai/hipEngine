@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0 containment implemented; automatic production MTP remains disabled pending RF1–RF6**
+- Status: **active campaign; RF0–RF1 complete on gfx1151; automatic production MTP remains disabled pending RF2–RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -193,10 +193,15 @@ questions for the next coder.
       AR-ID equality, GPU/CPU accept parity, eager-only ownership, split-K
       observation, and exact completion in one cycle. Artifacts:
       `/tmp/mtp-rf1-tail-r1.json`, `-r2.json`, and `-r3.json`.
-- [ ] **Close RF1:** combine the retained boundary/page/2K–16K artifacts with
-      the isolated maximum-context and tail results; record wall/memory and the
-      model hash. RF1 remains open until that bounded packet and task evidence
-      are complete.
+- [x] **Close RF1 on gfx1151.** The durable rollup is
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf1-eager-long-context.json`.
+      Boundary/page/2K–64K strict surfaces, 64K true-AR generation, tails, and
+      six task categories passed the RF1 binding contract. The task packet was
+      6/6 MTP-vs-AR exact with clean eager ownership and 4/6 absolute answer
+      correctness; the two AR task misses remain an explicit RF6 quality
+      blocker, not an MTP functional regression. hipEngine-owned peak allocation
+      was 26,920,424,625 bytes and returned to zero active allocations. RF1 does
+      not authorize automatic routing or raise the 1023 reusable-graph cap.
 
 ### Remaining campaign work
 
@@ -563,6 +568,18 @@ submissions, split-K ownership present, all 8 real-generation IDs matching AR. I
 is a strict eager/oracle fallback with measured cost (0.4–1.6 s/direct cycle,
 44.7 s per 8 generated tokens), not a fast-graph claim; RF2 owns the speed path
 and the 1023 graph cap is unchanged.
+
+**RF1 closed on gfx1151 2026-08-22:** the staged packet now covers page and
+1024-route transitions, direct B1/B2/B3 rows through 16K, isolated B3 at 32K and
+64K, true-AR generation through 64K, remaining-output tails 1/2/3, six
+long-context task categories, model identity, wall, and allocation high-water.
+All mechanical and task-route rows pass exact AR/state/KV/control ownership.
+Absolute task correctness was 4/6 because true AR and MTP identically selected
+wrong answers on aggregation and code; this is retained as an RF6 quality
+blocker. The durable artifact is
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf1-eager-long-context.json`.
+Functional eager MTP is qualified only as an explicit strict oracle/fallback;
+automatic use remains disabled and RF2 owns long-context acceleration.
 
 ### RF2 — Add fast long-context graph buckets
 
