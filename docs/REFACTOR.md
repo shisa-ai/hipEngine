@@ -4015,3 +4015,19 @@ should be boring.
 - Removal trigger: once the native long prefill route is either capped to a
   budget-safe tile or superseded, keep the guard that selects AOTriton/strict at
   large context and drop any unbounded dynamic-LDS path.
+
+## RF2 long-context target graphs are exact but not auto-routable
+
+- Added 2026-08-22: `gguf_native_spec_cycle.py` retains a bounded eight-entry
+  cache of exact target graphs keyed by candidate budget, N1/N2 ownership, and
+  attention schedule/context limit. It is useful for explicit graph diagnostics
+  and future submission optimization; transition and kernel-family boundaries
+  fail closed to eager.
+- Current blocker: same-protocol 4079-token/eight-output wall is graph 97.206 s
+  versus eager 97.101 s (0.9989x), while true AR is 69.635 s (0.7164x graph
+  MTP/AR). No long graph bucket is admitted to automatic routing.
+- Removal/promotion trigger: remove the long graph cache if it remains without a
+  measured exact sub-window or complete-wall benefit after the next targeted
+  submission campaign. Promote a bucket only after a predeclared same-protocol
+  experiment improves complete wall and passes its full context/lifecycle/SLO
+  packet; never use exactness alone as a speed claim.

@@ -655,6 +655,190 @@ def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) ->
     assert graph.closed is False
 
 
+def test_rf2_context_bucket_selection_is_power_of_two_and_capability_bounded(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    monkeypatch.setattr(
+        runner_module,
+        "_gguf_prefill_device_metadata_enabled",
+        lambda *, backend, prompt_tokens: backend == "hip_gfx1151"
+        and int(prompt_tokens) <= 4096,
+    )
+    session = SimpleNamespace(
+        position=0,
+        backend="hip_gfx1151",
+        scratch=SimpleNamespace(max_positions=65544),
+    )
+
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=1023) == 1023
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=1024) is None
+    session.position = 1020
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+    session.position = 1024
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 1280
+    session.position = 1278
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+    session.position = 2044
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 2048
+    session.position = 4092
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 4096
+    session.position = 4093
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
+def test_rf2_context_bucket_respects_split_kernel_family_boundary(monkeypatch) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    generic = object()
+    grouped = object()
+    monkeypatch.setattr(
+        runner_module,
+        "_gguf_prefill_device_metadata_enabled",
+        lambda *, backend, prompt_tokens: int(prompt_tokens) <= 4096,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_gguf_full_attention_split_gate_bf16_fn",
+        lambda _config, *, active_context, **_kwargs: (
+            generic if int(active_context) < 4096 else grouped
+        ),
+    )
+    session = SimpleNamespace(
+        position=4091,
+        backend="hip_gfx1151",
+        scratch=SimpleNamespace(max_positions=65544, block_size=256),
+        runner=SimpleNamespace(weights=SimpleNamespace(config=object())),
+    )
+
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 4095
+    session.position = 4092
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
+def test_rf2_target_graph_cache_separates_short_and_split_k_context_buckets(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    monkeypatch.setattr(
+        runner_module,
+        "_gguf_prefill_device_metadata_enabled",
+        lambda *, backend, prompt_tokens: int(prompt_tokens) <= 4096,
+    )
+    session = _FallbackSession()
+    session.position = 1019
+    session.backend = "hip_gfx1151"
+    session.scratch = SimpleNamespace(max_positions=4096)
+    captures: list[int] = []
+    launches: list[tuple[int, int]] = []
+
+    class Graph:
+        closed = False
+
+        def __init__(self, context_limit: int) -> None:
+            self.context_limit = int(context_limit)
+
+        def compatible_with(self, _session, *, context_limit, **_kwargs) -> bool:
+            return int(context_limit) == self.context_limit
+
+        def launch(self, input_token_ids, **_kwargs):
+            launches.append((self.context_limit, int(session.position)))
+            session.position += len(tuple(input_token_ids))
+            return SimpleNamespace(token_ids=[7, 8, 9, 10])
+
+        def close(self) -> None:
+            self.closed = True
+
+    def capture(_session, _tokens, *, context_limit, **_kwargs):
+        captures.append(int(context_limit))
+        return Graph(int(context_limit))
+
+    monkeypatch.setattr(native_cycle_mod, "capture_qwen35_gguf_native_b2_target_graph", capture)
+
+    first = verify_qwen35_gguf_native_b2_target(
+        session,
+        [1, 2, 3, 4],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+    session.position = 1020
+    second = verify_qwen35_gguf_native_b2_target(
+        session,
+        [5, 6, 7, 8],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+    session.position = 1024
+    third = verify_qwen35_gguf_native_b2_target(
+        session,
+        [9, 10, 11, 12],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+    session.position = 1100
+    fourth = verify_qwen35_gguf_native_b2_target(
+        session,
+        [13, 14, 15, 16],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+
+    assert first.token_ids == third.token_ids == fourth.token_ids == [7, 8, 9, 10]
+    assert second.token_ids == [7, 8]
+    assert captures == [1023, 1280]
+    assert launches == [(1023, 1019), (1280, 1024), (1280, 1100)]
+    assert sorted(session._native_spec_target_graphs) == [
+        (3, False, 1023),
+        (3, False, 1280),
+    ]
+    assert session.last_native_spec_target_fallback_reason is None
+    assert session.calls == [
+        (
+            (5, 6, 7, 8),
+            {
+                "bulk_attention_mode": "native",
+                "use_wmma_prefill": False,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
+                "capture_pre_output_norm_hidden": True,
+            },
+        )
+    ]
+
+
+def test_rf2_target_graph_cache_evicts_and_closes_oldest_owner() -> None:
+    closed: list[int] = []
+
+    class Graph:
+        def __init__(self, index: int) -> None:
+            self.index = index
+
+        def close(self) -> None:
+            closed.append(self.index)
+
+    session = SimpleNamespace(_native_spec_target_graphs={})
+    for index in range(native_cycle_mod._NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES + 1):
+        native_cycle_mod._cache_native_target_graph(
+            session,
+            (3, True, 1023 + index),
+            Graph(index),
+        )
+
+    assert closed == [0]
+    assert len(session._native_spec_target_graphs) == native_cycle_mod._NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES
+    assert (3, True, 1023) not in session._native_spec_target_graphs
+
+
 def test_native_b3_target_reuses_one_dynamic_native_graph_across_positions(monkeypatch) -> None:
     session = _FallbackSession()
     session.position = 17

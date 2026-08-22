@@ -285,6 +285,100 @@ def _context_bucket(max_live_count: int) -> int:
     return 1 << (value - 1).bit_length()
 
 
+_NATIVE_TARGET_SHORT_CONTEXT_LIMIT = 1023
+_NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES = 8
+
+
+def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None:
+    """Select the immutable target-graph context bucket for one live cycle."""
+
+    rows = int(rows)
+    end = int(getattr(session, "position", 0)) + rows
+    scratch = getattr(session, "scratch", None)
+    if scratch is None:
+        # Fake/legacy owners model the retained short graph only.
+        return _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
+    capacity = int(getattr(scratch, "max_positions", 0))
+    if capacity <= 0:
+        return _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
+    if rows <= 0 or end > capacity:
+        return None
+    if end < 1024:
+        return min(_NATIVE_TARGET_SHORT_CONTEXT_LIMIT, capacity)
+    start = int(getattr(session, "position", 0))
+    # A reusable graph must not force one attention schedule across rows that
+    # straddle the short/split-K transition or a split-workspace boundary.
+    if start < 1024:
+        return None
+    block_size = int(getattr(scratch, "block_size", 256))
+    first_active_context = start + 1
+    first_split_count = (first_active_context + block_size - 1) // block_size
+    last_split_count = (end + block_size - 1) // block_size
+    if first_split_count != last_split_count:
+        return None
+    context_limit = min(last_split_count * block_size, capacity)
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+
+    runner = getattr(session, "runner", None)
+    weights = getattr(runner, "weights", None)
+    config = getattr(weights, "config", None)
+    if config is not None:
+        def split_kernel(active_context: int):
+            split_count = (int(active_context) + block_size - 1) // block_size
+            return runner_module._gguf_full_attention_split_gate_bf16_fn(
+                config,
+                backend=str(getattr(session, "backend", "")),
+                block_size=block_size,
+                num_splits=split_count,
+                active_context=int(active_context),
+            )
+
+        first_kernel = split_kernel(first_active_context)
+        if any(
+            split_kernel(active_context) is not first_kernel
+            for active_context in range(first_active_context + 1, end + 1)
+        ):
+            return None
+        while context_limit > end and split_kernel(context_limit) is not first_kernel:
+            context_limit -= 1
+        if context_limit < end:
+            return None
+
+    if not runner_module._gguf_prefill_device_metadata_enabled(
+        backend=str(getattr(session, "backend", "")),
+        prompt_tokens=context_limit,
+    ):
+        return None
+    return context_limit
+
+
+def _native_target_graph_cache(session: Any) -> dict[tuple[int, bool, int], Any]:
+    cache = getattr(session, "_native_spec_target_graphs", None)
+    if isinstance(cache, dict):
+        return cache
+    cache = {}
+    setattr(session, "_native_spec_target_graphs", cache)
+    return cache
+
+
+def _cache_native_target_graph(
+    session: Any,
+    key: tuple[int, bool, int],
+    graph: Any,
+) -> None:
+    cache = _native_target_graph_cache(session)
+    cache.pop(key, None)
+    cache[key] = graph
+    while len(cache) > _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES:
+        _evicted_key, evicted = next(iter(cache.items()))
+        cache.pop(_evicted_key, None)
+        if evicted is graph:
+            continue
+        close = getattr(evicted, "close", None)
+        if callable(close):
+            close()
+
+
 def _dynamic_target_scratch(session: Any, buffers: TargetVerifyBuffers, *, rows: int, context_limit: int):
     """Bind verifier rows to fixed scratch addresses and live device metadata."""
 
@@ -591,6 +685,7 @@ def _validate_capture_admission(
     session: Any,
     input_token_ids: Sequence[int],
     *,
+    context_limit: int,
     bulk_attention_mode: str,
     use_wmma_prefill: bool,
     capture_lm_head_logits: bool,
@@ -654,13 +749,22 @@ def _validate_capture_admission(
             f"native target graph N1 is not registered for backend {session.backend!r}"
         )
     end = int(session.position) + rows
-    if end >= 1024:
+    context_limit = int(context_limit)
+    if (
+        context_limit <= rows
+        or end > context_limit
+        or context_limit > int(session.scratch.max_positions)
+    ):
         raise NativeSpecTargetGraphUnsupportedError(
             NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
         )
+    if context_limit >= 1024 and bulk_attention_mode != "native":
+        raise NativeSpecTargetGraphUnsupportedError(
+            "long-context native target graphs require split-K native attention"
+        )
     if not _gguf_prefill_device_metadata_enabled(
         backend=str(session.backend),
-        prompt_tokens=end,
+        prompt_tokens=context_limit,
     ):
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 requires stream-ordered device metadata preparation"
@@ -722,6 +826,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         self,
         session: Any,
         *,
+        context_limit: int,
         bulk_attention_mode: str,
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
@@ -740,7 +845,8 @@ class Qwen35GGUFNativeB2TargetGraph:
             device_accept_commit=device_accept_commit,
         )
         return (
-            expected_key == self.configuration_key
+            int(context_limit) == int(self.context_limit)
+            and expected_key == self.configuration_key
             and _native_target_binding_signature(session) == self.binding_signature
         )
 
@@ -1149,6 +1255,11 @@ class Qwen35GGUFNativeB2TargetGraph:
         unpin = getattr(self.session, "_unpin_device_kv_graph", None)
         if callable(unpin):
             unpin(self)
+        cache = getattr(self.session, "_native_spec_target_graphs", None)
+        if isinstance(cache, dict):
+            for key, value in tuple(cache.items()):
+                if value is self:
+                    cache.pop(key, None)
         for cache_name in (
             "_native_spec_b1_target_graph",
             "_native_spec_b2_target_graph",
@@ -1171,6 +1282,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     session: Any,
     input_token_ids: Sequence[int],
     *,
+    context_limit: int | None = None,
     cycle_id: int = 0,
     transaction_id: int = 0,
     request_id: int = 0,
@@ -1189,9 +1301,19 @@ def capture_qwen35_gguf_native_b2_target_graph(
     capture_start = time.perf_counter()
     tokens = tuple(int(token) for token in input_token_ids)
     rows = len(tokens)
+    selected_context_limit = (
+        _native_target_graph_context_limit(session, rows=rows)
+        if context_limit is None
+        else int(context_limit)
+    )
+    if selected_context_limit is None:
+        raise NativeSpecTargetGraphUnsupportedError(
+            NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
+        )
     _validate_capture_admission(
         session,
         tokens,
+        context_limit=int(selected_context_limit),
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_lm_head_logits=bool(capture_lm_head_logits),
@@ -1280,7 +1402,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             workspace=workspace,
         )
         buffers = owner.bind(batch, transaction_id=int(transaction_id))
-        context_limit = min(1023, int(session.scratch.max_positions))
+        context_limit = int(selected_context_limit)
         buffers, dynamic_scratch = _dynamic_target_scratch(
             session,
             buffers,
@@ -2028,11 +2150,23 @@ def verify_qwen35_gguf_native_b2_target(
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
         return session.verify_target_block(input_token_ids, **eager_kwargs)
+    context_limit = _native_target_graph_context_limit(session, rows=rows)
+    if context_limit is None:
+        reason = NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
+        session.last_native_spec_target_fallback_reason = reason
+        if not fallback:
+            raise NativeSpecTargetGraphUnsupportedError(reason)
+        return session.verify_target_block(input_token_ids, **eager_kwargs)
     cache_suffix = "_n2" if device_accept_commit else ""
     cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
-    graph = getattr(session, cache_name, None)
+    cache_key = (rows - 1, bool(device_accept_commit), int(context_limit))
+    cache = _native_target_graph_cache(session)
+    graph = cache.get(cache_key)
+    if graph is None and int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+        graph = getattr(session, cache_name, None)
     if graph is not None and not graph.compatible_with(
         session,
+        context_limit=int(context_limit),
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
@@ -2041,12 +2175,17 @@ def verify_qwen35_gguf_native_b2_target(
         device_accept_commit=bool(device_accept_commit),
     ):
         graph.close()
+        cache.pop(cache_key, None)
         graph = None
+    if graph is not None:
+        cache.pop(cache_key, None)
+        cache[cache_key] = graph
     try:
         if graph is None:
             graph = capture_qwen35_gguf_native_b2_target_graph(
                 session,
                 input_token_ids,
+                context_limit=int(context_limit),
                 cycle_id=cycle_id,
                 transaction_id=transaction_id,
                 request_id=request_id,
@@ -2060,7 +2199,9 @@ def verify_qwen35_gguf_native_b2_target(
                 defer_linear_state_commit=defer_linear_state_commit,
                 device_accept_commit=device_accept_commit,
             )
-            setattr(session, cache_name, graph)
+            _cache_native_target_graph(session, cache_key, graph)
+            if int(context_limit) == _NATIVE_TARGET_SHORT_CONTEXT_LIMIT:
+                setattr(session, cache_name, graph)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)
         if not fallback:

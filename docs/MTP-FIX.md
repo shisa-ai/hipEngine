@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF1 complete on gfx1151; automatic production MTP remains disabled pending RF2–RF6**
+- Status: **active campaign; RF0–RF2 complete on gfx1151; automatic production MTP remains disabled pending RF3–RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -205,7 +205,13 @@ questions for the next coder.
 
 ### Remaining campaign work
 
-- [ ] **RF2:** implement and qualify context-bucketed split-K target graphs.
+- [x] **RF2:** context-bucketed split-K target graphs are exact and retained for
+      explicit diagnostics through the certified 4K metadata scope. Steady B1–B3,
+      capture/replay, acceptance, state/KV/hidden/commit/rollback, bounded
+      eviction, and rocprof gates pass. Transition/kernel-family boundaries
+      pre-launch-fallback. No long bucket is auto-admitted: graph/eager complete
+      wall is 0.9989x and graph MTP/true AR is 0.7164x. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json`.
 - [ ] **RF3:** add cancellation, deadline, shutdown, termination, and injected
       failure ownership gates.
 - [ ] **RF4:** qualify API semantics and stable capability/fallback reporting.
@@ -613,6 +619,20 @@ Performance gate:
   declared request distribution;
 - a bucket is auto-routable only when its complete request/SLO packet is
   non-regressive in its qualified scope.
+
+**RF2 closed on gfx1151 2026-08-22 with zero auto-admitted long buckets.** The
+bounded target cache is keyed by budget, N1/N2 ownership, and exact attention
+schedule/context limit. It retains short 1023 and steady split-workspace graph
+owners, closes evicted graph/stream/workspace/KV pins, and rejects cycles that
+cross short/split, split-count, or kernel-family boundaries before capture.
+B1/B2/B3, B3 reject/every partial/full, capture/replay, 2K, and 4095 pass exact
+post-commit state/KV/hidden/control gates. Cached-child rocprof records one
+`hipGraphLaunch` and the expected split producer/reducer names with plausible
+durations and zero scratch. However, same-protocol 4079-token/eight-output wall
+is graph 97.206 s versus eager 97.101 s (**0.9989x**) and true AR 69.635 s
+(**0.7164x graph MTP/AR**). The implementation remains an explicit diagnostic;
+automatic routing continues AR. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json`.
 
 ### RF3 — Lifecycle, termination, and failure correctness
 

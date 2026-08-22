@@ -91,6 +91,9 @@ def test_gate_passed_requires_eager_split_k_and_all_state_surfaces() -> None:
     assert gate_passed((short, dict(long, target_native_graph_submitted=True))) is False
     assert gate_passed((short, dict(long, kv_rows_exact=False))) is False
     assert gate_passed((short, dict(long, commit_exact=False))) is False
+    graph_long = dict(long, target_native_graph_submitted=True, split_k_calls=0)
+    assert gate_passed((graph_long,), require_target_graph=True) is True
+    assert gate_passed((graph_long,)) is False
     assert gate_passed(
         (
             short,
@@ -128,6 +131,7 @@ def test_main_supports_generation_only_and_checkpoints_each_event(
         max_new_tokens,
         max_sequence_length,
         require_cached_build,
+        require_target_graph,
         progress,
         on_result,
     ):
@@ -136,6 +140,7 @@ def test_main_supports_generation_only_and_checkpoints_each_event(
         assert max_new_tokens == 2
         assert max_sequence_length >= 34
         assert require_cached_build is False
+        assert require_target_graph is False
         result = {"context_tokens": 32, "passed": True}
         progress("generation_case_start", {"context_tokens": 32})
         on_result("generation", result)
