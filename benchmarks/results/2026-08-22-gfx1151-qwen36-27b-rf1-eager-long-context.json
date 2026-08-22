@@ -1,0 +1,603 @@
+{
+  "backend": "hip_gfx1151",
+  "binding_results": {
+    "absolute_task_correct_diagnostic": 4,
+    "absolute_task_quality_passed": false,
+    "absolute_task_total": 6,
+    "direct_2k_16k_cases": 16,
+    "direct_32k_cases": 1,
+    "direct_64k_cases": 1,
+    "generation_2k_16k_cases": 3,
+    "generation_64k_cases": 1,
+    "page_boundary_direct_cases": 9,
+    "tail_cases": 3,
+    "task_binding_passed": 6,
+    "task_total": 6,
+    "transition_direct_cases": 13,
+    "transition_generation_cases": 1
+  },
+  "execution_profile": "strict_teacher_parity_and_true_ar_task_non_regression",
+  "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+  "kind": "mtp_rf1_eager_long_context_qualification",
+  "memory": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 26920424625,
+    "peak_allocations": 970,
+    "total_allocated_bytes": 27130191025,
+    "total_freed_bytes": 27130191025
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "GGUF Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "qualified_scope": {
+    "automatic_route_enabled": false,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "functional_eager_mtp_context_max": 65536,
+    "kv_storage": "bf16",
+    "reusable_graph_context_max": 1023
+  },
+  "quality_note": "RF1 binds eager MTP versus true AR and exact ownership. Absolute task score 4/6 is retained as an RF6 production-quality blocker; no automatic route or quality claim is made.",
+  "repo_commits": {
+    "checkpoint_harness": "f3ea22d58",
+    "rf1_oracle": "d83879ff0",
+    "strict_long_rows": "7f1734158",
+    "task_gate": "a90b95236"
+  },
+  "schema": 1,
+  "sources": {
+    "direct_2k_16k": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "2048,4096,8192,16384",
+        "--candidate-budgets",
+        "1,2,3",
+        "--acceptance-cycle-ends",
+        "4096",
+        "--acceptance-budget",
+        "3",
+        "--generation-contexts",
+        "",
+        "--out",
+        "/tmp/mtp-rf1-2k-16k-direct.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-2k-16k-direct.json",
+      "passed": true,
+      "sha256": "7cf3a81712bcf04b857c9a8b7b9497cbc38ab3c4a349535b47b92d04c0007659",
+      "summary": {
+        "direct_cases": 16,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 3690.161432961002
+      }
+    },
+    "direct_32k": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "32768",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "32776",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf1-32k-b3-direct.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-32k-b3-direct.json",
+      "passed": true,
+      "sha256": "ee103b4a981ebd41e618d92137336f539db0be05b244d0db1b461361c3605dc6",
+      "summary": {
+        "direct_cases": 1,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 1395.2422981429845
+      }
+    },
+    "direct_64k": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "65536",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "65544",
+        "--require-cached-build",
+        "--hash-model",
+        "--out",
+        "/tmp/mtp-rf1-64k-b3-direct.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-64k-b3-direct.json",
+      "passed": true,
+      "sha256": "583580f8315a7064d7ca926a76a094079e0e44f100ca268323e5ef137b96f84f",
+      "summary": {
+        "direct_cases": 1,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 2831.123635631986
+      }
+    },
+    "generation_2k_16k": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1024",
+        "--candidate-budgets",
+        "1",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "2048,4096,16384",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "8",
+        "--out",
+        "/tmp/mtp-rf1-2k-16k-gen.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-2k-16k-gen.json",
+      "passed": true,
+      "sha256": "2b9841ae7196c1788d172ec7d53aebba6ff22f7cf070335d91a1369a5482633a",
+      "summary": {
+        "direct_cases": 1,
+        "direct_passed": true,
+        "generation_cases": 3,
+        "generation_passed": true,
+        "wall_seconds": 1167.532677260926
+      }
+    },
+    "generation_64k": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "65536",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "8",
+        "--max-sequence-length",
+        "65544",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf1-64k-b3-generation.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-64k-b3-generation.json",
+      "passed": true,
+      "sha256": "458879ac766af0769e2984999617f835a6aa0489817760c6fc972d6489a95387",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 3438.7241471830057
+      }
+    },
+    "page_boundaries": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "255,256,257",
+        "--candidate-budgets",
+        "1,2,3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "272",
+        "--out",
+        "/tmp/mtp-rf1-pages.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-pages.json",
+      "passed": true,
+      "sha256": "dd7fbd5210a697469cb063db585a073058578c38ed304e3a801b244773e5a507",
+      "summary": {
+        "direct_cases": 9,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 101.87683669710532
+      }
+    },
+    "tail_remaining_1": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "4096",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "2",
+        "--max-sequence-length",
+        "4098",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf1-tail-r1.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-tail-r1.json",
+      "passed": true,
+      "sha256": "1c258a8677275de133d8668d823fddf5461a30aa0366f68ae57c8ffebb93b348",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 211.70428503293078
+      }
+    },
+    "tail_remaining_2": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "4096",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "3",
+        "--max-sequence-length",
+        "4099",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf1-tail-r2.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-tail-r2.json",
+      "passed": true,
+      "sha256": "ac4c9e1e465c133879267f029ce482a2b5b08d8686265af743da38de26440d5b",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 212.12888883508276
+      }
+    },
+    "tail_remaining_3": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "4096",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "4",
+        "--max-sequence-length",
+        "4100",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf1-tail-r3.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-tail-r3.json",
+      "passed": true,
+      "sha256": "5654be1f2835f9fcd8f4c07d06ccaea5bacb2173c78faa181ef55593ed12fb3f",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 212.36143026000354
+      }
+    },
+    "tasks_final": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_task_gate.py",
+        "--context-tokens",
+        "4096",
+        "--max-new-tokens",
+        "8",
+        "--candidate-budget",
+        "3",
+        "--max-sequence-length",
+        "65544",
+        "--require-cached-build",
+        "--hash-model",
+        "--out",
+        "/tmp/mtp-rf1-long-tasks.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-long-tasks-final.json",
+      "passed": true,
+      "rows": [
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "retrieval",
+          "expected_choice": "B",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_retrieval_access_code",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "426d5193c087d90d2ed8ffe6329b75ad91c9fe3cce159863b2974ab68ff10831",
+          "selected_choice": "B",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "multihop",
+          "expected_choice": "D",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_multihop_clearance_phrase",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "aggregation",
+          "expected_choice": "C",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_aggregation_crate_total",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": false
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "long_doc",
+          "expected_choice": "A",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_long_doc_final_retention",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "aaaf82bdcf126401cd4eb7ed61094ee6ea5eb27a425b3c08b53c8bdc4dfda452",
+          "selected_choice": "A",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "code",
+          "expected_choice": "B",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_code_pipeline_result",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": false
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": true,
+          "category": "mixed_ja_en",
+          "expected_choice": "C",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_mixed_ja_en_release_code",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "9d95eb42725732d2bf3ed076abd6d267eab8ae5fc0e533849814a60866723e6e",
+          "selected_choice": "C",
+          "task_score_passed": true
+        }
+      ],
+      "sha256": "5074d0fe5bc9f0925b6f640c43976008b982c9d2494185511f18dc020bc7e2ca",
+      "summary": {
+        "absolute_task_quality_passed": false,
+        "binding_passed": 6,
+        "categories": [
+          "retrieval",
+          "multihop",
+          "aggregation",
+          "long_doc",
+          "code",
+          "mixed_ja_en"
+        ],
+        "passed": 6,
+        "task_correct": 4,
+        "total": 6,
+        "wall_seconds": 1057.2945221789414
+      }
+    },
+    "tasks_raw": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_task_gate.py",
+        "--context-tokens",
+        "4096",
+        "--max-new-tokens",
+        "8",
+        "--candidate-budget",
+        "3",
+        "--max-sequence-length",
+        "65544",
+        "--require-cached-build",
+        "--hash-model",
+        "--out",
+        "/tmp/mtp-rf1-long-tasks.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-long-tasks.json",
+      "passed": false,
+      "rows": [
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "retrieval",
+          "expected_choice": "B",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_retrieval_access_code",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "426d5193c087d90d2ed8ffe6329b75ad91c9fe3cce159863b2974ab68ff10831",
+          "selected_choice": "B",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "multihop",
+          "expected_choice": "D",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_multihop_clearance_phrase",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "aggregation",
+          "expected_choice": "C",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_aggregation_crate_total",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": false
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "long_doc",
+          "expected_choice": "A",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_long_doc_final_retention",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "aaaf82bdcf126401cd4eb7ed61094ee6ea5eb27a425b3c08b53c8bdc4dfda452",
+          "selected_choice": "A",
+          "task_score_passed": true
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "code",
+          "expected_choice": "B",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_code_pipeline_result",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "a379653c80828fd0198b7e3f1c30ae3062ef5ac78dae983ed71b62edb540698a",
+          "selected_choice": "D",
+          "task_score_passed": false
+        },
+        {
+          "all_cycles_eager": true,
+          "binding_passed": null,
+          "category": "mixed_ja_en",
+          "expected_choice": "C",
+          "gpu_accept_match_cpu": true,
+          "id": "mtp_mixed_ja_en_release_code",
+          "output_ids_exact": true,
+          "output_token_ids_sha256": "9d95eb42725732d2bf3ed076abd6d267eab8ae5fc0e533849814a60866723e6e",
+          "selected_choice": "C",
+          "task_score_passed": true
+        }
+      ],
+      "sha256": "2f366e5d15fae89fa0207ea49846286eda14c142517abd68c3f8faba851981e8",
+      "summary": {
+        "categories": [
+          "retrieval",
+          "multihop",
+          "aggregation",
+          "long_doc",
+          "code",
+          "mixed_ja_en"
+        ],
+        "passed": 4,
+        "total": 6,
+        "wall_seconds": 1057.2945221789414
+      }
+    },
+    "transition": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1024,1025,1032",
+        "--candidate-budgets",
+        "1,2,3",
+        "--acceptance-cycle-ends",
+        "1024",
+        "--acceptance-budget",
+        "3",
+        "--generation-contexts",
+        "1020",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "8",
+        "--max-sequence-length",
+        "1040",
+        "--out",
+        "/tmp/mtp-rf1-transition-packet.json",
+        "--fail-on-fail"
+      ],
+      "local_path": "/tmp/mtp-rf1-transition-packet.json",
+      "passed": true,
+      "sha256": "019f19680f56e6809514ea8e3c3e09e65fa61eb46c0923603e131e6bcfa9a01f",
+      "summary": {
+        "direct_cases": 13,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 400.90984799410217
+      }
+    }
+  },
+  "status": "accepted",
+  "verdict": "pass"
+}

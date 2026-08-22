@@ -7,6 +7,7 @@ import pytest
 from scripts.gguf_mtp_long_context_task_gate import (
     CATEGORIES,
     TaskSuiteError,
+    finalize_payload,
     load_tasks,
     score_task_output,
 )
@@ -52,3 +53,26 @@ def test_score_task_output_accepts_choice_or_declared_answer_text() -> None:
     assert score_task_output("B", task)["passed"] is True
     assert score_task_output("The answer is answer.", task)["passed"] is True
     assert score_task_output("C", task)["passed"] is False
+
+
+def test_finalize_payload_separates_rf1_binding_from_absolute_task_score() -> None:
+    payload = {
+        "rows": [
+            {
+                "id": "task",
+                "output_ids_exact": True,
+                "gpu_accept_match_cpu": True,
+                "all_cycles_eager": True,
+                "score": {"passed": False},
+            }
+        ],
+        "summary": {"wall_seconds": 1.0},
+    }
+
+    finalized = finalize_payload(payload)
+
+    assert finalized["passed"] is True
+    assert finalized["rows"][0]["binding_passed"] is True
+    assert finalized["rows"][0]["task_score_passed"] is False
+    assert finalized["summary"]["absolute_task_quality_passed"] is False
+    assert finalized["production_quality_claim"] is False
