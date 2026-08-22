@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Run the gfx11 GGUF OpenAI production workload and SLO gate.
 
 The gate owns one prepared GGUF model and serves it over a real localhost
@@ -30,6 +31,7 @@ import statistics
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
@@ -38,6 +40,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import MethodType
 from typing import Any, Mapping, Sequence
+
+# Direct ``python scripts/...`` execution otherwise resolves the namespace-only
+# ``scripts`` package from whichever editable hipEngine checkout was installed.
+# Put this file's worktree first so code and provenance cannot cross branches.
+_SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_SCRIPT_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_REPO_ROOT))
 
 import uvicorn
 
@@ -48,14 +57,14 @@ from scripts.gguf_live_server_bench import (
     _artifact_backend_scope,
     _memory_snapshot,
     _read_compiler_version,
-    _run_reference,
     _temporary_environment,
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = _SCRIPT_REPO_ROOT
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
+_SCHEDULER_POLICIES = ("token_budget", "protect_decode", "protect_ttft", "fair")
 _NATIVE_EXECUTION_PATHS = frozenset(
     {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}
 )
@@ -319,10 +328,20 @@ class _LiveSampler:
                 loop = snapshot.get("loop", {})
                 bucket = loop.get("physical_bucket", {})
                 requests = loop.get("requests", {})
+                route_plan = (
+                    snapshot.get("runner", {})
+                    .get("routes", {})
+                    .get("last_physical_group_plan", {})
+                )
                 depths = tuple(int(value) for value in self.batcher.stream_queue_depths())
                 self.samples.append(
                     {
                         "observed_at": time.perf_counter(),
+                        "physical_group_plan": (
+                            copy.deepcopy(route_plan)
+                            if isinstance(route_plan, Mapping) and route_plan
+                            else None
+                        ),
                         "active": int(requests.get("active", 0)),
                         "pending": int(requests.get("pending", 0)),
                         "occupancy_ratio": float(bucket.get("occupancy_ratio", 0.0)),
@@ -472,7 +491,7 @@ def _build_workload_specs(
             prompt_length=64,
             max_tokens=8,
         )
-        for index in range(32)
+        for index in range(40)
     )
     return {
         "static_c1": (
@@ -704,7 +723,7 @@ def _load_tuning_protocol(
         window = float(row.get("batch_window_ms", -1.0))
         if not candidate_id:
             raise ValueError("tuning protocol candidate id must not be empty")
-        if policy not in {"protect_decode", "protect_ttft", "fair"}:
+        if policy not in _SCHEDULER_POLICIES:
             raise ValueError(f"unsupported tuning policy {policy!r}")
         if chunk <= 0 or burst <= 0 or window < 0.0:
             raise ValueError("tuning protocol chunk/burst/window values are invalid")
@@ -1133,8 +1152,18 @@ def _counter_delta(before: Mapping[str, float], after: Mapping[str, float]) -> d
 def _wait_for_idle(llm: LLM, batcher: Any, *, timeout_seconds: float) -> dict[str, Any]:
     deadline = time.monotonic() + float(timeout_seconds)
     last: dict[str, Any] = {}
+    control_timeouts = 0
     while time.monotonic() < deadline:
-        snapshot = llm.live_loop_snapshot() or {}
+        try:
+            snapshot = llm.live_loop_snapshot() or {}
+        except TimeoutError:
+            # A synchronous long-prefill model transition can outlive the
+            # EngineService control RPC timeout even though its HTTP request is
+            # still healthy. Do not turn that observability gap into a second
+            # request failure or enqueue a tight polling storm.
+            control_timeouts += 1
+            time.sleep(0.05)
+            continue
         loop = snapshot.get("loop", {})
         requests = loop.get("requests", {})
         runner = snapshot.get("runner", {}).get("model_runner", {})
@@ -1151,9 +1180,12 @@ def _wait_for_idle(llm: LLM, batcher: Any, *, timeout_seconds: float) -> dict[st
             and int(batcher.queue_depth()) == 0
             and int(batcher.active_requests()) == 0
         ):
+            last["control_timeouts"] = int(control_timeouts)
             return last
         time.sleep(0.01)
-    raise TimeoutError(f"serving owner did not drain: {last}")
+    raise TimeoutError(
+        f"serving owner did not drain after {control_timeouts} control timeout(s): {last}"
+    )
 
 
 def _occupancy_summary(
@@ -1185,6 +1217,12 @@ def _occupancy_summary(
         for plan in item.get("physical_group_plans", ())
         if isinstance(plan, dict) and plan
     ]
+    plans.extend(
+        copy.deepcopy(plan)
+        for item in samples
+        for plan in (item.get("physical_group_plan"),)
+        if isinstance(plan, dict) and plan
+    )
     execution_paths = sorted(
         {
             str(group.get("execution_path"))
@@ -1590,6 +1628,212 @@ def _parse_workload_names(
     return names
 
 
+def _run_same_owner_references(
+    llm: LLM,
+    prompt_rows: Mapping[str, Mapping[str, Any]],
+    specs: Sequence[WorkloadRequest],
+) -> tuple[dict[str, tuple[int, ...]], dict[str, Any]]:
+    """Generate serial c1 oracle trajectories on the measured model owner."""
+
+    reference_tokens: dict[str, tuple[int, ...]] = {}
+    # Oracle arithmetic does not require graph replay. Avoid accumulating
+    # diagnostic graph capture/invalidation state before measured serving.
+    with _temporary_environment({"HIPENGINE_GGUF_DECODE_GRAPH": "0"}):
+        for key, row in sorted(prompt_rows.items()):
+            max_tokens = max(
+                spec.max_tokens for spec in specs if spec.oracle_key == key
+            )
+            outputs = llm.generate_detailed(
+                (str(row["text"]),),
+                SamplingParams(
+                    max_tokens=int(max_tokens),
+                    temperature=0.0,
+                    top_p=1.0,
+                    top_k=1,
+                    ignore_eos=True,
+                ),
+            )
+            if len(outputs) != 1 or outputs[0].generated_token_ids is None:
+                raise RuntimeError(f"same-owner oracle {key} returned no token IDs")
+            generated = tuple(int(token) for token in outputs[0].generated_token_ids)
+            if len(generated) != int(max_tokens):
+                raise RuntimeError(
+                    f"same-owner oracle {key} returned {len(generated)} token(s); "
+                    f"expected {max_tokens}"
+                )
+            reference_tokens[key] = generated
+            print(
+                f"reference {len(reference_tokens)}/{len(prompt_rows)}: {key}",
+                file=sys.stderr,
+                flush=True,
+            )
+    snapshot = llm.live_loop_snapshot() or {}
+    requests = snapshot.get("loop", {}).get("requests", {})
+    runner = snapshot.get("runner", {}).get("model_runner", {})
+    if (
+        int(requests.get("active", 0))
+        or int(requests.get("pending", 0))
+        or int(runner.get("active_requests", 0))
+    ):
+        raise RuntimeError("same-owner oracle generation did not drain")
+    return reference_tokens, {
+        "mode": "same_owner_serial_c1",
+        "process_isolated": False,
+        "oracle_rows": len(reference_tokens),
+        "decode_graph": "disabled_during_oracle_only",
+        "final_active_requests": int(requests.get("active", 0)),
+        "final_pending_requests": int(requests.get("pending", 0)),
+    }
+
+
+def _run_isolated_reference_worker(
+    *,
+    model: Path,
+    backend: str,
+    max_active_requests: int,
+    max_sequence_length: int,
+    max_output_tokens: int,
+    specs: Sequence[WorkloadRequest],
+    compiler_version_file: Path | None,
+    require_cached_build: bool,
+) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[int, ...]], dict[str, Any]]:
+    specs_by_key: dict[str, list[WorkloadRequest]] = {}
+    for spec in specs:
+        specs_by_key.setdefault(spec.oracle_key, []).append(spec)
+    key_order = tuple(specs_by_key)
+    key_groups = tuple(
+        key_order[offset : offset + 4]
+        for offset in range(0, len(key_order), 4)
+    )
+    merged_prompt_rows: dict[str, dict[str, Any]] = {}
+    merged_reference_tokens: dict[str, tuple[int, ...]] = {}
+    worker_records: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="hipengine-reference-") as directory:
+        root = Path(directory)
+        for worker_index, keys in enumerate(key_groups):
+            worker_specs = tuple(
+                spec
+                for key in keys
+                for spec in specs_by_key[key]
+            )
+            specs_path = root / f"specs-{worker_index}.json"
+            output_path = root / f"oracle-{worker_index}.json"
+            specs_path.write_text(
+                json.dumps(
+                    [asdict(spec) for spec in worker_specs],
+                    allow_nan=False,
+                ),
+                encoding="utf-8",
+            )
+            command = [
+                sys.executable,
+                str(REPO_ROOT / "scripts/gguf_reference_oracle_worker.py"),
+                "--model",
+                str(model),
+                "--backend",
+                str(backend),
+                "--max-active-requests",
+                str(int(max_active_requests)),
+                "--max-sequence-length",
+                str(int(max_sequence_length)),
+                "--max-output-tokens",
+                str(int(max_output_tokens)),
+                "--specs-json",
+                str(specs_path),
+                "--output-json",
+                str(output_path),
+            ]
+            if compiler_version_file is not None:
+                command.extend(
+                    ["--compiler-version-file", str(compiler_version_file)]
+                )
+            if require_cached_build:
+                command.append("--require-cached-build")
+            child_env = dict(os.environ)
+            child_env["PYTHONPATH"] = str(REPO_ROOT)
+            completed = subprocess.run(
+                command,
+                cwd=REPO_ROOT,
+                env=child_env,
+                text=True,
+                capture_output=True,
+                timeout=1200.0,
+                check=False,
+            )
+            if completed.stderr:
+                print(completed.stderr, file=sys.stderr, end="", flush=True)
+            if completed.returncode != 0 or not output_path.is_file():
+                raise RuntimeError(
+                    f"isolated reference worker {worker_index} failed: "
+                    f"returncode={completed.returncode} "
+                    f"stdout={completed.stdout[-2000:]!r} "
+                    f"stderr={completed.stderr[-2000:]!r}"
+                )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            overlap = set(merged_prompt_rows) & set(payload["prompt_rows"])
+            if overlap:
+                raise RuntimeError(
+                    f"isolated reference workers returned duplicate keys: {sorted(overlap)!r}"
+                )
+            merged_prompt_rows.update(
+                {
+                    str(key): {
+                        **row,
+                        "token_ids": tuple(
+                            int(token) for token in row["token_ids"]
+                        ),
+                    }
+                    for key, row in payload["prompt_rows"].items()
+                }
+            )
+            merged_reference_tokens.update(
+                {
+                    str(key): tuple(int(token) for token in tokens)
+                    for key, tokens in payload["reference_tokens"].items()
+                }
+            )
+            worker_records.append(
+                {
+                    "worker_index": int(worker_index),
+                    "oracle_keys": list(keys),
+                    "command": command,
+                    "returncode": int(completed.returncode),
+                }
+            )
+    if set(merged_prompt_rows) != set(key_order):
+        raise RuntimeError("isolated reference worker key coverage drift")
+    metadata = {
+        "mode": "isolated_workers",
+        "process_isolated": True,
+        "max_oracle_keys_per_process": 4,
+        "worker_processes": len(worker_records),
+        "workers": worker_records,
+        "oracle_rows": len(merged_reference_tokens),
+    }
+    return merged_prompt_rows, merged_reference_tokens, metadata
+
+
+def _reconfigure_loaded_loop(
+    llm: LLM,
+    adapter: Any,
+    *,
+    policy: str,
+    prefill_chunk_tokens: int,
+    fair_prefill_burst_chunks: int,
+) -> None:
+    config = replace(
+        adapter._loop.config,
+        prefill_decode_policy=str(policy),
+        max_prefill_chunk_tokens=int(prefill_chunk_tokens),
+        fair_prefill_burst_chunks=int(fair_prefill_burst_chunks),
+    )
+    loaded_driver = llm._get_text_generator()
+    reconfigure = getattr(loaded_driver, "reconfigure_engine_loop", None)
+    if not callable(reconfigure):
+        raise RuntimeError("loaded engine service cannot serialize loop reconfiguration")
+    reconfigure(config)
+
+
 def _parse_tuning_candidates(raw: str) -> tuple[tuple[str, int], ...]:
     result: list[tuple[str, int]] = []
     for item in str(raw).split(","):
@@ -1600,7 +1844,7 @@ def _parse_tuning_candidates(raw: str) -> tuple[tuple[str, int], ...]:
             policy, chunk = value.split(":", 1)
         except ValueError as exc:
             raise ValueError("tuning candidates must use policy:chunk") from exc
-        if policy not in {"protect_decode", "protect_ttft", "fair"}:
+        if policy not in _SCHEDULER_POLICIES:
             raise ValueError(f"unsupported tuning policy {policy!r}")
         parsed_chunk = int(chunk)
         if parsed_chunk <= 0:
@@ -1622,7 +1866,11 @@ def _memory_recovery_gate(
 ) -> dict[str, Any]:
     baseline_tracked = int(baseline.get("tracked", {}).get("current_bytes", 0))
     final_tracked = int(final.get("tracked", {}).get("current_bytes", 0))
-    pool = final.get("kv_pool", {}).get("dynamic_pool") or {}
+    kv_pool = final.get("kv_pool", {})
+    pool = kv_pool.get("dynamic_pool") or {}
+    # The packed-execution workspace lease is a load-time pinned reservation,
+    # not a leak: it stays held until engine close by design (task #5).
+    workspace_lease_pages = int(kv_pool.get("packed_workspace_lease_pages", 0))
     refcounted = int(pool.get("refcounted_pages", 0))
     pinned = int(pool.get("pinned_pages", 0))
     current_pages = int(pool.get("current_pages", 0))
@@ -1631,8 +1879,8 @@ def _memory_recovery_gate(
     passed = bool(
         tracked_delta <= int(tracked_tolerance_bytes)
         and refcounted == 0
-        and pinned == 0
-        and current_pages == free_pages
+        and pinned == workspace_lease_pages
+        and current_pages == free_pages + workspace_lease_pages
     )
     return {
         "passed": passed,
@@ -1644,6 +1892,7 @@ def _memory_recovery_gate(
         "kv_pool_free_pages": free_pages,
         "kv_pool_refcounted_pages": refcounted,
         "kv_pool_pinned_pages": pinned,
+        "kv_pool_workspace_lease_pages": workspace_lease_pages,
     }
 
 
@@ -1789,6 +2038,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     workload_results: dict[str, dict[str, Any]] = {}
     selection_error: str | None = None
     with _temporary_environment(env):
+        prompt_rows: dict[str, dict[str, Any]] | None = None
+        reference_tokens: dict[str, tuple[int, ...]] | None = None
+        oracle_worker: dict[str, Any] | None = None
+        if str(args.oracle_mode) == "isolated":
+            prompt_rows, reference_tokens, oracle_worker = (
+                _run_isolated_reference_worker(
+                    model=model,
+                    backend=str(args.backend),
+                    max_active_requests=int(args.max_active_requests),
+                    max_sequence_length=max_sequence_length,
+                    max_output_tokens=max_output,
+                    specs=all_specs,
+                    compiler_version_file=args.compiler_version_file,
+                    require_cached_build=bool(args.require_cached_build),
+                )
+            )
         llm = LLM(**_llm_construction_kwargs(args, model))
         try:
             adapter = llm._get_text_generator()
@@ -1797,39 +2062,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 sampling_params=SamplingParams(max_tokens=max_output),
             )
             runner = adapter._runner
-            prompt_rows = _prompt_manifest(runner.generator.tokenizer, all_specs)
-            from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-
-            reference_session = Qwen35GGUFResidentSession(
-                model,
-                backend=str(args.backend),
-                runtime=runner._shared_runner.runtime,
-                shared_runner=runner._shared_runner,
-                max_sequence_length=max_sequence_length,
-                use_wmma_prefill=True,
-                use_gemv_decode=True,
-                compiler_version=compiler_version,
-                require_cached_build=bool(args.require_cached_build),
+            measured_prompt_rows = _prompt_manifest(
+                runner.generator.tokenizer,
+                all_specs,
             )
-            try:
-                reference_runs = {
-                    key: _run_reference(
-                        reference_session,
-                        row["token_ids"],
-                        max(
-                            spec.max_tokens
-                            for spec in all_specs
-                            if spec.oracle_key == key
-                        ),
+            if str(args.oracle_mode) == "same_owner":
+                prompt_rows = measured_prompt_rows
+                reference_tokens, oracle_worker = _run_same_owner_references(
+                    llm,
+                    prompt_rows,
+                    all_specs,
+                )
+            else:
+                assert prompt_rows is not None and reference_tokens is not None
+                if {
+                    key: row["token_ids_sha256"]
+                    for key, row in measured_prompt_rows.items()
+                } != {
+                    key: row["token_ids_sha256"]
+                    for key, row in prompt_rows.items()
+                }:
+                    raise RuntimeError(
+                        "measured owner tokenizer differs from isolated oracle owner"
                     )
-                    for key, row in sorted(prompt_rows.items())
-                }
-            finally:
-                reference_session.close()
-            reference_tokens = {
-                key: tuple(int(token) for token in run.generated_tokens)
-                for key, run in reference_runs.items()
-            }
+                prompt_rows = measured_prompt_rows
+            assert reference_tokens is not None and oracle_worker is not None
             reclaimed: dict[int, _ReclaimedRow] = {}
             reclaimed_lock = threading.Lock()
             original_reclaim = runner.reclaim
@@ -1954,14 +2211,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 for repetition, plan in (() if args.skip_tuning else enumerate(tuning_plans)):
                     for order_index, configuration in enumerate(plan):
-                        adapter._loop.prefill_decode_policy = str(
-                            configuration.prefill_decode_policy
-                        )
-                        adapter._loop.prefill_chunk_size = int(
-                            configuration.prefill_chunk_tokens
-                        )
-                        adapter._loop.fair_prefill_burst_chunks = int(
-                            configuration.fair_prefill_burst_chunks
+                        _reconfigure_loaded_loop(
+                            llm,
+                            adapter,
+                            policy=configuration.prefill_decode_policy,
+                            prefill_chunk_tokens=configuration.prefill_chunk_tokens,
+                            fair_prefill_burst_chunks=(
+                                configuration.fair_prefill_burst_chunks
+                            ),
                         )
                         batcher._batch_window_seconds = (
                             float(configuration.batch_window_ms) / 1000.0
@@ -2042,10 +2299,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     except ValueError as exc:
                         selection_error = str(exc)
                 if selected is not None:
-                    adapter._loop.prefill_decode_policy = selected.prefill_decode_policy
-                    adapter._loop.prefill_chunk_size = selected.prefill_chunk_tokens
-                    adapter._loop.fair_prefill_burst_chunks = int(
-                        selected.fair_prefill_burst_chunks
+                    _reconfigure_loaded_loop(
+                        llm,
+                        adapter,
+                        policy=selected.prefill_decode_policy,
+                        prefill_chunk_tokens=selected.prefill_chunk_tokens,
+                        fair_prefill_burst_chunks=selected.fair_prefill_burst_chunks,
                     )
                     batcher._batch_window_seconds = (
                         float(selected.batch_window_ms) / 1000.0
@@ -2177,6 +2436,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "quant": str(args.quant),
             "kv_dtype": "bf16",
             "prefix_cache": str(args.prefix_cache),
+            "oracle_mode": str(args.oracle_mode),
             "max_sequence_length": max_sequence_length,
             "max_active_requests": int(args.max_active_requests),
             "max_pending_requests": int(args.max_pending_requests),
@@ -2209,6 +2469,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "selected": None if selected is None else asdict(selected),
             "selection_error": selection_error,
         },
+        "oracle_worker": oracle_worker,
         "prompt_manifest": [
             {key: value for key, value in row.items() if key not in {"text", "token_ids"}}
             for _oracle_key, row in sorted(prompt_rows.items())
@@ -2246,6 +2507,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument("--prefix-cache", choices=("off", "radix"), default="off")
     parser.add_argument(
+        "--oracle-mode",
+        choices=("same_owner", "isolated"),
+        default="same_owner",
+        help=(
+            "Generate serial c1 references on the measured owner (default), or "
+            "use bounded diagnostic worker processes"
+        ),
+    )
+    parser.add_argument(
         "--gdn-mode",
         default="exact",
         help="GGUF GDN prefill execution mode (exact or a qualified profile route)",
@@ -2261,12 +2531,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stream-queue-max-chunks", type=int, default=16)
     parser.add_argument("--queue-retry-after-seconds", type=int, default=1)
     parser.add_argument("--batch-window-ms", type=float, default=100.0)
-    parser.add_argument("--initial-policy", choices=("protect_decode", "protect_ttft", "fair"), default="fair")
+    parser.add_argument(
+        "--initial-policy",
+        choices=_SCHEDULER_POLICIES,
+        default="token_budget",
+    )
     parser.add_argument("--initial-prefill-chunk-tokens", type=int, default=128)
     parser.add_argument("--initial-fair-prefill-burst-chunks", type=int, default=1)
     parser.add_argument(
         "--tuning-candidates",
-        default="protect_decode:128,protect_ttft:128,fair:128,fair:256",
+        default=(
+            "token_budget:128,token_budget:256,protect_decode:128,"
+            "protect_ttft:128,fair:128,fair:256"
+        ),
     )
     parser.add_argument(
         "--tuning-protocol",

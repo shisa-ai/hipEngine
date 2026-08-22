@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import os
+import socket
 import threading
 import time
 import uuid
@@ -18,6 +19,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 
 import numpy as np
 
+from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
 from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
     RequestState,
@@ -26,6 +28,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_physical_batch_groups,
 )
+from hipengine.dispatch.d2_resolver import d2_partition
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -80,6 +83,9 @@ from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
+    _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+    _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
+    _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
     _rope_tables as _gguf_rope_tables,
 )
@@ -123,17 +129,68 @@ _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
-_GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 4, 8)
+# Superset of every shared-slot AR physical width a backend may register and use.
+# Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
+# explicit env override before the default advertised capability is expanded
+# (see docs/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
+_GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36):
+# every width in the superset is now an advertised default. The env override
+# HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS remains for diagnostics.
+_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+
+
+def _gguf_ar_physical_widths(
+    backend: str | None = None,
+    *,
+    use_capability: bool = False,
+) -> tuple[int, ...]:
+    """Resolve the active shared-slot AR physical width set.
+
+    An explicit ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override
+    (comma/space separated) widens or narrows the set for diagnostics and
+    certification without changing the packaged production default. Otherwise
+    the registered backend capability is used when ``use_capability`` is set
+    (resident-batch owner), else the default advertised set. The result must be
+    a sorted, strictly-increasing subset of
+    ``_GGUF_AR_PHYSICAL_BUCKET_WIDTHS`` starting at c1.
+    """
+    override = os.environ.get(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
+    ).strip()
+    if override:
+        widths = tuple(int(item) for item in override.replace(",", " ").split())
+    elif use_capability and backend is not None:
+        widths = tuple(
+            int(width)
+            for width in backend_package_capability(
+                backend, "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+            )
+        )
+    else:
+        widths = _GGUF_AR_DEFAULT_PHYSICAL_WIDTHS
+    if (
+        not widths
+        or widths[0] != 1
+        or tuple(sorted(set(widths))) != widths
+        or any(width not in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS for width in widths)
+    ):
+        raise RuntimeError(
+            "GGUF shared-slot physical widths must be sorted registered AR widths starting at c1"
+        )
+    return widths
 _GGUFSessionPoolKey = tuple[
     str,
     bool | None,
     bool | None,
     int | None,
+    int,
     tuple[str, str, str, str],
 ]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
+_GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
@@ -173,6 +230,70 @@ def _target_arch_scoped_stream(method):
 
 def _gguf_ar_packed_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+_GGUF_AR_D2_COST_CACHE: dict[tuple[object, ...], object] = {}
+
+
+def _gguf_ar_resolve_cost_table(
+    backend: str,
+    *,
+    target_arch: str,
+    model_path: str | Path,
+    quant: str,
+    kv_dtype: str,
+    physical_widths: Sequence[int],
+) -> object | None:
+    """Resolve an explicitly configured clean, exact-identity D2 cost map.
+
+    D2 remains opt-in until the actual server passes the c1-c32 route,
+    goodput/TTFT/ITL, dynamic lifecycle, memory, and final-drain gate. An absent
+    setting returns ``None`` so the production owner uses the ceiling planner;
+    an explicit invalid artifact raises.
+    """
+
+    raw_path = os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"D2 cost artifact does not exist: {path}")
+    stat = path.stat()
+    fingerprint = collect_model_identity(model_path)["fingerprint"]
+    if not isinstance(fingerprint, Mapping) or fingerprint.get("exists") is not True:
+        raise ValueError("D2 cost resolution requires a readable model fingerprint")
+    device_name = detect_device_name()
+    if not device_name:
+        raise ValueError("D2 cost resolution requires the current HIP device identity")
+    expected = {
+        "backend": str(backend),
+        "target_arch": str(target_arch),
+        "host_name": socket.gethostname(),
+        "device_name": device_name,
+        "model_fingerprint": str(fingerprint["value"]),
+        "quant": str(quant),
+        "kv_dtype": str(kv_dtype),
+        "execution_profile": "strict",
+        "graph_mode": "captured_replay",
+        "physical_widths": [int(width) for width in physical_widths],
+    }
+    cache_key = (
+        str(path),
+        int(stat.st_mtime_ns),
+        int(stat.st_size),
+        tuple(
+            (key, tuple(value) if isinstance(value, list) else value)
+            for key, value in expected.items()
+        ),
+    )
+    if cache_key in _GGUF_AR_D2_COST_CACHE:
+        return _GGUF_AR_D2_COST_CACHE[cache_key]
+    from hipengine.dispatch.d2_resolver import cost_table_from_artifact
+
+    cost_table = cost_table_from_artifact(path, expected=expected)
+    _GGUF_AR_D2_COST_CACHE.clear()
+    _GGUF_AR_D2_COST_CACHE[cache_key] = cost_table
+    return cost_table
 
 
 def _gguf_ar_packed_prefill_enabled() -> bool:
@@ -1198,6 +1319,7 @@ class Qwen35GGUFBringupGenerator:
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
         defer_kv_allocation: bool = False,
+        max_batch_size: int = 1,
     ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
         max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
@@ -1209,6 +1331,7 @@ class Qwen35GGUFBringupGenerator:
             use_wmma_prefill,
             use_gemv_decode,
             max_sequence_length,
+            int(max_batch_size),
             self._prepared_kv_signature,
         )
         with self._shared_session_pool_lock:
@@ -1233,6 +1356,7 @@ class Qwen35GGUFBringupGenerator:
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
                 defer_kv_allocation=bool(defer_kv_allocation),
+                max_batch_size=int(max_batch_size),
                 **self._prepared_session_kv_kwargs(),
                 **session_kwargs,
             ),
@@ -4715,6 +4839,14 @@ class Qwen35GGUFResidentModelRunner:
     in telemetry without being mislabeled as a serial model-step fallback.
     """
 
+    # The Generation-2 batch owner serializes its shared temporary workspaces
+    # and keeps prefill/decode canonical state in independent target slots, so
+    # one scheduler round may safely execute a prefill quantum followed by each
+    # due decode row. Multiple prefill quanta stay disabled until independently
+    # qualified; this capability alone prevents long-prefill ITL starvation.
+    supports_prefill_decode_same_round = True
+    supports_multiple_prefill_quanta_per_round = False
+
     def __init__(
         self,
         generator: Qwen35GGUFBringupGenerator,
@@ -4728,11 +4860,14 @@ class Qwen35GGUFResidentModelRunner:
         self._shared_runner = generator._get_shared_runner()
         self._max_sequence_length = getattr(generator, "_prepared_max_sequence_length", None)
         self._available: list[_GGUFResidentSessionLease] = []
+        self._resident_batch_owner: Qwen35GGUFResidentSession | None = None
+        self._resident_batch_owner_pool_key: _GGUFSessionPoolKey | None = None
         self._rows: dict[int, _GGUFResidentLoopRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
+        self._kv_pool_generation = 0
         self._engine_loop_config: Any | None = None
         self._prefix_cache_mode = "off"
         self._prefix_cache: RadixCache | None = None
@@ -5010,7 +5145,10 @@ class Qwen35GGUFResidentModelRunner:
                             else f"native_c{width}_decode_steps"
                         ]
                     )
-                    for width in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
+                    for width in _gguf_ar_physical_widths(
+                        str(getattr(getattr(self, "_shared_runner", None), "backend", "hip_gfx1100")),
+                        use_capability=getattr(self, "_resident_batch_owner", None) is not None,
+                    )
                 },
                 "fallback_reasons": {
                     str(key): int(value)
@@ -5030,14 +5168,82 @@ class Qwen35GGUFResidentModelRunner:
         self._sample_kv_hip_memory()
         pool = self._kv_pool
         pool_stats = None if pool is None else pool.stats.to_json_dict()
+        storage_view_fn = getattr(pool, "storage_view", None)
+        storage_view = storage_view_fn() if callable(storage_view_fn) else None
         tracked = memory_stats()
+        owner = self._resident_batch_owner
+        workspace_backing = (
+            None
+            if owner is None
+            else getattr(owner, "packed_workspace_backing", None)
+        )
+        workspace_pages_fn = getattr(pool, "workspace_pages", None)
+        workspace_lease = (
+            workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if callable(workspace_pages_fn)
+            else None
+        )
         return {
+            "pool_contract": (
+                None
+                if pool is None
+                else (
+                    "global_generation2"
+                    if bool(getattr(pool, "generation2_compatible", False))
+                    else "legacy_single_backing"
+                )
+            ),
+            "storage_view": (
+                None
+                if storage_view is None
+                else {
+                    "layout_key": str(storage_view.layout_key),
+                    "generation": int(storage_view.generation),
+                    "plane_count": len(storage_view.planes),
+                    "metadata_descriptor_bytes": int(
+                        storage_view.metadata_descriptor_bytes
+                    ),
+                }
+            ),
             "dynamic_pool": pool_stats,
+            "packed_workspace_backing": workspace_backing,
+            "packed_workspace_lease_pages": (
+                0 if workspace_lease is None else len(workspace_lease)
+            ),
             "tracked_allocator": tracked,
             "hip_used_current_bytes": self._current_hip_used_bytes(),
             "hip_used_peak_sampled_bytes": int(self._kv_hip_used_peak_sampled_bytes),
             "graph_invalidation_count": int(self._kv_graph_invalidation_count),
         }
+
+    def _teardown_kv_pool(self, *, release_workspace_state: bool) -> None:
+        """Release the packed workspace lease, then close the KV pool.
+
+        The workspace lease pins arena pages, so it must be released before
+        ``close()`` (which rejects pinned pages). When the owner-shared packed
+        workspace borrows arena planes it must also be freed first; the
+        guarded release fails closed on unflushed state or live graphs.
+        """
+
+        pool = self._kv_pool
+        if pool is None:
+            return
+        owner = self._resident_batch_owner
+        if release_workspace_state and owner is not None:
+            release = getattr(owner, "release_idle_packed_workspace", None)
+            if callable(release):
+                release()
+        workspace_pages = getattr(pool, "workspace_pages", None)
+        release_workspace = getattr(pool, "release_workspace", None)
+        if callable(workspace_pages) and callable(release_workspace):
+            if workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is not None:
+                release_workspace(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+        pool.close()
+        self._kv_pool = None
+        if owner is not None:
+            bind = getattr(owner, "bind_workspace_kv_pool", None)
+            if callable(bind):
+                bind(None)
 
     def configure_engine_loop(self, config: Any) -> None:
         """Bind engine-loop KV policy knobs to the real deferred session pool."""
@@ -5055,13 +5261,17 @@ class Qwen35GGUFResidentModelRunner:
             else None
         )
         factory_session = self._available[-1].session if self._available else None
-        create_pool = getattr(factory_session, "create_device_kv_pool", None)
-        if not callable(create_pool):
+        create_global_pool = getattr(
+            factory_session,
+            "create_global_device_kv_pool",
+            None,
+        )
+        create_legacy_pool = getattr(factory_session, "create_device_kv_pool", None)
+        if not callable(create_global_pool) and not callable(create_legacy_pool):
             # Lightweight fake-session tests retain the D2 fixed-session path.
             return
         if self._kv_pool is not None:
-            self._kv_pool.close()
-            self._kv_pool = None
+            self._teardown_kv_pool(release_workspace_state=True)
         scratch = getattr(factory_session, "scratch", None)
         if scratch is None:
             raise RuntimeError("GGUF deferred session has no scratch capacity")
@@ -5072,13 +5282,48 @@ class Qwen35GGUFResidentModelRunner:
         requested_high = getattr(config, "kv_pool_high_water_pages", None)
         high_water_pages = None if requested_high is None else int(requested_high)
         chunk_pages = min(max(1, int(config.kv_pool_chunk_pages)), total_pages)
-        self._kv_pool = create_pool(
-            initial_pages=initial_pages,
-            low_water_pages=low_water_pages,
-            high_water_pages=high_water_pages,
-            chunk_pages=chunk_pages,
-            idle_grace_seconds=float(config.kv_pool_idle_grace_seconds),
-        )
+        if callable(create_global_pool):
+            global_capacity = total_pages
+            if high_water_pages is not None:
+                global_capacity = min(global_capacity, high_water_pages)
+            if global_capacity <= 0:
+                raise ValueError("GGUF global KV capacity must be positive")
+            # Eager packed-execution workspace lease: sized to the union-geometry
+            # ceiling (max(8, capacity) slots x max(1024, request context)
+            # tokens), equal to today's peak private mirror footprint, so
+            # admission accounting always sees the pinned pages and the
+            # workspace never grows.
+            workspace_pages_per_slot = max(
+                max_pages_per_request,
+                _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+            )
+            workspace_pages = (
+                max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, self.capacity)
+                * workspace_pages_per_slot
+            )
+            self._kv_pool_generation += 1
+            self._kv_pool = create_global_pool(
+                page_capacity=global_capacity + workspace_pages,
+                generation=self._kv_pool_generation,
+            )
+            self._kv_pool.lease_workspace(
+                _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+                workspace_pages,
+            )
+            owner = self._resident_batch_owner
+            if owner is not None:
+                bind = getattr(owner, "bind_workspace_kv_pool", None)
+                if callable(bind):
+                    bind(self._kv_pool)
+        else:
+            assert callable(create_legacy_pool)
+            self._kv_pool = create_legacy_pool(
+                initial_pages=initial_pages,
+                low_water_pages=low_water_pages,
+                high_water_pages=high_water_pages,
+                chunk_pages=chunk_pages,
+                idle_grace_seconds=float(config.kv_pool_idle_grace_seconds),
+            )
         self._sample_kv_hip_memory()
 
     def reserve_admission(self, request: RequestState) -> None:
@@ -5188,6 +5433,7 @@ class Qwen35GGUFResidentModelRunner:
             raise GenerationAdmissionRejected(
                 str(exc),
                 resource="device_kv_pool",
+                request_id=int(row.request_id),
                 requested_units=pages,
                 current_units=int(stats.current_pages),
                 capacity_units=(
@@ -5701,8 +5947,7 @@ class Qwen35GGUFResidentModelRunner:
             config = self._engine_loop_config
             self._clear_prefix_snapshots()
             if self._kv_pool is not None:
-                self._kv_pool.close()
-                self._kv_pool = None
+                self._teardown_kv_pool(release_workspace_state=True)
             self._release_available_sessions()
             self._max_sequence_length = requested
             self._reserve_sessions()
@@ -6015,8 +6260,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
                 if self._kv_pool is not None:
-                    self._kv_pool.close()
-                    self._kv_pool = None
+                    self._teardown_kv_pool(release_workspace_state=False)
                 self._release_available_sessions()
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 error = exc
@@ -6031,6 +6275,59 @@ class Qwen35GGUFResidentModelRunner:
             raise error
 
     def _reserve_sessions(self) -> None:
+        if not bool(
+            getattr(self.generator, "_defer_resident_session_policy_resolution", False)
+        ):
+            self._reserve_legacy_test_sessions()
+            return
+        acquired: list[_GGUFResidentSessionLease] = []
+        batch_owner: Qwen35GGUFResidentSession | None = None
+        try:
+            batch_owner, pool_key, _reused = self.generator._acquire_shared_session(
+                self._shared_runner,
+                pool_name="continuous_ar_dynamic_kv",
+                use_wmma_prefill=True,
+                use_gemv_decode=True,
+                defer_kv_allocation=True,
+                max_batch_size=self.capacity,
+            )
+            batch_owner._reset_current_slot_only = True
+            acquired.append(_GGUFResidentSessionLease(batch_owner, pool_key))
+            slot_view = getattr(batch_owner, "resident_slot_view", None)
+            if self.capacity > 1 and not callable(slot_view):
+                raise RuntimeError("GGUF resident batch owner has no slot-view ABI")
+            for slot_index in range(1, self.capacity):
+                assert callable(slot_view)
+                acquired.append(
+                    _GGUFResidentSessionLease(slot_view(slot_index), pool_key)
+                )
+            sessions = tuple(lease.session for lease in acquired)
+            validate_layout = getattr(
+                batch_owner,
+                "_resident_ar_kv_layout_for_sessions",
+                None,
+            )
+            if callable(validate_layout):
+                validate_layout(sessions)
+            attention_source = getattr(batch_owner, "kv_attention_source", None)
+            if attention_source == "int8_direct" and self.capacity > 1:
+                qualified_rows = _qualified_compact_serial_int8_max_rows(
+                    self.generator
+                )
+                if self.capacity > qualified_rows:
+                    raise NotImplementedError(
+                        "compact direct INT8 residency is artifact-qualified only "
+                        f"through logical c{qualified_rows}; requested c{self.capacity}"
+                    )
+        except Exception:
+            if batch_owner is not None:
+                batch_owner.close()
+            raise
+        self._resident_batch_owner = batch_owner
+        self._resident_batch_owner_pool_key = pool_key
+        self._available.extend(acquired)
+
+    def _reserve_legacy_test_sessions(self) -> None:
         acquired: list[_GGUFResidentSessionLease] = []
         try:
             for _ in range(self.capacity):
@@ -6042,29 +6339,6 @@ class Qwen35GGUFResidentModelRunner:
                     defer_kv_allocation=True,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
-            if acquired:
-                sessions = tuple(lease.session for lease in acquired)
-                validate_layout = getattr(
-                    acquired[0].session,
-                    "_resident_ar_kv_layout_for_sessions",
-                    None,
-                )
-                if callable(validate_layout):
-                    validate_layout(sessions)
-                attention_source = getattr(
-                    acquired[0].session,
-                    "kv_attention_source",
-                    None,
-                )
-                if attention_source == "int8_direct" and self.capacity > 1:
-                    qualified_rows = _qualified_compact_serial_int8_max_rows(
-                        self.generator
-                    )
-                    if self.capacity > qualified_rows:
-                        raise NotImplementedError(
-                            "compact direct INT8 residency is artifact-qualified only "
-                            f"through logical c{qualified_rows}; requested c{self.capacity}"
-                        )
         except Exception:
             for lease in reversed(acquired):
                 lease.session.close()
@@ -6072,9 +6346,16 @@ class Qwen35GGUFResidentModelRunner:
         self._available.extend(acquired)
 
     def _release_available_sessions(self) -> None:
-        while self._available:
-            lease = self._available.pop()
-            self.generator._release_shared_session(lease.pool_key, lease.session)
+        owner = self._resident_batch_owner
+        if owner is None:
+            while self._available:
+                lease = self._available.pop()
+                self.generator._release_shared_session(lease.pool_key, lease.session)
+            return
+        self._available.clear()
+        self._resident_batch_owner = None
+        self._resident_batch_owner_pool_key = None
+        owner.close()
 
     def _release_row_resources(
         self,
@@ -6107,18 +6388,13 @@ class Qwen35GGUFResidentModelRunner:
             invalidated = int(invalidate())
             self._record_graph_invalidations(graph_handles, invalidated)
             self._kv_graph_invalidation_count += invalidated
-        release_packed = getattr(session, "release_idle_packed_workspace", None)
-        # Preserve the established C1/C2 warm-workspace path. At C4+ repeated
-        # owner rotation otherwise leaves one 0.8+ GiB packed slab per session.
-        if self.capacity > 2 and callable(release_packed):
-            released_bytes = int(release_packed())
-            if released_bytes > 0:
-                self._packed_workspace_release_events = int(
-                    getattr(self, "_packed_workspace_release_events", 0)
-                ) + 1
-                self._packed_workspace_released_bytes = int(
-                    getattr(self, "_packed_workspace_released_bytes", 0)
-                ) + released_bytes
+        # Retain the owner-shared packed workspace across reclaim. The slab is
+        # union-geometry and shared by all resident views; freeing it here
+        # forces a same-size hot-path reallocation on the next packed step
+        # (canonical C2-6 packet: 246 releases / 242.39 GiB cumulative churn),
+        # violating the CONCURRENCY2 workspace-reuse / no-hot-path-allocation
+        # invariants. Release remains a close-path operation via
+        # session.close() / release_idle_packed_workspace().
         reset = getattr(session, "reset", None)
         if callable(reset):
             reset()
@@ -6158,6 +6434,12 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident model runner has no free session")
         return self._available.pop()
 
+    def _packed_execution_owner(
+        self,
+        fallback: Qwen35GGUFResidentSession,
+    ) -> Qwen35GGUFResidentSession:
+        return getattr(self, "_resident_batch_owner", None) or fallback
+
     def _row(self, request_id: int) -> _GGUFResidentLoopRow:
         rid = int(request_id)
         if rid not in self._rows:
@@ -6174,10 +6456,18 @@ class Qwen35GGUFResidentModelRunner:
         # Direct no-mirror INT8 uses one block-table-aware single-row prefill
         # route at every physical base. Keeping base-zero c1 on scalar bulk
         # prefill would compare different GDN state-capture arithmetic at c>N.
-        if not _gguf_single_row_block_table_prefill_required(lease.session):
+        packed_owner = self._packed_execution_owner(lease.session)
+        if (
+            getattr(self, "_resident_batch_owner", None) is None
+            and not _gguf_single_row_block_table_prefill_required(lease.session)
+        ):
             result = lease.session.prefill(row.prompt_ids, return_logits=False)
         else:
-            prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+            prefill_batch = getattr(
+                packed_owner,
+                "prefill_batch_native",
+                None,
+            )
             if not callable(prefill_batch):
                 raise RuntimeError(
                     "GGUF KV route requires block-table-aware single-row prefill"
@@ -6325,13 +6615,21 @@ class Qwen35GGUFResidentModelRunner:
         sampling_request, sampling_state = self._prepare_sampled_prefill(row)
         start = time.perf_counter()
         native_compact_prefill = False
-        if not _gguf_single_row_block_table_prefill_required(lease.session):
+        packed_owner = self._packed_execution_owner(lease.session)
+        if (
+            getattr(self, "_resident_batch_owner", None) is None
+            and not _gguf_single_row_block_table_prefill_required(lease.session)
+        ):
             result = lease.session.prefill(
                 row.prompt_ids,
                 return_logits=not row.native_sampler,
             )
         else:
-            prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+            prefill_batch = getattr(
+                packed_owner,
+                "prefill_batch_native",
+                None,
+            )
             if not callable(prefill_batch):
                 raise RuntimeError(
                     "sampled GGUF KV requires block-table-aware single-row prefill"
@@ -6556,7 +6854,11 @@ class Qwen35GGUFResidentModelRunner:
             self._fallback_reasons["int8_direct_full_prompt_prefill"] += 1
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
-        prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+        prefill_batch = getattr(
+            self._packed_execution_owner(lease.session),
+            "prefill_batch_native",
+            None,
+        )
         if not callable(prefill_batch):
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
@@ -6704,10 +7006,56 @@ class Qwen35GGUFResidentModelRunner:
         elif set(work.request_ids) != set(request_ids):
             raise ValueError("physical-group work must contain exactly the native decode rows")
 
+        shared_runner = getattr(self, "_shared_runner", None)
+        physical_bucket_widths = _gguf_ar_physical_widths(
+            str(getattr(shared_runner, "backend", "hip_gfx1100")),
+            use_capability=getattr(self, "_resident_batch_owner", None) is not None,
+        )
+        width_sequence = None
+        cost_table = getattr(self, "_gguf_ar_cost_table", None)
+        resident_owner = getattr(self, "_resident_batch_owner", None)
+        generator = getattr(self, "generator", None)
+        if (
+            cost_table is None
+            and resident_owner is not None
+            and generator is not None
+            and os.environ.get(_GGUF_AR_D2_COST_ARTIFACT_ENV, "").strip()
+        ):
+            kv_dtype = getattr(
+                getattr(resident_owner, "kv_storage_dtype", None),
+                "value",
+                "bf16",
+            )
+            cost_table = _gguf_ar_resolve_cost_table(
+                str(getattr(shared_runner, "backend", "hip_gfx1100")),
+                target_arch=str(getattr(shared_runner, "target_arch", "gfx1100")),
+                model_path=generator.model_path,
+                quant=generator._kv_weight_quant_key(),
+                kv_dtype=str(kv_dtype),
+                physical_widths=physical_bucket_widths,
+            )
+        d2_metadata = None
+        if cost_table is not None and resident_owner is not None:
+            width_sequence = d2_partition(len(work.request_ids), cost_table)
+            identity = getattr(cost_table, "identity", None)
+            records = tuple(getattr(cost_table, "records", ()))
+            d2_metadata = {
+                "width_sequence": list(width_sequence),
+                "estimated_serial_model_step_ms": sum(
+                    float(cost_table.cost_ms(width)) for width in width_sequence
+                ),
+                "cost_source": None if not records else str(records[0].source),
+                "identity": (
+                    None
+                    if identity is None
+                    else identity.to_json_dict()
+                ),
+            }
         groups = plan_physical_batch_groups(
             work,
-            physical_bucket_widths=_GGUF_AR_PHYSICAL_BUCKET_WIDTHS,
+            physical_bucket_widths=physical_bucket_widths,
             compact_active_rows=True,
+            width_sequence=width_sequence,
         )
         row_by_request = {int(row.request_id): row for row in row_list}
         group_payloads: list[dict[str, Any]] = []
@@ -6743,6 +7091,7 @@ class Qwen35GGUFResidentModelRunner:
                     group_rows,
                     physical_rows=group.physical_rows,
                     active_slot_indices=group.active_slot_indices,
+                    allow_graph=len(groups) == 1,
                 )
             if packed:
                 execution_path = "packed_native"
@@ -6831,11 +7180,17 @@ class Qwen35GGUFResidentModelRunner:
             "schema": 1,
             "kind": "gguf_ar_physical_group_plan",
             "logical_c": len(request_ids),
-            "physical_bucket_widths": list(_GGUF_AR_PHYSICAL_BUCKET_WIDTHS),
-            "policy": "occupancy_adaptive_dense_execution",
+            "physical_bucket_widths": list(physical_bucket_widths),
+            "policy": (
+                "artifact_backed_d2"
+                if d2_metadata is not None
+                else "occupancy_adaptive_dense_execution"
+            ),
             "group_count": len(groups),
             "groups": group_payloads,
         }
+        if d2_metadata is not None:
+            self._last_physical_group_plan["d2"] = d2_metadata
 
     def _packed_graph_capture_membership_stable(self) -> bool:
         """Require every registered native row to finish prefill before capture."""
@@ -6852,6 +7207,7 @@ class Qwen35GGUFResidentModelRunner:
         *,
         physical_rows: int | None = None,
         active_slot_indices: Sequence[int] = (),
+        allow_graph: bool = True,
     ) -> bool:
         for row in rows:
             self._close_c1_decode_graph(row)
@@ -6860,7 +7216,8 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident packed decode row is missing its session slot")
         concrete = [slot for slot in slots if slot is not None]
         owner_slot = concrete[0]
-        step_batch = getattr(owner_slot.session, "step_batch_native", None)
+        execution_owner = self._packed_execution_owner(owner_slot.session)
+        step_batch = getattr(execution_owner, "step_batch_native", None)
         if not callable(step_batch):
             return False
         width = int(physical_rows or len(concrete))
@@ -6873,6 +7230,26 @@ class Qwen35GGUFResidentModelRunner:
         for slot, index in zip(concrete, active_indices, strict=True):
             expected_sessions[index] = slot.session
         expected_session_tuple = tuple(expected_sessions)
+        owner_sessions = tuple(
+            getattr(execution_owner, "_packed_decode_sessions", ())
+        )
+        if (
+            bool(getattr(execution_owner, "_packed_decode_state_dirty", False))
+            and owner_sessions != expected_session_tuple
+        ):
+            flush_owner = getattr(execution_owner, "flush_packed_decode_state", None)
+            if not callable(flush_owner) or not bool(flush_owner()):
+                raise RuntimeError(
+                    "GGUF shared packed owner could not flush a changed session"
+                    " tuple (dirty="
+                    f"{bool(getattr(execution_owner, '_packed_decode_state_dirty', False))}"
+                    ", state="
+                    f"{getattr(execution_owner, '_packed_verify_state', None) is not None}"
+                    ", layout="
+                    f"{getattr(execution_owner, '_packed_decode_last_layout', None) is not None}"
+                    f", recorded_sessions={len(owner_sessions)}"
+                    f", expected_sessions={len(expected_session_tuple)})"
+                )
         graphs = {
             id(graph): graph
             for slot in concrete
@@ -6882,26 +7259,40 @@ class Qwen35GGUFResidentModelRunner:
         graph = next(iter(graphs.values())) if len(graphs) == 1 else None
         if graph is not None and tuple(getattr(graph, "sessions", ())) != expected_session_tuple:
             graph = None
+        if not bool(allow_graph):
+            graph = None
         if graphs and graph is None:
             self._close_packed_decode_graphs(rows)
 
         self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
         graph_eligible = bool(
-            graph is not None
-            or (
-                _gguf_decode_graph_enabled()
-                and len(concrete) == width
-                and active_indices == tuple(range(width))
-                and all(row.native_greedy and not row.native_sampled for row in rows)
-                and self._packed_graph_capture_membership_stable()
-                and not any(
-                    bool(getattr(slot, "packed_decode_graph_unavailable", False))
-                    for slot in concrete
+            bool(allow_graph)
+            and (
+                graph is not None
+                or (
+                    _gguf_decode_graph_enabled()
+                    and len(concrete) == width
+                    and active_indices == tuple(range(width))
+                    and all(
+                        row.native_greedy and not row.native_sampled
+                        for row in rows
+                    )
+                    and self._packed_graph_capture_membership_stable()
+                    and not any(
+                        bool(
+                            getattr(
+                                slot,
+                                "packed_decode_graph_unavailable",
+                                False,
+                            )
+                        )
+                        for slot in concrete
+                    )
                 )
             )
         )
         if graph is None and graph_eligible:
-            minimum_fn = getattr(owner_slot.session, "decode_graph_min_replay_steps", None)
+            minimum_fn = getattr(execution_owner, "decode_graph_min_replay_steps", None)
             minimum = minimum_fn() if callable(minimum_fn) else None
             remaining = min(
                 max(0, int(row.request.max_tokens) - len(slot.generated_ids))
@@ -6912,7 +7303,7 @@ class Qwen35GGUFResidentModelRunner:
                 if minimum is None
                 else max(1, (int(minimum) + width - 1) // width)
             )
-            capture = getattr(owner_slot.session, "capture_packed_decode_graph", None)
+            capture = getattr(execution_owner, "capture_packed_decode_graph", None)
             if (
                 scaled_minimum is not None
                 and remaining >= scaled_minimum
@@ -6936,7 +7327,7 @@ class Qwen35GGUFResidentModelRunner:
                     for slot in concrete:
                         slot.packed_decode_graph = graph
 
-        owner = owner_slot.session
+        owner = execution_owner
         if graph is not None:
             graph.replay(1)
             physical_tokens = list(graph.read_latest_generated_token_ids())
@@ -7074,6 +7465,13 @@ class Qwen35GGUFResidentModelRunner:
         *,
         fallback_reason: str = "packed_decode_unavailable",
     ) -> None:
+        resident_owner = getattr(self, "_resident_batch_owner", None)
+        if bool(getattr(resident_owner, "_packed_decode_state_dirty", False)):
+            flush_owner = getattr(resident_owner, "flush_packed_decode_state", None)
+            if not callable(flush_owner) or not bool(flush_owner()):
+                raise RuntimeError(
+                    "GGUF shared packed owner could not flush before serial decode"
+                )
         self._flush_rows(rows)
         native_c1 = len(rows) == 1
         if native_c1:
@@ -7125,7 +7523,18 @@ class Qwen35GGUFResidentModelRunner:
         slot = row.slot
         if slot is None:
             raise RuntimeError("GGUF resident c1 decode row is missing its session slot")
+        if len(getattr(self, "_rows", {})) > 1:
+            # Slot views deliberately share the batch owner's execution buffers.
+            # A scalar graph captured for the c1 edge of a wider logical round
+            # would be overwritten by the peer packed group before replay.
+            self._close_c1_decode_graph(row)
+            return slot.session.step(int(slot.prev_token), return_logits=False)
         graph = slot.c1_decode_graph
+        if graph is not None and bool(getattr(graph, "closed", False)):
+            # A shared-buffer growth invalidated this graph; fall back to the
+            # eager step and let the next eligible round re-capture.
+            slot.c1_decode_graph = None
+            graph = None
         if graph is None:
             minimum_fn = getattr(slot.session, "decode_graph_min_replay_steps", None)
             minimum = minimum_fn() if callable(minimum_fn) else None

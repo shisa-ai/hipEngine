@@ -618,6 +618,9 @@ def gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
     )
 
 
+setattr(gguf_q6_k_t16_gemv_rowtile_bf16_f32_out, "_hipengine_max_rows", 6)
+
+
 def gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -714,10 +717,10 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Exact planar-qmicro rowtile for rows 2-4, per-row fallback to 6."""
+    """Exact planar-qmicro true col8 rowtile for rows 2-8."""
 
-    if rows < 2 or rows > 6:
-        raise ValueError("qmicro planar rowtile requires rows in [2, 6]")
+    if rows < 2 or rows > 8:
+        raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
     _launch(
         _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
         x_ptr,
@@ -994,6 +997,13 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
         library=library,
         runtime=runtime,
     )
+
+
+setattr(
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
+    "_hipengine_max_rows",
+    4,
+)
 
 
 def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out(

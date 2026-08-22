@@ -2162,11 +2162,6 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
         return object()
 
     monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
-    monkeypatch.setattr(
-        qwen35_gguf_runner,
-        "register_qwen35_linear_attn_gdn_kernels",
-        lambda: None,
-    )
     runner = object.__new__(qwen35_gguf_runner.Qwen35GGUFFullStackRunner)
     runner.backend = "hip_gfx1151"
 

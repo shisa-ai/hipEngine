@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_qwen38_27b_packed_decode_rowtile_fix",
+  "created_at": "2026-08-19T13:55:00+00:00",
+  "status": "accepted_engine_level",
+  "performance_claim": true,
+  "performance_claim_scope": "engine-level packed AR decode (gguf_packed_ar_bench.py), same-host W7900 gfx1100 device 0; not the canonical production HTTP topline (separate protocol)",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "hardware": "AMD Radeon Pro W7900 gfx1100 (48 GiB), therock env, rocm 7.2.4",
+  "protocol": {
+    "prompt_length": 256,
+    "decode_steps": 48,
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "sampling": "greedy_top1",
+    "timing": "synchronized model-step completion latency per native group"
+  },
+  "change": "Enable native_batch_decode_session(2<=rows<=4) in Qwen35GGUFResidentSession._enqueue_packed_decode_model_step so the packed c2/c4 decode selects the exact dense_rowtile t16 decode kernel (reads existing tiles) instead of the slow t16_wmma_prefill GEMM. +1 line in hipengine/runtime/qwen35_gguf_runner.py.",
+  "root_cause": "packed decode step was missing native_batch_decode_session (present in sibling _enqueue_native_rows_model), so _native_batch_decode_session_enabled was False and the exact rowtile sidecar decode was skipped -> fell back to t16_wmma_prefill (~130-150 GB/s, 120.5 ms/step for FFN).",
+  "correctness": {
+    "c1_c2_c4_prefix_exact": true,
+    "all_measured_runs_repeatable": true,
+    "note": "c2/c4 trajectories are prefix-exact to the independent c1 oracle -> batch-composition invariance preserved (not gamed). dense_rowtile is arithmetically exact."
+  },
+  "before_fix_engine_level": {
+    "note": "pre-fix same protocol (t16_wmma_prefill decode) measured earlier this session",
+    "c1_tok_s": 33.5,
+    "c2_tok_s": 11.48,
+    "c4_tok_s": 12.0,
+    "c2_vs_c1": 0.34,
+    "c4_vs_c1": 0.36
+  },
+  "after_fix": {
+    "c1_tok_s": 29.688,
+    "c2_tok_s": 52.408,
+    "c4_tok_s": 91.001,
+    "c2_per_request_tok_s": 26.204,
+    "c4_per_request_tok_s": 22.75,
+    "c2_vs_c1": 1.765,
+    "c4_vs_c1": 3.065
+  },
+  "c2_step_latency_ms": {
+    "before": 174.0,
+    "after": 36.7
+  },
+  "limitations": [
+    "native_c8 (rows=8) not covered: rowtile sidecar is rows 2-4 only; rows 8 hits pre-existing qmicro planar rowtile rows[2,4] limit (task #11 pending).",
+    "Canonical production HTTP packet (benchmarks/README concurrency2 table) uses a different protocol; re-run needed to capture the topline HTTP improvement."
+  ],
+  "source_artifact": "/tmp/hb-c124-fix.json",
+  "command": "python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --configurations c1,c2,c4 --prompt-length 256 --decode-steps 48 --warmup-runs 1 --measured-runs 2"
+}

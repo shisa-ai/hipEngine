@@ -18,7 +18,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from types import MethodType
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -26,6 +26,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from hipengine import LLM, SamplingParams  # noqa: E402
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from hipengine.core.memory import memory_stats  # noqa: E402
 from hipengine.generation import GenerationRequest  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
     Qwen35GGUFResidentSession,
@@ -48,6 +49,31 @@ def _temporary_env(updates: dict[str, str]) -> Iterator[None]:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+
+_DEFAULT_CERT_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+
+
+def _resolve_widths() -> tuple[int, ...]:
+    """Resolve the active shared-slot AR physical width set for the gate.
+
+    Mirrors the owner's resolution: an explicit
+    ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override (comma/space
+    separated) selects the widths under test; otherwise the production default
+    (1..8, promoted 2026-08-20) is used. The mask/declared-width assertions
+    below then follow the same set the owner routes with.
+    """
+    override = os.environ.get(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
+    ).strip()
+    if not override:
+        return _DEFAULT_CERT_WIDTHS
+    widths = tuple(int(item) for item in override.replace(",", " ").split())
+    if not widths or widths[0] != 1 or tuple(sorted(set(widths))) != widths:
+        raise ValueError(
+            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS must be sorted unique widths starting at c1"
+        )
+    return widths
 
 
 def _request(prompts: Sequence[Sequence[int]], *, max_tokens: int) -> GenerationRequest:
@@ -138,14 +164,21 @@ def _poll_one(
     return events
 
 
-def _all_packed(plan: dict[str, Any] | None) -> bool:
+def _all_native(plan: dict[str, Any] | None) -> bool:
+    def group_is_native(group: Mapping[str, Any]) -> bool:
+        execution_path = group.get("execution_path")
+        if execution_path == "packed_native":
+            return True
+        return bool(
+            execution_path in {"native_c1_eager", "native_c1_graph"}
+            and int(group.get("physical_rows", 0)) == 1
+            and tuple(bool(value) for value in group.get("active_mask", ())) == (True,)
+        )
+
     return bool(
         plan
         and int(plan.get("group_count", 0)) > 0
-        and all(
-            group.get("execution_path") == "packed_native"
-            for group in plan.get("groups", ())
-        )
+        and all(group_is_native(group) for group in plan.get("groups", ()))
     )
 
 
@@ -158,12 +191,26 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
     ]
 
 
-def _expected_dense_group_masks(rows: int) -> list[str]:
+def _expected_dense_group_masks(
+    rows: int,
+    buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
+    *,
+    composition: Sequence[int] | None = None,
+) -> list[str]:
+    """Expected dense active masks for one round.
+
+    When an explicit ``composition`` (e.g. the artifact-backed D2 partition) is
+    supplied, each group is exactly that width and fully dense. Otherwise the
+    ceiling (max-bucket) chunking with masked remainder is assumed.
+    """
+    buckets = tuple(int(bucket) for bucket in buckets)
+    if composition is not None:
+        return ["1" * int(width) for width in composition]
     remaining = int(rows)
     masks: list[str] = []
     while remaining > 0:
-        active = min(8, remaining)
-        width = next(bucket for bucket in (1, 2, 4, 8) if bucket >= active)
+        active = min(buckets[-1], remaining)
+        width = next(bucket for bucket in buckets if bucket >= active)
         masks.append("1" * active + "0" * (width - active))
         remaining -= active
     return masks
@@ -174,18 +221,78 @@ def _expected_hole_group_masks(
     cancel_slots: Sequence[int],
     *,
     compact: bool,
+    buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
+    composition: Sequence[int] | None = None,
 ) -> list[str]:
+    buckets = tuple(int(bucket) for bucket in buckets)
     if compact:
-        return _expected_dense_group_masks(int(rows) - len(cancel_slots))
-    masks = [list(mask) for mask in _expected_dense_group_masks(rows)]
+        compact_rows = int(rows) - len(cancel_slots)
+        compact_composition = _d2_composition(compact_rows)
+        return _expected_dense_group_masks(
+            compact_rows, buckets, composition=compact_composition
+        )
+    if composition is not None:
+        masks = [list("1" * int(width)) for width in composition]
+        offsets: list[int] = []
+        cursor = 0
+        for width in composition:
+            offsets.append(cursor)
+            cursor += int(width)
+        for slot in cancel_slots:
+            slot_i = int(slot)
+            for width, base in zip(composition, offsets, strict=True):
+                if base <= slot_i < base + int(width):
+                    masks[offsets.index(base)][slot_i - base] = "0"
+                    break
+        return ["".join(mask) for mask in masks]
+    masks = [list(mask) for mask in _expected_dense_group_masks(rows, buckets)]
+    max_bucket = buckets[-1]
     for slot in cancel_slots:
-        group_index, local_index = divmod(int(slot), 8)
+        group_index, local_index = divmod(int(slot), max_bucket)
         masks[group_index][local_index] = "0"
     return ["".join(mask) for mask in masks]
 
 
+def _d2_composition(rows: int) -> tuple[int, ...] | None:
+    """Return the artifact-backed D2 composition for ``rows`` when D2 is active
+    (``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` set), else ``None`` (ceiling)."""
+    path = os.environ.get("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", "").strip()
+    if not path:
+        return None
+    from hipengine.dispatch.d2_resolver import cost_table_from_artifact, d2_partition
+
+    cost_table = cost_table_from_artifact(path)
+    return tuple(int(width) for width in d2_partition(int(rows), cost_table))
+
+
 def _state_kv_accepted(*, bit_exact: bool, allow_c1_arithmetic_drift: bool) -> bool:
     return bool(bit_exact or allow_c1_arithmetic_drift)
+
+
+def _tracked_memory_recovery(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+) -> dict[str, Any]:
+    before_current = int(before.get("current_allocated_bytes", 0))
+    after_current = int(after.get("current_allocated_bytes", 0))
+    before_active = int(before.get("active_allocations", 0))
+    after_active = int(after.get("active_allocations", 0))
+    return {
+        "scope": "hipengine_tracked_process",
+        "passed": bool(
+            after_current == before_current
+            and after_active == before_active
+        ),
+        "current_allocated_bytes_before": before_current,
+        "current_allocated_bytes_after": after_current,
+        "current_allocated_delta_bytes": after_current - before_current,
+        "active_allocations_before": before_active,
+        "active_allocations_after": after_active,
+        "active_allocation_delta": after_active - before_active,
+        "peak_allocated_bytes": int(after.get("peak_allocated_bytes", 0)),
+        "total_allocated_bytes": int(after.get("total_allocated_bytes", 0)),
+        "total_freed_bytes": int(after.get("total_freed_bytes", 0)),
+    }
 
 
 def _load_quality_gate(
@@ -197,6 +304,7 @@ def _load_quality_gate(
     resolved = path.expanduser().resolve()
     payload = json.loads(resolved.read_text(encoding="utf-8"))
     summary = payload.get("quality", {}).get("summary", {})
+    protocol = payload.get("protocol", {})
     provenance = payload.get("provenance", {})
     if not (
         payload.get("kind")
@@ -205,6 +313,10 @@ def _load_quality_gate(
         and payload.get("quality", {}).get("hard_gates_passed") is True
         and float(summary.get("kl_max", float("inf"))) <= 0.05
         and float(summary.get("top1_agreement", 0.0)) >= 0.90
+        and protocol.get("route_profile") == "current_package_direct"
+        and {3, 5, 6, 7}.issubset(
+            {int(width) for width in protocol.get("static_widths", ())}
+        )
         and provenance.get("dirty") is False
         and str(provenance.get("resolved_backend")) == str(backend)
         and Path(str(provenance.get("model_path", ""))).resolve() == model
@@ -218,6 +330,8 @@ def _load_quality_gate(
         "kl_max": float(summary["kl_max"]),
         "top1_agreement": float(summary["top1_agreement"]),
         "rows": int(summary["rows"]),
+        "route_profile": str(protocol["route_profile"]),
+        "static_widths": [int(width) for width in protocol["static_widths"]],
     }
 
 
@@ -255,10 +369,60 @@ def _row_resource_identity(row: Any) -> dict[str, Any]:
     }
 
 
+def _capture_compaction_group_graph(runner: Any, group: Mapping[str, Any]) -> Any:
+    """Pin the graph kind the current physical-group plan would actually use."""
+
+    request_ids = tuple(int(request_id) for request_id in group["request_ids"])
+    rows = tuple(runner._rows[request_id] for request_id in request_ids)
+    slots = tuple(row.slot for row in rows)
+    if not slots or any(slot is None for slot in slots):
+        raise RuntimeError("compaction graph group has a missing resident slot")
+    concrete = tuple(slot for slot in slots if slot is not None)
+    sessions = tuple(slot.session for slot in concrete)
+    physical_rows = int(group["physical_rows"])
+    active_slot_indices = tuple(int(index) for index in group["active_slot_indices"])
+    if physical_rows == 1:
+        if len(concrete) != 1 or active_slot_indices != (0,):
+            raise RuntimeError("physical-c1 compaction graph has invalid membership")
+        slot = concrete[0]
+        existing = slot.c1_decode_graph
+        if existing is not None and not bool(getattr(existing, "closed", False)):
+            return existing
+        capture = getattr(slot.session, "capture_decode_graph", None)
+        if not callable(capture):
+            raise RuntimeError("physical-c1 session cannot capture its native graph")
+        graph = capture(
+            position=int(slot.seq_position),
+            steps_per_replay=1,
+            max_replay_steps=1,
+            attention_max_context_len=int(slot.seq_position) + 1,
+            input_token_id=int(slot.prev_token),
+        )
+        slot.c1_decode_graph = graph
+        return graph
+
+    resolve_owner = getattr(runner, "_packed_execution_owner", None)
+    if not callable(resolve_owner):
+        raise RuntimeError("resident runner cannot resolve its packed execution owner")
+    execution_owner = resolve_owner(sessions[0])
+    capture = getattr(execution_owner, "capture_packed_decode_graph", None)
+    if not callable(capture):
+        raise RuntimeError("packed owner cannot capture its physical-group graph")
+    return capture(
+        [int(slot.prev_token) for slot in concrete],
+        sessions=sessions,
+        physical_rows=physical_rows,
+        active_slot_indices=active_slot_indices,
+        steps_per_replay=1,
+        max_replay_steps=1,
+        record_steps=1,
+    )
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     logical_c = int(args.rows)
-    if logical_c < 4:
-        raise ValueError("rows must be at least 4 for the arbitrary-C lifecycle gate")
+    if logical_c < 3:
+        raise ValueError("rows must be at least 3 for the arbitrary-C lifecycle gate")
     cancel_slots = tuple(int(slot) for slot in args.cancel_slots)
     if len(cancel_slots) != 2 or len(set(cancel_slots)) != 2:
         raise ValueError("cancel-slots must contain two unique slots")
@@ -491,27 +655,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 # the pre/post hashes below also prove capture did not mutate
                 # request-owned state or KV.
                 for group in hole_plan["groups"]:
-                    group_request_ids = tuple(
-                        int(request_id) for request_id in group["request_ids"]
-                    )
-                    group_sessions = tuple(
-                        runner._rows[request_id].lease.session
-                        for request_id in group_request_ids
-                    )
-                    group_sessions[0].capture_packed_decode_graph(
-                        [
-                            int(runner._rows[request_id].slot.generated_ids[-1])
-                            for request_id in group_request_ids
-                        ],
-                        sessions=group_sessions,
-                        physical_rows=int(group["physical_rows"]),
-                        active_slot_indices=tuple(
-                            int(slot) for slot in group["active_slot_indices"]
-                        ),
-                        steps_per_replay=1,
-                        max_replay_steps=1,
-                        record_steps=1,
-                    )
+                    _capture_compaction_group_graph(runner, group)
                 active_graph_handles = tuple(
                     handle
                     for handle in runner._graph_handles_for_sessions(survivor_sessions)
@@ -717,16 +861,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if event["physical_group_plan"] is not None
             ]
             declared_widths_only = all(
-                int(group["physical_rows"]) in {1, 2, 4, 8}
+                int(group["physical_rows"]) in _resolve_widths()
                 for plan in all_plans
                 for group in plan["groups"]
             )
-            no_serial_fallback = all(_all_packed(plan) for plan in all_plans)
-            expected_initial_masks = _expected_dense_group_masks(logical_c)
+            no_serial_fallback = all(_all_native(plan) for plan in all_plans)
+            expected_initial_masks = _expected_dense_group_masks(
+                logical_c, _resolve_widths(), composition=_d2_composition(logical_c)
+            )
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
                 cancel_slots,
                 compact=bool(args.compact_after_middle_hole),
+                buckets=_resolve_widths(),
+                composition=_d2_composition(logical_c),
             )
             expected_refill_masks = expected_initial_masks
             expected_newcomer_slots = (
@@ -778,6 +926,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
                     "HIPENGINE_GGUF_GDN_PREFILL_MODE": os.environ.get(
                         "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+                    ),
+                    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": os.environ.get(
+                        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"
+                    ),
+                    "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT": os.environ.get(
+                        "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
                     ),
                     "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
                         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
@@ -902,9 +1056,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         if args.compact_after_middle_hole
                         else "The gate preserves scheduler slot identity; no physical compaction is performed."
                     ),
-                    "Every decode group must use only declared c1/c2/c4/c8 physical widths.",
+                    "Every decode group must use only the active declared physical widths "
+                    f"{list(_resolve_widths())}.",
                     "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints; arithmetic drift remains reported even when an external numerical gate makes byte identity non-binding.",
                     "Same-run state/KV preservation across compaction, ownership, routes, masks, and graph invalidation remain hard requirements.",
+                    "The CLI additionally binds tracked allocator recovery after model teardown.",
                 ],
             }
         finally:
@@ -945,7 +1101,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    tracked_before = dict(memory_stats())
     payload = run(args)
+    tracked_after = dict(memory_stats())
+    memory = _tracked_memory_recovery(tracked_before, tracked_after)
+    payload["memory"] = memory
+    payload["passed"] = bool(payload["passed"] and memory["passed"])
+    payload["status"] = "passed" if payload["passed"] else "failed"
     command_args = list(sys.argv[1:] if argv is None else argv)
     payload["command"] = shlex.join(
         [sys.executable, "scripts/gguf_arbitrary_c_lifecycle.py", *command_args]
@@ -956,6 +1118,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "HIPENGINE_HIP_ARCH",
             "HIP_VISIBLE_DEVICES",
             "HIPENGINE_COMPILER_VERSION_FILE",
+            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+            "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT",
         )
     }
     text = json.dumps(payload, indent=2, allow_nan=False)

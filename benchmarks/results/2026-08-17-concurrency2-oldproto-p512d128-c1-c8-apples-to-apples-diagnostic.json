@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_oldproto_p512d128_c1_c8_apples_to_apples_diagnostic",
+  "created_at": "2026-08-17T05:19:00Z",
+  "status": "diagnostic_c2_cap_quantification",
+  "passed": false,
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B Q4_K_M/BF16-KV current Generation-2 engine vs retained old design, same p512/d128 SSE 20ms-batch-window protocol; quantifies the cost of the current physical-c2 shared-slot cap. NOT a retained topline.",
+  "decision": "diagnostic only: the c8 gap (0.298x) is attributable entirely to lowering logical c8 into physical c2 groups; c4/c8 shared-slot qualification is the follow-up that should close it",
+  "note_on_passed": "passed=false reflects the c8 live-admission sub-gate failure (server-side request-cancellation), a new-protocol-specific check, not the c1/c8 burst comparison which is clean and exact",
+  "repository": {
+    "branch": "concurrency2",
+    "head_commit": "ad030591db9415664a3033224bbf8ea437f95303",
+    "worktree": "/home/lhl/hipEngine-concurrency2"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "device_selector": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 --gpu 0",
+    "rocm": "HIP 7.2.53211-3d9ef42 / AMD clang 22.0.0git f58b06dce1f9",
+    "note": "rocminfo also lists an RX 7900 XTX on the host; both runs were pinned to device 0 = W7900"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "prompt_token_id": 9707,
+    "timing_boundary": "SSE client cycle wall, simultaneous release to last completed response, generated-token numerator",
+    "generation_batch_window_ms": 20,
+    "prefill_chunk_tokens": 256,
+    "ctx_per_seq": 1024,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "stream_warmup_runs": 0,
+    "stream_measured_runs": 3,
+    "oracle": "independent c1 server, 4 prompt rows",
+    "sampling": "greedy_top1_ignore_eos"
+  },
+  "current_generation2": {
+    "engine": "hipengine (Generation-2 EngineService, token_budget, global KV pool, registered shared-slot physical widths (1,2))",
+    "command_shell": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2-oldproto --hipengine-route-expectation native --hipengine-prefill-decode-policy token_budget --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 1,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-oldproto-p512d128 --json /tmp/hipengine-c2-6-oldproto-p512d128.json",
+    "c1": {
+      "blocking_wall_tok_s_samples": [76.70721, 76.72266, 76.33480],
+      "blocking_wall_tok_s_median": 76.70721,
+      "streaming_tok_s_samples": [76.37132, 76.33926, 76.50386],
+      "streaming_tok_s_median": 76.37132,
+      "streaming_stdev_pct_of_median": 0.1143,
+      "warmup_exact": "1/1",
+      "measured_exact": "3/3",
+      "streaming_exact": true,
+      "ttft_p95_seconds": 0.25156,
+      "itl_p99_seconds": 0.01762
+    },
+    "c8": {
+      "blocking_wall_tok_s_samples": [46.29607, 45.98422, 45.93405],
+      "blocking_wall_tok_s_median": 45.98422,
+      "streaming_tok_s_samples": [46.76773, 47.23949, 47.49447],
+      "streaming_tok_s_median": 47.23949,
+      "streaming_stdev_pct_of_median": 0.7805,
+      "warmup_exact": "8/8",
+      "measured_exact": "24/24",
+      "streaming_exact": true,
+      "ttft_p95_seconds": 2.67931,
+      "itl_p99_seconds": 0.26468,
+      "live_admission": {
+        "passed": false,
+        "reason": "server-side request-cancellation (HTTP 499) on all 8 join requests; each generated ~86-93 of 128 tokens then finish_reason=error",
+        "observed_active_rows": [0, 1],
+        "note": "new-harness join-after-N-decode live protocol; differs from the old protocol's live test, so this is a G2 open issue, not part of the old/new apples-to-apples scope"
+      }
+    }
+  },
+  "old_design": {
+    "source_artifact": "benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json",
+    "harness": "scripts/gguf_live_server_bench.py",
+    "measurement_commit": "2a1fafb80c70ffdf64851f1b679188fe92020bb2",
+    "c1": {
+      "aggregate_tok_s": 72.16914945,
+      "scheduler_ttft_p50_seconds": 0.260637,
+      "scheduler_itl_p50_ms": 11.486417,
+      "cycle_wall_p50_seconds": 1.773611
+    },
+    "packed_c8": {
+      "aggregate_tok_s": 158.542397557,
+      "physical_execution": "one_physical_c8",
+      "scheduler_ttft_p50_seconds": 1.950606,
+      "scheduler_itl_p50_ms": 32.431252,
+      "cycle_wall_p50_seconds": 6.458840
+    }
+  },
+  "comparison": {
+    "c1_current_vs_old_streaming": {
+      "current": 76.37132,
+      "old": 72.16914945,
+      "ratio": 1.0582,
+      "interpretation": "Generation-2 c1 is ~5.8% faster on the identical protocol (graph/workspace improvements); c1 is the cleanest apples-to-apples point"
+    },
+    "c8_current_vs_old_streaming": {
+      "current": 47.23949,
+      "old": 158.542397557,
+      "ratio": 0.2980,
+      "interpretation": "Generation-2 c8 is ~70% slower because logical c8 lowers to physical c2 groups; the old design ran one physical c8. This gap is the target of shared-slot c4/c8 qualification."
+    },
+    "caveats": [
+      "Different source commits (current ad030591 vs old 2a1fafb8); the c8 delta is a physical-width-composition effect, not a kernel regression.",
+      "The old c8 used a single physical c8; the current c8 is capped at physical c2 by GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS=(1,2).",
+      "c1 is the protocol-clean comparison; c8 isolates the c2-cap cost."
+    ]
+  },
+  "raw_source": {
+    "current_json": "/tmp/hipengine-c2-6-oldproto-p512d128.json",
+    "old_artifact": "benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json"
+  },
+  "limitations": [
+    "Diagnostic only; not a retained topline and not a release claim.",
+    "c8 live-admission sub-gate failed (server-side cancellation); open issue, not the apples-to-apples scope.",
+    "No c9/c13 rows were re-run under the current engine; the retained old c9/c13 rows are carried for context only."
+  ],
+  "next": [
+    "Qualify shared-slot physical c4/c8 (byte-exact packed AR state oracle at rows 4 and 8, then F1 c1..c32 sweep) so logical c8 lowers to one physical c8.",
+    "Investigate the c8 live-admission server-side request-cancellation separately."
+  ]
+}

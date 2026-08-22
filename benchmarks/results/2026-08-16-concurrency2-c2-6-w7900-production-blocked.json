@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_6_production_gate",
+  "status": "blocked",
+  "passed": false,
+  "performance_claim": false,
+  "created_at": "2026-08-16T20:15:00Z",
+  "repo": {
+    "branch": "concurrency2",
+    "base_commit": "a5f2455e12b87003591b082f668fcdf574b9140a",
+    "worktree_clean": false,
+    "reason": "C2-6 implementation and focused repair were under test"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "device_selector": "HIP_VISIBLE_DEVICES=0",
+    "rocm": "7.2.53211-3d9ef42",
+    "hipcc_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "workload": {
+    "prompt_tokens_per_request": 128,
+    "decode_tokens_per_request": 8,
+    "prompt_token_ids": "9707 with four deterministic final-token variants",
+    "logical_widths_requested": [1, 8, 17, 32],
+    "scheduler_policy": "token_budget",
+    "prefill_chunk_tokens": 128,
+    "context_tokens_per_sequence": 512,
+    "warmups": 0,
+    "measured_repetitions": 1
+  },
+  "commands": [
+    "python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2 --hipengine-route-expectation native --hipengine-prefill-decode-policy token_budget --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 1,8,17,32 --live-concurrency 17 --prompt-token-id 9707 --prompt-length 128 --decode-tokens 8 --oracle-rows 4 --warmup-runs 0 --measured-runs 1 --generation-batch-window-ms 0 --hipengine-prefill-chunk-tokens 128 --ctx-per-seq 512 --server-ready-timeout 600 --request-timeout 600 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-f1-w7900-fixed --json /tmp/hipengine-c2-6-f1-w7900-fixed.json",
+    "python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2 --hipengine-route-expectation native --hipengine-prefill-decode-policy protect_ttft --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 8 --focused-width-repair --live-concurrency 8 --prompt-token-id 9707 --prompt-length 128 --decode-tokens 8 --oracle-rows 4 --warmup-runs 0 --measured-runs 1 --generation-batch-window-ms 0 --hipengine-prefill-chunk-tokens 128 --ctx-per-seq 512 --server-ready-timeout 600 --request-timeout 600 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-f1-c8-protect-control --json /tmp/hipengine-c2-6-f1-c8-protect-control.json",
+    "python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2 --hipengine-route-expectation serial-c1-per-row --hipengine-prefill-decode-policy token_budget --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 8 --focused-width-repair --live-concurrency 8 --prompt-token-id 9707 --prompt-length 128 --decode-tokens 8 --oracle-rows 4 --warmup-runs 0 --measured-runs 1 --generation-batch-window-ms 0 --hipengine-prefill-chunk-tokens 128 --ctx-per-seq 512 --server-ready-timeout 600 --request-timeout 600 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-f1-c8-serial-real --json /tmp/hipengine-c2-6-f1-c8-serial-real.json"
+  ],
+  "results": {
+    "c1_native": {
+      "correctness": "pass_exact_1_of_1",
+      "http_wall_tokens_per_second_diagnostic": 25.24761334756898,
+      "generation_shape": "physical_c1",
+      "retained_claim_eligible": false
+    },
+    "c8_native_token_budget": {
+      "correctness": "failed",
+      "failure": "invalid token sentinel 2147483647 for request_id=1 at position=128",
+      "oracle": "independent c1 passed",
+      "retained_claim_eligible": false
+    },
+    "c8_native_protect_ttft_control": {
+      "correctness": "failed_same_invalid_token_sentinel",
+      "conclusion": "failure is not specific to token-budget scheduling"
+    },
+    "c8_serial_c1_per_row": {
+      "correctness": "failed_2_of_8_exact",
+      "http_wall_tokens_per_second_diagnostic": 26.907446518127706,
+      "generation_shape": "eight independent physical-c1 queue/backend groups",
+      "serial_decode_fallback": true,
+      "retained_claim_eligible": false
+    },
+    "c17_c32": {
+      "status": "not_run_after_required_c8_correctness_gate_failed"
+    }
+  },
+  "host_gates": {
+    "graph_page_id_prefix_eviction_slot_reuse": "passed",
+    "long_context_4k_16k_32k_mixed_membership": "passed",
+    "fixed_ragged_burst_poisson_overload_disconnect": "passed",
+    "logical_widths_1_through_32": "passed",
+    "final_pool_and_ledger_conservation": "passed"
+  },
+  "blockers": [
+    "The live GGUF runner still uses DeviceChunkedKVPool and request-private base-pointer identity; GlobalKVPoolSet/KVStorageView is not wired to its kernels or graphs.",
+    "Independently submitted C2 children are not numerically isolated at logical c8: native packed decode emits an invalid sentinel, while true serial-c1 fallback returns six trajectories that differ from each independent c1 oracle.",
+    "The Generation-1 same-backing compatibility path therefore cannot serve as the C2-6 correctness fallback and must remain unpromoted.",
+    "No gfx1151 device is present in this host, so the second gfx11 hardware gate is unavailable.",
+    "vLLM and SGLang are not installed on this host; matched current-commit comparisons are unavailable. Existing retained llama.cpp comparisons remain historical context only."
+  ],
+  "decision": {
+    "promote_defaults": false,
+    "continue_to_dms_production": false,
+    "required_next_fix": "wire the real GGUF runner to generation-checked global page tables and repair independent row state/KV isolation before rerunning c8, then c17/c32"
+  }
+}

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
+
+from hipengine.generation import EngineLoopConfig
 
 from scripts.gguf_production_load_gate import (
     RequestResult,
     SLOThresholds,
     TuningCandidate,
+    WorkloadRequest,
     _PROVENANCE_ENV_KEYS,
     _aggregate_tuning_runs,
     _build_workload_specs,
@@ -19,11 +24,17 @@ from scripts.gguf_production_load_gate import (
     _openai_error_fields,
     _load_tuning_protocol,
     _llm_construction_kwargs,
+    _memory_recovery_gate,
+    _occupancy_summary,
     _parse_workload_names,
     _poisson_arrival_offsets,
+    _reconfigure_loaded_loop,
     _rotated_tuning_plan,
+    _run_isolated_reference_worker,
+    _run_same_owner_references,
     _select_tuning_candidate,
     _tracked_source_dirty,
+    _wait_for_idle,
 )
 
 
@@ -53,6 +64,234 @@ def test_distribution_reports_nearest_rank_p50_p95_p99() -> None:
     assert summary["max"] == pytest.approx(100.0)
 
 
+def test_same_owner_oracles_are_serial_exact_and_drained() -> None:
+    calls: list[tuple[str, int]] = []
+
+    class FakeLLM:
+        def generate_detailed(self, prompts, params):
+            calls.append((str(prompts[0]), int(params.max_tokens)))
+            return [
+                SimpleNamespace(
+                    generated_token_ids=tuple([len(calls)] * int(params.max_tokens))
+                )
+            ]
+
+        @staticmethod
+        def live_loop_snapshot():
+            return {
+                "loop": {"requests": {"active": 0, "pending": 0}},
+                "runner": {"model_runner": {"active_requests": 0}},
+            }
+
+    rows = {
+        "token=7:prompt=2": {"text": "first"},
+        "token=8:prompt=2": {"text": "second"},
+    }
+    specs = (
+        WorkloadRequest("first", 7, 2, 3),
+        WorkloadRequest("second", 8, 2, 2),
+    )
+
+    tokens, metadata = _run_same_owner_references(FakeLLM(), rows, specs)
+
+    assert calls == [("first", 3), ("second", 2)]
+    assert tokens == {
+        "token=7:prompt=2": (1, 1, 1),
+        "token=8:prompt=2": (2, 2),
+    }
+    assert metadata == {
+        "mode": "same_owner_serial_c1",
+        "process_isolated": False,
+        "oracle_rows": 2,
+        "decode_graph": "disabled_during_oracle_only",
+        "final_active_requests": 0,
+        "final_pending_requests": 0,
+    }
+
+
+def test_isolated_oracle_worker_roundtrips_prompt_and_tokens(monkeypatch) -> None:
+    def fake_run(command, **kwargs):
+        del kwargs
+        output_path = command[command.index("--output-json") + 1]
+        from pathlib import Path
+
+        Path(output_path).write_text(
+            '{"prompt_rows":{"token=7:prompt=2":{"token_ids":[7,7],"token_ids_sha256":"abc"}},'
+            '"reference_tokens":{"token=7:prompt=2":[8,9]}}',
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="reference 1/1")
+
+    monkeypatch.setattr(
+        "scripts.gguf_production_load_gate.subprocess.run",
+        fake_run,
+    )
+    prompts, references, metadata = _run_isolated_reference_worker(
+        model=SimpleNamespace(__str__=lambda self: "/models/fake"),
+        backend="hip_gfx1100",
+        max_active_requests=2,
+        max_sequence_length=16,
+        max_output_tokens=2,
+        specs=(WorkloadRequest("row", 7, 2, 2),),
+        compiler_version_file=None,
+        require_cached_build=False,
+    )
+
+    assert prompts["token=7:prompt=2"]["token_ids"] == (7, 7)
+    assert references == {"token=7:prompt=2": (8, 9)}
+    assert metadata["process_isolated"] is True
+    assert metadata["max_oracle_keys_per_process"] == 4
+    assert metadata["worker_processes"] == 1
+    assert metadata["oracle_rows"] == 1
+
+
+def test_isolated_oracle_workers_partition_to_four_keys(monkeypatch) -> None:
+    calls: list[list[dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):
+        del kwargs
+        import json
+        from pathlib import Path
+
+        specs_path = Path(command[command.index("--specs-json") + 1])
+        output_path = Path(command[command.index("--output-json") + 1])
+        specs = json.loads(specs_path.read_text(encoding="utf-8"))
+        calls.append(specs)
+        prompt_rows = {}
+        references = {}
+        for spec in specs:
+            key = f"token={spec['token_id']}:prompt={spec['prompt_length']}"
+            prompt_rows[key] = {
+                "token_ids": [spec["token_id"]] * spec["prompt_length"],
+                "token_ids_sha256": key,
+            }
+            references[key] = [spec["token_id"]]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "prompt_rows": prompt_rows,
+                    "reference_tokens": references,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "scripts.gguf_production_load_gate.subprocess.run",
+        fake_run,
+    )
+    specs = tuple(
+        WorkloadRequest(f"row-{index}", 100 + index, 2, 1)
+        for index in range(5)
+    )
+
+    prompts, references, metadata = _run_isolated_reference_worker(
+        model=SimpleNamespace(__str__=lambda self: "/models/fake"),
+        backend="hip_gfx1100",
+        max_active_requests=2,
+        max_sequence_length=16,
+        max_output_tokens=1,
+        specs=specs,
+        compiler_version_file=None,
+        require_cached_build=False,
+    )
+
+    assert [len(rows) for rows in calls] == [4, 1]
+    assert len(prompts) == len(references) == 5
+    assert metadata["worker_processes"] == 2
+    assert [len(worker["oracle_keys"]) for worker in metadata["workers"]] == [4, 1]
+
+
+def test_tuning_reconfiguration_uses_loaded_driver_control() -> None:
+    observed: list[EngineLoopConfig] = []
+    driver = SimpleNamespace(
+        reconfigure_engine_loop=lambda config: observed.append(config)
+    )
+    llm = SimpleNamespace(_get_text_generator=lambda: driver)
+    adapter = SimpleNamespace(
+        _loop=SimpleNamespace(
+            config=EngineLoopConfig(max_active_requests=8),
+        )
+    )
+
+    _reconfigure_loaded_loop(
+        llm,
+        adapter,
+        policy="token_budget",
+        prefill_chunk_tokens=256,
+        fair_prefill_burst_chunks=2,
+    )
+
+    assert len(observed) == 1
+    assert observed[0].prefill_decode_policy == "token_budget"
+    assert observed[0].max_prefill_chunk_tokens == 256
+    assert observed[0].fair_prefill_burst_chunks == 2
+
+
+def test_wait_for_idle_tolerates_long_transition_control_timeout() -> None:
+    class FakeLLM:
+        calls = 0
+
+        def live_loop_snapshot(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("control timeout")
+            return {
+                "loop": {"requests": {"active": 0, "pending": 0}},
+                "runner": {"model_runner": {"active_requests": 0}},
+            }
+
+    class FakeBatcher:
+        @staticmethod
+        def queue_depth() -> int:
+            return 0
+
+        @staticmethod
+        def active_requests() -> int:
+            return 0
+
+        @staticmethod
+        def active() -> bool:
+            return False
+
+    observed = _wait_for_idle(FakeLLM(), FakeBatcher(), timeout_seconds=1.0)
+
+    assert observed["control_timeouts"] == 1
+    assert observed["generation_queue_depth"] == 0
+
+
+def test_occupancy_route_uses_live_snapshot_plan_when_hook_timeline_is_empty() -> None:
+    plan = {
+        "logical_c": 3,
+        "groups": [
+            {"physical_rows": 2, "active_mask": [True, True], "execution_path": "packed_native"},
+            {"physical_rows": 1, "active_mask": [True], "execution_path": "native_c1_eager"},
+        ],
+    }
+
+    summary = _occupancy_summary(
+        [
+            {
+                "active": 3,
+                "pending": 0,
+                "occupancy_ratio": 1.0,
+                "generation_queue_depth": 0,
+                "stream_queue_max_depth": 1,
+                "physical_group_plan": plan,
+            }
+        ],
+        [],
+        stream_queue_limit=4,
+    )
+
+    assert summary["route_passed"] is True
+    assert summary["execution_paths"] == ["native_c1_eager", "packed_native"]
+    assert summary["logical_physical_shapes"] == [
+        {"logical_c": 3, "physical_widths": [2, 1], "active_masks": ["11", "1"]}
+    ]
+
+
 def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
     first = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
     second = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
@@ -68,8 +307,12 @@ def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
 def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None:
     parser = build_parser()
 
-    assert parser.parse_args([]).prefix_cache == "off"
-    assert parser.parse_args([]).gdn_mode == "exact"
+    defaults = parser.parse_args([])
+    assert defaults.prefix_cache == "off"
+    assert defaults.oracle_mode == "same_owner"
+    assert defaults.gdn_mode == "exact"
+    assert defaults.initial_policy == "token_budget"
+    assert defaults.tuning_candidates.startswith("token_budget:128,token_budget:256")
     assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
     assert (
         parser.parse_args(
@@ -200,7 +443,7 @@ def test_workload_plan_covers_required_production_modes() -> None:
         if item.action == "disconnect"
     )
     assert disconnect.disconnect_after_tokens == 1
-    assert len(workloads["overload"]) > 16
+    assert len(workloads["overload"]) == 40
     assert workloads["continuous_fixed"][0].arrival_offset_seconds == 0.0
     assert workloads["continuous_fixed"][-1].arrival_offset_seconds > 0.0
     assert workloads["continuous_poisson"][0].arrival_offset_seconds == 0.0
@@ -475,3 +718,51 @@ def test_a4_tuning_aggregation_rejects_incomplete_candidate() -> None:
             configurations=(configuration,),
             expected_repetitions=3,
         )
+
+
+def test_memory_recovery_gate_treats_workspace_lease_as_expected_pins() -> None:
+    baseline = {"tracked": {"current_bytes": 1000}}
+    final = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "packed_workspace_lease_pages": 32,
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 32,
+                "current_pages": 40,
+                "free_pages": 8,
+            },
+        },
+    }
+    verdict = _memory_recovery_gate(baseline, final, tracked_tolerance_bytes=64)
+    assert verdict["passed"] is True
+    assert verdict["kv_pool_workspace_lease_pages"] == 32
+
+    # A missing lease (pre-unification payloads) keeps the zero-pin contract.
+    legacy_final = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 0,
+                "current_pages": 8,
+                "free_pages": 8,
+            }
+        },
+    }
+    assert _memory_recovery_gate(baseline, legacy_final, tracked_tolerance_bytes=64)["passed"] is True
+
+    # Unexpected pins beyond the lease still fail closed.
+    leaked = {
+        "tracked": {"current_bytes": 1000},
+        "kv_pool": {
+            "packed_workspace_lease_pages": 32,
+            "dynamic_pool": {
+                "refcounted_pages": 0,
+                "pinned_pages": 33,
+                "current_pages": 40,
+                "free_pages": 7,
+            },
+        },
+    }
+    assert _memory_recovery_gate(baseline, leaked, tracked_tolerance_bytes=64)["passed"] is False

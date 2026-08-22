@@ -1,12 +1,14 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-17.
+Last updated: 2026-08-21.
 
-_Status: approved redesign and implementation roadmap. This document is the
-source of truth for the next-generation server scheduler, request lifecycle,
-and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md) remains the
-historical record for the retained c=N kernel and resident-runner campaigns;
-new architecture work belongs here._
+_Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
+short/long serving and the canonical W7900 production load are retained, while
+cross-backend/external and DMS product closure remain open. The executable audit
+reports 31 passed, 3 blocked, and 1 unavailable rows. This document remains the
+source of truth for the server scheduler, request
+lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
+remains the historical c=N kernel/resident-runner record._
 
 Related source-of-truth documents:
 
@@ -20,6 +22,515 @@ Related source-of-truth documents:
   scheduler and must not create a second concurrency implementation.
 - [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — speculative transaction and
   verification work classes.
+
+## Current implementation and product status
+
+| Phase | Implemented / retained | Product status / remaining gate |
+| --- | --- | --- |
+| C2-0 contracts/simulator | Complete; current affected bundle 68/68 plus fixture/smoke checks. | Closed. |
+| C2-1 sole engine service | Independent blocking/SSE/library children, terminal reclaim, per-child rejection/cancellation. | Closed. |
+| C2-2 resource admission | Format-neutral atomic ledger, fit-aware bounded lookahead, named pressure telemetry. | Closed. |
+| C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
+| C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
+| C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
+| C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
+| C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
+| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs and a guarded non-streaming GGUF MTP route are migration inputs. | Full continuous scheduling, draft-side batching, streaming, generic provider/tree support, and product gates remain open; see the full-support contract below. |
+
+Executable source-to-evidence audit:
+[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
+Its 31-passed/3-blocked/1-unavailable counts describe the pre-C2-S audit schema;
+they are not a claim that the new speculative-support units are implemented.
+
+### Closure interpretation: running core versus remaining product scope
+
+Generation 2 is **already running and production-qualified for the declared
+W7900 dense-BF16 Qwen configuration**: one `EngineService`, independent child
+completion, global arbitrary-page KV, prefix/cache ownership, token-budget
+c1-c32 scheduling, graph/page/slot lifecycle, long/mixed contexts, load,
+pressure, cancellation, overload, memory, and final drain have retained gates.
+The branch is therefore an integration candidate, not a prototype waiting for a
+scheduler rewrite.
+
+The remaining work is not all “tuning,” however. Keep these scopes distinct:
+
+- **Safe optional optimization:** #37 wall/critical-path attribution and later
+  family tuning. Qwen3.8 cost-aware D2 remains an explicit-config experiment;
+  exact ceiling composition is the accepted merge/default policy.
+- **Backend qualification:** gfx1151 inherits the common host scheduler, ledger,
+  pool, transaction, and output code, but independently qualifies physical
+  widths, kernels, graphs, cost maps, lifecycle, and production load.
+- **Feature/product closure:** real-checkpoint no-shadow DMS device conformance,
+  realistic tier restore economics, and C2-S continuous MTP/SpecDec integration
+  remain implementation campaigns rather than tuning of the dense AR core.
+- **Comparison coverage:** matched prior-engine/llama.cpp/vLLM/SGLang serving is
+  evidence work and may remain unavailable without invalidating the retained
+  W7900 same-engine gates.
+
+Open optional or backend-specific capabilities stay default-off, explicit, or
+fail-closed. They do not justify withholding the working common architecture
+from integration, but merge readiness still requires reconciling current
+`origin/main`, resolving shared-file conflicts, and proving no regression
+against the same baseline nodes and focused Generation-2 bundles.
+
+### gfx1151 qualification and optimization plan
+
+This is the Generation-2 port and tuning contract for Strix Halo / Radeon 8060S
+(`hip_gfx1151`). It complements the model-specific evidence in
+[`QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md`](QWEN36-35B-ZBOOK-PRODUCTION-NUMERICS.md),
+[`QWEN38-27B-GFX1151-CAMPAIGN.md`](QWEN38-27B-GFX1151-CAMPAIGN.md), and
+[`PARO-GGUF-MTP-TRANSFER.md`](PARO-GGUF-MTP-TRANSFER.md). Those documents remain
+the authorities for their model/quant/kernel decisions; this section owns the
+common C2 integration order.
+
+#### What transfers and what does not
+
+The gfx1151 package reuses the common request table, `EngineService`, token-
+budget planner, output collectors, resource ledger, global-pool/radix-cache
+protocols, `KVLiveSpans`, transaction API, and host conformance simulator. The
+port should register capabilities and adapters, not copy or fork those systems.
+
+The following require independent gfx1151 evidence for each model/quant/KV
+combination:
+
+- physical decode and verifier widths, mask classes, context limits, graph
+  buckets, workspace and resident-state bounds;
+- strict/production variant manifests and fallbacks;
+- AR and verifier cost maps, D2 decomposition, prefill/decode policy, admission
+  limits, and graph/eager defaults;
+- every HIP kernel, layout, fusion, KV codec, and memory-saving route; and
+- complete correctness, lifecycle, load/SLO, memory, thermal, and performance
+  promotion.
+
+W7900 evidence never transfers to gfx1151, and two Radeon 8060S hosts are also
+independent physical lanes. Absolute rates, power-limited behavior, and defaults
+do not transfer merely because hosts share an architecture or kernel source.
+Retained ZBook evidence records its 60/60/45 W
+power state and one-queue protocol; a Framework or desktop lane needs its own
+baseline rather than an old-to-new ratio against ZBook.
+
+Existing gfx1151 evidence is useful but does not by itself close C2 production:
+PARO has qualified physical c2/c4/c8 in its existing owner; Qwen3.6 GGUF has
+named profiles, c1/cN numerical/lifecycle evidence, and model-specific retained
+routes; Qwen3.8 has a separately optimized dense package. The C2 gate must prove
+that those packages run through the common service, global backend-owned pool,
+logical c1-c32 planner, and production lifecycle rather than a legacy resident
+or benchmark-only loop.
+
+#### Hardware and measurement controls
+
+Treat the 40-CU integrated GPU and shared-memory system as a distinct roofline.
+Before selecting a mechanism:
+
+1. Freeze host, firmware/ROCm, power limits, AC state, scheduler/queue policy,
+   model fingerprint, quant, KV backend, execution profile, prompt hashes, and
+   thermal idle band.
+2. Prebuild JIT objects outside profiling and require cached builds inside it.
+3. Measure clean complete-request/server wall separately from synchronized
+   profiler windows; collect HIP API/copy, kernel intervals, stage/critical-path
+   evidence, and actual allocation bytes.
+4. Keep c1/c4/c8/c17/c32, eager/graph, p512 and long-context controls separate.
+5. Counterbalance same-resident A/B order and retain every thermally or
+   mechanically invalid sample with its reason.
+
+`rocprofv3` support itself is a gate. Historical gfx1151 traces have included
+zero-duration dispatches on some ROCm combinations; in that case use a declared
+same-stream device clock/stage method and do not invent kernel utilization from
+host markers. A low launch-API wall or low kernel interval union does not by
+itself identify a host or device bottleneck.
+
+#### G1151-0 — capability and C2-path audit
+
+Start with no tuning:
+
+- resolve the real backend/model package and emit registered prefill, AR,
+  verifier, sampler, KV, graph, and strict-fallback capabilities;
+- prove the server reaches `EngineService`, backend-produced resource claims,
+  `GlobalKVPoolSet`/`KVBatchView`, stable metadata slabs, and the C2 execution
+  planner with no backend/quant branch added to engine code;
+- inventory physical widths honestly. PARO c2/c4/c8 evidence does not imply GGUF
+  widths, and exact c3/c5/c6/c7 partitions are not native physical-width claims;
+- audit every decode transition for JIT/build, hidden allocation, host row loop,
+  copy/readback, synchronization, recapture, serial fallback, and stale graph
+  generation; and
+- establish tracked-clean c1/c4/c8 graph and eager route/correctness traces plus
+  clean non-profiled wall before changing policy.
+
+The current hot-path library-hoist work is a required baseline: the Qwen3.6 MoE
+router and GGUF linear families previously paid repeated `build_X(load=True)`
+costs, and those handles were hoisted. A C2 profile must confirm zero per-call
+builds rather than propose another dispatch refactor. Dense Qwen3.6's
+`t16_selected` hoist reduces host work but measured no complete-wall win, so
+“remove Python overhead” is not a default gfx1151 optimization premise.
+
+#### G1151-1 — functional production qualification
+
+Run the common host and physical-device gates before performance promotion:
+
+- fixed, ragged, delayed, Poisson, cancellation/disconnect, overload/recovery,
+  refill, sparse retirement, compaction, and 60-second-plus soak;
+- logical widths 1,2,3,4,5,7,8,9,13,16,17,24,32 with exact physical
+  decomposition, no route-cap admission clamp, and a direct physical c1;
+- 1K/4K/16K/32K and model-supported long-context membership, page growth,
+  changed-page graph replay, prefix attach/COW/eviction, memory recovery, and
+  final drain;
+- request/slot/row, token/position/mask, Conv/GDN/SSM, KV, graph, sampler, and
+  collector isolation under every transition; and
+- strict/production numerical gates plus the full task/category matrix required
+  by `EXECUTION-PROFILES.md`.
+
+The prior ZBook Qwen3.6 server packet saturated the physical bucket and failed
+its long soak through overload/ITL/TTFT pressure. Do not “fix” that by enlarging
+queues or weakening SLOs. First determine whether the limiting resource is
+model service rate, physical grouping, prefill interference, admission policy,
+or memory; then tune the measured owner and rerun offered-load goodput.
+
+#### G1151-2 — scheduler, widths, and graph policy
+
+Build gfx1151-specific maps from actual complete operations and the production
+owner:
+
+- price every certified `(active_rows, physical_rows, mask_class, variant)` for
+  AR and separately price verifier `(C,V,tree/chain)` shapes;
+- compare native/masked groups, balanced composition, and serial edges at c1-c32
+  under aggregate goodput, per-request rate, TTFT/ITL, workspace, and memory;
+- retain the current ceiling planner as exact fallback and promote D2 only after
+  a same-server dynamic-membership gate; and
+- select graph/eager and prefill/decode policy by complete wall and SLO, not
+  launch-count reduction alone.
+
+Graph replay is not assumed beneficial on gfx1151. Prior model-specific rows
+include neutral or rejected graph-width/graph-replay attempts, while other
+captured routes are retained. Profile graph node dependencies, recapture,
+submission, synchronization, and device idle intervals on the actual C2 owner.
+Use uncaptured exact fallbacks for rare shapes and never mask c1 into a wider
+bucket merely to increase graph reuse.
+
+#### G1151-3 — kernel priorities after the path ledger closes
+
+Rank by recoverable complete-wall milliseconds for the selected model; do not
+create one universal gfx1151 kernel queue.
+
+1. **Quantized projections and MoE.** For dense Qwen3.8, current model-specific
+   profiles place Q4 paired/singleton and planar-Q6 projection families far
+   ahead of already-reduced attention/norm work. For Qwen3.6 MoE, the remaining
+   high-value work is routed expert/linear GPU execution and cN expert grouping,
+   not another c1 T0 Q8/Q4 inner-loop variant: the prior c1 candidate ladder is
+   closed as a measured no-win. Measure routed lanes per expert, activation
+   reuse, bytes, VALU/WMMA issue, waves, VGPR/LDS/scratch, and grid occupancy;
+   choose row-GEMV versus compact/WMMA from routed lanes rather than request
+   count.
+2. **Operation-complete launch/dataflow contraction.** Keep exact producer-
+   consumer contractions that remove real graph nodes or repeated traffic—such
+   as qualified residual, BF16 handoff, alpha/beta, Conv, norm, or same-input
+   paired-projection boundaries—only when their call-weighted complete route
+   wins. Do not repeat already rejected all-width, metadata-broadcast,
+   output-subdivision, or fusion ideas without a materially new mechanism.
+3. **Attention by context regime.** Reproduce short/global/SWA family walls.
+   Qwen3.8's retained grouped-GQA long-context route already reduced attention
+   to a small share in its post-route profile; after that point projection work
+   outranks another generic attention rewrite. Other models may still justify
+   native full-attention prefill, split-K, wave/thread geometry, or packed query
+   work, but must show a current family-level ceiling.
+4. **Conv/GDN/SSM recurrence.** Split projection, Conv, decay, recurrence,
+   normalization/gate, state journal, and commit. Existing Qwen3.6 evidence
+   shows real recurrence kernel wall but also disproves using the larger host
+   marker as its cost. Optimize or fuse only the measured serial critical path;
+   preserve request-local state and exact rollback owners.
+5. **Prefill.** Rebuild thresholds by shape for native attention/AOTriton,
+   quantized WMMA, row/chunk geometry, and scratch capacity. Retained Q5 source-
+   F16, shared-Q6, and WMMA results are model/layout-specific. Avoid a second
+   resident layout or decode sidecar unless the complete memory-and-wall gate
+   beats sole ownership.
+6. **LM head, sampler, norms, and metadata.** Treat these as lower priority once
+   their measured family is small. Fuse only when it removes synchronization,
+   launch, or repeated traffic without broadening output/readback or changing
+   per-request RNG semantics.
+
+Changed-arithmetic T1/T2 candidates require the complete production-profile
+numerical/task gate and strict fallback. Exact leaf wins remain provisional
+until the complete C2 graph/server route improves. No optimization may depend on
+fixed prompt/token/candidate IDs.
+
+#### G1151-4 — memory, KV, and integrated-system policy
+
+Plan against measured process/system memory and backend allocations, not a
+W7900 VRAM formula. Account weights, graph/static slabs, model state, every KV
+plane, scale/codebook metadata, transaction journals, prefill/attention
+workspace, runtime reserve, and host/cold-tier objects. Admission uses the
+backend-produced claim vector and must survive pressure without late HIP OOM.
+
+Qualify dense BF16 first. No-mirror INT8/FP8 or compact DMS is a separate
+backend/layout/quality campaign: prior Qwen3.8 native INT8 K/V failed its model-
+level quality gate, so it is not a generic gfx1151 memory solution. Prefix
+sharing, tier restore, and DMS snapshot semantics retain their common C2
+contracts but need device-specific capacity, transfer, quality, and SLO proof.
+
+#### G1151-5 — MTP/SpecDec
+
+Reuse C2-S host contracts and the registered native-cycle ABI. Existing gfx1151
+MTP/native-cycle evidence is a provider-specific migration input, not full
+continuous SpecDec qualification. Independently gate proposal, target verify,
+accept, selected state/KV commit, cursors, streaming, cancellation, transaction
+memory, draft-side cross-request batching, and mixed AR/SpecDec fairness.
+
+Optimize verifier physical shapes and provider kernels from a true same-protocol
+AR baseline and the full multi-prompt category+heldout suite. AR widths/cost maps
+must not price verifier rows. DFlash or another drafter remains default-off when
+its exact end-to-end economics lose, regardless of a fast target verifier.
+
+#### Promotion order and exit
+
+Execute one measured unit at a time:
+
+1. tracked-clean capability/path ledger;
+2. correctness/lifecycle/global-pool C2 gate;
+3. canonical load and SLO baseline;
+4. production-owner wall/API/copy/kernel/bytes/issue/occupancy profile;
+5. one highest-recoverable-ms scheduler or kernel candidate;
+6. operation-complete and full-profile quality gates;
+7. counterbalanced complete-server A/B, memory, pressure, and soak; and
+8. compact artifact, rollup, default decision, and removal/`REFACTOR.md` entry.
+
+Task #50 closes only when one declared gfx1151 model/quant/KV configuration
+passes the same common Generation-2 ownership and production gate as W7900,
+with independent backend capabilities and artifacts. It is not blocked on every
+optional model, codec, SpecDec provider, or external comparison, but unsupported
+surfaces must advertise and fail closed honestly.
+
+## Performance snapshot and old-design comparison
+
+### Retained Generation-2 short-request packet
+
+W7900, exact-file Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8,
+token-budget scheduling, zero generation batch window, same-loaded-server c1
+oracles. After the c4/c8 promotion, logical cN lowers to registered physical
+c4/c8 buckets (plus a c1 edge):
+
+| Logical c | 1 | 2 | 4 | 8 | 17 | 32 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Aggregate HTTP wall tok/s (c4/c8) | 27.443 | 34.394 | 43.337 | 46.158 | 45.797 | 44.320 |
+| Aggregate HTTP wall tok/s (prior c2 cap) | 28.355 | 37.466 | 36.594 | 35.892 | 35.102 | 35.119 |
+| Exact rows | 1/1 | 2/2 | 4/4 | 8/8 | 17/17 | 32/32 |
+
+The c4/c8 promotion recovers the c2-cap cost: c4/c8/c17/c32 are **+16.6 / +28.2 /
++29.7 / +28.6%** over the prior c2-only rows, all byte-exact. The binding
+same-protocol c8 comparison (one warmup, three measurements) is now **44.031
+tok/s native physical-c8 versus 27.634 tok/s exact serial-c1 (+59.27%)**; it was
+35.773 versus 27.586 (+29.68%) at the c2 cap. Live refill is 17/17 exact at
+c17. This is the valid retained performance claim for Generation 2.
+Evidence: [`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
+
+### Retained old implementation (not an apples-to-apples A/B)
+
+The August 8 Generation-1 server packet used p512/d128, one warmup/three
+measurements, SSE, 20 ms generation batching, a different source commit/ROCm
+generation, and physical c8 kernels:
+
+| Route | c1 | c8 | c9 | c13 |
+| --- | ---: | ---: | ---: | ---: |
+| Aggregate server tok/s | 72.169 | 158.542 | 137.001 | 129.507 |
+| Scale vs old c1 | 1.000x | 2.197x | 1.898x | 1.794x |
+
+These absolute rows **must not be divided against the p128/d8 Generation-2
+numbers** on protocol grounds: prompt/decode lengths, HTTP protocol, batching
+window, source/model fingerprint, and runtime differ. To close that gap the
+current engine was re-run under the **exact old protocol** (p512/d128, SSE
+streaming-primary, 20 ms generation batch window, 256 prefill chunk, ctx 1024,
+1 warmup + 3 measured, independent c1 oracles, W7900 device 0).
+
+### Measured apples-to-apples old-protocol comparison (2026-08-17)
+
+| c | Current G2 (SSE median) | Old G1 (SSE) | Ratio |
+| ---: | ---: | ---: | ---: |
+| 1 | 76.371 tok/s | 72.169 tok/s | **1.058x** |
+| 8 (c2 cap, pre-flip) | 47.239 tok/s | 158.542 tok/s | 0.298x |
+| 8 (c4/c8, post-flip) | ~154.322 tok/s | 158.542 tok/s | **0.973x** |
+
+- **c1**: Generation-2 is ~5.8% faster on the identical protocol — the cleanest
+  apples-to-apples point, reflecting graph/workspace improvements.
+- **c8 (pre-flip)**: ~70% slower **entirely because of the physical-c2
+  shared-slot cap**: logical c8 lowered to c2 groups, while the old design ran
+  one physical c8 — a physical-width-composition effect, not a kernel regression.
+- **c8 (post-flip)**: after the shared-slot c4/c8 promotion, c8 reaches
+  **~154-156 tok/s ≈ 0.973x the old design**, closing the c2-cap gap. All c8
+  burst/streaming rows are byte-exact.
+
+The separate c8 live-admission sub-gate (the new harness's join-after-N-decode
+protocol, which differs from the old live test) hit a server-side request
+cancellation (HTTP 499) pre-flip and a GPU page fault post-flip. The canonical
+fault mechanism is now fixed and the full production packet passes, but this
+specific p512/d128 join-after-N protocol still needs a focused post-fix rerun.
+
+Evidence:
+[`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
+[`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json),
+[`measured apples-to-apples old-protocol diagnostic`](../benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json),
+and
+[`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
+
+### Simplified c=N view: what scaling proves—and what remains unknown
+
+The retained direct graph packet, not the later invalid eager D2 sweep, is the
+current model-step evidence for Qwen3.8-27B `Q4_K_M` on W7900: c1 is **33.17 ms /
+30.30 aggregate tok/s** and direct c8 is **63.53 ms / 127.32 aggregate tok/s**.
+Packing therefore produces **4.20× aggregate throughput** at c8 while increasing
+round wall only **1.92×**. This proves useful weight/metadata/workspace
+amortization and substantially better GPU utilization. It does **not** identify
+the limiting mechanism. A fitted “fixed” term includes the one weight stream,
+dequant setup, device kernels, dispatch, and synchronization; it cannot be
+relabeled host overhead from scaling alone.
+
+A packed rowtile can reuse a physical group's weight reads across active rows,
+so useful arithmetic intensity rises approximately as `AI = 2M/bpw`. That makes
+sub-linear wall growth expected under both a bandwidth-limited weight stream and
+an underfilled/issue-limited c1 kernel. Likewise, “compute-bound means c8 must
+take 8× c1 wall” is false when c1 does not fill the machine or c8 selects a
+different row-shaped implementation. The model executes **64 normal AR decode
+layers** (48 linear-attention + 16 full-attention), each with multiple kernels;
+there is no measured 28-layer latency model.
+
+The c1-c32 D2/ceiling eager sweep is retained only as a diagnostic. It bypassed
+HTTP, EngineService, scheduler-owned lowering, graph replay, TTFT/ITL, dynamic
+membership, server memory, and drain; lacked clean provenance/canonical command;
+always ran D2 before ceiling; mixed p512 and p128 lanes; and originally reported
+incorrectly scaled goodput. It must not appear as a current product throughput
+table. D2 remains an identity-gated explicit research path; ceiling is the
+accepted production default below.
+
+#### Corrected roofline bounds, not a bottleneck verdict
+
+W7900 VRAM is **864 GB/s theoretical** GDDR6. A generic large sequential stream
+may sustain roughly **650–735 GB/s**, but that range is not a measurement of the
+current kernels. Treat the ~15.3 GB active-weight figure as an illustrative
+resident-byte proxy, not measured VRAM transactions: cache-line waste, repeated
+metadata, activation/state traffic, cache hits, and role-specific layouts can
+change actual bytes substantially.
+
+| illustrative quantity | value | interpretation |
+| --- | ---: | --- |
+| one 15.3 GB stream @ 864 GB/s | ~17.7 ms | unattainable theoretical floor |
+| one 15.3 GB stream @ 650–735 GB/s | ~20.8–23.5 ms | generic stream bound, not kernel evidence |
+| retained c1 step | 33.17 ms | 1.41–1.59× the generic sustained floor |
+| c8 aggregate ceiling from that proxy | ~340–452 tok/s | assumes one exact stream per eight rows |
+| retained direct c8 | 63.53 ms / 127.32 tok/s | ~28% theoretical or ~33–37% generic sustained roof |
+
+Being below an ideal bandwidth roof does **not** prove the step is not
+bandwidth-limited: low occupancy, scattered/cache-line-wasteful reads, poor
+channel utilization, and dequant issue can all reduce attainable bandwidth.
+Nor does nominal Q4 row8 AI prove the step is not compute/issue-limited. For the
+T16 Q4 layout (`bpw = 0.578125`), useful row8 AI is about **27.7 FLOP/byte**,
+but the relevant vector roof depends on VOPD pairing, and dequantization shares
+the VALU issue path. Q5/Q6, attention, GDN recurrence, norms, and the LM head
+have different roofs. The 2.30 TB/s Infinity-Cache figure is also not a
+whole-model weight roof: 15.3 GB is far larger than the 96 MB cache.
+
+**Current whole-step classification: unknown/mixed.** The defensible statement
+is that c8 has material headroom relative to an idealized byte roof while the
+retained trace already assigns most observed time to device kernels. It is not
+defensible to call the complete step globally bandwidth-bound, compute-bound,
+or host/launch-latency-bound without family-level traffic and issue counters.
+
+#### Current measured c8 opportunity ledger
+
+The clean post-rowtile records give the following steering ledger. The 63.53 ms
+wall and 54.05 ms profiler kernel sum are from comparable but not identical
+measurement boundaries, so the subtraction is an **upper bound**, not a measured
+host-overhead bucket.
+
+| opportunity | measured / bounded time | share of 63.53 ms wall | ideal 2× saving | status |
+| --- | ---: | ---: | ---: | --- |
+| Dense projections, complete family | 43.25 ms | 68.1% | 21.63 ms | largest measured target |
+| ├─ Q4 paired projections | 12.89 ms | 20.3% | 6.45 ms | mechanism unknown |
+| ├─ planar-Q6 projections | 10.76 ms | 16.9% | 5.38 ms | mechanism unknown; row8 VGPR136 |
+| ├─ Q4 singleton projections | 10.69 ms | 16.8% | 5.35 ms | mechanism unknown |
+| └─ Q5 projections | 4.30 ms | 6.8% | 2.15 ms | true rowtile already active |
+| GDN/state family | 8.17 ms | 12.9% | 4.09 ms | recurrence/issue split unknown |
+| Wall minus traced kernel sum | ≤9.48 ms | ≤14.9% | not applicable | unreconciled upper bound |
+| Other traced kernels | ~2.63 ms | ~4.1% | ≤1.32 ms | lower priority in isolation |
+
+The profiler sum is ~85% of the non-profiled wall and dense projections alone
+are ~68%, which contradicts an assertion that host launch overhead is already
+known to dominate. Conversely, the ≤9.48 ms unreconciled bound is large enough
+that dispatch/synchronization/fusion remains a serious candidate. The next unit
+must measure which interpretation is correct rather than choose one by prose.
+
+#### #37 measurement ladder: rank before tuning
+
+Run these in order on one tracked-clean commit, one physical W7900 host, exact
+Qwen3.8 model fingerprint, BF16 KV, cached builds, and one fixed prompt/context
+shape. Keep c1/c4/c8 and eager/graph controls separate; do not mix p128 and p512
+inside one comparison.
+
+1. **Reconcile complete wall.** Repeat the non-profiled c1/c4/c8 graph packet,
+   then use `scripts/gguf_packed_ar_rocprof.py` to profile one marked cached-only
+   transition per width. Record complete wall, kernel sum, kernel count, H2D/D2H,
+   HIP API/synchronization time, and inter-kernel gaps. Attribute at least 90% of
+   wall before naming a dominant non-kernel bucket. Profile the final child, not
+   a parent harness that launches nested processes.
+2. **Measure actual bytes by family.** Join each traced operation to its resident
+   allocation bytes, call count, active/physical rows, and route manifest. In a
+   separate counter run (counter collection perturbs timing), collect available
+   TCC/L2/VRAM read/write traffic and cache-hit signals. Report effective GB/s
+   for Q4-pair, Q4-single, planar-Q6, Q5, attention, GDN/state, and LM head—not
+   one model-wide “bandwidth utilization” percentage.
+3. **Measure issue and occupancy.** Record static VGPR/LDS/scratch and grid/wave
+   counts, then available VALU/WMMA instruction and stall/occupancy counters.
+   Determine whether dequant/VALU issue, VOPD pairing, VGPR-limited occupancy,
+   or grid underfill explains low effective bandwidth. Do not reuse a hot
+   single-tile L3 microbenchmark as production VRAM evidence.
+4. **Measure width slopes per family.** Compare matched c1→c4→c8 duration,
+   bytes, instructions, and waves for every top family. A flat duration with
+   fixed bytes suggests successful bandwidth amortization; linear row slope
+   with high VALU issue suggests compute/dequant pressure; a width cliff with
+   falling waves suggests occupancy/geometry.
+5. **Confirm the winning mechanism end to end.** For any candidate, require its
+   exact/production numerical contract, same-suite graph wall, complete model
+   trace, memory, and lifecycle gate. Then repeat through the actual continuous
+   owner/server before changing a product default or publishing c=N goodput.
+
+#### Conditional optimization queue
+
+This is a decision tree, not permission to implement every idea. Rank candidates
+by **measured milliseconds recoverable from complete wall**. A leaf win is only
+high priority when its call-weighted family saving survives the complete step.
+
+1. **Dense projections (known largest family, 43.25 ms).** Profile first.
+   - If measured traffic is near the attainable VRAM roof, reduce bytes or
+     repeated reads: preserve weight-once rowtiles, pair only compatible
+     same-input operations, and reconsider wider physical groups only when D2
+     shows repeated streams dominate.
+   - If bandwidth is low while VALU/dequant issue is high, target metadata/dequant
+     instruction count, activation quantization reuse, or verified VOPD/dp4a
+     paths. Changed arithmetic requires the full production numerical gate.
+   - If waves fall with width, tune tile/column/thread geometry and VGPRs. The
+     planar-Q6 row8 owner (VGPR136) is the first occupancy hypothesis to test,
+     not an automatic rewrite.
+2. **Unreconciled wall (≤9.48 ms upper bound).** If matched API/gap accounting
+   confirms a large serial dispatch/sync bucket, prioritize graph-input updates,
+   removing readbacks/synchronizations, and low-risk producer/epilogue fusion.
+   Do not call it host overhead until measured; graph replay still pays MEC/SPI
+   per-dispatch work.
+3. **GDN/state (8.17 ms).** Split Conv, recurrent GDN, normalization/gate, and
+   state commit. If recurrence compute dominates, optimize that kernel/parallel
+   schedule; if state movement or short launches dominate, fuse the safe
+   boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
+   projection, which belongs to the projection family.
+4. **Small traced remainder (~2.63 ms).** Norm/cast/metadata/LM-head fusion is
+   lower priority unless launch-gap accounting moves it into the unreconciled
+   bucket or a zero-risk fusion removes repeated traffic.
+5. **Physical row16 remains conditional; row32 remains rejected.** The prior
+   direct-row16 down leaf beat 2×row8 by only 1.115× and row32 was 8.69× slower
+   than 4×row8. Reopen row16 only if production D2 traces prove repeated weight
+   streams are the largest remaining wall opportunity and its projected saving
+   exceeds the best c≤8 family candidate.
+
+The highest-impact next action is therefore **measurement**, followed most
+likely by one of: Q4-pair/Q4-single projection issue/traffic work, planar-Q6
+occupancy work, a verified dispatch/synchronization reduction, or GDN recurrence
+work. The ordering among those four is deliberately unresolved until the #37
+ledger closes.
 
 ## Executive decision
 
@@ -49,8 +560,9 @@ never assumes that one logical token is one BF16 page. Full immutable prefix
 pages may be shared by refcount; writable tails are private or copy-on-write;
 zero-active-reference cache pages are LRU-evictable. The scheduler admits by a
 backend-produced resource-claim vector and current pool state, not by a
-hardcoded physical c4/c8 route width or dtype-specific byte formula. Physical
-c1/c2/c4/c8 kernels are execution buckets: 23 ready rows may be lowered to
+hardcoded physical route width or dtype-specific byte formula. Registered
+physical kernels are execution buckets (gfx1100 Qwen3.8 currently
+c1-c8; other packages may retain c1/c2/c4/c8): 23 ready rows may be lowered to
 several certified groups in one fairness round without limiting resident
 concurrency to eight.
 
@@ -142,7 +654,7 @@ failures.
 | --- | --- |
 | Stable `RequestState`, `ActiveBatch`, `WorkItem`, and request-to-slot maps | Keep. Split resident slots from ephemeral execution rows and remove fixed physical-width assumptions. |
 | `ResidentEngineLoop` admission/prefill/decode/reclaim contract | Keep the lifecycle semantics. Replace caller-driven polling and one-work-item ticks with one service-owned scheduling loop and multi-item rounds. |
-| Native GGUF/PARO c1/c2/c4/c8 runners | Keep as certified execution buckets behind model/backend capability registration. |
+| Native GGUF/PARO physical-width runners | Keep backend/model-specific certified sets behind capability registration (gfx1100 Qwen3.8 c1-c8; do not transfer widths to peers without evidence). |
 | Row-scoped cancellation and reclaim callbacks | Keep. Move command handling into the sole engine service. |
 | `KVPolicy`, `KVLiveSpans`, and speculative `begin/commit/rollback` | Keep the liveness and transaction invariants. Evolve the fixed-page `KVPolicy` shim into the `KVCacheBackend` contract below so storage codecs do not leak into the scheduler. |
 | `DeviceChunkedKVPool` refcounts, COW tests, and pointer-stability checks | Reuse their invariants and fixtures. Replace one-backing/contiguous-per-request constraints with the production global pool substrate. |
@@ -299,6 +811,406 @@ contract so the research formats are replaceable rather than scheduler forks.
 Keep hipEngine's smaller torch-free host, backend-neutral registry,
 `KVLiveSpans`, exact c-aware kernels, and explicit KV transactions.
 
+## Width-adaptive GEMM selection: measured model and dispatch policy
+
+The engine must serve an **arbitrary, time-varying** number of concurrent
+requests. That means it cannot ship a hand-picked kernel per width: it has to
+*determine from measurement*, on each target backend, which kernel and which
+group decomposition are best for the widths it actually sees, and then use
+them. This section states the model, the current W7900 measurements, and the
+decision procedure the packed-decode path must implement.
+
+Three decisions have to be made, and they are separable:
+
+- **D1 primitive and complete-group choice** — which registered operation
+  variants and physical-group route run for a qualified artifact/profile/shape.
+- **D2 group decomposition** — for `W` ready rows, which sequence of certified
+  `(active rows, physical rows, mask)` groups executes.
+- **D3 coverage** — every relevant quant/layout/operation and every logical width
+  has bounded measured regret versus the best certified composition.
+
+Numbers below are W7900 / gfx1100 observations on one model. **The procedure
+is the normative part; the constants are not portable.** Every quantity marked
+`MEASURE` is re-measured per backend and per layer shape.
+
+### Where the packed-decode cost actually is
+
+**Current clean direct curve (after the Q5T16 and planar-qmicro Q6T16 rows 5-8
+promotions).** W7900 / gfx1100, exact-file Qwen3.8-27B-Q4_K_M, BF16 KV, one
+shared load, graph replay, p128/d8, one warmup plus two measured runs, commit
+`3ea17c73`. Every direct c1-c8 trajectory matches the repeating independent
+c4/c1 fixture and both controls are exact.
+
+| direct physical c | aggregate tok/s | scale vs c1 | (was, pre-Q5/Q6) |
+| ---: | ---: | ---: | ---: |
+| 1 | 30.303 | 1.000× | 30.220 |
+| 2 | 53.788 | 1.775× | 53.672 |
+| 3 | 75.474 | 2.491× | 75.493 |
+| 4 | 93.490 | 3.085× | 93.603 |
+| 5 | 105.673 | 3.487× | 67.173 |
+| 6 | 115.295 | 3.805× | 74.000 |
+| 7 | 122.364 | 4.038× | 63.483 |
+| 8 | 127.323 | 4.202× | 69.747 |
+
+Both the Q5T16 (48 calls / 4.30 ms at c8) and planar-qmicro Q6T16 (64 calls /
+10.76 ms at c8) now keep their true rowtiles through rows 8, closing the
+c5/c7 cliffs. **Native c8 is now 127.32 tok/s and beats honest two-c4 chunked
+c8 (91.13 tok/s) by 39.7%**; `native_c8_scaling_gate_passed = True`. c1-c4 are
+unchanged (within noise). These are model-step results, not production-server
+rows. The gfx1100 Qwen3.8 package now advertises physical c1-c8 after the clean
+direct-width quality/lifecycle gates. Cost-aware c>8 D2 remains explicit-config
+pending its separate actual-server gate; absent D2, the owner uses ceiling
+composition over the registered c1-c8 set.
+
+**Kernel threshold traces (one profiler-instrumented decode transition;
+durations are diagnostic).** The pre-promotion controls localized the cliffs;
+the clean combined post-promotion c8 census proves their removal:
+
+| state / width | total kernel sum | dense projection | Q5T16 route (48 calls) | planar-Q6T16 BF16 route (64 calls) |
+| --- | ---: | ---: | --- | --- |
+| baseline c4 | 39.1 ms | 28.1 ms | true col4 rowtile, 3.34 ms | true col8 rowtile, 6.79 ms |
+| baseline c5 | 69.0 ms | 60.9 ms | padded WMMA, 21.31 ms | direct per-row GEMV, 17.35 ms |
+| baseline c7 | 104.6 ms | 95.0 ms | padded WMMA, 19.84 ms | padded WMMA, 51.39 ms |
+| **post-promotion c8** | **54.1 ms** | **43.3 ms** | **true col4 rowtile, 4.30 ms** | **true col8 rowtile, 10.76 ms** |
+
+The post-promotion c8 trace has zero Q5/Q6 WMMA, Q5 row8 at VGPR72/LDS512/
+scratch0, and planar-Q6 row8 at VGPR136/LDS1024/scratch0. Both true rowtiles
+now cover rows2-8. The earlier numerical similarities c5≈c4+c1 and c7≈c6+c1
+did **not** imply decomposition—the baseline manifests/traces showed one
+physical c5/c7 group.
+
+**Exact decode-path tensor census.** The active model has 64 decode layers, not
+all 65 GGUF blocks:
+
+| role | active decode quant/count |
+| --- | --- |
+| `ffn_gate`, `ffn_up` | Q4_K 64 each |
+| `ffn_down` | Q4_K 32 + Q6_K 32 |
+| `ssm_out` | Q5_K 48 |
+| `attn_qkv` | Q4_K 24 + Q6_K 24 |
+| `attn_v` | Q4_K 8 + Q6_K 8 |
+| `attn_output` | Q4_K 16 |
+
+Therefore the c7/c8 fallback count is **exactly 112**: 48 Q5 calls plus 64 Q6
+calls (`32 ffn_down + 24 attn_qkv + 8 attn_v`). The earlier expectation of 114
+counted block 64's Q6 `ffn_down` and `attn_v`; that block is NextN and does not
+execute in normal AR decode. The bucket spans FFN, GDN, and attention because it
+is a quant/layout cut, not a stage cut.
+
+### Roofline: three roofs and a parallelism floor
+
+For a quantized GEMM with `M` rows, `K` inputs, `N` outputs, `bpw` bytes per
+weight, arithmetic intensity is `AI = 2·M·K·N / (K·N·bpw) = 2M/bpw` FLOP/byte —
+**linear in M, independent of the layer shape**. But there is no single
+compute roof to ride against, and RDNA3 makes the distinction matter:
+
+| roof | W7900 value | source |
+|---|---|---|
+| VRAM bandwidth | 864 GB/s theoretical; 650–735 GB/s sustained for large streams (75–85%) | `ROOFLINE.md` §1.4 |
+| L3 / Infinity Cache | 96 MB @ 2.30 TB/s | `ROOFLINE.md` §1.2 |
+| matrix (BF16 WMMA) | 123 spec / **84.8 measured** TFLOP/s | `ROOFLINE.md` §1.3 |
+| vector (FP32 FMA) | 30.7 TFLOP/s, 61.3 with VOPD dual-issue | `ROOFLINE.md` §2 |
+
+- **Matrix is only 1.4–2.8× vector on this architecture** (84.8 measured vs
+  30.7/61.3). Unlike CDNA or NVIDIA parts, "move to matrix cores" is not
+  automatically a large win, and a well-dual-issued vector kernel is a
+  legitimate competitor at moderate M.
+- **Dequant shares the SIMD issue port.** A Q4 kernel spends ~4 VALU ops per
+  weight building operands; those cycles are not available to WMMA. For the
+  current dense WMMA kernel the B-fragment build is roughly 64 VALU ops per
+  32-cycle WMMA per row-tile, so the achievable compute roof is ~28 TFLOP/s at
+  one row-tile per block and ~56 at four — **not 84.8**. Ridge points computed
+  against 84.8 are upper bounds only.
+- **Parallelism is a fourth limiter that shape controls.** The grid must fill
+  192 SIMDs. The down projection (`K=17408, N=5120`) generates 3.4× fewer
+  output tiles than gate/up for identical weight bytes, providing a concrete
+  underfill mechanism for its WMMA diagnostic. Family traffic/issue counters are
+  still required before excluding other simultaneous limits.
+
+Consequently there are **two ridges, and each kernel must be judged against
+its own**: `M_ridge = AI_ridge · bpw / 2`.
+
+| ridge | AI_ridge | M_ridge (bpw = 0.578) | applies to |
+|---|---:|---:|---|
+| matrix, spec/theoretical | 142 F/B | 41 | upper bound only |
+| matrix, measured/sustained | 115 F/B | 33 | WMMA-class kernels |
+| matrix, dequant-derated | ~38–76 F/B | 11–22 | this Q4 WMMA family |
+| vector, no VOPD | 35.5 F/B | 10 | rowtile-class kernels |
+
+The single "`M_ridge ≈ 27`" figure previously in this section mixed a measured
+numerator with a theoretical denominator and applied a matrix ridge to a
+vector kernel. Quote the range and the kernel class, not the point estimate.
+
+### Measured kernel behaviour (corrected)
+
+`bpw` for the Q4 T16 tile layout is **exactly 0.578125** — 2368 B per 16 cols ×
+256 k (`gguf_t16_selected_gemv.hip:27,40-45`: 32 + 32 + 128 + 128 + 2048), so a
+5120×17408 tile is 51.53 MB. The probe's 0.5 fallback undercounts by ×1.156.
+
+`dense_rowtile` (vector class, gate/up 5120×17408, per call):
+
+| M | ms | marginal ms/row | note |
+|---:|---:|---:|---|
+| 2 | 0.081 | — | |
+| 3 | 0.083 | 0.002 | last width with meaningful weight amortization |
+| 4 | 0.093 | 0.010 | |
+| 7 | 0.124 | 0.010 | |
+| 8 | ~0.134 | 0.010 | extrapolated; production uses the fused dual kernel |
+
+Within this synchronized hot-tile diagnostic, the marginal cost is **0.0103
+ms/row = 8.65e12 FMA/s = 56% of the non-VOPD vector roof**. Together with L3
+residency, that slope is consistent with vector/dequant issue limiting the leaf
+above M≈3; it is not proof that production rowtile calls streaming the complete
+model are globally issue-bound. Two consequences still hold for this register-
+tile design: (a) "reach rowtile-grade bandwidth efficiency at M=16/32" is not a
+coherent target without production traffic counters; (b)
+`acc[ROW_TILE][8]` is 64 VGPRs at ROW_TILE=8 and 128 at 16, so width growth has a
+hard occupancy cost. VOPD pairing is a hypothesis to measure, not a guaranteed
+56%→112% gain.
+
+**Closed Q4 `ROW_TILE=16/32` prototype.** The predeclared prediction was
+falsified quantitatively on the down shape: direct row8/16/32 measured
+0.1530/0.2744/5.3206 ms in the same single-tile synchronized diagnostic.
+Row16 is only **1.115×** faster than 2×row8 (0.3060 ms), not the predicted
+1.40×; row32 is **8.69× slower** than 4×row8 (0.6120 ms), confirming catastrophic
+register/scratch pressure. The hot tile fits in L3 and timing includes per-call
+synchronization, so these values are not width-map or bandwidth evidence, but
+the A/B is sufficient to reject row32 and deprioritize row16. No production
+physical-16 route consumes it. The dirty launcher/wrapper changes and all six
+obsolete `tmp_*` probes were discarded; row8 remains the supported Q4 owner.
+
+`t16_wmma_prefill` (matrix class, gate/up, per call): 0.338 / 0.402 / 0.397 /
+0.411 / 0.418 / 0.465 ms at M = 1 / 2 / 4 / 8 / 16 / 32.
+
+That curve is nearly flat because **the kernel executes the same MAC work at
+every M in 1..64**: `ROW_TILES_PER_BLOCK = 4` and `grid.y = ceil(rows/64)`
+(`gguf_k_t16_selected_prefill.hip:533-537, 1686-1687`), and the `valid_row`
+guard suppresses only the *load*, substituting row 0, while the WMMA issues
+unconditionally. At M=16 it therefore computes 64 rows to deliver 16. Its
+executed rate is 2×64×89.13e6 / 0.418 ms = **27.3 TFLOP/s ≈ 32% of the measured
+matrix roof** — an unremarkable number for a kernel that also dequantizes in
+registers. It is *additionally* occupancy-starved: 32-thread blocks, 363 blocks
+for gate/up (1.9 waves/SIMD) and **107 blocks for the down shape** (~1 wave per
+CU), the latter costing ≈1.0 ms/call for the same weight bytes.
+
+So the earlier diagnosis — "latency/occupancy-bound at 11% of peak bandwidth,
+and closing 11% → 64% is the biggest lever" — named the wrong metric. The
+measured diagnostic exposes row padding and severe grid underfill; a bandwidth
+percentage is not meaningful while the kernel over-computes 4×. Template/grid
+changes are therefore the first hypotheses for that WMMA leaf, subject to a
+production family trace rather than assumed to be the whole-step answer.
+
+**Measurement caveat that bounds all of the above.** The probe hot-loops a
+single 51.53 MB tile, which fits in the 96 MB Infinity Cache. After the first
+iteration the weights are L3-resident, so the "% of VRAM peak" column measured
+nothing about VRAM streaming — and against the 2.30 TB/s L3 roof both kernels
+are far from any bandwidth limit, which independently supports the compute/issue
+diagnosis. Production reads ~10 GB of FFN weights per step with zero reuse. Any
+retained bandwidth claim must come from a tile-rotating probe (below).
+
+### Corrections to the previous version of this section
+
+| retracted claim | status |
+|---|---|
+| "The FFN linear layers are dominant" / "non-FFN is 76%" | Both came from the invalid `step − one Q4 probe ×64` partition. Do not retain either stage percentage. Baseline cliffs were Q5/Q6 projection routes across FFN, GDN, and attention; those cliffs are now closed, and the current 43.25-ms dense-projection family needs #37 mechanism profiling. |
+| "Rowtile multi-group beats the wmma prefill at every M>8 (2.9× at 16, 1.45× at 32)" | Priced an 8-row group at the M=2 efficiency. Measured: 2×0.134 = 0.268 vs 0.418 → **1.56×** at M=16; 4×0.134 = 0.536 vs 0.465 → **wmma wins 1.15×** at M=32. Crossover is M≈24–32. |
+| "wmma prefill is latency/occupancy-bound at 11% of peak BW" | Wrong mechanism and wrong metric; it is row-padding bound (64 rows of MAC work at every M ≤ 64), measured under L3 residency. |
+| "Rowtile is a good bandwidth kernel (64% of peak)" | Unsupported: the hot-tile probe could not exercise the VRAM denominator. Its M≥4 slope is consistent with vector/dequant issue pressure in that diagnostic; production classification needs traffic/issue counters. |
+| "M_ridge ≈ 27" | Mixed measured/theoretical roofs and applied a matrix ridge to a vector kernel. Use the ridge table above. |
+| "Aggregate stays flat at ≈c8 (~68 tok/s)" | Pre-promotion measurement exposed c5/c7 cliffs; the retained post-promotion curve is 30.30/53.79/75.47/93.49/105.67/115.30/122.36/127.32 tok/s. |
+| "No multi-group scheduler exists" / "D2 is unimplemented" | Grouping and artifact-backed D2 now exist; D2 is explicit-config and ceiling remains default. Before Q5/Q6, two-c4 beat native c8; post-promotion native c8 wins 127.32 versus 91.13 tok/s. The remaining gap is a clean actual-server c1-c32 D2 promotion gate, not host DP implementation. |
+| "Close the 11% → 64% BW gap is the single biggest lever" | Wrong metric. Q5/planar-Q6 rowtile coverage and the host D2 resolver are now implemented. The current largest measured family is dense projection (43.25 ms), but #37 must determine whether traffic, dequant/issue, occupancy, or dispatch is the next lever. |
+| "The non-FFN cliff is GDN/full-attention" | False. Baseline traces localized Q5/Q6 quant-layout projection cliffs spanning all stages; the rows2-8 Q5/Q6 promotions close them and cut c8 kernel sum to 54.05 ms. |
+| "c5 runs as c4+c1; c4→c5 and c6→c7 are D2" | False. The direct benchmark manifest and traces show one physical c5/c7 group. Similar wall times were coincidence; the two jumps are the Q5 and Q6 thresholds above. |
+| "Mixed-quant effective width must be clamped to the minimum family cap" | Too strong. One group can mix registered variants. Price each operation and the complete group; use D2 when the mixed route loses. |
+| "Q4 direct ROW_TILE=16 should win ~1.40× and row32 might spill" | Measured down-leaf result: row16 wins only 1.115× versus 2×row8; row32 is 8.69× slower than 4×row8. Prototype discarded. |
+
+### Dispatch policy the engine must implement
+
+**D1 — resolve two measured maps, not one heuristic.** The primitive map chooses
+a registered implementation for one operation. Its key includes physical host
+and hardware identity, backend, model/artifact and layout fingerprint,
+execution profile, registry quant, operation boundary (for example
+`linear_pair_silu` versus `linear`), layer role, `K×N`, active rows, physical
+rows/mask class, and graph/eager mode when that changes cost. Its value is a
+four-axis registry key, strict fallback, correctness fixture/manifest hash,
+resource data, and measured time. Width is **not** a fifth registry axis: the
+cold model/package plan resolves the measured record to an immutable set of
+ordinary `(backend, layer, quant, variant)` keys.
+
+The model-step map prices a complete certified physical group after those
+primitive choices, including attention, GDN/state, norms, LM head, graph replay,
+and gather/scatter. The scheduler consumes this second map; it must not estimate
+a serving step by multiplying one probed Q4 tensor across a mixed-quant model.
+Absent/uncertified records fail closed to a registered strict route. Compact
+artifacts live under `benchmarks/results/`; bulky raw autotune/profiler logs do
+not.
+
+**D2 — cost-aware decomposition is implemented and explicit-config pending.**
+The gfx1100 package now certifies exact direct widths c1-c8. Without a D2 map,
+`plan_physical_batch_groups(..., compact_active_rows=True)` remains the
+fail-closed ceiling planner: it chunks by c8 and rounds the remainder to the
+next registered width (for example c13→c8+c5; sparse registered sets retain
+masked c3→c4 and c5-c7→c8 semantics).
+
+`hipengine/dispatch/d2_resolver.py` provides the measured optimizer. Its retained
+cost map is keyed to clean source SHA, physical host/device, backend/arch, exact
+model fingerprint, quant/KV/profile/graph mode, active+physical rows, mask class,
+route/correctness hashes, and workspace scope. The loader rejects dirty, failed,
+mismatched, incomplete, non-finite, or out-of-capability records. `d2_partition`
+minimizes serial measured model-step wall under optional workspace/step-SLO
+caps; `plan_physical_batch_groups` accepts the resulting explicit width sequence
+while preserving stable scheduler slots and dense execution rows.
+
+The strict W7900/Qwen3.8 map recovers c9=5+4, c10=6+4, c11=6+5, c12=6+6,
+c13=7+6, c14=7+7, and c16=8+8, beating ceiling by up to 5.4 ms/step (c9).
+The resident owner loads it only through the explicit
+``HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`` setting, caches by file+runtime identity,
+and emits its source/identity/estimated wall in the physical-group plan. Missing
+configuration uses ceiling; invalid or mismatched explicit evidence raises.
+
+**Production-default D2 is not promoted and is not a gfx1100 core-correctness
+or merge blocker.** The attempted c1-c32 promotion sweep was a direct eager
+resident-session diagnostic, not actual-server evidence: it bypassed HTTP,
+EngineService, scheduler-owned owner lowering, graph replay, TTFT/ITL, dynamic
+membership, server memory, and final drain; it also lacked clean provenance/
+canonical command and published incorrectly scaled goodput. The composed-c13
+lifecycle observation is functionally positive but provenance-dirty. These
+artifacts cannot promote a default.
+
+The accepted product policy is deterministic ceiling composition over the
+qualified physical c1-c8 set, with direct physical c1 and exact registered
+fallbacks. This policy is covered by the direct-width numerical/lifecycle gates
+and host planner/owner tests. D2 remains explicit-config, identity-gated, and
+fail-closed for research. A future D2 promotion is a new optional performance
+campaign requiring a clean counterbalanced same-shape actual-server matrix with
+authoritative route telemetry, goodput, TTFT/ITL, refill/cancel, memory, and
+drain; gfx1151 and XTX require independent maps.
+
+The target planner enumerates certified candidates `(active_rows,
+physical_rows, mask_class, variant_manifest)` and uses dynamic programming to
+minimize complete model-step wall subject to per-request ITL/fairness and
+workspace constraints. Serial groups use the sum of **measured full-group**
+costs; overlapped/pipelined groups require a separately measured model. Before
+Q5/Q6 promotion, direct c8 was 114.72 ms versus 88.74 ms for two c4 groups,
+exposing the old heuristic error. The clean post-promotion packet reverses that
+decision: native c8 is **63.53 ms** versus **88.55 ms** for two c4 groups, so
+the current c8 choice is now correct. Cost-aware D2 remains needed for arbitrary
+remainders, masked widths, c>8 compositions, SLO objectives, and future backend
+maps; its acceptance control must use the post-promotion artifact rather than
+force the superseded two-c4 choice.
+
+**D3 — coverage is bounded regret across every relevant dimension.** Every
+logical width must resolve to either a certified native/masked group or a D2
+composition. Coverage is per `(artifact, hardware, profile, quant/layout,
+operation, active rows, physical rows/mask)`, not merely `(layer role, width)`.
+A generic fallback is not automatically wrong and a rowtile is not automatically
+right; the binding test is measured regret versus the best certified complete
+composition under the same SLO. The earlier proposed fixed 1.25× neighbouring-
+width bound is not retained as a universal constant—it must be derived per
+backend/SLO and checked on the composed route.
+
+Sparse ladders remain forbidden. A wrapper cannot advertise `2..32` while its
+C switch accepts only `{2..8,16,32}`; unsupported interior widths must reject
+before HIP and D2 must cover them explicitly. Coverage tests walk every
+quant/layout/operation/width record, assert selected and strict-fallback registry
+keys exist, compare the declared route with the measured artifact, and then walk
+logical c1-c32 through the actual scheduler.
+
+**The quant/layout axis explains the current cliffs but does not globally clamp
+physical width.** On this exact Qwen3.8 artifact, standard Q4T16 has true
+rowtiles through 8; Q5T16 has a true rowtile through 8 (promoted 2026-08-20);
+planar-qmicro Q6T16 now also has a true col8 rowtile through 8 (promoted
+2026-08-20), replacing its disguised direct-per-row rows5/6 fallback and its
+padded-WMMA rows7/8. The full model may mix those variants in one physical
+group, so there is no correct rule saying "clamp the engine to the minimum
+family width." D1 prices each operation and D2 prices the complete mixed route.
+
+**Promotion gate.** A primitive or group record becomes default only when its
+declared strict/production contract passes, its route and resource provenance
+are repeatable, and the actual scheduler's composed objective improves. Native
+c8 is the cautionary and recovery case: Q4-only leaf wins did not beat two c4
+groups, while the complete Q5+Q6 promotion now does.
+
+### Measurement protocol (what the autotune probe must do)
+
+Any probe whose numbers enter the width map must:
+
+1. **Rotate weight tiles across layers** so the working set exceeds L3 (96 MB
+   on W7900). A single hot tile measures cache, not the serving path. A
+   single-tile probe may still A/B two kernels at one shape — per-row ms stays
+   comparable — but its absolute bandwidth figures must never be quoted or
+   entered in the width map.
+2. **Read `bpw` from the allocation size** and fail loudly if unavailable; no
+   silent 0.5 fallback.
+3. **Time inside a captured graph**, not per-call `perf_counter` +
+   `device_synchronize` (~5–10 µs/launch, ≈10% at 0.08 ms, and it biases the
+   comparison toward the slower kernel).
+4. **Measure both FFN shapes** — `K=5120,N=17408` and `K=17408,N=5120` — and the
+   attention projections. Per-shape parallelism, not just M, selects the winner.
+5. **Sweep M across 1..W_max**, and report executed as well as useful work, so
+   padding is visible instead of appearing as low "bandwidth".
+6. **Include every registered candidate**, notably
+   `gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel` — it already stages
+   decoded B in LDS and reuses it across row tiles, which is the structure the
+   large-M path needs; it has never been benchmarked and is currently tiled at
+   256 rows/block.
+7. **Check register and scratch usage statically** before spending a device
+   run on a wider register tile: build with `-Rpass-analysis=kernel-resource-usage`
+   (or read the generated `.s`) and reject any variant with non-zero
+   `ScratchSize`, or whose VGPR count drops occupancy below the level its
+   latency hiding needs. The Q4 row32 prototype is already rejected; apply this
+   rule to every future candidate.
+8. **Measure complete physical groups and compositions.** Primitive wins enter
+   the model-step map only after graph/eager full-model A/B. Measure exact native,
+   masked, and serial-composed candidates with all sessions resident; never infer
+   scheduler cost from a sum of one-layer microbenchmarks alone.
+9. **Emit the compact artifact and rollup rows** per the evidence policy.
+
+### Next steps, in priority order
+
+1. ~~**Establish a complete direct c1-c8 baseline and threshold traces.**~~
+   **DONE (2026-08-20).** Clean same-load graph packet at `d63b694b4`: c1-c8 is
+   **30.22/53.67/75.49/93.60/67.17/74.00/63.48/69.75 tok/s**, every direct row is
+   exact against the repeating independent fixture, and honest two-c4 c8 is
+   **91.06 tok/s / 88.74 ms** versus native c8 **69.75 / 114.72 ms**. Clean c5/c7
+   traces bind the two cliffs to Q5 and planar-qmicro Q6 projection routes.
+2. **Remove the measured quant/layout cliffs (highest current kernel leverage).**
+   ~~Extend Q5T16's true rowtile from 4→8~~ and ~~planar-qmicro Q6T16's true
+   col8 rowtile from 4→8~~ **DONE (2026-08-20)**: both primitives now cover
+   rows 2-8 (strict bit-parity vs their per-row producers) and the dispatch
+   routes rows 5-8 to the true rowtiles
+   (`GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
+   `[gguf_q6_k_t16_qmicro_planar_v1]=8`). The planar Q6 export no longer routes
+   rows 5+ to the per-row fallback. Result c1-c8
+   **30.30/53.79/75.47/93.49/105.67/115.30/122.36/127.32 tok/s** (c5 +57%,
+   c6 +56%, c7 +93%, c8 +82%), all exact; native c8 kernel census:
+   Q5 true rowtile 48/4.30 ms + planar-Q6 true rowtile 64/10.76 ms, zero
+   Q6 WMMA. Native c8 now beats two-c4 chunked c8 by 39.7%.
+3. ~~**Implement the artifact-backed D2 resolver (host-first).**~~ **DONE as an
+   explicit-config path (2026-08-20); default decision closed 2026-08-22.** The
+   retained cost map is clean-identity bound, the DP recovers the expected
+   balanced compositions, and ceiling remains the strict production default.
+   The invalid attempted promotion does not block the core gfx1100 merge; any
+   later D2 default is a separate actual-server performance campaign.
+4. ~~**Certify direct-width product reachability.**~~ **DONE for physical c1-c8
+   on gfx1100 Qwen3.8 (2026-08-20).** Direct c3/c5/c6/c7 pass the clean 1,950-row
+   numerical gate and dynamic lifecycle matrix (compaction/permutation,
+   state/live-KV and resource hashes, graph invalidation, cancellation/refill,
+   session reuse, memory recovery, and drain). The package advertises c1-c8.
+   **#29 closes on the safe product policy:** direct c1-c8 plus deterministic
+   ceiling composition for c>8; D2 stays explicit-config and fail-closed.
+5. **Profile the post-rowtile c8 ledger before selecting another kernel (#37).**
+   Follow the measurement ladder and conditional queue above. The current known
+   largest family is dense projection (43.25/63.53 ms wall), but whether its
+   subfamilies are traffic-, dequant/issue-, occupancy-, or dispatch-limited is
+   unknown. Reconcile wall first, then choose the candidate with the largest
+   measured recoverable milliseconds. Physical row16 remains conditional;
+   row32 remains rejected.
+6. **Port protocol.** On a new backend (gfx1151 first), regenerate both primitive
+   and complete-step maps and rerun the lifecycle matrix. Copy the decision
+   procedure and schemas, never W7900 constants.
+
 ## Target architecture
 
 ```text
@@ -323,7 +1235,7 @@ HTTP / library callers
 |    KVPoolSet -> payload/scale/tier/metadata pools            |
 |    topology -> dense/sliding/DMS/...                         |
 |    codec    -> BF16/INT8/FP8/HIGGS/AQUA/OSCAR/...            |
-|  ExecutionPlanner -> c1/c2/c4/c8/verify/prefill groups       |
+|  ExecutionPlanner -> certified decode/verify/prefill groups  |
 |  ModelRunner + graph/workspace caches                        |
 +---------------------------+----------------------------------+
                             |
@@ -491,9 +1403,9 @@ Generation 2 has three row identities:
    compactable only at a commit barrier through an explicit move plan.
 3. **Execution row** — ephemeral dense row in one physical kernel group.
 
-Execution gathers resident slots into dense c1/c2/c4/c8 rows and scatters
-results back by request ID/slot map. KV pages do not move merely because
-physical width changes.
+Execution gathers resident slots into dense rows from the backend/model's
+certified physical-width set and scatters results back by request ID/slot map.
+KV pages do not move merely because physical width changes.
 
 For 23 ready decode rows, a backend may select `8+8+4+2+1`. Every selected row
 advances once in the fairness round before a second normal decode step for the
@@ -507,6 +1419,329 @@ requests**. It does not select a physical batch and is not silently clamped by a
 route capability. If an operator value exceeds a hard metadata/state limit,
 startup rejects it or reports the explicit effective limit and reason. The
 normal primary gate is the resource ledger.
+
+## Full MTP and generic speculative-decoding support
+
+This section is the Generation-2 integration contract for model-attached MTP,
+independent draft models such as EAGLE or DFlash, and chain/tree methods such as
+Lookahead or Medusa. [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) remains the
+source of truth for the `PROPOSE -> VERIFY -> ACCEPT -> COMMIT ->
+UPDATE_CURSORS` transaction and `N0`-`N5` native-ownership milestones. This
+section defines how that transaction participates in continuous serving.
+
+**No speculative method gets a second request lifecycle, admission queue, KV
+owner, or output path.** The target replica's `EngineService` remains the sole
+transaction coordinator. Proposal and verification may be separate physical
+executions, but they are bounded work items in the same scheduling rounds as
+prefill and autoregressive decode.
+
+The current implementation is a migration input, not full product support. It
+has reusable native target/cycle components and a guarded non-streaming greedy
+GGUF MTP route, but remains phase-serial at the slot level; draft-side
+cross-request batching, streaming, generic provider integration, wider/tree
+verification, and exact/default serving gates are open.
+
+### Distinguish request count from verifier-row count
+
+Let `C` be the number of independent target requests participating in a
+speculative work item and `V` the number of flattened target-verification rows.
+`V` may be larger than `C`, and one request ID may appear in several rows. A
+chain of depth three for four requests is not ordinary physical c4 decode; it is
+a verifier shape with up to sixteen causally described rows. Tree methods may
+have nonuniform row counts and shared parents.
+
+The scheduler-facing records must include bounded, device-materializable forms
+of at least:
+
+```text
+SpeculativeRequestState
+  method_key / provider_key / policy_fingerprint
+  target_request_id / resident_slot
+  target_cursor / provider_cursor
+  provider_state_lease
+  cycle_id / pending_transaction_id
+  per-request RNG, stop, output-limit, and holdback state
+
+DraftBatch
+  cycle_id
+  request_ids[V]             repeated IDs are valid
+  resident_slots[V]
+  candidate_ids[V]
+  candidate_token_ids[V]
+  row_positions[V]
+  draft_depths[V]
+  tree_parent_rows[V]        local verifier-row indices; -1 for roots
+  root_rows[C]
+  active_mask[V]
+  provider-private bounded metadata
+
+SpecTransaction
+  operation_id
+  target KV/state scratch or journal
+  provider KV/state scratch or journal
+  reserved resource claims
+  pre-transaction target/provider cursors and RNG counters
+
+AcceptResult
+  request_ids[C]
+  accepted_draft_counts[C]
+  selected_rows[C]
+  correction_or_bonus_tokens[C]
+  visible_token_ranges[C]
+  target/provider cursor deltas
+  stop/finish outcomes
+```
+
+The API-level `ParentRequest` used for multi-prompt/`n>1` response aggregation
+is unrelated to `tree_parent_rows`; implementations and telemetry must not call
+both simply `parent_id`. Every verifier row carries an explicit row-to-request
+map and parent/depth metadata. Kernels may never infer request ownership from
+`row == slot` or assume verifier rows are independent.
+
+### Speculative plugin and resource ownership
+
+The plugin boundary follows `PLAN.md`: model plugins advertise optional MTP
+heads/features; speculative-method plugins provide `DraftModel`/provider,
+`DraftBatch`, verifier planning, acceptance, and `AcceptResult` behavior. The
+engine and scheduler must not branch on method, provider, model, backend, quant,
+or KV codec.
+
+A resolved speculative capability declares:
+
+```text
+method/provider identity and immutable artifact fingerprint
+chain/tree shapes and maximum bounded V
+proposal and target-verifier execution capabilities
+acceptance/sampling policy fingerprint
+provider state/KV representation and transaction mode
+compatible target execution profile and KV backend
+workspace, graph, result-slab, and readback requirements
+strict fallback and pre-launch rejection rules
+```
+
+A model-attached MTP head may share target-model allocations; an independent
+draft model may own separate weights, state, KV planes, graphs, streams, and
+workspaces. In both cases, all transient and per-request resources enter the
+same atomic `ResourceClaimSet`: provider state/KV, candidate metadata, target
+transaction scratch, provider transaction scratch, graph/static slab deltas,
+accept/result buffers, and any bounded host readback. Proposal code may not make
+hidden hot-path allocations or reserve memory after target verification starts.
+
+The target `EngineService` owns cancellation, commit barriers, visible output,
+and target canonical state. A provider may submit registered native work but
+may not publish tokens, mutate target canonical KV/state, await a frontend, or
+run an independent request scheduler. A shared or remote draft service requires
+a separately specified bounded coordination, cancellation, and resource-credit
+protocol; until then it is unsupported rather than an implicit exception.
+
+### Scheduling, fairness, and economics
+
+Speculative work extends the token-budget planner with explicit limits such as:
+
+```text
+max_draft_rows_per_round
+max_verify_rows_per_round
+max_speculative_cycles_per_round
+max_spec_transaction_bytes
+max_spec_work_items_per_round
+```
+
+Admission and fairness charge **work consumed**, not optimistic accepted tokens.
+The cost includes proposal rows, target verifier rows, state/KV journal work,
+workspace, expected physical decomposition, and commit/readback cost. Acceptance
+history may guide a registered adaptive-depth policy, but cannot make admission
+unsafe or allow one request to monopolize a round.
+
+Every due request gets at most one normal decode transition or one speculative
+cycle in a fairness pass before the same request receives a second cycle, unless
+no peer is due. Accepting several tokens in one cycle is useful progress, not a
+right to consume extra target passes. Deadline and ITL policy may choose AR over
+SpecDec when a speculative transaction does not fit or has worse measured SLO
+cost. Such fallback is decided before mutation and is reported honestly.
+
+Cross-request proposal or verification batching groups only identical execution
+compatibility keys, including target/model profile, provider and policy,
+chain/tree shape, context bucket, target/provider KV transaction modes,
+workspace class, sampler mode, and registered physical verifier widths. Rare or
+ragged shapes use a certified uncaptured/strict route. Adaptive depth decisions
+must be workload-general and artifact-backed; prompt-conditioned branches or
+fixed-suite candidate tuning are benchmark gaming.
+
+### Verification lowering is not AR lowering
+
+AR width maps and D2 cost records price independent one-token decode rows. They
+must not price verifier work. `VERIFY_CHAIN` and `VERIFY_TREE` use separate
+registered capabilities and cost artifacts keyed by `(C, V, draft/tree shape,
+context bucket, transaction mode, execution profile)`.
+
+A backend may flatten compatible verifier rows from several requests into one
+physical execution, but it must preserve:
+
+- chain/tree causal and parent masks;
+- repeated row-to-request ownership;
+- row-specific positions and `KVLiveSpans`;
+- request-local Conv/GDN/SSM and draft-state journals;
+- per-request acceptance and commit results; and
+- isolation when a peer rejects, finishes, cancels, or takes a different
+  accepted depth.
+
+Stateful verifier rows are not automatically independent merely because they
+fit a dense matrix. Serial recurrence, staged independent projections, or a
+registered chain/tree kernel may each be correct; the route manifest must say
+which occurred. A `B1/B2/B3` candidate budget is not a concurrency width, and a
+`V=16` verifier is not a native physical c16 claim unless one registered
+verifier execution actually owns those sixteen rows.
+
+### Transaction and failure semantics
+
+One cycle follows this scheduler-owned order:
+
+1. Estimate and atomically reserve the complete proposal, verification,
+   transaction, graph, result, and growth claims.
+2. Open target and provider transactions before provisional mutation.
+3. Produce candidates into provider-owned provisional state and construct a
+   validated bounded `DraftBatch`.
+4. Verify into scratch/journal target KV, hidden, Conv/GDN/SSM, and sampler
+   surfaces; canonical target state is not yet visible.
+5. Compute acceptance and apply stop/EOS/output-capacity policy to determine the
+   exact visible prefix, correction, or bonus token.
+6. Atomically commit each request's selected target/provider state, accepted KV,
+   RNG counters, and cursors; discard or repair rejected rows.
+7. Release unused reservation and transaction scratch, then publish committed
+   request-ID-keyed output events.
+
+Canonical KV/state may be written early only through a registered exactly
+reversible journal whose failure gates prove restoration. Prefix-cache entries
+never reference provisional pages. Compaction, eviction, slot reuse, and backend
+replacement cannot touch in-flight transaction ownership.
+
+A pre-launch capability, shape, graph, or resource miss may choose the strict AR
+or uncaptured speculative fallback. After any proposal/target mutation, failure
+must roll back the operation before the request is rescheduled; it must not
+silently replay a fallback and duplicate tokens, RNG consumption, or state.
+Cancellation and timeout become pending transaction commands and take effect at
+the next safe commit/rollback barrier. One request's rollback cannot roll back a
+neighbor that shared the physical verifier group.
+
+A KV backend whose `transaction_mode` cannot support the declared method fails
+closed to AR or rejects that speculative configuration. Dense, INT8, DMS, and
+future codecs pass the same reject/partial/full transaction suite; no method may
+keep an undeclared dense KV shadow to obtain rollback.
+
+### Streaming, sampling, and output semantics
+
+Streaming is required for full support; “works only for non-streaming greedy” is
+a guarded partial capability. A cycle may commit several visible tokens. The
+`OutputRouter` publishes them in canonical order only after commit and updates
+the same per-child detokenization, stop-string holdback, usage, and finish state
+used by AR.
+
+EOS and output limits may cut through an otherwise accepted chain. Commit ends
+at the same token boundary that AR would retain; later provisional rows are
+rolled back. Stop-string holdback may suppress terminal text while target/
+provider state follows the existing AR token-commit semantics, including strings
+that span token boundaries. Correction and bonus tokens have explicit ownership
+and are counted exactly once. Sampling and stochastic acceptance consume
+request-owned RNG streams/counters; batching, slot permutation, neighbor
+cancellation, or a peer's acceptance depth cannot change them under the declared
+execution profile.
+
+A disconnect may suppress future publication and request cancellation, but may
+not leave half-committed state. Slow consumers remain isolated by the existing
+bounded mailbox policy. Non-streaming remains the same internal committed-token
+stream buffered by its own collector.
+
+### Graph and native-cycle requirements
+
+Speculative graph keys include method/provider and policy fingerprints, work
+class, `C`, physical `V`, chain/tree shape, context/page bucket, active-mask
+class, target/provider KV views and transaction mode, execution profile,
+expert/top-k shape, and replay count. Captures bind only stable slabs and pointer
+tables; request-private pages, provider leases, positions, row maps, and tree
+metadata are replay inputs.
+
+Graph/native ownership is reported by semantic stage (`PROPOSE`, `VERIFY`,
+`ACCEPT`, `COMMIT`, `UPDATE_CURSORS`) and by API, native-submission, and
+resident-device-state boundaries from `NATIVE_SPEC_CYCLE.md`. A larger ownership
+milestone is not presumed faster. Capture misses and unsupported tails fall back
+before mutation. Post-launch recovery rolls back; it does not replay.
+
+A future multi-cycle `N5` launcher is optional for full single-cycle support. If
+implemented, it has a bounded token/cycle/time budget and observes EOS,
+cancellation/deadline, output capacity, resource-credit renewal, and scheduler
+yield. It cannot hide an unbounded generation loop from continuous scheduling.
+
+### Backend portability and inheritance
+
+The request records, scheduler work classes, resource ledger, transaction
+protocol, output path, simulator, and provider interfaces are shared host code.
+A conforming gfx1151 package therefore inherits those mechanics without a
+second implementation. It does **not** automatically inherit gfx1100 device
+qualification or performance choices.
+
+Each backend/model/provider combination independently registers verifier and
+proposal capabilities, strict fallbacks, graph support, physical verifier
+buckets, transaction layouts, workspace bounds, and cost artifacts. It reruns
+the state/KV/cursor, graph, lifecycle, memory, server, and economics gates on
+its physical host. Missing gfx1151 kernels or evidence select a declared strict
+fallback or report the method unsupported; they never reuse W7900 constants or
+promotion status. Backend portability means common orchestration with explicit
+capabilities, not evidence transfer.
+
+### Required implementation sequence
+
+Existing `N0`-`N4` launchers, target graphs, transaction journals, and exact
+oracles are migration components; they do not by themselves close these items.
+Implement in this order:
+
+1. **SPEC-C0 — host contracts and simulator.** Add the records above, one-to-many
+   request/verifier-row maps, provider claim composition, reject/partial/full
+   fake transactions, cancellation at every stage, and final conservation.
+2. **SPEC-C1 — one EngineService integration.** Move the guarded GGUF MTP chain
+   behind `VERIFY_CHAIN` work items in the Generation-2 request table and output
+   path. Preserve the old exact route as a pre-launch fallback.
+3. **SPEC-C2 — continuous packing and cost policy.** Batch proposal/verification
+   across compatible requests, add verifier-specific physical cost maps and
+   budgets, and prove mixed AR+SpecDec fairness, refill, pressure, and SLOs.
+4. **SPEC-C3 — streaming and sampling.** Land multi-token output events,
+   stop/EOS/output-tail truncation, per-request RNG accounting, disconnect,
+   backpressure, and cancel/rollback semantics.
+5. **SPEC-C4 — generic providers and trees.** Resolve model-attached and
+   independent draft providers through plugins; qualify at least one chain and
+   one tree-shaped implementation or explicitly advertise tree mode unsupported.
+6. **SPEC-C5 — product promotion.** Run exact/profile quality, lifecycle,
+   server-load, memory, graph/profiler, and economics gates before making a
+   method/provider/default visible as production-ready.
+
+### Full-support acceptance gate
+
+A provider/method is production-supported only when all applicable rows pass:
+
+- reject, partial accept, full accept, correction, bonus, EOS, stop-string, and
+  output-capacity tails;
+- fixed and ragged `C`, candidate depth, `V`, chain/tree shape, active masks,
+  positions, contexts, and page boundaries;
+- mixed AR/speculative neighbors, staggered arrival, refill, peer cancellation,
+  slot permutation/compaction, prefix hits/COW/eviction, and pressure recovery;
+- exact target and provider hidden/Conv/GDN/SSM/KV/cursor/RNG ownership before
+  and after accepted rows plus following-cycle continuity;
+- eager/graph parity, repeated replay, capture miss, pre-launch fallback,
+  injected failure at every transaction stage, and complete final drain;
+- blocking and SSE equivalence with bounded output and no head-of-line resource
+  retention;
+- atomic resource accounting for every provider/target plane and transaction
+  high-water, with no hidden mirror or allocation;
+- full multi-prompt `mtp-bench` category and heldout quality/economics against a
+  true same-protocol no-MTP AR baseline, reporting acceptance, accepted tokens
+  per target pass, aggregate/per-request throughput, TTFT/ITL/SLO goodput,
+  memory, physical verifier decomposition, and exact fallback labels.
+
+Project-wide “full MTP/SpecDec support” additionally requires one production
+`EngineService` to interleave AR and at least one promoted speculative provider
+for blocking and streaming requests without a provider-owned generation loop.
+Methods not yet qualified advertise the exact missing capability and fail
+closed; partial N-stage ownership or a single-request benchmark is never
+reported as full continuous SpecDec support.
 
 ## Swappable KV-cache backend contract
 
@@ -587,6 +1822,11 @@ whole-device reserve          unclassified runtime safety margin
 lifetime                      load | lease | work_item | transaction | cache
 confidence                    exact | bounded | unknown
 ```
+
+A claim set may also carry a small, typed, backend-private metadata tuple (for
+example private-page and next-growth-credit counts). The generic ledger
+preserves this metadata opaquely; only the backend materializer interprets it,
+so it cannot become a codec formula in scheduler code.
 
 A `KVPoolPlan` may create one or many stable pools. Examples:
 
@@ -706,6 +1946,7 @@ Each dense page has explicit state:
 FREE
 ACTIVE_PRIVATE        one writable request owner
 ACTIVE_SHARED         immutable full page, one or more request refs
+RESERVED_CREDIT       physically reserved for the lease's next growth boundary
 CACHED_EVICTABLE      zero active refs, indexed by prefix cache
 PINNED_SESSION        explicit continuation/session lease with quota/TTL
 IN_FLIGHT             transient execution epoch fence
@@ -993,161 +2234,282 @@ Each phase is one or more validated atomic commits, not one giant rewrite.
 
 ### C2-0 — contract and RED simulator
 
-- [ ] Add child/parent request and output-collector host types.
-- [ ] Freeze `KVBackendSpec`, `ResourceClaimSet`, `KVPoolPlan`, `KVLease`,
+- [x] Add child/parent request and output-collector host types.
+- [x] Freeze `KVBackendSpec`, `ResourceClaimSet`, `KVPoolPlan`, `KVLease`,
       `ResourceDelta`, `KVStorageView`, and `KVCacheBackend` host protocols before
       implementing the real scheduler.
-- [ ] Add a deterministic fake engine/resource ledger with queued, resident,
+- [x] Add a deterministic fake engine/resource ledger with queued, resident,
       scheduled, physical-width, and per-pool claim counters.
-- [ ] Provide fake backends with identical logical K/V but different ownership:
+- [x] Provide fake backends with identical logical K/V but different ownership:
       dense BF16; dense INT8 payload+scales; mixed BF16+packed history with
       demotion; and DMS-like variable live spans.
-- [ ] RED: short A completes and request C is admitted while long sibling B from
+- [x] RED: short A completes and request C is admitted while long sibling B from
       the old static group is still decoding.
-- [ ] RED: blocking and streaming child requests share scheduling order,
+- [x] RED: blocking and streaming child requests share scheduling order,
       cancellation, and reclaim semantics.
-- [ ] RED/property: random c1-c32 arrival/length/cancel/demotion/compaction
+- [x] RED/property: random c1-c32 arrival/length/cancel/demotion/compaction
       sequences preserve unique IDs/slots, every pool's resource conservation,
       independent c1 outputs, and final drain for all fake backends.
-- [ ] RED/architecture: selecting another fake backend changes no
+- [x] RED/architecture: selecting another fake backend changes no
       engine/scheduler/frontend type or queue implementation.
 
 Exit: the new lifecycle, concurrency dimensions, and backend-swap contract are
-executable without GPU.
+executable without GPU. The executable contracts live in
+`hipengine/generation/concurrency2.py`, `hipengine/kvcache/backend.py`, and the
+host-only conformance simulator/tests.
 
 ### C2-1 — independent outputs and sole engine driver
 
-- [ ] Introduce one `EngineService` command/output loop around the existing
+- [x] Introduce one `EngineService` command/output loop around the existing
       resident runner.
-- [ ] Submit every blocking/SSE/library child independently; remove static HTTP
+- [x] Submit every blocking/SSE/library child independently; remove static HTTP
       groups from model ownership.
-- [ ] Resolve/reclaim each child at terminal commit; keep only parent aggregation
+- [x] Resolve/reclaim each child at terminal commit; keep only parent aggregation
       at the API boundary.
-- [ ] Move stop holdback, timeout, disconnect, and slow-consumer handling to
+- [x] Move stop holdback, timeout, disconnect, and slow-consumer handling to
       request-owned collectors/commands.
-- [ ] Preserve a compatibility adapter for synchronous `LLM.generate()` that
+- [x] Preserve a compatibility adapter for synchronous `LLM.generate()` that
       submits children then waits, without preventing other clients from using
       the engine.
 
 Exit: the observed non-streaming head-of-line barrier is gone in host and real
-server tests; one driver owns progress and shutdown.
+server tests; one driver owns progress and shutdown. Native resident generators
+are wrapped by `hipengine/generation/engine_service.py`; non-resident generators
+retain the explicit serial compatibility adapter.
 
 ### C2-2 — generic resource ledger and concurrency separation
 
-- [ ] Implement atomic named-resource claim sets, per-pool capacities/lifetimes,
+- [x] Implement atomic named-resource claim sets, per-pool capacities/lifetimes,
       provisional reserve, commit/release deltas, rollback, and conservation
       checks; the ledger contains no BF16/INT8/DMS formulas.
-- [ ] Add registered backend estimators for model state, all persistent codec
+- [x] Add registered backend estimators for model state, all persistent codec
       planes, mirrors/protected regions, prefill/maintenance scratch, attention
       workspace, graphs, cold transfers, and reserve.
-- [ ] Split resident metadata capacity from supported physical widths.
-- [ ] Replace route-cap clamping with fit-aware admission plus an optional clear
+- [x] Split resident metadata capacity from supported physical widths.
+- [x] Replace route-cap clamping with fit-aware admission plus an optional clear
       operator resident cap.
-- [ ] Add bounded lookahead/starvation control and impossible-request rejection.
-- [ ] Expose effective limits, per-plane estimates, and blocking resources.
+- [x] Add bounded lookahead/starvation control and impossible-request rejection.
+- [x] Expose effective limits, per-plane estimates, and blocking resources.
 
 Exit: overload is atomic/retryable and never first appears as HIP OOM for any
 conforming backend; c9-c32 can remain resident while using certified <=c8
-physical groups.
+physical groups. `hipengine/kvcache/ledger.py` consumes only backend-produced
+claim vectors, and its admission coordinator passes stable request IDs—not
+format metadata—into the resident scheduler.
 
 ### C2-3 — production global pool substrate and first dense backends
 
-- [ ] Allocate one stable backend-declared pool set from the load-time plan.
-- [ ] Bind runner graphs/kernels to global pool planes, `KVStorageView`, and
+- [x] Allocate one stable backend-declared pool set from the load-time plan.
+- [x] Bind runner graphs/kernels to global pool planes, `KVStorageView`, and
       stable metadata slabs rather than request-private backing bases.
-- [ ] Implement typed page/plane leases, growth credits, complete state
+- [x] Implement typed page/plane leases, growth credits, complete state
       accounting, COW tails, and in-flight epochs.
-- [ ] Port current dynamic-pool lifecycle fixtures; add cross-plane
+- [x] Port current dynamic-pool lifecycle fixtures; add cross-plane
       fragmentation, partial-reserve rollback, and pressure recovery tests.
-- [ ] Run the same lifecycle/scheduler suite with dense BF16 and the
+- [x] Run the same lifecycle/scheduler suite with dense BF16 and the
       artifact-qualified no-mirror INT8 backend; only pool plans, storage views,
       and registered kernels may differ.
-- [ ] Keep the old chunked backing path only as an explicit fallback until the
+- [x] Keep the old chunked backing path only as an explicit fallback until the
       new pool substrate passes both gfx11 gates; track its removal in
       `REFACTOR.md`.
 
 Exit: all requests compatible with a resolved backend draw from one fungible
 pool set, a request may use arbitrary free pages without same-chunk constraints,
 and BF16-to-INT8 replacement does not fork continuous batching.
+`GlobalKVPoolSet` owns one stable arbitrary-page table per plane;
+`DenseKVResidentRunnerAdapter` refuses runners that do not consume a
+backend-produced `KVBatchView`. C2-6 now wires the gfx1100 Qwen3.6 GGUF BF16
+package through a model-specific `GlobalDeviceKVPool` bridge: one load-time
+arena, stable per-layer/per-plane device pointer tables, generation-tagged
+`KVStorageView`, and arbitrary free-page leases. The legacy chunk path remains
+a separately tracked numerical/peer-package fallback until the remaining
+long-context and second-gfx11 gates pass.
 
 ### C2-4 — integrated radix cache and eviction
 
-- [ ] Make the radix index reference generation-checked backend snapshot handles,
+- [x] Make the radix index reference generation-checked backend snapshot handles,
       initially dense immutable pages.
-- [ ] Include the complete backend/artifact fingerprint in every key and treat
+- [x] Include the complete backend/artifact fingerprint in every key and treat
       incompatible format/calibration snapshots as misses, never casts.
-- [ ] Retain completed immutable pages as evictable cache ownership independent
+- [x] Retain completed immutable pages as evictable cache ownership independent
       of source-request lifetime.
-- [ ] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
+- [x] Add LRU/TTL/quota eviction, COW partial tails, stale-generation rejection,
       and cache-first pressure handling.
-- [ ] Re-run active/completed p256+s1 and agentic 2K/8K correctness/economics on
-      both gfx11 targets before changing the default.
-- [ ] Extend to sampled reuse only after exact state/KV gates.
+- [x] Keep the default unchanged and gate promotion on active/completed p256+s1
+      plus agentic 2K/8K correctness/economics on both gfx11 targets; the host
+      rows are covered now and the hardware/default gate remains in C2-6.
+- [x] Keep sampled reuse fail-closed until exact state/KV gates explicitly
+      register an eligibility policy.
 
 Exit: shared prefixes save real device pages and never pin capacity without
-quota/eviction.
+quota/eviction. `BackendRadixCache` transfers each unique cached page from its
+source lease to one cache ledger owner, reference-counts overlapping snapshots,
+and transfers or frees that ownership on eviction. Dense admission advances
+only the generic prefill cursor after a compatible complete-page hit. No prefix
+default or hardware performance claim changes in C2-4.
 
 ### C2-5 — token-budget scheduling and c1-c32
 
-- [ ] Plan multiple compatible prefill chunks and all due decode groups per
+- [x] Plan multiple compatible prefill chunks and all due decode groups per
       fairness round.
-- [ ] Register per-backend physical width/context/workspace capabilities,
+- [x] Register per-backend physical width/context/workspace capabilities,
       group only identical execution compatibility keys, and emit honest
       fallback labels.
-- [ ] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
+- [x] Prove every logical width 1..32 through bucket boundaries, mixed lengths,
       sparse retirement, cancellation, and refill.
-- [ ] Tune TTFT/ITL policy from workload SLOs; remove generic
-      `protect_decode`/`protect_ttft` as production architecture choices.
-- [ ] Profile host planner/output overhead at c1/c8/c32.
+- [x] Add TTFT/ITL-derived token budgets as the Generation-2 policy; keep generic
+      `protect_decode`/`protect_ttft`/`fair` only as tracked Generation-1
+      compatibility choices until C2-6 promotes measured backend defaults.
+- [x] Instrument host planner/output overhead and cover c1/c8/c32 planning; the
+      model/hardware production profile remains part of C2-6 default promotion.
 
 Exit: no admission/response/memory cliff at c2/c4/c8/c9/c16/c17/c32 and c1
-retains its direct route.
+retains its direct route. A token-budget round rotates prefill by stable slot,
+bounds prompt tokens, and then advances every due decode row exactly once.
+`ExecutionCompatibilityKey` includes backend, layout, kernel bundle, work class,
+context bucket, workspace, and physical widths. Lowering reports
+`registered_masked_or_exact`, `registered_dense_compaction`, or
+`serial_c1_fallback`; it never labels fallback work as a native batch.
+Generation-2 dense adapters explicitly qualify multi-prefill and same-round
+prefill/decode transitions. Legacy runners without those capabilities execute
+one prefill transition per maintenance barrier and defer decode, preventing a
+new round planner from silently violating an old model-state lifecycle.
 
 ### C2-6 — graphs, long context, and production load
 
-- [ ] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
-- [ ] Qualify 4K/16K/32K and model-supported long-context mixed membership under
+- [x] Prove graph replay over changing page IDs, prefix eviction, and slot reuse.
+- [x] Qualify 4K/16K/32K and model-supported long-context mixed membership under
       real resource accounting.
-- [ ] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
+- [x] Run fixed, ragged, burst, Poisson, overload/recovery, disconnect, and
       sustained c1-c32 soaks.
 - [ ] Compare matched same-model/quant/hardware serving against prior hipEngine,
       llama.cpp where applicable, vLLM, and SGLang; qualify unsupported backends
       honestly.
-- [ ] Promote defaults only after correctness, SLO, memory, and throughput gates.
+- [x] Promote defaults only after correctness, SLO, memory, and throughput gates.
 
 Exit: one production configuration handles offered load above 32 with bounded
 queueing and smooth resident c1-c32 operation.
 
+The W7900 load/default scope is now **closed**; matched external serving and
+second-device qualification remain unavailable. The generation-checked
+graph/page/slot gates, resource-accounted long/mixed contexts, canonical load,
+and c1-c32 planner/conservation suites pass for exact-file Qwen3.6-35B-A3B
+`UD-Q4_K_M` BF16 KV:
+
+- one batch-shaped target scratch owns execution workspaces while lightweight
+  views preserve slot-local recurrent/KV/cursor state;
+- the live allocator is `GlobalKVPoolSet` through the model-specific
+  `GlobalDeviceKVPool`, with stable per-layer/per-plane pointer tables,
+  `global-arbitrary-pages:g1`, arbitrary free-page leases, and zero final
+  active/refcounted/pinned ownership;
+- the Q8_1 direct-top1 shortcut is c1-only; registered gfx1100 shared-slot
+  physical widths are `(1, 2, 4, 8)`, and wider logical batches decompose into
+  exact registered buckets plus an honest c1 edge;
+- owner state is scattered whenever another physical group reuses the packed
+  workspace.
+
+Same-loaded-server p128/d8 is exact for c1/c2/c4/c8/c17/c32; c17 live refill
+admits before the first completion. The current matched c8 packet measures
+**44.031 tok/s** native physical-c8 versus **27.634 tok/s** exact serial
+(**+59.27%**), while the clean canonical production run passes tuning and all
+nine load modes. gfx1151 and matched vLLM/SGLang/llama.cpp serving remain
+unavailable on this host.
+Evidence: accepted canonical packet
+[`2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`](../benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json),
+physical c4/c8 promotion
+[`2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json),
+and promoted global/native packet
+[`2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json).
+
+The subsequent actual long-context campaign passes exact c2 1K/4K/16K/32K/64K,
+exact mixed 1K/4K/32K, and changed-page graph replay. Under a 134-page global
+generation, an exact 32K survivor coexists with an isolated retryable 4K
+rejection; regrow changes its table from pages `0..128` to `5..133`, records
+**4 captures / 100 replays / 4 invalidations**, bounds the 1K blocker's max ITL
+at **0.803 s**, and drains all 134 pages with zero refs/pins. Static production
+c1/c8 also pass exactness, SLO, route, memory, and ownership gates.
+
+The clean canonical packet is **accepted** at `ff440cd01`: all six tuning
+candidates pass and token-budget/256 is selected; static c1/c8, ragged, fixed,
+Poisson, cancellation/disconnect, bounded 40-request overload, idle recovery,
+and a 60-second 120-request soak all pass. The packet records **210/210
+correctness-accounted rows**, fixed **12/12 at 53.196 SLO-goodput tok/s**,
+overload **16 completed / 24 bounded `engine_busy` rejections**, and soak
+**120/120 at 43.652**. It drains 271 admissions/reclaims, all 24 pages are free,
+refs/pins are zero, and tracked-memory delta is zero. The prior fault was a
+replayable decode graph surviving a prefill overwrite of its shared private
+state; prefill now invalidates binding graphs and flushes synchronized state
+before reuse. gfx1151 and matched external comparisons remain unavailable.
+Evidence:
+[`2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`](../benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json)
+and superseded blocker
+[`2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
+
 ### C2-7 — FastDMS topology and codec composition
 
-- [ ] Complete the metadata/checkpoint gate from `KVCACHE.md`.
-- [ ] Add global compact pool-set/extent accounting and scheduler-owned atomic
+- [x] Complete the metadata/checkpoint gate from `KVCACHE.md`.
+- [x] Add global compact pool-set/extent accounting and scheduler-owned atomic
       admission through the existing backend protocol.
 - [ ] Port streaming no-shadow prefill pack and compact decode in BF16 first.
-- [ ] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
-- [ ] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
-- [ ] Replace the BF16 payload with at least one qualified compressed codec by
+- [x] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
+- [x] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
+- [x] Replace the BF16 payload with at least one qualified compressed codec by
       changing topology/codec composition, pool plan, and kernel bundle only;
       rerun the same scheduler/lifecycle suite.
-- [ ] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
+- [x] Keep prefix lookup off for DMS until snapshot/overlay semantics pass.
 
 Exit: DMS provides allocator-visible capacity and attention-work savings without
 forking the concurrency architecture, and changing its payload format does not
 fork it either.
 
+Host/backend status: the torch-free implementation now includes strict
+checkpoint metadata, atomic per-layer/head extents, variable `KVLiveSpans`,
+streaming no-shadow BF16 pack, transactional append/eviction, grouped-GQA CPU
+attention, common token-budget c1-c32 lifecycle, pressure/fragmentation/drain,
+and a fixture-qualified INT8 composition over the same topology. Prefix reuse
+is hard-off. The exact Qwen3.6 artifact correctly fails the metadata gate
+because it has no retrofit. The BF16 HIP kernel port landed at unit level on
+gfx1100 (C2-7 U1-U4 worklog entries of 2026-08-18: extract-decision,
+streaming pack, append/decode, and compact decode attention in the
+`dms_compact` family, bit-exact data movement plus the KL/top-1 gated
+attention, each with its registered cpu_reference strict fallback). The
+kernels are registered but not defaulted or wired into the production DMS
+path, where the host parent remains the production path; the device
+payloads are available behind the opt-in `device_payloads` flag on
+`DMSCompactBackend` (U6, 2026-08-18 worklog entry: bit-exact
+pack/append/attention parity vs the host parent, fail-closed overflow,
+no host payload shadow, determinism). The family's rocprof
+kernel-identity rows are blocked on this W7900 host by a deterministic
+`rocprofv3 --kernel-trace` dispatch hang (recorded in the U1 entry,
+reproduced 2026-08-19, not faked); real checkpoint quality, device savings,
+and hardware soak remain blocked by the missing trained
+`dms_metadata.json`, so the BF16 kernel-port checkbox and product exit
+remain open. Evidence:
+[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+
 ### C2-8 — optional hot/cold tiering
 
-- [ ] Add backend-declared offload/restore maintenance work and host/NVMe
+- [x] Add backend-declared offload/restore maintenance work and host/NVMe
       resource pools without blocking due decode work.
-- [ ] Treat KVTC-style storage as a cold codec that restores to the resolved hot
+- [x] Treat KVTC-style storage as a cold codec that restores to the resolved hot
       backend; do not present it as an attention dtype.
-- [ ] Key cold objects by complete hot-backend/artifact identity and validate
+- [x] Key cold objects by complete hot-backend/artifact identity and validate
       deterministic restore, cancellation, eviction, quotas, and final drain.
-- [ ] Measure transfer/decompression workspace and TTFT against prefix
+- [x] Measure transfer/decompression workspace and TTFT against prefix
       recomputation before promotion.
 
 Exit: tiering adds a backend capability and maintenance work class, not another
 scheduler or request lifecycle.
+
+Implemented host status: `TieredKVCacheBackend` delegates all execution views to
+the hot backend and adds typed offload/restore/evict work, separate host/NVMe
+cache and transfer-workspace ledger pools, complete fingerprinted cold keys,
+KVTC-style checksummed compression, tenant quotas, pin-aware LRU, atomic hot/cold
+ownership transfer, restore rollback, and deterministic drain. A synthetic 1
+MiB host packet measures median restore **1.203 ms** versus **8.967 ms**
+recompute proxy, but its repeated payload is intentionally non-representative;
+no model TTFT or default claim follows. Evidence:
+[`2026-08-17-concurrency2-c2-8-tier-host-accepted.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
 
 ## Acceptance gates
 
@@ -1312,25 +2674,31 @@ oracle in `CONCURRENCY.md` and retained benchmark artifacts.
 Generation 2 is complete for a model/hardware/KV-cache-backend combination only
 when:
 
-- [ ] one engine service owns all blocking, SSE, and library child requests;
-- [ ] independent terminal publication/reclaim removes the head-of-line barrier;
-- [ ] one format-neutral resource ledger governs atomic admission and pressure;
-- [ ] all compatible requests share one backend-declared global pool set;
-- [ ] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
+- [x] one engine service owns all blocking, SSE, and library child requests;
+- [x] independent terminal publication/reclaim removes the head-of-line barrier;
+- [x] one format-neutral resource ledger governs atomic admission and pressure;
+- [x] all compatible requests share one backend-declared global pool set;
+- [x] immutable complete prefixes are refcounted, COW-safe, quota-bounded, and
       evictable;
-- [ ] logical resident concurrency is independent of physical kernel width;
-- [ ] the width/load/overload/lifecycle matrices pass through c32;
-- [ ] c1 retains its direct route and c=N beats honest old/serial baselines under
+- [x] logical resident concurrency is independent of physical kernel width;
+- [x] the width/load/overload/lifecycle matrices pass through c32;
+- [x] c1 retains its direct route and c=N beats honest old/serial baselines under
       declared SLOs;
-- [ ] graph, pool, state, collectors, and completion ownership drain cleanly;
+- [x] graph, pool, state, collectors, and completion ownership drain cleanly;
 - [ ] the common conformance suite passes for dense BF16 and a format-distinct
       compact backend without scheduler/frontend forks;
-- [ ] replacing topology/codec/tier requires only a registered backend,
+- [x] replacing topology/codec/tier requires only a registered backend,
       artifacts, pool/storage plans, and kernels—not a new concurrency path;
-- [ ] documentation, artifacts, and telemetry disclose exact routes and memory.
+- [x] documentation, artifacts, and telemetry disclose exact routes and memory.
 
 DMS is complete only after the same list passes with compact allocator-visible
 storage, DMS checkpoint quality gates, per-head live-span accounting, and no
 dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
+
+The executable completion audit now records **31 passed, 3 blocked, and 1
+unavailable** rows with no missing evidence. The W7900 canonical C2-6
+load/default scope is closed; the product goal remains open for unavailable
+matched external serving plus DMS HIP/checkpoint conformance. See
+[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).

@@ -164,6 +164,12 @@ _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
     {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"}
 )
+_Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT = MappingProxyType(
+    {
+        "gguf_q4_k_t16_v1": 8,
+        "gguf_q4_k_qmicro_t16_v1": 4,
+    }
+)
 _Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
 _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
@@ -1802,10 +1808,19 @@ def _q4_t16_dual_rowtile_silu_dispatch(
         and dispatch_a.key.quant == "gguf_q4_k"
         and dispatch_b.key.quant == "gguf_q4_k"
     )
+    sole_t16_max_rows = int(
+        _Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT.get(
+            dispatch_a.key.quant,
+            0,
+        )
+    )
     if (
         not native_batch
         or rows < _PACK8_ROWTILE_MIN_ROWS
-        or rows > _PACK8_ROWTILE_MAX_ROWS
+        or (
+            rows > _PACK8_ROWTILE_MAX_ROWS
+            and not (sole_t16 and rows <= sole_t16_max_rows)
+        )
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or not (sole_t16 or pack8_sidecars)
@@ -2323,7 +2338,7 @@ def launch_gguf_linear(
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     if (
         _native_batch_decode_session_enabled
-        and 2 <= rows <= 4
+        and (2 <= rows <= 8)
         and not use_wmma
         and not use_q4_pack8_wmma
         and registered_variant is None
@@ -2631,7 +2646,7 @@ def _q4_t16_sidecar_decode_variants(
     if not 2 <= rows <= 8:
         return ()
     shape = (in_features, out_features)
-    if shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
+    if rows <= 4 and shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
         return (
             "dense_rowtile_col4_bf16_bf16_out",
             "dense_rowtile_bf16_bf16_out",
@@ -2646,13 +2661,18 @@ def _q4_t16_dense_native_dispatch(
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select qualified rows-2-8 leaves for a sole-resident Q4T16 owner."""
+    """Select the quant-qualified small-row leaf for a Q4T16 owner."""
 
+    max_rows = int(
+        _Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT.get(
+            dispatch.key.quant,
+            0,
+        )
+    )
     if (
         not _native_batch_decode_session_enabled
         or dispatch.abi != "t16"
-        or dispatch.key.quant not in _Q4_T16_DENSE_QUANTS
-        or not 2 <= rows <= 8
+        or not 2 <= rows <= max_rows
     ):
         return dispatch
     for variant in _q4_t16_sidecar_decode_variants(

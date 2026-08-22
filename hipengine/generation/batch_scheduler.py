@@ -972,6 +972,7 @@ class ResidentBatchScheduler:
         self._reclaimed_total = 0
         self._work_counts: Counter[str] = Counter()
         self._recent_completed: deque[CompletedRequest] = deque(maxlen=1024)
+        self._prefill_round_robin_slot = 0
 
     @property
     def pending_count(self) -> int:
@@ -980,6 +981,10 @@ class ResidentBatchScheduler:
     @property
     def active_count(self) -> int:
         return self.active_batch.active_count
+
+    @property
+    def pending_requests(self) -> tuple[RequestState, ...]:
+        return tuple(self._pending)
 
     @property
     def completed(self) -> Mapping[int, CompletedRequest]:
@@ -1102,30 +1107,54 @@ class ResidentBatchScheduler:
     def admit_pending(
         self,
         *,
-        reserve_callback: Callable[[RequestState], None] | None = None,
+        request_ids: Sequence[int] | None = None,
+        reserve_callback: Callable[[RequestState], RequestState | None] | None = None,
         rollback_callback: Callable[[RequestState], None] | None = None,
     ) -> tuple[int, ...]:
-        """Fill free slots from the pending queue and return admitted request ids.
+        """Fill free slots with FCFS or an explicit fit-aware request order.
 
-        A scheduler-owned resource reservation may run immediately before the
-        request becomes active.  Reservation failures leave the request at the
-        head of the pending queue and do not publish a physical slot.  If the
-        slot commit itself fails, the paired rollback callback releases the
-        unpublished reservation before the exception escapes.
+        A scheduler-owned resource reservation may run immediately before each
+        request becomes active. Reservation failure never publishes that
+        request's physical slot; a failed slot commit invokes the paired
+        rollback callback. Format-specific fit calculations remain outside this
+        scheduler and provide only stable request IDs here.
         """
 
+        free_slots = self.capacity - self.active_batch.active_count
+        pending_by_id = {request.request_id: request for request in self._pending}
+        if request_ids is None:
+            candidates = tuple(request.request_id for request in self._pending)[:free_slots]
+        else:
+            candidates = tuple(int(request_id) for request_id in request_ids)
+            if len(candidates) != len(set(candidates)):
+                raise ValueError("admission request_ids must be unique")
+            unknown = set(candidates) - set(pending_by_id)
+            if unknown:
+                raise KeyError(f"admission request_ids are not pending: {sorted(unknown)!r}")
+            if len(candidates) > free_slots:
+                raise ValueError("admission request_ids exceed free resident slots")
+
         admitted: list[int] = []
-        while self._pending and self.active_batch.active_count < self.capacity:
-            request = self._pending[0]
+        for request_id in candidates:
+            pending_request = pending_by_id[request_id]
+            request = pending_request
             if reserve_callback is not None:
-                reserve_callback(request)
+                prepared = reserve_callback(pending_request)
+                if prepared is not None:
+                    if not isinstance(prepared, RequestState):
+                        raise TypeError("reserve_callback must return RequestState or None")
+                    if prepared.request_id != pending_request.request_id:
+                        raise ValueError("reserve_callback cannot change request identity")
+                    request = prepared
             try:
                 self.active_batch.admit(request)
             except Exception:
                 if reserve_callback is not None and rollback_callback is not None:
                     rollback_callback(request)
                 raise
-            self._pending.popleft()
+            self._pending = deque(
+                item for item in self._pending if item.request_id != request_id
+            )
             state = self._observability.get(request.request_id)
             if state is not None:
                 now = self._clock()
@@ -1144,25 +1173,58 @@ class ResidentBatchScheduler:
         return self.active_batch.compact(order=order)
 
     def next_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
-        """Emit one prefill chunk and advance the request's prompt cursor."""
+        """Emit one legacy FCFS prefill chunk and advance its prompt cursor."""
 
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         for request_id in self.active_batch.active_request_ids:
             request = self.active_batch.requests[request_id]
+            if request.remaining_prefill > 0:
+                return self._take_prefill_work(request_id, chunk_size=chunk_size)
+        return None
+
+    def next_round_robin_prefill_work(self, *, chunk_size: int) -> WorkItem | None:
+        """Emit one fair prefill quantum using stable physical-slot rotation."""
+
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        for offset in range(self.capacity):
+            slot = (self._prefill_round_robin_slot + offset) % self.capacity
+            slot_state = self.active_batch.slots[slot]
+            if slot_state is None or not slot_state.active:
+                continue
+            request = self.active_batch.requests[slot_state.request_id]
             if request.remaining_prefill <= 0:
                 continue
-            updated, chunk = request.take_prefill(chunk_size)
-            self.active_batch.update_request(updated)
-            self._update_kv_pages(updated)
-            self._set_bucket_key((request_id,), self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)))
-            return WorkItem(
-                kind=WorkKind.PREFILL,
-                request_ids=(request_id,),
-                row_to_request=(request_id,),
-                token_rows=(chunk,),
+            self._prefill_round_robin_slot = (slot + 1) % self.capacity
+            return self._take_prefill_work(
+                request.request_id,
+                chunk_size=chunk_size,
             )
         return None
+
+    def _take_prefill_work(self, request_id: int, *, chunk_size: int) -> WorkItem:
+        request = self.active_batch.requests[int(request_id)]
+        if request.remaining_prefill <= 0:
+            raise ValueError(f"request_id {request_id} has no prefill work")
+        updated, chunk = request.take_prefill(chunk_size)
+        self.active_batch.update_request(updated)
+        self._update_kv_pages(updated)
+        self._set_bucket_key(
+            (request.request_id,),
+            self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)),
+        )
+        slot_id = self.active_batch.slot_for(request.request_id)
+        return WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(request.request_id,),
+            row_to_request=(request.request_id,),
+            token_rows=(chunk,),
+            slot_ids=(slot_id,),
+            active_mask=tuple(
+                slot == slot_id for slot in range(self.capacity)
+            ),
+        )
 
     def bucketize_by_block_count(
         self,
@@ -1280,6 +1342,7 @@ class ResidentBatchScheduler:
     def next_decode_work(
         self,
         *,
+        request_ids: Sequence[int] | None = None,
         top_k: int = 0,
         experts_per_token: int = 0,
         replay_steps: int = 1,
@@ -1288,16 +1351,27 @@ class ResidentBatchScheduler:
     ) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
 
-        request_ids = tuple(
+        ready_ids = tuple(
             request_id
             for request_id in self.active_batch.active_request_ids
             if self.active_batch.requests[request_id].remaining_prefill == 0
             and self.active_batch.requests[request_id].remaining_decode > 0
             and not self.active_batch.requests[request_id].finished
         )
-        if not request_ids:
+        if request_ids is None:
+            selected_ids = ready_ids
+        else:
+            selected_ids = tuple(int(request_id) for request_id in request_ids)
+            if not selected_ids or len(selected_ids) != len(set(selected_ids)):
+                raise ValueError("decode request_ids must be non-empty and unique")
+            unavailable = set(selected_ids) - set(ready_ids)
+            if unavailable:
+                raise ValueError(
+                    f"decode request_ids are not ready: {sorted(unavailable)!r}"
+                )
+        if not selected_ids:
             return None
-        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in request_ids)
+        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in selected_ids)
         slot_set = set(slot_ids)
         active_mask = tuple(slot in slot_set for slot in range(self.capacity))
         shape = replace(
@@ -1309,14 +1383,14 @@ class ResidentBatchScheduler:
                 kv_storage_dtype=kv_storage_dtype,
                 layer_plan=layer_plan,
             ),
-            active_c=len(request_ids),
+            active_c=len(selected_ids),
             active_mask=active_mask,
         )
-        self._set_bucket_key(request_ids, self._bucket_key(shape))
+        self._set_bucket_key(selected_ids, self._bucket_key(shape))
         return WorkItem(
             kind=WorkKind.DECODE,
-            request_ids=request_ids,
-            row_to_request=request_ids,
+            request_ids=selected_ids,
+            row_to_request=selected_ids,
             slot_ids=slot_ids,
             active_mask=active_mask,
         )

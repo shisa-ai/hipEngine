@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFResidentSession,
     _chunk_ranges,
@@ -126,6 +127,10 @@ _PRODUCTION_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 @pytest.mark.skipif(
     not _PRODUCTION_MODEL.exists(),
     reason=f"local GGUF fixture not found: {_PRODUCTION_MODEL}",
+)
+@pytest.mark.skipif(
+    "gfx1151" not in detect_hip_target_arches(),
+    reason="Qwen3.8 FP16-state packed AR gate requires physical gfx1151",
 )
 @pytest.mark.parametrize(
     ("state_env", "expected_fp16_state"),
