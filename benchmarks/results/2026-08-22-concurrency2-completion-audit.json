@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "kind": "hipengine_concurrency2_completion_audit",
-  "created_at": "2026-08-22T15:24:11.926282+00:00",
+  "created_at": "2026-08-22T15:46:27.060276+00:00",
   "status": "blocked",
   "passed": true,
   "goal_complete": false,
   "status_counts": {
     "passed": 38,
-    "blocked": 1,
+    "blocked": 2,
     "unavailable": 1
   },
   "requirements": [
@@ -851,6 +851,29 @@
       "evidence_complete": true
     },
     {
+      "requirement_id": "C2-S.C5",
+      "section": "roadmap",
+      "summary": "full continuous SpecDec product promotion",
+      "status": "blocked",
+      "evidence_paths": [
+        "benchmarks/results/2026-08-22-concurrency2-spec-c5-product-blocked.json"
+      ],
+      "validation": "quality/direct economics/profiler/memory/public exactness pass",
+      "blocker": "public C=10 service MTP wall is 0.579x true AR; phase-serial provider execution fails product economics and HTTP SLO promotion is not run",
+      "evidence": [
+        {
+          "path": "benchmarks/results/2026-08-22-concurrency2-spec-c5-product-blocked.json",
+          "exists": true,
+          "artifact": {
+            "status": "blocked_no_promotion_service_economics",
+            "passed": false,
+            "performance_claim": false
+          }
+        }
+      ],
+      "evidence_complete": true
+    },
+    {
       "requirement_id": "DoD.service",
       "section": "definition_of_done",
       "summary": "one service owns blocking/SSE/library children",
@@ -1235,6 +1258,11 @@
       "requirement_id": "C2-6.external",
       "status": "unavailable",
       "blocker": "vLLM/SGLang are not installed; llama.cpp HIP binaries fail CPU-ISA/ROCm-ABI checks; the available Vulkan binary has no usable GPU backend"
+    },
+    {
+      "requirement_id": "C2-S.C5",
+      "status": "blocked",
+      "blocker": "public C=10 service MTP wall is 0.579x true AR; phase-serial provider execution fails product economics and HTTP SLO promotion is not run"
     },
     {
       "requirement_id": "DMS.product",

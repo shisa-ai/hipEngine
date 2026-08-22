@@ -17,7 +17,7 @@ def test_completion_audit_has_evidence_for_every_requirement() -> None:
     assert payload["false_passes"] == []
     assert payload["status_counts"] == {
         "passed": 38,
-        "blocked": 1,
+        "blocked": 2,
         "unavailable": 1,
     }
     rows = payload["requirements"]
@@ -35,6 +35,7 @@ def test_completion_audit_names_only_real_product_blockers() -> None:
     assert blockers == {
         "C2-6.external": "unavailable",
         "DMS.product": "blocked",
+        "C2-S.C5": "blocked",
     }
     external = next(
         row for row in payload["blockers"]
