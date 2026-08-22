@@ -1906,7 +1906,18 @@ class ResidentEngineLoop:
             return tuple(events)
 
         if prefill_available:
-            prefill = self.scheduler.next_prefill_work(chunk_size=self.prefill_chunk_size)
+            packed_prefill_rows = int(
+                getattr(self.runner, "packed_prefill_max_rows", 1)
+            )
+            if packed_prefill_rows > 1:
+                prefill = self.scheduler.next_prefill_batch_work(
+                    chunk_size=self.prefill_chunk_size,
+                    max_rows=packed_prefill_rows,
+                )
+            else:
+                prefill = self.scheduler.next_prefill_work(
+                    chunk_size=self.prefill_chunk_size
+                )
             assert prefill is not None
             events.extend(self._run_prefill(prefill))
             return tuple(events)

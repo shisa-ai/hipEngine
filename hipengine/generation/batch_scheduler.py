@@ -1203,6 +1203,50 @@ class ResidentBatchScheduler:
             )
         return None
 
+    def next_prefill_batch_work(
+        self,
+        *,
+        chunk_size: int,
+        max_rows: int,
+    ) -> WorkItem | None:
+        """Emit one stable multi-request prefill quantum.
+
+        The scheduler advances every selected prompt cursor atomically before
+        publication. Runner capability decides whether those rows execute in one
+        native prefill call; incompatible/native misses must fall back before
+        this method is selected.
+        """
+
+        if chunk_size <= 0 or max_rows <= 0:
+            raise ValueError("chunk_size/max_rows must be positive")
+        selected = tuple(
+            request_id
+            for request_id in self.active_batch.active_request_ids
+            if self.active_batch.requests[request_id].remaining_prefill > 0
+        )[: int(max_rows)]
+        if not selected:
+            return None
+        chunks: list[tuple[int, ...]] = []
+        slots: list[int] = []
+        for request_id in selected:
+            request = self.active_batch.requests[request_id]
+            updated, chunk = request.take_prefill(int(chunk_size))
+            self.active_batch.update_request(updated)
+            self._update_kv_pages(updated)
+            chunks.append(chunk)
+            slots.append(self.active_batch.slot_for(request_id))
+        self._set_bucket_key(
+            selected,
+            self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)),
+        )
+        return WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=selected,
+            row_to_request=selected,
+            token_rows=tuple(chunks),
+            slot_ids=tuple(slots),
+        )
+
     def _take_prefill_work(self, request_id: int, *, chunk_size: int) -> WorkItem:
         request = self.active_batch.requests[int(request_id)]
         if request.remaining_prefill <= 0:

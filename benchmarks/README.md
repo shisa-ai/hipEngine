@@ -192,6 +192,11 @@ recovery/soak workloads with **210/210** correctness-accounted rows, bounded
 zero tracked-memory delta. Physical c1/c2/c4/c8 and logical c1-c32 are retained
 for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json).
 
+On Radeon 8060S/gfx1151, Qwen3.8 `Q4_K_S` packed prefill improves exact c17
+streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
+**11.030→9.406 s (-14.72%)**. ITL p99 remains narrowly outside SLO at 0.509 s,
+so gfx1151 canonical production is not yet promoted.
+
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
 115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true

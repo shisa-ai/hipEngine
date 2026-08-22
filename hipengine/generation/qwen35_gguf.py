@@ -4876,6 +4876,15 @@ class Qwen35GGUFResidentModelRunner:
             raise ValueError("capacity must be positive")
         self.generator = generator
         self.capacity = int(capacity)
+        self.packed_prefill_max_rows = int(
+            backend_package_capability(
+                generator.backend,
+                "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
+                1,
+            )
+        )
+        if self.packed_prefill_max_rows <= 0:
+            raise ValueError("GGUF_C2_PACKED_PREFILL_MAX_ROWS must be positive")
         self._shared_runner = generator._get_shared_runner()
         self._max_sequence_length = getattr(generator, "_prepared_max_sequence_length", None)
         self._available: list[_GGUFResidentSessionLease] = []
@@ -5973,10 +5982,74 @@ class Qwen35GGUFResidentModelRunner:
             if config is not None:
                 self.configure_engine_loop(config)
 
+    def _try_prefill_native_work_batch(self, work: WorkItem) -> bool:
+        """Run one same-length full-prompt scheduler work item as native cN."""
+
+        if (
+            len(work.request_ids) <= 1
+            or len(work.request_ids) > self.packed_prefill_max_rows
+            or not _gguf_ar_packed_prefill_enabled()
+        ):
+            return False
+        rows = [self._row(request_id) for request_id in work.request_ids]
+        chunks = [tuple(int(token) for token in token_row) for token_row in work.token_rows]
+        if len({len(chunk) for chunk in chunks}) != 1:
+            return False
+        for row, chunk in zip(rows, chunks, strict=True):
+            if (
+                not row.native_greedy
+                or row.slot is not None
+                or row.prefill_tokens_seen != 0
+                or row.prefix_reused_tokens
+                or chunk != row.prompt_ids
+            ):
+                return False
+            raise_if_generation_deadline_expired(row.request)
+        leases: list[_GGUFResidentSessionLease] = []
+        for row in rows:
+            lease = row.lease or self._acquire_lease()
+            row.lease = lease
+            leases.append(lease)
+        owner = self._packed_execution_owner(leases[0].session)
+        prefill_batch = getattr(owner, "prefill_batch_native", None)
+        if not callable(prefill_batch):
+            return False
+        started = time.perf_counter()
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+            results = prefill_batch(
+                chunks,
+                sessions=[lease.session for lease in leases],
+                full_prompt_lengths=[len(chunk) for chunk in chunks],
+                return_logits=False,
+                return_hidden_seeds=False,
+            )
+        result_rows = [] if results is None else list(results)
+        if len(result_rows) != len(rows):
+            raise RuntimeError(
+                "packed scheduler prefill must return one result per request"
+            )
+        elapsed_ms = _timing_ms_since(started)
+        self._route_counts["native_full_prefill_rows"] += len(rows)
+        for row, chunk, result in zip(rows, chunks, result_rows, strict=True):
+            row.prefill_tokens_seen = len(chunk)
+            row.incremental_prefill = False
+            row.prefill_ms += elapsed_ms
+            row.prefill_chunk_count += 1
+            self._refresh_prefix_cache(row)
+            self._finish_native_prefill(
+                row,
+                result,
+                native_compact_prefill=True,
+            )
+            raise_if_generation_deadline_expired(row.request)
+        return True
+
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
+            if self._try_prefill_native_work_batch(work):
+                return
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
                 row = self._row(request_id)
                 start = int(row.prefill_tokens_seen)

@@ -198,6 +198,14 @@ fallback, numerical state/KV gate, graph closure, and exact memory recovery.
 This is width/lifecycle correctness, not canonical load/SLO closure. Evidence:
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json).
 
+An exact gfx1151-only packed-prefill owner is retained: up to eight compatible
+same-length full prompts enter one existing native prefill call, while all
+incompatible/prefix/incremental/sampled cases fall back before mutation and
+gfx1100 stays scalar. At c17/fair:256 it improves streaming **9.673→10.956
+tok/s (+13.27%)**, TTFT **11.030→9.406 s**, ITL **0.525→0.509 s**, and E2E
+**14.059→12.412 s** over three repeats. c17 remains 9 ms outside ITL SLO, so
+production closure stays blocked. Evidence: [`gfx1151 packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json).
+
 The current Qwen3.8 canonical packet confirms the same offered-load boundary.
 Strict `token_budget` passes blocking exactness but streaming fails at c8+.
 Retained `fair:256` repairs c8 (**10.244 tok/s**, TTFT p95 5.196 s, ITL p99

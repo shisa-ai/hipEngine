@@ -79,6 +79,7 @@ from hipengine.kernels.hip_gfx1100 import (
     LAGUNA_SWA_PREFILL_VARIANT as GFX1100_LAGUNA_SWA_PREFILL_VARIANT,
 )
 from hipengine.kernels.hip_gfx1151 import (
+    GGUF_C2_PACKED_PREFILL_MAX_ROWS,
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE,
@@ -664,6 +665,13 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
     ) == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert GGUF_C2_PACKED_PREFILL_MAX_ROWS == 8
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
+    ) == 8
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
+    ) == 1
 
 
 def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
