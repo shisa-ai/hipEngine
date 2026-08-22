@@ -93,6 +93,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q5_T16_SELECTED_QWEN_TILE8,
     GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q6_LM_HEAD_MAX_CHUNK,
+    GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_DECODE_ROWTILE_ALL,
     GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
@@ -656,6 +657,13 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
         "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
         {},
     ) == {}
+
+
+def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
+    assert GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+    ) == (1, 2, 3, 4, 5, 6, 7, 8)
 
 
 def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:

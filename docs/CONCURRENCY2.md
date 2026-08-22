@@ -190,6 +190,14 @@ Run the common host and physical-device gates before performance promotion:
 - strict/production numerical gates plus the full task/category matrix required
   by `EXECUTION-PROFILES.md`.
 
+Current physical-host qualification promotes Qwen3.8/GGUF shared-slot physical
+widths **1..8** for gfx1151. The direct profile passes 1,950 teacher-forced rows
+(KL max 0.00112, top-1 99.49%); logical c13 lowers 8+5, survives middle-hole
+8+3, refill 8+5, 11 compaction moves, cancellation/session reuse, no scalar
+fallback, numerical state/KV gate, graph closure, and exact memory recovery.
+This is width/lifecycle correctness, not canonical load/SLO closure. Evidence:
+[`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json).
+
 The prior ZBook Qwen3.6 server packet saturated the physical bucket and failed
 its long soak through overload/ITL/TTFT pressure. Do not “fix” that by enlarging
 queues or weakening SLOs. First determine whether the limiting resource is
