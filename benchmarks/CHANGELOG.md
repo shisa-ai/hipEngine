@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [Concurrency2 gfx1151 Qwen3.8 fused packed-state transfer promotion; production still blocked] Clean c17 marked owner **420.496→410.878 ms (-2.29%)**, dispatches **6,691→3,639**, copyBuffer **4,117→1,061** by replacing strict Conv/recurrent D2D loops with four pointer-table copies. Three-repeat streaming ITL **0.5094→0.5046 s (-0.94%)** and E2E **12.412→12.402 s**; all rows and c13 lifecycle exact. Retain gfx1151-only; c17 median remains 4.6 ms above SLO and c32 remains blocked. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-fused-packed-state-transfer.json`.
+
 - [Concurrency2 gfx1151 Qwen3.8 wider-owner rejection] Clean eager diagnostics are exact but lose: native c16 **341.46 ms** vs 2×c8 **273.90 ms**; native c9 **228.05 ms**; actual c17 9+8 **425.86 ms** vs retained 8+8+1 **406.50 ms (+4.76% regression)**. Keep physical widths 1..8 and move to marked eager-owner kernel-family work. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-eager-wider-width-screen.json`.
 
 - [Concurrency2 gfx1151 Qwen3.8 c17 D2/profile rejection] Captured-replay costs predicted 8+5+4 **336.40 ms** versus ceiling 8+8+1 **351.72 ms**, but canonical d8 is eager: clean owner **406.50→409.39 ms** and streaming throughput **10.956→10.926 tok/s** / E2E **12.412→12.446 s** regress. Reject this D2 map; measure eager costs. Profiler wall is +4.80%; no marker trace was emitted, so marked family shares remain unknown. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json`.

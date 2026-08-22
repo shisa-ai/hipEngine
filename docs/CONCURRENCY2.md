@@ -215,8 +215,21 @@ this packet does not rank eager compositions and cannot promote a D2 map. A
 profiled owner wall was 426.00 ms versus 406.50 ms clean (+4.80%); all 75,551
 full-process dispatch rows had positive durations, but this ROCm run emitted no
 marker-trace file, so marked-window kernel-family shares remain **unknown** and
-must not be inferred from the whole-process trace. Evidence:
-[`gfx1151 c17 D2/profile rejection`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json).
+must not be inferred from the whole-process trace. A later run corrected the
+ROCTX interposer and supersedes that profiling unknown; the D2 rejection itself
+stands. Evidence: [`gfx1151 c17 D2/profile rejection`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json).
+
+The corrected marked c17 owner is **93.4% kernel-sum/window**. Its leading
+families are Q4 paired **155.24 ms**, Q4 rowtile **68.55 ms**, packed-state
+copyBuffer **51.72 ms**, Q5 **35.49 ms**, and GDN **16.40 ms**. An exact
+gfx1151-only pointer-table transfer contracts state-copy dispatches
+**4,117→1,061** and total dispatches **6,691→3,639**; the marked wall improves
+**420.496→410.878 ms (-2.29%)**. State movement remains **52.55 ms** after the
+four fused copies, proving it is byte/bandwidth-bound rather than merely launch-
+bound. Clean c17 streaming improves ITL **0.5094→0.5046 s** and E2E
+**12.412→12.402 s**, but only one of three runs meets ITL, so c17 remains
+blocked. c32 is neutral within ~1–2% noise and remains far outside SLO.
+Evidence: [`gfx1151 fused packed-state transfer`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-fused-packed-state-transfer.json).
 
 The current Qwen3.8 canonical packet confirms the same offered-load boundary.
 Strict `token_budget` passes blocking exactness but streaming fails at c8+.
@@ -268,13 +281,15 @@ c9 is exact at **228.05 ms**, and actual c17 9+8 regresses **406.50→425.86 ms
 
 The measured order is therefore:
 
-1. repair gfx1151 marker-window collection and isolate eager c17 family wall,
-   including group-boundary/state-import gaps;
-2. optimize the largest recoverable kernel family in that owner, expected from
-   current model-specific evidence to be quantized projections but not assumed
-   until the marked trace exists; and
-3. rerun the exact c17/c32 serving SLO gate. The exact share outside kernels and
-   the winning projection subfamily are still **unknown**.
+1. eliminate cross-group packed-state round trips by retaining exact canonical
+   per-group state and flushing only on membership change, fallback, prefix,
+   compaction, or teardown; the measured recoverable family is **52.55 ms**,
+   but duplicate workspace/KV ownership and pool accounting must pass first;
+2. if that ownership route cannot retain a complete-wall win, tune Q4 paired
+   plus rowtile projections (**224.3 ms combined**) from the same marked owner,
+   beginning with bytes/occupancy evidence rather than another blind variant;
+3. rerun c17/c32 serving and live admission. c17 remains 4.6 ms outside median
+   ITL and c32 remains substantially capacity-bound.
 
 Device-kernel priorities after those owner-level measurements are:
 
