@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF3 complete on gfx1151; automatic production MTP remains disabled pending RF4–RF6**
+- Status: **active campaign; RF0–RF4 complete on gfx1151; automatic production MTP remains disabled pending RF5–RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -218,7 +218,11 @@ questions for the next coder.
       Forced server shutdown now waits for the actual model thread/GPU owner to
       retire before engine close. Artifact:
       `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf3-lifecycle.json`.
-- [ ] **RF4:** qualify API semantics and stable capability/fallback reporting.
+- [x] **RF4:** completion/chat, single/multi-prompt, auto/explicit policies,
+      eager/lazy restart, app-local transcript commit, thinking hint/hard,
+      streaming/non-greedy rejection, exact usage, direct MTP extensions,
+      capability scopes, and post-restart health are qualified. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf4-api-semantics.json`.
 - [ ] **RF5:** prove concurrency/fairness/resources/soak or explicitly retain an
       honest serialized dense-MTP policy.
 - [ ] **RF6:** run the complete quality and true-AR performance promotion packet.
@@ -717,6 +721,20 @@ Policy decisions:
 Implicit auto fallback should succeed as AR. Explicit MTP outside its certified
 scope should fail before admission with a stable structured reason unless the
 public API explicitly promises fallback for explicit requests.
+
+**RF4 closed on gfx1151 2026-08-22.** Real eager and lazy/restart server arms
+both pass seven endpoint/policy groups: completion AR/MTP ID equality,
+multi-prompt MTP, chat AR/MTP ID equality, thinking hint labeling and hard
+rejection, explicit app-local `append_all` transcript ownership, non-greedy and
+streaming rejection, and capability/readiness state. Auto fallback succeeds as
+AR with stable reason `automatic_mtp_scope_not_promoted`; explicit MTP reports
+vLLM-compatible accepted/rejected usage plus direct route/count/thinking fields.
+Capabilities distinguish configured policy, engine/model MTP availability,
+empty certified default scopes, and no automatic promotion. A real RED found
+speculative length completion could beat EOS trim and publish one extra chat
+token; speculative publication now retires at the first EOS/stop token before
+length completion, and chat IDs are exact. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf4-api-semantics.json`.
 
 ### RF5 — Concurrency, fairness, resources, and soak
 

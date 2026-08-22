@@ -18607,6 +18607,44 @@ def test_resident_batch_scheduler_rejects_speculative_verify_for_processed_sampl
         )
 
 
+@pytest.mark.parametrize(
+    ("eos_token_id", "stop_token_ids", "expected_reason"),
+    [(21, (), "eos"), (None, (21,), "stop")],
+)
+def test_resident_batch_scheduler_trims_speculative_stop_before_length_completion(
+    eos_token_id: int | None,
+    stop_token_ids: tuple[int, ...],
+    expected_reason: str,
+) -> None:
+    scheduler = ResidentBatchScheduler(capacity=1)
+    request_id = scheduler.submit([10], max_new_tokens=4)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    scheduler.record_generated(((request_id, 11),))
+    summary = TargetAcceptSummary(
+        request_ids=(request_id,),
+        accepted_counts=(2,),
+        accepted_tokens=((20, 21),),
+        commit_rows=(2,),
+        commit_tokens=(21,),
+        commit_positions=(2,),
+        full_accept=(False,),
+        next_tokens=(22,),
+        candidate_counts=(2,),
+    )
+
+    completed = scheduler.record_speculative_accept(
+        summary,
+        eos_token_id=eos_token_id,
+        stop_token_ids=stop_token_ids,
+    )
+
+    assert len(completed) == 1
+    assert completed[0].generated_tokens == (11, 20, 21)
+    assert completed[0].finish_reason == expected_reason
+    assert scheduler.completed[request_id] == completed[0]
+
+
 def test_resident_batch_scheduler_rejects_speculative_accept_over_budget() -> None:
     scheduler = ResidentBatchScheduler(capacity=1)
     r0 = scheduler.submit([10], max_new_tokens=1)

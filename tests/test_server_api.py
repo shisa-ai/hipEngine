@@ -1521,6 +1521,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     }
     assert body["sampling"]["speculative_mtp"] == {
         "serving_route": False,
+        "configured_policy": "auto",
+        "engine_supported": False,
+        "model_has_mtp_tensors": False,
+        "certified_default_scopes": [],
+        "automatic_route_promoted": False,
         "sampling_compatible": False,
         "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
@@ -1655,6 +1660,11 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
 
     assert body["sampling"]["speculative_mtp"] == {
         "serving_route": True,
+        "configured_policy": "opt_in",
+        "engine_supported": True,
+        "model_has_mtp_tensors": True,
+        "certified_default_scopes": [],
+        "automatic_route_promoted": False,
         "sampling_compatible": True,
         "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
@@ -1691,10 +1701,10 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
     assert payload["default_enabled"] is False
     assert payload["auto_route"] == {
         "selected_route": "default",
-        "reason": "compatibility_mtp_not_exact",
+        "reason": "automatic_mtp_scope_not_promoted",
         "exact_default_required": True,
         "compatibility_mtp_explicit_only": True,
-        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
     }
 
 
@@ -6205,7 +6215,154 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
         "rejected_draft_tokens": 2,
         "acceptance_rate": 4 / 6,
         "draft_cycles": 2,
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only",
     }
+
+
+def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(fake.mtp_calls) == 1
+    assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert body["usage"]["completion_tokens_details"] == {
+        "accepted_prediction_tokens": 2,
+        "rejected_prediction_tokens": 1,
+    }
+    assert body["hipengine"]["speculative_mtp"] == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 3,
+        "accepted_draft_tokens": 2,
+        "rejected_draft_tokens": 1,
+        "acceptance_rate": 2 / 3,
+        "draft_cycles": 1,
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only",
+    }
+
+
+def test_chat_session_can_use_explicit_mtp_without_losing_transcript() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+    for content in ("remember alpha", "now beta"):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": content}],
+                "session": {"id": "mtp_session", "commit": "append_all"},
+                "max_tokens": 3,
+                "temperature": 0.0,
+                "speculative_mtp": True,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["hipengine"]["speculative_mtp"]["used"] is True
+
+    assert len(fake.mtp_calls) == 2
+    assert "remember alpha" in fake.mtp_calls[0][0][0]
+    assert "remember alpha" in fake.mtp_calls[1][0][0]
+    assert "now beta" in fake.mtp_calls[1][0][0]
+    sessions = client.get("/v1/hipengine/sessions").json()
+    stored = next(row for row in sessions["sessions"] if row["id"] == "mtp_session")
+    assert stored["message_count"] == 4
+
+
+def test_chat_auto_fallback_reports_stable_route_reason() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model"),
+        llm=fake,
+    )
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 3,
+            "temperature": 0.0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.mtp_calls == []
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+    assert body["hipengine"]["speculative_mtp"] == {
+        "effective_route": "default",
+        "used": False,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+        "requested_route": "speculative_mtp_auto",
+        "decision_reason": "automatic_mtp_scope_not_promoted",
+    }
+
+
+@pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
+def test_explicit_mtp_streaming_rejects_before_generation(endpoint: str) -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    payload = {
+        "model": "fake-model",
+        "max_tokens": 3,
+        "temperature": 0.0,
+        "stream": True,
+        "speculative_mtp": True,
+    }
+    if endpoint.endswith("chat/completions"):
+        payload["messages"] = [{"role": "user", "content": "hello"}]
+    else:
+        payload["prompt"] = "hello"
+
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    error = next(item["error"] for item in payloads if item.get("error"))
+    assert error["code"] == "unsupported_parameter"
+    assert error["param"] == "speculative_mtp"
+    assert fake.calls == []
+    assert fake.mtp_calls == []
 
 
 def test_mtp_summary_honors_batch_timing_ownership() -> None:
@@ -6345,11 +6502,11 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
     assert shape["route_decision"] == {
         "requested_route": "speculative_mtp_auto",
         "selected_route": "default",
-        "reason": "compatibility_mtp_not_exact",
+        "reason": "automatic_mtp_scope_not_promoted",
         "realized_group_rows": 2,
         "output_horizon_tokens": 24,
         "exact_default_required": True,
-        "evidence": "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json",
+        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
     }
     explicit_response = client.post(
         "/v1/completions",
@@ -19176,6 +19333,11 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["capabilities"]["features"]["reasoning_controls"]["eos_suppression"] is True
     assert artifact["capabilities"]["sampling"]["speculative_mtp"] == {
         "serving_route": False,
+        "configured_policy": "auto",
+        "engine_supported": False,
+        "model_has_mtp_tensors": False,
+        "certified_default_scopes": [],
+        "automatic_route_promoted": False,
         "sampling_compatible": False,
         "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
