@@ -267,6 +267,47 @@ def test_engine_service_batches_compatible_speculative_children_once() -> None:
         service.close()
 
 
+def test_engine_service_mixed_ar_and_speculative_children_complete_independently() -> None:
+    class MixedDriver(_FakeSoleDriver):
+        supports_speculative_mtp = True
+
+        def submit_speculative_many_detailed(self, requests):
+            submissions = []
+            for request in requests:
+                request_id = self._next_request_id
+                self._next_request_id += 1
+                submission = GenerationSubmission(
+                    request_ids=(request_id,), request=request, max_ticks=1,
+                    work_kind="verify_chain", execution_route="mixed_spec",
+                )
+                self._outputs[request_id] = GenerationOutput(
+                    text="spec", generated_token_ids=(990 + request_id,)
+                )
+                submissions.append(submission)
+            return tuple(submissions)
+
+        def submit_speculative_detailed(self, request):
+            return self.submit_speculative_many_detailed((request,))[0]
+
+    driver = MixedDriver()
+    service = EngineService(driver, idle_wait_seconds=0.001)
+    try:
+        ar = service.submit_child(_request("ar-long:20"))
+        speculative = service.submit_speculative_children(
+            (_request("spec-a:1"), _request("spec-b:1"))
+        )
+        spec_outputs = tuple(handle.result(timeout=2.0) for handle in speculative)
+
+        assert tuple(output.generated_token_ids for output in spec_outputs) == ((992,), (993,))
+        assert ar.done is False
+        assert ar.cancel(reason="cancel") is True
+        with pytest.raises(GenerationCancelled):
+            ar.result(timeout=2.0)
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
 def test_engine_service_speculative_blocking_and_streaming_trim_same_committed_tail() -> None:
     class TailDriver(_FakeSoleDriver):
         supports_speculative_mtp = True
