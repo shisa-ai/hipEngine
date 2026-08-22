@@ -1,6 +1,6 @@
 # MTP Real-World Readiness Campaign
 
-- Status: **active campaign; RF0–RF2 complete on gfx1151; automatic production MTP remains disabled pending RF3–RF6**
+- Status: **active campaign; RF0–RF3 complete on gfx1151; automatic production MTP remains disabled pending RF4–RF6**
 - Created: 2026-08-21
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
@@ -212,8 +212,12 @@ questions for the next coder.
       pre-launch-fallback. No long bucket is auto-admitted: graph/eager complete
       wall is 0.9989x and graph MTP/true AR is 0.7164x. Artifact:
       `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json`.
-- [ ] **RF3:** add cancellation, deadline, shutdown, termination, and injected
-      failure ownership gates.
+- [x] **RF3:** cancellation, deadline, shutdown, EOS/stop termination, six
+      transaction-phase faults, graph capture/launch/readback/allocation errors,
+      terminal commit ownership, and subsequent AR/MTP health are qualified.
+      Forced server shutdown now waits for the actual model thread/GPU owner to
+      retire before engine close. Artifact:
+      `benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf3-lifecycle.json`.
 - [ ] **RF4:** qualify API semantics and stable capability/fallback reporting.
 - [ ] **RF5:** prove concurrency/fairness/resources/soak or explicitly retain an
       honest serialized dense-MTP policy.
@@ -668,6 +672,21 @@ Fault-injection matrix:
 For every injection assert request completion/error, transaction terminal state,
 KV/state/cursor ownership, graph validity/invalidation, resource counts, server
 readiness, and a clean subsequent AR then MTP request.
+
+**RF3 closed on gfx1151 2026-08-22.** Stable lifecycle boundaries cover before
+proposal, after proposal/before target, after target prepare, after target
+commit, after draft repair, and before output publication. Real-model fault
+injection passes 11/11 rows including in-flight cancellation/deadline (observed
+only after commit+repair), EOS at prefill, EOS and explicit stop inside a cycle,
+and exact subsequent AR/MTP health. A real RED found that immutable scheduler
+commit returned a new transaction while exception cleanup inspected the stale
+pre-commit object; RF3 now tracks terminal commit explicitly and never reopens
+committed KV. CPU graph faults fail closed for capture allocation, launch, and
+readback. Server forced shutdown cancels request tokens and waits for the actual
+threadpool model/GPU owner to retire before model close rather than cancelling
+only the asyncio waiter. Peak tracked allocation was 18,720,029,538 bytes and
+returned to zero. Evidence:
+`benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf3-lifecycle.json`.
 
 ### RF4 — Real API semantics
 

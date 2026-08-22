@@ -2695,24 +2695,21 @@ class _GenerationBatcher:
             forced = True
             finish_details = FinishDetails(reason="cancelled", cancelled=True)
             error = GenerationCancelled(finish_details)
-            for item in [*self._queue, *self._active_items.values()]:
+            queued = tuple(self._queue)
+            active = tuple(self._active_items.values())
+            self._queue.clear()
+            for item in queued:
                 _cancel_queued_generation(item, reason="cancel")
                 _finish_queued_generation(item, exception=error)
-            self._queue.clear()
-            tasks = [
-                task
-                for task in (self._worker, *tuple(self._stream_tasks))
-                if task is not None and not task.done()
-            ]
-            for task in tasks:
-                task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            self._worker = None
-            self._stream_tasks.clear()
-            self._stream_items.clear()
-            self._active_items.clear()
-            self._active_requests = 0
+            for item in active:
+                _cancel_queued_generation(item, reason="cancel")
+                _finish_queued_generation(item, exception=error)
+            # Do not cancel the asyncio task awaiting run_in_threadpool: Python
+            # cannot cancel its model thread, and engine.close() would race live
+            # GPU ownership. Request tokens now force the dense MTP loop to stop
+            # at its next safe post-cycle boundary. Wait until that owned work
+            # retires before allowing model teardown.
+            await self._wait_until_idle()
         return {
             "forced": forced,
             "grace_seconds": grace,

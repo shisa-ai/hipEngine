@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import time
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -21,6 +21,10 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.generation.batch_scheduler import ResidentBatchScheduler
+from hipengine.generation.deadline import (
+    GenerationDeadlineExceeded,
+    generation_deadline_expired,
+)
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
 from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import build_dflash_commit
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -42,6 +46,56 @@ from hipengine.speculative import (
 
 _GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3, 4)
 _GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
+
+def _mtp_cycle_checkpoint(checkpoint: Callable[[], None] | None) -> None:
+    """Observe cancellation/deadline/shutdown at one owned cycle boundary.
+
+    RF3 lifecycle rule: this runs before any proposal/target mutation for the
+    cycle, so an abort here leaves no in-flight transaction. During-cycle
+    cancellation lets the owned cycle retire or roll back through its existing
+    exception handler.
+    """
+
+    if checkpoint is not None:
+        checkpoint()
+
+
+def _mtp_lifecycle_phase(
+    hook: Callable[[str], None] | None,
+    phase: str,
+) -> None:
+    """Emit one deterministic lifecycle/fault-injection boundary."""
+
+    if hook is not None:
+        hook(str(phase))
+
+
+def _mtp_should_rollback_transaction(
+    *,
+    target_committed: bool,
+    transaction: Any,
+) -> bool:
+    """Return whether an exception still owns an uncommitted KV transaction."""
+
+    return bool(
+        not target_committed
+        and not bool(getattr(transaction, "committed", False))
+        and not bool(getattr(transaction, "rolled_back", False))
+    )
+
+
+def _deadline_checkpoint(deadline_at: float | None) -> Callable[[], None] | None:
+    """Build a checkpoint that raises when an absolute monotonic deadline expires."""
+
+    if deadline_at is None:
+        return None
+    boundary = float(deadline_at)
+
+    def _check() -> None:
+        if generation_deadline_expired(boundary):
+            raise GenerationDeadlineExceeded(deadline_at=boundary)
+
+    return _check
 
 
 def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
@@ -1255,7 +1309,18 @@ class Qwen35GGUFMTPDecodeSession:
         prefill_draft: bool = True,
         eos_token_id: int | None = None,
         stop_token_ids: Sequence[int] = (),
+        checkpoint: Callable[[], None] | None = None,
+        lifecycle_hook: Callable[[str], None] | None = None,
     ) -> Qwen35GGUFMTPGenerationResult:
+        """Generate one MTP request, observing cancellation/deadline/shutdown.
+
+        ``checkpoint`` is a no-arg callable polled at every cycle boundary
+        before proposal or target mutation (RF3). It should raise
+        ``GenerationCancelled`` / ``GenerationDeadlineExceeded`` (or any error)
+        to stop at the next owned boundary. ``lifecycle_hook`` receives stable
+        phase names for fault injection and direct lifecycle evidence; production
+        cancellation continues to use the request-owned checkpoint/token.
+        """
         prompt = tuple(int(token) for token in prompt_tokens)
         if not prompt:
             raise ValueError("prompt_tokens must be non-empty")
@@ -1315,6 +1380,14 @@ class Qwen35GGUFMTPDecodeSession:
         gpu_match = True
         decode_started = time.perf_counter()
         while rid not in scheduler.completed:
+            _mtp_cycle_checkpoint(checkpoint)
+            cycle_phases: list[str] = []
+
+            def lifecycle_phase(name: str) -> None:
+                cycle_phases.append(str(name))
+                _mtp_lifecycle_phase(lifecycle_hook, name)
+
+            lifecycle_phase("before_proposal")
             request = scheduler.active_batch.requests[rid]
             remaining = int(request.remaining_decode)
             if remaining <= 0:
@@ -1362,6 +1435,7 @@ class Qwen35GGUFMTPDecodeSession:
                     )
                 draft = placeholder(device_proposal)
             proposal_seconds += time.perf_counter() - proposal_started
+            lifecycle_phase("after_proposal_before_target")
             work = scheduler.next_speculative_verify_work(
                 draft,
                 root_tokens=(root,),
@@ -1380,6 +1454,7 @@ class Qwen35GGUFMTPDecodeSession:
             if not isinstance(bucket, Qwen35GGUFVerifyGraphBucket):
                 raise TypeError("GGUF speculative graph cache returned an incompatible bucket")
             prepared: Qwen35GGUFPreparedVerify | None = None
+            target_transaction_committed = False
             prepared_top1: tuple[int, ...] = ()
             prepared_logits = np.empty((0, 0), dtype=np.float32)
             prepared_gpu_match = False
@@ -1402,6 +1477,7 @@ class Qwen35GGUFMTPDecodeSession:
                     device_proposal=device_proposal,
                 )
                 verify_seconds += time.perf_counter() - verify_started
+                lifecycle_phase("after_target_prepare")
                 if device_proposal is not None:
                     if not prepared.native_proposal_target_chained:
                         raise RuntimeError(
@@ -1460,13 +1536,18 @@ class Qwen35GGUFMTPDecodeSession:
                 state_buffers = self.verifier.commit(prepared, commit.commit_plan)
                 state_plan = scheduler.bind_speculative_commit_buffers(commit, state_buffers)
                 committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
+                target_transaction_committed = True
                 scheduler.finalize_speculative_accept(committed_txn, state_plan)
                 self.verifier.finish(prepared)
                 prepared = None
+                lifecycle_phase("after_target_commit")
             except Exception:
                 if prepared is not None:
                     self.verifier.rollback(prepared)
-                if not plan.transaction.committed and not plan.transaction.rolled_back:
+                if _mtp_should_rollback_transaction(
+                    target_committed=target_transaction_committed,
+                    transaction=plan.transaction,
+                ):
                     scheduler.rollback_speculative_kv_transaction(policy, plan)
                 raise
 
@@ -1492,6 +1573,13 @@ class Qwen35GGUFMTPDecodeSession:
                     is not None
                 )
                 proposal_seconds += time.perf_counter() - proposal_update_started
+            lifecycle_phase("after_draft_repair")
+            # Cancellation observed during an in-flight cycle is published only
+            # after target commit and draft repair are both terminal. Raising
+            # here suppresses the whole non-streaming response without leaving
+            # an open transaction or an unrepaired draft cursor.
+            _mtp_cycle_checkpoint(checkpoint)
+            lifecycle_phase("before_output_publication")
             accepted_counts.append(accepted)
             gpu_match = gpu_match and prepared_gpu_match
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -1525,6 +1613,7 @@ class Qwen35GGUFMTPDecodeSession:
                     and prepared_native_device_accept_commit
                 ),
                 "draft_tail_advanced": draft_tail_advanced,
+                "lifecycle_phases": tuple(cycle_phases),
             }
             # ``prepared`` is cleared only after the transaction is fully
             # committed, so use the summary-facing data in compact production
@@ -1533,6 +1622,8 @@ class Qwen35GGUFMTPDecodeSession:
                 record["candidate_logits_recorded"] = True
                 record["target_logits_shape"] = list(prepared_logits.shape)
             records.append(record)
+            lifecycle_phase("after_output_publication")
+            record["lifecycle_phases"] = tuple(cycle_phases)
             if rid in scheduler.completed:
                 break
             if next_token is None:

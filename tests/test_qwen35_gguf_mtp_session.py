@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
+from hipengine.generation.deadline import GenerationCancelled
 from hipengine.kvcache import KVScaleMetadata
 from hipengine.runtime import qwen35_gguf_mtp as mtp_module
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFMTPDecodeSession
@@ -254,3 +256,138 @@ def test_mtp_prompt_admission_preserves_target_default_bulk_selector(monkeypatch
     decoder._prefill_target_and_draft((11,), request_id=7, use_bulk=None)
 
     assert target_calls == [None]
+
+
+def test_mtp_deadline_checkpoint_raises_on_expiry() -> None:
+    assert mtp_module._deadline_checkpoint(None) is None
+    future = mtp_module._deadline_checkpoint(time.monotonic() + 60.0)
+    assert future is not None
+    future()
+    past = mtp_module._deadline_checkpoint(time.monotonic() - 1.0)
+    with pytest.raises(mtp_module.GenerationDeadlineExceeded) as excinfo:
+        past()
+    assert excinfo.value.deadline_at is not None
+
+
+def test_mtp_custom_checkpoint_propagates_error() -> None:
+    def boom() -> None:
+        raise RuntimeError("injected fault")
+
+    with pytest.raises(RuntimeError, match="injected fault"):
+        mtp_module._mtp_cycle_checkpoint(boom)
+
+
+def test_mtp_rollback_decision_never_reopens_committed_transaction() -> None:
+    open_txn = SimpleNamespace(committed=False, rolled_back=False)
+    assert mtp_module._mtp_should_rollback_transaction(
+        target_committed=False,
+        transaction=open_txn,
+    ) is True
+    assert mtp_module._mtp_should_rollback_transaction(
+        target_committed=True,
+        transaction=open_txn,
+    ) is False
+    assert mtp_module._mtp_should_rollback_transaction(
+        target_committed=False,
+        transaction=SimpleNamespace(committed=True, rolled_back=False),
+    ) is False
+
+
+def test_mtp_lifecycle_phase_is_stable_and_propagates_fault() -> None:
+    seen: list[str] = []
+    mtp_module._mtp_lifecycle_phase(seen.append, "after_target_prepare")
+    assert seen == ["after_target_prepare"]
+
+    def fault(phase: str) -> None:
+        raise RuntimeError(f"injected:{phase}")
+
+    with pytest.raises(RuntimeError, match="injected:after_target_commit"):
+        mtp_module._mtp_lifecycle_phase(fault, "after_target_commit")
+
+
+def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> None:
+    """A checkpoint that raises at the first cycle boundary must stop before
+    any proposal/target work: no draft propose, no device proposal, no
+    verifier prepare."""
+
+    proposed: list[tuple[object, ...]] = []
+    device_proposals: list[tuple[object, ...]] = []
+    prepared: list[tuple[object, ...]] = []
+
+    class FakeScheduler:
+        def __init__(self, capacity: int = 1) -> None:
+            self.completed: set[int] = set()
+            self._rid = 7
+
+        def submit(self, _prompt, *, max_new_tokens, request_id):
+            self._rid = int(request_id)
+            return self._rid
+
+        def admit_pending(self) -> None:
+            pass
+
+        def next_prefill_work(self, chunk_size) -> None:
+            pass
+
+        def record_generated(self, _rows) -> None:
+            pass
+
+        def finish_request_at_stop(self, rid, *, eos_token_id, stop_token_ids) -> None:
+            pass
+
+        @property
+        def active_batch(self):
+            return SimpleNamespace(
+                requests={self._rid: SimpleNamespace(remaining_decode=4)}
+            )
+
+    monkeypatch.setattr(mtp_module, "ResidentBatchScheduler", FakeScheduler)
+
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.candidate_budget = 2
+    decoder.target = SimpleNamespace(reset=lambda: None)
+    decoder.draft_provider = SimpleNamespace(reset_request=lambda _rid: None)
+    decoder.verifier = SimpleNamespace()
+
+    def fake_prefill(_prompt, *, request_id, use_bulk):
+        return SimpleNamespace(token_id=11)
+
+    decoder._prefill_target_and_draft = fake_prefill
+
+    def fake_register_policy(_rid):
+        return None
+
+    decoder._register_kv_policy = fake_register_policy
+
+    def fake_propose(_context, *, candidate_budget, return_logits):
+        proposed.append((int(candidate_budget), bool(return_logits)))
+        raise AssertionError("cancellation must prevent draft proposal")
+
+    decoder.draft_provider.propose = fake_propose
+
+    def fake_device_proposal(*_args, **_kwargs):
+        device_proposals.append((_args, _kwargs))
+        raise AssertionError("cancellation must prevent device proposal launch")
+
+    monkeypatch.setattr(mtp_module, "_maybe_launch_device_proposal", fake_device_proposal)
+
+    def fake_prepare(*_args, **_kwargs):
+        prepared.append((_args, _kwargs))
+        raise AssertionError("cancellation must prevent target verify")
+
+    decoder.verifier.prepare = fake_prepare
+
+    def cancel_before_first_cycle() -> None:
+        raise GenerationCancelled()
+
+    with pytest.raises(GenerationCancelled):
+        decoder.generate(
+            (1, 2, 3),
+            max_new_tokens=4,
+            request_id=7,
+            checkpoint=cancel_before_first_cycle,
+        )
+
+    assert proposed == []
+    assert device_proposals == []
+    assert prepared == []
