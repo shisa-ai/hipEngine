@@ -170,23 +170,26 @@ questions for the next coder.
       the final artifact. A killed late case preserves completed rows and names
       the active stage. CPU/fake-runner coverage passed; no large GPU run was
       used to validate these controls.
-- [ ] **Run one isolated 32K B3 direct oracle case.** B1/B2/B3 row shapes are
-      already covered through 16K; B3 at 32K pairs the maximum verifier width
-      with the larger split count. Give this process its own artifact and
-      stop-on-fail budget.
-- [ ] **Decide the largest practical context from the 32K result.** Attempt one
-      isolated 64K B3 direct case only if its projected wall/memory fits the
-      predeclared budget. The default maximum is 60 minutes for one mechanical
-      case; exceeding it requires explicit user approval. If 64K exceeds that
-      operational budget, record it as not practically certified on this host
-      and make 32K the RF1 maximum—`64K where hardware permits` is not a mandate
-      to consume unbounded wall time.
+- [x] **Run one isolated 32K B3 direct oracle case.** It passed in 1395.24 s
+      total (`/tmp/mtp-rf1-32k-b3-direct.json`, case wall 0.994 s): exact
+      logits/top-1, accept summary, state, touched KV, hidden, cursor, commit,
+      and rollback; 64 split-K calls; workspace 129 versus 128 required splits;
+      zero target-graph submissions. B1/B2/B3 row shapes were already covered
+      through 16K.
+- [ ] **Decide the largest practical context from the 32K result.** The measured
+      32K wall projects one isolated 64K B3 direct case to about 47 minutes, so
+      that case is authorized under the 60-minute mechanical-case budget and is
+      running separately. If it exceeds the operational budget, record 64K as
+      not practically certified on this host and retain 32K as the RF1 maximum.
+      `64K where hardware permits` is not a mandate to consume unbounded wall
+      time.
 - [ ] **Run real generation only at the selected maximum.** Use B3 and eight
       generated tokens in a separate process after the direct oracle passes.
       Do not duplicate generation at both 32K and 64K merely for Cartesian
       completeness.
 - [ ] **Run near-cap output tails at one moderate certified context.** Exercise
-      remaining output 1/2/3 at 4K (or another justified moderate context),
+      remaining output 1/2/3 (`max_new_tokens` 2/3/4 because prefill publishes
+      the first token) at 4K or another justified moderate context,
       where tail ownership is testable without repeating maximum-context
       prefills.
 - [ ] **Close RF1:** combine the retained boundary/page/2K–16K artifacts with
