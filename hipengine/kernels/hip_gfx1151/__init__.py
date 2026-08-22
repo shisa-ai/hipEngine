@@ -85,8 +85,7 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     fn = (
         gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
         if int(rows) >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        and (int(in_features), int(out_features)) in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
         else gguf_q6_k_t16_wmma_prefill_bf16_bf16_out
     )
     return fn(
@@ -114,8 +113,7 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     fn = (
         gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
         if int(rows) >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+        and (int(in_features), int(out_features)) in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
         else gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
     )
     return fn(
@@ -335,9 +333,7 @@ LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT = True
 # words while current packed dots execute; smaller chunks keep the rollback.
 # Packed-dot arithmetic and K order remain bit-for-bit unchanged.
 # Other backends retain exact.
-LAGUNA_SELECTED_GATE_UP_MODE = (
-    "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
-)
+LAGUNA_SELECTED_GATE_UP_MODE = "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
 # Exact eight-token router tiling preserves every token/expert's K traversal
 # and reduction tree while reusing each F32 weight row twice as long.
 LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
@@ -346,9 +342,7 @@ LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
 # Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
 # scalar-staged, and exact routes remain rollbacks. At producer rows >=512,
 # Q4 down also carries the next K32 raw nibble payload in registers.
-LAGUNA_SELECTED_DOWN_MODE = (
-    "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
-)
+LAGUNA_SELECTED_DOWN_MODE = "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
 # Exact scratch reuse writes packed gate/up into the larger selected-down
 # output allocation, then folds the standalone BF16 SiLU boundary into the
 # range-safe down pack. Seven paired pp512 runs are exact and win 7/7; the
@@ -444,9 +438,7 @@ GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES = frozenset(
 # core/public pp512 by 13.81%/13.85%; two singleton WMMAs plus standalone SiLU
 # remain the rollback and every other shape fails closed.
 GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL = True
-GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES = frozenset(
-    {(512, 1_024, 3_584)}
-)
+GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_SHAPES = frozenset({(512, 1_024, 3_584)})
 GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL_POLICIES = {
     (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): frozenset({512}),
 }
@@ -672,61 +664,41 @@ LAGUNA_SWA_MIXED32_EXP16_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Exact score-producer partial maxima remove four redundant 512-score scans
 # per query. Seven exact resident p512/d128 pairs admit the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Compute each owned query's softplus gate once. All seven byte-exact resident
 # p512/d128 pairs improve, so gfx1151 promotes the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Reuse each exact softmax weight across all four V-output waves through the
 # V-stage publication barrier already paid by production. Seven exact resident
 # pairs improve with unchanged VGPRs, so gfx1151 promotes the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Replay the published K64 probability tile through sixteen aligned float4 LDS
 # reads while preserving the 64 ordered denominator adds. All seven exact
 # resident p512/d128 pairs improve at unchanged kernel resources.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Read each published K64 probability row through sixteen aligned float4 LDS
 # vectors while preserving the 64 ordered PV FMAs. All seven resident pairs
 # improve at unchanged kernel resources.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # On pair-owner blocks, move the unchanged vectorized denominator replay onto
 # idle waves 8/9 so all eight active output waves can execute PV concurrently.
 # Seven exact resident p512/d128 pairs improve with complete separation.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Fill all 40 gfx1151 CUs with one 2+2+2+2+1 owner grid. Seven exact resident
 # pairs improve with complete separation despite 25% more K/V-owner traffic.
-LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Separate mixed40 tail exp producers from idle denominator and active PV
 # waves. Six of seven exact resident pairs improve and the sole loss is
 # smaller than the median paired gain.
-LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Raise the exact mixed40 workgroup from 12 to 16 wave32s while retaining all
 # 40 owners. All seven resident p512/d128 pairs improve with identical
 # 128-token trajectories; the kernel also drops from 104 to 32 VGPRs.
-LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Let the two exact tail-probability waves copy the final 64 staged-V vectors.
 # The local512 combination wins all seven resident p512/d128 pairs while
 # preserving the complete generated trajectory and allocation lifecycle.
-LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
+LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
 # Replace the retained wave32 QK shuffle transport with the association-
 # identical permlanex16/DPP sequence inside the final local512/V128 tile.
 # The leaf improves 5.35% and all seven resident p512/d128 pairs win.
@@ -746,9 +718,7 @@ LAGUNA_SWA_LOCAL1024 = True
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # gfx1100 PM4 evidence does not admit architecture-specific packets on gfx1151.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
-    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
-        "transport": "hipgraph"
-    },
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {"transport": "hipgraph"},
 }
 # SH3-M1 admits loader-time host ownership only for private c1 sessions. Q8_0
 # retains its CPU-copy route. Qwen3.8 Q4_K uses an anonymous immutable host
@@ -926,9 +896,7 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-        (1, 5_120, 17_408): (
-            "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
-        ),
+        (1, 5_120, 17_408): ("dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"),
     },
 }
 GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
@@ -936,13 +904,9 @@ GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
         (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-        (1, 5_120, 17_408): (
-            "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
-        ),
+        (1, 5_120, 17_408): ("dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"),
         **{
-            (rows, 5_120, 17_408): (
-                "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
-            )
+            (rows, 5_120, 17_408): ("dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out")
             # rowtile8 instantiates ROW_TILE 2..8 in one launch; c>8 chunks
             # into <=8-row groups at the dispatch site. The decode regime goes
             # to rows 511 so no gate/up concurrency silently falls to WMMA;
@@ -955,30 +919,22 @@ GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
 # Qwen3.8 P5 independently qualifies the exact same-input F32 alpha/beta pair
 # for scalar recurrent layers. Native rows and every other shape retain two
 # singleton dense-F32 projections.
-GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset(
-    {(1, 5_120, 48, 48)}
-)
+GGUF_DENSE_F32_ALPHA_BETA_PAIR_DECODE_SHAPES = frozenset({(1, 5_120, 48, 48)})
 # Qwen3.8's 24 standard-Q6 recurrent QKV owners and Q4 gates consume the same
 # BF16 norm row. One local128 mixed grid preserves both singleton arithmetic
 # trees while removing their serial launch boundary. Shape/backend misses and
 # native rows retain the two registered primitive projections.
-GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES = frozenset(
-    {(1, 5_120, 10_240, 6_144)}
-)
+GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES = frozenset({(1, 5_120, 10_240, 6_144)})
 # The 16 full-attention K/V pairs share one BF16 norm row. K is compact Q4T16
 # and V is either Q4T16 or byte-neutral planar-Q6; one local128 block-parallel
 # grid preserves each qualified singleton arithmetic tree while removing the
 # serial launch boundary. Native rows, other shapes, and peers retain the two
 # primitive projections.
-GGUF_NARROW_KV_PAIR_DECODE_SHAPES = frozenset(
-    {(1, 5_120, 1_024, 1_024)}
-)
+GGUF_NARROW_KV_PAIR_DECODE_SHAPES = frozenset({(1, 5_120, 1_024, 1_024)})
 # The graph-safe serial composite joins those independent projections with the
 # current in-place Conv channel blocks. Wider/native rows and peer backends keep
 # the separately registered pair plus Conv fallback.
-GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES = frozenset(
-    {(1, 5_120, 48, 10_240, 4)}
-)
+GGUF_DENSE_F32_ALPHA_BETA_CONV_DECODE_SHAPES = frozenset({(1, 5_120, 48, 10_240, 4)})
 # Qwen3.8 serial full-attention consumes packed BF16 Q/gate and BF16 K in one
 # exact head RMSNorm/RoPE launch, removing the split and K-cast graph nodes.
 GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
@@ -1107,6 +1063,10 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # 1..8 pass the numerical-profile-backed c13 lifecycle with cancellation,
 # refill, compaction, no scalar fallback, and exact memory recovery.
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# Exact fused pointer-table copies contract thousands of per-plane D2D state
+# transfers when the production owner switches physical groups. Qualified on
+# c13 lifecycle plus counterbalanced c17/c32 serving and marked c17 profiling.
+GGUF_FUSED_LINEAR_STATE_TRANSFER = True
 # Same-length full-prompt rows may enter one native prefill call. This is scoped
 # independently from decode widths and falls back before mutation on misses.
 GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
@@ -1432,14 +1392,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "linear",
             "gguf_q6_k",
-            "dpp_wave_reduction_full_group_compute_"
-            "coltile4_rowbatch8_bf16_bf16_out",
+            "dpp_wave_reduction_full_group_compute_coltile4_rowbatch8_bf16_bf16_out",
         ),
         (
             "linear",
             "gguf_q6_k",
-            "dpp_wave_reduction_full_group_compute_"
-            "coltile2_rowbatch16_bf16_f32_out",
+            "dpp_wave_reduction_full_group_compute_coltile2_rowbatch16_bf16_f32_out",
         ),
         # WPF-H5U and H6A local256 cached-only global leaves are W7900-only
         # pending independent gfx1151 resource/performance gates.
@@ -1545,8 +1503,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "moe_linear",
             "gguf_iq3_xxs",
-            "selected_dual_silu_grouped_prefill_compact_"
-            "k3072_n1024_e256_rowbatch4_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_k3072_n1024_e256_rowbatch4_bf16_bf16_out",
         ),
         # WPF-H5J's K1024 resident-segment IQ3 and one-wave IQ4 schedules are
         # W7900-only pending independent gfx1151 resource/performance gates.
@@ -1664,8 +1621,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "moe_linear",
             "gguf_iq3_xxs",
-            "selected_mmq_i128_j128_k256_q8_1_ds4x2_"
-            "prefill_compact_bf16_bf16_out",
+            "selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out",
         ),
         # WPF-H4 copies llama.cpp's gfx1100 Q6-to-F16/rocBLAS ownership and
         # remains excluded until gfx1151 receives an independent gate.
@@ -1710,8 +1666,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             (
                 "linear",
                 quant,
-                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
-                f"bf16_{output_dtype}_out",
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
             )
             for quant, prefix in (
                 ("f32_weight", "ordered_"),
@@ -1730,16 +1685,14 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 (8, 12),
                 (12, 8),
             )
-            if quant != "gguf_q6_k"
-            or (col_tile, row_batch) in {(8, 4), (16, 4), (16, 5)}
+            if quant != "gguf_q6_k" or (col_tile, row_batch) in {(8, 4), (16, 4), (16, 5)}
             for output_dtype in ("bf16", "f32")
         ),
         *(
             (
                 "linear",
                 quant,
-                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
-                f"bf16_{output_dtype}_out",
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
             )
             for quant, prefix in (
                 ("f32_weight", "ordered_weight_major_"),
@@ -1774,8 +1727,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             (
                 layer,
                 quant,
-                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
-                f"bf16_{output_dtype}_out",
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
             )
             for layer, quant, prefix in (
                 ("dequant", "gguf_q5_k", "raw_f32_exact_tile_k_col_"),
@@ -1803,8 +1755,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             (
                 "activation_pack",
                 "bf16",
-                f"tile_k_row_coltile{col_tile}_rowbatch{row_batch}_"
-                f"bf16_{output_dtype}_out",
+                f"tile_k_row_coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
             )
             for col_tile, row_batch, output_dtype, _weight_layout in (
                 (8, 4, "bf16", "tile_k_col"),
@@ -2171,9 +2122,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         "gguf_q4_k",
         "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",
     )
-    if replace or not is_registered(
-        q4_t16_dual_interleaved_pair_silu_key
-    ):
+    if replace or not is_registered(q4_t16_dual_interleaved_pair_silu_key):
         register(
             q4_t16_dual_interleaved_pair_silu_key,
             gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
@@ -2263,6 +2212,7 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_FUSED_LINEAR_STATE_TRANSFER",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",

@@ -80,6 +80,7 @@ from hipengine.kernels.hip_gfx1100 import (
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_C2_PACKED_PREFILL_MAX_ROWS,
+    GGUF_FUSED_LINEAR_STATE_TRANSFER,
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE,
@@ -194,12 +195,8 @@ from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 def test_rejected_unrouted_kernel_bodies_are_absent() -> None:
     root = Path(__file__).resolve().parents[1]
-    q4_source = (
-        root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip"
-    ).read_text()
-    q4_wrapper = (
-        root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py"
-    ).read_text()
+    q4_source = (root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip").read_text()
+    q4_wrapper = (root / "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py").read_text()
     laguna_source = (
         root / "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip"
     ).read_text()
@@ -653,11 +650,14 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
     ) == {
         (1_024, 24, 8, 2, 256, 256, 256): (514, 641),
     }
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
-        {},
-    ) == {}
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
+            {},
+        )
+        == {}
+    )
 
 
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
@@ -666,12 +666,16 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
         "hip_gfx1151", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
     ) == (1, 2, 3, 4, 5, 6, 7, 8)
     assert GGUF_C2_PACKED_PREFILL_MAX_ROWS == 8
-    assert backend_package_capability(
-        "hip_gfx1151", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
-    ) == 8
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
-    ) == 1
+    assert backend_package_capability("hip_gfx1151", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1) == 8
+    assert backend_package_capability("hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1) == 1
+    assert GGUF_FUSED_LINEAR_STATE_TRANSFER is True
+    assert (
+        backend_package_capability("hip_gfx1151", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False) is True
+    )
+    assert (
+        backend_package_capability("hip_gfx1100", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False)
+        is False
+    )
 
 
 def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
@@ -682,11 +686,14 @@ def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
     ) == {
         (5_120, 64, 24, 4, 256, 256, 256): 4_096,
     }
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
-        {},
-    ) == {}
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_PAGED_ATTN_GROUPED_GQA_MIN_CONTEXTS",
+            {},
+        )
+        == {}
+    )
 
 
 def test_gfx1151_backend_admits_dense_h5120_sole_q4_t16() -> None:
@@ -780,9 +787,7 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
             (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
         },
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-            (1, 5_120, 17_408): (
-                "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
-            ),
+            (1, 5_120, 17_408): ("dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"),
         },
     }
     assert backend_package_capability(
@@ -803,13 +808,9 @@ def test_gfx1151_backend_admits_dense_q5_t16_ssm_out_and_08b_roles() -> None:
             (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
         },
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-            (1, 5_120, 17_408): (
-                "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
-            ),
+            (1, 5_120, 17_408): ("dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"),
             **{
-                (rows, 5_120, 17_408): (
-                    "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out"
-                )
+                (rows, 5_120, 17_408): ("dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out")
                 # rowtile8 chunks c>8 at the dispatch site; the decode regime
                 # goes to rows 511 so no gate/up concurrency falls to WMMA.
                 # c>=512 routes to the WMMA prefill owner before this policy.
@@ -896,57 +897,45 @@ def test_gfx1151_dense_down_residual_policies_are_exact() -> None:
     register_gguf_q4_k_gemv_kernels()
     register_gfx1151_kernels(replace=True)
     expected = {
-        (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
-            (1, 3_584, 1_024): True
-        },
-        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
-            (1, 17_408, 5_120): True
-        },
-        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-            (1, 17_408, 5_120): True
-        },
+        (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {(1, 3_584, 1_024): True},
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {(1, 17_408, 5_120): True},
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {(1, 17_408, 5_120): True},
     }
-    assert backend_package_capability(
-        "hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
-    ) == expected
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {}
-    ) == {}
-    assert backend_package_capability(
-        "hip_gfx1151", "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT", {}
-    )["bf16"] == 512
+    assert (
+        backend_package_capability("hip_gfx1151", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {})
+        == expected
+    )
+    assert (
+        backend_package_capability("hip_gfx1100", "GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES", {})
+        == {}
+    )
+    assert (
+        backend_package_capability("hip_gfx1151", "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT", {})[
+            "bf16"
+        ]
+        == 512
+    )
     for quant, variant in (
         ("gguf_q4_k", "pack8_bf16_residual_bf16_out"),
         ("bf16", "out_bf16_residual_bf16_out"),
         ("bf16", "prefill_wmma_out_bf16_residual_bf16_out"),
     ):
-        assert is_registered(
-            KernelKey("hip_gfx1151", "linear+residual", quant, variant)
-        )
-        assert is_registered(
-            KernelKey("hip_gfx1100", "linear+residual", quant, variant)
-        )
+        assert is_registered(KernelKey("hip_gfx1151", "linear+residual", quant, variant))
+        assert is_registered(KernelKey("hip_gfx1100", "linear+residual", quant, variant))
 
 
 def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
     register_gfx1151_kernels(replace=True)
     expected = {
-        (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {
-            (1, 1_024): "bf16_out_fixed1024_wave256"
-        },
-        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
-            (1, 5_120): "bf16_out_fixed5120_wave256"
-        },
-        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
-            (1, 5_120): "bf16_out_fixed5120_wave256"
-        },
+        (QWEN35_DENSE_H1024_GEOMETRY, "MOSTLY_Q4_K_M"): {(1, 1_024): "bf16_out_fixed1024_wave256"},
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {(1, 5_120): "bf16_out_fixed5120_wave256"},
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {(1, 5_120): "bf16_out_fixed5120_wave256"},
     }
-    assert backend_package_capability(
-        "hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-    ) == expected
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-    ) == {}
+    assert (
+        backend_package_capability("hip_gfx1151", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {})
+        == expected
+    )
+    assert backend_package_capability("hip_gfx1100", "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}) == {}
     for layer in ("rmsnorm", "add_rmsnorm"):
         for variant in (
             "bf16_out_fixed1024_wave256",
@@ -1011,18 +1000,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         LAGUNA_SELECTED_GATE_UP_MODE
         == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
-    assert (
-        LAGUNA_SELECTED_DOWN_MODE
-        == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
-    )
+    assert LAGUNA_SELECTED_DOWN_MODE == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     assert LAGUNA_PREFILL_MATRIX_ROWS == 2048
     assert LAGUNA_PREFILL_CACHED_META is True
     assert LAGUNA_PREFILL_GLOBAL_QROW6 is True
     assert LAGUNA_PREFILL_KV_PREAPPEND is True
-    assert (
-        LAGUNA_GLOBAL_PREFILL_VARIANT
-        == "global_context_rows_qrow4_m128_online_spans"
-    )
+    assert LAGUNA_GLOBAL_PREFILL_VARIANT == "global_context_rows_qrow4_m128_online_spans"
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER == 28
     assert (
         LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
@@ -1030,24 +1013,15 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE == 64
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM is True
-    assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
-        is True
-    )
-    assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
-        == 4
-    )
+    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE is True
+    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH == 4
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE is True
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER == 32
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE == 98_304
     assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4 is True
     assert LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 is True
     assert LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 is True
-    assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX
-        is True
-    )
+    assert LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX is True
     assert (
         LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE
         == 65_536
@@ -1074,83 +1048,40 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     )
     assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_qrow4_m128_online_spans"
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY"
-        )
-        == "wmma_comp_swa"
+        backend_package_capability("hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY") == "wmma_comp_swa"
+    )
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_F16_PREFILL_MIN_ROWS") == 16
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_F16_PREFILL_STRATEGY", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_F16_BOUNDARY_FUSION", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_F16_BOUNDARY_FUSION", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_F16_DECODE_FIXEDK", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_F16_DECODE_FIXEDK", None) is None
+    assert (
+        backend_package_capability("hip_gfx1151", "LAGUNA_F16_ATTENTION_QUAD_DECODE", None) is True
     )
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_PREFILL_MIN_ROWS"
-        )
-        == 16
+        backend_package_capability("hip_gfx1100", "LAGUNA_F16_ATTENTION_QUAD_DECODE", None) is None
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_PREFILL_STRATEGY", None
-    ) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_F16_NONTEMPORAL_DECODE", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_F16_NONTEMPORAL_DECODE", None) is None
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_BOUNDARY_FUSION", None
-        )
+        backend_package_capability("hip_gfx1151", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None)
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_BOUNDARY_FUSION", None
-    ) is None
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_DECODE_FIXEDK", None
-        )
+        backend_package_capability("hip_gfx1100", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None)
+        is None
+    )
+    assert (
+        backend_package_capability("hip_gfx1151", "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE", None)
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_DECODE_FIXEDK", None
-    ) is None
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_ATTENTION_QUAD_DECODE", None
-        )
-        is True
+        backend_package_capability("hip_gfx1100", "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE", None)
+        is None
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_ATTENTION_QUAD_DECODE", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_NONTEMPORAL_DECODE", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_NONTEMPORAL_DECODE", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_PROJECTION_HEAD_KV_DECODE", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_SELECTED_NATURAL_DECODE", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_SELECTED_NATURAL_DECODE", None
-    ) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SELECTED_NATURAL_DECODE", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_SELECTED_NATURAL_DECODE", None) is None
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1199,24 +1130,10 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is None
     )
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_F16_DECODE_ONEBARRIER", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_F16_DECODE_ONEBARRIER", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_MOE_BRANCH_CONCURRENCY", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_MOE_BRANCH_CONCURRENCY", None
-    ) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_F16_DECODE_ONEBARRIER", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_F16_DECODE_ONEBARRIER", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_MOE_BRANCH_CONCURRENCY", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_MOE_BRANCH_CONCURRENCY", None) is None
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1225,29 +1142,18 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
-        None,
-    ) is None
     assert (
         backend_package_capability(
-            "hip_gfx1151", "LAGUNA_MOE_SHARED_AFTER_ROUTER", None
+            "hip_gfx1100",
+            "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
+            None,
         )
-        is True
+        is None
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_MOE_SHARED_AFTER_ROUTER", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_MOE_SHARED_LOW_PRIORITY", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_MOE_SHARED_LOW_PRIORITY", None
-    ) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_MOE_SHARED_AFTER_ROUTER", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_MOE_SHARED_AFTER_ROUTER", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_MOE_SHARED_LOW_PRIORITY", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_MOE_SHARED_LOW_PRIORITY", None) is None
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1256,20 +1162,22 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY",
-        None,
-    ) is None
     assert (
         backend_package_capability(
-            "hip_gfx1151", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
+            "hip_gfx1100",
+            "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY",
+            None,
         )
+        is None
+    )
+    assert (
+        backend_package_capability("hip_gfx1151", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None)
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None
-    ) is None
+    assert (
+        backend_package_capability("hip_gfx1100", "LAGUNA_PREFILL_ATTENTION_HIPBLASLT", None)
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1278,11 +1186,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1291,11 +1202,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1304,11 +1218,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1317,11 +1234,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1330,11 +1250,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1343,11 +1266,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1356,11 +1282,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1369,11 +1298,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 2_048
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS",
-        None,
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS",
+            None,
+        )
+        is None
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151",
@@ -1382,84 +1314,41 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100",
-        "LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT",
-        None,
-    ) is None
     assert (
         backend_package_capability(
-            "hip_gfx1151", "LAGUNA_PREFILL_MATRIX_ROWS", None
+            "hip_gfx1100",
+            "LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT",
+            None,
         )
-        == 2048
+        is None
     )
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_PREFILL_MATRIX_ROWS", None) == 2048
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None) == 512
     assert (
-        backend_package_capability(
-            "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
-        )
-        == 512
-    )
-    assert (
-        backend_package_capability(
-            "hip_gfx1100", "LAGUNA_SELECTED_GATE_UP_MODE", None
-        )
+        backend_package_capability("hip_gfx1100", "LAGUNA_SELECTED_GATE_UP_MODE", None)
         == "grouped_pair16"
     )
     assert (
-        backend_package_capability(
-            "hip_gfx1100", "LAGUNA_SELECTED_DOWN_MODE", None
-        )
+        backend_package_capability("hip_gfx1100", "LAGUNA_SELECTED_DOWN_MODE", None)
         == "grouped_exact"
     )
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_PREFILL_CACHED_META", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_PREFILL_CACHED_META", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_PREFILL_GLOBAL_QROW6", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_PREFILL_GLOBAL_QROW6", None) is None
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_PREFILL_KV_PREAPPEND", None) is True
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None) is True
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_PREFILL_CACHED_META", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_CACHED_META", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_PREFILL_GLOBAL_QROW6", None
-        )
-        is True
-    )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_GLOBAL_QROW6", None
-    ) is None
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_PREFILL_KV_PREAPPEND", None
-        )
-        is True
-    )
-    assert (
-        backend_package_capability(
-            "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
-        )
-        is True
-    )
-    assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
-        )
+        backend_package_capability("hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None)
         == "global_context_rows_qrow4_m128_online_spans"
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
-    ) is None
+    assert backend_package_capability("hip_gfx1100", "LAGUNA_GLOBAL_PREFILL_VARIANT", None) is None
     assert (
-        backend_package_capability(
-            "hip_gfx1151", "LAGUNA_SWA_PREFILL_VARIANT", None
-        )
+        backend_package_capability("hip_gfx1151", "LAGUNA_SWA_PREFILL_VARIANT", None)
         == "swa_context_rows_qrow4_m128_online_spans"
     )
     assert (
-        backend_package_capability(
-            "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None
-        )
+        backend_package_capability("hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None)
         == "swa_context_rows_qrow4_m128_c256_exact_spans"
         == GFX1100_LAGUNA_SWA_PREFILL_VARIANT
     )
@@ -1487,9 +1376,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
     assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
-    assert backend_package_capability(
-        "hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
-    ) == {}
+    assert (
+        backend_package_capability("hip_gfx1100", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None) == {}
+    )
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE", None
     ) == {
@@ -1575,9 +1464,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert (
         resolve(
             backend="hip_gfx1151",
-            layer=(
-                "attention_projection+head_rmsnorm+partial_rotary+kv_write"
-            ),
+            layer=("attention_projection+head_rmsnorm+partial_rotary+kv_write"),
             quant="fp16_weight+laguna_f32_weight",
             variant="global_fixedk_nontemporal_bf16_f32_spans",
         )
@@ -1586,9 +1473,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert (
         resolve(
             backend="hip_gfx1151",
-            layer=(
-                "attention_projection+head_rmsnorm+partial_rotary+kv_write"
-            ),
+            layer=("attention_projection+head_rmsnorm+partial_rotary+kv_write"),
             quant="fp16_weight+laguna_f32_weight",
             variant="swa_fixedk_nontemporal_bf16_f32_spans",
         )
@@ -1685,11 +1570,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
-    ) == {
-        (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {
-            "transport": "hipgraph"
-        }
-    }
+    ) == {(QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {"transport": "hipgraph"}}
     assert (
         backend_package_capability(
             "hip_gfx1151",
