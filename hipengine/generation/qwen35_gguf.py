@@ -1554,6 +1554,25 @@ class Qwen35GGUFBringupGenerator:
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
 
+    def speculative_provider_capabilities(self):
+        """Declare the model-attached NextN provider without engine branching."""
+
+        from hipengine.benchmark.provenance import collect_model_identity
+        from hipengine.speculative.registry import SpeculativeProviderCapabilities
+
+        identity = collect_model_identity(Path(self.model_path).expanduser().resolve())
+        return SpeculativeProviderCapabilities(
+            provider_name="nextn",
+            artifact_fingerprint=str(identity["fingerprint"]["value"]),
+            attachment_mode="model_attached",
+            supported_modes=("verify_chain",),
+            max_verifier_rows=8,
+            transaction_mode="journal",
+            provider_state_key="shared_target_hidden",
+            provider_kv_key="shared_target_kv",
+            strict_fallback="target_ar",
+        )
+
     @property
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""

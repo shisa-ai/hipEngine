@@ -1,0 +1,32 @@
+{
+  "created_at": "2026-08-22T15:23:00Z",
+  "decision": "SPEC-C4 host capability and one chain/tree route closed. No tree GPU/default claim; providers that expose chain only fail tree mode explicitly.",
+  "deliverables": {
+    "capabilities": "attachment mode, immutable artifact identity, supported chain/tree modes, max V, transaction mode, provider state/KV keys, fixed/per-candidate transaction claims, strict fallback",
+    "independent": "Laguna DFlash declares independent state/KV/workspaces, chain-only, explicit tree unsupported reason",
+    "model_attached": "Qwen GGUF NextN declares shared target hidden/KV, journal, chain-only, target-AR fallback",
+    "plugins": "exact provider/target/backend/quant registry resolves both model-attached and independent factories without engine method branches",
+    "tree": "provider-neutral nonuniform tree compiler with request-local parent IDs, explicit repeated row ownership, slots/depths/candidate IDs, bounded V, target lowering and branch acceptance"
+  },
+  "kind": "concurrency2_spec_c4_generic_providers_trees",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "8dfaa1691",
+    "host": "epyc",
+    "tree_note": "provider capability/tree metadata/tests only"
+  },
+  "status": "accepted_host_plugins_and_tree",
+  "validation": {
+    "focused": "44 provider/interface/chain/server tests passed",
+    "green": "4 generic tests passed",
+    "hashes": {
+      "hipengine/speculative/generic.py": "8a4a9ba01f7de4bd982e3afdbac6335e53589c074e36b6e81d748cd4c8907968",
+      "hipengine/speculative/registry.py": "0461d35697eba58d38354a5540902aee662247385d9cbeb1c2cd36a5916dce7b",
+      "tests/test_speculative_generic_providers.py": "7138575718a2296dbe948a0b2d6e9d51d3bc302a0d53ae998315fddbb69ba303"
+    },
+    "red": "generic tree module/capability class absent",
+    "tree_case": "C=2, V=5 candidate rows, target rows=7, nonuniform 3+2 tree, branch accepts (101,103)/(201,202) with corrections"
+  }
+}
