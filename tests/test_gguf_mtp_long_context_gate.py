@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
+import scripts.gguf_mtp_long_context_gate as gate_module
 from scripts.gguf_mtp_long_context_gate import (
     EagerMTPCase,
     _candidate_tokens,
@@ -99,3 +102,100 @@ def test_gate_passed_requires_eager_split_k_and_all_state_surfaces() -> None:
         )
     ) is False
     assert gate_passed(()) is False
+
+
+def test_main_supports_generation_only_and_checkpoints_each_event(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fixture")
+    output = tmp_path / "result.json"
+    writes: list[dict[str, object]] = []
+    atomic_write = gate_module._atomic_write_json
+
+    def record_write(path, payload) -> None:
+        writes.append(json.loads(json.dumps(payload)))
+        atomic_write(path, payload)
+
+    def reject_direct(*_args, **_kwargs):
+        raise AssertionError("generation-only mode must not run direct cases")
+
+    def fake_generation(
+        _model,
+        contexts,
+        *,
+        candidate_budget,
+        max_new_tokens,
+        max_sequence_length,
+        require_cached_build,
+        progress,
+        on_result,
+    ):
+        assert contexts == (32,)
+        assert candidate_budget == 3
+        assert max_new_tokens == 2
+        assert max_sequence_length >= 34
+        assert require_cached_build is False
+        result = {"context_tokens": 32, "passed": True}
+        progress("generation_case_start", {"context_tokens": 32})
+        on_result("generation", result)
+        progress("generation_case_complete", {"context_tokens": 32, "passed": True})
+        return [result]
+
+    monkeypatch.setattr(gate_module, "_atomic_write_json", record_write)
+    monkeypatch.setattr(gate_module, "_run_direct_cases", reject_direct)
+    monkeypatch.setattr(gate_module, "_run_generation_contexts", fake_generation)
+    monkeypatch.setattr(
+        gate_module,
+        "_provenance",
+        lambda *_args, **_kwargs: {"host": "test"},
+    )
+
+    rc = gate_module.main(
+        (
+            "--model",
+            str(model),
+            "--cycle-ends",
+            "",
+            "--acceptance-cycle-ends",
+            "",
+            "--generation-contexts",
+            "32",
+            "--max-new-tokens",
+            "2",
+            "--out",
+            str(output),
+            "--fail-on-fail",
+        )
+    )
+
+    assert rc == 0
+    payload = json.loads(output.read_text())
+    assert payload["status"] == "passed"
+    assert payload["summary"]["direct_cases"] == 0
+    assert payload["summary"]["generation_cases"] == 1
+    assert any(row["status"] == "running" for row in writes[:-1])
+    assert any(
+        row.get("active_event") == "generation_case_start" for row in writes
+    )
+    assert writes[-1]["status"] == "passed"
+    assert "generation_case_start" in capsys.readouterr().err
+
+
+def test_main_rejects_an_empty_scenario_set(tmp_path) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fixture")
+
+    with pytest.raises(SystemExit, match="at least one direct or generation"):
+        gate_module.main(
+            (
+                "--model",
+                str(model),
+                "--cycle-ends",
+                "",
+                "--acceptance-cycle-ends",
+                "",
+                "--generation-contexts",
+                "",
+            )
+        )
