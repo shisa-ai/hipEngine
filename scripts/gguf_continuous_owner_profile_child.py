@@ -113,7 +113,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             f"physical c{args.concurrency} transition {args.marker_index} was not observed; "
             f"observed {observed_c}"
         )
-    routes = snapshot["routes"]
+    routes = snapshot["runner"]["routes"]
     loop = snapshot["loop"]
     return {
         "schema": 1,
