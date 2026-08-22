@@ -426,33 +426,36 @@ the VALU issue path. Q5/Q6, attention, GDN recurrence, norms, and the LM head
 have different roofs. The 2.30 TB/s Infinity-Cache figure is also not a
 whole-model weight roof: 15.3 GB is far larger than the 96 MB cache.
 
-**Current whole-step classification: HIP-graph/device-schedule gaps are the
-first mechanism to test; arithmetic roof remains mixed.** A tracked-clean
-production-owner c8 transition measures **60.429 ms** marker wall. One
-`hipGraphLaunch` takes **0.690 ms**, after which the host blocks **58.760 ms** in
-`hipStreamSynchronize`. Traced kernels cover a **15.716 ms interval union** and
-leave **44.713 ms** with no traced kernel active, including repeated
-**11.594/11.510/11.498/6.178 ms** gaps. The same gaps reproduce the standalone
-profiler child nearly exactly. They are therefore not Python layer dispatch;
-they belong to the captured HIP graph's dependency/device-dispatch retirement
-(or an untraced device surface), and must be tested with an independently
-qualified submission/dependency change before kernel-family tuning is ranked.
+**Current whole-step classification: device-kernel work dominates; arithmetic
+roof remains mixed.** A tracked-clean production-owner c8 transition measures
+**60.429 ms** under profiling. One `hipGraphLaunch` takes **0.690 ms**, after
+which the host blocks **58.760 ms** in `hipStreamSynchronize`. Rocprof reports a
+**15.716 ms kernel interval union**, **54.469 ms summed kernel duration**, and
+**44.713 ms without a visible kernel,** including repeated
+**11.594/11.510/11.498/6.178 ms** intervals.
 
-This does not make the model globally bandwidth- or compute-bound. Family
-traffic/issue counters are still required after the graph critical path is
-understood.
+The submission A/B proves that 44.713 ms is **not a recoverable-overhead
+estimate**. Direct AQL removes the three ~11.5 ms mid-replay intervals but adds a
+12.563 ms pre-kernel submission interval, reduces overlap, and regresses the
+profiled wall to 62.685 ms. Native PM4 improves a counterbalanced clean
+steady-transition median only **58.932→57.966 ms (-1.640%)**. Thus the HIP trace
+interval union is a visibility/overlap accounting surface, not evidence of 74%
+idle hardware. Host Python dispatch is rejected, and transport has about 1 ms
+of measured steady-step headroom. Family traffic/issue counters now rank ahead
+of more submission work.
 
 #### Current measured c8 opportunity ledger
 
-All rows below come from one marked production-owner transition at commit
-`d7f2b9b0d`, W7900, Qwen3.8-27B Q4_K_M, BF16 KV, p512, physical c8. Kernel
-family values are **summed durations under overlap**, not additive wall shares
-or directly recoverable milliseconds.
+The HIP trace rows come from one marked production-owner transition at commit
+`d7f2b9b0d`; the transport packet comes from commit `489e7acac`. Both use the
+same W7900, Qwen3.8-27B Q4_K_M, BF16 KV, p512, physical-c8 route. Kernel family
+values are **summed durations under overlap**, not additive wall shares or
+directly recoverable milliseconds.
 
 | opportunity / accounting surface | measured time | status |
 | --- | ---: | --- |
 | Complete marker wall | **60.429 ms** | authoritative profiled transition boundary |
-| No-traced-kernel intervals | **44.713 ms** | in-graph/device schedule owner; recoverability unproven |
+| No-traced-kernel intervals | **44.713 ms** | trace accounting only; A/B rejects it as recoverable overhead |
 | Kernel interval union | **15.716 ms** | at least one traced kernel active |
 | Kernel duration sum | 54.469 ms | non-additive under graph overlap |
 | Q4 paired projections | 12.634 ms sum | largest named kernel family |
@@ -461,11 +464,14 @@ or directly recoverable milliseconds.
 | GDN recurrence/state | 7.813 ms sum | serial critical-path contribution unknown |
 | Q5 projections | 4.228 ms sum | true rowtile active |
 | Q6 root/LM-head projection | 3.267 ms sum | two rowtile chunks |
+| PM4 vs HIP graph, clean steady transition | **-0.966 ms median (-1.640%)** | exact but d32 is below c8's 80-replay break-even |
+| Direct AQL vs HIP graph, profiled transition | **+2.256 ms** | rejected; serialization/submission cost |
 
 The execution route is one physical c8 `packed_native` group, captured HIP graph
 replay, 873 dispatches, zero row-local/scalar fallback, zero steady H2D/D2H in
 the execution manifest, and eight equal 32-token outputs. Evidence:
-[`production-owner attribution`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json).
+[`production-owner attribution`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json)
+and [`transport A/B`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-transport-ab.json).
 
 #### #37 measurement ladder: rank before tuning
 
@@ -479,12 +485,12 @@ inside one comparison.
    proves the same repeated graph gaps through `LLM`/`EngineService` and records
    marker-scoped kernel/HIP API/copy evidence. The host submits one graph and
    blocks; summed kernel duration is not wall coverage.
-2. **Test graph dependency/submission ownership.** Compare the same production
-   owner, route, graph generation, and output contract under the portable HIP
-   graph control and one independently qualified native submission/dependency
-   candidate. Record complete wall, kernel union, gap locations, API/copy count,
-   and graph lifecycle. A launch-count reduction is irrelevant unless the four
-   repeated multi-ms gaps or complete wall shrink.
+2. ~~**Test graph dependency/submission ownership.**~~ **DONE (2026-08-22).**
+   Direct AQL regresses; native PM4 wins the isolated steady transition by only
+   1.640% median. Keep the existing exact c8 PM4 policy threshold of 80 replay
+   steps and HIP fallback: d32 does not amortize capture/inspection and this
+   packet is not an end-to-end generation promotion gate. Rocprof cannot expose
+   kernels nested in the PM4 IB, so no PM4 kernel-union claim is made.
 3. **Measure actual bytes by family.** Join each traced operation to its resident
    allocation bytes, call count, active/physical rows, and route manifest. In a
    separate counter run (counter collection perturbs timing), collect available
@@ -512,13 +518,9 @@ This is a decision tree, not permission to implement every idea. Rank candidates
 by **measured milliseconds recoverable from complete wall**. A leaf win is only
 high priority when its call-weighted family saving survives the complete step.
 
-1. **Captured graph dependency/device schedule (44.713 ms without a traced
-   kernel).** Test first with same-route submission/dependency controls. The host
-   is blocked, so Python dispatch refactoring is not indicated. Do not assume the
-   entire interval is recoverable or call it launch latency without an A/B that
-   removes the repeated gaps.
-2. **Dense projections (largest summed kernel family).** Profile after the graph
-   critical-path A/B.
+1. **Dense projections (largest summed kernel family).** Profile next. The
+   transport A/B limits measured steady-step submission headroom to ~1 ms; do
+   not rank the 44.713 ms trace-union complement as an optimization bucket.
    - If measured traffic is near the attainable VRAM roof, reduce bytes or
      repeated reads: preserve weight-once rowtiles, pair only compatible
      same-input operations, and reconsider wider physical groups only when D2
@@ -529,24 +531,25 @@ high priority when its call-weighted family saving survives the complete step.
    - If waves fall with width, tune tile/column/thread geometry and VGPRs. The
      planar-Q6 row8 owner (VGPR136) is the first occupancy hypothesis to test,
      not an automatic rewrite.
-3. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN, normalization/gate, and
-   state commit. If recurrence compute dominates, optimize that kernel/parallel
+2. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN,
+   normalization/gate, and state commit. If recurrence compute dominates, optimize that kernel/parallel
    schedule; if state movement or short launches dominate, fuse the safe
    boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
    projection, which belongs to the projection family.
-4. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
+3. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
    lower priority unless launch-gap accounting moves it into the unreconciled
    bucket or a zero-risk fusion removes repeated traffic.
-5. **Physical row16 remains conditional; row32 remains rejected.** The prior
+4. **Physical row16 remains conditional; row32 remains rejected.** The prior
    direct-row16 down leaf beat 2×row8 by only 1.115× and row32 was 8.69× slower
    than 4×row8. Reopen row16 only if production D2 traces prove repeated weight
    streams are the largest remaining wall opportunity and its projected saving
    exceeds the best c≤8 family candidate.
 
-The highest-impact next action is a same-production-owner graph submission/
-dependency A/B. Only if the repeated gaps remain does family measurement rank
-Q4-pair/Q4-single traffic/issue, planar-Q6 occupancy, or GDN recurrence. No
-kernel family is selected from summed duration alone.
+The highest-impact next action is family bytes/issue/occupancy measurement,
+starting with Q4 paired and singleton projections, then planar-Q6 and GDN.
+Transport is no longer the leading unknown: PM4's retained steady-step gain is
+~1 ms and its existing c8 80-replay threshold remains appropriate. No kernel
+family is selected from summed duration alone.
 
 ## Executive decision
 
