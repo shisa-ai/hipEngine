@@ -40,6 +40,39 @@ Related source-of-truth documents:
 
 Executable source-to-evidence audit:
 [`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
+Its 31-passed/3-blocked/1-unavailable counts describe the pre-C2-S audit schema;
+they are not a claim that the new speculative-support units are implemented.
+
+### Closure interpretation: running core versus remaining product scope
+
+Generation 2 is **already running and production-qualified for the declared
+W7900 dense-BF16 Qwen configuration**: one `EngineService`, independent child
+completion, global arbitrary-page KV, prefix/cache ownership, token-budget
+c1-c32 scheduling, graph/page/slot lifecycle, long/mixed contexts, load,
+pressure, cancellation, overload, memory, and final drain have retained gates.
+The branch is therefore an integration candidate, not a prototype waiting for a
+scheduler rewrite.
+
+The remaining work is not all “tuning,” however. Keep these scopes distinct:
+
+- **Safe optional optimization:** #37 wall/critical-path attribution and later
+  family tuning; Qwen3.8 cost-aware D2 remains explicit-config until its actual
+  HTTP/`EngineService` c1-c32 route/SLO/memory/drain gate passes.
+- **Backend qualification:** gfx1151 inherits the common host scheduler, ledger,
+  pool, transaction, and output code, but independently qualifies physical
+  widths, kernels, graphs, cost maps, lifecycle, and production load.
+- **Feature/product closure:** real-checkpoint no-shadow DMS device conformance,
+  realistic tier restore economics, and C2-S continuous MTP/SpecDec integration
+  remain implementation campaigns rather than tuning of the dense AR core.
+- **Comparison coverage:** matched prior-engine/llama.cpp/vLLM/SGLang serving is
+  evidence work and may remain unavailable without invalidating the retained
+  W7900 same-engine gates.
+
+Open optional or backend-specific capabilities stay default-off, explicit, or
+fail-closed. They do not justify withholding the working common architecture
+from integration, but merge readiness still requires reconciling current
+`origin/main`, resolving shared-file conflicts, and proving no regression
+against the same baseline nodes and focused Generation-2 bundles.
 
 ## Performance snapshot and old-design comparison
 
