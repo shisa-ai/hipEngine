@@ -1537,7 +1537,12 @@ class Qwen35GGUFMTPDecodeSession:
                 state_plan = scheduler.bind_speculative_commit_buffers(commit, state_buffers)
                 committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
                 target_transaction_committed = True
-                scheduler.finalize_speculative_accept(committed_txn, state_plan)
+                scheduler.finalize_speculative_accept(
+                    committed_txn,
+                    state_plan,
+                    eos_token_id=eos_token_id,
+                    stop_token_ids=stop_token_ids,
+                )
                 self.verifier.finish(prepared)
                 prepared = None
                 lifecycle_phase("after_target_commit")

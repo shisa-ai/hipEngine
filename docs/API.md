@@ -92,11 +92,11 @@ request-opt-in: start with
 `--speculative-mtp-serving opt_in` or
 `HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
 `"speculative_mtp": true` on a non-streaming greedy request. That explicitly
-selects the documented `llama-compat` contract. The corrected category gate
-shows this compatibility route is not exact against true AR, so the `auto`
-policy carries compatible requests to the realized batch group but selects
-exact/default AR with a recorded reason, group width, and output horizon. The
-capabilities manifest reports
+selects the documented MTP contract. Dense gfx1151 eager MTP is strict-AR exact
+through RF1, but RF2 long graph/MTP economics do not meet automatic-promotion
+requirements. The `auto` policy therefore selects exact/default AR with reason
+`automatic_mtp_scope_not_promoted`, group width, output horizon, and the RF2
+evidence artifact. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes
@@ -117,8 +117,11 @@ When MTP is explicitly selected, the default **hint** policy
 prompt but relaxes host-sampler enforcement, so `reasoning_effort`
 off/medium/high/xhigh can use the raw-greedy-compatible MTP route. This is an
 explicit policy change rather than equality with the original hard-controlled
-request; its task/closure/token-use gate remains RF4/RF6 work in
-[`MTP-FIX.md`](MTP-FIX.md). Set `--speculative-mtp-thinking hard` (or
+request. RF4 qualifies exact API labeling/fallback behavior; answer-quality,
+closure, and token-use promotion remain RF6 work in [`MTP-FIX.md`](MTP-FIX.md).
+Responses that realize MTP report `thinking_policy` and
+`thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
+(or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
 enforcement; then the thinking budget is a hard MTP blocker and thinking
 requests fall back to plain AR. A request can override the server policy with
@@ -554,9 +557,14 @@ responses:
 proposes zero drafts, and `acceptance_rate` is then `null`. Non-MTP streaming
 requests with `stream_options.include_hipengine` continue to expose their
 per-choice backend telemetry, but compact MTP streaming summaries are deferred
-until the MTP route supports streaming.
+until the MTP route supports streaming. Auto fallback additionally reports
+`requested_route` and `decision_reason`; realized MTP reports its explicit
+thinking policy/control mode.
 
-The `--metrics prometheus` endpoint exports cumulative MTP observability:
+Direct response usage, `hipengine.speculative_mtp`, generation-shape, and
+backend cycle records are the campaign's authoritative evidence. When enabled,
+the optional `--metrics prometheus` endpoint mirrors cumulative MTP counts for
+operators but is not an RF4/RF6 dependency:
 `hipengine_mtp_requests_total`, `hipengine_mtp_draft_tokens_accepted_total`,
 `hipengine_mtp_draft_tokens_rejected_total`, a cumulative
 `hipengine_mtp_draft_acceptance_rate` gauge, and a static
@@ -644,7 +652,7 @@ Automatic decisions add `route_decision` to the same object. It records
 `requested_route`, `selected_route`, a stable `reason`,
 `realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
 and the evidence artifact. The current reason is
-`compatibility_mtp_not_exact`, with selected route `default`; explicit MTP
+`automatic_mtp_scope_not_promoted`, with selected route `default`; explicit MTP
 requests retain route `speculative_mtp` and do not carry this automatic
 fallback record.
 

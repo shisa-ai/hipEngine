@@ -12,6 +12,7 @@ import asyncio
 from contextlib import suppress
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
+from enum import Enum
 import hashlib
 import json
 import logging
@@ -244,9 +245,17 @@ _SPECULATIVE_MTP_THINKING_MODES = ("hint", "hard")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
-_SPECULATIVE_MTP_AUTO_REJECTION_REASON = "compatibility_mtp_not_exact"
+
+
+class _SpeculativeMTPRouteReason(str, Enum):
+    AUTOMATIC_SCOPE_NOT_PROMOTED = "automatic_mtp_scope_not_promoted"
+
+
+_SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
+    _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
+)
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
-    "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json"
+    "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json"
 )
 _SPECULATIVE_PROVIDER_ROUTE = "speculative"
 _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
@@ -1323,12 +1332,16 @@ def _scheduler_fairness_capability(*, continuous_decode: bool = False) -> dict[s
 
 
 def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
-    serving_route = (
-        str(config.speculative_mtp_serving) != "off"
-        and _engine_supports_speculative_mtp(engine)
-    )
+    engine_supported = _engine_supports_speculative_mtp(engine)
+    configured_mode = str(config.speculative_mtp_serving)
+    serving_route = configured_mode != "off" and engine_supported
     payload = {
         "serving_route": bool(serving_route),
+        "configured_policy": configured_mode,
+        "engine_supported": bool(engine_supported),
+        "model_has_mtp_tensors": bool(engine_supported),
+        "certified_default_scopes": [],
+        "automatic_route_promoted": False,
         "sampling_compatible": bool(serving_route),
         "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
@@ -1339,7 +1352,6 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
     }
     if not serving_route:
         return payload
-    configured_mode = str(config.speculative_mtp_serving)
     default_enabled = bool(
         configured_mode == "enabled" and _engine_supports_default_mtp(engine)
     )
@@ -5891,6 +5903,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response["hipengine"]["speculative_mtp"] = _mtp_response_summary(
             None if batch.generation_shape is None else batch.generation_shape.get("route"),
             batch.details,
+            route_decision=(
+                None
+                if batch.generation_shape is None
+                else batch.generation_shape.get("route_decision")
+            ),
+            thinking_policy=(
+                _request_speculative_mtp_thinking(config, request)
+                if batch.generation_shape is not None
+                and batch.generation_shape.get("route")
+                == _SPECULATIVE_MTP_BATCH_ROUTE
+                else None
+            ),
         )
         await _maybe_write_agentic_result_replay_artifact(
             config,
@@ -6214,6 +6238,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response["hipengine"]["speculative_mtp"] = _mtp_response_summary(
                 None if batch.generation_shape is None else batch.generation_shape.get("route"),
                 batch.details,
+                route_decision=(
+                    None
+                    if batch.generation_shape is None
+                    else batch.generation_shape.get("route_decision")
+                ),
+                thinking_policy=(
+                    _request_speculative_mtp_thinking(config, request)
+                    if batch.generation_shape is not None
+                    and batch.generation_shape.get("route")
+                    == _SPECULATIVE_MTP_BATCH_ROUTE
+                    else None
+                ),
             )
             await _maybe_write_agentic_result_replay_artifact(
                 config,
@@ -13593,6 +13629,9 @@ def _mtp_accepted_rejected_counts(
 def _mtp_response_summary(
     route: str | None,
     details: Sequence[GenerationOutput] | None,
+    *,
+    route_decision: Mapping[str, Any] | None = None,
+    thinking_policy: str | None = None,
 ) -> dict[str, Any]:
     """Compact per-request effective MTP state for the hipengine extension.
 
@@ -13625,7 +13664,7 @@ def _mtp_response_summary(
         if row_cycles is not None:
             cycles += max(0, int(row_cycles))
     used = used or generated > 0
-    return {
+    summary = {
         "effective_route": "unknown" if route is None else str(route),
         "used": bool(used),
         "draft_tokens": generated,
@@ -13634,6 +13673,20 @@ def _mtp_response_summary(
         "acceptance_rate": (float(accepted) / float(generated)) if generated else None,
         "draft_cycles": cycles,
     }
+    if isinstance(route_decision, Mapping):
+        requested_route = route_decision.get("requested_route")
+        decision_reason = route_decision.get("reason")
+        if requested_route is not None:
+            summary["requested_route"] = str(requested_route)
+        if decision_reason is not None:
+            summary["decision_reason"] = str(decision_reason)
+    if used and thinking_policy is not None:
+        policy = str(thinking_policy)
+        summary["thinking_policy"] = policy
+        summary["thinking_controls"] = (
+            "prompt_hint_only" if policy == "hint" else "hard_controls_preserved"
+        )
+    return summary
 
 
 def _finish_reasoning_token_total(details: Sequence[GenerationOutput] | None) -> int:

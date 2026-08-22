@@ -1,0 +1,263 @@
+{
+  "command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python3",
+    "scripts/gguf_mtp_api_gate.py",
+    "--hash-model",
+    "--out",
+    "/tmp/mtp-rf4-api-final-v3.json",
+    "--fail-on-fail"
+  ],
+  "eager": {
+    "eager_load": true,
+    "passed": true,
+    "rows": [
+      {
+        "ar_contract": true,
+        "ar_ids": [
+          [
+            271,
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248044
+          ]
+        ],
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "id": "completion_single",
+        "ids_exact": true,
+        "mtp_contract": true,
+        "mtp_ids": [
+          [
+            271,
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248044
+          ]
+        ],
+        "passed": true
+      },
+      {
+        "choice_count": 2,
+        "id": "completion_multi_prompt",
+        "mtp_contract": true,
+        "passed": true,
+        "route": "speculative_mtp"
+      },
+      {
+        "ar_contract": true,
+        "ar_ids": [
+          [
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248046
+          ]
+        ],
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "id": "chat_single",
+        "ids_exact": true,
+        "mtp_contract": true,
+        "mtp_ids": [
+          [
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248046
+          ]
+        ],
+        "passed": true
+      },
+      {
+        "hard_blockers": [
+          "thinking_budget"
+        ],
+        "hard_status": 400,
+        "hint_controls": "prompt_hint_only",
+        "hint_policy": "hint",
+        "hint_route": "speculative_mtp",
+        "id": "thinking_policy",
+        "passed": true
+      },
+      {
+        "id": "app_local_session",
+        "message_count": 4,
+        "passed": true
+      },
+      {
+        "id": "explicit_rejections",
+        "non_greedy_blockers": [
+          "temperature"
+        ],
+        "non_greedy_status": 400,
+        "passed": true,
+        "stream_error_code": "unsupported_parameter",
+        "stream_error_param": "speculative_mtp",
+        "stream_http_status": 200
+      },
+      {
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "automatic_route_promoted": false,
+        "certified_default_scopes": [],
+        "configured_policy": "auto",
+        "engine_supported": true,
+        "id": "capability_and_readiness",
+        "loaded_after": true,
+        "loaded_before": true,
+        "passed": true,
+        "ready_after_status": 200,
+        "ready_before_status": 200
+      }
+    ],
+    "wall_seconds": 57.45615150895901
+  },
+  "kind": "gguf_mtp_api_semantics_gate",
+  "lazy_restart": {
+    "eager_load": false,
+    "passed": true,
+    "rows": [
+      {
+        "ar_contract": true,
+        "ar_ids": [
+          [
+            271,
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248044
+          ]
+        ],
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "id": "completion_single",
+        "ids_exact": true,
+        "mtp_contract": true,
+        "mtp_ids": [
+          [
+            271,
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248044
+          ]
+        ],
+        "passed": true
+      },
+      {
+        "choice_count": 2,
+        "id": "completion_multi_prompt",
+        "mtp_contract": true,
+        "passed": true,
+        "route": "speculative_mtp"
+      },
+      {
+        "ar_contract": true,
+        "ar_ids": [
+          [
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248046
+          ]
+        ],
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "id": "chat_single",
+        "ids_exact": true,
+        "mtp_contract": true,
+        "mtp_ids": [
+          [
+            248068,
+            271,
+            248069,
+            271,
+            9419,
+            0,
+            248046
+          ]
+        ],
+        "passed": true
+      },
+      {
+        "hard_blockers": [
+          "thinking_budget"
+        ],
+        "hard_status": 400,
+        "hint_controls": "prompt_hint_only",
+        "hint_policy": "hint",
+        "hint_route": "speculative_mtp",
+        "id": "thinking_policy",
+        "passed": true
+      },
+      {
+        "id": "app_local_session",
+        "message_count": 4,
+        "passed": true
+      },
+      {
+        "id": "explicit_rejections",
+        "non_greedy_blockers": [
+          "temperature"
+        ],
+        "non_greedy_status": 400,
+        "passed": true,
+        "stream_error_code": "unsupported_parameter",
+        "stream_error_param": "speculative_mtp",
+        "stream_http_status": 200
+      },
+      {
+        "auto_reason": "automatic_mtp_scope_not_promoted",
+        "automatic_route_promoted": false,
+        "certified_default_scopes": [],
+        "configured_policy": "auto",
+        "engine_supported": true,
+        "id": "capability_and_readiness",
+        "loaded_after": true,
+        "loaded_before": false,
+        "passed": true,
+        "ready_after_status": 200,
+        "ready_before_status": 200
+      }
+    ],
+    "wall_seconds": 56.71015455399174
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "passed": true,
+  "performance_claim": false,
+  "repo": {
+    "commit": "54c7899a9abfbbfab10b434835cd3d0a18e2be44",
+    "dirty": true
+  },
+  "schema": 1,
+  "source_local_path": "/tmp/mtp-rf4-api-final-v3.json",
+  "status": "passed",
+  "summary": {
+    "passed": 2,
+    "total": 2,
+    "wall_seconds": 122.8285277140094
+  },
+  "verdict": "pass"
+}

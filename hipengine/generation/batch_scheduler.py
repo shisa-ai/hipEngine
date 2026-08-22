@@ -1485,10 +1485,17 @@ class ResidentBatchScheduler:
 
         return self.cancel(request_id, reason="timeout")
 
-    def record_speculative_accept(self, summary: TargetAcceptSummary) -> tuple[CompletedRequest, ...]:
-        """Record accepted speculative tokens plus optional target next tokens."""
+    def record_speculative_accept(
+        self,
+        summary: TargetAcceptSummary,
+        *,
+        eos_token_id: int | None = None,
+        stop_token_ids: Sequence[int] = (),
+    ) -> tuple[CompletedRequest, ...]:
+        """Record speculative output and retire at the first EOS/stop token."""
 
         next_tokens = summary.next_tokens or (None,) * len(summary.request_ids)
+        stop_ids = {int(value) for value in stop_token_ids}
         for request_id, tokens, next_token in zip(summary.request_ids, summary.accepted_tokens, next_tokens, strict=True):
             if request_id not in self.active_batch.requests:
                 raise KeyError(request_id)
@@ -1500,7 +1507,22 @@ class ResidentBatchScheduler:
         for request_id, tokens, next_token in zip(summary.request_ids, summary.accepted_tokens, next_tokens, strict=True):
             output_tokens = tokens if next_token is None else (*tokens, next_token)
             for token_id in output_tokens:
-                done = self._append_generated_token(GeneratedToken(request_id, token_id))
+                token = int(token_id)
+                done = self._append_generated_token(GeneratedToken(request_id, token))
+                eos = None if eos_token_id is None else int(eos_token_id)
+                is_stop = (eos is not None and token == eos) or token in stop_ids
+                if is_stop:
+                    reason = "eos" if eos is not None and token == eos else "stop"
+                    if done is None:
+                        done = self.finish_request_at_stop(
+                            request_id,
+                            eos_token_id=eos_token_id,
+                            stop_token_ids=stop_token_ids,
+                            finish_reason="stop",
+                        )
+                    else:
+                        done = replace(done, finish_reason=reason)
+                        self._completed[int(request_id)] = done
                 if done is not None:
                     completed.append(done)
                     break
@@ -1777,6 +1799,9 @@ class ResidentBatchScheduler:
         self,
         committed_transaction: KVTransaction,
         plan: SpeculativeStateCommitPlan,
+        *,
+        eos_token_id: int | None = None,
+        stop_token_ids: Sequence[int] = (),
     ) -> tuple[CompletedRequest, ...]:
         """Record accepted tokens after the speculative KV transaction commits."""
 
@@ -1789,7 +1814,11 @@ class ResidentBatchScheduler:
             raise ValueError("speculative KV transaction must be committed and not rolled back")
         if committed_transaction.accepted_counts != commit.kv_accept_counts:
             raise ValueError("committed KV accepted_counts must match speculative commit plan")
-        return self.record_speculative_accept(plan.commit_plan.summary)
+        return self.record_speculative_accept(
+            plan.commit_plan.summary,
+            eos_token_id=eos_token_id,
+            stop_token_ids=stop_token_ids,
+        )
 
     def shape_key(
         self,
