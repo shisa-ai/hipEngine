@@ -2366,37 +2366,6 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
   return hipGetLastError();
 }
 
-template <typename out_t>
-int launch_q6_t16_qmicro_planar_rowtile_col8_dpp(
-    const void* x,
-    const void* tiles,
-    void* out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  if (!x || !tiles || !out || rows != 8 || in_features <= 0 ||
-      out_features <= 0 || (in_features % QK_K) != 0 ||
-      (out_features % T16_COLS) != 0) {
-    return hipErrorInvalidValue;
-  }
-  const dim3 block(128);
-  const dim3 grid(static_cast<unsigned int>(out_features / 8));
-  hipLaunchKernelGGL(
-      (q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<out_t, 8, true>),
-      grid,
-      block,
-      0,
-      stream,
-      reinterpret_cast<const uint16_t*>(x),
-      reinterpret_cast<const uint8_t*>(tiles),
-      reinterpret_cast<out_t*>(out),
-      rows,
-      in_features,
-      out_features);
-  return hipGetLastError();
-}
-
 template <bool ADD_RESIDUAL>
 int launch_q6_t16_qmicro_planar_q8_1_dp4a(
     const void* xq,
@@ -2571,14 +2540,6 @@ hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
         x, tiles, out, rows, in_features, out_features, stream);
   }
   return launch_q6_t16_qmicro_planar<uint16_t>(
-      x, tiles, out, rows, in_features, out_features, stream);
-}
-
-extern "C" int
-hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_dpp_bf16_bf16_out(
-    const void* x, const void* tiles, void* out, int64_t rows,
-    int64_t in_features, int64_t out_features, hipStream_t stream) {
-  return launch_q6_t16_qmicro_planar_rowtile_col8_dpp<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
