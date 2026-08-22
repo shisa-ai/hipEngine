@@ -1,0 +1,732 @@
+{
+  "backend": "hip_gfx1151",
+  "correctness": {
+    "b3_acceptance_depths": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "capture_replay_exact": true,
+    "cpu_tests": 37,
+    "state_kv_hidden_commit_rollback_exact": true,
+    "steady_budgets": [
+      1,
+      2,
+      3
+    ]
+  },
+  "decision": "Retain exact context-bucketed target graphs for explicit diagnostics. No long bucket is admitted to auto because complete graph wall is neutral versus eager and MTP is slower than true AR. Transition/kernel-family boundaries and contexts above the 4K metadata cap pre-launch-fallback eager/AR.",
+  "economics": {
+    "auto_promoted": false,
+    "context_tokens": 4079,
+    "eager_mtp_wall_seconds": 97.10131953202654,
+    "graph_mtp_vs_true_ar_ratio": 0.7163593156887731,
+    "graph_mtp_wall_seconds": 97.20633837790228,
+    "graph_vs_eager_speedup": 0.9989196296493807,
+    "max_new_tokens": 8,
+    "promotion_floor": 1.1,
+    "true_ar_wall_seconds_eager_arm": 69.69718621100765,
+    "true_ar_wall_seconds_graph_arm": 69.6346660410054
+  },
+  "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+  "implementation": {
+    "automatic_route_enabled": false,
+    "cache_key": [
+      "candidate_budget",
+      "device_accept_commit",
+      "context_limit"
+    ],
+    "certified_graph_contexts": [
+      1032,
+      2048,
+      4095
+    ],
+    "eager_transition_contexts": [
+      1024,
+      4096
+    ],
+    "max_entries": 8,
+    "metadata_graph_cap": 4096
+  },
+  "kind": "mtp_rf2_long_context_target_graph_qualification",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "GGUF Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "rocprof": {
+    "correctness_artifact_sha256": "4428f0c77296ab304acd648cac5b50583c07863bce44933f2ff2dc03ccdf3b21",
+    "hip_graph_launches": 1,
+    "note": "Process-wide trace includes native and strict prefills plus graph capture/replay; used only for kernel identity/plausibility.",
+    "raw_db_local_path": "/tmp/rocprof-rf2-1032/rf2_results.db",
+    "raw_db_sha256": "5fcd0a882cbcfc917836b39201bcc07048c3a88c74808345f8087e564dffdb9c",
+    "split_kernels": [
+      {
+        "avg_duration_ns": 2912.3125,
+        "calls": 128,
+        "max_duration_ns": 3366,
+        "max_lds_bytes": 64,
+        "max_scratch_bytes": 0,
+        "min_duration_ns": 2685,
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)"
+      },
+      {
+        "avg_duration_ns": 161793.578125,
+        "calls": 128,
+        "max_duration_ns": 166112,
+        "max_lds_bytes": 3072,
+        "max_scratch_bytes": 0,
+        "min_duration_ns": 158378,
+        "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)"
+      }
+    ],
+    "total_kernels_process_wide": 12570
+  },
+  "schema": 1,
+  "sources": {
+    "2k_and_rejected_4096": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "2048,4096",
+        "--candidate-budgets",
+        "3",
+        "--direct-repeats",
+        "2",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "4104",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-2k-4k-b3-graph.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end2048-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 69.47962706908584,
+          "target_native_graph_submit_ms": 342.2474239487201,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end2048-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 341.4029909763485,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end4096-b3",
+          "commit_exact": false,
+          "commit_kv_exact": false,
+          "commit_position_exact": true,
+          "hidden_exact": false,
+          "linear_state_exact": false,
+          "passed": false,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 39.45871302857995,
+          "target_native_graph_submit_ms": 325.78671094961464,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end4096-b3",
+          "commit_exact": false,
+          "commit_kv_exact": false,
+          "commit_position_exact": true,
+          "hidden_exact": false,
+          "linear_state_exact": false,
+          "passed": false,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 326.48342789616436,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-2k-4k-b3-graph.json",
+      "passed": false,
+      "sha256": "2bd7499f51d5d0e5e69614241916fd7c671345b3e3844bbf2411112dae7e252c",
+      "summary": {
+        "direct_cases": 4,
+        "direct_passed": false,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 256.7373836180195
+      }
+    },
+    "4095_capture_replay": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "4095",
+        "--candidate-budgets",
+        "3",
+        "--direct-repeats",
+        "2",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "4104",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-4095-b3-graph.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end4095-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 71.36994495522231,
+          "target_native_graph_submit_ms": 352.8385750250891,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end4095-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 353.7081480026245,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-4095-b3-graph.json",
+      "passed": true,
+      "sha256": "fd42d2295615c0840ea8b7decf0bc1b7515a7f82518629a092099c0f6a755788",
+      "summary": {
+        "direct_cases": 2,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 186.45715602405835
+      }
+    },
+    "eager_generation": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "4079",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "8",
+        "--max-sequence-length",
+        "4104",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf2-4079-b3-eager-generation.json",
+        "--fail-on-fail"
+      ],
+      "generation_results": [
+        {
+          "accepted_counts": [
+            3,
+            3
+          ],
+          "all_cycles_eager": true,
+          "all_cycles_target_graph": false,
+          "ar_wall_seconds": 69.69718621100765,
+          "context_tokens": 4079,
+          "gpu_accept_match_cpu": true,
+          "mtp_vs_true_ar_ratio": 0.7177779513904515,
+          "mtp_wall_seconds": 97.10131953202654,
+          "output_ids_exact": true,
+          "passed": true,
+          "target_graph_capture_ms": 0.0,
+          "target_graph_submit_ms": 0.0
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-4079-b3-eager-generation.json",
+      "passed": true,
+      "sha256": "9ca884c2a4ac9af0aed89466f31f91cd5dc821d1010e9419b6dd1ece225be993",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 213.2980242059566
+      }
+    },
+    "graph_generation": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "4079",
+        "--generation-require-target-graph",
+        "--generation-budget",
+        "3",
+        "--max-new-tokens",
+        "8",
+        "--max-sequence-length",
+        "4104",
+        "--require-cached-build",
+        "--out",
+        "/tmp/mtp-rf2-4079-b3-graph-generation.json",
+        "--fail-on-fail"
+      ],
+      "generation_results": [
+        {
+          "accepted_counts": [
+            3,
+            3
+          ],
+          "all_cycles_eager": false,
+          "all_cycles_target_graph": true,
+          "ar_wall_seconds": 69.6346660410054,
+          "context_tokens": 4079,
+          "gpu_accept_match_cpu": true,
+          "mtp_vs_true_ar_ratio": 0.7163593156887731,
+          "mtp_wall_seconds": 97.20633837790228,
+          "output_ids_exact": true,
+          "passed": true,
+          "target_graph_capture_ms": 106.32483719382435,
+          "target_graph_submit_ms": 705.5308858398348
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-4079-b3-graph-generation.json",
+      "passed": true,
+      "sha256": "94af3b2bfd47adb74737d9c0fbb8a1bee6fa79c83aef04c9f0b8812207abf9b9",
+      "summary": {
+        "direct_cases": 0,
+        "direct_passed": true,
+        "generation_cases": 1,
+        "generation_passed": true,
+        "wall_seconds": 213.19311232003383
+      }
+    },
+    "rocprof_correctness": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1032",
+        "--candidate-budgets",
+        "3",
+        "--direct-repeats",
+        "1",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "1288",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-1032-b3-rocprof.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 82.99756899941713,
+          "target_native_graph_submit_ms": 331.8448499776423,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-1032-b3-rocprof.json",
+      "passed": true,
+      "sha256": "4428f0c77296ab304acd648cac5b50583c07863bce44933f2ff2dc03ccdf3b21",
+      "summary": {
+        "direct_cases": 1,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 90.84115643997211
+      }
+    },
+    "steady_1032_acceptance": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "",
+        "--candidate-budgets",
+        "3",
+        "--acceptance-cycle-ends",
+        "1032",
+        "--acceptance-budget",
+        "3",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "1288",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-1032-b3-acceptance-graph.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b3-a0",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 67.6705640507862,
+          "target_native_graph_submit_ms": 330.0126799149439,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 1,
+          "case_id": "end1032-b3-a1",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 329.4398350408301,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 2,
+          "case_id": "end1032-b3-a2",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 330.1072879694402,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 3,
+          "case_id": "end1032-b3-a3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 329.84228001441807,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-1032-b3-acceptance-graph.json",
+      "passed": true,
+      "sha256": "20b3c3e5630f9d025120e6605ea4eaa82ac736f6e333b963f33287bf1090cb75",
+      "summary": {
+        "direct_cases": 4,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 85.87512549804524
+      }
+    },
+    "steady_1032_b1_b2": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1032",
+        "--candidate-budgets",
+        "1,2",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "1288",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-1032-b12-graph.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b2",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 48,
+          "target_native_graph_capture_ms": 54.61555905640125,
+          "target_native_graph_submit_ms": 248.96526895463467,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b1",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 32,
+          "target_native_graph_capture_ms": 26.587512926198542,
+          "target_native_graph_submit_ms": 167.8466140292585,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-1032-b12-graph.json",
+      "passed": true,
+      "sha256": "2ee32905fc103662ad5b40b8e58f8f25b3685aae1b6d3774f3f8e3d4d9c7dc5f",
+      "summary": {
+        "direct_cases": 2,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 117.98188840597868
+      }
+    },
+    "steady_1032_capture_replay": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1032",
+        "--candidate-budgets",
+        "3",
+        "--direct-repeats",
+        "2",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "1288",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-1032-b3-graph.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 65.50653302110732,
+          "target_native_graph_submit_ms": 329.6244019875303,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1032-b3",
+          "commit_exact": true,
+          "commit_kv_exact": true,
+          "commit_position_exact": true,
+          "hidden_exact": true,
+          "linear_state_exact": true,
+          "passed": true,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 329.76506499107927,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-1032-b3-graph.json",
+      "passed": true,
+      "sha256": "387c0dffafe61937ed7866ab2dd1526d4c4af9d3b3678af024fe66401274b517",
+      "summary": {
+        "direct_cases": 2,
+        "direct_passed": true,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 83.15919092099648
+      }
+    },
+    "transition_1024_rejected": {
+      "command": [
+        "/home/lhl/hipEngine-main/.venv/bin/python3",
+        "scripts/gguf_mtp_long_context_gate.py",
+        "--cycle-ends",
+        "1024",
+        "--candidate-budgets",
+        "3",
+        "--direct-repeats",
+        "2",
+        "--acceptance-cycle-ends",
+        "",
+        "--generation-contexts",
+        "",
+        "--max-sequence-length",
+        "1032",
+        "--require-cached-build",
+        "--require-target-graph",
+        "--out",
+        "/tmp/mtp-rf2-1024-b3-graph-v2.json",
+        "--fail-on-fail"
+      ],
+      "direct_results": [
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1024-b3",
+          "commit_exact": false,
+          "commit_kv_exact": false,
+          "commit_position_exact": true,
+          "hidden_exact": false,
+          "linear_state_exact": false,
+          "passed": false,
+          "rollback_exact": true,
+          "split_k_calls": 64,
+          "target_native_graph_capture_ms": 67.91886896826327,
+          "target_native_graph_submit_ms": 329.3689120328054,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        },
+        {
+          "accept_summary_exact": true,
+          "accepted_count": 0,
+          "case_id": "end1024-b3",
+          "commit_exact": false,
+          "commit_kv_exact": false,
+          "commit_position_exact": true,
+          "hidden_exact": false,
+          "linear_state_exact": false,
+          "passed": false,
+          "rollback_exact": true,
+          "split_k_calls": 0,
+          "target_native_graph_capture_ms": 0.0,
+          "target_native_graph_submit_ms": 329.1082530049607,
+          "target_native_graph_submitted": true,
+          "target_top1_exact": true
+        }
+      ],
+      "local_path": "/tmp/mtp-rf2-1024-b3-graph-v2.json",
+      "passed": false,
+      "sha256": "9c9eabb883ccab6d0a14d061b2baf613b9c93a9b77ffbd84d743680dd02b080a",
+      "summary": {
+        "direct_cases": 2,
+        "direct_passed": false,
+        "generation_cases": 0,
+        "generation_passed": true,
+        "wall_seconds": 81.86229156795889
+      }
+    }
+  },
+  "status": "accepted_diagnostic_no_auto",
+  "verdict": "exact_but_performance_rejected_for_auto"
+}

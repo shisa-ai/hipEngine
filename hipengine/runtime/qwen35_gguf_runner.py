@@ -22947,6 +22947,7 @@ class Qwen35GGUFResidentSession:
         self,
         input_token_ids: list[int] | tuple[int, ...],
         *,
+        context_limit: int | None = None,
         cycle_id: int = 0,
         transaction_id: int = 0,
         request_id: int = 0,
@@ -22966,6 +22967,7 @@ class Qwen35GGUFResidentSession:
         return capture_qwen35_gguf_native_b2_target_graph(
             self,
             input_token_ids,
+            context_limit=(None if context_limit is None else int(context_limit)),
             cycle_id=int(cycle_id),
             transaction_id=int(transaction_id),
             request_id=int(request_id),

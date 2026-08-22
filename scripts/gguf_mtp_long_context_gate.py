@@ -202,28 +202,46 @@ def build_acceptance_cases(
     )
 
 
-def gate_passed(results: Sequence[dict[str, Any]]) -> bool:
-    """Fail closed if a row did not prove eager ownership and exact surfaces."""
+def gate_passed(
+    results: Sequence[dict[str, Any]],
+    *,
+    require_target_graph: bool = False,
+) -> bool:
+    """Fail closed unless rows prove the requested owner and exact surfaces."""
 
     if not results:
         return False
     for result in results:
         if not bool(result.get("passed", False)):
             return False
-        if bool(result.get("target_native_graph_submitted", True)):
+        graph_submitted = bool(result.get("target_native_graph_submitted", False))
+        if graph_submitted is not bool(require_target_graph):
             return False
         if not bool(result.get("host_target_batch_materialized", False)):
             return False
         if result.get("target_verify_route") != "eager_native":
             return False
-        if any(not bool(result.get(field, False)) for field in _REQUIRED_RESULT_BOOLEANS):
+        required_fields = (
+            tuple(
+                field
+                for field in _REQUIRED_RESULT_BOOLEANS
+                if field not in {"kv_rows_exact", "cursor_exact"}
+            )
+            if require_target_graph
+            else _REQUIRED_RESULT_BOOLEANS
+        )
+        if any(not bool(result.get(field, False)) for field in required_fields):
             return False
         expected_accepted = result.get("expected_accepted_count")
         if expected_accepted is not None and int(result.get("accepted_count", -1)) != int(
             expected_accepted
         ):
             return False
-        if int(result.get("cycle_end", 0)) >= 1024 and int(result.get("split_k_calls", 0)) <= 0:
+        if (
+            int(result.get("cycle_end", 0)) >= 1024
+            and int(result.get("split_k_calls", 0)) <= 0
+            and not graph_submitted
+        ):
             return False
     return True
 
@@ -367,6 +385,19 @@ def _hidden_bytes(session: Any) -> np.ndarray:
     return _copy_bytes(hidden, nbytes=int(hidden.shape[1]) * int(hidden.dtype.itemsize))
 
 
+def _state_mismatch_indices(left: Any, right: Any) -> list[int]:
+    left_states = _linear_state_bytes(left)
+    right_states = _linear_state_bytes(right)
+    return [
+        index
+        for index, (a, b) in enumerate(zip(left_states, right_states, strict=True))
+        if not (
+            (a is None and b is None)
+            or (a is not None and b is not None and np.array_equal(a, b))
+        )
+    ]
+
+
 def _states_equal(left: Any, right: Any) -> bool:
     left_states = _linear_state_bytes(left)
     right_states = _linear_state_bytes(right)
@@ -384,6 +415,44 @@ def _state_snapshot_equal(session: Any, snapshot: Sequence[np.ndarray | None]) -
         or (a is not None and b is not None and np.array_equal(a, b))
         for a, b in zip(current, snapshot, strict=True)
     )
+
+
+def _first_kv_row_mismatch(
+    left: Any,
+    right: Any,
+    positions: Sequence[int],
+) -> dict[str, int] | None:
+    left_owner = left._target_scratch_owner
+    right_owner = right._target_scratch_owner
+    if left_owner is None or right_owner is None:
+        raise RuntimeError("resident target scratch owner is closed")
+    unique_positions = tuple(dict.fromkeys(int(position) for position in positions))
+    left_caches = (*left_owner.full_key_caches, *left_owner.full_value_caches)
+    right_caches = (*right_owner.full_key_caches, *right_owner.full_value_caches)
+    key_count = len(left_owner.full_key_caches)
+    for cache_index, (left_cache, right_cache) in enumerate(
+        zip(left_caches, right_caches, strict=True)
+    ):
+        if left_cache is None or right_cache is None:
+            if left_cache is not None or right_cache is not None:
+                return {"cache_index": cache_index, "position": -1}
+            continue
+        row_nbytes = int(left_cache.nbytes) // int(left_owner.max_positions)
+        if row_nbytes != int(right_cache.nbytes) // int(right_owner.max_positions):
+            return {"cache_index": cache_index, "position": -1}
+        for position in unique_positions:
+            offset = position * row_nbytes
+            if not np.array_equal(
+                _copy_bytes(left_cache, offset=offset, nbytes=row_nbytes),
+                _copy_bytes(right_cache, offset=offset, nbytes=row_nbytes),
+            ):
+                return {
+                    "cache_index": cache_index,
+                    "layer": cache_index if cache_index < key_count else cache_index - key_count,
+                    "plane": 0 if cache_index < key_count else 1,
+                    "position": int(position),
+                }
+    return None
 
 
 def _kv_rows_equal(left: Any, right: Any, positions: Sequence[int]) -> bool:
@@ -454,6 +523,8 @@ def _run_direct_cases(
     *,
     max_sequence_length: int,
     require_cached_build: bool,
+    require_target_graph: bool = False,
+    direct_remaining_decode: int | None = None,
     progress: ProgressCallback | None = None,
     on_result: ResultCallback | None = None,
 ) -> list[dict[str, Any]]:
@@ -579,8 +650,12 @@ def _run_direct_cases(
                                 graph_bucket=native_verifier.graph_bucket(
                                     ("rf1-native", case.case_id), batch
                                 ),
-                                remaining_decode=(case.rows,),
-                                return_logits=True,
+                                remaining_decode=(
+                                    case.rows
+                                    if direct_remaining_decode is None
+                                    else int(direct_remaining_decode),
+                                ),
+                                return_logits=not bool(require_target_graph),
                             )
                         strict_prepared = strict_verifier.prepare(
                             batch,
@@ -588,8 +663,12 @@ def _run_direct_cases(
                             graph_bucket=strict_verifier.graph_bucket(
                                 ("rf1-strict", case.case_id), batch
                             ),
-                            remaining_decode=(case.rows,),
-                            return_logits=True,
+                            remaining_decode=(
+                                case.rows
+                                if direct_remaining_decode is None
+                                else int(direct_remaining_decode),
+                            ),
+                            return_logits=not bool(require_target_graph),
                         )
                         touched_positions = tuple(int(value) for value in batch.positions)
                         result.update(
@@ -601,6 +680,15 @@ def _run_direct_cases(
                                 ),
                                 "target_native_graph_fallback_reason": (
                                     native_prepared.native_graph_fallback_reason
+                                ),
+                                "target_native_graph_capture_ms": float(
+                                    native_prepared.native_graph_capture_ms
+                                ),
+                                "target_native_graph_submit_ms": float(
+                                    native_prepared.native_graph_submit_ms
+                                ),
+                                "target_native_graph_readback_ms": float(
+                                    native_prepared.native_graph_readback_ms
                                 ),
                                 "target_logits_exact": bool(
                                     np.array_equal(
@@ -666,9 +754,21 @@ def _run_direct_cases(
                         committed_position = int(
                             native_prepared.summary.commit_positions[0]
                         ) + 1
-                        committed_linear_exact = _states_equal(native, strict)
+                        committed_position_exact = bool(
+                            int(native.position)
+                            == int(strict.position)
+                            == committed_position
+                        )
+                        state_mismatches = _state_mismatch_indices(native, strict)
+                        committed_linear_exact = not state_mismatches
+                        first_kv_mismatch = _first_kv_row_mismatch(
+                            native, strict, touched_positions
+                        )
+                        committed_kv_exact = first_kv_mismatch is None
+                        native_hidden = _hidden_bytes(native)
+                        strict_hidden = _hidden_bytes(strict)
                         committed_hidden_exact = np.array_equal(
-                            _hidden_bytes(native), _hidden_bytes(strict)
+                            native_hidden, strict_hidden
                         )
                         result.update(
                             {
@@ -683,16 +783,25 @@ def _run_direct_cases(
                                     == int(case.expected_accepted_count)
                                 ),
                                 "committed_position": committed_position,
+                                "commit_position_exact": committed_position_exact,
                                 "linear_state_exact": committed_linear_exact,
+                                "state_mismatch_indices": state_mismatches[:8],
+                                "native_state_matches_initial": _state_snapshot_equal(
+                                    native, initial_state
+                                ),
+                                "commit_kv_exact": committed_kv_exact,
+                                "first_kv_mismatch": first_kv_mismatch,
                                 "hidden_exact": committed_hidden_exact,
+                                "hidden_mismatch_bytes": int(
+                                    np.count_nonzero(native_hidden != strict_hidden)
+                                ),
+                                "native_hidden_matches_initial": bool(
+                                    np.array_equal(native_hidden, initial_hidden)
+                                ),
                                 "commit_exact": bool(
-                                    int(native.position)
-                                    == int(strict.position)
-                                    == committed_position
+                                    committed_position_exact
                                     and committed_linear_exact
-                                    and _kv_rows_equal(
-                                        native, strict, touched_positions
-                                    )
+                                    and committed_kv_exact
                                     and committed_hidden_exact
                                 ),
                             }
@@ -715,14 +824,21 @@ def _run_direct_cases(
                     result["wall_seconds"] = time.perf_counter() - started
                     result["passed"] = bool(
                         "error" not in result
-                        and not result["target_native_graph_submitted"]
+                        and bool(result["target_native_graph_submitted"])
+                        is bool(require_target_graph)
                         and result.get("target_logits_exact", False)
                         and result.get("target_top1_exact", False)
                         and result.get("accept_summary_exact", False)
                         and result.get("linear_state_exact", False)
-                        and result.get("kv_rows_exact", False)
+                        and (
+                            bool(require_target_graph)
+                            or result.get("kv_rows_exact", False)
+                        )
                         and result.get("hidden_exact", False)
-                        and result.get("cursor_exact", False)
+                        and (
+                            bool(require_target_graph)
+                            or result.get("cursor_exact", False)
+                        )
                         and result.get("commit_exact", False)
                         and result.get("acceptance_exact", False)
                         and result.get("rollback_exact", False)
@@ -730,6 +846,7 @@ def _run_direct_cases(
                         and (
                             int(case.cycle_end) < 1024
                             or int(result.get("split_k_calls", 0)) > 0
+                            or bool(result.get("target_native_graph_submitted", False))
                         )
                     )
                     results.append(result)
@@ -755,6 +872,7 @@ def _run_generation_contexts(
     max_new_tokens: int,
     max_sequence_length: int,
     require_cached_build: bool,
+    require_target_graph: bool = False,
     progress: ProgressCallback | None = None,
     on_result: ResultCallback | None = None,
 ) -> list[dict[str, Any]]:
@@ -802,6 +920,7 @@ def _run_generation_contexts(
                     started = time.perf_counter()
                     prompt = _prompt(int(context))
                     target.reset()
+                    ar_started = time.perf_counter()
                     root = int(
                         target.prefill(prompt, use_bulk=True, return_logits=False).token_id
                     )
@@ -814,18 +933,21 @@ def _run_generation_contexts(
                                 ).token_id
                             )
                         )
+                    ar_wall_seconds = time.perf_counter() - ar_started
                     target.reset()
+                    mtp_started = time.perf_counter()
                     with _count_split_k_calls() as split_calls:
                         actual = decoder.generate(
                             prompt,
                             max_new_tokens=int(max_new_tokens),
                             request_id=40_000 + len(results),
-                            return_cycle_logits=True,
+                            return_cycle_logits=not bool(require_target_graph),
                             use_bulk_prefill=True,
                         )
                     # The server releases each NextN request slot after the
                     # owned cycle; the harness must do the same or a second
                     # generation context fails with "no free request slot".
+                    mtp_wall_seconds = time.perf_counter() - mtp_started
                     provider.release_request(40_000 + len(results))
                     cycles = tuple(actual.cycle_records)
                     result = {
@@ -854,6 +976,19 @@ def _run_generation_contexts(
                             and not bool(row["proposal_target_device_chained"])
                             for row in cycles
                         ),
+                        "all_cycles_target_graph": bool(cycles)
+                        and all(
+                            bool(row["target_native_graph_submitted"])
+                            for row in cycles
+                        ),
+                        "target_graph_capture_ms": sum(
+                            float(row.get("target_native_graph_capture_ms", 0.0))
+                            for row in cycles
+                        ),
+                        "target_graph_submit_ms": sum(
+                            float(row.get("target_native_graph_submit_ms", 0.0))
+                            for row in cycles
+                        ),
                         "draft_tail_advance_count": sum(
                             bool(row.get("draft_tail_advanced", False))
                             for row in cycles
@@ -864,17 +999,36 @@ def _run_generation_contexts(
                         "split_k_calls": len(split_calls),
                         "split_k_kernels": sorted(set(split_calls)),
                         "cycle_count": len(cycles),
+                        "ar_wall_seconds": ar_wall_seconds,
+                        "mtp_wall_seconds": mtp_wall_seconds,
+                        "mtp_vs_true_ar_ratio": (
+                            0.0
+                            if mtp_wall_seconds <= 0.0
+                            else ar_wall_seconds / mtp_wall_seconds
+                        ),
                         "wall_seconds": time.perf_counter() - started,
                     }
                     result["passed"] = bool(
                         result["output_ids_exact"]
                         and result["gpu_accept_match_cpu"]
-                        and result["all_cycle_logits_recorded"]
-                        and result["all_cycles_eager"]
-                        and not result["target_native_graph_submitted"]
+                        and (
+                            (require_target_graph and not result["all_cycle_logits_recorded"])
+                            or (
+                                not require_target_graph
+                                and result["all_cycle_logits_recorded"]
+                            )
+                        )
+                        and (
+                            result["all_cycles_target_graph"]
+                            if require_target_graph
+                            else result["all_cycles_eager"]
+                        )
+                        and bool(result["target_native_graph_submitted"])
+                        is bool(require_target_graph)
                         and (
                             int(context) + int(max_new_tokens) < 1024
                             or int(result["split_k_calls"]) > 0
+                            or result["all_cycles_target_graph"]
                         )
                     )
                     results.append(result)
@@ -957,6 +1111,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--candidate-budgets", default="1,2,3")
     parser.add_argument(
+        "--direct-repeats",
+        type=int,
+        default=1,
+        help="Repeat each direct case in the same session to prove graph replay.",
+    )
+    parser.add_argument(
+        "--direct-remaining-decode",
+        type=int,
+        help="Override direct remaining-decode to diagnose N1 versus N2 ownership.",
+    )
+    parser.add_argument(
         "--acceptance-cycle-ends",
         default="1024",
         help="cycle ends for reject/every-partial/full controlled B3 cases; empty disables",
@@ -967,10 +1132,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="1024",
         help="real host-proposal NextN prompt lengths (for example 1024,4K); empty disables",
     )
+    parser.add_argument(
+        "--generation-require-target-graph",
+        action="store_true",
+        help="Require every real-generation cycle to use a cached native target graph.",
+    )
     parser.add_argument("--generation-budget", type=int, default=3)
     parser.add_argument("--max-new-tokens", type=int, default=8)
     parser.add_argument("--max-sequence-length", type=int)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--require-target-graph",
+        action="store_true",
+        help="Require direct cases to use a native target graph; disables diagnostic logits.",
+    )
     parser.add_argument("--hash-model", action="store_true")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--fail-on-fail", action="store_true")
@@ -1002,9 +1177,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--generation-budget must be 1, 2, or 3")
     if int(args.max_new_tokens) <= 0:
         raise SystemExit("--max-new-tokens must be positive")
+    if int(args.direct_repeats) <= 0:
+        raise SystemExit("--direct-repeats must be positive")
+    if args.direct_remaining_decode is not None and int(args.direct_remaining_decode) < 0:
+        raise SystemExit("--direct-remaining-decode must be non-negative")
+    if bool(args.require_target_graph) and generation_contexts:
+        raise SystemExit("--require-target-graph supports direct cases only")
     if cycle_ends and not budgets:
         raise SystemExit("--candidate-budgets is required when --cycle-ends is set")
-    cases = (
+    base_cases = (
         *build_cycle_cases(
             cycle_ends=cycle_ends,
             candidate_budgets=budgets,
@@ -1013,6 +1194,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             cycle_ends=acceptance_cycle_ends,
             candidate_budget=int(args.acceptance_budget),
         ),
+    )
+    cases = tuple(
+        case
+        for case in base_cases
+        for _repeat in range(int(args.direct_repeats))
     )
     if not cases and not generation_contexts:
         raise SystemExit("at least one direct or generation scenario is required")
@@ -1032,13 +1218,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     configuration = {
         "cycle_ends": list(cycle_ends),
         "candidate_budgets": list(budgets),
+        "direct_repeats": int(args.direct_repeats),
+        "direct_remaining_decode": (
+            None
+            if args.direct_remaining_decode is None
+            else int(args.direct_remaining_decode)
+        ),
         "acceptance_cycle_ends": list(acceptance_cycle_ends),
         "acceptance_budget": int(args.acceptance_budget),
         "generation_contexts": list(generation_contexts),
+        "generation_require_target_graph": bool(
+            args.generation_require_target_graph
+        ),
         "generation_budget": int(args.generation_budget),
         "max_new_tokens": int(args.max_new_tokens),
         "max_sequence_length": max_sequence_length,
         "require_cached_build": bool(args.require_cached_build),
+        "require_target_graph": bool(args.require_target_graph),
     }
     checkpoint_direct: list[dict[str, Any]] = []
     checkpoint_generation: list[dict[str, Any]] = []
@@ -1098,6 +1294,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cases,
                 max_sequence_length=max_sequence_length,
                 require_cached_build=bool(args.require_cached_build),
+                require_target_graph=bool(args.require_target_graph),
+                direct_remaining_decode=(
+                    None
+                    if args.direct_remaining_decode is None
+                    else int(args.direct_remaining_decode)
+                ),
                 progress=progress,
                 on_result=record_result,
             )
@@ -1112,6 +1314,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_new_tokens=int(args.max_new_tokens),
                 max_sequence_length=max_sequence_length,
                 require_cached_build=bool(args.require_cached_build),
+                require_target_graph=bool(args.generation_require_target_graph),
                 progress=progress,
                 on_result=record_result,
             )
@@ -1130,7 +1333,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             failure["error"] = f"{type(exc).__name__}: {exc}"
             _atomic_write_json(args.out, failure)
         raise
-    direct_passed = gate_passed(direct_results) if direct_results else True
+    direct_passed = (
+        gate_passed(
+            direct_results,
+            require_target_graph=bool(args.require_target_graph),
+        )
+        if direct_results
+        else True
+    )
     generation_passed = (
         all(bool(result.get("passed", False)) for result in generation_results)
         if generation_results
