@@ -66,7 +66,7 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
     monkeypatch.setattr(
         runner_mod.Qwen35GGUFResidentSession,
         "_verify_lm_head_rowtile_max_rows",
-        lambda self: 6,
+        lambda self: 8,
     )
 
     # c8 now has a native rows-8 owner: single direct launch, no partition.

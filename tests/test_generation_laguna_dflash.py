@@ -210,6 +210,14 @@ def test_laguna_dflash_provider_binds_identities_and_reports_rejected_economics(
     assert target.bound_sha256 == LAGUNA_DFLASH_TARGET_SHA256
     assert provider.capabilities() == {
         "provider": "dflash",
+        "attachment_mode": "independent",
+        "supported_modes": ["verify_chain"],
+        "tree_supported": False,
+        "tree_unsupported_reason": "registered Laguna DFlash provider exposes chain proposals only",
+        "transaction_mode": "journal",
+        "provider_state_key": "laguna_dflash_state_bf16",
+        "provider_kv_key": "laguna_dflash_kv_bf16",
+        "resource_ownership": "independent provider state/KV/workspaces",
         "policy": "explicit_only",
         "default_enabled": False,
         "streaming_compatible": True,
