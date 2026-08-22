@@ -1,89 +1,117 @@
 {
-  "schema_version": 1,
-  "created_at": "2026-08-19T15:40:00Z",
-  "kind": "hipengine_qwen38_27b_dflash2_b7_batch_verify_d4",
-  "status": "rejected_promotion",
-  "pass": false,
-  "performance_claim": false,
-  "repo": {
-    "revision": "edba4219153fa024289d44501b2605449d2a1298",
-    "tracked_clean": true,
-    "production_default_changed": false
+ "schema_version": 1,
+ "created_at": "2026-08-19T15:40:00Z",
+ "kind": "hipengine_qwen38_27b_dflash2_b7_batch_verify_d4",
+ "status": "rejected_promotion",
+ "pass": false,
+ "performance_claim": false,
+ "repo": {
+  "revision": "edba4219153fa024289d44501b2605449d2a1298",
+  "tracked_clean": true,
+  "production_default_changed": false
+ },
+ "hardware": {
+  "gpu": "AMD Radeon 8060S Graphics",
+  "arch": "gfx1151",
+  "host": "strixhalo"
+ },
+ "model": {
+  "name": "Qwen3.8-27B",
+  "quant": "Q4_K_M GGUF",
+  "resident": "gfx1151"
+ },
+ "drafter": {
+  "name": "Qwen3.8-27B-DFlash2",
+  "snapshot": "50307d4c",
+  "block_size": 8,
+  "selector_top_k": 16,
+  "selector_rank": 256
+ },
+ "protocol": {
+  "comparison": "DFlash2 B7 (8-row batched chain verify) vs same-session AR and exact native MTP B3 (23.85 tok/s, 1.7845x AR)",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompts": 10,
+  "max_new_tokens_per_prompt": 40,
+  "command": "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT=1 HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 uv run python scripts/dflash2_gguf_suite_smoke.py --batch-verify --max-new-tokens 40 --limit 10"
+ },
+ "results": {
+  "ar_tokens_per_s": 13.4,
+  "mtp_b3_tokens_per_s": 23.85263,
+  "mtp_b3_ratio_ar": 1.7845,
+  "dflash2_b7_tokens_per_s_mean": 3.58,
+  "dflash2_b7_ratio_ar_mean": 0.27,
+  "dflash2_b7_mean_acceptance": 3.49,
+  "dflash2_b7_ar_agreement": 1.0,
+  "per_prompt": {
+   "code_merge_intervals": {
+    "acc": 3.64,
+    "tok_s": 3.38
+   },
+   "code_topological_sort": {
+    "acc": 4.44,
+    "tok_s": 4.44
+   },
+   "code_lru_cache": {
+    "acc": 3.33,
+    "tok_s": 3.34
+   },
+   "code_markdown_table": {
+    "acc": 3.33,
+    "tok_s": 3.18
+   },
+   "general_en_plan": {
+    "acc": 3.64,
+    "tok_s": 3.35
+   },
+   "general_en_explain": {
+    "acc": 3.64,
+    "tok_s": 2.59
+   },
+   "general_ja_plan": {
+    "acc": 2.11,
+    "tok_s": 2.55
+   },
+   "general_ja_explain": {
+    "acc": 3.08,
+    "tok_s": 3.74
+   },
+   "mixed_ja_en_translate": {
+    "acc": 4.0,
+    "tok_s": 4.84
+   },
+   "mixed_ja_en_review": {
+    "acc": 3.64,
+    "tok_s": 4.4
+   }
+  }
+ },
+ "blocker": "Not promoted: DFlash2 B7 is 3.58 tok/s = 0.27x AR vs exact MTP B3 1.78x AR. The 8-row verify at ~620 ms is the dominant cost and is an admission-cliff artifact, not a property of the block: the amortized rowtile is capped at 4 rows (_PACK8_ROWTILE_MAX_ROWS = 4), so 8 rows cost ~8.0 full weight sweeps where an amortized route would cost ~1.1. The rowtile-8 extension cut it 620 -> 310 ms but diverged from AR on code_lru_cache and was reverted un-root-caused; that revert is what makes the deep chain uneconomical. DFlash2 B7 accept length 3.49 tokens/cycle over 8 rows vs MTP B3's 2.85 over 3.85 rows. See 'correction' below.",
+ "evidence": "worklog/entries/20260819T152835.922012Z-lhl-dflash2-d4-batch-verify-b7-measurement-6b86ff.md",
+ "correction": {
+  "date": "2026-08-22",
+  "what_changed": "loss attribution only; no measured value in this artifact changed",
+  "misread": "MTP B3 'acceptance 3.85 / 0.96 per row' was read from 2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json as accepted tokens per cycle. 3.85 is target_forward_rows/cycles (335/87) = verify ROWS per cycle. MTP B3's accepted tokens per cycle is (161+87)/87 = 2.85, and its per-verify-row acceptance is 0.740.",
+  "corrected_comparison": {
+   "mtp_b3_rows_per_cycle": 3.851,
+   "mtp_b3_tokens_per_cycle": 2.851,
+   "mtp_b3_tokens_per_verify_row": 0.74,
+   "mtp_b3_verify_ms_per_cycle": 111.1,
+   "mtp_b3_proposal_ms_per_cycle": 2.37,
+   "dflash2_b3_rows_per_cycle": 4.0,
+   "dflash2_b3_tokens_per_cycle": 2.799,
+   "dflash2_b3_tokens_per_verify_row": 0.7,
+   "note": "acceptance is at parity (~2%); the deficit is drafter+verify cost"
   },
-  "hardware": {
-    "gpu": "AMD Radeon Pro W7900-compute-lane (gfx1151 resident)",
-    "arch": "gfx1151"
-  },
-  "model": {
-    "name": "Qwen3.8-27B",
-    "quant": "Q4_K_M GGUF",
-    "resident": "gfx1151"
-  },
-  "drafter": {
-    "name": "Qwen3.8-27B-DFlash2",
-    "snapshot": "50307d4c",
-    "block_size": 8,
-    "selector_top_k": 16,
-    "selector_rank": 256
-  },
-  "protocol": {
-    "comparison": "DFlash2 B7 (8-row batched chain verify) vs same-session AR and exact native MTP B3 (23.85 tok/s, 1.7845x AR)",
-    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
-    "prompts": 10,
-    "max_new_tokens_per_prompt": 40,
-    "command": "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT=1 HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1 uv run python scripts/dflash2_gguf_suite_smoke.py --batch-verify --max-new-tokens 40 --limit 10"
-  },
-  "results": {
-    "ar_tokens_per_s": 13.4,
-    "mtp_b3_tokens_per_s": 23.85263,
-    "mtp_b3_ratio_ar": 1.7845,
-    "dflash2_b7_tokens_per_s_mean": 3.58,
-    "dflash2_b7_ratio_ar_mean": 0.27,
-    "dflash2_b7_mean_acceptance": 3.49,
-    "dflash2_b7_ar_agreement": 1.0,
-    "per_prompt": {
-      "code_merge_intervals": {
-        "acc": 3.64,
-        "tok_s": 3.38
-      },
-      "code_topological_sort": {
-        "acc": 4.44,
-        "tok_s": 4.44
-      },
-      "code_lru_cache": {
-        "acc": 3.33,
-        "tok_s": 3.34
-      },
-      "code_markdown_table": {
-        "acc": 3.33,
-        "tok_s": 3.18
-      },
-      "general_en_plan": {
-        "acc": 3.64,
-        "tok_s": 3.35
-      },
-      "general_en_explain": {
-        "acc": 3.64,
-        "tok_s": 2.59
-      },
-      "general_ja_plan": {
-        "acc": 2.11,
-        "tok_s": 2.55
-      },
-      "general_ja_explain": {
-        "acc": 3.08,
-        "tok_s": 3.74
-      },
-      "mixed_ja_en_translate": {
-        "acc": 4.0,
-        "tok_s": 4.84
-      },
-      "mixed_ja_en_review": {
-        "acc": 3.64,
-        "tok_s": 4.4
-      }
-    }
-  },
-  "blocker": "DFlash2 per-draft acceptance ~0.38 vs MTP ~0.95; 8-row verify ~620ms vs MTP B3 4-row ~160ms for LOWER acceptance (3.49 vs 3.85); DFlash2 B7 = 0.27x AR, far below MTP B3 1.78x AR. Rowtile-8 verify speedup (620->310ms) diverged from AR on code_lru_cache and was reverted (kernels exact in isolation; verify-path interaction unroot-caused).",
-  "evidence": "worklog/entries/20260819T152835.922012Z-lhl-dflash2-d4-batch-verify-b7-measurement-6b86ff.md"
+  "withdrawn_claims": [
+   "MTP B3 sustains ~0.96 accepted tokens per verify row / sits near the B3 cap",
+   "DFlash2's acceptance (2.80) is below MTP's (3.85)",
+   "the 4->8 row verify cost growth is O(N^2) causal block attention",
+   "the 166ms verify is shared with MTP and not DFlash2-specific",
+   "no operating point on this lane can reach MTP B3 regardless of drafter cost"
+  ],
+  "protocol_mismatch": "the MTP B3 comparator row is Qwen3.8-27B-Q4_K_S.gguf at --max-new-tokens 25 via qwen36_dense_gguf_suite.py with reusable target graphs; these DFlash2 rows are Q4_K_M at 40 tokens via dflash2_gguf_suite_smoke.py with per-cycle Python and explicit syncs, and the timed verify additionally carries DFlash2-only 5-layer hidden-state capture. Ratios-to-AR are comparable; absolute rates are not same-lane.",
+  "hardware_field_fixed": "gpu was 'AMD Radeon Pro W7900-compute-lane (gfx1151 resident)', which names the wrong machine (W7900 is gfx1100). Actual host: strixhalo, AMD Radeon 8060S Graphics, gfx1151.",
+  "reproducibility_note": "as of 2026-08-22 the drafter snapshot, ~/dflash, Qwen3.8-27B-Q4_K_S.gguf and ~/sm120-tuning are all absent from this host; re-running requires re-fetching the drafter and the Q4_K_S comparator target.",
+  "evidence": "worklog/entries/20260822T*-dflash2-economics-attribution-correction*.md; docs/QWEN38-27B-DFLASH2-CAMPAIGN.md Economics section"
+ }
 }

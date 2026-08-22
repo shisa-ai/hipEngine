@@ -5,24 +5,35 @@
 > exploration stay in `~/amd-gpu-tuning`; the production path belongs here as a
 > torch-free, native C++/HIP hot loop.
 
-> **DFlash2 status (2026-08-19):** the Qwen3.8-27B DFlash2 GGUF campaign
-> (`docs/QWEN38-27B-DFLASH2-CAMPAIGN.md`, **see its Economics section for the
-> complete quantitative record and the cross-lane acceptance table**) closed as
+> **DFlash2 status (2026-08-19; loss attribution corrected 2026-08-22):** the
+> Qwen3.8-27B DFlash2 GGUF campaign (`docs/QWEN38-27B-DFLASH2-CAMPAIGN.md`,
+> **see its Economics section for the complete quantitative record, the
+> protocol-mismatch caveats, and the N1-N4 rerun plan**) closed as
 > **diagnostic, not promoted on gfx1151**. Full 10-prompt mtpbench B-sweep:
 > B3 (optimum) 8.85 tok/s = 0.66x AR after the retained Q6 amortized select
 > fix (7.70 = 0.575x pre-fix), B5 4.26, B7 3.58 — all AR-exact, but the best
-> point is ~2.7x below exact MTP B3 (23.85 tok/s = 1.78x AR). Even zeroing
-> the whole 5-layer drafter + select (~96 ms/cycle post-fix), B3 caps at
-> ~1.26x AR. The mechanism is the **8060S APU verify/draft economics** (O(N^2)
-> verify ~620ms @8 rows caps DFlash2 at a shallow B3 chain) plus hipEngine's
-> near-cap MTP (B3 per-row 0.96) — **not** DFlash2's acceptance being
-> destroyed: DFlash2 accept length is roughly lane-stable (3.49 Q4 vs 3.88
-> FP8-BLOCK vs 4.80 BF16 ref). On a full GPU with an affordable deep verify
-> (FP8-BLOCK / PRO 6000 / vLLM, 2026-08-19) DFlash2 **beats MTP3** at c<=16
-> (accept length 3.88 vs 3.04, decode +36%, E2E -46%). So the gfx1151 loss is
-> a hardware-economics result, not a drafter defect. DFlash2 stays a
-diagnostic on this lane; D5 gfx1100 kernels are registered (shared source),
-> the W7900 smoke is hardware-blocked on this gfx1151-only host.
+> point is ~2.7x below exact MTP B3 (23.85 tok/s = 1.78x AR). That decision
+> stands.
+>
+> **The recorded *reason* was wrong and is corrected.** The pre-2026-08-22
+> record read MTP B3's acceptance as 3.85 tokens/cycle (0.96 per row); 3.85 is
+> `target_forward_rows / cycles` — **verify rows** per cycle. MTP B3's real
+> accepted tokens per cycle is **2.85** (0.74 per verify row), so DFlash2 B3
+> (2.80, 0.70 per row) is **at acceptance parity**. The 2.7x deficit is cost:
+> ~96 ms/cycle of drafter+select vs MTP's 2.4 ms proposal, and a verify at
+> 166 ms/4 rows vs MTP's 111 ms/3.85 rows — which is *not* the same path
+> (different target file, different harness, plus DFlash2-only 5-layer tap
+> capture inside the timed region). The 620 ms 8-row verify is the
+> `_PACK8_ROWTILE_MAX_ROWS = 4` admission cliff (one full weight re-read per
+> row ≈ 8.0 weight sweeps), not O(N^2) attention, whose contribution here is
+> microseconds; the reverted rowtile-8 experiment (620 -> 310 ms, AR-divergent,
+> never root-caused) is the top open item. The cross-lane FP8-BLOCK / PRO 6000
+> claim previously used to argue "hardware economics that do not transfer" is
+> unverifiable from this host, and its MTP-strength half is refuted by the
+> corrected MTP number. DFlash2 stays a diagnostic on this lane on the measured
+> gap, **not** on any claim that the gap is unclosable; D5 gfx1100 kernels are
+> registered (shared source), the W7900 smoke is hardware-blocked on this
+> gfx1151-only host.
 
 ## Thesis
 

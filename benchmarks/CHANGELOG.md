@@ -4,6 +4,22 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [Qwen3.8-27B DFlash2 diagnostic — attribution correction] The DFlash2 rows'
+  recorded loss reason was wrong: MTP B3's comparator acceptance was read from
+  `target_forward_rows / cycles` (**3.85 verify rows/cycle**) as if it were
+  accepted tokens/cycle, which is **2.85** (0.740 per verify row). DFlash2 B3 is
+  2.80 (0.700) — **acceptance parity, not a 27% gap**. The deficit is cost:
+  ~96 ms/cycle drafter+select vs MTP's 2.37 ms proposal, and 166 ms/4-row verify
+  vs 111 ms/3.85-row on a different target file and harness. The 620 ms 8-row
+  verify is the `_PACK8_ROWTILE_MAX_ROWS = 4` admission cliff (~8.0 weight
+  sweeps), not O(N^2) attention. Verdict unchanged (**not promoted**, B3 8.85
+  tok/s = 0.66x AR vs MTP B3 1.7845x); no measured value changed. Also fixed a
+  wrong `hardware.gpu` string on all three artifacts (named a W7900; actual host
+  `strixhalo` / Radeon 8060S / gfx1151). Rerun plan N1-N4 is GPU-blocked.
+  Source: `docs/QWEN38-27B-DFLASH2-CAMPAIGN.md` Economics,
+  `worklog/entries/20260822T041749.084809Z-lhl-dflash2-economics-attribution-correction-901e48.md`,
+  `benchmarks/results/2026-08-{19,20}-gfx1151-qwen38-27b-dflash2-*.json`.
+
 - [gfx1151 prefill default] Restored `GGUF_AOTRITON_PREFILL=True` for gfx1151
   (was set `False` by f76a76697 from a 64..2048 slice measurement). Native
   bulk-prefill full-attention collapses with context (Qwen3.6-35B-A3B:

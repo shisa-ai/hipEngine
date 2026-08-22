@@ -1,6 +1,6 @@
 # Qwen3.8-27B DFlash2 GGUF Campaign (gfx1151 first, gfx1100 functional)
 
-Status: **decision — not promoted (D3/D4 complete, measured blocker)** — D0 complete (metadata/validation/lineage/CPU oracles);
+Status: **decision — not promoted (D3/D4 complete, measured blocker; loss attribution corrected 2026-08-22)** — D0 complete (metadata/validation/lineage/CPU oracles);
 D1 complete: NumPy drafter reproduces the reference greedy chain exactly (D0
 RED pin) **and** the GGUF-target tap capture + cycle driver runs end-to-end
 (`scripts/dflash2_gguf_cycle.py`: full-prompt 5-layer tap capture at prefill,
@@ -18,47 +18,57 @@ D3 complete: native drafter wired into `scripts/dflash2_gguf_cycle.py`
 (`--native`) with end-to-end correctness (native greedy == AR 40/40 on the
 smoke) and the B7 chain-batched verifier (`_run_dflash2_cycle_batch`) is
 AR-exact on all 10 mtpbench prompts.
-D4 complete (2026-08-19): full 10-prompt mtpbench suite measured — DFlash2 B7
-mean acceptance 3.49, 3.58 tok/s = **0.27x AR**, vs exact MTP B3 23.85 tok/s
-(1.7845x AR). **Promotion rule NOT met**; DFlash2 B7 stays a diagnostic with a
-recorded blocker (per-draft acceptance ~0.38 vs MTP ~0.95; 8-row verify
-~620ms for LOWER acceptance than MTP B3's 4-row ~160ms). The rowtile-8 verify
-speedup (620->310ms) diverged from AR on `code_lru_cache` and was reverted.
-A follow-up B-sweep (2026-08-19) root-caused why the earlier "B-sweep" was
-flat: `--block-size` was force-clamped to the drafter config 8, so every B
-ran the full 8-row verify. After truncating the verify chain to the CLI block
-size, B3 (4-row verify) is the DFlash2 optimum; a retained select-path fix
-(later, same day) computes draft logits through the session's amortized Q6_K
-head instead of the 2.54 GiB dequantized BF16 head (select 70ms -> 22ms), so
-the B3 suite is **8.85 tok/s = 0.66x AR** (100% AR-exact all 10 prompts),
-still ~2.7x below exact MTP B3; B5 = 4.26, B7 = 3.58 at the pre-fix select
-(select saving ~48ms/cycle applies uniformly). A smaller-block forward is a
-measured net loss (acceptance -7%, recall@16 drops, launch-bound throughput),
-so its experiment switch and reduced-geometry native API were removed; the
-drafter always runs its trained block geometry. Drafter forward (~75ms) +
-select (22ms) remain the structural DFlash2
-disadvantage vs MTP's ~5ms draft; no B is competitive.
-B3 cycle split (profiler, fox prompt, post-fix): draft 74ms + select 22ms +
-verify 166ms + commit 2ms ≈ 264ms/cycle. **Even if the drafter forward+select
-were zeroed**, B3 = 2.8 tok/0.166s ≈ 16.9 tok/s = 1.26x AR < MTP B3's 1.78x AR;
-reaching MTP B3 at the 166ms verify would need acceptance 3.96/cycle, above
-the B3 cap of 4.0 and the model's per-draft rate on Q4. No operating point on
-the Q4_K_M/8060S lane can reach MTP B3. **The blocker is this lane's
-verify/draft economics + hipEngine's near-cap MTP, not DFlash2 acceptance**
-(2026-08-19): the re-audit proved the drafter is not broken (batch ==
-sequential acceptance 3.64, recall inside the reference range), and the
-cross-lane comparison shows DFlash2 accept length is roughly lane-stable
-(3.49 Q4 vs 3.88 FP8-BLOCK vs 4.80 BF16 ref) — on FP8-BLOCK / PRO 6000 / vLLM
-DFlash2 **beats MTP3** at c<=16 (see the Economics cross-lane table and
-`~/sm120-tuning/QWEN38-27B.md`). Single clean run per B (all 10 prompts
-AR-exact), artifacts under `benchmarks/results/`.
-Remaining: D5 gfx1100 functional (optional given non-promotion).
+D4 complete (2026-08-19), attribution corrected (2026-08-22): full 10-prompt
+mtpbench suite measured — DFlash2 B3 (the measured optimum) **8.85 tok/s =
+0.66x AR** after the retained Q6 amortized select fix (7.70 = 0.575x pre-fix);
+B5 4.26, B7 3.58; every row AR-exact. Against exact native MTP B3
+(23.85 tok/s = 1.7845x AR) the best DFlash2 point is ~2.7x down, so the
+**promotion rule is NOT met** and DFlash2 stays a diagnostic on this lane.
+A follow-up B-sweep root-caused why the earlier "B-sweep" was flat:
+`--block-size` was force-clamped to the drafter config 8, so every B ran the
+full 8-row verify; after truncating the verify chain to the CLI block size, B3
+is the measured optimum. A smaller-block forward was a measured net loss
+(acceptance -7%, recall@16 drops) and its path was removed (`597dbd4ad`); the
+drafter always runs its trained block geometry.
 
-The complete quantitative record (acceptance model incl. the cross-lane
-table, per-cycle cost, B-sweep optimum, lane-specific airtight ceiling,
-hardware-economics proof, retained cost reductions) is consolidated in the
-**Economics** section below — the single source for the why-DFlash2-cannot-
-beat-MTP-on-gfx1151 analysis.
+**Why it loses — corrected 2026-08-22.** The pre-2026-08-22 record attributed
+the loss to an acceptance gap (DFlash2 2.80 vs "MTP 3.85", ~0.96/row) plus an
+O(N^2) APU verify, and concluded that no operating point on this lane could
+reach MTP B3 regardless of optimization. **That attribution was wrong.** `3.85`
+is MTP's `target_forward_rows / cycles` — verify rows per cycle — not its
+accepted tokens per cycle, which is **2.85**. Corrected, DFlash2 B3 (2.80
+tokens/cycle, 0.70 per verify row) is **at parity** with MTP B3 (2.85, 0.74).
+The entire 2.7x deficit is cost, not drafting quality:
+
+- drafter forward + select ~96 ms/cycle that MTP does not pay (MTP's proposal
+  is 2.4 ms), running at roughly a fifth of the achievable bandwidth for its
+  measured 3.584 GiB residency;
+- a verify that costs 166 ms for 4 rows where MTP's costs 111 ms for 3.85 rows
+  — and is **not** the same code path (different target file, different
+  harness, plus DFlash2-only 5-layer tap capture inside the timed region);
+- a rowtile admission cliff at four rows (`_PACK8_ROWTILE_MAX_ROWS = 4`) that
+  makes the 8-row verify re-read the full weights once per row (620 ms ≈ 8.0
+  weight sweeps), which is what forces the shallow chain — not quadratic
+  attention, whose contribution here is microseconds. The reverted rowtile-8
+  experiment (620 -> 310 ms, AR-divergent on `code_lru_cache`, never
+  root-caused) is the top open item.
+
+So the campaign's decision stands on the measured 2.7x gap, **not** on a claim
+that the gap is unclosable. The cross-lane FP8-BLOCK / PRO 6000 datapoint
+previously used to argue "hardware economics that do not transfer" is
+unverifiable from this host and its MTP-strength half is refuted by the
+corrected MTP number — see the Economics section.
+Single clean run per B (all 10 prompts AR-exact), artifacts under
+`benchmarks/results/`.
+Remaining: N1-N4 rerun plan in the Economics section (GPU-blocked); D5 gfx1100
+functional (optional given non-promotion).
+
+The complete quantitative record (corrected acceptance model, per-cycle cost,
+cost model in weight sweeps, the rowtile admission cliff, protocol-mismatch
+caveats, retained cost reductions, reproducibility gaps, and the N1-N4 rerun
+plan with falsifiable predictions) is consolidated in the **Economics**
+section below — the single source for the DFlash2-vs-MTP analysis on this lane.
+
 This document defines the campaign to bring `z-lab/Qwen3.8-27B-DFlash2`
 drafting to the closed Qwen3.8-27B GGUF production path on Radeon 8060S /
 `gfx1151`, with **functional (correctness-gated, untuned) support on
@@ -74,172 +84,356 @@ References:
   `dflash/model_mlx.py` is the quantized-target variant.
 - llama.cpp DFlash2 GGUF path: `ggml-org/llama.cpp` PR #27342 and the
   `incoai/Qwen3.8-27B-DFlash2-GGUF:Q4_K_M` drafter weights (comparator lane).
-- **Production cross-lane datapoint (2026-08-19):** `~/sm120-tuning/QWEN38-27B.md`
-  "Correct benchmark" — matched FP8-BLOCK MTP3 vs FP8-BLOCK DFlash2 on PRO 6000
-  (vLLM PR #52816, 262144 ctx, greedy). DFlash2 wins decode/E2E at c<=16
-  (accept length 3.88 vs 3.04; c=1 total 216.6 vs 167.1 tok/s; MTP-Bench decode
-  +36%, E2E -46%); MTP3 wins only at queue-saturated c>=24. This is the
-  evidence that the 8060S Q4 loss is hardware economics, not a drafter defect
-  (see the Economics cross-lane acceptance table).
+- **Cross-lane datapoint (2026-08-19) — UNVERIFIED FROM THIS HOST:**
+  `~/sm120-tuning/QWEN38-27B.md` "Correct benchmark", cited as matched
+  FP8-BLOCK MTP3 vs FP8-BLOCK DFlash2 on PRO 6000 (vLLM PR #52816, 262144 ctx,
+  greedy): DFlash2 wins decode/E2E at c<=16 (accept length 3.88 vs 3.04; c=1
+  total 216.6 vs 167.1 tok/s; MTP-Bench decode +36%, E2E -46%), MTP3 wins only
+  at queue-saturated c>=24. **That path does not exist on `strixhalo`, the host
+  this campaign ran on, and the repo is not among the declared read-only
+  reference peers in `AGENTS.md`.** It cannot carry a claim here until it is
+  re-cited with a physical host identity and a reachable path. It was
+  previously used to argue the 8060S loss is hardware economics that does not
+  transfer; that argument is withdrawn (see Economics).
 - Our DFlash history and verifier/accept/commit infrastructure:
   [`DFLASH.md`](DFLASH.md). Closed Qwen3.8-27B target campaign:
   [`QWEN38-27B-GFX1151-CAMPAIGN.md`](QWEN38-27B-GFX1151-CAMPAIGN.md) (AR
   13.10/12.92/13.10 tok/s at 512/1K/4K; exact native MTP B3 23.85 tok/s =
   1.7845x own AR).
 
-## Economics — complete record of why DFlash2 cannot beat MTP on this lane
+## Economics — why DFlash2 as implemented loses to MTP on this lane
+
+> **Correction (2026-08-22) — this section was rewritten; the pre-2026-08-22
+> version's central MTP number was wrong.** `3.85` was read out of the MTP B3
+> artifact as MTP's accepted tokens per cycle. It is `target_forward_rows /
+> cycles` = **verify rows per cycle**. It was then divided by the 4-row block
+> to manufacture a "0.96 per-row acceptance", compounding the same error.
+> MTP B3's real accepted tokens per cycle is **2.85**, and its real per-row
+> acceptance is **0.74**. Against DFlash2 B3's 2.80 / 0.70 the acceptance gap
+> is **~2%, not ~27%**. Every conclusion that rested on that gap is superseded:
+> "MTP B3 sits near the acceptance cap", "DFlash2's acceptance is below MTP's",
+> the *not-an-optimization-problem* framing, and the MTP-strength half of the
+> cross-lane reconciliation. The measured throughput rows are unchanged; only
+> the attribution changes. Superseded worklog entries: `20260819T152835`,
+> `20260819T165514`, `20260820T005019`. Correction entry:
+> `worklog/entries/20260822T041749.084809Z-lhl-dflash2-economics-attribution-correction-901e48.md`.
 
 This section is the single self-contained record of the DFlash2-vs-MTP
-analysis (worklog evidence: `20260819T165514` root-cause re-audit,
-`20260819T160908` B-sweep, `20260819T235720` Q6-select, `20260820T001302`
-variable-block net loss; artifacts under `benchmarks/results/`). All numbers
-are the closed Qwen3.8-27B Q4_K_M GGUF target, gfx1151 resident session,
-greedy, full 10-prompt mtpbench suite, AR-exact on every row.
+analysis. All DFlash2 numbers are the closed Qwen3.8-27B **Q4_K_M** GGUF
+target, gfx1151 (Radeon 8060S, host `strixhalo`), resident session, greedy,
+full 10-prompt mtpbench suite at `--max-new-tokens 40`, AR-exact on every row.
+All MTP numbers are read from
+[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json),
+which is a **different target file and a different protocol** — see
+"Protocol mismatch" below before treating any absolute rate as same-lane.
 
-### Baselines (same session, same hardware)
+### Baselines
 
-| Lane | tok/s | ratio AR |
-| --- | --- | --- |
-| Pure autoregressive | 13.4 | 1.00x |
-| Exact native MTP B3 | 23.85 | **1.7845x** |
-| DFlash2 B3 (post-Q6 select) | 8.85 | 0.66x |
-| DFlash2 B5 (pre-Q6 select) | 4.26 | 0.32x |
-| DFlash2 B7 (pre-Q6 select) | 3.58 | 0.27x |
-
-The binding comparison is DFlash2 vs **our own exact MTP B3**, not external
-headlines. MTP B3 is the target to beat; DFlash2's best point is ~2.7x below
-it.
-
-### Acceptance model (measured)
-
-| B | verify rows | DFlash2 acceptance | per-row rate | MTP B3 | per-row |
-| --- | --- | --- | --- | --- | --- |
-| 3 | 4 | 2.80 | 0.70 | 3.85 | 0.96 |
-| 5 | 6 | 3.30 | 0.55 | - | - |
-| 7 | 8 | 3.49 | 0.44 | - | - |
-
-DFlash2's marginal per-row acceptance **decays with block size** (0.70 @ B3 ->
-0.44 @ B7): larger blocks buy fewer accepted tokens per extra verify row. MTP
-B3 sustains ~0.96/row.
-
-**Cross-lane acceptance (the key sanity check).** DFlash2's own acceptance is
-**roughly lane-stable** — the Q4 target degrades it only modestly, it does
-*not* erase it. The DFlash2-vs-MTP outcome on a lane is decided more by the
-MTP's strength and the verify/draft economics than by DFlash2's acceptance:
-
-| lane (engine) | DFlash2 accept length (7-deep) | MTP accept length | DFlash2 vs MTP |
+| Lane | tok/s | ratio AR | protocol |
 | --- | --- | --- | --- |
-| Q4_K_M / 8060S (hipEngine, greedy) | 3.49 (B7) | 3.85 (MTP B3, near the 4.0 cap) | DFlash2 loses |
-| FP8-BLOCK / PRO 6000 (vLLM, greedy) | **3.88** | 3.04 (MTP3) | **DFlash2 wins** (c<=16) |
-| BF16 ref (blog, T>0) | 4.80 | 4.28 | DFlash2 wins (+12%) |
+| Pure autoregressive (Q4_K_M, in-session) | 13.4 | 1.00x | `dflash2_gguf_suite_smoke.py`, 40 tok |
+| Exact native MTP B3 (Q4_K_S) | 23.85 | 1.7845x | `qwen36_dense_gguf_suite.py`, 25 tok |
+| DFlash2 B3 (post-Q6 select) | 8.85 | 0.66x | 40 tok, 4-row verify |
+| DFlash2 B5 (pre-Q6 select) | 4.26 | 0.32x | 40 tok, 6-row verify |
+| DFlash2 B7 (pre-Q6 select) | 3.58 | 0.27x | 40 tok, 8-row verify |
 
-Sources: hipEngine B-sweep (this campaign); `~/sm120-tuning/QWEN38-27B.md`
-"Correct benchmark" 2026-08-19 (matched vLLM lanes, latency-valid c<=16;
-accept-*length* is the comparison because depth is heterogeneous — DFlash2
-drafts 7-deep vs MTP3 3-deep, so accept *rate* 41% vs 68% is
-apples-to-oranges); blog (BF16 T>0). Cross-engine/protocol caveat: the Q4 and
-FP8 columns are different engines, targets and suites, so exact values are
-not strictly comparable — the ordering and the mechanism are.
+DFlash2's best point is ~2.7x below exact MTP B3. That headline is unchanged
+and remains the reason the path is not promoted. What follows is why.
 
-Why the ordering flips: on Q4/8060S, hipEngine's MTP B3 sustains ~0.96
-per-row acceptance (near the B3 cap) — a very high bar from the closed
-campaign's extensive MTP tuning — while the APU's O(N^2) verify forces
-DFlash2 to a shallow B3 chain where its acceptance is capped at 2.80. On
-FP8-BLOCK / PRO 6000 the full GPU affords the 7-deep verify, DFlash2's longer
-accept length (3.88) exceeds MTP3's (3.04), and DFlash2 wins decode/E2E. The
-reference's "for quantized targets use block_size <= 5" reflects the mild Q4
-penalty (3.49 vs 4.80), not a collapse.
+### What the numbers actually say
 
-### Per-cycle cost model (B3, fox prompt, post-Q6 select)
+Per-cycle decomposition, both at their B3 operating point. MTP's columns are
+derived from the artifact's own counters (`cycles` 87, `accepted_draft_tokens`
+161, `proposed_draft_tokens` 248, `target_forward_rows` 335,
+`stage_seconds.target_verify` 9.663 s, `stage_seconds.proposal` 0.206 s);
+DFlash2's from the fox-prompt cycle split plus `mean_acceptance` (which is
+produced tokens per cycle including the bonus token, so the two are the same
+quantity):
 
-| Cost | ms | DFlash2-specific? |
+| | verify rows/cycle | tokens/cycle | tokens per verify row | verify ms | draft+select ms | cycle ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Exact native MTP B3 | 3.85 | **2.85** | **0.740** | 111 | 2.4 | 118 |
+| DFlash2 B3 | 4.00 | **2.80** | **0.700** | 166 | 96 | 264 |
+
+Three things follow immediately.
+
+1. **Acceptance is at parity.** 2.80 vs 2.85 tokens per cycle; 0.70 vs 0.74
+   per verify row. DFlash2's drafter is not out-accepted by MTP on this lane
+   in any meaningful sense.
+2. **MTP proposes adaptively.** 248 proposed drafts over 87 cycles is 2.85 of
+   a 3-draft budget — MTP's confidence gate declines to draft when it expects
+   rejection, which is why it verifies 3.85 rows rather than 4. DFlash2 runs a
+   fixed B and always pays for all 4 rows. That is a mechanism DFlash2 does not
+   have, not a quality difference.
+3. **The whole deficit is cost.** ~96 ms of drafter+select that MTP does not
+   pay, plus ~55 ms of verify that MTP does not pay for the same work.
+
+### The cost model in weight sweeps
+
+Decode on this target is weight-bandwidth-bound and already at the roof.
+`docs/ROOFLINE-gfx1151.md` gives ~221 GB/s practical read; Q4_K_M is
+17,106,775,008 bytes, so one full weight sweep is **77.4 ms**, and measured
+AR is 74.6 ms/token — i.e. AR runs at ~1.0 sweeps per token. Additional verify
+rows add compute (a few ms for 4-8 rows of a 27B dense forward) but **no
+additional weight traffic** if the kernel reuses the loaded weights across
+rows. So sweeps-per-cycle is the right unit:
+
+| path | rows | ms | weight sweeps/cycle |
+| --- | ---: | ---: | ---: |
+| AR (per token) | 1 | 74.6 | 0.96 |
+| MTP B3 verify (Q4_K_S, 72.9 ms/sweep) | 3.85 | 111 | **1.52** |
+| DFlash2 verify | 4 | 166 | **2.14** |
+| DFlash2 verify | 8 | 620 | **8.01** |
+| ideal amortized verify | any | — | ~1.0-1.1 |
+
+The 8-row number is one full weight re-read per row. That is the signature of
+**no cross-row reuse at all**, not of quadratic attention: the 4→8 row step
+adds 26 causal query-key pairs over a few hundred KV tokens, which is
+microseconds against a 620 ms cycle — the previously recorded "O(N^2) causal
+block attention" explanation is off by roughly three orders of magnitude and
+is withdrawn.
+
+### Where the 8-row cliff comes from
+
+`hipengine/runtime/gguf_linear.py` caps the amortized resident-pack8 route at
+four rows (line numbers as of `4699392d0`):
+
+```
+_DENSE_BF16_ROWTILE_MAX_ROWS = 4      # line 150
+_PACK8_ROWTILE_MAX_ROWS      = 4      # line 159
+```
+
+Above four rows the weight-reuse rowtile is not admitted and the verify falls
+back to a per-row route. This is a dispatch admission bound, and it is
+consistent with the D4 experiment that extended the Q4T16 dense rowtile to
+eight rows and cut the 8-row verify **620 ms -> 310 ms** before being reverted
+as AR-divergent on `code_lru_cache` (root cause never found). That revert is
+the single most consequential open item in this campaign: it is what makes the
+deep chain — the operating point where DFlash2's longer accept length would
+pay — unreachable.
+
+### The ceiling analysis, corrected
+
+The old text called this "the airtight ceiling (not an optimization problem)".
+The arithmetic in it was right; the causal attribution was not.
+
+1. **Free-drafter bound (still true as stated).** Even at zero drafter cost,
+   DFlash2 B3 = 2.80 tok / 0.166 s = 16.9 tok/s = 1.26x AR < MTP B3's 1.7845x.
+   **But it binds because DFlash2's verify costs 166 ms for 4 rows while MTP's
+   costs 111 ms for 3.85 rows — not because of acceptance.**
+2. **Required-acceptance bound, recomputed.** At DFlash2's *own* 166 ms verify,
+   matching MTP B3 needs 23.853 x 0.166 = 3.96 tokens/cycle, above the B3 cap
+   of 4.0 — hence the old "no operating point" claim. At **MTP's** verify
+   economics (111 ms) the requirement is 23.853 x 0.111 = **2.65** tokens/cycle,
+   and DFlash2 already delivers **2.80**. The bound flips on the verify cost,
+   which is an implementation number, not a property of the drafter.
+3. **Modeled headroom** (from measured components; not itself a measurement).
+   D6 measured drafter BF16 residency at 3.584 GiB; with the session's 0.6 GiB
+   Q6 head that is ~4.5 GB touched per draft+select, or ~20 ms at the practical
+   roof, against 96 ms measured (~5x). Combining an ideal ~1.1-sweep verify
+   with a ~20 ms drafter gives roughly 27 tok/s at B3 and roughly 31 tok/s at
+   B7 (3.49 tokens over ~113 ms) — i.e. **at or above MTP B3, with B7 becoming
+   the optimum again**. These are model outputs, not results; they define what
+   the rerun below would test, and nothing may be claimed from them.
+
+**Corrected conclusion.** On Q4_K_M / 8060S, DFlash2's per-row acceptance is
+within ~5% of hipEngine's MTP. The 2.7x throughput deficit is (a) an untuned
+drafter forward running at roughly a fifth of achievable bandwidth, (b) a
+verify that costs 1.4x MTP's for the same rows, and (c) a rowtile admission
+cliff above four rows that makes the deep chain uneconomical. All three are
+optimization problems of the kind this repo routinely closes. The campaign
+result — **not promoted, diagnostic** — stands on the measured 2.7x gap, not
+on any claim that the gap is unclosable.
+
+### Why B3 is the optimum — with the caveat that matters
+
+Throughput = acceptance(B) / (draft + select + verify(B) + commit). Acceptance
+saturates with B (2.80 @ B3, 3.30 @ B5, 3.49 @ B7) while measured verify(B)
+explodes past four rows, so the measured optimum is B3:
+
+| B | verify rows | cycle cost | outcome |
+| --- | ---: | --- | --- |
+| 3 | 4 | 264 ms | **8.85 tok/s (0.66x AR)** — measured optimum |
+| 5 | 6 | ~0.5-0.8 s | 4.26 (0.32x) |
+| 7 | 8 | ~0.75-0.97 s | 3.58 (0.27x) |
+
+This optimum is defined **against the current verify**, whose cost per row
+above four rows is an artifact of the admission cliff above. If verify(B)
+were amortized, acceptance(B) would still saturate but the denominator would
+grow only ~10% from B3 to B7, and the optimum would move to the deep chain.
+The B-sweep therefore does not establish that shallow chains are right for
+DFlash2 on this hardware; it establishes that they are right for *this*
+verify.
+
+### Protocol mismatch — read before quoting any absolute rate
+
+The MTP B3 row and the DFlash2 rows are not the same lane, and the campaign
+previously presented them as if they were:
+
+| axis | MTP B3 | DFlash2 |
 | --- | --- | --- |
-| Draft forward (5-layer, config bs 8) | ~74 | yes (MTP ~5ms) |
-| Select (top-16 + selector, Q6 amortized) | ~22 | yes |
-| Verify (4-row chain) | ~166 | no (shared with MTP) |
-| Commit | ~2 | no |
-| **Total** | **~264** | |
+| target file | `Qwen3.8-27B-Q4_K_S.gguf` (16.12 GB) | `Qwen3.8-27B-Q4_K_M.gguf` (17.11 GB, +6.1%) |
+| harness | `qwen36_dense_gguf_suite.py`, reusable target graphs | `dflash2_gguf_suite_smoke.py`, per-cycle Python + explicit syncs |
+| tokens/prompt | 25 | 40 |
+| verify call | plain native verify | `verify_target_block(capture_layer_output_hidden=[5 taps], capture_linear_state_rows=True)` |
 
-The verify is **O(N^2)** in block rows (causal block attention): ~166ms @4
-rows, ~620ms @8 rows (3.6x for 2x rows). The draft forward is launch-bound
-(~75 kernels/cycle), not compute-bound — so smaller forward blocks save
-almost nothing (see variable-block net loss below).
+So "verify (166 ms) is shared with MTP, not DFlash2-specific" — previously
+recorded here — is **false on three counts**: different weight bytes, different
+harness/graph-capture regime, and DFlash2-only 5-layer hidden-state capture
+inside the timed region (`scripts/dflash2_gguf_cycle.py:417-422`). The ratio
+normalization (0.66x vs 1.78x AR) absorbs most of the file-size difference but
+not the harness or capture difference.
 
-### Why B3 is the optimum (the B-sweep)
+Three further measurement notes:
 
-Throughput = acceptance(B) / (draft + select + verify(B) + commit).
-Acceptance(B) saturates (suffix decay) while verify(B) grows O(B^2), so
-there is a single interior optimum and it is **B3**:
+- `scripts/dflash2_gguf_suite_smoke.py:138` computes `max_new_tokens / ar_s`
+  while `_run_ar` times only `max_new_tokens - 1` decode steps (the first token
+  comes from prefill, untimed). The AR denominator is inflated ~2.6%, making
+  DFlash2's ratios slightly conservative. Fix before the rerun.
+- The B3 cycle split (draft 74 + select 22 + verify 166 + commit 2 = 264 ms) is
+  **host wall-clock** from the since-removed `DF2_CYCLE_DEBUG` timers on the fox
+  prompt (removed with the reduced-block cleanup, `597dbd4ad`), not a
+  `rocprofv3 --kernel-trace`. The 10-prompt suite implies 2.799/8.845 =
+  **316 ms/cycle**, so ~52 ms/cycle of host work (numpy tap projection, D2H,
+  context append) is unattributed in that split.
+- `max_accept = max_new_tokens - produced_total` truncates the final cycle's
+  acceptance accounting, depressing `mean_acceptance` ~1-2% at 40 tokens.
 
-| B | cycle~cost | outcome |
+### Cross-lane acceptance — unverified from this host
+
+The 2026-08-20 reconciliation cited `~/sm120-tuning/QWEN38-27B.md` (matched
+vLLM FP8-BLOCK MTP3 vs DFlash2 on RTX PRO 6000) for accept length 3.88 vs 3.04
+and a DFlash2 decode/E2E win at c<=16. **That file does not exist on
+`strixhalo`**, the host this campaign ran on; it is presumably on the SM120
+box. It is also not among the declared read-only reference repos in
+`AGENTS.md`. Per the evidence policy it cannot carry a claim here until it is
+cited with a physical host identity and a reachable path.
+
+| lane (engine) | DFlash2 accept length | MTP accept length | status |
+| --- | --- | --- | --- |
+| Q4_K_M / 8060S (hipEngine, greedy, B7 / B3) | 3.49 (8 rows) | 2.85 (3.85 rows) | **measured in-tree** |
+| FP8-BLOCK / PRO 6000 (vLLM, greedy) | 3.88 | 3.04 | **unverified from this host** |
+| BF16 ref (blog, T>0, block 8) | 4.80 | 4.28 | external, not reproduced |
+
+With MTP corrected to 2.85, the reconciliation's second pillar also fails:
+hipEngine's MTP is **not** unusually strong — at 2.85 tokens/cycle it is
+slightly *below* the vLLM MTP3 datapoint's 3.04. The honest cross-lane
+statement is now much weaker than what was recorded: DFlash2's accept length
+is broadly similar across quantization levels (3.49 Q4 / 3.88 FP8 / 4.80 BF16,
+though those are three engines, three protocols and two temperatures, and the
+trend is monotone in target fidelity), and nothing in the in-tree data
+supports "the 8060S loss is hardware economics that does not transfer".
+
+### Retained cost reductions
+
+| Fix | Effect | Status |
 | --- | --- | --- |
-| 3 | 264ms | **8.85 tok/s (0.66x AR)** — optimum |
-| 5 | ~0.5-0.8s | 4.26 (0.32x) |
-| 7 | ~0.75-0.97s | 3.58 (0.27x) |
+| Drop redundant full-vocab logit host copy (top-1 of top-16 == argmax) | select 70 -> 56 ms | retained |
+| **Q6 amortized select** (draft logits via the session's Q6_K head, read once across rows, vs the 2.54 GiB dequantized BF16 head) | **select 70 -> 22 ms**; B3 suite 7.70 -> 8.85 (+15%), acceptance unchanged, AR-exact | retained |
+| Variable-block forward (smaller drafter block) | acceptance -7%, recall@16 down, throughput flat | rejected; path removed in `597dbd4ad`, drafter keeps its trained block geometry |
+| rowtile-8 verify (620 -> 310 ms) | AR-divergent on `code_lru_cache` | **reverted, un-root-caused — top open item** |
 
-### The airtight ceiling (not an optimization problem)
-
-1. **Free-drafter bound:** even if the entire 5-layer drafter + select were
-   zero-cost, B3 = 2.80 tok / 0.166s verify = **16.9 tok/s = 1.26x AR** —
-   still below MTP B3's 1.7845x AR, because DFlash2's acceptance (2.80) is
-   below MTP's (3.85).
-2. **Required-acceptance bound:** at the 166ms verify, beating MTP B3
-   (23.85 tok/s) would need 23.85 x 0.166 = **3.96 accepted tokens/cycle** —
-   above the B3 cap (4.0) and far above the model's per-draft rate on Q4.
-3. **Conclusion (lane-specific):** no operating point on the Q4_K_M/8060S
-   lane can reach MTP B3, regardless of drafter or select cost. The binding
-   constraint on *this* lane is the APU verify/draft economics forcing a
-   shallow chain, combined with hipEngine's near-cap MTP (3.85) — it is not
-   DFlash2's acceptance being destroyed (see the cross-lane table above).
-   This ceiling does **not** transfer: on FP8-BLOCK / PRO 6000 DFlash2
-   beats MTP3 (3.88 vs 3.04 accept length).
-
-### Why the 8060S outcome is a hardware-economics result, not a drafter bug
-
-The re-audit proved the drafter is faithful: batch chain-verify == sequential
-per-token verify (acceptance 3.64 == 3.64) and recall@1/@16 sit inside the
-reference's own per-position range (r1 0.763 vs 0.729-0.854, r16 0.947 vs
-0.878-0.995). AR-exact on every run. On the 8060S lane the disadvantage is
-(a) the O(N^2) verify at APU bandwidth (~166ms @4 rows, ~620ms @8), which
-caps the economical chain at B3, and (b) hipEngine's MTP B3 sitting near the
-acceptance cap — a high bar from the closed campaign's MTP tuning. On a full
-GPU with an affordable deep verify (PRO 6000, FP8-BLOCK) DFlash2's longer
-accept length beats MTP3 (3.88 vs 3.04) and wins decode/E2E at c<=16
-(`~/sm120-tuning/QWEN38-27B.md`, 2026-08-19) — the 8060S loss is a hardware
-economics result, not a drafter defect.
-
-### Retained cost reductions (honest accounting)
-
-| Fix | Effect |
-| --- | --- |
-| Drop redundant full-vocab logit host copy (top-1 of top-16 == argmax) | select 70 -> 56ms |
-| **Q6 amortized select** (draft logits via the session's Q6_K head, read once across rows, vs the 2.54 GiB dequantized BF16 head) | **select 70 -> 22ms**; B3 suite 7.70 -> 8.85 (+15%), acceptance unchanged |
-| Variable-block forward (smaller drafter block) | **net loss**: acceptance -7%, recall@16 drops, launch-bound throughput flat — default-off, REFACTOR-noted |
-| rowtile-8 verify (620 -> 310ms) | reverted as AR-divergent on `code_lru_cache` |
-
-Net effect: DFlash2 B3 0.575x -> 0.66x AR, still ~2.7x below MTP B3. The
-select is no longer a meaningful DFlash2-specific cost (22ms); draft (~74ms)
-+ shared verify (166ms) dominate.
-
-### Where DFlash2's advantage materializes (and where it cannot)
-
-DFlash2's acceptance advantage shows when (a) the target is high-fidelity
-(FP8-BLOCK or BF16 — the 5-tap feed survives) **and** (b) the GPU can afford
-the deep verify that expresses the longer accept length. Both hold on the
-production lane: **FP8-BLOCK / PRO 6000 / vLLM DFlash2 beats MTP3 at c<=16**
-(decode +36%, E2E -46%, accept length 3.88 vs 3.04;
-`~/sm120-tuning/QWEN38-27B.md`). On the Q4_K_M/8060S lane neither holds: the
-APU verify caps the chain at B3 and MTP B3 is near its cap, so DFlash2 loses
-regardless of compute. hipEngine's Q4 lane is therefore not the venue where
-DFlash2's advantage shows; even a cheaper deep verify on this hardware (e.g.
-the reverted rowtile-8) would only reach ~0.5x AR at B7, still below MTP B3.
+Note on the variable-block finding: the recorded conclusion "the forward is
+launch-bound, not compute-bound" does not follow from bs 8->4 being flat. A
+weight-bound kernel predicts exactly the same flatness, because fewer block
+rows read the same drafter weights. The *decision* (keep the config block
+size) is still correct — acceptance -7% is the real signal — but the mechanism
+claim is unsupported and the drafter's ~50 GB/s effective bandwidth points at
+weight-bound-but-inefficient, not launch-bound.
 
 ### Memory economics (D6)
 
-DFlash2 B3 pipeline ~19.5 GiB GTT (+3.6 GiB over the closed campaign's
-15.899 GiB B3 budget) — inside the 8060S unified-memory capacity, so the
-BF16 drafter does not exceed the APU budget; the GGUF-quantized drafter is
-not a required follow-up.
+DFlash2 B3 pipeline ~19.5 GiB GTT (+3.6 GiB over the closed campaign's 15.899
+GiB B3 budget) — inside the 8060S unified-memory capacity, so the BF16 drafter
+does not exceed the APU budget and the GGUF-quantized drafter is not a
+required follow-up. Unchanged by this correction.
+
+### Reproducibility gaps on this host
+
+Recorded so the rerun is scoped honestly. As of 2026-08-22 on `strixhalo`:
+
+- The three DFlash2 artifacts carried `"gpu": "AMD Radeon Pro W7900-compute-lane
+  (gfx1151 resident)"`, which names the wrong machine (W7900 is gfx1100) where
+  every other artifact on this host says `"AMD Radeon 8060S Graphics"`.
+  Corrected in place 2026-08-22, with `hardware.host: strixhalo` added.
+- The drafter snapshot
+  (`models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c...`) is **not
+  present** on this host.
+- The reference clone `~/dflash` is **not present**.
+- `Qwen3.8-27B-Q4_K_S.gguf` (the MTP B3 baseline target) is **not present**;
+  only `Qwen3.8-27B-Q4_K_M.gguf` remains under `/models/gguf/`.
+- `~/sm120-tuning/` is **not present**.
+
+None of this invalidates the recorded measurements, but the campaign cannot be
+re-executed from this host as documented without re-fetching the drafter and
+the Q4_K_S target.
+
+### Next steps and what a matched rerun would settle
+
+Blocked on GPU availability as of 2026-08-22. Ordered by leverage.
+
+**N1 — Verify row-cost microbenchmark (cheap, highest information).** Sweep
+`verify_target_block` rows 1..8 standalone on Q4_K_M, outside any decode loop,
+with and without `capture_layer_output_hidden`, and report ms and
+sweeps-per-cycle per row count. This converts the central disputed claim into
+one curve. Falsifiable predictions: the curve is near-flat 2..4 rows and
+**steps >=2.5x between 4 and 5 rows** (the `_PACK8_ROWTILE_MAX_ROWS = 4`
+admission cliff); it does **not** grow smoothly as N^2. If the curve is
+instead smooth and superlinear from 2 rows up, the original O(N^2) explanation
+was right after all and the pre-2026-08-22 conclusion should be restored.
+
+**N2 — Root-cause the reverted rowtile-8 AR divergence on `code_lru_cache`.**
+The kernels were exact in isolation; the divergence appeared only through the
+verify path, which points at state/ownership (linear-state row commit, tap
+capture rows, or chunk boundaries) rather than arithmetic. Prediction: with
+an exact 8-row rowtile admitted, the 8-row verify lands **<=1.5 sweeps
+(<=120 ms)**, not 8.0. This is the item that decides whether the deep chain is
+reachable at all.
+
+**N3 — Matched-protocol DFlash2-vs-MTP rerun.** The current comparison
+conflates four independent differences. Hold all four fixed: (i) one target
+file, Q4_K_M for both; (ii) one harness and one timing boundary, with the
+`max_new_tokens / (max_new_tokens - 1)` AR off-by-one fixed; (iii) the same
+verify entry point, run with and without DFlash2's tap capture; (iv) the same
+prompt suite and token budget. Cost is small — 10 prompts x 40 tokens x
+{AR, MTP B3, DFlash2 B3/B5/B7} in one resident session, well under an hour of
+GPU time plus N1.
+
+What N3 would settle that the current data cannot:
+
+- **Is acceptance parity real?** 2.80 vs 2.85 is currently a comparison across
+  two target files, two harnesses and two token budgets. Matched, it becomes
+  the number that decides whether DFlash2's drafter is ever worth its cost on
+  any lane. Prediction: within +/-0.15 tokens/cycle of MTP at matched depth.
+- **How is the 55 ms verify delta split** between weight bytes (Q4_K_S vs
+  Q4_K_M), harness/graph-capture, and DFlash2's 5-layer tap capture? (i)+(ii)
+  +(iii) decompose it directly. This is the difference between "DFlash2 needs
+  a cheaper verify" and "DFlash2's tap capture is inherently expensive".
+- **Where is the true B optimum?** With N1's row curve, the optimum is
+  computed from acceptance(B)/cost(B) rather than swept against a broken
+  denominator.
+- **Does the drafter have ~5x headroom?** A `rocprofv3 --kernel-trace` of the
+  drafter forward gives achieved bandwidth against the measured 3.584 GiB
+  residency. Prediction: currently <60 GB/s effective; a hoisted/fused forward
+  should exceed 120 GB/s.
+- **Does the deep-chain hypothesis hold?** If N2 lands an amortized 8-row
+  verify and DFlash2 retains 3.49 tokens/cycle, DFlash2 B7 would exceed MTP B3
+  on this lane — which would **reverse this campaign's conclusion**. That is
+  the outcome the current record actively forecloses and should not.
+
+What the rerun would **not** settle: anything about the FP8-BLOCK / PRO 6000
+lane (different hardware, engine and target format), or whether DFlash2's
+acceptance advantage over MTP at BF16 fidelity reproduces in hipEngine. Those
+need the SM120 host and a BF16 or FP8 target respectively, and remain out of
+this campaign's scope.
+
+**N4 — Adaptive proposal gate for the DFlash2 chain.** MTP verifies 3.85 rows
+instead of 4 because it declines low-confidence drafts. DFlash2 has strictly
+more signal available for the same decision (selector scores and top-16
+margins per position) and its per-position recall decays with depth, so the
+gate should pay more there than it does for MTP. Independent of N1-N3.
+
+**N5 — gfx1100 functional smoke (D5).** Unchanged: hardware-blocked, optional.
 
 ## 1. What DFlash2 is, relative to what we already have
 Our existing native DFlash path (chain/tree verifier, native-bulk
@@ -459,6 +653,18 @@ weights; exact same-session AR equality on a 2-prompt smoke at B=1..7.
   `scripts/mtp_verifier_rocprof.py`-style child profiling (never the parent
   suite harness), cycle-wall, rows/output, draft/verify seconds, GTT.
 
+**D4 status (2026-08-19; attribution corrected 2026-08-22).** The promotion
+rule is not met on the measured throughput (best point B3 8.85 tok/s = 0.66x
+AR vs exact MTP B3 1.7845x), and that decision stands. Two ledger items were
+**not** delivered and are re-opened as N1/N3 in the Economics section: the
+`rocprofv3` verifier/drafter split was never produced — the recorded per-cycle
+split is host wall-clock from the since-removed `DF2_CYCLE_DEBUG` timers — and
+the DFlash2 rows were compared against an MTP B3 row measured on a different
+target file (`Q4_K_S`), a different harness, and a different token budget. The
+top-1 selector-disabled ablation was also not run. The corrected reading of the
+MTP artifact (2.85 accepted tokens/cycle, not 3.85) puts DFlash2's acceptance
+at parity with MTP, so the blocker is cost, not drafting quality.
+
 ### D5 — gfx1100 functional support
 
 **D5 status (2026-08-19): registration complete, smoke hardware-blocked.**
@@ -510,9 +716,22 @@ statistical repeat is deliberately not repeated: on this lane the result is
 decisively negative (~2.7x below MTP B3 at the optimum B3, post-Q6 select)
 and every row is AR-exact, so additional full-suite runs would be a wasteful
 rerun per `AGENTS.md`; B7 has multiple session runs, B3/B5 one clean
-full-suite run each. Lane-scope note: the negative is specific to Q4_K_M /
-8060S economics — see the Economics cross-lane table for the FP8-BLOCK / PRO
-6000 result where DFlash2 beats MTP3.
+full-suite run each.
+
+**D6 amendment (2026-08-22).** The lane-scope note previously read: "the
+negative is specific to Q4_K_M / 8060S economics — see the Economics
+cross-lane table for the FP8-BLOCK / PRO 6000 result where DFlash2 beats
+MTP3." That framing is withdrawn. The negative is specific to **this
+implementation** on Q4_K_M / 8060S: DFlash2's acceptance is at parity with
+MTP's (2.80 vs 2.85 tokens/cycle), and the deficit is drafter cost plus a
+verify that falls off its amortized rowtile above four rows. The cross-lane
+PRO 6000 datapoint is unverifiable from this host. The "no further runs
+needed" judgement also no longer holds in full: the result is decisively
+negative for the current code, but the comparison it rests on is
+cross-target-file and cross-harness, and the `rocprofv3` verifier/drafter
+split in the D4 ledger was never produced. The N1-N3 rerun in the Economics
+section is the scoped repair, blocked on GPU availability — not a wasteful
+repeat of an existing measurement.
 
 ## 5. Backend ownership note
 
