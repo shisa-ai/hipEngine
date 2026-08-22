@@ -167,7 +167,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
-    register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
@@ -27317,7 +27316,8 @@ def _resolve_gguf_linear_attention_decode_batch_plan(
 def _resolve_gguf_gdn_prefill_plan(
     backend: str = "hip_gfx1100",
 ) -> _GGUFGDNPrefillPlan:
-    register_qwen35_linear_attn_gdn_kernels()
+    # Backend/module import owns registration. Do not re-register the whole GDN
+    # family here: that would overwrite plugin or test overrides during prefill.
     load_backend_kernel_package(backend)
 
     def _resolve(key: KernelKey):

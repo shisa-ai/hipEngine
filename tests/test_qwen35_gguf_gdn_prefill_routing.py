@@ -63,6 +63,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_linear_attn_prefill_prepare_raw_scales_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
+from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.runtime import qwen35_gguf_runner as qgr
 
 
@@ -133,6 +134,39 @@ def test_q3_decode_output_width_policy_is_registry_selected() -> None:
     runner._gguf_prefill_quant = "gguf_qwen35"
     runner.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
     assert runner._gdn_decode_output_cast_fn() is None
+
+
+def test_resolve_gguf_gdn_prefill_plan_preserves_registered_overrides() -> None:
+    key = KernelKey(
+        "hip_gfx1100",
+        "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+        "gguf_q5_k_t16_v1",
+        "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+
+    def counted_override(*_args, **_kwargs):
+        return None
+
+    register(key, counted_override, replace=True)
+    try:
+        qgr._resolve_gguf_gdn_prefill_plan()
+        assert (
+            resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+            is counted_override
+        )
+    finally:
+        register(key, original, replace=True)
 
 
 def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
