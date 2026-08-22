@@ -1,0 +1,283 @@
+{
+  "backend": "hip_gfx1151",
+  "configuration": {
+    "fault_phases": [
+      "before_proposal",
+      "after_proposal_before_target",
+      "after_target_prepare",
+      "after_target_commit",
+      "after_draft_repair",
+      "before_output_publication"
+    ],
+    "max_new_tokens": 8,
+    "max_sequence_length": 256,
+    "prompt_tokens": 64
+  },
+  "cpu_gates": {
+    "graph_faults": [
+      "capture allocation failure",
+      "launch failure",
+      "readback failure"
+    ],
+    "mtp_and_graph_lifecycle": "53 passed (session/lifecycle/native-spec bundle)",
+    "server_control": "6 passed (caller cancel/deadline acknowledgement and shutdown retirement)"
+  },
+  "execution_command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python3",
+    "scripts/gguf_mtp_lifecycle_gate.py",
+    "--prompt-tokens",
+    "64",
+    "--max-new-tokens",
+    "8",
+    "--max-sequence-length",
+    "256",
+    "--require-cached-build",
+    "--hash-model",
+    "--out",
+    "/tmp/mtp-rf3-lifecycle-final-v2.json",
+    "--fail-on-fail"
+  ],
+  "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+  "kind": "mtp_rf3_lifecycle_qualification",
+  "memory": {
+    "active_allocations": 0,
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 18720029538,
+    "peak_allocations": 1026,
+    "total_allocated_bytes": 38751568673,
+    "total_freed_bytes": 38751568673
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "GGUF Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "notes": [
+    "Every phase fault is followed by exact AR and MTP health.",
+    "Cancellation/deadline arriving during a cycle is observed after target commit and draft repair, before response publication.",
+    "Committed KV transactions are never rolled back through stale immutable transaction objects."
+  ],
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "rows": [
+    {
+      "ar_health_exact": true,
+      "error": "injected:before_proposal",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "before_proposal",
+      "seen_phases": [
+        "before_proposal"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "ar_health_exact": true,
+      "error": "injected:after_proposal_before_target",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "after_proposal_before_target",
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "ar_health_exact": true,
+      "error": "injected:after_target_prepare",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "after_target_prepare",
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "ar_health_exact": true,
+      "error": "injected:after_target_commit",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "after_target_commit",
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare",
+        "after_target_commit"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "ar_health_exact": true,
+      "error": "injected:after_draft_repair",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "after_draft_repair",
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare",
+        "after_target_commit",
+        "after_draft_repair"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "ar_health_exact": true,
+      "error": "injected:before_output_publication",
+      "kind": "phase_fault",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "phase": "before_output_publication",
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare",
+        "after_target_commit",
+        "after_draft_repair",
+        "before_output_publication"
+      ],
+      "verifier_prepared_open_after_fault": false
+    },
+    {
+      "checkpoint_calls": 2,
+      "error_reason": "cancelled",
+      "kind": "inflight_cancel",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare",
+        "after_target_commit",
+        "after_draft_repair"
+      ],
+      "verifier_prepared_open_after_cancel": false
+    },
+    {
+      "checkpoint_calls": 2,
+      "error_reason": "deadline_exceeded",
+      "kind": "inflight_deadline",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "seen_phases": [
+        "before_proposal",
+        "after_proposal_before_target",
+        "after_target_prepare",
+        "after_target_commit",
+        "after_draft_repair"
+      ],
+      "verifier_prepared_open_after_deadline": false
+    },
+    {
+      "cycles": 0,
+      "kind": "eos_prefill_terminal",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "token_ids": [
+        421
+      ]
+    },
+    {
+      "cycles": 1,
+      "kind": "eos_in_cycle",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "terminal_token_id": 7324,
+      "token_ids": [
+        421,
+        4523,
+        279,
+        307,
+        7324
+      ]
+    },
+    {
+      "cycles": 1,
+      "kind": "stop_token_in_cycle",
+      "mtp_health": {
+        "cycles": 3,
+        "gpu_accept_match_cpu": true,
+        "lifecycle_phases_exact": true,
+        "output_ids_exact": true
+      },
+      "passed": true,
+      "terminal_token_id": 307,
+      "token_ids": [
+        421,
+        4523,
+        279,
+        307
+      ]
+    }
+  ],
+  "schema": 1,
+  "shutdown_contract": "After grace, cancel request-owned tokens, finish public waiters, and wait for the actual model thread/GPU owner to retire before engine close. Never cancel only the asyncio threadpool waiter.",
+  "source_artifact": "/tmp/mtp-rf3-lifecycle-final-v2.json",
+  "source_artifact_sha256": "8fe73b882597e1e46327b8d27de2f7cde0c48907229785adb67d15f818926d68",
+  "status": "accepted",
+  "summary": {
+    "passed": 11,
+    "total": 11,
+    "wall_seconds": 120.09788395790383
+  },
+  "verdict": "pass"
+}

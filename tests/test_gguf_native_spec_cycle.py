@@ -577,6 +577,49 @@ def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() 
         )
 
 
+@pytest.mark.parametrize("failure", ["graph_launch", "graph_readback"])
+def test_rf3_target_graph_failure_closes_owner_without_eager_replay(failure: str) -> None:
+    session = _FallbackSession()
+    session.position = 17
+
+    class Graph:
+        closed = False
+
+        def compatible_with(self, _session, **_kwargs) -> bool:
+            return True
+
+        def launch(self, *_args, **_kwargs):
+            raise RuntimeError(failure)
+
+        def close(self) -> None:
+            self.closed = True
+
+    graph = Graph()
+    session._native_spec_b3_target_graph = graph
+
+    with pytest.raises(RuntimeError, match=failure):
+        verify_qwen35_gguf_native_b2_target(session, [1, 2, 3, 4])
+
+    assert graph.closed is True
+    assert session.calls == []
+
+
+def test_rf3_target_graph_capture_allocation_failure_has_no_eager_replay(monkeypatch) -> None:
+    session = _FallbackSession()
+    session.position = 17
+    monkeypatch.setattr(
+        native_cycle_mod,
+        "capture_qwen35_gguf_native_b2_target_graph",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(MemoryError("injected allocation")),
+    )
+
+    with pytest.raises(MemoryError, match="injected allocation"):
+        verify_qwen35_gguf_native_b2_target(session, [1, 2, 3, 4])
+
+    assert session.calls == []
+    assert session._native_spec_target_graphs == {}
+
+
 def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) -> None:
     session = _FallbackSession()
     launches: list[tuple[tuple[int, ...], int, int, int]] = []

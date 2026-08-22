@@ -4928,6 +4928,60 @@ def test_generation_batcher_shutdown_forces_cancel_after_grace() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_shutdown_waits_for_model_thread_to_retire() -> None:
+    class SlowCooperativeLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+            self.cancel_seen = threading.Event()
+            self.release = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            del prompt
+            self.started.set()
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.001)
+            self.cancel_seen.set()
+            assert self.release.wait(timeout=5.0)
+            token.raise_if_cancelled()
+            yield GenerationStreamChunk(text="unreachable")
+
+    async def run() -> None:
+        fake = SlowCooperativeLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+        stream = batcher.stream(
+            ("slow",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+        pending = asyncio.create_task(anext(stream))
+        assert await asyncio.to_thread(fake.started.wait, 5.0)
+
+        shutdown = asyncio.create_task(batcher.shutdown(grace_seconds=0.01))
+        assert await asyncio.to_thread(fake.cancel_seen.wait, 5.0)
+        await asyncio.sleep(0.02)
+        assert shutdown.done() is False
+        assert batcher.active_requests() == 1
+
+        fake.release.set()
+        result = await asyncio.wait_for(shutdown, timeout=5.0)
+        assert result["forced"] is True
+        assert result["active_requests"] == 0
+        assert batcher.active() is False
+        with pytest.raises((GenerationCancelled, StopAsyncIteration)):
+            await pending
+        await stream.aclose()
+
+    asyncio.run(run())
+
+
 def test_capabilities_report_controlled_streaming_backpressure_and_continuous_membership() -> None:
     fake = FakeLLM()
     fake.supports_controlled_streaming = True

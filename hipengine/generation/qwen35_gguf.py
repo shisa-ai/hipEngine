@@ -2291,6 +2291,12 @@ class Qwen35GGUFBringupGenerator:
                             request_id=row_index,
                             eos_token_id=eos_token_id,
                             stop_token_ids=stop_token_ids,
+                            # RF3: poll the request cancellation token and
+                            # deadline at every MTP cycle boundary so a
+                            # timed-out/cancelled request stops before the next
+                            # proposal/target mutation instead of letting GPU
+                            # work continue after the HTTP client left.
+                            checkpoint=lambda: raise_if_generation_deadline_expired(request),
                         )
                     finally:
                         decoder.close()
