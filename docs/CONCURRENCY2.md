@@ -1,11 +1,11 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-21.
+Last updated: 2026-08-22.
 
 _Status: Generation-2 implementation spans C2-0 through C2-8; dense gfx1100
 short/long serving and the canonical W7900 production load are retained, while
 cross-backend/external and DMS product closure remain open. The executable audit
-reports 31 passed, 3 blocked, and 1 unavailable rows. This document remains the
+reports 33 passed, 1 blocked, and 1 unavailable rows. This document remains the
 source of truth for the server scheduler, request
 lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
@@ -34,12 +34,12 @@ Related source-of-truth documents:
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
-| C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
+| C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs and a guarded non-streaming GGUF MTP route are migration inputs. | Full continuous scheduling, draft-side batching, streaming, generic provider/tree support, and product gates remain open; see the full-support contract below. |
 
 Executable source-to-evidence audit:
-[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
+[`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
 Its 31-passed/3-blocked/1-unavailable counts describe the pre-C2-S audit schema;
 they are not a claim that the new speculative-support units are implemented.
 
@@ -2488,7 +2488,7 @@ and superseded blocker
 - [x] Complete the metadata/checkpoint gate from `KVCACHE.md`.
 - [x] Add global compact pool-set/extent accounting and scheduler-owned atomic
       admission through the existing backend protocol.
-- [ ] Port streaming no-shadow prefill pack and compact decode in BF16 first.
+- [x] Port streaming no-shadow prefill pack and compact decode in BF16 first.
 - [x] Qualify c1, then c2/c4/c8/c16/c32 through the same engine service.
 - [x] Add DMS pressure, fragmentation, cancellation, reclaim, and soak gates.
 - [x] Replace the BF16 payload with at least one qualified compressed codec by
@@ -2511,19 +2511,23 @@ gfx1100 (C2-7 U1-U4 worklog entries of 2026-08-18: extract-decision,
 streaming pack, append/decode, and compact decode attention in the
 `dms_compact` family, bit-exact data movement plus the KL/top-1 gated
 attention, each with its registered cpu_reference strict fallback). The
-kernels are registered but not defaulted or wired into the production DMS
-path, where the host parent remains the production path; the device
-payloads are available behind the opt-in `device_payloads` flag on
-`DMSCompactBackend` (U6, 2026-08-18 worklog entry: bit-exact
-pack/append/attention parity vs the host parent, fail-closed overflow,
-no host payload shadow, determinism). The family's rocprof
-kernel-identity rows are blocked on this W7900 host by a deterministic
-`rocprofv3 --kernel-trace` dispatch hang (recorded in the U1 entry,
-reproduced 2026-08-19, not faked); real checkpoint quality, device savings,
-and hardware soak remain blocked by the missing trained
-`dms_metadata.json`, so the BF16 kernel-port checkbox and product exit
-remain open. Evidence:
-[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+kernels are registered and wired into `DMSCompactBackend` behind the explicit
+`device_payloads` gate; the host parent remains the fail-closed fallback and no
+model package selects DMS by default. Current W7900 requalification passes 53
+host/device tests, including bit-exact pack/append payloads, compact-attention
+quality, no host payload shadow, fail-closed overflow, determinism, and device
+c1/c2/c4/c8/c16/c32 pack/append/attention/reclaim with exact tracked-memory
+recovery. A cached-only `rocprofv3 --kernel-trace` run now records all four
+expected kernels with scratch0, resolving the historical profiler hang blocker.
+
+This closes fixture-backed `C2-7.hip` and format-distinct compact conformance,
+not the DMS product gate. No valid trained `dms_metadata.json` exists for the
+available exact Qwen artifacts, so model quality, allocator-visible device
+savings, hardware soak, and product defaulting remain blocked. Dense global
+paging remains the canonical gfx1100 default and DMS prefix reuse remains off.
+Evidence:
+[`device qualification`](../benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json)
+and [`metadata blocker`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
 
 ### C2-8 — optional hot/cold tiering
 
@@ -2735,8 +2739,8 @@ dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
 
-The executable completion audit now records **31 passed, 3 blocked, and 1
+The executable completion audit now records **33 passed, 1 blocked, and 1
 unavailable** rows with no missing evidence. The W7900 canonical C2-6
 load/default scope is closed; the product goal remains open for unavailable
-matched external serving plus DMS HIP/checkpoint conformance. See
-[`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
+matched external serving plus DMS trained-checkpoint product conformance. See
+[`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).

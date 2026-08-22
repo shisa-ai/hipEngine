@@ -17,6 +17,7 @@ import os
 import numpy as np
 import pytest
 
+from hipengine.core.memory import memory_stats
 from hipengine.kernels.registry import resolve
 import hipengine.kernels.hip_gfx1100.attention  # noqa: F401  (collection-time registry baseline)
 from hipengine.kvcache.dms import (
@@ -35,6 +36,7 @@ def _make_backend(
     window: int,
     slots: int,
     device: bool,
+    max_request_rows: int = 8,
 ) -> DMSCompactBackend:
     retrofit = DMSRetrofitConfig(
         artifact_fingerprint="fixture:dms-device",
@@ -57,7 +59,7 @@ def _make_backend(
         retrofit=retrofit,
         codec="bf16",
         slots_per_layer=slots,
-        max_request_rows=8,
+        max_request_rows=max_request_rows,
         max_pack_rows=64,
         device_payloads=device,
     )
@@ -364,3 +366,67 @@ def test_device_determinism_across_backends() -> None:
     (k1, o1), (k2, o2) = outs
     np.testing.assert_array_equal(k1, k2, err_msg="payload non-deterministic")
     np.testing.assert_array_equal(o1, o2, err_msg="attention non-deterministic")
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.parametrize("width", [1, 2, 4, 8, 16, 32])
+def test_device_c1_c32_pack_append_attention_reclaim_conserves(
+    width: int,
+) -> None:
+    initial = int(memory_stats()["current_allocated_bytes"])
+    layers, heads, dim, window = 1, 2, 16, 2
+    backend = _make_backend(
+        num_layers=layers,
+        heads=heads,
+        dim=dim,
+        window=window,
+        slots=1024,
+        device=True,
+        max_request_rows=32,
+    )
+    try:
+        rng = np.random.default_rng(0xD05C000 + width)
+        prompt_tokens = 6
+        for request_id in range(width):
+            k = rng.standard_normal(
+                (prompt_tokens, layers, heads, dim)
+            ).astype(np.float32)
+            v = rng.standard_normal(k.shape).astype(np.float32)
+            # Keep only the recent-window rows, matching the ratio-2 extent
+            # reserved by the fixture metadata without triggering the separate
+            # fail-closed overflow contract.
+            evict = np.ones((prompt_tokens, layers, heads), dtype=np.bool_)
+            _admit(backend, request_id=request_id, tokens=prompt_tokens)
+            backend.streaming_pack(request_id, k, v, evict)
+
+        for step in range(3):
+            for request_id in range(width):
+                k_new = rng.standard_normal((layers, heads, dim)).astype(np.float32)
+                v_new = rng.standard_normal((layers, heads, dim)).astype(np.float32)
+                evict_new = np.ones((layers, heads), dtype=np.bool_)
+                backend.append_decode(
+                    request_id,
+                    k_new,
+                    v_new,
+                    evict_new,
+                    position=prompt_tokens + step,
+                )
+
+        q = rng.standard_normal((heads * 4, dim)).astype(np.float32)
+        for request_id in (0, width - 1):
+            output = backend.compact_decode_attention(request_id, 0, q)
+            assert output.shape == q.shape
+            assert np.isfinite(output).all()
+            state = backend.state_for_request(request_id)
+            assert np.all(state.live_counts <= state.range_capacity)
+            assert not state.k_payload and not state.v_payload
+
+        for request_id in range(width):
+            backend.reclaim(backend.state_for_request(request_id).lease)
+        backend.assert_conserved()
+        assert not backend._states
+        assert not backend._leases
+        assert backend.observability_snapshot()["extent_pool"]["owner_count"] == 0
+    finally:
+        backend.close()
+    assert int(memory_stats()["current_allocated_bytes"]) == initial
