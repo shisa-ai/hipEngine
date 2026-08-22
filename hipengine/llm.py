@@ -349,6 +349,23 @@ class LLM:
             raise RuntimeError(f"generator returned {len(outputs)} MTP outputs for {len(prompt_tuple)} prompts")
         return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
 
+    def stream_speculative_mtp_detailed(
+        self,
+        prompts: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Stream committed speculative output through the EngineService path."""
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if len(prompt_tuple) != 1:
+            raise ValueError("speculative streaming requires exactly one prompt")
+        generator = self._get_text_generator()
+        stream = getattr(generator, "stream_speculative_mtp_detailed", None)
+        if not callable(stream):
+            raise NotImplementedError("speculative streaming is not supported by this generator")
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        yield from stream(request)
+
     @property
     def supports_speculative_mtp(self) -> bool:
         """Whether the resolved generator exposes public speculative MTP generation."""
