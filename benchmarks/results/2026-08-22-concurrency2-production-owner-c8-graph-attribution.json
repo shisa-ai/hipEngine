@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_production_owner_c8_graph_attribution",
+  "created_at": "2026-08-22T20:02:05+09:00",
+  "status": "accepted_diagnostic_path_attribution",
+  "passed": true,
+  "performance_claim": false,
+  "source_commit": "d7f2b9b0def56ec6cbc2ead5e0836b15d1706112",
+  "source_tracked_clean": true,
+  "physical_host": "epyc",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "workload": {
+    "path": "LLM.generate_detailed -> EngineService -> Qwen35GGUFResidentModelRunner._step_native_rows",
+    "concurrency": 8,
+    "prompt_length": 512,
+    "decode_tokens": 32,
+    "prompt_token_id": 9707,
+    "marker_transition": 3,
+    "marker": "hipengine_c2_production_owner_c8_decode_transition_3",
+    "sampling": "greedy_top1_ignore_eos"
+  },
+  "commands": {
+    "warm": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt /home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_continuous_owner_profile_child.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --concurrency 8 --prompt-length 512 --decode-tokens 32 --marker-index 3 --compiler-version-file /tmp/compiler-version.txt --out /tmp/c2-owner-warm.json",
+    "profile": "LD_LIBRARY_PATH=/tmp/c2-owner-rocprof/roctx-override:<therock-roctx-deps> HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --output-format csv -d /tmp/c2-owner-rocprof/trace -- python3 scripts/gguf_continuous_owner_profile_child.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --concurrency 8 --prompt-length 512 --decode-tokens 32 --marker-index 3 --compiler-version-file /tmp/compiler-version.txt --profile --out /tmp/c2-owner-profile.json"
+  },
+  "correctness_and_route": {
+    "all_8_rows_32_tokens_equal": true,
+    "physical_group_policy": "occupancy_adaptive_dense_execution",
+    "physical_bucket_widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "group_count": 1,
+    "physical_rows": 8,
+    "execution_path": "packed_native",
+    "execution_mode": "decode_graph_replay",
+    "graph_captured": true,
+    "graph_capture_count": 1,
+    "graph_replay_count_at_marker": 3,
+    "graph_transport": "hipgraph",
+    "host_row_iterations": 0,
+    "exact_row_local_launches": 0,
+    "steady_h2d_copies": 0,
+    "steady_d2h_copies": 0,
+    "manifest_synchronizations": 0,
+    "scalar_fallbacks": 0,
+    "final_active_requests": 0,
+    "final_pending_requests": 0
+  },
+  "timing": {
+    "clean_warm_marker_wall_ms": 58.576095,
+    "profile_child_marker_wall_ms": 60.413014,
+    "profiler_marker_wall_ms": 60.428884,
+    "kernel_dispatches": 873,
+    "kernel_duration_sum_ms": 54.468739,
+    "kernel_interval_union_ms": 15.716024,
+    "uncovered_by_kernel_intervals_ms": 44.712860,
+    "kernel_segments": 214,
+    "hip_api": {
+      "hipGraphLaunch": {"count": 1, "ms": 0.690339},
+      "hipStreamSynchronize": {"count": 1, "ms": 58.760183},
+      "hipDeviceSynchronize": {"count": 1, "ms": 0.250173},
+      "hipMemcpy": {"count": 1, "ms": 0.047230}
+    },
+    "device_memory_copy_trace_rows": 0,
+    "largest_no_kernel_gaps_ms": [11.593893, 11.510174, 11.497527, 6.178227, 1.001854]
+  },
+  "comparison_to_standalone_profiler_child": {
+    "source": "benchmarks/results/2026-08-22-concurrency2-qwen38-graph-wall-interpretation-audit.json",
+    "standalone_c8_wall_ms": 62.030420,
+    "standalone_c8_kernel_union_ms": 17.866430,
+    "standalone_largest_gaps_ms": [11.593228, 11.518381, 11.514824, 6.321510, 0.884944],
+    "reproduced_in_production_owner": true
+  },
+  "largest_kernel_duration_families": [
+    {"kernel": "q4_k_t16_dense_dual_rowtile_silu rows8", "dispatches": 64, "sum_ms": 12.633643},
+    {"kernel": "q6_k_t16_qmicro_planar_col8 rows8", "dispatches": 64, "sum_ms": 10.570393},
+    {"kernel": "q4_k_t16_dense_rowtile rows8", "dispatches": 160, "sum_ms": 10.536817},
+    {"kernel": "gdn_segments_lowp rows8", "dispatches": 48, "sum_ms": 7.813331},
+    {"kernel": "q5_k_t16_dense_rowtile_col4 rows8", "dispatches": 48, "sum_ms": 4.228467}
+  ],
+  "raw_sha256": {
+    "warm_child_json": "b2d87757c2e1e332dcd88682db8e91fbd506b3a45305d24e4a92ae06ba21163c",
+    "profile_child_json": "f6e960c625b28a2dee723ace6c74d78bf99c048cb828de317fdb9e8028d45b0c",
+    "kernel_trace_csv": "8370f6e8e5fec1f0e97155bbb26c45815753fdf819c7e97bdea6952d40a9e824",
+    "marker_trace_csv": "bf267ad80c1e5d22cb437446ee763f3c0ea2d4eca0b10f2fa2d41f1a475b3078",
+    "hip_api_trace_csv": "5404838258fe57ab92cb699eece209afad411815d8983f6fc86176d636d44d98",
+    "memory_copy_trace_csv": "735a70ff0dffbb6163d11b0b8932073f3a515bb1caedcb628cd60db9ed43b45f"
+  },
+  "decision": {
+    "step1_closed": true,
+    "host_python_dispatch_is_primary": false,
+    "evidence": "After one 0.690 ms hipGraphLaunch, the host blocks 58.760 ms in hipStreamSynchronize. The repeated approximately 11.5 ms gaps occur inside that graph retirement interval and reproduce the standalone trace nearly exactly.",
+    "gap_owner": "HIP graph/device dependency and dispatch schedule for the captured model graph; exact node/barrier decomposition remains the next mechanism question",
+    "kernel_family_selected": false,
+    "next": "Compare the same production owner under an independently qualified native graph transport or graph dependency contraction before family bytes/issue tuning. Kernel duration sums remain non-additive wall opportunities under overlap."
+  }
+}

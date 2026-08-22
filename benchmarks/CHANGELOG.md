@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [Concurrency2 #37 production-owner attribution; no performance claim] W7900 / Qwen3.8-27B Q4_K_M / BF16 KV / public `LLM`→`EngineService` physical-c8 p512 graph transition: standalone-child uncertainty -> **same gaps reproduce in the production owner**; marker **60.429 ms**, one `hipGraphLaunch` **0.690 ms**, blocking `hipStreamSynchronize` **58.760 ms**, kernel interval union **15.716 ms**, and no-kernel intervals **44.713 ms** with repeated **11.594/11.510/11.498/6.178 ms** gaps. Route is one packed-native captured c8 group, zero scalar/row-local fallback, equal 8×32 IDs, and clean drain. Host Python dispatch is rejected as the owner; test graph submission/dependencies before selecting a kernel family. `benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json`.
+
 - [gfx1151 prefill default] Restored `GGUF_AOTRITON_PREFILL=True` for gfx1151
   (was set `False` by f76a76697 from a 64..2048 slice measurement). Native
   bulk-prefill full-attention collapses with context (Qwen3.6-35B-A3B:

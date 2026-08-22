@@ -426,35 +426,46 @@ the VALU issue path. Q5/Q6, attention, GDN recurrence, norms, and the LM head
 have different roofs. The 2.30 TB/s Infinity-Cache figure is also not a
 whole-model weight roof: 15.3 GB is far larger than the 96 MB cache.
 
-**Current whole-step classification: unknown/mixed.** The defensible statement
-is that c8 has material headroom relative to an idealized byte roof while the
-retained trace already assigns most observed time to device kernels. It is not
-defensible to call the complete step globally bandwidth-bound, compute-bound,
-or host/launch-latency-bound without family-level traffic and issue counters.
+**Current whole-step classification: HIP-graph/device-schedule gaps are the
+first mechanism to test; arithmetic roof remains mixed.** A tracked-clean
+production-owner c8 transition measures **60.429 ms** marker wall. One
+`hipGraphLaunch` takes **0.690 ms**, after which the host blocks **58.760 ms** in
+`hipStreamSynchronize`. Traced kernels cover a **15.716 ms interval union** and
+leave **44.713 ms** with no traced kernel active, including repeated
+**11.594/11.510/11.498/6.178 ms** gaps. The same gaps reproduce the standalone
+profiler child nearly exactly. They are therefore not Python layer dispatch;
+they belong to the captured HIP graph's dependency/device-dispatch retirement
+(or an untraced device surface), and must be tested with an independently
+qualified submission/dependency change before kernel-family tuning is ranked.
+
+This does not make the model globally bandwidth- or compute-bound. Family
+traffic/issue counters are still required after the graph critical path is
+understood.
 
 #### Current measured c8 opportunity ledger
 
-The clean post-rowtile records give the following steering ledger. The 63.53 ms
-wall and 54.05 ms profiler kernel sum are from comparable but not identical
-measurement boundaries, so the subtraction is an **upper bound**, not a measured
-host-overhead bucket.
+All rows below come from one marked production-owner transition at commit
+`d7f2b9b0d`, W7900, Qwen3.8-27B Q4_K_M, BF16 KV, p512, physical c8. Kernel
+family values are **summed durations under overlap**, not additive wall shares
+or directly recoverable milliseconds.
 
-| opportunity | measured / bounded time | share of 63.53 ms wall | ideal 2× saving | status |
-| --- | ---: | ---: | ---: | --- |
-| Dense projections, complete family | 43.25 ms | 68.1% | 21.63 ms | largest measured target |
-| ├─ Q4 paired projections | 12.89 ms | 20.3% | 6.45 ms | mechanism unknown |
-| ├─ planar-Q6 projections | 10.76 ms | 16.9% | 5.38 ms | mechanism unknown; row8 VGPR136 |
-| ├─ Q4 singleton projections | 10.69 ms | 16.8% | 5.35 ms | mechanism unknown |
-| └─ Q5 projections | 4.30 ms | 6.8% | 2.15 ms | true rowtile already active |
-| GDN/state family | 8.17 ms | 12.9% | 4.09 ms | recurrence/issue split unknown |
-| Wall minus traced kernel sum | ≤9.48 ms | ≤14.9% | not applicable | unreconciled upper bound |
-| Other traced kernels | ~2.63 ms | ~4.1% | ≤1.32 ms | lower priority in isolation |
+| opportunity / accounting surface | measured time | status |
+| --- | ---: | --- |
+| Complete marker wall | **60.429 ms** | authoritative profiled transition boundary |
+| No-traced-kernel intervals | **44.713 ms** | in-graph/device schedule owner; recoverability unproven |
+| Kernel interval union | **15.716 ms** | at least one traced kernel active |
+| Kernel duration sum | 54.469 ms | non-additive under graph overlap |
+| Q4 paired projections | 12.634 ms sum | largest named kernel family |
+| planar-Q6 BF16 projections | 10.570 ms sum | mechanism unknown |
+| Q4 singleton projections | 10.537 ms sum | mechanism unknown |
+| GDN recurrence/state | 7.813 ms sum | serial critical-path contribution unknown |
+| Q5 projections | 4.228 ms sum | true rowtile active |
+| Q6 root/LM-head projection | 3.267 ms sum | two rowtile chunks |
 
-The profiler sum is ~85% of the non-profiled wall and dense projections alone
-are ~68%, which contradicts an assertion that host launch overhead is already
-known to dominate. Conversely, the ≤9.48 ms unreconciled bound is large enough
-that dispatch/synchronization/fusion remains a serious candidate. The next unit
-must measure which interpretation is correct rather than choose one by prose.
+The execution route is one physical c8 `packed_native` group, captured HIP graph
+replay, 873 dispatches, zero row-local/scalar fallback, zero steady H2D/D2H in
+the execution manifest, and eight equal 32-token outputs. Evidence:
+[`production-owner attribution`](../benchmarks/results/2026-08-22-concurrency2-production-owner-c8-graph-attribution.json).
 
 #### #37 measurement ladder: rank before tuning
 
@@ -463,29 +474,34 @@ Qwen3.8 model fingerprint, BF16 KV, cached builds, and one fixed prompt/context
 shape. Keep c1/c4/c8 and eager/graph controls separate; do not mix p128 and p512
 inside one comparison.
 
-1. **Reconcile complete wall.** Repeat the non-profiled c1/c4/c8 graph packet,
-   then use `scripts/gguf_packed_ar_rocprof.py` to profile one marked cached-only
-   transition per width. Record complete wall, kernel sum, kernel count, H2D/D2H,
-   HIP API/synchronization time, and inter-kernel gaps. Attribute at least 90% of
-   wall before naming a dominant non-kernel bucket. Profile the final child, not
-   a parent harness that launches nested processes.
-2. **Measure actual bytes by family.** Join each traced operation to its resident
+1. ~~**Reconcile complete wall.**~~ **DONE for the production-owner c8 decision
+   boundary (2026-08-22).** `scripts/gguf_continuous_owner_profile_child.py`
+   proves the same repeated graph gaps through `LLM`/`EngineService` and records
+   marker-scoped kernel/HIP API/copy evidence. The host submits one graph and
+   blocks; summed kernel duration is not wall coverage.
+2. **Test graph dependency/submission ownership.** Compare the same production
+   owner, route, graph generation, and output contract under the portable HIP
+   graph control and one independently qualified native submission/dependency
+   candidate. Record complete wall, kernel union, gap locations, API/copy count,
+   and graph lifecycle. A launch-count reduction is irrelevant unless the four
+   repeated multi-ms gaps or complete wall shrink.
+3. **Measure actual bytes by family.** Join each traced operation to its resident
    allocation bytes, call count, active/physical rows, and route manifest. In a
    separate counter run (counter collection perturbs timing), collect available
    TCC/L2/VRAM read/write traffic and cache-hit signals. Report effective GB/s
    for Q4-pair, Q4-single, planar-Q6, Q5, attention, GDN/state, and LM head—not
    one model-wide “bandwidth utilization” percentage.
-3. **Measure issue and occupancy.** Record static VGPR/LDS/scratch and grid/wave
+4. **Measure issue and occupancy.** Record static VGPR/LDS/scratch and grid/wave
    counts, then available VALU/WMMA instruction and stall/occupancy counters.
    Determine whether dequant/VALU issue, VOPD pairing, VGPR-limited occupancy,
    or grid underfill explains low effective bandwidth. Do not reuse a hot
    single-tile L3 microbenchmark as production VRAM evidence.
-4. **Measure width slopes per family.** Compare matched c1→c4→c8 duration,
+5. **Measure width slopes per family.** Compare matched c1→c4→c8 duration,
    bytes, instructions, and waves for every top family. A flat duration with
    fixed bytes suggests successful bandwidth amortization; linear row slope
    with high VALU issue suggests compute/dequant pressure; a width cliff with
    falling waves suggests occupancy/geometry.
-5. **Confirm the winning mechanism end to end.** For any candidate, require its
+6. **Confirm the winning mechanism end to end.** For any candidate, require its
    exact/production numerical contract, same-suite graph wall, complete model
    trace, memory, and lifecycle gate. Then repeat through the actual continuous
    owner/server before changing a product default or publishing c=N goodput.
@@ -496,7 +512,13 @@ This is a decision tree, not permission to implement every idea. Rank candidates
 by **measured milliseconds recoverable from complete wall**. A leaf win is only
 high priority when its call-weighted family saving survives the complete step.
 
-1. **Dense projections (known largest family, 43.25 ms).** Profile first.
+1. **Captured graph dependency/device schedule (44.713 ms without a traced
+   kernel).** Test first with same-route submission/dependency controls. The host
+   is blocked, so Python dispatch refactoring is not indicated. Do not assume the
+   entire interval is recoverable or call it launch latency without an A/B that
+   removes the repeated gaps.
+2. **Dense projections (largest summed kernel family).** Profile after the graph
+   critical-path A/B.
    - If measured traffic is near the attainable VRAM roof, reduce bytes or
      repeated reads: preserve weight-once rowtiles, pair only compatible
      same-input operations, and reconsider wider physical groups only when D2
@@ -507,17 +529,12 @@ high priority when its call-weighted family saving survives the complete step.
    - If waves fall with width, tune tile/column/thread geometry and VGPRs. The
      planar-Q6 row8 owner (VGPR136) is the first occupancy hypothesis to test,
      not an automatic rewrite.
-2. **Unreconciled wall (≤9.48 ms upper bound).** If matched API/gap accounting
-   confirms a large serial dispatch/sync bucket, prioritize graph-input updates,
-   removing readbacks/synchronizations, and low-risk producer/epilogue fusion.
-   Do not call it host overhead until measured; graph replay still pays MEC/SPI
-   per-dispatch work.
-3. **GDN/state (8.17 ms).** Split Conv, recurrent GDN, normalization/gate, and
+3. **GDN/state (7.813 ms summed duration).** Split Conv, recurrent GDN, normalization/gate, and
    state commit. If recurrence compute dominates, optimize that kernel/parallel
    schedule; if state movement or short launches dominate, fuse the safe
    boundaries or batch commits. Do not infer GDN cost from the `ssm_out` Q5
    projection, which belongs to the projection family.
-4. **Small traced remainder (~2.63 ms).** Norm/cast/metadata/LM-head fusion is
+4. **Small traced remainder.** Norm/cast/metadata/LM-head fusion is
    lower priority unless launch-gap accounting moves it into the unreconciled
    bucket or a zero-risk fusion removes repeated traffic.
 5. **Physical row16 remains conditional; row32 remains rejected.** The prior
@@ -526,11 +543,10 @@ high priority when its call-weighted family saving survives the complete step.
    streams are the largest remaining wall opportunity and its projected saving
    exceeds the best c≤8 family candidate.
 
-The highest-impact next action is therefore **measurement**, followed most
-likely by one of: Q4-pair/Q4-single projection issue/traffic work, planar-Q6
-occupancy work, a verified dispatch/synchronization reduction, or GDN recurrence
-work. The ordering among those four is deliberately unresolved until the #37
-ledger closes.
+The highest-impact next action is a same-production-owner graph submission/
+dependency A/B. Only if the repeated gaps remain does family measurement rank
+Q4-pair/Q4-single traffic/issue, planar-Q6 occupancy, or GDN recurrence. No
+kernel family is selected from summed duration alone.
 
 ## Executive decision
 
