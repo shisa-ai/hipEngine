@@ -36,6 +36,7 @@ Related source-of-truth documents:
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host pack/decode oracle, c1-c32 lifecycle, fixture-qualified INT8 composition. | Exact Qwen artifact has no DMS retrofit; HIP correctness/rocprof/device soak remain open. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Default-off; realistic model restore-vs-recompute TTFT remains a product gate. |
+| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs and a guarded non-streaming GGUF MTP route are migration inputs. | Full continuous scheduling, draft-side batching, streaming, generic provider/tree support, and product gates remain open; see the full-support contract below. |
 
 Executable source-to-evidence audit:
 [`2026-08-18-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-18-concurrency2-completion-audit.json).
@@ -1153,6 +1154,329 @@ requests**. It does not select a physical batch and is not silently clamped by a
 route capability. If an operator value exceeds a hard metadata/state limit,
 startup rejects it or reports the explicit effective limit and reason. The
 normal primary gate is the resource ledger.
+
+## Full MTP and generic speculative-decoding support
+
+This section is the Generation-2 integration contract for model-attached MTP,
+independent draft models such as EAGLE or DFlash, and chain/tree methods such as
+Lookahead or Medusa. [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) remains the
+source of truth for the `PROPOSE -> VERIFY -> ACCEPT -> COMMIT ->
+UPDATE_CURSORS` transaction and `N0`-`N5` native-ownership milestones. This
+section defines how that transaction participates in continuous serving.
+
+**No speculative method gets a second request lifecycle, admission queue, KV
+owner, or output path.** The target replica's `EngineService` remains the sole
+transaction coordinator. Proposal and verification may be separate physical
+executions, but they are bounded work items in the same scheduling rounds as
+prefill and autoregressive decode.
+
+The current implementation is a migration input, not full product support. It
+has reusable native target/cycle components and a guarded non-streaming greedy
+GGUF MTP route, but remains phase-serial at the slot level; draft-side
+cross-request batching, streaming, generic provider integration, wider/tree
+verification, and exact/default serving gates are open.
+
+### Distinguish request count from verifier-row count
+
+Let `C` be the number of independent target requests participating in a
+speculative work item and `V` the number of flattened target-verification rows.
+`V` may be larger than `C`, and one request ID may appear in several rows. A
+chain of depth three for four requests is not ordinary physical c4 decode; it is
+a verifier shape with up to sixteen causally described rows. Tree methods may
+have nonuniform row counts and shared parents.
+
+The scheduler-facing records must include bounded, device-materializable forms
+of at least:
+
+```text
+SpeculativeRequestState
+  method_key / provider_key / policy_fingerprint
+  target_request_id / resident_slot
+  target_cursor / provider_cursor
+  provider_state_lease
+  cycle_id / pending_transaction_id
+  per-request RNG, stop, output-limit, and holdback state
+
+DraftBatch
+  cycle_id
+  request_ids[V]             repeated IDs are valid
+  resident_slots[V]
+  candidate_ids[V]
+  candidate_token_ids[V]
+  row_positions[V]
+  draft_depths[V]
+  tree_parent_rows[V]        local verifier-row indices; -1 for roots
+  root_rows[C]
+  active_mask[V]
+  provider-private bounded metadata
+
+SpecTransaction
+  operation_id
+  target KV/state scratch or journal
+  provider KV/state scratch or journal
+  reserved resource claims
+  pre-transaction target/provider cursors and RNG counters
+
+AcceptResult
+  request_ids[C]
+  accepted_draft_counts[C]
+  selected_rows[C]
+  correction_or_bonus_tokens[C]
+  visible_token_ranges[C]
+  target/provider cursor deltas
+  stop/finish outcomes
+```
+
+The API-level `ParentRequest` used for multi-prompt/`n>1` response aggregation
+is unrelated to `tree_parent_rows`; implementations and telemetry must not call
+both simply `parent_id`. Every verifier row carries an explicit row-to-request
+map and parent/depth metadata. Kernels may never infer request ownership from
+`row == slot` or assume verifier rows are independent.
+
+### Speculative plugin and resource ownership
+
+The plugin boundary follows `PLAN.md`: model plugins advertise optional MTP
+heads/features; speculative-method plugins provide `DraftModel`/provider,
+`DraftBatch`, verifier planning, acceptance, and `AcceptResult` behavior. The
+engine and scheduler must not branch on method, provider, model, backend, quant,
+or KV codec.
+
+A resolved speculative capability declares:
+
+```text
+method/provider identity and immutable artifact fingerprint
+chain/tree shapes and maximum bounded V
+proposal and target-verifier execution capabilities
+acceptance/sampling policy fingerprint
+provider state/KV representation and transaction mode
+compatible target execution profile and KV backend
+workspace, graph, result-slab, and readback requirements
+strict fallback and pre-launch rejection rules
+```
+
+A model-attached MTP head may share target-model allocations; an independent
+draft model may own separate weights, state, KV planes, graphs, streams, and
+workspaces. In both cases, all transient and per-request resources enter the
+same atomic `ResourceClaimSet`: provider state/KV, candidate metadata, target
+transaction scratch, provider transaction scratch, graph/static slab deltas,
+accept/result buffers, and any bounded host readback. Proposal code may not make
+hidden hot-path allocations or reserve memory after target verification starts.
+
+The target `EngineService` owns cancellation, commit barriers, visible output,
+and target canonical state. A provider may submit registered native work but
+may not publish tokens, mutate target canonical KV/state, await a frontend, or
+run an independent request scheduler. A shared or remote draft service requires
+a separately specified bounded coordination, cancellation, and resource-credit
+protocol; until then it is unsupported rather than an implicit exception.
+
+### Scheduling, fairness, and economics
+
+Speculative work extends the token-budget planner with explicit limits such as:
+
+```text
+max_draft_rows_per_round
+max_verify_rows_per_round
+max_speculative_cycles_per_round
+max_spec_transaction_bytes
+max_spec_work_items_per_round
+```
+
+Admission and fairness charge **work consumed**, not optimistic accepted tokens.
+The cost includes proposal rows, target verifier rows, state/KV journal work,
+workspace, expected physical decomposition, and commit/readback cost. Acceptance
+history may guide a registered adaptive-depth policy, but cannot make admission
+unsafe or allow one request to monopolize a round.
+
+Every due request gets at most one normal decode transition or one speculative
+cycle in a fairness pass before the same request receives a second cycle, unless
+no peer is due. Accepting several tokens in one cycle is useful progress, not a
+right to consume extra target passes. Deadline and ITL policy may choose AR over
+SpecDec when a speculative transaction does not fit or has worse measured SLO
+cost. Such fallback is decided before mutation and is reported honestly.
+
+Cross-request proposal or verification batching groups only identical execution
+compatibility keys, including target/model profile, provider and policy,
+chain/tree shape, context bucket, target/provider KV transaction modes,
+workspace class, sampler mode, and registered physical verifier widths. Rare or
+ragged shapes use a certified uncaptured/strict route. Adaptive depth decisions
+must be workload-general and artifact-backed; prompt-conditioned branches or
+fixed-suite candidate tuning are benchmark gaming.
+
+### Verification lowering is not AR lowering
+
+AR width maps and D2 cost records price independent one-token decode rows. They
+must not price verifier work. `VERIFY_CHAIN` and `VERIFY_TREE` use separate
+registered capabilities and cost artifacts keyed by `(C, V, draft/tree shape,
+context bucket, transaction mode, execution profile)`.
+
+A backend may flatten compatible verifier rows from several requests into one
+physical execution, but it must preserve:
+
+- chain/tree causal and parent masks;
+- repeated row-to-request ownership;
+- row-specific positions and `KVLiveSpans`;
+- request-local Conv/GDN/SSM and draft-state journals;
+- per-request acceptance and commit results; and
+- isolation when a peer rejects, finishes, cancels, or takes a different
+  accepted depth.
+
+Stateful verifier rows are not automatically independent merely because they
+fit a dense matrix. Serial recurrence, staged independent projections, or a
+registered chain/tree kernel may each be correct; the route manifest must say
+which occurred. A `B1/B2/B3` candidate budget is not a concurrency width, and a
+`V=16` verifier is not a native physical c16 claim unless one registered
+verifier execution actually owns those sixteen rows.
+
+### Transaction and failure semantics
+
+One cycle follows this scheduler-owned order:
+
+1. Estimate and atomically reserve the complete proposal, verification,
+   transaction, graph, result, and growth claims.
+2. Open target and provider transactions before provisional mutation.
+3. Produce candidates into provider-owned provisional state and construct a
+   validated bounded `DraftBatch`.
+4. Verify into scratch/journal target KV, hidden, Conv/GDN/SSM, and sampler
+   surfaces; canonical target state is not yet visible.
+5. Compute acceptance and apply stop/EOS/output-capacity policy to determine the
+   exact visible prefix, correction, or bonus token.
+6. Atomically commit each request's selected target/provider state, accepted KV,
+   RNG counters, and cursors; discard or repair rejected rows.
+7. Release unused reservation and transaction scratch, then publish committed
+   request-ID-keyed output events.
+
+Canonical KV/state may be written early only through a registered exactly
+reversible journal whose failure gates prove restoration. Prefix-cache entries
+never reference provisional pages. Compaction, eviction, slot reuse, and backend
+replacement cannot touch in-flight transaction ownership.
+
+A pre-launch capability, shape, graph, or resource miss may choose the strict AR
+or uncaptured speculative fallback. After any proposal/target mutation, failure
+must roll back the operation before the request is rescheduled; it must not
+silently replay a fallback and duplicate tokens, RNG consumption, or state.
+Cancellation and timeout become pending transaction commands and take effect at
+the next safe commit/rollback barrier. One request's rollback cannot roll back a
+neighbor that shared the physical verifier group.
+
+A KV backend whose `transaction_mode` cannot support the declared method fails
+closed to AR or rejects that speculative configuration. Dense, INT8, DMS, and
+future codecs pass the same reject/partial/full transaction suite; no method may
+keep an undeclared dense KV shadow to obtain rollback.
+
+### Streaming, sampling, and output semantics
+
+Streaming is required for full support; “works only for non-streaming greedy” is
+a guarded partial capability. A cycle may commit several visible tokens. The
+`OutputRouter` publishes them in canonical order only after commit and updates
+the same per-child detokenization, stop-string holdback, usage, and finish state
+used by AR.
+
+EOS and output limits may cut through an otherwise accepted chain. Commit ends
+at the same token boundary that AR would retain; later provisional rows are
+rolled back. Stop-string holdback may suppress terminal text while target/
+provider state follows the existing AR token-commit semantics, including strings
+that span token boundaries. Correction and bonus tokens have explicit ownership
+and are counted exactly once. Sampling and stochastic acceptance consume
+request-owned RNG streams/counters; batching, slot permutation, neighbor
+cancellation, or a peer's acceptance depth cannot change them under the declared
+execution profile.
+
+A disconnect may suppress future publication and request cancellation, but may
+not leave half-committed state. Slow consumers remain isolated by the existing
+bounded mailbox policy. Non-streaming remains the same internal committed-token
+stream buffered by its own collector.
+
+### Graph and native-cycle requirements
+
+Speculative graph keys include method/provider and policy fingerprints, work
+class, `C`, physical `V`, chain/tree shape, context/page bucket, active-mask
+class, target/provider KV views and transaction mode, execution profile,
+expert/top-k shape, and replay count. Captures bind only stable slabs and pointer
+tables; request-private pages, provider leases, positions, row maps, and tree
+metadata are replay inputs.
+
+Graph/native ownership is reported by semantic stage (`PROPOSE`, `VERIFY`,
+`ACCEPT`, `COMMIT`, `UPDATE_CURSORS`) and by API, native-submission, and
+resident-device-state boundaries from `NATIVE_SPEC_CYCLE.md`. A larger ownership
+milestone is not presumed faster. Capture misses and unsupported tails fall back
+before mutation. Post-launch recovery rolls back; it does not replay.
+
+A future multi-cycle `N5` launcher is optional for full single-cycle support. If
+implemented, it has a bounded token/cycle/time budget and observes EOS,
+cancellation/deadline, output capacity, resource-credit renewal, and scheduler
+yield. It cannot hide an unbounded generation loop from continuous scheduling.
+
+### Backend portability and inheritance
+
+The request records, scheduler work classes, resource ledger, transaction
+protocol, output path, simulator, and provider interfaces are shared host code.
+A conforming gfx1151 package therefore inherits those mechanics without a
+second implementation. It does **not** automatically inherit gfx1100 device
+qualification or performance choices.
+
+Each backend/model/provider combination independently registers verifier and
+proposal capabilities, strict fallbacks, graph support, physical verifier
+buckets, transaction layouts, workspace bounds, and cost artifacts. It reruns
+the state/KV/cursor, graph, lifecycle, memory, server, and economics gates on
+its physical host. Missing gfx1151 kernels or evidence select a declared strict
+fallback or report the method unsupported; they never reuse W7900 constants or
+promotion status. Backend portability means common orchestration with explicit
+capabilities, not evidence transfer.
+
+### Required implementation sequence
+
+Existing `N0`-`N4` launchers, target graphs, transaction journals, and exact
+oracles are migration components; they do not by themselves close these items.
+Implement in this order:
+
+1. **SPEC-C0 — host contracts and simulator.** Add the records above, one-to-many
+   request/verifier-row maps, provider claim composition, reject/partial/full
+   fake transactions, cancellation at every stage, and final conservation.
+2. **SPEC-C1 — one EngineService integration.** Move the guarded GGUF MTP chain
+   behind `VERIFY_CHAIN` work items in the Generation-2 request table and output
+   path. Preserve the old exact route as a pre-launch fallback.
+3. **SPEC-C2 — continuous packing and cost policy.** Batch proposal/verification
+   across compatible requests, add verifier-specific physical cost maps and
+   budgets, and prove mixed AR+SpecDec fairness, refill, pressure, and SLOs.
+4. **SPEC-C3 — streaming and sampling.** Land multi-token output events,
+   stop/EOS/output-tail truncation, per-request RNG accounting, disconnect,
+   backpressure, and cancel/rollback semantics.
+5. **SPEC-C4 — generic providers and trees.** Resolve model-attached and
+   independent draft providers through plugins; qualify at least one chain and
+   one tree-shaped implementation or explicitly advertise tree mode unsupported.
+6. **SPEC-C5 — product promotion.** Run exact/profile quality, lifecycle,
+   server-load, memory, graph/profiler, and economics gates before making a
+   method/provider/default visible as production-ready.
+
+### Full-support acceptance gate
+
+A provider/method is production-supported only when all applicable rows pass:
+
+- reject, partial accept, full accept, correction, bonus, EOS, stop-string, and
+  output-capacity tails;
+- fixed and ragged `C`, candidate depth, `V`, chain/tree shape, active masks,
+  positions, contexts, and page boundaries;
+- mixed AR/speculative neighbors, staggered arrival, refill, peer cancellation,
+  slot permutation/compaction, prefix hits/COW/eviction, and pressure recovery;
+- exact target and provider hidden/Conv/GDN/SSM/KV/cursor/RNG ownership before
+  and after accepted rows plus following-cycle continuity;
+- eager/graph parity, repeated replay, capture miss, pre-launch fallback,
+  injected failure at every transaction stage, and complete final drain;
+- blocking and SSE equivalence with bounded output and no head-of-line resource
+  retention;
+- atomic resource accounting for every provider/target plane and transaction
+  high-water, with no hidden mirror or allocation;
+- full multi-prompt `mtp-bench` category and heldout quality/economics against a
+  true same-protocol no-MTP AR baseline, reporting acceptance, accepted tokens
+  per target pass, aggregate/per-request throughput, TTFT/ITL/SLO goodput,
+  memory, physical verifier decomposition, and exact fallback labels.
+
+Project-wide “full MTP/SpecDec support” additionally requires one production
+`EngineService` to interleave AR and at least one promoted speculative provider
+for blocking and streaming requests without a provider-owned generation loop.
+Methods not yet qualified advertise the exact missing capability and fail
+closed; partial N-stage ownership or a single-request benchmark is never
+reported as full continuous SpecDec support.
 
 ## Swappable KV-cache backend contract
 
