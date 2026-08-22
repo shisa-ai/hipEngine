@@ -35,6 +35,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
     c4c8 = "benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json"
     long_blocked = "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json"
     canonical = "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json"
+    external = "benchmarks/results/2026-08-22-concurrency2-external-serving-unavailable.json"
     dms = "benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json"
     dms_device = "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json"
     tier = "benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json"
@@ -48,7 +49,7 @@ def _requirements() -> tuple[AuditRequirement, ...]:
         AuditRequirement("C2-6.graph", "roadmap", "changing-page graph/prefix/slot lifecycle", "passed", (long_blocked,), "W7900 4 captures / 100 replays / 4 invalidations plus host prefix eviction"),
         AuditRequirement("C2-6.long", "roadmap", "actual 4K/16K/32K mixed model execution", "passed", (long_blocked,), "actual c2 1K/4K/16K/32K/64K and mixed 1K/4K/32K pass with SLO/resource/drain evidence"),
         AuditRequirement("C2-6.load", "roadmap", "fixed/ragged/Poisson/overload/disconnect/soak", "passed", (canonical,), "clean W7900 canonical packet: tuning plus nine workloads, 210/210 correctness-accounted rows, bounded overload, 120/120 soak, final drain"),
-        AuditRequirement("C2-6.external", "roadmap", "matched prior/llama/vLLM/SGLang comparisons", "unavailable", (long_blocked, canonical), "availability recorded", "gfx1151/vLLM/SGLang unavailable; llama.cpp HIP binaries fail CPU-ISA or ROCm-ABI compatibility"),
+        AuditRequirement("C2-6.external", "roadmap", "matched prior/llama/vLLM/SGLang comparisons", "unavailable", (external, long_blocked, canonical), "current same-host availability and invalid CPU-only Vulkan packet recorded", "vLLM/SGLang are not installed; llama.cpp HIP binaries fail CPU-ISA/ROCm-ABI checks; the available Vulkan binary has no usable GPU backend"),
         AuditRequirement("C2-6.default", "roadmap", "full production default promotion", "passed", (short, c4c8, canonical), "global/native and physical c4/c8 defaults exact; canonical token-budget/256 packet passes correctness, SLO, overload, memory, and ownership gates"),
         AuditRequirement("C2-7.metadata", "roadmap", "DMS checkpoint metadata gate", "passed", ("hipengine/kvcache/dms.py", "scripts/dms_backend_gate.py", dms), "strict loader and current-model fail-close"),
         AuditRequirement("C2-7.extents", "roadmap", "compact extent/resource backend", "passed", ("hipengine/kvcache/dms.py", "tests/test_kvcache_dms.py"), "atomic fragmentation/rollback/conservation"),

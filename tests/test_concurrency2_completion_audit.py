@@ -36,6 +36,11 @@ def test_completion_audit_names_only_real_product_blockers() -> None:
         "C2-6.external": "unavailable",
         "DMS.product": "blocked",
     }
+    external = next(
+        row for row in payload["blockers"]
+        if row["requirement_id"] == "C2-6.external"
+    )
+    assert "Vulkan binary has no usable GPU backend" in external["blocker"]
 
 
 def test_completion_document_closes_load_and_keeps_remaining_product_boxes_open() -> None:
