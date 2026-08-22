@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
-from hipengine.kernels.backends import resolve_backend
+from hipengine.kernels.backends import load_backend_kernel_package, resolve_backend
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import dflash_accept_chain_i32
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kvcache import KVTransaction
@@ -501,6 +501,10 @@ def q5_t16_ssm_out_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
 def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
     """Count exact dense native Conv/GDN chain-journal ownership."""
 
+    # Materialize lazy backend registrations before installing counted wrappers.
+    # Otherwise first model construction may register the GDN package after this
+    # fixture and replace only its wrappers, yielding a false empty route census.
+    load_backend_kernel_package("hip_gfx1100")
     specs = {
         "conv": (
             KernelKey(
@@ -587,6 +591,7 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
 def gdn_decode_output_fusion_calls() -> Iterator[list[tuple[int, ...]]]:
     """Count scalar GDN FP32+BF16 boundary ownership."""
 
+    load_backend_kernel_package("hip_gfx1100")
     key = KernelKey(
         "hip_gfx1100",
         "gdn_recurrent_rmsnorm_gate+cast",
