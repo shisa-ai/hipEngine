@@ -1,0 +1,330 @@
+{
+  "c32_matched_diagnostic": {
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 24.43146261095535,
+        "samples": [
+          24.43146261095535,
+          25.280129437916912,
+          23.599619508022442
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.477690493467637,
+        "samples": [
+          10.477690493467637,
+          10.125703769552082,
+          10.846946681722349
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8782397350296378,
+        "samples": [
+          0.88380247191526,
+          0.8782397350296378,
+          0.8727532810298726
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 19.448475532000884,
+        "samples": [
+          19.448475532000884,
+          20.291924384073354,
+          18.60867248394061
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 24.72991503193043,
+        "samples": [
+          24.08238231402356,
+          24.72991503193043,
+          25.097860296955332
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.350919343260538,
+        "samples": [
+          10.62976879831534,
+          10.350919343260538,
+          10.199183250098741
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8739529049489647,
+        "samples": [
+          0.825683400966227,
+          0.8747926800278947,
+          0.8739529049489647
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 19.78157546406146,
+        "samples": [
+          19.141203445964493,
+          19.78157546406146,
+          20.13057866494637
+        ]
+      }
+    },
+    "interpretation": "Neutral within approximately 1-2 percent run noise and still far outside ITL SLO; candidate packet predates final clean commit and is diagnostic only."
+  },
+  "correctness": {
+    "c13_clean_lifecycle": {
+      "commit": "5955c25bbac332d496db40a03eab025f93c6a76c",
+      "compaction_moves": 11,
+      "dirty": false,
+      "final_active": 0,
+      "graph_handles_closed": true,
+      "memory_delta_bytes": 0,
+      "newcomer_tokens_exact": true,
+      "no_serial_fallback": true,
+      "original_tokens_exact": true,
+      "passed": true,
+      "sha256": "f9daa4859c34f8b156601aa991885770c37bc3b458d9053c01ae033fde7b6a52",
+      "state_kv_accepted": true
+    },
+    "focused_tests": "64 passed",
+    "server_rows_exact": true
+  },
+  "created_at": "2026-08-23T08:20:00Z",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151"
+  },
+  "kind": "concurrency2_gfx1151_qwen38_fused_packed_state_transfer",
+  "marked_profile": {
+    "baseline": {
+      "copy_buffer": {
+        "duration_ms": 51.717729,
+        "launches": 4117
+      },
+      "dispatches": 6691,
+      "fused_state_pair_copy": {
+        "duration_ms": 0.0,
+        "launches": 0
+      },
+      "gdn": {
+        "duration_ms": 16.401421,
+        "launches": 144
+      },
+      "kernel_sha256": "ff08fc677a4ebc0363d4104f36d5d08e69e9e6307d1e5e878626f35c8d63f3c5",
+      "kernel_sum_ms": 392.728086,
+      "marker_sha256": "811ea26762cfc8c42596410a4378c6ed1c660920d72464eaefa4db6f86b7b321",
+      "q4_paired": {
+        "duration_ms": 155.239732,
+        "launches": 192
+      },
+      "q4_rowtile": {
+        "duration_ms": 68.554403,
+        "launches": 424
+      },
+      "q5": {
+        "duration_ms": 35.494397,
+        "launches": 168
+      },
+      "window_ms": 420.495598
+    },
+    "candidate": {
+      "copy_buffer": {
+        "duration_ms": 3.390673,
+        "launches": 1061
+      },
+      "dispatches": 3639,
+      "fused_state_pair_copy": {
+        "duration_ms": 49.16171,
+        "launches": 4
+      },
+      "gdn": {
+        "duration_ms": 16.404428,
+        "launches": 144
+      },
+      "kernel_sha256": "7809a129a46b4d9798fe969e661455023837c4a857d0c8a6ee1d6d83be5ddcb2",
+      "kernel_sum_ms": 394.214725,
+      "marker_sha256": "6dcd0304fae79d863c46410421fe70f02938ca79b90011c47b21ec172053f7b0",
+      "q4_paired": {
+        "duration_ms": 155.735355,
+        "launches": 192
+      },
+      "q4_rowtile": {
+        "duration_ms": 68.589185,
+        "launches": 424
+      },
+      "q5": {
+        "duration_ms": 35.506006,
+        "launches": 168
+      },
+      "window_ms": 410.878172
+    }
+  },
+  "mechanism": "Replace per-plane Conv/recurrent D2D import/scatter copies with the registered strict pointer-table pair-copy kernel on gfx1151 only. Preserve per-copy strict fallback; gfx1100 capability remains false.",
+  "model": {
+    "fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "next_ranked": [
+    "Eliminate cross-group packed-state round-trip bytes by retaining canonical per-group state with exact flush on membership/teardown; current transfer family remains 52.55 ms.",
+    "If ownership redesign cannot retain a complete-wall win, tune marked Q4 paired + rowtile projection families (224.3 ms combined) on gfx1151.",
+    "Rerun c17/c32 service SLOs; do not promote production until both and live admission pass."
+  ],
+  "passed": true,
+  "performance_claim": true,
+  "raw_sha256": {
+    "c17_baseline": "b9759ff52aa4a299740ffbb79869fa3dc85be4f5cad0cf434d7833310e79f93c",
+    "c17_candidate_clean": "a81436d9cd66f653d3b33f826d9e00ae398c7955475fbec9cc930537cc441999",
+    "c32_baseline": "3c9e82ead042d4f06fab2040df4d1ff3f4e83029e743cfee16871979396802f6",
+    "c32_candidate": "16ebe87c4e87d65d0d4f43b497c1381a6152984eaaf741772541180d3d6c46ae"
+  },
+  "schema": 1,
+  "server": {
+    "all_rows_exact": true,
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 12.412120923982002,
+        "samples": [
+          12.409142790012993,
+          12.426141756004654,
+          12.412120923982002
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.956452703530099,
+        "samples": [
+          10.959296069100546,
+          10.944171186227088,
+          10.956452703530099
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.5093598529929295,
+        "samples": [
+          0.5178010660456493,
+          0.5093598529929295,
+          0.5061423270963132
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 3.2224860892735587,
+        "samples": [
+          9.669967119794599,
+          3.2188738783020847,
+          3.2224860892735587
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.40629428694956,
+        "samples": [
+          9.40629428694956,
+          9.414518475998193,
+          9.40586441103369
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 12.402443725033663,
+        "samples": [
+          12.389052245998755,
+          12.402443725033663,
+          12.403955703019165
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.964966075661243,
+        "samples": [
+          10.976901226460972,
+          10.964966075661243,
+          10.963911755706864
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.5045620960881934,
+        "samples": [
+          0.49679304903838784,
+          0.5048674800200388,
+          0.5045620960881934
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 3.2246799281490777,
+        "samples": [
+          10.976901226460972,
+          2.5799920178026454,
+          3.2246799281490777
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.407642083009705,
+        "samples": [
+          9.401336039998569,
+          9.407642083009705,
+          9.410756867029704
+        ]
+      }
+    },
+    "candidate_slo_passed_runs": 1,
+    "decision": "Retain exact wall/ITL improvement, but c17 remains blocked because median ITL 0.5046s exceeds 0.5s; live admission also does not overlap.",
+    "deltas": {
+      "end_to_end_p95_seconds": {
+        "absolute": -0.009677198948338628,
+        "percent": -0.07796571599331115
+      },
+      "exact_generated_tok_s_aggregate": {
+        "absolute": 0.008513372131144337,
+        "percent": 0.07770190189750892
+      },
+      "itl_p99_seconds": {
+        "absolute": -0.004797756904736161,
+        "percent": -0.9419189354137769
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "absolute": 0.0021938388755189386,
+        "percent": 0.06807907977699479
+      },
+      "ttft_p95_seconds": {
+        "absolute": 0.0013477960601449013,
+        "percent": 0.014328661415730082
+      }
+    }
+  },
+  "source": {
+    "commit": "5955c25bbac332d496db40a03eab025f93c6a76c",
+    "dirty": false,
+    "host": "gfx1151"
+  },
+  "status": "promoted_subwindow_c17_c32_still_blocked",
+  "workload": {
+    "decode_tokens": 8,
+    "logical_c": 17,
+    "physical_groups": [
+      8,
+      8,
+      1
+    ],
+    "policy": "fair:256",
+    "prompt_length": 128,
+    "same_server_oracle": true,
+    "stream_repeats": 3,
+    "stream_warmups": 1
+  }
+}
