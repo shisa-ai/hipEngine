@@ -107,31 +107,35 @@ The user-scoped core deliverable is complete at `7fad69fb5` and audited in
 
 #### gfx1151 post-merge lane
 
-Resume only on a physical Radeon 8060S/gfx1151 host. The current lane used host
-`gfx1151`, checkout `/home/lhl/hipEngine-gfx1151-c2-20260822`, Qwen3.8-27B
-`Q4_K_S`, strict FP32 recurrent state, BF16 KV, and fair:256. Before any new
-measurement, transfer current clean `main`, verify the host/model fingerprint,
-prebuild JIT libraries outside profiling, and require cached builds inside
-`rocprofv3`.
+Run only on the physical Radeon 8060S/gfx1151 host. The resumed lane uses clean
+detached sources under `/tmp/hipengine-gfx1151-hwqueue-v2-src`, lane root
+`/tmp/c2-gfx1151-hwqueue-v2`, Qwen3.8-27B `Q4_K_S`, FP16 recurrent state with
+explicit FP32 rollback, BF16 KV, and fair:256. JIT/cache and rocprof work remain
+isolated; profiled children require cached builds.
 
-Retained state at handoff:
+Current retained state:
 
-- physical widths 1..8 and c13 hole/refill/compaction lifecycle pass;
-- packed prefill, fused state transfer, and direct canonical resident Conv/GDN
-  state are defaults for the qualified gfx1151 package;
-- c17 fixed SLO passes at **11.297 tok/s / 0.448 s ITL** after the exact Q4 row8
-  two-wave owner;
-- c32 improves to **11.041 tok/s / 0.802 s ITL**, and live admission overlaps,
-  but fixed c32 ITL still fails; therefore gfx1151 production is not closed;
-- D2 captured-cost composition, physical c9/c16, Q4 dual eight-wave merge,
-  fair-burst1, and FP16-state serving are rejected; do not repeat them without a
-  materially new mechanism; and
-- next measured family is Q4 qmicro dual rowtile (~127.6 ms marked), followed by
-  Q5 rowtile and Q4 split-weight. Every candidate needs actual kernel identity,
-  exact parent parity, clean marked-family improvement, c17/c32 serving, and
-  lifecycle/memory checks.
+- physical widths 1..8 and c13 hole/refill/compaction lifecycle pass; the fresh
+  production packet passes 1,950 direct-width rows and 1,170 FP16-state rows,
+  including all numerical scopes, repeat/isolation, exact control ownership,
+  11 compaction moves, graph closure, and zero tracked-memory delta;
+- packed prefill, fused state transfer, direct canonical resident Conv/GDN
+  state, and the exact Q4 row8 two-wave owner remain package defaults;
+- the first counterbalanced hardware-queue core screen completes all 10
+  `GPU_MAX_HW_QUEUES=1,2,4,8,unset` c17/c32 children with no lockup, surviving
+  KFD process, fallback, control/route failure, or memory leak;
+- c17 is queue-neutral within 0.61%. At c32, queue8 beats queue2 in both blocks
+  (+3.79%/+1.76%) and unset in both (+3.24%/+9.53%), while queue1 versus queue8
+  crosses by block. Queue1 and queue8 are finalists; no policy is promoted;
+- every core policy still has zero fixed-SLO goodput under this matrix, so
+  gfx1151 production/load closure remains open; and
+- next run the full-width, arrival/pressure/soak, and context/graph/COW/eviction
+  queue sweeps, then adjudicate the policy. Only afterward profile the selected
+  owner and resume Q4 qmicro, Q5 rowtile, and Q4 split-weight work.
 
 Primary retained evidence:
+[`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
+[`hardware-queue core matrix`](../benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
