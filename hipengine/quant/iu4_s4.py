@@ -20,9 +20,9 @@ class IU4S4SidecarQuant:
     """Experimental T3 signed-I4 companion plus dynamic asymmetric-U4 rows."""
 
     name: str = "iu4_s4_sidecar_v1"
-    weight_storage: str = "s4_wmma_n16_k16_per_output_scale_sum"
+    weight_storage: str = "s4_wmma_n16_k32pair_per_output_scale_sum"
     activation_preprocess: str = "dynamic_u4_asymmetric_per_row"
-    compute_dtype: str = "iu4_wmma_i32_accum_bf16_out"
+    compute_dtype: str = "iu4_dot8_or_wmma_i32_accum_bf16_out"
     scale_granularity: str = "one_weight_scale_per_output_one_activation_scale_per_row"
     calibration_artifact: str = "unqualified_t3_research"
     kernel_family: str = "gfx1151_iu4_s4_sidecar"
@@ -74,28 +74,28 @@ def unpack_s4(packed: object) -> np.ndarray:
 
 
 def pack_s4_wmma_tiles(sidecar: "S4Sidecar") -> np.ndarray:
-    """Reorder row-major S4 bytes into coalesced [N16,K16,N,8] tiles."""
+    """Reorder row-major S4 bytes into coalesced [N16,K32,N,16] tiles."""
 
-    if sidecar.out_features % 16 or sidecar.in_features % 16:
-        raise ValueError("S4 WMMA tiles require N and K divisible by 16")
+    if sidecar.out_features % 16 or sidecar.in_features % 32:
+        raise ValueError("S4 WMMA tiles require N divisible by 16 and K by 32")
     return np.ascontiguousarray(
         sidecar.packed.reshape(
             sidecar.out_features // 16,
             16,
-            sidecar.in_features // 16,
-            8,
+            sidecar.in_features // 32,
+            16,
         ).transpose(0, 2, 1, 3)
     )
 
 
 def unpack_u4_wmma_tiles(packed: object, *, rows: int, hidden: int) -> np.ndarray:
-    """Return logical U4 values from padded [M16,K16,M,8] activation tiles."""
+    """Return logical U4 values from padded [M16,K32,M,16] activation tiles."""
 
-    if rows <= 0 or hidden <= 0 or hidden % 16:
-        raise ValueError("U4 WMMA tiles require positive rows and K divisible by 16")
+    if rows <= 0 or hidden <= 0 or hidden % 32:
+        raise ValueError("U4 WMMA tiles require positive rows and K divisible by 32")
     padded_rows = ((rows + 15) // 16) * 16
     tiles = np.asarray(packed, dtype=np.uint8)
-    expected = (padded_rows // 16, hidden // 16, 16, 8)
+    expected = (padded_rows // 16, hidden // 32, 16, 16)
     if tiles.shape != expected:
         raise ValueError(f"U4 WMMA tile shape must be {expected}, got {tiles.shape}")
     row_packed = np.ascontiguousarray(

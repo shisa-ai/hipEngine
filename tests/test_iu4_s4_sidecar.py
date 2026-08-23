@@ -81,6 +81,7 @@ def test_gfx1151_registry_declares_candidate_and_exact_qmicro_fallback() -> None
         IU4_S4_STRICT_FALLBACK_KEY,
         IU4_U4_QUANT_KEY,
         iu4_s4_dual_silu_bf16_out,
+        iu4_u4_wmma_nbytes,
     )
     from hipengine.kernels.registry import is_registered
     from hipengine.quant.registry import resolve_quant
@@ -90,6 +91,9 @@ def test_gfx1151_registry_declares_candidate_and_exact_qmicro_fallback() -> None
     assert is_registered(IU4_U4_QUANT_KEY)
     assert is_registered(IU4_S4_DUAL_SILU_KEY)
     assert is_registered(IU4_S4_STRICT_FALLBACK_KEY)
+    assert iu4_u4_wmma_nbytes(1024, 32) == 16_384
+    with pytest.raises(ValueError, match=r"\[1, 1024\]"):
+        iu4_u4_wmma_nbytes(1025, 32)
     with pytest.raises(ValueError, match="excludes M=1"):
         iu4_s4_dual_silu_bf16_out(*(0,) * 10, 1, 32, 16)
 
@@ -109,7 +113,11 @@ def test_gate_up_reference_publishes_bf16_before_silu() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="ROCm/HIP runtime unavailable")
-def test_gfx1151_iu4_probe_and_operation_match_cpu_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("rows", [5, 37])
+def test_gfx1151_iu4_probe_and_operation_match_cpu_reference(
+    monkeypatch: pytest.MonkeyPatch,
+    rows: int,
+) -> None:
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
 
     from hipengine.core.hip import get_hip_runtime
@@ -128,8 +136,8 @@ def test_gfx1151_iu4_probe_and_operation_match_cpu_reference(monkeypatch: pytest
         iu4_u4_wmma_nbytes,
     )
 
-    rng = np.random.default_rng(0x1151)
-    rows, hidden, output = 5, 32, 32
+    rng = np.random.default_rng(0x1151 + rows)
+    hidden, output = 32, 32
     x = f32_to_bf16_bits(rng.normal(0.0, 0.4, size=(rows, hidden)).astype(np.float32))
     gate = quantize_s4_per_output(rng.normal(0.0, 0.25, size=(output, hidden)).astype(np.float32))
     up = quantize_s4_per_output(rng.normal(0.0, 0.25, size=(output, hidden)).astype(np.float32))
@@ -216,7 +224,7 @@ def test_gfx1151_iu4_probe_and_operation_match_cpu_reference(monkeypatch: pytest
         runtime.device_synchronize()
 
         packed_host = np.empty(
-            (((rows + 15) // 16), hidden // 16, 16, 8), dtype=np.uint8
+            (((rows + 15) // 16), hidden // 32, 16, 16), dtype=np.uint8
         )
         scales_host = np.empty_like(u4.scales)
         zeros_host = np.empty_like(u4.zero_points)

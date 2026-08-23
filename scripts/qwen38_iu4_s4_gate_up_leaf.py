@@ -70,6 +70,7 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 DEFAULT_MODEL_SHA256 = "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9"
 DEFAULT_ROWS = (2, 3, 4, 5, 8, 16, 32, 64, 96, 128)
 IU4_ARITHMETIC_ROOF_TOPS = 109.715
+IU4_DOT8_ARITHMETIC_ROOF_TOPS = 56.830
 GFX1151_MEMORY_ROOF_GBPS = 221.0
 WMMA_VGPR_ANOMALY_THRESHOLD = 64
 
@@ -166,24 +167,25 @@ def _implementation_quality_metrics(
     core_executed_tops: float,
     candidate_effective_weight_gbps: float,
     control_effective_weight_gbps: float,
+    arithmetic_roof_tops: float = IU4_ARITHMETIC_ROOF_TOPS,
 ) -> dict[str, float | str]:
     """Derive the mandatory roof-comparison fields for one IU4 shape."""
 
     useful_weight_memory_roof_tops = 4.0 * rows * GFX1151_MEMORY_ROOF_GBPS / 1000.0
-    memory_binds = useful_weight_memory_roof_tops <= IU4_ARITHMETIC_ROOF_TOPS
+    memory_binds = useful_weight_memory_roof_tops <= arithmetic_roof_tops
     candidate_memory_fraction = candidate_effective_weight_gbps / GFX1151_MEMORY_ROOF_GBPS
-    candidate_arithmetic_fraction = core_executed_tops / IU4_ARITHMETIC_ROOF_TOPS
+    candidate_arithmetic_fraction = core_executed_tops / arithmetic_roof_tops
     binding_fraction = (
         candidate_memory_fraction if memory_binds else candidate_arithmetic_fraction
     )
     return {
         "binding_roof": "memory" if memory_binds else "arithmetic",
         "binding_roof_value": (
-            GFX1151_MEMORY_ROOF_GBPS if memory_binds else IU4_ARITHMETIC_ROOF_TOPS
+            GFX1151_MEMORY_ROOF_GBPS if memory_binds else arithmetic_roof_tops
         ),
         "binding_roof_unit": "GB/s" if memory_binds else "TOPS",
         "weight_only_useful_memory_roof_tops": useful_weight_memory_roof_tops,
-        "arithmetic_roof_tops": IU4_ARITHMETIC_ROOF_TOPS,
+        "arithmetic_roof_tops": arithmetic_roof_tops,
         "memory_roof_gbps": GFX1151_MEMORY_ROOF_GBPS,
         "candidate_effective_weight_gbps": candidate_effective_weight_gbps,
         "control_effective_weight_gbps": control_effective_weight_gbps,
@@ -445,12 +447,23 @@ def _screen_rows(
     candidate_ms = float(candidate_summary["median_ms"])
     core_ms = float(core_summary["median_ms"])
     useful_ops = 4 * rows * hidden * out_features
-    padded_rows = ((rows + 15) // 16) * 16
+    if rows <= 16:
+        candidate_route = "u4s4_dot8_rowtile"
+        padded_rows = 4 if rows <= 4 else (8 if rows <= 8 else 16)
+        candidate_weight_sweeps = 1
+        candidate_arithmetic_roof_tops = IU4_DOT8_ARITHMETIC_ROOF_TOPS
+        candidate_accumulators_per_wave = padded_rows * 4
+    else:
+        candidate_route = "iu4_wmma_bulk_m256"
+        padded_rows = ((rows + 255) // 256) * 256
+        candidate_weight_sweeps = (rows + 255) // 256
+        candidate_arithmetic_roof_tops = IU4_ARITHMETIC_ROOF_TOPS
+        candidate_accumulators_per_wave = 16
     executed_ops = 4 * padded_rows * hidden * out_features
     sidecar_pair_bytes = 2 * (out_features * hidden // 2 + out_features * 8)
     qmicro_pair_bytes = 100_270_080
     candidate_effective_weight_gbps = (
-        sidecar_pair_bytes * ((rows + 15) // 16) / core_ms / 1e6
+        sidecar_pair_bytes * candidate_weight_sweeps / core_ms / 1e6
     )
     control_effective_weight_gbps = (
         qmicro_pair_bytes * len(chunks) / current_ms / 1e6
@@ -460,6 +473,7 @@ def _screen_rows(
         core_executed_tops=executed_ops / (core_ms / 1000.0) / 1e12,
         candidate_effective_weight_gbps=candidate_effective_weight_gbps,
         control_effective_weight_gbps=control_effective_weight_gbps,
+        arithmetic_roof_tops=candidate_arithmetic_roof_tops,
     )
     return {
         "rows": rows,
@@ -482,8 +496,13 @@ def _screen_rows(
             "useful_tops": useful_ops / (candidate_ms / 1000.0) / 1e12,
             "core_useful_tops": useful_ops / (core_ms / 1000.0) / 1e12,
             "core_executed_tops": executed_ops / (core_ms / 1000.0) / 1e12,
+            "candidate_route": candidate_route,
+            "candidate_accumulators_per_wave": candidate_accumulators_per_wave,
+            "candidate_row_utilization": rows / padded_rows,
+            "candidate_weight_sweeps": candidate_weight_sweeps,
+            "candidate_arithmetic_roof_tops": candidate_arithmetic_roof_tops,
             "wmma_row_utilization": rows / padded_rows,
-            "iu4_weight_bytes_per_core": sidecar_pair_bytes * ((rows + 15) // 16),
+            "iu4_weight_bytes_per_core": sidecar_pair_bytes * candidate_weight_sweeps,
             "iu4_effective_weight_gbps": candidate_effective_weight_gbps,
             "current_qmicro_weight_bytes_per_inclusive_call": (
                 qmicro_pair_bytes * len(chunks)
@@ -679,7 +698,7 @@ def main() -> int:
                 "strict_fallback": True,
             },
             "candidate": {
-                "variant": "wmma_m2_m128_bf16_out",
+                "variant": "dot8_m2_m16_wmma_bulk_m17_m1024_bf16_out",
                 "layout": "iu4_s4_sidecar_v1",
                 "arithmetic_class": "T3",
                 "source": "re-quantized dequantized Q4_K_S (not original BF16/F16)",
@@ -707,10 +726,16 @@ def main() -> int:
                 "binding_rule": "min(weight-only 4*M*memory roof, IU4 arithmetic roof)",
             },
         },
-        "candidate_kernel_resources": _kernel_resource_assessment(
-            accumulators_per_wave=1,
-            vgpr_count=24,
-        ),
+        "candidate_kernel_routes": {
+            "m2_m16": {
+                "route": "u4s4_dot8_rowtile",
+                "accumulators_per_wave": "4 * padded rows (16/32/64 for row caps 4/8/16)",
+            },
+            "m17_m1024": {
+                "route": "iu4_wmma_bulk_m256",
+                "accumulators_per_wave": 16,
+            },
+        },
         "results": results,
         "gates": {
             "tiny_m_inclusive_faster_all_m2_m5": tiny_all_faster,
