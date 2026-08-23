@@ -137,7 +137,8 @@ tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
 | `gguf_ar_mtp_suite.py` | One-command AR-vs-MTP decode ratio over the category suite under one enforced decode config | ✓ | ✓ | | ✓ | | | `--scope partial --output <json>` |
 | `qwen35_batch_retained_bench.py` | **PARO-path** compact c>N batch decode; aggregate + per-request tok/s, equality vs c1, optional MTP draft depth | ✓ | ✓ | | ✓ | ✓ | ✓ | `--batch-size 8 --decode-tokens 128` |
 | `qwen35_batch_gguf_diagnostic.py` | GGUF c>N generated-token **correctness** equality vs independent c1 (no throughput claim) | ✓ | | | | | ✓ | `--rows 8 --execute` |
-| `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency (c=1..8) for hipEngine vs llama.cpp HIP/Vulkan; combined throughput + memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8` |
+| `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency through c32; profile-aware throughput, SLOs, routes, control, and memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8,17,32` |
+| `server_f1_hwqueue_matrix.py` | Resume-safe counterbalanced gfx1151 `GPU_MAX_HW_QUEUES=1,2,4,8,unset` serving matrix with fail-fast health checks | ✓ | | | ✓ | ✓ | ✓ | `--queue-policies 1,2,4,8,unset --concurrencies 17,32` |
 | `gguf_concurrency_baseline.py` | GGUF c1 + explicit serial c2/c4 timing controls (Phase-A route baseline) | ✓ | | ✓ | ✓ | | ✓ | `--model <model> --concurrencies 1,2,4` |
 | `mtp-bench.py` | llama.cpp-compatible MTP prompt-suite benchmark (server economics); can wrap hipEngine verifier economics | ✓ | ✓ | | ✓ | | | `--mode hipengine-current` |
 | `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
@@ -193,6 +194,17 @@ resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
 reaches c17 **11.297 tok/s / 0.448 s ITL** and c32 **11.041 tok/s / 0.802 s
 ITL**; c32 live admission overlaps, but c32 fixed SLO remains blocked, so
 gfx1151 canonical production is not yet promoted.
+
+The clean FP16-state hardware-queue core screen completes all 10
+counterbalanced `1,2,4,8,unset` server children without a lockup, surviving KFD
+process, control/route failure, or memory leak. c17 throughput is effectively
+flat (**11.055/11.035/11.004/11.004/10.988 tok/s**, median of two block
+medians). At c32, queue8 beats queue2 in both blocks (**+3.79%/+1.76%**, median
+**+2.78%**) and truly unset in both (**+3.24%/+9.53%**, median **+6.39%**), but
+queue1 versus queue8 crosses by block. Every policy still has zero fixed-SLO
+goodput. This retains queue1/queue8 as finalists; it does not promote a queue
+policy before full-width, arrival/soak, and context/graph sweeps.
+[`Core matrix`](results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json).
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
