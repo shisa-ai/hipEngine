@@ -1321,6 +1321,12 @@ span_role       prefill | decode | verify_chain | verify_tree
      precision/recall, layer/head/category/context slices, suppressed protected
      decisions, and deterministic repeats. Capture-only replay marks dense-vs-
      masked logit quality unavailable until exact runtime replay supplies it.
+   - Runtime resolution is a Qwen model-plugin capability plus the registered
+     `dms_decision_source/bf16/external_linear_sidecar_v1` primitive. The
+     torch-free source maps physical→compact layers, preserves Q, and feeds
+     host-fallback pack/append through scheduler-owned transactions. Prefix and
+     speculative roles fail closed. Device-payload mutation also fails closed
+     until a device journal can restore compact bytes as well as metadata.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.
@@ -1390,7 +1396,10 @@ Soak/stability:
 C2-7 host/backend implementation status: schema-v1 borrowed-channel metadata
 remains strict and fingerprint-compatible; schema v2 now adds a fail-closed
 external BF16 linear-sidecar contract with exact GGUF/sidecar hashes, hybrid
-physical-layer mapping, tensor-header validation, and training provenance.
+physical-layer mapping, tensor-header validation, and training provenance. The
+registered CPU-reference decision primitive, Qwen plugin capability, exact-stage
+GGUF collector, and transactional host compact bridge are implemented; device
+payload mutation remains fail-closed pending a byte-restoring journal.
 Atomic compact extents, no-shadow streaming pack, transactional decode metadata,
 grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
 and a fixture-qualified INT8 codec are implemented. No current exact GGUF has a

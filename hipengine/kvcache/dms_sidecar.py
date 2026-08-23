@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from hipengine.kernels.registry import resolve
 from hipengine.kvcache.dms import DMSRetrofitConfig
 from hipengine.kvcache.dms_labels import build_eviction_labels, load_dms_label_manifest
 
@@ -138,6 +139,212 @@ class ExternalDMSLinearSidecar:
 def load_external_dms_sidecar(config: DMSRetrofitConfig) -> ExternalDMSLinearSidecar:
     weight, bias = _read_sidecar_tensors(config)
     return ExternalDMSLinearSidecar(config=config, weight=weight, bias=bias)
+
+
+class DMSExternalDecisionRuntime:
+    """Registered torch-free decision source feeding compact backend commits."""
+
+    def __init__(self, source: ExternalDMSLinearSidecar) -> None:
+        self.source = source
+        kernel = resolve(
+            backend="cpu_reference",
+            layer="dms_decision_source",
+            quant="bf16",
+            variant="external_linear_sidecar_v1",
+            missing="none",
+        )
+        if kernel is None:
+            from hipengine.kernels.cpu_reference.dms import (
+                register_dms_cpu_reference_kernels,
+            )
+
+            register_dms_cpu_reference_kernels(replace=True)
+            kernel = resolve(
+                backend="cpu_reference",
+                layer="dms_decision_source",
+                quant="bf16",
+                variant="external_linear_sidecar_v1",
+            )
+        self._kernel = kernel
+
+    def _require_backend(self, backend: Any) -> None:
+        retrofit = getattr(backend, "retrofit", None)
+        if not isinstance(retrofit, DMSRetrofitConfig):
+            raise TypeError("external DMS runtime requires a compact DMS backend")
+        if retrofit.fingerprint != self.source.config.fingerprint:
+            raise ValueError("external DMS runtime/backend metadata fingerprints differ")
+        if bool(getattr(backend, "device_payloads_enabled", False)):
+            raise ValueError(
+                "external DMS device payload mutation requires a qualified device journal; "
+                "use the strict host fallback"
+            )
+
+    @staticmethod
+    def _require_span_role(span_role: str, expected: str) -> None:
+        role = str(span_role)
+        if role != expected:
+            raise ValueError(
+                f"external DMS decision source has unsupported span role {role!r}; "
+                "prefix/speculative modes fail closed"
+            )
+
+    def prefill_decisions(self, hidden: np.ndarray) -> np.ndarray:
+        values = np.asarray(hidden)
+        hidden_size = int(self.source.config.hidden_size)
+        expected = (self.source.config.num_layers, hidden_size)
+        if values.ndim != 3 or values.shape[1:] != expected:
+            raise ValueError(
+                "external DMS prefill hidden must be [tokens,compact_layers,hidden]"
+            )
+        decisions = np.zeros(
+            (values.shape[0], self.source.config.num_layers, self.source.config.num_kv_heads),
+            dtype=np.bool_,
+        )
+        for layer in range(self.source.config.num_layers):
+            layer_values = values[:, layer]
+            if layer_values.dtype == np.uint16:
+                layer_values = _bf16_bits_to_float32(layer_values)
+            logits, layer_decisions = self._kernel(
+                np.asarray(layer_values, dtype=np.float32),
+                self.source.weight[layer],
+                self.source.bias[layer],
+                alpha_scale=self.source.config.alpha_scale,
+                alpha_offset=self.source.config.alpha_offset,
+            )
+            if logits.shape != layer_decisions.shape or logits.shape != (
+                values.shape[0],
+                self.source.config.num_kv_heads,
+            ):
+                raise RuntimeError("registered external DMS decision kernel returned wrong shape")
+            decisions[:, layer, :] = layer_decisions
+        return decisions
+
+    def decode_decisions(self, hidden: np.ndarray) -> np.ndarray:
+        values = np.asarray(hidden)
+        expected = (
+            self.source.config.num_layers,
+            int(self.source.config.hidden_size),
+        )
+        if values.shape != expected:
+            raise ValueError("external DMS decode hidden must be [compact_layers,hidden]")
+        return self.prefill_decisions(values[None, ...])[0]
+
+    def streaming_pack(
+        self,
+        backend: Any,
+        *,
+        request_id: int,
+        hidden: np.ndarray,
+        k: np.ndarray,
+        v: np.ndarray,
+        span_role: str = "prefill",
+    ) -> np.ndarray:
+        self._require_span_role(span_role, "prefill")
+        self._require_backend(backend)
+        decisions = self.prefill_decisions(hidden)
+        lease = backend.lease_for_request(int(request_id))
+        operation = backend.begin_transaction((lease,), None)
+        try:
+            backend.streaming_pack(int(request_id), k, v, decisions)
+        except Exception:
+            backend.rollback(operation)
+            raise
+        backend.commit(operation, None)
+        return decisions
+
+    def append_decode(
+        self,
+        backend: Any,
+        *,
+        request_id: int,
+        hidden: np.ndarray,
+        k: np.ndarray,
+        v: np.ndarray,
+        position: int,
+        span_role: str = "decode",
+    ) -> np.ndarray:
+        self._require_span_role(span_role, "decode")
+        self._require_backend(backend)
+        decisions = self.decode_decisions(hidden)
+        lease = backend.lease_for_request(int(request_id))
+        operation = backend.begin_transaction((lease,), None)
+        try:
+            backend.append_decode(
+                int(request_id),
+                k,
+                v,
+                decisions,
+                position=int(position),
+            )
+        except Exception:
+            backend.rollback(operation)
+            raise
+        backend.commit(operation, None)
+        return decisions
+
+
+class ExternalDMSDecisionCollector:
+    """Exact-stage GGUF diagnostic sink producing per-token compact decisions."""
+
+    def __init__(self, source: ExternalDMSLinearSidecar, *, token_count: int) -> None:
+        self.source = source
+        self.physical_layer_ids = source.config.physical_layer_ids
+        self.hidden_size = int(source.config.hidden_size)
+        self.num_q_heads = source.config.num_q_heads
+        self.num_kv_heads = source.config.num_kv_heads
+        self.head_dim = source.config.head_dim
+        self.input_stage = str(source.config.input_stage)
+        self.token_count = int(token_count)
+        if self.token_count <= 0:
+            raise ValueError("external DMS collector token_count must be positive")
+        self._next = np.zeros(source.config.num_layers, dtype=np.int32)
+        self._decisions = np.zeros(
+            (self.token_count, source.config.num_layers, source.config.num_kv_heads),
+            dtype=np.bool_,
+        )
+        self.teacher_vocab_size: int | None = None
+
+    def capture_chunk(
+        self,
+        *,
+        physical_layer_id: int,
+        compact_layer_index: int,
+        positions: np.ndarray,
+        hidden_bf16: np.ndarray,
+        query_f32: np.ndarray,
+        key_f32: np.ndarray,
+    ) -> None:
+        del query_f32, key_f32
+        layer = int(compact_layer_index)
+        if self.source.compact_layer_index(int(physical_layer_id)) != layer:
+            raise ValueError("external DMS collector physical/compact layer mismatch")
+        pos = np.asarray(positions, dtype=np.int32)
+        start = int(self._next[layer])
+        if not np.array_equal(pos, np.arange(start, start + pos.size, dtype=np.int32)):
+            raise ValueError("external DMS collector chunks must be contiguous")
+        if start + pos.size > self.token_count:
+            raise ValueError("external DMS collector chunk exceeds token_count")
+        _, decisions = self.source.project(
+            hidden_bf16,
+            compact_layer_index=layer,
+        )
+        if decisions.shape != (pos.size, self.num_kv_heads):
+            raise RuntimeError("external DMS collector decision shape mismatch")
+        self._decisions[start : start + pos.size, layer, :] = decisions
+        self._next[layer] = start + pos.size
+
+    def capture_teacher_logits(self, logits: np.ndarray) -> None:
+        values = np.asarray(logits)
+        if values.size <= 0:
+            raise ValueError("external DMS collector teacher logits must be non-empty")
+        self.teacher_vocab_size = int(values.size)
+
+    def finalize(self) -> np.ndarray:
+        if np.any(self._next != self.token_count):
+            raise ValueError("external DMS collector lacks full layer/token coverage")
+        if self.teacher_vocab_size is None:
+            raise ValueError("external DMS collector lacks teacher logits")
+        return self._decisions.copy()
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,6 +683,8 @@ def screen_external_sidecar(
 
 
 __all__ = [
+    "DMSExternalDecisionRuntime",
+    "ExternalDMSDecisionCollector",
     "ExternalDMSLinearSidecar",
     "load_external_dms_sidecar",
     "screen_external_sidecar",

@@ -71,6 +71,8 @@ from hipengine.kvcache.dms_labels import (
     load_dms_label_manifest,
 )
 from hipengine.kvcache.dms_sidecar import (
+    DMSExternalDecisionRuntime,
+    ExternalDMSDecisionCollector,
     ExternalDMSLinearSidecar,
     load_external_dms_sidecar,
     screen_external_sidecar,
@@ -166,6 +168,7 @@ __all__ = [
     "DMSCodecQualification",
     "DMSCompactBackend",
     "DMSCompactResidentRunnerAdapter",
+    "DMSExternalDecisionRuntime",
     "DMSLinearSidecarSpec",
     "DMSOperation",
     "DMSRetrofitConfig",
@@ -184,6 +187,7 @@ __all__ = [
     "DeviceChunkedKVPool",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
+    "ExternalDMSDecisionCollector",
     "ExternalDMSLinearSidecar",
     "FitAwareAdmissionController",
     "FixedPagedKVPolicy",
