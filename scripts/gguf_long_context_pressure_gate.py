@@ -80,6 +80,8 @@ _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
     "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+    "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "GPU_MAX_HW_QUEUES",
@@ -628,6 +630,18 @@ def _allocation_for_workload(
     return tuple(selected.block_ids), tuple(selected.pointers)
 
 
+def _llm_construction_kwargs(
+    args: argparse.Namespace,
+    model: Path,
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "backend": str(args.backend),
+        "quant": str(args.quant),
+        "max_active_requests": int(args.max_active_requests),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
@@ -673,6 +687,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     env = {
         **_EXACT_ENV,
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": str(args.gdn_mode),
         "HIPENGINE_PREFILL_DECODE_POLICY": "token_budget",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
@@ -700,11 +715,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     regrow_block_ids: tuple[int, ...] = ()
     regrow_pointers: tuple[int, ...] = ()
     with _temporary_environment(env):
-        llm = LLM(
-            model,
-            backend=str(args.backend),
-            max_active_requests=int(args.max_active_requests),
-        )
+        llm = LLM(**_llm_construction_kwargs(args, model))
         try:
             adapter = llm._get_text_generator()
             llm.prepare(
@@ -1036,6 +1047,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--gdn-mode",
+        default="exact",
+        help="GGUF GDN prefill execution mode (exact or a qualified profile route)",
+    )
     parser.add_argument("--decode-tokens", type=int, default=32)
     parser.add_argument(
         "--longer-context-tokens",
