@@ -159,6 +159,7 @@ def test_sidecar_training_reduces_loss_and_exports_stable_strict_artifact(
     assert first["sidecar_sha256"] == second["sidecar_sha256"]
     assert Path(first["sidecar_path"]).read_bytes() == Path(second["sidecar_path"]).read_bytes()
     assert first["calibration"]["target_evictions"] == first["calibration"]["calibrated_evictions"]
+    assert first["calibration"]["representation"] == "bfloat16_export"
     assert first["validation"]["global"]["accuracy"] > 0.85
     assert first["validation"]["by_layer_head"]
     assert first["validation"]["by_category"]

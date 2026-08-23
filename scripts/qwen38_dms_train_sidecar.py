@@ -333,6 +333,25 @@ def _validation_metrics(
     }
 
 
+def _export_arithmetic_model(
+    model: _ExternalLinearSidecar,
+    *,
+    num_layers: int,
+    num_kv_heads: int,
+    hidden_size: int,
+    device: torch.device,
+) -> _ExternalLinearSidecar:
+    exported = _ExternalLinearSidecar(
+        num_layers=num_layers,
+        num_kv_heads=num_kv_heads,
+        hidden_size=hidden_size,
+    ).to(device)
+    with torch.no_grad():
+        exported.weight.copy_(model.weight.to(dtype=torch.bfloat16).to(dtype=torch.float32))
+        exported.bias.copy_(model.bias.to(dtype=torch.bfloat16).to(dtype=torch.float32))
+    return exported
+
+
 def _threshold_for_count(values: np.ndarray, desired_count: int) -> float:
     scores = np.ascontiguousarray(values, dtype=np.float64).reshape(-1)
     desired = int(desired_count)
@@ -561,15 +580,22 @@ def train_sidecar(
             identity=identity,
         )
 
-    calibration = _calibrate_alpha_offset(
+    export_model = _export_arithmetic_model(
         model,
+        num_layers=num_layers,
+        num_kv_heads=num_kv_heads,
+        hidden_size=hidden_size,
+        device=target_device,
+    )
+    calibration = _calibrate_alpha_offset(
+        export_model,
         train_records,
         hidden_size=hidden_size,
         num_kv_heads=num_kv_heads,
         device=target_device,
     )
     validation = _validation_metrics(
-        model,
+        export_model,
         validation_records,
         hidden_size=hidden_size,
         num_kv_heads=num_kv_heads,
@@ -579,8 +605,8 @@ def train_sidecar(
     sidecar_path = output / "qwen38-27b-q4km-dms-sidecar.safetensors"
     save_safetensors(
         {
-            "bias": model.bias.detach().to(device="cpu", dtype=torch.bfloat16).contiguous(),
-            "weight": model.weight.detach().to(device="cpu", dtype=torch.bfloat16).contiguous(),
+            "bias": export_model.bias.detach().to(device="cpu", dtype=torch.bfloat16).contiguous(),
+            "weight": export_model.weight.detach().to(device="cpu", dtype=torch.bfloat16).contiguous(),
         },
         str(sidecar_path),
     )
@@ -657,7 +683,10 @@ def train_sidecar(
         "completed_epochs": completed_target,
         "resumed_from_epoch": start_epoch,
         "loss_history": loss_history,
-        "calibration": calibration,
+        "calibration": {
+            **calibration,
+            "representation": "bfloat16_export",
+        },
         "validation": validation,
         "duration_seconds": duration,
         "peak_device_bytes": peak_device_bytes,
