@@ -1397,6 +1397,7 @@ class _PackedWorkspaceState:
     decode_state_dirty: bool = False
     decode_session_ids: tuple[int, ...] = ()
     decode_positions: tuple[int, ...] = ()
+    decode_direct_linear_state: bool = False
 
 
 # Union-geometry defaults for the packed verify workspace. Physical packed
@@ -13679,6 +13680,14 @@ class Qwen35GGUFResidentSession:
         self._packed_workspace_state().decode_positions = value
 
     @property
+    def _packed_decode_direct_linear_state(self) -> bool:
+        return self._packed_workspace_state().decode_direct_linear_state
+
+    @_packed_decode_direct_linear_state.setter
+    def _packed_decode_direct_linear_state(self, value: bool) -> None:
+        self._packed_workspace_state().decode_direct_linear_state = bool(value)
+
+    @property
     def _packed_ar_attention_workspace(self):
         return self._packed_workspace_state().ar_attention_workspace
 
@@ -20322,6 +20331,9 @@ class Qwen35GGUFResidentSession:
             physical_tokens[slot_index] = token
             physical_positions[slot_index] = position
         physical_session_tuple = tuple(physical_sessions)
+        direct_linear_state = self._direct_resident_linear_state(
+            physical_session_tuple
+        )
         active_mask = tuple(session is not None for session in physical_session_tuple)
         slot_blocks = tuple(
             _GGUFPackedVerifySlotBlock(
@@ -20338,6 +20350,12 @@ class Qwen35GGUFResidentSession:
         )
         slot_capacity = _packed_ar_slot_capacity(max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
+        if direct_linear_state is not None:
+            direct_state_indices, _direct_state_owner = direct_linear_state
+            layout = replace(
+                layout,
+                state_indices=np.asarray(direct_state_indices, dtype=np.int64),
+            )
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )
@@ -20377,6 +20395,7 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
+            copy_linear_state=direct_linear_state is None,
         )
         packed_scratch = replace(
             packed_scratch_base.for_packed_verify_layout(
@@ -20390,10 +20409,13 @@ class Qwen35GGUFResidentSession:
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
 
+        linear_state_owner = (
+            packed_state if direct_linear_state is None else direct_linear_state[1]
+        )
         linear_decode_scratch = replace(
             self.scratch,
-            layer_conv_states=packed_state.layer_conv_states,
-            layer_recurrent_states=packed_state.layer_recurrent_states,
+            layer_conv_states=linear_state_owner.layer_conv_states,
+            layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
 
         def capture_layer_output(layer_id: int, hidden_ptr: int) -> None:
@@ -20416,7 +20438,7 @@ class Qwen35GGUFResidentSession:
             self._enqueue_packed_decode_model_step(
                 rows=rows,
                 state_indices=tuple(
-                    int(index) for index in layout.row_slot_indices.tolist()
+                    int(index) for index in layout.state_indices.tolist()
                 ),
                 packed_scratch=packed_scratch,
                 packed_state=packed_state,
@@ -20455,6 +20477,7 @@ class Qwen35GGUFResidentSession:
                 packed_state,
                 runtime=runtime,
                 stream=stream,
+                copy_linear_state=direct_linear_state is None,
             )
             self._packed_decode_sessions = ()
             self._packed_decode_last_layout = None
@@ -20464,6 +20487,9 @@ class Qwen35GGUFResidentSession:
             self._packed_decode_sessions = physical_session_tuple
             self._packed_decode_last_layout = layout
             self._packed_decode_state_dirty = True
+        self._packed_decode_direct_linear_state = (
+            direct_linear_state is not None and not scatter_state
+        )
         self._packed_decode_session_ids = session_ids
         self._packed_decode_positions = tuple(
             -1 if session is None else int(session.position)
@@ -20522,6 +20548,7 @@ class Qwen35GGUFResidentSession:
             lm_head_decode_path=self._last_packed_lm_head_decode_path,
             sampler_decode_path=self._last_packed_sampler_decode_path,
             metadata_prepare_path=str(packed_scratch.metadata_prepare_path),
+            direct_resident_linear_state=direct_linear_state is not None,
         )
         self.last_packed_execution_manifest["active_slot_indices"] = list(active_slots)
         self.last_packed_execution_manifest["host_logits_d2h"] = bool(return_logits)
@@ -22103,6 +22130,44 @@ class Qwen35GGUFResidentSession:
             written_positions[slot_index] = max(int(written_positions[slot_index]), start_position)
         self._packed_verify_max_written_positions = tuple(written_positions)
 
+    def _direct_resident_linear_state(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession | None", ...],
+    ) -> tuple[tuple[int, ...], _FullStackScratch] | None:
+        """Resolve packed rows directly onto the batch owner's state slabs."""
+
+        if not bool(
+            backend_package_capability(
+                self.backend,
+                "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
+                False,
+            )
+        ):
+            return None
+        owner = self._target_scratch_owner
+        if owner is None or int(owner.slot_count) <= 1:
+            return None
+        indices: list[int] = []
+        for session in sessions:
+            if session is None:
+                indices.append(0)
+                continue
+            if session is self:
+                index = 0
+            elif (
+                getattr(session, "_resident_batch_owner", None) is self
+                and getattr(session, "_target_scratch_owner", None) is owner
+            ):
+                index = int(getattr(session, "_resident_slot_index", -1))
+            else:
+                return None
+            if index < 0 or index >= int(owner.slot_count):
+                return None
+            indices.append(index)
+        if not any(session is not None for session in sessions):
+            return None
+        return tuple(indices), owner
+
     def _fused_linear_state_pair_copy(
         self,
         copies: Sequence[tuple[int, int, int, int, int, int]],
@@ -22242,6 +22307,7 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
+        copy_linear_state: bool = True,
     ) -> tuple[int, ...]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -22279,6 +22345,8 @@ class Qwen35GGUFResidentSession:
             imported_slot_indices.append(int(slot_index))
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
+                    if not copy_linear_state:
+                        continue
                     src_conv = session.scratch.layer_conv_states[layer_id]
                     src_recurrent = session.scratch.layer_recurrent_states[layer_id]
                     if src_conv is None or src_recurrent is None:
@@ -22543,6 +22611,7 @@ class Qwen35GGUFResidentSession:
         stream: int,
         copy_full_kv: bool = False,
         copy_kv: bool = True,
+        copy_linear_state: bool = True,
     ) -> None:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -22560,6 +22629,8 @@ class Qwen35GGUFResidentSession:
             end_position = start_position + slot_rows
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
+                    if not copy_linear_state:
+                        continue
                     src_conv, src_recurrent = packed_state.linear_state_pair(layer_id)
                     dst_conv = session.scratch.layer_conv_states[layer_id]
                     dst_recurrent = session.scratch.layer_recurrent_states[layer_id]
@@ -22661,6 +22732,7 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_state_dirty = False
         self._packed_decode_session_ids = ()
         self._packed_decode_positions = ()
+        self._packed_decode_direct_linear_state = False
         return True
 
     def flush_packed_decode_state(self, *, stream: int = 0) -> bool:
@@ -22687,6 +22759,7 @@ class Qwen35GGUFResidentSession:
             self._packed_decode_state_dirty = False
             self._packed_decode_session_ids = ()
             self._packed_decode_positions = ()
+            self._packed_decode_direct_linear_state = False
             return True
         runtime = self.runtime or get_hip_runtime()
         self._scatter_packed_decode_state(
@@ -22696,6 +22769,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             stream=stream,
             copy_full_kv=True,
+            copy_linear_state=not self._packed_decode_direct_linear_state,
         )
         if stream:
             runtime.stream_synchronize(stream)
@@ -22706,6 +22780,7 @@ class Qwen35GGUFResidentSession:
             for session in self._packed_decode_sessions
         )
         self._packed_decode_state_dirty = False
+        self._packed_decode_direct_linear_state = False
         return True
 
     def _scatter_packed_verify_outputs(

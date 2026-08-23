@@ -137,6 +137,24 @@ def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
     assert manifest["steady_packed_state_reused"] is True
 
 
+def test_packed_decode_manifest_accounts_direct_resident_linear_state() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(0, 1, 2, 3),
+        import_positions=(513, 513, 513, 513),
+        scatter_state=True,
+        blocks_per_slot=4,
+        direct_resident_linear_state=True,
+        **_c3_routes(),
+    )
+
+    assert manifest["linear_state_storage"] == "resident_slot_slab_direct"
+    movement = manifest["host_device_movement"]
+    assert movement["device_to_device_state_import_copies"] == 80
+    assert movement["device_to_device_state_scatter_copies"] == 80
+
+
 def test_packed_decode_manifest_accepts_registered_int8_kv_batch_route() -> None:
     routes = _c3_routes()
     routes["full_attention_decode_path"] = "kv_live_spans_int8_batch"

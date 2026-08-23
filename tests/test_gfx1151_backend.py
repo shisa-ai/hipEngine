@@ -80,6 +80,7 @@ from hipengine.kernels.hip_gfx1100 import (
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_C2_PACKED_PREFILL_MAX_ROWS,
+    GGUF_DIRECT_RESIDENT_LINEAR_STATE,
     GGUF_FUSED_LINEAR_STATE_TRANSFER,
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
@@ -673,6 +674,13 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
     ) == 1
+    assert GGUF_DIRECT_RESIDENT_LINEAR_STATE is True
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
+    ) is False
     assert GGUF_FUSED_LINEAR_STATE_TRANSFER is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False

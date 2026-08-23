@@ -1111,6 +1111,10 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # transfers when the production owner switches physical groups. Qualified on
 # c13 lifecycle plus counterbalanced c17/c32 serving and marked c17 profiling.
 GGUF_FUSED_LINEAR_STATE_TRANSFER = True
+# The resident batch owner allocates one contiguous Conv/GDN state slab across
+# all scheduler slots. Packed rows may index that canonical slab directly,
+# avoiding the secondary packed-state round trip at physical-group boundaries.
+GGUF_DIRECT_RESIDENT_LINEAR_STATE = True
 # Same-length full-prompt rows may enter one native prefill call. This is scoped
 # independently from decode widths and falls back before mutation on misses.
 GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
@@ -2268,6 +2272,7 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
+    "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
