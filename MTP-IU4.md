@@ -296,8 +296,44 @@ The former single-layer projection was 29.6 ms of a 111.1 ms retained-suite
 verify pass. R1 supersedes that estimate with a cache-only exact native trace:
 30.162/30.653/35.576 ms of gate/up core at B1/B2/B3. The B3 S4 family read floor
 is 25.892 ms at 221 GB/s, so its impossible zero-pack saving is 9.684 ms of the
-profiled 148.655-ms target window (1.070×). Applying the leaf's more conservative
-1.14× ceiling saves only 4.37 ms (about 2.9%).
+profiled 148.655-ms target window (1.070×). The original 1.14× screening ceiling
+saved only 4.37 ms (about 2.9%); the rebuilt R6/B4 body supersedes that leaf
+implementation and supports the more specific projection below.
+
+#### Current answer: does IU4 make the exact B3 verifier faster?
+
+**Not with any retained runtime product. Mechanically, a compact U4/S4 DOT8
+leaf can improve the dominant M4 gate/up family by enough to project about a 6%
+complete B3 gain.** This is a representation/operation effect, not the 2× IU4
+WMMA lane:
+
+- The retained exact B3 suite averages `M=3.851`; its unprofiled target verify is
+  **111.071 ms/cycle**, complete cycle wall is **114.023 ms**, and it publishes
+  **2.7586 visible outputs/cycle** at **24.193 tok/s**.
+- R6/B4 uses U4/S4 **DOT8**, not 16-row IU4 WMMA, at M2–M16. Against the exact
+  qmicro owner it measures **0.952×/1.065×/1.230×/1.501×** at M2/M3/M4/M5.
+  M2 loses; M3 is a small win; M4 is the relevant full B3 shape.
+- Applying only the measured M4 1.230× leaf ratio to R1's 35.576-ms gate/up
+  family gives **28.914 ms**, a 6.662-ms saving. Holding acceptance and every
+  other stage fixed projects **107.361 ms/cycle and about 25.69 tok/s
+  (1.062×)**. This is an optimistic Amdahl projection, not a measured verifier
+  result: the natural suite contains M2/M3 tails and no model-wide tiny-M route
+  was run.
+- The existing Kairic `iu4_s4_kairic_ffn_v1` product admits only physical
+  **M96–M2048**. B3 M2–M4 therefore takes strict fallback and receives **zero
+  IU4 acceleration** from the current product.
+- The only measured tiny-M sidecar re-quantizes dequantized Q4_K_S rather than
+  original weights, adds 5.329 GiB for gate/up, and is not model-quality
+  qualified. The immutable original Kairic PFS also fails both Q4_K_S and
+  matched-authority full-model distribution gates. Neither can be promoted to
+  MTP.
+
+Therefore IU4 is neither the current answer to the full **1.474×** target-pass
+tax nor a 2× B3 opportunity. It is a plausible **~5–6%** exact-B3 mechanism only
+if a new original-weight tiny-M product passes the complete T3 gate. The first
+next work must optimize and attribute the exact qmicro verifier without changing
+representation; only then is the incremental residency/quality cost of an S4
+product interpretable.
 
 ### 3.1 Implementation-quality control (2026-08-23 review)
 
@@ -407,7 +443,7 @@ streaming c=1 GEMV does not remove its weight-bandwidth limit.
 | Surface | Current limiting evidence | U4 applicability | Priority |
 | --- | --- | --- | --- |
 | **Dense bulk prefill FFN and projections** | The Qwen3.8 gfx1151 campaign identifies prefill as compute-bound: roughly 370–380 tok/s at 512/1K/4K. The current dense Q4_K_S gate/up prefill owner reconstructs FP16 fragments, uses F16 WMMA with F32 accumulation, and publishes BF16 boundaries. | **Strongest current candidate.** Rows 128–512 fill IU4 tiles and exceed the weight-only crossover. A clean offline S4 product plus U4 activation packing could replace reconstruction and use the 2× lane. | **1** |
-| **Packed concurrent decode / verification** | Reuse rises with physical rows, and R2 wins from M5 onward against repeated rowtile8 decode. However, the current Qwen3.8 c8 route falls back to prefill WMMA and is not a qualified compute-bound batch owner. | Promising at sustained packed `M>=16`, strongest at `M>=64–128`; first build a proper batch control. R2's M16–128 results are not a bulk-prefill comparison. | **2** |
+| **Packed concurrent decode / verification** | Retained gfx1151 rowtiles own rows2–8; larger widths decompose into <=8-row chunks and reread weights. There is no exact single-sweep M16+ batch owner. | Promising at sustained packed `M>=16`, strongest at `M>=64–128`; first build the R10 control. R2's M16–128 repeated-rowtile rows are not that control. | **2** |
 | **Dense/shared-expert MoE prefill** | Large grouped token sets can be WMMA-heavy, but selected tokens fragment across experts and often leave each expert at small M. | Useful for shared experts or grouped experts only when the measured per-expert row histogram fills tiles. Do not infer eligibility from total prompt rows. | **3** |
 | **K/V projection linears** | These are ordinary weight contractions: large-M during prefill, M1 during serial decode. | Same disposition as other projections: plausible for bulk prefill, not for c1 merely because the output roles are K and V. | **3** |
 | **Prefill attention `QK^T` / `PV` tiles** | Attention can expose large matrix tiles, but current wall also includes layout, masks, softmax, and KV movement; no retained profile establishes these contractions as an IU4-addressable compute bottleneck. | Technically possible, but requires quantized Q/K and possibly probabilities/V plus float softmax boundaries. Treat as a separate quality-sensitive attention product after linear prefill. | **4** |
@@ -418,8 +454,9 @@ The dense-prefill classification and routing context are recorded in the
 [Qwen3.8 gfx1151 campaign](docs/QWEN38-27B-GFX1151-CAMPAIGN.md) and its
 [`R6` compact artifact](benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r6-int8-activation-prefill.json).
 The F16 instruction is explicit in
-[`gguf_q4_k_prefill.hip`](hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip),
-and the c8 fallback evidence is from the same campaign's measured c>N follow-up.
+[`gguf_q4_k_prefill.hip`](hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip).
+The later c=N rowtile retention supersedes that campaign's original c8 WMMA
+fallback observation; R10 states the remaining single-sweep control gap.
 
 The strongest answer to “where are we currently compute-bound?” is therefore
 **dense prompt prefill**, especially FFN gate/up/down and large dense
@@ -508,15 +545,16 @@ required.
 
 ### 4.4 Recommended non-MTP experiment order
 
-1. **Dense prefill gate/up+SiLU leaf:** actual original/offline-optimized S4
-   weights, physical M=64/96/128/256/512, inclusive U4 pack/correction/output,
-   against the current bulk F16-WMMA/BF16-boundary owner—not the decode rowtile
-   control.
-2. **Full prefill FFN:** add down only if gate/up wins; report family Amdahl
-   share and complete prefill wall at 512/1K/4K with the T3 quality packet.
-3. **Packed c>N linear owner:** only after a clean native batch baseline exists;
-   profile M histograms and distinguish concurrent-request throughput from
-   single-request latency.
+R7/R8 complete the original gate/up and full-FFN speed screens; both current
+representations fail production quality. Continue in this order:
+
+1. **Exact expanded-F16 prefill control (R11):** isolate dequant removal from
+   the 2× IU4 lane against the current bulk owner.
+2. **New original-weight S4 revision (R12):** only after the exact control and a
+   predeclared full-model quality gate; do not salvage the immutable failed PFS.
+3. **Packed c>N linear owner (R10):** only after a clean single-sweep native
+   batch baseline exists; profile physical-M histograms and distinguish
+   concurrent-request throughput from single-request latency.
 4. **Grouped/shared-expert MoE:** proceed only where actual per-expert rows are
    large enough to fill IU4 tiles.
 5. **K4/V8 attention leaf:** pursue for measured long-context bandwidth or
@@ -848,22 +886,24 @@ Promotion questions:
 | Tiny-M useful arithmetic | Account for `M/16` tile utilization, not raw TOPS | **Warning**: M4 ≈ DOT4 roof |
 | **Candidate implementation quality** | Candidate reaches >=85% of its binding roof before any comparison against a tuned owner | **Pass for B1–B3 shapes / partial through M16**: rebuilt DOT8 reaches 85.8%/92.9%/92.5% at M2/M3/M4 and 91.1%/90.7% at M5/M8; M16 is 83.8%. The wide WMMA core raises M128 executed arithmetic 12.54→64.39 TOPS and passes the direct R7 current-owner gate. |
 | Actual-weight tiny-M gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | **Fail, representation-scoped**: B4 is 0.952×/1.065×/1.230×/1.501× at M2/M3/M4/M5. M2 still loses with the core at 189.66 GB/s; M3–M5 win. The all-shape gate fails and the tiny-M decision stays closed. |
-| Actual-weight dense-prefill gate/up | Operation-complete M64/128/256/512 beats the current bulk owner | **Pass speed screen, unqualified T3**: 2.668×/2.708×/2.707×/3.105×, all 15/15 pairs, finite/deterministic/teardown exact. Full model quality and wall remain open. |
+| Actual-weight dense-prefill gate/up | Operation-complete M64/128/256/512 beats the current bulk owner | **Pass speed screen, rejected production T3**: 2.668×/2.708×/2.707×/3.105×, all 15/15 pairs. The original PFS full FFN later passes complete-wall speed but fails both full-model distribution gates. |
 | **Tiny-M representation economics** | S4 bytes buy enough target wall to justify the companion | **Fail, representation-scoped (decisive)**: the entire available win is the 1.12× byte ratio → 1.06× target window for +5.329 GiB and a T3 campaign |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
 | Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Split**: fail for c1 B1–B3; prefill product gains 1.44–1.47× complete wall for +7.99 GiB but remains explicit due quality. |
 | T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail against both authorities**: Q4_K_S teacher mean/max KL 0.02119/0.08754 and 88.89% top-1; matched Kairic teacher mean/max KL 0.08159/0.28923 and 77.78% top-1. The matched padded 50-row suite is 100% top-1 but mean/max KL 0.003768/0.06360. Q4_K_S long-task 5/5 non-inferiority and deterministic leaf pass; BF16-relative evidence remains unavailable and cannot rescue either binding failure. |
-| MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
+| MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | **No retainable run**: current PFS admits M96+, so exact B3 M2–M4 is strict fallback. The research M4 DOT8 leaf projects about 1.062× complete B3, but its re-Q4 representation is unqualified and M2 loses. |
 | Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **Model-wide pass**: explicit 8,576,827,392-byte product, M96–2048 route telemetry, M<96/c1 fallback, and tracked teardown 0→0. |
 
-The decisive tiny-M gate is now **representation economics**, not the leaf's
-measured speed. The leaf's speed row is implementation-scoped and would flip
-sign under a properly blocked kernel; the economics row would not.
+The decisive tiny-M gate is **representation economics plus quality**, not lack
+of a mechanical M4 win. R6/B4 reaches a properly roofed 1.230× at M4, but that
+projects only about 1.062× complete B3 for +5.329 GiB and a new T3 product; M2
+still loses and the available representations fail model-level qualification.
 
-A failed tiny-M gate does not invalidate IU4 generally. It redirects the lane to
-`M>=32` packed verification and `M>=96` prompt work, where the roofline and
-Kairic evidence are much stronger — and where §3.1 means the current evidence
-**understates** the opportunity.
+A failed current tiny-M product does not invalidate IU4 generally. Exact B3
+attribution/optimization is now first priority. Wider packed verification may
+reopen IU4 only after one honest single-sweep native M>=16 control exists;
+M96–2048 prompt work remains the demonstrated speed regime, with production
+blocked by quality.
 
 ## 12. Reproduction command sequence
 
@@ -899,24 +939,27 @@ was ported in R0; Kairic/Clang were used only as read-only references.
 ## 13. Punchlist (2026-08-23 review handoff)
 
 Ordered work list for the kernel lane. **B** items are backfill — evidence that
-should already exist or corrections to landed material. **N** items are new
-work. R6 gates everything downstream: until the candidate core reaches a
-respectable fraction of its binding roof, no IU4 comparison in this document is
-a representation result.
+should already exist or corrections to landed material. R6–R8 and B1–B4 are
+complete. R9 is now the next priority; representation work may not skip its
+exact control.
 
 ### Dependency order
 
 ```text
-B1,B2,B3  (independent, cheap)
+B1,B2,B3  (complete)
    |
    v
-R6  core rebuild  ------> B4 (re-measure tiny M; verdict confirmation only)
+R6  core rebuild  ------> B4 tiny-M verdict (complete; current product closed)
    |
-   +--> R7  prefill gate/up A/B   <-- the actual 2x-TOPS thesis
-   |         |
-   |         +--> R8  full prefill FFN (down) 
+   +--> R7 prefill gate/up --> R8 full FFN (complete; quality rejected)
    |
-   +--> R9  packed concurrent verifier (only after a clean native batch control)
+   +--> R9 exact B3 attribution/owner optimization
+          |
+          +--> R10 true single-sweep packed verifier control --> IU4 screen
+          |
+          +--> R11 exact expanded-F16 prefill control
+                   |
+                   +--> R12 new original-weight product, if justified
 ```
 
 ### B — backfill
@@ -1112,12 +1155,71 @@ omitted/default, or decode behavior. Artifact set:
 [`accepted Q4_K_S long-task gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json), and
 [`matched-authority rejection`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-authority-pfs-iu4-full-model-gate.json).
 
-### R9 — packed concurrent verifier
+### R9 — exact current-B3 verifier tax — next priority
 
-Deferred behind R7. §4.2 correctly notes the current Qwen3.8 c8 route falls back
-to prefill WMMA and is not a qualified compute-bound batch owner, so there is no
-honest control to measure against yet. Build the native batch control first;
-R2's M16–128 rows do not substitute for one.
+Before another representation change, close the attribution gap on the exact
+Q4_K_S B3 owner. The retained direct suite measures **75.343 ms** per true-AR
+forward and **111.071 ms** per B3 target pass (**1.474×**), but the often-quoted
+21.723-ms "non-kernel gap" subtracts R1's **profiled** 89.348-ms kernel sum from
+the **unprofiled** target wall. R1's profiled wall is 148.655 ms, and B3 already
+submits one reusable native graph containing about 1,201 kernel nodes. The
+21.723 ms is an inference, not a measured Python-launch bucket.
+
+Ordered work:
+
+1. **Matched attribution.** Capture AR/B1/B3 in one final child and one timing
+   environment. Separate selected-region wall, graph submit/replay, device
+   kernel spans, synchronization/readback, graph-node bubbles, accept/commit,
+   and scheduler residual. Report physical M and bytes per family. Do not mix
+   profiled kernel sums with unprofiled host wall.
+2. **Exact M4 qmicro gate/up.** Treat R1's measured M2→M4
+   **30.162→35.576 ms** and **212.8→180.4 GB/s** as a bounded 5.414-ms target.
+   The current M4 body reaches VGPR144 versus VGPR112 at M2. Screen only
+   representation-preserving register/row ownership or staging changes that
+   retain one weight sweep and are BF16-bit identical to c1 arithmetic. The
+   full possible recovery is about 5% of complete B3.
+3. **Remaining exact families and graph nodes.** In the same R1 trace B1→B3
+   total kernel growth is 9.368 ms; after gate/up, the directly measured
+   remainder is only **3.954 ms**, not the residual 8.6-ms estimate. Audit Q4
+   projections, Q5 down, GDN/state boundaries, copies, and exact Qwen3.6 N1R
+   fusions missing from Qwen3.8. Prefer exact fusion/node removal over another
+   sidecar. Skip Q6 root initially: `output.weight` is about **1.043 GB** and
+   4.757 ms implies roughly **219 GB/s**, already at the practical roof.
+4. **Full exact economics gate.** Every retained candidate reruns true AR and
+   B1/B2/B3 together over the complete train/heldout/category suite with exact
+   IDs, GPU/CPU acceptance, transaction/KV/state ownership, deterministic
+   repeats, memory, and teardown. Public `auto` remains AR until its independent
+   real-world qualification passes.
+
+### R10 — true packed/concurrent IU4 verifier
+
+The old claim that current c8 falls to prefill WMMA is stale: retained gfx1151
+rowtile work now owns rows2–8 and larger widths decompose into <=8-row chunks.
+That still is not an honest M16+ IU4 control because it rereads weights across
+chunks. Build and qualify one exact single-sweep native M16/32/64 control first,
+record actual verifier physical-M histograms, then compare operation-complete
+U4/S4 pack+projection+correction+boundary work. R2's historical M16–128 rows and
+prefill R7 do not substitute for this control. Only this regime can plausibly
+use the 16-row IU4 WMMA lane rather than tiny-M DOT8.
+
+### R11 — exact expanded prefill control
+
+Materialize the current Q4_K_S dequantized FFN values in the same F16 boundary
+the existing pack8 owner feeds to WMMA, then compare no-dequant dense F16
+against current pack8/F16 and IU4 at M64/128/256/512. This isolates dequant
+removal from the 2× arithmetic lane. Do not assume a BF16 sidecar is T0: prove
+primitive and full-model output bytes under the declared schedule. Report the
+roughly 31.9-GiB (34.2-GB) FFN residency and complete-wall/lifecycle result;
+retain only an exact or fully profile-qualified explicit product.
+
+### R12 — new original-weight product only after R9/R11
+
+Do not rerun or tune around the immutable Kairic PFS's failed distribution
+packet. A new original-weight S4 product may reopen tiny-M MTP only if it has an
+immutable manifest, M2–M4 kernels, strict fallback, a model-quality oracle, and
+a predeclared complete B3 T3 gate. Compare its projected/measured gain against
+the exact R9 owner and charge all resident bytes. No current sidecar becomes a
+runtime/default MTP route.
 
 ### Explicitly not scheduled
 
@@ -1125,9 +1227,12 @@ R2's M16–128 rows do not substitute for one.
   thesis, and current KV targets are already met on both a 128-GiB unified host
   and the W7900's 256K INT8 reach. Revisit only under measured capacity or
   long-context bandwidth pressure.
-- **Tiny-M IU4 in any form**, WMMA or DOT8. Closed by representation economics
-  per §4.2.2 and the corrected verdict. B4 records the honest number for the
-  record; it does not reopen the decision.
+- **Current re-Q4 tiny-M runtime integration.** Closed by M2 loss,
+  representation economics, and absent model-quality qualification. Keep B4 as
+  the mechanical leaf; do not route it. Only the new-product R12 gate can reopen
+  the decision.
+- **Further salvage of the immutable Kairic PFS.** Closed by both binding
+  full-model distribution failures. A new product revision is a new campaign.
 - **Direct Q4_K/qmicro nibble reuse (§6.2).** Remains a useful ceiling
   experiment, but adds groupwise correction and metadata traffic to a surface
   that is already bandwidth-bound at tiny M and dequant-bound at prefill — where
