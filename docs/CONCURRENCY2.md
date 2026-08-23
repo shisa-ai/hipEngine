@@ -143,9 +143,11 @@ Do not block the dense gfx1100 merge on DMS training, and do not synthesize a
 checkpoint to make the gate green. Device extract/pack/append/compact-attention
 mechanics and cached profiler identities are already qualified. Product closure
 waits for a separately generated, valid trained `dms_metadata.json` bound to an
-exact supported model fingerprint. The training output must record corrected-
-mask semantics, borrowed channel, alpha scale/offset, window/compression target,
-training data/provenance, and checkpoint hash. Only then run model quality,
+exact supported model fingerprint. Schema v1 records corrected-mask semantics
+and its borrowed channel. Schema v2 records the external decision source,
+physical compact-layer map, normalized hidden input stage, preserved-Q
+semantics, sidecar tensor/hash identity, alpha scale/offset,
+window/compression target, and training data/provenance. Only then run model quality,
 allocator-visible device savings, c1-c32 pressure/soak, compressed-codec,
 cancellation, and final-drain gates. Dense global paging remains default until
 all of those pass. This is task #67 and blocks only DMS product task #49.
@@ -2650,7 +2652,9 @@ and superseded blocker
 ### C2-7 — FastDMS topology and codec composition
 
 - [x] Implement the strict metadata schema/checkpoint validator and prove that
-      unsupported or missing retrofit metadata fails closed.
+      unsupported or missing retrofit metadata fails closed. Schema v1 remains
+      borrowed-channel/fingerprint compatible; schema v2 strictly binds an
+      external linear sidecar, hybrid physical-layer map, and provenance.
 - [ ] Generate a valid trained retrofit checkpoint in the separate DMS data
       campaign, then run model-quality/savings/soak product qualification.
 - [x] Add global compact pool-set/extent accounting and scheduler-owned atomic

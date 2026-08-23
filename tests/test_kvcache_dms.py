@@ -127,7 +127,7 @@ def test_dms_metadata_loader_requires_packaged_qualified_checkpoint(tmp_path) ->
     assert config.borrowed_query_channel == 3
     assert config.group_size == 2
     assert config.source_kind == "packaged_metadata"
-    assert len(config.fingerprint) == 64
+    assert config.fingerprint == "029d407abc19685d55317bed54f9ab4bcaa0dc3222f8123c79571ad47a4e8649"
     with pytest.raises(ValueError, match="does not match"):
         load_dms_retrofit_config(
             model,
