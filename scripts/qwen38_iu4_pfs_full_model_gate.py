@@ -153,7 +153,8 @@ def main() -> int:
         compiler_version = args.compiler_version_file.read_text(encoding="utf-8").strip()
 
     prompts = load_prompt_rows(args.prompts)
-    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(args.model))
+    model_info = load_gguf_index(args.model)
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(model_info)
     encoded_prompts = {
         str(prompt["id"]): [
             int(token)
@@ -437,12 +438,12 @@ def main() -> int:
             else "rejected_correctness"
         ),
         "performance_claim": False,
-        "scope": "same-resident R8 numerical/task-fallback/prefill screen; T3 promotion incomplete",
+        "scope": "same-resident authority numerical/task-fallback/prefill screen; T3 promotion incomplete",
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
             "size_bytes": args.model.stat().st_size,
-            "quant": "Q4_K_S",
+            "quant": model_info.file_type_name,
         },
         "product": {
             "path": str(args.pfs.resolve()),

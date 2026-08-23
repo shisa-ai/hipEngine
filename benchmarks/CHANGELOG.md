@@ -4,6 +4,16 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [retained explicit-authority leaf gfx1151 Qwen3.8 ROCmFP4] The custom Kairic
+  coherent GGUF moves **unsupported IDs 100/102 -> exact CPU dequant plus a
+  49.579-GiB lossless expanded authority** (ROCmFP4 BF16, ROCmFP6 F32). Its
+  isolated expanded-BF16 prefill policy moves scalar -> WMMA by **1.40-4.73x**
+  over all 21 measured M512/1024/2048 Kairic shapes, every point 3/3 paired
+  wins, max relative L2 **0.00042155**, minimum row-top1 **99.707%**; M96
+  K6144xN5120 loses at 0.629x and is excluded. This is not compressed-native
+  execution or a full-model promotion; the matched PFS gate is separate.
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-rocmfp4-authority-dense-bf16-leaf.json`.
+
 - [blocked-production / retained explicit-T3 gfx1151 Qwen3.8 Kairic IU4 FFN]
   Qwen3.8-27B Q4_K_S + immutable 7.99-GiB PFS / same-resident p512/p1K/p4K:
   complete prefill moves **384.70/384.58/359.25 → 567.92/563.05/518.07 tok/s

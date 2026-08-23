@@ -851,7 +851,7 @@ Promotion questions:
 | **Tiny-M representation economics** | S4 bytes buy enough target wall to justify the companion | **Fail, representation-scoped (decisive)**: the entire available win is the 1.12× byte ratio → 1.06× target window for +5.329 GiB and a T3 campaign |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
 | Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Split**: fail for c1 B1–B3; prefill product gains 1.44–1.47× complete wall for +7.99 GiB but remains explicit due quality. |
-| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail for Q4_K_S production envelope**: teacher mean/max KL 0.02119/0.08754 and 88.89% top-1. Long-task 5/5 non-inferiority and deterministic leaf pass; BF16-relative and exact Equalized-authority hipEngine adapter remain unavailable. |
+| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail for Q4_K_S production envelope**: teacher mean/max KL 0.02119/0.08754 and 88.89% top-1. Long-task 5/5 non-inferiority and deterministic leaf pass. The exact Kairic authority adapter is now available as an explicit 49.579-GiB expanded denominator; its matched packet is pending, and BF16-relative evidence remains unavailable. |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
 | Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **Model-wide pass**: explicit 8,576,827,392-byte product, M96–2048 route telemetry, M<96/c1 fallback, and tracked teardown 0→0. |
 
@@ -1048,9 +1048,12 @@ R8 uses the immutable published Kairic FFN product instead of extending the
 15.9%-NRMSE re-Q4 proxy. `iu4_s4_kairic_ffn_v1` fail-closes SHA-256
 `adcbb90a…ba2b`, `PFSIU4F` header/table/file bytes, all 384 role/dtype/shape/
 offset records, and the release's block-Hadamard seeds. The explicit session
-selector is `iu4_ffn_pfs_path`; only gfx1151 Qwen3.8-27B Q4_K_S H5120/I17408/
-L64 and physical M96–M2048 admit. Every miss, including c1 decode and canonical
-short category prompts, stays on the current strict owner.
+selector is `iu4_ffn_pfs_path`; gfx1151 Qwen3.8-27B H5120/I17408/L64 admits
+Q4_K_S or the coherent Kairic authority, and only physical M96–M2048 uses the
+product. Every miss, including c1 decode and canonical short category prompts,
+stays on the model's strict owner. The authority adapter expands ROCmFP4 exactly
+to BF16 and ROCmFP6 exactly to F32 (49.579 GiB); it is a matched denominator,
+not compressed-native execution.
 
 The layer-0 Q5-down full-FFN leaf is operation-complete on both sides:
 
@@ -1086,8 +1089,10 @@ The bounded 4K retrieval/multihop/aggregation/long-doc/code task suite passes
 **5/5 control and 5/5 candidate**, with candidate wall lower on every row;
 free-running IDs/output lengths differ and the task packet is non-inferiority,
 not arithmetic certification. BF16-relative evidence remains unavailable. The
-public Kairic authoritative GGUF cannot yet supply the exact matched denominator
-because it uses Equalized quant type IDs 100/102, which hipEngine does not load.
+public Kairic authoritative GGUF now supplies the exact matched denominator:
+hipEngine parses CIRU `Q4_0_ROCMFP4` ID 100 and `Q6_0_ROCMFPX` ID 102 and
+materializes lossless expanded fallbacks. The complete matched PFS packet is a
+separate pending gate; no result is inferred from parser/load support alone.
 
 **Disposition:** keep the explicit product/runtime and strict fallback because
 it is a large, task-passing, complete-wall prefill improvement; do not expose it

@@ -103,6 +103,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    LAYOUT_ROCMFP4_DENSE_BF16,
     Q4_T16_DECODE_TILES,
     Q4_T16_DECODE_TILES_R3PLUS,
 )
@@ -1040,6 +1041,14 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
         "dense_bf16",
     ),
+    (
+        LAYOUT_ROCMFP4_DENSE_BF16,
+        GGUF_ACTIVATION_BF16,
+        GGUF_OUTPUT_BF16,
+    ): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
+        "dense_bf16",
+    ),
     (LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
         "dense_bf16",
@@ -1494,6 +1503,39 @@ def _backend_prefill_shape_is_qualified(
 
     shapes = backend_package_capability(backend, capability, frozenset())
     return (int(rows), int(in_features), int(out_features)) in shapes
+
+
+def _dense_bf16_wmma_prefill_is_qualified(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    """Keep the expanded ROCmFP4 authority path isolated from peer BF16 policy."""
+
+    if weight.spec.layout == LAYOUT_ROCMFP4_DENSE_BF16:
+        return _backend_prefill_shape_is_qualified(
+            backend,
+            "GGUF_ROCMFP4_DENSE_BF16_WMMA_PREFILL_SHAPES",
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+    return bool(
+        backend_package_capability(
+            backend,
+            "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+            False,
+        )
+    ) and _backend_prefill_shape_is_qualified(
+        backend,
+        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
 
 
 def _dense_bf16_wmma_dispatch(
@@ -2456,16 +2498,9 @@ def launch_gguf_linear(
             enabled=(
                 use_wmma
                 and os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
-                and bool(
-                    backend_package_capability(
-                        resolved_backend,
-                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
-                        False,
-                    )
-                )
-                and _backend_prefill_shape_is_qualified(
-                    resolved_backend,
-                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+                and _dense_bf16_wmma_prefill_is_qualified(
+                    weight,
+                    backend=resolved_backend,
                     rows=rows,
                     in_features=in_features,
                     out_features=out_features,

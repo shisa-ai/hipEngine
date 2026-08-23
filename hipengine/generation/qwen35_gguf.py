@@ -8392,6 +8392,7 @@ for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
     for _quant in (
         "gguf_q4_k_m",
         "gguf_q4_k_s",
+        "gguf_q4_0_rocmfp4_coherent",
         "gguf_q8_0",
         "gguf_q4_1",
         "gguf_ud_q4_k_xl",

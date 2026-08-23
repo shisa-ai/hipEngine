@@ -69,6 +69,10 @@ from hipengine.kernels.registry import (
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 GGUF_IU4_FFN_PRODUCT = True
+GGUF_IU4_FFN_PRODUCT_FILE_TYPES = (
+    "MOSTLY_Q4_K_S",
+    "MOSTLY_Q4_0_ROCMFP4_COHERENT",
+)
 
 
 def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
@@ -467,6 +471,24 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
         (512, 1_024, 512),
         (512, 3_584, 1_024),
     }
+)
+# Kairic authority adapter: isolate its lossless expanded-BF16 ROCmFP4 view
+# from peer dense-BF16 policy. Synthetic actual-shape leaf screens at M512,
+# M1024, and M2048 improve 1.40-4.73x versus the scalar prefill owner with
+# rel-L2 <= 4.22e-4. M96 K6144xN5120 loses (0.629x), so no small-M shape is
+# admitted. Full-model promotion remains governed by the explicit PFS gate.
+GGUF_ROCMFP4_DENSE_BF16_WMMA_PREFILL_SHAPES = frozenset(
+    (rows, in_features, out_features)
+    for rows in (512, 1_024, 2_048)
+    for in_features, out_features in (
+        (5_120, 1_024),
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
+        (6_144, 5_120),
+        (17_408, 5_120),
+    )
 )
 # D08-X6: exact rounded-boundary down+residual fusion is admitted only through
 # the already-qualified dense-BF16 WMMA shape above. Existing small-row

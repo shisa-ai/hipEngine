@@ -2,7 +2,7 @@
 
 _Status: planning reference for the Laguna S 2.1 port. Laguna file inventories are
 header measurements; quality expectations are inferred from Qwen3.5 and must be
-validated on Laguna. Last updated: 2026-07-22._
+validated on Laguna. Last updated: 2026-08-23._
 
 This document answers four questions:
 
@@ -11,6 +11,10 @@ This document answers four questions:
 3. Which Laguna S 2.1 GGUFs are the best targets for gfx1151/120 GiB, one
    W7900/48 GiB, and a W7900 + RX 7900 XTX/72 GiB system?
 4. How much BF16 K/V context fits in the memory left after weights?
+
+The table also records the custom CIRU ROCmFPX authority formats needed by the
+Qwen3.8 Kairic Edge product; those rows are implementation status, not Laguna
+recommendations.
 
 It complements [`GGUF.md`](GGUF.md), [`KVCACHE.md`](KVCACHE.md), and
 [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md). It is not a performance or Laguna
@@ -78,6 +82,15 @@ The distinction is native compressed execution, not merely parsing the type id.
 | `IQ2_XS` | Native selected decode/prefill + CPU dequant | Laguna K=3072,N=1024 gate/up primitives are exact; full model validation remains open |
 | `IQ2_XXS`, `IQ2_S` | Layout only | CPU dequant and native execution missing |
 | `IQ3_S` | Layout only | CPU dequant and native execution missing |
+| `Q4_0_ROCMFP4` (custom ID 100) | Exact CPU dequant + lossless dense-BF16 authority view | CIRU dual-UE4M3/codebook10 block32 format; measured M512/1024/2048 shapes use isolated expanded-BF16 WMMA, while compressed native execution remains open |
+| `Q6_0_ROCMFPX` (custom ID 102) | Exact CPU dequant + lossless dense-F32 authority fallback | CIRU dual-UE4M3/signed-magnitude6 block32 format; compressed native execution remains open |
+
+The custom layouts and type IDs above follow the immutable Kairic source release
+`ciru-ai/ROCmFPX@e1da26bb8237fb5642488a2387efc793b141aae5`. The authority
+fallback intentionally favors exact stored weights over compact residency:
+ROCmFP4 products are exactly representable in BF16, while ROCmFP6 stays F32.
+They do not constitute native compressed-kernel support; only separately scoped
+expanded-view measurements are performance claims.
 
 The `IQ4_NL` values embedded in the `IQ4_XS` implementation are its codebook;
 they are not a standalone `IQ4_NL` kernel.
