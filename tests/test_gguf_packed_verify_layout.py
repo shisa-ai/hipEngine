@@ -140,6 +140,29 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     assert session._packed_decode_positions == ()
 
 
+def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.backend = "hip_gfx1151"
+    slab = SimpleNamespace(slot_count=17)
+    owner._target_scratch_owner = slab
+    peer = SimpleNamespace(
+        _resident_batch_owner=owner,
+        _target_scratch_owner=slab,
+        _resident_slot_index=5,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default: name == "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
+    )
+
+    assert owner._direct_resident_linear_state((owner, peer, None)) == (
+        (0, 5, 0),
+        slab,
+    )
+    assert owner._direct_resident_linear_state((SimpleNamespace(),)) is None
+
+
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._buffers = ()
