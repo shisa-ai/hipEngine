@@ -124,18 +124,23 @@ Current retained state:
 - the first counterbalanced hardware-queue core screen completes all 10
   `GPU_MAX_HW_QUEUES=1,2,4,8,unset` c17/c32 children with no lockup, surviving
   KFD process, fallback, control/route failure, or memory leak;
-- c17 is queue-neutral within 0.61%. At c32, queue8 beats queue2 in both blocks
-  (+3.79%/+1.76%) and unset in both (+3.24%/+9.53%), while queue1 versus queue8
-  crosses by block. Queue1 and queue8 are finalists; no policy is promoted;
-- every core policy still has zero fixed-SLO goodput under this matrix, so
-  gfx1151 production/load closure remains open; and
-- next run the full-width, arrival/pressure/soak, and context/graph/COW/eviction
-  queue sweeps, then adjudicate the policy. Only afterward profile the selected
-  owner and resume Q4 qmicro, Q5 rowtile, and Q4 split-weight work.
+- the core screen found c17 neutral and a queue8 c32 signal, but the completed
+  130-execution full-width matrix supersedes that finalist interpretation:
+  queue2 has the highest normalized 13-width throughput; queue1/4/8/unset are
+  0.75%/0.64%/0.50%/0.42% lower, and queue8 loses c32 to queue2 in both blocks
+  (-3.68%/-6.90%). No queue policy is promoted or removed;
+- all five policies pass all six SLO measurements through c7, c8 is partial,
+  and c9+ has zero SLO-passing runs. Control, native route, memory, shutdown,
+  and GPU health pass for every policy/width, so gfx1151 production/load closure
+  remains a capacity blocker rather than a queue-stability failure; and
+- next run arrival/pressure/recovery/soak, then context/graph/COW/eviction for
+  all policies. Only the complete packet adjudicates the queue default; profile
+  the selected owner before resuming Q4 qmicro, Q5 rowtile, and Q4 split-weight.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
 [`hardware-queue core matrix`](../benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json),
+[`hardware-queue full-width matrix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
