@@ -207,6 +207,33 @@ The implementation derives its DMS semantics from read-only FastDMS reference
 commit `c602b0ec3266da7f74d6a658b3dafcddb443fddd`. All hipEngine development and
 evidence were produced in this repository; `~/FastDMS` was not modified.
 
+### Integrated-serving audit
+
+The first production-route audit on gfx1151 found that the low-level device
+building blocks exist but are not yet a long-context serving route:
+
+- `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` pass
+  focused host/device fixtures after repairing stale post-shrink raw-buffer
+  sizing in the tests;
+- the registered GPU `dms_extract_decision/corrected_mask` primitive implements
+  schema-v1 borrowed-query-channel extraction, not the schema-v2 external linear
+  sidecar used by this candidate;
+- `DMSExternalDecisionRuntime` currently resolves its external-linear projection
+  through `cpu_reference` and feeds host arrays to the backend;
+- `DMSDevicePayloadStore` owns no host K/V mirror, but it uploads K/V, decisions,
+  bases, capacities, and live counts through host staging and is not selected by
+  the normal GGUF resident session;
+- the normal Qwen3.8 GGUF session allocates and scans paged dense full-attention
+  caches;
+- the fixture compact-attention kernel uses dynamic shared score storage of
+  `2 * max_live_count * sizeof(float)` per workgroup. CR2 at 128K would require
+  roughly 513 KiB of dynamic shared memory and therefore needs a bounded
+  split-K/online-softmax production body before 128K/256K can run.
+
+Accordingly, direct 128K/256K execution of the current quality harness would
+only retest dense-shadow substitution. It cannot prove the requested memory or
+speed result. P2-P4 are mandatory prerequisites to P7/P8.
+
 ## Campaign host
 
 | Field | Value |
