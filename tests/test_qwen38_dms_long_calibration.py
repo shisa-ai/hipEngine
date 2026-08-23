@@ -13,6 +13,7 @@ from scripts.qwen38_dms_calibrate_long_bias import (
     _write_bf16_safetensors,
 )
 from scripts.qwen38_dms_integrated_quality import _prompt
+from scripts.qwen38_dms_integrated_quality_suite import _parse_csv
 
 
 def test_long_manifest_mixed_stream_alternates_bounded_chunks() -> None:
@@ -22,6 +23,14 @@ def test_long_manifest_mixed_stream_alternates_bounded_chunks() -> None:
     mixed = _mixed_tokens(en, ja, target_tokens=12, chunk_tokens=3)
 
     assert mixed == [0, 1, 2, 100, 101, 102, 3, 4, 5, 103, 104, 105]
+
+
+def test_integrated_quality_suite_parses_category_inputs() -> None:
+    assert _parse_csv("code, general_en,,general_ja") == (
+        "code",
+        "general_en",
+        "general_ja",
+    )
 
 
 def test_integrated_quality_selects_heldout_category_without_cross_split_tokens(
