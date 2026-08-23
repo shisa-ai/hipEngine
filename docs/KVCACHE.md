@@ -1230,8 +1230,12 @@ models. Schema v1 represents FastDMS' corrected borrowed-query-channel
 checkpoint format. Schema v2 represents a separately trained external linear
 decision sidecar, including hybrid models whose compact physical-layer map is a
 strict subset of runtime layers; ordinary query channels remain intact for this
-source. Both forms bind exact model and training provenance before DMS rows can
-be quality claims. DMS bring-up must use BF16 storage first; the rejected dense
+source. Schema-v2 metadata also binds `prefill_selection_mode`: legacy
+`threshold` preserves calibrated decisions, while `exact_budget` treats learned
+logits as per-layer/head eviction ranks, preserves the protected window, and
+evicts exactly the declared historical CR count with deterministic ties. Both
+forms bind exact model and training provenance before DMS rows can be quality
+claims. DMS bring-up must use BF16 storage first; the rejected dense
 INT8 format is not an assumed quality-safe DMS storage dtype.
 
 ### FastDMS reference map
@@ -1343,6 +1347,11 @@ span_role       prefill | decode | verify_chain | verify_tree
      compact allocator/kernels; they are not quality claims.
 3. **Streaming prefill pack**
    - Port FastDMS' count/rank/scatter structure to HIP.
+   - For `exact_budget`, project logits on device, rank independently per
+     layer/head, preserve the protected window, write the exact decision mask
+     back to the device pack owner, and verify device/host live-count parity.
+     The correctness-first implementation may rank on host; production must
+     replace that D2H/H2D control round trip with bounded device selection.
    - Pack surviving K/V directly into compact BF16 storage first; introduce a
      compressed store only after dense/native fidelity passes.
    - Do not retain a second dense BF16 K/V arena after pack.
