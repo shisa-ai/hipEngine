@@ -31,9 +31,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from hipengine.benchmark.provenance import collect_model_identity
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
 _COMPILER_PROCESS_RE = re.compile(r"(?:^|/)(?:hipcc|amdclang\+\+|amdclang|clang\+\+|clang)(?:\s|$)")
 _RUN_TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
