@@ -217,6 +217,18 @@ control with no new policy promotion pending arrival/soak and context/graph
 stability sweeps.
 [`Full-width matrix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json).
 
+The canonical arrival/stability matrix also finds no queue-stability failure:
+all **10 children / 90 workload executions / 2,100 request records** across
+ragged, fixed/Poisson, disconnect/timeout, overload, recovery, and 60-second
+soak pass exact control/accounting, declared native routes, bounded stream
+queues, memory recovery, drain, and GPU/process health. Every policy completes
+16/rejects 24 overload requests and completes 81-84/rejects 36-39 soak requests
+as bounded `engine_busy`. Static c1/c8 and recovery are SLO-clean; every policy
+fails the heavier workload SLOs. Normalized load throughput versus queue2 is
+q1/q4/q8/unset **-0.57%/+0.47%/-0.67%/-0.09%**, so queue2 remains the control
+pending context/graph/COW/eviction.
+[`Load stability`](results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json).
+
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
 115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true

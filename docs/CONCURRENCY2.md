@@ -133,14 +133,21 @@ Current retained state:
   and c9+ has zero SLO-passing runs. Control, native route, memory, shutdown,
   and GPU health pass for every policy/width, so gfx1151 production/load closure
   remains a capacity blocker rather than a queue-stability failure; and
-- next run arrival/pressure/recovery/soak, then context/graph/COW/eviction for
-  all policies. Only the complete packet adjudicates the queue default; profile
-  the selected owner before resuming Q4 qmicro, Q5 rowtile, and Q4 split-weight.
+- the completed arrival/stability matrix adds 10 children, 90 workloads, and
+  2,100 request records across ragged, fixed/Poisson, disconnect/timeout,
+  overload, recovery, and 60-second soak. Every policy passes exact
+  control/accounting, declared native routes, bounded stream queues, memory/
+  drain, and GPU/process health. Product SLOs and bounded `engine_busy` capacity
+  remain blockers for every policy, not queue-stability failures; and
+- next run context/graph/COW/eviction for all policies. Only the complete packet
+  adjudicates the queue default; profile the selected owner before resuming Q4
+  qmicro, Q5 rowtile, and Q4 split-weight.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
 [`hardware-queue core matrix`](../benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json),
 [`hardware-queue full-width matrix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json),
+[`hardware-queue load stability`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
