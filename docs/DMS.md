@@ -2,12 +2,12 @@
 
 Last updated: 2026-08-23
 
-> **Current status:** explicit c1 integration and 128K/256K capacity execution
-> pass, and the frozen epoch-20 exact-budget **W8192** policy passes the complete
-> four-category 32K v2 development gate at max KL 0.0007085, 100% top-1, and
-> 1.599688x live CR. The source-disjoint v3 final gate is now authorized but not
-> yet consumed. DMS remains default-off until that final evidence and the
-> remaining production lifecycle/memory/performance gates close.
+> **Current status:** the frozen epoch-20 exact-budget **W8192** policy is
+> **qualified at 32K** on both development and sealed source-disjoint final
+> suites. Final max/mean KL is 0.003430/0.000430 with 100% top-1 across all four
+> categories and 1.599688x live CR. Explicit c1 128K/256K capacity execution also
+> exists, but semantic 128K, c1-c32 lifecycle, sampled memory, and performance
+> gates remain open. DMS therefore remains default-off.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -21,8 +21,10 @@ the integrated long-capacity evidence is
 [`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json),
 the original binding 8K/32K quality rejection is
 [`2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json),
-and the exact-label long-retraining rejection is
-[`2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json).
+the exact-label long-retraining rejection is
+[`2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json),
+and the frozen W8192 sealed-final pass is
+[`2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json).
 The normative KV ABI and broader storage roadmap remain in
 [`KVCACHE.md`](KVCACHE.md); lifecycle integration is tracked in
 [`CONCURRENCY2.md`](CONCURRENCY2.md).
@@ -32,8 +34,8 @@ The normative KV ABI and broader storage roadmap remain in
 | Question | Answer |
 | --- | --- |
 | Can we train a DMS predictor without modifying the model? | **Yes.** The base GGUF is never optimized, modified, or requantized. |
-| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. Short and exact-32K-trained threshold policies are both rejected at 32K; no-evict remains essentially exact. |
-| How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus required metadata. Retraining changes values, not tensor geometry. |
+| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. The frozen W8192 policy passes source-disjoint 32K final at max KL 0.003430 and 100% top-1; no-evict remains essentially exact. |
+| How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus **2,090 bytes** of required metadata. Retraining changes values, not tensor geometry. |
 | How long did training take? | The retained short candidate took **99.42 s** internally. Exact 32K fine-tuning to epoch 20 took **583.07 s cumulative trainer time**, plus **637.08 s** for train-only per-head calibration. |
 | How long did the measured retained pipeline take? | **774 seconds (12m54s)** for capture, labels, final training, and both quality gates; excludes data curation, replay, code development, and cache warmup. |
 | What candidate passed? | **CR2/window256:** max KL `0.009691`, 100% top-1, 1.54293x observed total live-cell compression on 768-token heldouts. |
@@ -52,7 +54,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Sidecar-only training and BF16 export | Complete |
 | Strict sidecar/model/provenance binding | Complete |
 | Torch-free replay and compression screening | Complete |
-| Exact-Q4 logit quality evaluation | Short/dense-shadow passed; integrated 8K passed; integrated 32K rejected |
+| Exact-Q4 logit quality evaluation | Frozen W8192 passes integrated source-disjoint 32K final; semantic 128K pending |
 | Compact allocator/backend primitives | Implemented and fixture-tested |
 | Host/device compact transaction rollback | Implemented and fixture-tested |
 | GPU schema-v2 external-linear prediction | Implemented, exact-decision validated, and wired into explicit c1 prefill/decode |
@@ -62,7 +64,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Candidate: frozen exact-budget W8192 passes all four v2 categories at 32K (max KL 0.0007085, 100% top-1, 1.599688x CR); source-disjoint v3 final pending |
+| Long-context-stable sidecar | Qualified at 32K: frozen exact-budget W8192 final max KL 0.003430, 100% top-1, 1.599688x CR; 128K semantic gate pending |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -602,9 +604,17 @@ payload is 1,342,767,104 bytes versus 2,147,483,648 dense prompt bytes before
 decode accounting. The policy is now frozen. Evidence:
 [`2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json).
 
-The source-disjoint v3 validation rows may now be consumed exactly once. No
-further policy changes are allowed after viewing final results; a final failure
-rejects this candidate and requires a newly firewalled campaign.
+The source-disjoint v3 validation rows were consumed exactly once with no policy
+changes. All four categories pass: aggregate max/mean/p95/p99 KL is
+0.003430/0.000430/0.001641/0.002960 and top-1 is 100%. Japanese passes at max
+KL 0.000539 and 100% top-1. Capacity remains exactly 1.599688x with max live
+count 20,489, and teardown returns tracked allocation to zero. The immutable
+external package is under
+`/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/`; its
+qualification manifest SHA is `1c5a11b9...7aa39`.
+
+No post-final policy changes are allowed. The next semantic gate uses a newly
+source-disjoint 128K corpus with these exact sidecar/metadata bytes.
 
 ## Timing summary
 
@@ -694,9 +704,9 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
   `dense_prefill_then_host_compact_decode_override` and retains dense KV; its
   1.54293x result remains logical-only.
 - The separate integrated c1 route proves post-pack tracked savings and a
-  near-exact no-evict control, but the trained sidecar fails the binding 32K
-  dense-teacher gate; sampled process/device peak, same-host memory controls,
-  and bounded streaming-prefill peak remain open.
+  near-exact no-evict control. The frozen W8192 sidecar now passes the binding
+  source-disjoint 32K dense-teacher gate; sampled process/device peak, same-host
+  memory controls, bounded streaming-prefill peak, and 128K semantics remain open.
 - No DMS throughput, latency, TTFT, ITL, or E2E performance claim exists.
 - No long c1/c8 soak or integrated c1-c32 request lifecycle is qualified.
 - No production serving `rocprofv3` trace proves the final kernel route.
@@ -735,12 +745,14 @@ measurements differ materially:
 
 Both rows release dense KV before decode, produce finite logits, and drain
 tracked allocation to zero. However, this is a repeated-corpus capacity stress,
-not a semantic-quality workload. The excessive live compression versus CR2 is
-now confirmed as a quality blocker: at 32K, sidecar max KL is 6.0177 and top-1
-is 62.5%, while compact no-evict passes at max KL 7.76e-7 and 100% top-1.
-Uniform max-head allocation also leaves 2.79x/3.67x capacity-to-live slot slack.
-Production acceptance requires a newly long-qualified candidate plus sampled
-peaks, same-host memory controls, and full scratch/metadata reconciliation.
+not a semantic-quality workload. It records the rejected short policy: at 32K,
+that sidecar reached max KL 6.0177 and 62.5% top-1, while compact no-evict
+passed at max KL 7.76e-7 and 100% top-1. The later frozen W8192 policy supersedes
+that semantic result at 32K, but the historical 128K/256K capacity rows have not
+been rerun with W8192. Uniform max-head allocation also left 2.79x/3.67x
+capacity-to-live slot slack. Production acceptance still requires W8192
+128K semantics, sampled peaks, same-host memory controls, and full
+scratch/metadata reconciliation.
 
 Primary capacity goal:
 
@@ -952,7 +964,7 @@ with no stale spans, generations, masks, payloads, or transaction ownership.
 - [ ] Run deterministic graph/eager and same-schedule repeats.
 - [ ] Run the complete mtpbench category suite plus category-heldouts and broad
       long heldouts; no single-prompt tuning.
-- [ ] Add 8K/32K/128K contexts that materially exercise eviction (8K passes; 32K rejects the current candidate; 128K correctly skipped).
+- [ ] Add 8K/32K/128K contexts that materially exercise eviction (8K and frozen W8192 source-disjoint 32K pass; 128K pending).
 - [ ] Add production task/SLO and BF16-relative gates from
       [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 - [ ] Reject unexplained first failures; never waive max KL because top-1 passes.

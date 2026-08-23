@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-23 gfx1151 Qwen3.8 external DMS W8192 sealed-final pass] Frozen 655,640-byte sidecar / 2,090-byte metadata passes the single-use source-disjoint v3 four-category 32K d8 gate: **max/mean KL 0.003430/0.000430, 100% top-1, 1.599688x live CR, 20,489 max live rows**, and zero final tracked bytes. Qualified at 32K; DMS remains default-off pending semantic 128K and production lifecycle/memory/performance gates. `benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json`.
+
 - [2026-08-23 gfx1151 Qwen3.8 external DMS W8192 development pass] Frozen epoch-20 exact-budget W8192 passes all four source-disjoint v2 32K development categories: **max/mean KL 0.0007085/0.0001416, 100% top-1, 1.599688x live CR, 20,489 max live rows**, zero final tracked bytes. This is development evidence, not production promotion; authorize one sealed v3 final run with no further policy changes. `benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json`.
 
 - [2026-08-23 gfx1151 Qwen3.8 external DMS exact-budget rejection] Metadata-bound per-layer/head ranking closes threshold drift: all four 32K v2 development categories land at exactly **1.983899x live CR / 16,521 max live rows**. Code/English/mixed pass at max KL <=**0.00155** and 100% top-1, but Japanese still rejects at **max KL 0.14180 / 87.5% top-1**. Capacity control is fixed; semantic retention remains blocked. Keep v3 sealed and DMS default-off. `benchmarks/results/2026-08-23-gfx1151-qwen38-dms-exact-budget-32k-rejected.json`.
