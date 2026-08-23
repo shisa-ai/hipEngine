@@ -22,6 +22,7 @@ from hipengine.kvcache import (
 )
 from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 from hipengine.kvcache.dms_sidecar import ExternalDMSLinearSidecar
+from hipengine.runtime.qwen35_gguf_runner import _ExternalDMSDevicePrefillCollector
 
 
 def _hip_available() -> bool:
@@ -142,6 +143,35 @@ def test_external_linear_device_wrapper_validates_before_gpu_load() -> None:
         dms_external_linear_decision_bf16(
             0, 0, 0, 0, 0, 0.0, 0.0, 1, 5120, 4
         )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_integrated_no_evict_collector_publishes_all_false_decisions() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    source = _source()
+    collector = _ExternalDMSDevicePrefillCollector(
+        source,
+        token_count=7,
+        backend="hip_gfx1151",
+        runtime=get_hip_runtime(),
+        decision_mode="no_evict",
+    )
+    try:
+        collector.capture_device_chunk(
+            physical_layer_id=3,
+            compact_layer_index=0,
+            start=0,
+            rows=7,
+            hidden_ptr=1,
+            stream=0,
+        )
+        decisions = collector.finalize()
+    finally:
+        collector.close()
+
+    assert decisions.shape == (7, 1, 4)
+    assert not bool(np.any(decisions))
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")

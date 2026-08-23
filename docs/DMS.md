@@ -209,6 +209,7 @@ torch-free.
 | `scripts/qwen38_dms_replay.py` | Train-only threshold calibration and capture replay |
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |
 | `scripts/qwen38_dms_integrated_long.py` | Explicit c1 no-shadow 128K/256K capacity/decode/teardown runner |
+| `scripts/qwen38_dms_integrated_quality.py` | Dense-teacher versus compact no-evict/sidecar full-logit quality gate |
 
 The implementation derives its DMS semantics from read-only FastDMS reference
 commit `c602b0ec3266da7f74d6a658b3dafcddb443fddd`. All hipEngine development and
@@ -856,8 +857,8 @@ fixed schedule, and pass mutation/rollback/isolation fixtures.
 - [x] Port bounded-LDS GQA compact split-K attention over persistent compact extents.
 - [ ] Scan each KV stream once for the query heads that share it when profitable.
 - [x] Support ragged per-layer/per-head `live_counts` and monotonic positions.
-- [ ] Remove any dense-context fallback from the selected DMS decode route.
-- [ ] Add no-evict and forced-pattern strict fixtures against CPU reference.
+- [x] Remove any dense-context fallback from the selected c1 DMS decode route.
+- [x] Add integrated no-evict control plus forced-pattern strict primitive fixtures against CPU reference.
 - [x] Record primitive `rocprofv3 --kernel-trace` identities and plausible durations.
 - [x] Audit primitive VGPR, scratch, LDS, launch count, and reduction ownership.
 
@@ -882,7 +883,7 @@ with no stale spans, generations, masks, payloads, or transaction ownership.
 
 ### P6 — Integrated quality and task qualification
 
-- [ ] Re-run no-evict and CR2 through the sole-owner device route.
+- [x] Re-run no-evict and CR2 through the sole-owner device route at the 768-token smoke scope.
 - [ ] Use the strict dense teacher trajectory and full logits.
 - [ ] Record mean/p95/p99/max KL and top-1 by category, shape, layer/head where
       useful, and transition.

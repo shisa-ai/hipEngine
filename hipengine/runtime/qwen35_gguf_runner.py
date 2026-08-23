@@ -13639,12 +13639,30 @@ class Qwen35GGUFPrefixStateSnapshot:
         self.closed = True
 
 
+def _normalize_external_dms_decision_mode(value: str) -> str:
+    mode = str(value).strip().lower().replace("-", "_")
+    if mode not in {"sidecar", "no_evict"}:
+        raise ValueError(
+            "dms_decision_mode must be one of sidecar, no_evict; "
+            f"got {value!r}"
+        )
+    return mode
+
+
 class _ExternalDMSDevicePrefillCollector:
-    """GPU-only sidecar decisions captured at the exact GGUF input stage."""
+    """GPU-only sidecar/control decisions captured at the exact GGUF input stage."""
 
     requires_teacher_logits = False
 
-    def __init__(self, source, *, token_count: int, backend: str, runtime) -> None:
+    def __init__(
+        self,
+        source,
+        *,
+        token_count: int,
+        backend: str,
+        runtime,
+        decision_mode: str = "sidecar",
+    ) -> None:
         from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 
         self.source = source
@@ -13655,16 +13673,27 @@ class _ExternalDMSDevicePrefillCollector:
         self.head_dim = int(source.config.head_dim)
         self.input_stage = str(source.config.input_stage)
         self.token_count = int(token_count)
+        self.decision_mode = _normalize_external_dms_decision_mode(decision_mode)
         self._runtime = runtime
-        self._projector = DMSExternalLinearDeviceProjector(source, backend=backend)
-        self._decisions = malloc(
-            source.config.num_layers * self.token_count * self.num_kv_heads,
-            runtime=runtime,
+        self._projector = (
+            DMSExternalLinearDeviceProjector(source, backend=backend)
+            if self.decision_mode == "sidecar"
+            else None
         )
-        self._logits = malloc(
-            self.token_count * self.num_kv_heads * DType.FP32.itemsize,
-            runtime=runtime,
+        decision_bytes = (
+            source.config.num_layers * self.token_count * self.num_kv_heads
         )
+        self._decisions = malloc(decision_bytes, runtime=runtime)
+        self._logits = (
+            malloc(
+                self.token_count * self.num_kv_heads * DType.FP32.itemsize,
+                runtime=runtime,
+            )
+            if self.decision_mode == "sidecar"
+            else None
+        )
+        if self.decision_mode == "no_evict":
+            runtime.memset(self._decisions.ptr, 0, decision_bytes)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
         self._closed = False
 
@@ -13685,15 +13714,18 @@ class _ExternalDMSDevicePrefillCollector:
             raise ValueError("external DMS device capture chunks must be contiguous")
         if int(start) + int(rows) > self.token_count:
             raise ValueError("external DMS device capture exceeds prompt")
-        offset = (layer * self.token_count + int(start)) * self.num_kv_heads
-        self._projector.project(
-            hidden_ptr=int(hidden_ptr),
-            compact_layer_index=layer,
-            tokens=int(rows),
-            logits_ptr=self._logits.ptr,
-            evict_ptr=self._decisions.ptr + offset,
-            stream=int(stream),
-        )
+        if self.decision_mode == "sidecar":
+            if self._projector is None or self._logits is None:
+                raise RuntimeError("external DMS sidecar collector is incomplete")
+            offset = (layer * self.token_count + int(start)) * self.num_kv_heads
+            self._projector.project(
+                hidden_ptr=int(hidden_ptr),
+                compact_layer_index=layer,
+                tokens=int(rows),
+                logits_ptr=self._logits.ptr,
+                evict_ptr=self._decisions.ptr + offset,
+                stream=int(stream),
+            )
         self._next[layer] = int(start) + int(rows)
 
     def decision_ptr(self, compact_layer_index: int) -> int:
@@ -13725,9 +13757,11 @@ class _ExternalDMSDevicePrefillCollector:
     def close(self) -> None:
         if self._closed:
             return
-        free(self._logits, runtime=self._runtime)
+        if self._logits is not None:
+            free(self._logits, runtime=self._runtime)
         free(self._decisions, runtime=self._runtime)
-        self._projector.close()
+        if self._projector is not None:
+            self._projector.close()
         self._closed = True
 
 
@@ -13773,6 +13807,7 @@ class Qwen35GGUFResidentSession:
     use_decode_scratch_arena: bool | None = None
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
+    dms_decision_mode: str = "sidecar"
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -14031,11 +14066,16 @@ class Qwen35GGUFResidentSession:
     _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.dms_decision_mode = _normalize_external_dms_decision_mode(
+            self.dms_decision_mode
+        )
         if self.dms_metadata_path is not None:
             if self.max_batch_size != 1:
                 raise ValueError("external DMS serving currently requires max_batch_size=1")
             self.defer_kv_allocation = True
             self.use_decode_scratch_arena = False
+        elif self.dms_decision_mode != "sidecar":
+            raise ValueError("dms_decision_mode requires dms_metadata_path")
         self.prefill_queue_drain = _normalize_prefill_queue_drain(
             self.prefill_queue_drain
         )
@@ -14517,8 +14557,10 @@ class Qwen35GGUFResidentSession:
         )
         source = load_external_dms_sidecar(config)
         self._dms_source = source
-        self._dms_decode_projector = DMSExternalLinearDeviceProjector(
-            source, backend=self.backend
+        self._dms_decode_projector = (
+            DMSExternalLinearDeviceProjector(source, backend=self.backend)
+            if self.dms_decision_mode == "sidecar"
+            else None
         )
         self._dms_decode_decisions = malloc(
             config.num_layers * config.num_kv_heads, runtime=runtime
@@ -14642,7 +14684,6 @@ class Qwen35GGUFResidentSession:
         if (
             source is None
             or backend is None
-            or projector is None
             or decisions_buffer is None
             or logits_buffer is None
             or self.runner is None
@@ -14723,14 +14764,26 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         decision_ptr = decisions_buffer.ptr + compact_layer * source.config.num_kv_heads
-        projector.project(
-            hidden_ptr=scratch.norm.ptr,
-            compact_layer_index=compact_layer,
-            tokens=1,
-            logits_ptr=logits_buffer.ptr,
-            evict_ptr=decision_ptr,
-            stream=stream,
-        )
+        if self.dms_decision_mode == "sidecar":
+            if projector is None:
+                raise RuntimeError("external DMS sidecar decode projector is unavailable")
+            projector.project(
+                hidden_ptr=scratch.norm.ptr,
+                compact_layer_index=compact_layer,
+                tokens=1,
+                logits_ptr=logits_buffer.ptr,
+                evict_ptr=decision_ptr,
+                stream=stream,
+            )
+        elif stream:
+            runtime.memset_async(
+                decision_ptr,
+                0,
+                source.config.num_kv_heads,
+                int(stream),
+            )
+        else:
+            runtime.memset(decision_ptr, 0, source.config.num_kv_heads)
         f32_to_bf16(
             scratch.full_key.ptr,
             scratch.full_k.ptr,
@@ -17152,6 +17205,7 @@ class Qwen35GGUFResidentSession:
                 token_count=len(token_ids),
                 backend=self.backend,
                 runtime=self.runtime or get_hip_runtime(),
+                decision_mode=self.dms_decision_mode,
             )
             internal_dms_capture = True
         if dms_capture is not None:
