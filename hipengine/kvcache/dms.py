@@ -28,6 +28,7 @@ from hipengine.kvcache.backend import (
     ResourceDelta,
 )
 from hipengine.kvcache.dms_device import (
+    DMSDevicePayloadSnapshot,
     DMSDevicePayloadStore,
     DMSDeviceUnavailable,
     device_payloads_requested,
@@ -944,6 +945,8 @@ class DMSOperation:
         dict[tuple[int, int], np.ndarray],
     ]
     logical_tokens: int
+    device_snapshot: DMSDevicePayloadSnapshot | None
+    counter_snapshot: tuple[int, int, int]
 
 
 class DMSCompactBackend:
@@ -1498,6 +1501,19 @@ class DMSCompactBackend:
                 {key: value.copy() for key, value in state.v_scales.items()},
             ),
             logical_tokens=int(state.logical_tokens),
+            device_snapshot=(
+                None
+                if self._device_store is None
+                else self._device_store.snapshot(
+                    state.base_offsets,
+                    state.range_capacity,
+                )
+            ),
+            counter_snapshot=(
+                int(self.pack_calls),
+                int(self.decode_appends),
+                int(self.evicted_tokens),
+            ),
         )
 
     def commit(self, operation: Any, result: Any) -> ResourceDelta:
@@ -1530,6 +1546,11 @@ class DMSCompactBackend:
             key: value.copy() for key, value in operation.payload_snapshot[3].items()
         }
         state.logical_tokens = int(operation.logical_tokens)
+        if operation.device_snapshot is not None:
+            if self._device_store is None:
+                raise RuntimeError("DMS device store disappeared before rollback")
+            self._device_store.restore(operation.device_snapshot)
+        self.pack_calls, self.decode_appends, self.evicted_tokens = operation.counter_snapshot
         return ResourceDelta(
             operation_id=f"rollback:{operation.operation_id}",
             lease_id=operation.lease.lease_id,

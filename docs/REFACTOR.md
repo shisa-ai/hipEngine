@@ -1782,6 +1782,19 @@ shorter-horizon audit establishes a lower break-even.
   runtime callback. Do not leave a generic synchronous D2H tap in the serving
   façade, and never make it an environment-selected production path.
 
+## External-DMS compact device transaction journal
+
+- The correctness-first external decision bridge snapshots only the active
+  request's compact K/V/position/eviction extents to bounded host transaction
+  scratch and restores them byte-for-byte on rollback. It is not a persistent
+  dense shadow, but synchronous D2H/H2D journaling is not a production-speed
+  endpoint.
+- Removal trigger: once the integrated gfx1100 compact owner is wired, replace
+  this with a resource-claimed device-local copy/journal or an exactly reversible
+  in-place mutation protocol, then retain the host journal only as the registered
+  strict fallback. Do not remove rollback coverage or restore metadata without
+  restoring payload bytes.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
