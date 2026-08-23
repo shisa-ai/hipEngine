@@ -1026,6 +1026,16 @@ GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
+GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
+    "gguf_q4_k_t16_v1": {
+        "shapes": {
+            (5_120, 1_024): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 6_144): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 10_240): "dense_rowtile16_w2_bf16_bf16_out",
+        },
+    },
+}
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     # Q5: the 27B ssm_out/ffn_down/qkv/v shapes rowtile to c8; the narrow
     # 0.8B SSM-out shape keeps cap 4 so its measured direct leaf wins at c5-c8.
@@ -2265,6 +2275,7 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",

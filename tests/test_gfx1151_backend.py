@@ -97,6 +97,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q6_LM_HEAD_MAX_CHUNK,
     GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS,
+    GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_DECODE_ROWTILE_ALL,
     GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
@@ -660,6 +661,22 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
         "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
         {},
     ) == {}
+
+
+def test_gfx1151_backend_declares_q4_row8_two_wave_policy() -> None:
+    policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT[
+        "gguf_q4_k_t16_v1"
+    ]["shapes"]
+    assert policy[(5_120, 1_024)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert (1_024, 4_096) not in policy
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile16_w2_bf16_bf16_out",
+        )
+    )
 
 
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
