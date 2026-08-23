@@ -3,13 +3,12 @@
 Last updated: 2026-08-23
 
 > **Current status:** explicit c1 integration and 128K/256K capacity execution
-> pass, but DMS remains **rejected for production**. Exact 32K retraining raises
-> disjoint-row validation accuracy to 83.60%, yet thresholded selection still
-> drifts to 2.305–3.495x live compression on unseen development sequences and
-> fails one Japanese step (max KL 0.14007, 87.5% category top-1). No-evict is
-> essentially exact, so policy/budget selection—not compact kernel math—is the
-> blocker. Dense remains default while the new exact-budget ranking mode is
-> quality-qualified and moved fully onto device.
+> pass, but DMS remains **rejected for production**. Metadata-bound exact-budget
+> ranking fixes unseen-prompt capacity drift exactly at 32K (1.983899x in every
+> category), but the epoch-20 linear rank still fails one Japanese step (max KL
+> 0.14180, 87.5% category top-1); the other categories pass at max KL <=0.00155
+> and 100% top-1. No-evict is essentially exact, so semantic retention—not
+> compact kernel math or capacity control—is the blocker. Dense remains default.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -64,7 +63,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Open: bias-only CR2, conservative CR1.5, and epoch-20 exact-label linear weights all reject Japanese at 32K; exact-budget prefill ranking is next |
+| Long-context-stable sidecar | Open: exact-budget CR2 controls capacity at 1.983899x but the epoch-20 linear rank still rejects Japanese at 32K; one predeclared 8K protected-window screen is next, then continuation-aware labels |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -585,6 +584,22 @@ The fresh v3 final corpus remains unconsumed. The next candidate must use the
 same learned logits as ranks while enforcing the exact historical live budget
 per layer/head and preserving the protected window; it must pass v2 before v3
 is opened.
+
+### Exact-budget follow-up
+
+Commit `7ab49ae72` binds `prefill_selection_mode=exact_budget`, retains learned
+logits as eviction ranks, protects the declared window, and writes exact masks
+back to the device pack owner. On the same v2 32K d8 suite, every category now
+has exactly 1.983899x live CR and max live count 16,521. Capacity drift is
+therefore closed. Quality is not: Japanese remains at max KL 0.14180 and 87.5%
+top-1, while the other categories pass at max KL at most 0.00155 and 100% top-1.
+The exact-budget candidate is rejected and v3 remains sealed. Evidence:
+[`2026-08-23-gfx1151-qwen38-dms-exact-budget-32k-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-exact-budget-32k-rejected.json).
+
+One global 8,192-token protected-window candidate is predeclared next. It yields
+about 1.60x live CR at 32K but approaches 1.88x/1.94x at 128K/256K. If that full
+category screen rejects, window tuning stops and the oracle must incorporate
+teacher continuation attention before nonlinear predictor work.
 
 ## Timing summary
 
