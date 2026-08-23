@@ -231,6 +231,20 @@ bound. Clean c17 streaming improves ITL **0.5094→0.5046 s** and E2E
 blocked. c32 is neutral within ~1–2% noise and remains far outside SLO.
 Evidence: [`gfx1151 fused packed-state transfer`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-fused-packed-state-transfer.json).
 
+The follow-up removes those bytes rather than repackaging them. The resident
+batch owner already holds canonical contiguous Conv/GDN slabs for every
+scheduler slot, so gfx1151 packed rows now carry global resident state indices
+and update those slabs directly; packed KV and all membership/flush/teardown
+contracts remain unchanged. Clean c17 marked wall improves **410.878→368.413
+ms (-10.33%, -42.465 ms)** and removes all four 49.16-ms fused state-transfer
+kernels. c17 streaming improves **10.965→11.271 tok/s**, ITL
+**0.5046→0.4542 s**, and E2E **12.402→12.066 s**; all three repeats pass fixed
+TTFT/ITL. c32 improves **10.478→10.732 tok/s**, ITL **0.878→0.821 s**, and E2E
+**24.431→23.853 s**, but remains outside SLO. Clean c13 hole/refill/compaction
+and state/KV lifecycle passes exactly with zero memory delta. Thus c17 fixed
+SLO is closed; c32 and live-admission overlap remain production blockers.
+Evidence: [`gfx1151 direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json).
+
 The current Qwen3.8 canonical packet confirms the same offered-load boundary.
 Strict `token_budget` passes blocking exactness but streaming fails at c8+.
 Retained `fair:256` repairs c8 (**10.244 tok/s**, TTFT p95 5.196 s, ITL p99
@@ -281,15 +295,13 @@ c9 is exact at **228.05 ms**, and actual c17 9+8 regresses **406.50→425.86 ms
 
 The measured order is therefore:
 
-1. eliminate cross-group packed-state round trips by retaining exact canonical
-   per-group state and flushing only on membership change, fallback, prefix,
-   compaction, or teardown; the measured recoverable family is **52.55 ms**,
-   but duplicate workspace/KV ownership and pool accounting must pass first;
-2. if that ownership route cannot retain a complete-wall win, tune Q4 paired
-   plus rowtile projections (**224.3 ms combined**) from the same marked owner,
-   beginning with bytes/occupancy evidence rather than another blind variant;
-3. rerun c17/c32 serving and live admission. c17 remains 4.6 ms outside median
-   ITL and c32 remains substantially capacity-bound.
+1. ~~eliminate cross-group packed-state round trips~~ **DONE** through canonical
+   resident slabs: -42.465 ms marked c17, with fixed c17 SLO closed;
+2. tune Q4 paired plus rowtile projections (**228.3 ms combined** in the new
+   direct-state owner), beginning with bytes/occupancy evidence rather than
+   another blind variant; and
+3. resolve live-admission overlap and rerun c32 after each retained projection
+   win. c32 remains substantially capacity-bound, so production is still open.
 
 Device-kernel priorities after those owner-level measurements are:
 
