@@ -668,6 +668,7 @@ def test_gfx1151_backend_declares_q4_row8_two_wave_policy() -> None:
         "gguf_q4_k_t16_v1"
     ]["shapes"]
     assert policy[(5_120, 1_024)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert policy[(17_408, 5_120)] == "dense_rowtile16_w2_bf16_bf16_out"
     assert (1_024, 4_096) not in policy
     assert is_registered(
         KernelKey(
