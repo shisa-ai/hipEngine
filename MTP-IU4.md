@@ -581,8 +581,17 @@ gfx1100, matching gfx1151. gfx1100's absolute IU8 roof is already ~2.3×
 gfx1151's (122–134 vs 55 TOP/s), so IU4 doubles an already-higher ceiling.
 The compute-bound dense-prefill surface (§4.2, R7/R8/R13) is therefore the
 right place to look on gfx1100: the 2× lane plus Q4→FP16 dequant removal
-should transfer. No gfx1100 prefill kernel timing exists yet — this screen
-authorizes that check, nothing more.
+should transfer. That transfer is now measured (2026-08-24): the R7 prefill
+gate/up A/B on gfx1100 W7900 gives **2.858×/2.893×/2.920×/3.227× at
+M64/128/256/512, 15/15 paired wins**, with the candidate at 61–67% of the
+measured gfx1100 IU4 roof.
+[`A/B artifact`](benchmarks/results/2026-08-24-gfx1100-qwen38-iu4-s4-r7-prefill-gate-up-ab.json).
+This is a T3 speed screen only (`model_logit_quality_gate_run: false`): the
+S4 sidecar is the same re-quantized-from-Q4_K_S representation that fails the
+full-model distribution gate on gfx1151, so gfx1100 prefill IU4 has the same
+unqualified-T3 status and is **not** a production path. It also confirms the
+§3.1 rule: the candidate reports 61–67% of its binding roof, so the leaf is a
+representation+2×-lane result, not an unblocked-kernel artifact.
 
 **The tiny-M DOT8 thesis is weaker on gfx1100, not stronger.** gfx1151's 2×
 DOT8-over-DOT4 (56.83 vs 28.25) is largely a gfx1151 DOT4 under-measurement:

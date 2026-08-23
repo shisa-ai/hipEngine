@@ -69,7 +69,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 DEFAULT_MODEL_SHA256 = "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9"
 DEFAULT_ROWS = (2, 3, 4, 5, 8, 16, 32, 64, 96, 128)
-IU4_ARITHMETIC_ROOF_TOPS = 109.715
+IU4_ARITHMETIC_ROOF_TOPS = float(
+    os.environ.get("HIPENGINE_IU4_ARITHMETIC_ROOF_TOPS", "109.715")
+)
 IU4_DOT8_ARITHMETIC_ROOF_TOPS = 56.830
 GFX1151_MEMORY_ROOF_GBPS = 221.0
 WMMA_VGPR_ANOMALY_THRESHOLD = 64
@@ -87,6 +89,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0x1A4B3)
     parser.add_argument("--dequant-chunk-rows", type=int, default=128)
     parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--target-arch", default=os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151"))
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -583,8 +586,11 @@ def main() -> int:
         load=True,
         compiler_version=compiler_version,
         require_cached=require_cached,
+        target_arch=args.target_arch,
     )
-    build_plan = plan_iu4_s4_sidecar_build(compiler_version=compiler_version)
+    build_plan = plan_iu4_s4_sidecar_build(
+        compiler_version=compiler_version, target_arch=args.target_arch
+    )
     persistent: list[DeviceBuffer] = []
     try:
         gate_qmicro = _upload(runtime, gate_qmicro_host)

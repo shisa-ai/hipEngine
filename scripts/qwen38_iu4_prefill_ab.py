@@ -81,6 +81,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0x1A47)
     parser.add_argument("--dequant-chunk-rows", type=int, default=128)
     parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--target-arch", default=os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151"))
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -385,9 +386,12 @@ def main() -> int:
         load=True,
         compiler_version=compiler_version,
         require_cached=require_cached,
+        target_arch=args.target_arch,
     )
     control_plan = plan_gguf_q4_k_prefill_build(compiler_version=compiler_version)
-    candidate_plan = plan_iu4_s4_sidecar_build(compiler_version=compiler_version)
+    candidate_plan = plan_iu4_s4_sidecar_build(
+        compiler_version=compiler_version, target_arch=args.target_arch
+    )
     persistent: list[DeviceBuffer] = []
     try:
         control_gate = tuple(
