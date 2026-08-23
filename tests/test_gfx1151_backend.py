@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -281,6 +282,25 @@ def test_gfx1151_hip_process_environment_preserves_explicit_queue_override() -> 
 
     assert applied == {}
     assert env["GPU_MAX_HW_QUEUES"] == "4"
+
+
+def test_gfx1151_runtime_default_policy_suppresses_backend_queue_limit(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "process-env.json"
+    env = {
+        "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY": "runtime_default",
+        "HIPENGINE_PROCESS_ENV_REPORT_PATH": str(report),
+    }
+
+    applied = configure_hip_process_environment(detected_arches=["gfx1151"], env=env)
+
+    assert applied == {}
+    assert "GPU_MAX_HW_QUEUES" not in env
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["gpu_max_hw_queues"]["requested_policy"] == "runtime_default"
+    assert payload["gpu_max_hw_queues"]["effective_value"] is None
+    assert payload["gpu_max_hw_queues"]["source"] == "rocm_runtime_default"
 
 
 def test_gfx1100_hip_process_environment_caps_reclaimable_scratch() -> None:
