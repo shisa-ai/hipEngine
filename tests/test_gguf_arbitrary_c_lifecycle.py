@@ -29,6 +29,7 @@ def test_gguf_arbitrary_c_lifecycle_defaults_cover_both_physical_windows() -> No
     assert args.original_max_tokens == 5
     assert args.newcomer_max_tokens == 3
     assert args.prefill_chunk_size == 256
+    assert args.gdn_prefill_mode == "exact"
     assert args.compact_after_middle_hole is False
     assert args.backend == "hip_gfx1100"
 
@@ -36,6 +37,11 @@ def test_gguf_arbitrary_c_lifecycle_defaults_cover_both_physical_windows() -> No
         ["--model", "/tmp/model.gguf", "--compact-after-middle-hole"]
     )
     assert compact.compact_after_middle_hole is True
+
+    production = build_parser().parse_args(
+        ["--model", "/tmp/model.gguf", "--gdn-prefill-mode", "auto"]
+    )
+    assert production.gdn_prefill_mode == "auto"
 
 
 def test_gguf_arbitrary_c_lifecycle_summarizes_declared_packed_masks() -> None:

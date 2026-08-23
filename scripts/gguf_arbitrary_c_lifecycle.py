@@ -472,7 +472,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(logical_c),
         "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
-        "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": str(args.gdn_prefill_mode),
     }
     if compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(compiler_version_file)
@@ -1078,6 +1078,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--original-max-tokens", type=int, default=5)
     parser.add_argument("--newcomer-max-tokens", type=int, default=3)
     parser.add_argument("--prefill-chunk-size", type=int, default=256)
+    parser.add_argument(
+        "--gdn-prefill-mode",
+        choices=("exact", "auto"),
+        default="exact",
+        help="pin strict exact prefill or use the backend production policy",
+    )
     parser.add_argument(
         "--compact-after-middle-hole",
         action="store_true",
