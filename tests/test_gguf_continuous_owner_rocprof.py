@@ -25,6 +25,21 @@ def _load_script_module():
 SCRIPT = _load_script_module()
 
 
+def test_workflow_help_runs_outside_repo_cwd(tmp_path: Path) -> None:
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "gguf_continuous_owner_rocprof.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        cwd=tmp_path,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout
+
+
 def test_cache_snapshot_hashes_content_mode_and_mtime(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     cache.mkdir()
