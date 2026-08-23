@@ -1079,10 +1079,13 @@ class DMSCompactBackend:
         max_new = int(stage_map.get("max_new_tokens", getattr(request, "max_new_tokens", 1)))
         if logical_prompt < 0 or max_new < 0:
             raise ValueError("compact DMS token counts must be non-negative")
-        retained_prompt = min(
+        protected_prompt = min(
             logical_prompt,
-            ceil(logical_prompt / self.retrofit.target_compression_ratio)
-            + self.retrofit.window_size,
+            self.retrofit.window_size + 1,
+        )
+        eligible_prompt = logical_prompt - protected_prompt
+        retained_prompt = protected_prompt + ceil(
+            eligible_prompt / self.retrofit.target_compression_ratio
         )
         per_head = max(1, min(logical_prompt + max_new, retained_prompt + max_new))
         total_slots = (

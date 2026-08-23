@@ -98,10 +98,29 @@ def test_eviction_labels_enforce_budget_window_and_position_tie_break() -> None:
     )
 
     np.testing.assert_array_equal(eligible, [True, True, True, True, True, False, False, False])
-    np.testing.assert_array_equal(labels[:, 0], [True, True, True, True, False, False, False, False])
-    np.testing.assert_array_equal(labels[:, 1], [False, True, True, True, True, False, False, False])
-    assert stats[0]["evict_count"] == stats[1]["evict_count"] == 4
-    assert stats[0]["target_live_count"] == stats[1]["target_live_count"] == 4
+    np.testing.assert_array_equal(labels[:, 0], [True, True, False, False, False, False, False, False])
+    np.testing.assert_array_equal(labels[:, 1], [False, False, False, True, True, False, False, False])
+    assert stats[0]["evict_count"] == stats[1]["evict_count"] == 2
+    assert stats[0]["target_historical_live_count"] == 3
+    assert stats[0]["target_live_count"] == stats[1]["target_live_count"] == 6
+    assert not np.any(labels[~eligible])
+
+
+def test_eviction_budget_applies_cr_to_history_outside_window() -> None:
+    positions = np.arange(768, dtype=np.int32)
+    labels, eligible, stats = build_eviction_labels(
+        np.zeros((768, 1), dtype=np.float64),
+        positions=positions,
+        current_position=767,
+        window_size=256,
+        target_compression_ratio=4,
+    )
+
+    assert int(np.count_nonzero(eligible)) == 511
+    assert int(np.count_nonzero(labels)) == 383
+    assert stats[0]["protected_count"] == 257
+    assert stats[0]["target_historical_live_count"] == 128
+    assert stats[0]["target_live_count"] == 385
     assert not np.any(labels[~eligible])
 
 
@@ -165,7 +184,7 @@ def test_label_builder_writes_compact_hidden_labels_and_physical_map(tmp_path: P
         assert shard["future_attention_mass"].shape == (4, 1)
         assert shard["evict_labels"].dtype == np.bool_
         np.testing.assert_array_equal(shard["eligible_mask"], [True, True, False, False])
-        np.testing.assert_array_equal(shard["evict_labels"][:, 0], [True, True, False, False])
+        np.testing.assert_array_equal(shard["evict_labels"][:, 0], [False, True, False, False])
 
 
 def test_label_builder_rejects_structurally_malformed_capture_shard(tmp_path: Path) -> None:

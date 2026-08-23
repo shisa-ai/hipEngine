@@ -380,6 +380,19 @@ def test_compact_extent_pool_rolls_back_fragmented_failure_and_coalesces() -> No
     assert len(first) == len(second) == 4
 
 
+def test_dms_admission_applies_target_cr_only_outside_protected_window() -> None:
+    backend = _backend()
+    claims = backend.estimate(
+        _request(1, prompt_tokens=8, max_new_tokens=0),
+        None,
+        {"kind": "admission"},
+    )
+
+    # Window=2 protects positions 5,6,7. Of the five older rows, CR4 keeps
+    # ceil(5/4)=2, so every layer/head extent reserves five prompt rows.
+    assert claims.metadata_dict()["per_head_slots"] == 5
+
+
 def test_dms_work_item_claims_pack_workspace_not_dense_pages() -> None:
     backend = _backend()
     claims = backend.estimate(

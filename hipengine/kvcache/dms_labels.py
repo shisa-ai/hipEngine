@@ -111,10 +111,11 @@ def build_eviction_labels(
 
     eligible = (current - pos) > window
     eligible_indices = np.flatnonzero(eligible)
-    protected_count = int(scores.shape[0] - eligible_indices.size)
-    unconstrained_live = int(ceil(scores.shape[0] / target_cr))
-    target_live = max(protected_count, unconstrained_live)
-    evict_count = min(int(eligible_indices.size), int(scores.shape[0] - target_live))
+    eligible_count = int(eligible_indices.size)
+    protected_count = int(scores.shape[0] - eligible_count)
+    historical_live = int(ceil(eligible_count / target_cr))
+    target_live = protected_count + historical_live
+    evict_count = eligible_count - historical_live
     labels = np.zeros(scores.shape, dtype=np.bool_)
     stats: list[dict[str, int | float]] = []
     for kv_head in range(scores.shape[1]):
@@ -132,8 +133,9 @@ def build_eviction_labels(
             {
                 "kv_head": kv_head,
                 "token_count": int(scores.shape[0]),
-                "eligible_count": int(eligible_indices.size),
+                "eligible_count": eligible_count,
                 "protected_count": protected_count,
+                "target_historical_live_count": historical_live,
                 "target_live_count": target_live,
                 "evict_count": int(np.count_nonzero(labels[:, kv_head])),
                 "actual_live_count": actual_live,

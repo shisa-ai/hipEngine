@@ -136,10 +136,13 @@ def _run_width(config, args: argparse.Namespace, width: int) -> dict[str, Any]:
 
 
 def _pressure_gate(config, args: argparse.Namespace) -> dict[str, Any]:
+    prompt_tokens = int(args.prompt_tokens)
+    protected = min(prompt_tokens, int(config.window_size) + 1)
+    eligible = prompt_tokens - protected
     per_head = min(
-        int(args.prompt_tokens) + int(args.decode_tokens),
-        int(np.ceil(int(args.prompt_tokens) / config.target_compression_ratio))
-        + config.window_size
+        prompt_tokens + int(args.decode_tokens),
+        protected
+        + int(np.ceil(eligible / config.target_compression_ratio))
         + int(args.decode_tokens),
     )
     capacity = config.num_kv_heads * per_head
