@@ -4061,11 +4061,13 @@ should be boring.
   varied-p512 teacher mean/max KL is 0.02119/0.08754 with 88.89% top-1, and the
   padded canonical 50-row suite narrowly misses mean KL (0.001124 > 0.001),
   outside the frozen production envelope despite 1.44–1.48x complete-prefill and 5/5
-  long-task non-inferiority. The exact public Kairic authoritative GGUF also
-  uses unsupported Equalized type IDs 100/102. Remove the explicit product
-  runtime only if this quality-traded configuration is abandoned; otherwise
-  keep omitted/profile behavior unchanged until an Equalized adapter plus
-  BF16-relative/full-profile packet independently passes.
+  long-task non-inferiority. The exact public Kairic authority adapter now
+  parses CIRU IDs 100/102 and provides a lossless 49.579-GiB expanded fallback;
+  the matched PFS packet is pending and compressed-native execution remains
+  absent. Remove the explicit product runtime only if this quality-traded
+  configuration is abandoned; otherwise keep omitted/profile behavior unchanged
+  until the matched-authority and BF16-relative/full-profile packets independently
+  pass.
 - Keep `iu4_s4_matmul_i32_probe` temporarily because R6 changed the physical
   layout to paired-K32 and the probe is the independent GPU lane-layout/I32
   oracle. Drop it once an immutable sidecar-manifest loader has its own complete

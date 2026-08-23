@@ -97,6 +97,12 @@ from hipengine.quant.iu4_ffn_pfs import (
 )
 from hipengine.quant.iu4_s4 import IU4S4SidecarQuant, IU4_S4_SIDECAR
 from hipengine.quant.maple_ternary import MAPLE_TERNARY2, MapleTernary2Quant
+from hipengine.quant.rocmfpx import (
+    GGUFROCmFP4Quant,
+    GGUFROCmFP6Quant,
+    GGUF_Q4_0_ROCMFP4,
+    GGUF_Q6_0_ROCMFPX,
+)
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
 from hipengine.quant.w8a16 import (
     W8A16,
@@ -142,6 +148,8 @@ __all__ = [
     "GGUFIQ4XSQuant",
     "GGUFQ3KQuant",
     "GGUFQ80Quant",
+    "GGUFROCmFP4Quant",
+    "GGUFROCmFP6Quant",
     "GGUFQuantLayout",
     "GGUFValueType",
     "GGUF_QUANT_LAYOUTS",
@@ -156,6 +164,7 @@ __all__ = [
     "GGUF_IQ3_XXS",
     "GGUF_IQ4_XS",
     "GGUF_Q3_K",
+    "GGUF_Q4_0_ROCMFP4",
     "GGUF_Q4_1",
     "GGUF_Q4_K_SUBBLOCKS",
     "GGUF_Q5_K",
@@ -167,6 +176,7 @@ __all__ = [
     "GGUF_Q6_K",
     "GGUF_Q6_K_BLOCK_BYTES",
     "GGUF_Q6_K_T16_BLOCK_BYTES",
+    "GGUF_Q6_0_ROCMFPX",
     "GGUF_Q6_K_T16_V1",
     "GGUF_Q8_0",
     "GGUF_Q8_0_BLOCK_BYTES",

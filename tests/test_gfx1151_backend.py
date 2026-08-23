@@ -647,9 +647,25 @@ def test_gfx1151_is_the_only_backend_admitting_explicit_iu4_ffn_product() -> Non
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_IU4_FFN_PRODUCT", False
     )
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_IU4_FFN_PRODUCT_FILE_TYPES", ()
+    ) == (
+        "MOSTLY_Q4_K_S",
+        "MOSTLY_Q4_0_ROCMFP4_COHERENT",
+    )
+    authority_wmma_shapes = backend_package_capability(
+        "hip_gfx1151", "GGUF_ROCMFP4_DENSE_BF16_WMMA_PREFILL_SHAPES", ()
+    )
+    assert len(authority_wmma_shapes) == 21
+    assert (512, 5_120, 17_408) in authority_wmma_shapes
+    assert (2_048, 17_408, 5_120) in authority_wmma_shapes
+    assert (96, 6_144, 5_120) not in authority_wmma_shapes
     assert not backend_package_capability(
         "hip_gfx1100", "GGUF_IU4_FFN_PRODUCT", False
     )
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_IU4_FFN_PRODUCT_FILE_TYPES", ()
+    ) == ()
 
 
 def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:

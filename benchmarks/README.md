@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-21**
+Last updated: **2026-08-23**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -96,6 +96,12 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 ## Current default notes
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
+
+The custom Kairic coherent GGUF is now loader-supported only through an explicit
+49.579-GiB expanded authority view; this is not compressed-native execution or
+a public default. Its isolated expanded-BF16 prefill leaf wins all 21 admitted
+M512/1024/2048 shapes by 1.40–4.73x; the matched full-model PFS quality gate is
+tracked separately in the [`leaf artifact`](results/2026-08-23-gfx1151-qwen38-rocmfp4-authority-dense-bf16-leaf.json).
 
 ## Where detailed evidence lives
 

@@ -2231,17 +2231,26 @@ class Qwen35GGUFFullStackRunner:
                     raise ValueError(
                         f"backend {self.backend!r} does not admit the IU4 FFN product"
                     )
+                admitted_file_types = backend_package_capability(
+                    self.backend,
+                    "GGUF_IU4_FFN_PRODUCT_FILE_TYPES",
+                    (),
+                )
+                if not isinstance(admitted_file_types, (tuple, list, set, frozenset)):
+                    raise RuntimeError(
+                        "backend IU4 FFN product file-type capability must be a sequence"
+                    )
                 if (
                     int(hidden_size or 0) != IU4FFNProductRuntime.hidden_size
                     or int(feed_forward_length or 0)
                     != IU4FFNProductRuntime.intermediate_size
                     or len(self.weights.layers) != IU4FFNProductRuntime.layer_count
                     or getattr(self.weights, "file_type_name", None)
-                    != "MOSTLY_Q4_K_S"
+                    not in admitted_file_types
                 ):
                     raise ValueError(
-                        "IU4 FFN product requires Qwen3.8-27B Q4_K_S "
-                        "H5120/I17408/L64"
+                        "IU4 FFN product requires an admitted Qwen3.8-27B "
+                        "H5120/I17408/L64 authority"
                     )
                 self._iu4_ffn_product = IU4FFNProductRuntime(
                     self.iu4_ffn_pfs_path,

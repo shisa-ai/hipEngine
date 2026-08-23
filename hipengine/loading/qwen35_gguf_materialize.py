@@ -54,6 +54,7 @@ from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8, repack_gguf_q5_k_x8, re
 
 LAYOUT_DENSE_F32 = "dense_f32"
 LAYOUT_DENSE_BF16 = "dense_bf16"
+LAYOUT_ROCMFP4_DENSE_BF16 = "rocmfp4_dense_bf16_v1"
 LAYOUT_RAW_GGUF = "raw_gguf"
 LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
@@ -67,6 +68,16 @@ LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR = "gguf_q6_k_t16_qmicro_planar_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
 LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
 LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
+_ROCMFPX_AUTHORITY_RESIDENTS = {
+    GGMLQuantizationType.Q4_0_ROCMFP4: (
+        "gguf_q4_0_rocmfp4",
+        LAYOUT_ROCMFP4_DENSE_BF16,
+    ),
+    GGMLQuantizationType.Q6_0_ROCMFPX: (
+        "gguf_q6_0_rocmfpx",
+        LAYOUT_DENSE_F32,
+    ),
+}
 HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
 Q4_T16_DECODE_TILES = "decode_tiles"
@@ -443,7 +454,7 @@ def planned_qwen35_gguf_weight_allocation_nbytes(
         return tuple(records)
     if spec.layout == LAYOUT_DENSE_F32:
         primary_nbytes = int(source.n_elements) * DType.FP32.itemsize
-    elif spec.layout == LAYOUT_DENSE_BF16:
+    elif spec.layout in {LAYOUT_DENSE_BF16, LAYOUT_ROCMFP4_DENSE_BF16}:
         primary_nbytes = int(source.n_elements) * DType.BF16.itemsize
     elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
         primary_nbytes = _planned_t16_nbytes(
@@ -1030,6 +1041,16 @@ def _spec_for_tensor(
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
 ) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
+    authority_resident = _ROCMFPX_AUTHORITY_RESIDENTS.get(qtype)
+    if authority_resident is not None:
+        quant_key, layout = authority_resident
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=quant_key,
+            layout=layout,
+            allocation_names=("raw",),
+        )
     if qtype == GGMLQuantizationType.F32:
         bf16_linear_weight = contract_f32_linear and slot_path.endswith(
             (".ffn_gate_inp", ".ffn_gate_inp_shexp", ".ssm_alpha", ".ssm_beta")
@@ -1747,17 +1768,22 @@ def _materialize_spec(
             )
         }
     elif spec.layout == LAYOUT_DENSE_F32:
+        f32 = (
+            raw
+            if GGMLQuantizationType(spec.source.ggml_type) == GGMLQuantizationType.F32
+            else dequantize_gguf_data(raw, spec.source.ggml_type)
+        )
         allocations = {
             "raw": load_host_array_to_device_as_dtype(
                 spec.source.name,
-                raw,
+                f32,
                 DType.FP32,
                 source_dtype="F32",
                 device=device,
                 runtime=runtime,
             )
         }
-    elif spec.layout == LAYOUT_DENSE_BF16:
+    elif spec.layout in {LAYOUT_DENSE_BF16, LAYOUT_ROCMFP4_DENSE_BF16}:
         if GGMLQuantizationType(spec.source.ggml_type) == GGMLQuantizationType.BF16:
             bf16 = raw
         else:
@@ -1784,6 +1810,7 @@ def _materialize_spec(
 __all__ = [
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
+    "LAYOUT_ROCMFP4_DENSE_BF16",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
     "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
     "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV",

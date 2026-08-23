@@ -53,6 +53,10 @@ class GGMLQuantizationType(IntEnum):
     MXFP4 = 39
     NVFP4 = 40
     Q1_0 = 41
+    # ciru-ai/ROCmFPX@e1da26bb custom GGUF tensor IDs used by the immutable
+    # Qwen3.8 Kairic Edge release. Keep the numeric IDs aligned with its GGUF.
+    Q4_0_ROCMFP4 = 100
+    Q6_0_ROCMFPX = 102
 
 
 class GGUFValueType(IntEnum):
@@ -107,6 +111,9 @@ class LlamaFileType(IntEnum):
     MOSTLY_MXFP4_MOE = 38
     MOSTLY_NVFP4 = 39
     MOSTLY_Q1_0 = 40
+    MOSTLY_Q4_0_ROCMFP4 = 100
+    MOSTLY_Q4_0_ROCMFP4_LEAN = 101
+    MOSTLY_Q4_0_ROCMFP4_COHERENT = 102
     GUESSED = 1024
 
 
@@ -293,6 +300,22 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
     GGMLQuantizationType.Q1_0: _layout(
         GGMLQuantizationType.Q1_0, 128, 2 + 16, "uint8_blocks"
     ),
+    GGMLQuantizationType.Q4_0_ROCMFP4: _layout(
+        GGMLQuantizationType.Q4_0_ROCMFP4,
+        32,
+        16 + 2,
+        "uint8_blocks",
+        dequant_supported=True,
+        native_status="lossless_dense_bf16_authority_fallback",
+    ),
+    GGMLQuantizationType.Q6_0_ROCMFPX: _layout(
+        GGMLQuantizationType.Q6_0_ROCMFPX,
+        32,
+        24 + 2,
+        "uint8_blocks",
+        dequant_supported=True,
+        native_status="lossless_dense_f32_authority_fallback",
+    ),
 }
 
 _NUMPY_STORAGE_DTYPES = {
@@ -309,6 +332,7 @@ _NUMPY_STORAGE_DTYPES = {
 
 _IQ4_NL_KVALUES = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
 _MXFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12)
+_ROCMFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 10, 0, -1, -2, -3, -4, -6, -8, -10)
 
 # IQ2_XS codebook from llama.cpp@1ebf790cd gguf-py/gguf/quants.py. Each
 # little-endian u16 packs eight 2-bit selectors mapped through (8, 25, 43).
@@ -822,6 +846,67 @@ def _dequant_iq4_xs_blocks(blocks: np.ndarray) -> np.ndarray:
     return (dl * qs).reshape((n_blocks, -1))
 
 
+def _rocmfpx_ue4m3_to_fp32(scales: np.ndarray) -> np.ndarray:
+    """Decode finite unsigned E4M3 scale bytes from ROCmFPX.
+
+    IDs above ``0x7e`` are invalid in the source format and decode to zero,
+    matching ciru-ai/ROCmFPX@e1da26bb ``rocmfpx_ue4m3_to_fp32``.
+    """
+
+    encoded = np.asarray(scales, dtype=np.uint8)
+    exponent = encoded >> np.uint8(3)
+    mantissa = encoded & np.uint8(7)
+    subnormal = mantissa.astype(np.float32) * np.float32(2.0**-10)
+    normal = np.ldexp(
+        (np.uint8(8) + mantissa).astype(np.float32),
+        exponent.astype(np.int16) - np.int16(11),
+    ).astype(np.float32)
+    decoded = np.where(exponent == 0, subnormal, normal).astype(np.float32)
+    return np.where(encoded <= np.uint8(0x7E), decoded, np.float32(0.0))
+
+
+def _dequant_rocmfp4_blocks(blocks: np.ndarray) -> np.ndarray:
+    packed, scale_bytes = _split(blocks, [16])
+    low_codes = packed & np.uint8(0x0F)
+    high_codes = packed >> np.uint8(4)
+    codebook = np.asarray(_ROCMFP4_KVALUES, dtype=np.int8)
+    low = codebook[low_codes].astype(np.float32)
+    high = codebook[high_codes].astype(np.float32)
+    scales = _rocmfpx_ue4m3_to_fp32(scale_bytes)
+    return np.concatenate(
+        [low * scales[:, 0:1], high * scales[:, 1:2]], axis=1
+    ).astype(np.float32)
+
+
+def _dequant_rocmfpx_fp6_blocks(blocks: np.ndarray) -> np.ndarray:
+    packed, scale_bytes = _split(blocks, [24])
+    groups = packed.reshape(blocks.shape[0], 8, 3)
+    codes = np.empty((blocks.shape[0], 8, 4), dtype=np.uint8)
+    codes[:, :, 0] = groups[:, :, 0] & np.uint8(0x3F)
+    codes[:, :, 1] = (
+        ((groups[:, :, 0] >> np.uint8(6)) & np.uint8(0x03))
+        | ((groups[:, :, 1] & np.uint8(0x0F)) << np.uint8(2))
+    )
+    codes[:, :, 2] = (
+        ((groups[:, :, 1] >> np.uint8(4)) & np.uint8(0x0F))
+        | ((groups[:, :, 2] & np.uint8(0x03)) << np.uint8(4))
+    )
+    codes[:, :, 3] = (groups[:, :, 2] >> np.uint8(2)) & np.uint8(0x3F)
+    codes = codes.reshape(blocks.shape[0], 32)
+
+    magnitudes = (codes & np.uint8(31)).astype(np.int16)
+    negative = (codes & np.uint8(32)) != 0
+    signed = np.where(
+        negative,
+        -np.where(magnitudes == 0, np.int16(32), magnitudes),
+        magnitudes,
+    ).astype(np.float32)
+    scales = _rocmfpx_ue4m3_to_fp32(scale_bytes)
+    signed[:, :16] *= scales[:, 0:1]
+    signed[:, 16:] *= scales[:, 1:2]
+    return signed
+
+
 def _mxfp4_e8m0_to_fp32_half(x: np.ndarray) -> np.ndarray:
     x = x.astype(np.uint32)
     bits = np.where(x < 2, np.uint32(0x00200000) << x, (x - np.uint32(1)) << np.uint32(23))
@@ -854,6 +939,8 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,
     GGMLQuantizationType.MXFP4: _dequant_mxfp4_blocks,
+    GGMLQuantizationType.Q4_0_ROCMFP4: _dequant_rocmfp4_blocks,
+    GGMLQuantizationType.Q6_0_ROCMFPX: _dequant_rocmfpx_fp6_blocks,
 }
 
 
