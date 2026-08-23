@@ -1002,6 +1002,7 @@ class DMSCompactBackend:
         generation: int = 1,
         codec_qualification: DMSCodecQualification | None = None,
         device_payloads: bool | None = None,
+        device_backend: str = "hip_gfx1100",
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
@@ -1017,6 +1018,7 @@ class DMSCompactBackend:
         self.retrofit = retrofit
         self.codec = codec
         self.codec_qualification = codec_qualification
+        self.device_backend = str(device_backend)
         self.slots_per_layer = int(slots_per_layer)
         self.max_request_rows = int(max_request_rows)
         self.max_pack_rows = int(max_pack_rows)
@@ -1067,6 +1069,7 @@ class DMSCompactBackend:
                     retrofit=retrofit,
                     slots_per_layer=self.slots_per_layer,
                     max_pack_rows=self.max_pack_rows,
+                    backend=self.device_backend,
                 )
             except DMSDeviceUnavailable:
                 # Host parent remains the registered fallback.
@@ -1290,6 +1293,95 @@ class DMSCompactBackend:
         state.logical_tokens = tokens
         self.pack_calls += 1
 
+    def device_streaming_pack_layer(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        tokens: int,
+        row_start: int = 0,
+        stream: int = 0,
+    ) -> None:
+        """Pack one layer from device-resident dense K/V and decision pointers."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        self._device_store.configure_layer(
+            layer,
+            base=state.base_offsets[layer],
+            capacity=state.range_capacity[layer],
+            live=np.zeros((self.retrofit.num_kv_heads,), dtype=np.int32),
+        )
+        self._device_store.pack_layer_device(
+            layer,
+            k_ptr=int(k_ptr),
+            v_ptr=int(v_ptr),
+            evict_ptr=int(evict_ptr),
+            tokens=int(tokens),
+            row_start=int(row_start),
+            stream=int(stream),
+        )
+
+    def finalize_device_streaming_pack(
+        self,
+        request_id: int,
+        *,
+        eviction: np.ndarray,
+        tokens: int,
+    ) -> None:
+        """Commit host control metadata after all direct device layer packs."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        evict = np.asarray(eviction, dtype=np.bool_)
+        expected = (
+            int(tokens),
+            self.retrofit.num_layers,
+            self.retrofit.num_kv_heads,
+        )
+        if evict.shape != expected:
+            raise ValueError("DMS direct pack eviction metadata shape mismatch")
+        positions = np.arange(int(tokens), dtype=np.int32)
+        for layer in range(self.retrofit.num_layers):
+            device_live = self._device_store.live_counts(layer)
+            for head in range(self.retrofit.num_kv_heads):
+                keep = build_dms_live_mask(
+                    evict[:, layer, head][None, :],
+                    current_position=max(0, int(tokens) - 1),
+                    window_size=self.retrofit.window_size,
+                    positions=positions,
+                )[0]
+                selected = positions[keep]
+                live = int(selected.size)
+                if live != int(device_live[head]):
+                    raise RuntimeError("DMS direct pack device/host live-count mismatch")
+                capacity = int(state.range_capacity[layer, head])
+                if live > capacity:
+                    raise MemoryError("DMS direct packed rows exceed reserved extent")
+                state.live_counts[layer, head] = live
+                state.token_positions[layer, head, :live] = selected
+                state.token_positions[layer, head, live:capacity] = -1
+                state.evict_mask[layer, head, :live] = evict[keep, layer, head]
+                state.evict_mask[layer, head, live:capacity] = False
+        self._shrink_after_streaming_pack(state)
+        for layer in range(self.retrofit.num_layers):
+            self._device_store.configure_layer(
+                layer,
+                base=state.base_offsets[layer],
+                capacity=state.range_capacity[layer],
+                live=state.live_counts[layer],
+            )
+        state.logical_tokens = int(tokens)
+        self.pack_calls += 1
+
     def _shrink_after_streaming_pack(self, state: DMSSequenceState) -> None:
         metadata = state.lease.claims.metadata_dict()
         max_new_tokens = int(metadata.get("max_new_tokens", 0))
@@ -1454,6 +1546,81 @@ class DMSCompactBackend:
                     state.token_positions[layer, head, live:] = -1
                     state.evict_mask[layer, head, :live] = combined_evict
                     state.evict_mask[layer, head, live:] = False
+        state.logical_tokens = max(state.logical_tokens, int(position) + 1)
+        self.decode_appends += 1
+
+    def device_append_layer(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        position: int,
+        stream: int = 0,
+    ) -> None:
+        """Append one layer directly from device-resident decode pointers."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        self.state_for_request(request_id)
+        self._device_store.append_layer_device(
+            int(compact_layer_index),
+            k_ptr=int(k_ptr),
+            v_ptr=int(v_ptr),
+            evict_ptr=int(evict_ptr),
+            row_position=int(position),
+            stream=int(stream),
+        )
+
+    def finalize_device_append(
+        self,
+        request_id: int,
+        *,
+        eviction: np.ndarray,
+        position: int,
+    ) -> None:
+        """Synchronize compact control metadata once after all layer appends."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        evict_new = np.asarray(eviction, dtype=np.bool_)
+        expected = (self.retrofit.num_layers, self.retrofit.num_kv_heads)
+        if evict_new.shape != expected:
+            raise ValueError("DMS direct append eviction metadata shape mismatch")
+        for layer in range(self.retrofit.num_layers):
+            device_live = self._device_store.live_counts(layer)
+            for head in range(self.retrofit.num_kv_heads):
+                live = int(state.live_counts[layer, head])
+                prior_positions = state.token_positions[layer, head, :live]
+                prior_evict = state.evict_mask[layer, head, :live]
+                keep = (~prior_evict) | (
+                    int(position) - prior_positions <= self.retrofit.window_size
+                )
+                removed = int(live - np.count_nonzero(keep))
+                combined_positions = np.concatenate(
+                    (
+                        prior_positions[keep],
+                        np.asarray([int(position)], dtype=np.int32),
+                    )
+                )
+                combined_evict = np.concatenate(
+                    (prior_evict[keep], np.asarray([evict_new[layer, head]]))
+                )
+                final_live = int(combined_positions.size)
+                if final_live != int(device_live[head]):
+                    raise RuntimeError("DMS direct append device/host live-count mismatch")
+                capacity = int(state.range_capacity[layer, head])
+                if final_live > capacity:
+                    raise MemoryError("DMS direct append exceeded committed extent")
+                state.live_counts[layer, head] = final_live
+                state.token_positions[layer, head, :final_live] = combined_positions
+                state.token_positions[layer, head, final_live:capacity] = -1
+                state.evict_mask[layer, head, :final_live] = combined_evict
+                state.evict_mask[layer, head, final_live:capacity] = False
+                self.evicted_tokens += removed
         state.logical_tokens = max(state.logical_tokens, int(position) + 1)
         self.decode_appends += 1
 
@@ -1701,6 +1868,7 @@ class DMSCompactBackend:
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
                 "device_payloads": self.device_payloads_enabled,
+                "device_backend": self.device_backend,
                 "physical_widths": list(self.spec.physical_widths),
             },
             "capacity": {

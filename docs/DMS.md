@@ -224,9 +224,10 @@ building blocks exist but are not yet a long-context serving route:
   does not call it yet;
 - `DMSExternalDecisionRuntime` remains the host/reference composition used by
   replay and quality tooling;
-- `DMSDevicePayloadStore` owns no host K/V mirror, but it uploads K/V, decisions,
-  bases, capacities, and live counts through host staging and is not selected by
-  the normal GGUF resident session;
+- `DMSDevicePayloadStore` owns no host K/V mirror and now accepts direct
+  device-resident K/V and decisions with persistent base/capacity/live metadata;
+  strict host composition still exists, but the normal GGUF resident session has
+  not selected the direct seam yet;
 - the normal Qwen3.8 GGUF session allocates and scans paged dense full-attention
   caches;
 - the fixture compact-attention kernel uses dynamic shared score storage of
