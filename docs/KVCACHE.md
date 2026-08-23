@@ -1309,6 +1309,12 @@ span_role       prefill | decode | verify_chain | verify_tree
      `(score, position)` ties; protected-window labels must remain zero. CPU
      FP64 is normative and a tiled deterministic ROCm/PyTorch path is the
      practical corpus builder.
+   - The offline trainer owns only `[compact_layers,kv_heads,hidden]` weights and
+     `[compact_layers,kv_heads]` biases. BCE plus a per-head budget penalty,
+     deterministic epoch/token order, sidecar-only AdamW checkpoints, and
+     validation by layer/head/category/context feed a byte-stable BF16
+     safetensors export and schema-v2 metadata. Base GGUF weights never enter the
+     optimizer or checkpoint.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.
