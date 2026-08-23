@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [Concurrency2 gfx1151 Qwen3.8 direct resident-state promotion; c17 fixed SLO closed] Canonical batch-owner Conv/GDN slabs remove duplicate packed-state round trips: clean marked c17 **410.878→368.413 ms (-10.33%)**, fused state transfer **4 launches / 49.16 ms→0**. Three-repeat c17 **10.965→11.271 tok/s**, ITL **0.5046→0.4542 s**, E2E **12.402→12.066 s**, 3/3 fixed-SLO passes; c32 **10.478→10.732 tok/s**, ITL **0.878→0.821 s** but remains blocked. Exact clean c13 lifecycle passes. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json`.
+
 - [Concurrency2 gfx1151 Qwen3.8 fused packed-state transfer promotion; production still blocked] Clean c17 marked owner **420.496→410.878 ms (-2.29%)**, dispatches **6,691→3,639**, copyBuffer **4,117→1,061** by replacing strict Conv/recurrent D2D loops with four pointer-table copies. Three-repeat streaming ITL **0.5094→0.5046 s (-0.94%)** and E2E **12.412→12.402 s**; all rows and c13 lifecycle exact. Retain gfx1151-only; c17 median remains 4.6 ms above SLO and c32 remains blocked. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-fused-packed-state-transfer.json`.
 
 - [Concurrency2 gfx1151 Qwen3.8 wider-owner rejection] Clean eager diagnostics are exact but lose: native c16 **341.46 ms** vs 2×c8 **273.90 ms**; native c9 **228.05 ms**; actual c17 9+8 **425.86 ms** vs retained 8+8+1 **406.50 ms (+4.76% regression)**. Keep physical widths 1..8 and move to marked eager-owner kernel-family work. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-eager-wider-width-screen.json`.

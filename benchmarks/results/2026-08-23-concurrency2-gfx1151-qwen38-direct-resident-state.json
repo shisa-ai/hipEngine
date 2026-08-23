@@ -1,0 +1,360 @@
+{
+  "c17": {
+    "all_rows_exact": true,
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 12.402443725033663,
+        "samples": [
+          12.389052245998755,
+          12.402443725033663,
+          12.403955703019165
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.964966075661243,
+        "samples": [
+          10.976901226460972,
+          10.964966075661243,
+          10.963911755706864
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.5045620960881934,
+        "samples": [
+          0.49679304903838784,
+          0.5048674800200388,
+          0.5045620960881934
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 3.2246799281490777,
+        "samples": [
+          10.976901226460972,
+          2.5799920178026454,
+          3.2246799281490777
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.407642083009705,
+        "samples": [
+          9.401336039998569,
+          9.407642083009705,
+          9.410756867029704
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 12.06551391701214,
+        "samples": [
+          12.077112914063036,
+          12.06551391701214,
+          12.062359873089008
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 11.271170656483562,
+        "samples": [
+          11.260511655155895,
+          11.271170656483562,
+          11.27352019131151
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.45416259905323386,
+        "samples": [
+          0.46119674504734576,
+          0.4535658279201016,
+          0.45416259905323386
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 11.271170656483562,
+        "samples": [
+          11.260511655155895,
+          11.271170656483562,
+          11.27352019131151
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.412366900010966,
+        "samples": [
+          9.412366900010966,
+          9.41422076895833,
+          9.410769360954873
+        ]
+      }
+    },
+    "decision": "Fixed TTFT/ITL c17 gate closed; overall live-admission gate remains open.",
+    "deltas": {
+      "end_to_end_p95_seconds": {
+        "absolute": -0.33692980802152306,
+        "percent": -2.7166404903047336
+      },
+      "exact_generated_tok_s_aggregate": {
+        "absolute": 0.30620458082231927,
+        "percent": 2.792572076460842
+      },
+      "itl_p99_seconds": {
+        "absolute": -0.050399497034959495,
+        "percent": -9.988760040776047
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "absolute": 8.046490728334485,
+        "percent": 249.52835343733048
+      },
+      "ttft_p95_seconds": {
+        "absolute": 0.004724817001260817,
+        "percent": 0.050223179831565545
+      }
+    },
+    "fixed_slo_passed_runs": 3,
+    "live_admission_during_first": false,
+    "physical_groups": [
+      8,
+      8,
+      1
+    ]
+  },
+  "c32": {
+    "all_rows_exact": true,
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 24.43146261095535,
+        "samples": [
+          24.43146261095535,
+          25.280129437916912,
+          23.599619508022442
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.477690493467637,
+        "samples": [
+          10.477690493467637,
+          10.125703769552082,
+          10.846946681722349
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8782397350296378,
+        "samples": [
+          0.88380247191526,
+          0.8782397350296378,
+          0.8727532810298726
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 19.448475532000884,
+        "samples": [
+          19.448475532000884,
+          20.291924384073354,
+          18.60867248394061
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 23.853294492000714,
+        "samples": [
+          23.244631252950057,
+          24.61593271396123,
+          23.853294492000714
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.731586497771483,
+        "samples": [
+          11.011986332320317,
+          10.398999876584112,
+          10.731586497771483
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8206183559959754,
+        "samples": [
+          0.8343349390197545,
+          0.7674868729664013,
+          0.8206183559959754
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 19.435214327997528,
+        "samples": [
+          18.835135448956862,
+          20.236980210989714,
+          19.435214327997528
+        ]
+      }
+    },
+    "decision": "Retain exact complete-wall win; c32 remains outside ITL SLO.",
+    "deltas": {
+      "end_to_end_p95_seconds": {
+        "absolute": -0.5781681189546362,
+        "percent": -2.3664899975958775
+      },
+      "exact_generated_tok_s_aggregate": {
+        "absolute": 0.2538960043038454,
+        "percent": 2.4232058053455408
+      },
+      "itl_p99_seconds": {
+        "absolute": -0.05762137903366238,
+        "percent": -6.561007972580269
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "absolute": 0.0,
+        "percent": null
+      },
+      "ttft_p95_seconds": {
+        "absolute": -0.013261204003356397,
+        "percent": -0.06818634181139371
+      }
+    },
+    "fixed_slo_passed_runs": 0,
+    "live_admission_during_first": false,
+    "physical_groups": [
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "correctness": {
+    "focused_tests": "82 passed",
+    "lifecycle": {
+      "commit": "ad3971ea39df4bf6eb691da1ba8dea3605b54ee0",
+      "compaction_moves": 11,
+      "dirty": false,
+      "final_active": 0,
+      "graph_handles_closed": true,
+      "memory_delta_bytes": 0,
+      "newcomer_tokens_exact": true,
+      "no_serial_fallback": true,
+      "original_tokens_exact": true,
+      "passed": true,
+      "sha256": "d4ec59fb7b07cfbee52ca1c6bdf6ec182b696ac28f0802e990f26c9556111459",
+      "state_kv_accepted": true
+    }
+  },
+  "created_at": "2026-08-23T09:45:00Z",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151"
+  },
+  "kind": "concurrency2_gfx1151_qwen38_direct_resident_linear_state",
+  "marked_c17": {
+    "baseline": {
+      "copy_buffer": {
+        "duration_ms": 3.390673,
+        "launches": 1061
+      },
+      "dispatches": 3639,
+      "fused_state_transfer": {
+        "duration_ms": 49.16171,
+        "launches": 4
+      },
+      "gdn": {
+        "duration_ms": 16.404428,
+        "launches": 144
+      },
+      "kernel_sha256": "7809a129a46b4d9798fe969e661455023837c4a857d0c8a6ee1d6d83be5ddcb2",
+      "kernel_sum_ms": 394.214725,
+      "marker_sha256": "6dcd0304fae79d863c46410421fe70f02938ca79b90011c47b21ec172053f7b0",
+      "q4_paired": {
+        "duration_ms": 155.735355,
+        "launches": 192
+      },
+      "q4_rowtile": {
+        "duration_ms": 68.589185,
+        "launches": 424
+      },
+      "q5": {
+        "duration_ms": 35.506006,
+        "launches": 168
+      },
+      "window_ms": 410.878172
+    },
+    "candidate": {
+      "copy_buffer": {
+        "duration_ms": 3.441369,
+        "launches": 1045
+      },
+      "dispatches": 3619,
+      "fused_state_transfer": {
+        "duration_ms": 0.0,
+        "launches": 0
+      },
+      "gdn": {
+        "duration_ms": 16.74919,
+        "launches": 144
+      },
+      "kernel_sha256": "380038ddedc1ca53b9d8575d8d72235f0acc8773e66c925b0d018d4ff2cb7cce",
+      "kernel_sum_ms": 351.402463,
+      "marker_sha256": "6121c7df711bc6f2e87f0905c9921af433a1b47eb86eb8c0d91634647748ffbc",
+      "q4_paired": {
+        "duration_ms": 158.324138,
+        "launches": 192
+      },
+      "q4_rowtile": {
+        "duration_ms": 70.002697,
+        "launches": 424
+      },
+      "q5": {
+        "duration_ms": 36.183224,
+        "launches": 168
+      },
+      "window_ms": 368.413358
+    }
+  },
+  "mechanism": "Map packed decode row state_indices to the canonical contiguous resident batch-owner Conv/GDN slabs. Skip only duplicate linear-state import/scatter; packed KV, membership, compaction, prefix/fallback flush, teardown, and strict gfx1100 behavior are unchanged.",
+  "model": {
+    "fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "next_ranked": [
+    "Profile/tune Q4 paired and rowtile projection kernels, 228.3 ms combined in the direct-state marked c17 owner.",
+    "Resolve live admission overlap without weakening SLOs or enlarging queues.",
+    "Rerun c32 after each projection win; production remains blocked until c32 and live admission pass."
+  ],
+  "passed": true,
+  "performance_claim": true,
+  "raw_sha256": {
+    "c17_baseline": "a81436d9cd66f653d3b33f826d9e00ae398c7955475fbec9cc930537cc441999",
+    "c17_candidate": "106458cd412e0156658d2dee2e841ab5af2326bbefcc4624eb0a94369b2cb719",
+    "c32_baseline": "3c9e82ead042d4f06fab2040df4d1ff3f4e83029e743cfee16871979396802f6",
+    "c32_candidate": "13000d13d5005f1a472c8dbcd6ece68834111397a5cb8c61ebb7375ef3574273"
+  },
+  "schema": 1,
+  "source": {
+    "commit": "ad3971ea39df4bf6eb691da1ba8dea3605b54ee0",
+    "dirty": false,
+    "host": "gfx1151"
+  },
+  "status": "promoted_c17_closed_c32_live_admission_blocked",
+  "workload": {
+    "decode_tokens": 8,
+    "policy": "fair:256",
+    "prompt_length": 128,
+    "same_server_oracle": true,
+    "stream_repeats": 3,
+    "stream_warmups": 1
+  }
+}

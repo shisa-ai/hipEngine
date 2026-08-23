@@ -195,9 +195,11 @@ for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7
 On Radeon 8060S/gfx1151, Qwen3.8 `Q4_K_S` packed prefill improves exact c17
 streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
 **11.030→9.406 s (-14.72%)**. A subsequent exact fused packed-state transfer
-reduces the marked c17 owner **420.496→410.878 ms (-2.29%)** and ITL p99
-**0.5094→0.5046 s**, but c17 still misses median ITL by 4.6 ms and c32 remains
-blocked; gfx1151 canonical production is not yet promoted.
+reduces the marked c17 owner **420.496→410.878 ms (-2.29%)**. Direct canonical
+resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
+**0.4542 s** (3/3 fixed-SLO passes). c32 improves to **10.732 tok/s / 0.821 s
+ITL** but remains blocked, as does live-admission overlap; gfx1151 canonical
+production is not yet promoted.
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
